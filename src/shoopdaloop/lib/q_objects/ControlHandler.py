@@ -103,6 +103,8 @@ class ControlHandler(ShoopQQuickItem):
         self._qml_instance = None
         self._methods = dict()
         self.qml_instance_changed.connect(self.introspect)
+        self.qml_instance_changed.connect(lambda: "CONN QML INSTANCE CHANGED")
+        self._introspected_qml_instance = None
         self.introspect()
     
     def to_py_val(self, val):
@@ -185,9 +187,15 @@ class ControlHandler(ShoopQQuickItem):
     
     lua_constants = generate_loop_mode_constants()
     
+    introspectedQmlInstanceChanged = Signal('QVariant')
+    @ShoopProperty('QVariant', notify=introspectedQmlInstanceChanged)
+    def introspected_qml_instance(self):
+        return self._introspected_qml_instance
     @ShoopSlot()
     def introspect(self):
+        self.logger.debug(lambda: f"Introspecting QML instance {self} to find overridden interfaces.")
         if not self._qml_instance:
+            self.logger.debug(lambda: f"No QML instance found yet.")
             return
         for i in range(self._qml_instance.metaObject().methodCount()):
             method = self._qml_instance.metaObject().method(i)
@@ -217,8 +225,10 @@ class ControlHandler(ShoopQQuickItem):
             self._methods[str(method.name(), 'ascii')] = {
                 'call_qml': call_qml
             }
+        self._introspected_qml_instance = self._qml_instance
+        self.introspectedQmlInstanceChanged.emit(self._qml_instance)
 
-    qml_instance_changed = ShoopSignal('QVariant')
+    qml_instance_changed = Signal('QVariant')
     @ShoopProperty('QVariant', notify=qml_instance_changed)
     def qml_instance(self):
         return self._qml_instance

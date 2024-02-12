@@ -17,7 +17,7 @@ class Logger(ShoopQObject):
     ######################
 
     # name
-    nameChanged = ShoopSignal(str)
+    nameChanged = Signal(str)
     @ShoopProperty(str, notify=nameChanged, thread_protected=False)
     def name(self):
         return self.logger.name()
@@ -27,7 +27,7 @@ class Logger(ShoopQObject):
             self.logger = BaseLogger(l)
     
     # instanceIdentifier (for clarity in debugging)
-    instanceIdentifierChanged = ShoopSignal(str)
+    instanceIdentifierChanged = Signal(str)
     @ShoopProperty(str, notify=instanceIdentifierChanged, thread_protected=False)
     def instanceIdentifier(self):
         return self._id

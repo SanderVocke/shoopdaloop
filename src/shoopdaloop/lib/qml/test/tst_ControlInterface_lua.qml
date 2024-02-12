@@ -27,7 +27,7 @@ ShoopTestFile {
             id: lua_engine
             ready: false
             function update() {
-                if (session.control_interface) {
+                if (session.control_interface && session.control_interface.ready) {
                     create_lua_qobject_interface_as_global('__shoop_control_interface', session.control_interface)
                     ready = true
                 }

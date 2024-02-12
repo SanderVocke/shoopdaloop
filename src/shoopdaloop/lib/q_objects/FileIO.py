@@ -34,10 +34,10 @@ class FileIO(ShoopQObject):
         super(FileIO, self).__init__(parent)
         self.logger = Logger("Frontend.FileIO")
 
-    startSavingFile = ShoopSignal()
-    doneSavingFile = ShoopSignal()
-    startLoadingFile = ShoopSignal()
-    doneLoadingFile = ShoopSignal()
+    startSavingFile = Signal()
+    doneSavingFile = Signal()
+    startLoadingFile = Signal()
+    doneLoadingFile = Signal()
     
     ######################
     # SLOTS

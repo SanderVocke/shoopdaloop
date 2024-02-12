@@ -34,13 +34,13 @@ class LoopMidiChannel(LoopChannel):
     ######################
 
     # # of events triggered since last update
-    nEventsTriggeredChanged = ShoopSignal(int)
+    nEventsTriggeredChanged = Signal(int)
     @ShoopProperty(int, notify=nEventsTriggeredChanged)
     def n_events_triggered(self):
         return self._n_events_triggered
     
     # # number of notes currently being played
-    nNotesActiveChanged = ShoopSignal(int)
+    nNotesActiveChanged = Signal(int)
     @ShoopProperty(int, notify=nNotesActiveChanged)
     def n_notes_active(self):
         return self._n_notes_active
@@ -65,6 +65,8 @@ class LoopMidiChannel(LoopChannel):
             self._new_n_notes_active = state.n_notes_active
     
     def updateOnGuiThreadSubclassImpl(self):
+        if not self.isValid():
+            return
         if self._new_n_events_triggered != self._n_events_triggered:
             self._n_events_triggered = self._new_n_events_triggered
             self.nEventsTriggeredChanged.emit(self._n_events_triggered)

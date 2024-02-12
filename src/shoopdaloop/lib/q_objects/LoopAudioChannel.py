@@ -37,13 +37,13 @@ class LoopAudioChannel(LoopChannel):
     ######################
 
     # output peak
-    outputPeakChanged = ShoopSignal(float)
+    outputPeakChanged = Signal(float)
     @ShoopProperty(float, notify=outputPeakChanged)
     def output_peak(self):
         return self._output_peak
     
     # gain
-    gainChanged = ShoopSignal(float)
+    gainChanged = Signal(float)
     @ShoopProperty(float, notify=gainChanged)
     def gain(self):
         return self._gain
@@ -82,6 +82,8 @@ class LoopAudioChannel(LoopChannel):
                 self._new_gain = state.gain
     
     def updateOnGuiThreadSubclassImpl(self):
+        if not self.isValid():
+            return
         if self._output_peak != self._new_output_peak:
             self._output_peak = self._new_output_peak
             self.outputPeakChanged.emit(self._output_peak)

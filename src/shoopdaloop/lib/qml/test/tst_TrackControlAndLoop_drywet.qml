@@ -234,6 +234,7 @@ ShoopTestFile {
 
                     midi_input_port.dummy_clear_queues()
 
+                    testcase.wait_updated(session.backend)
                     verify_true(fx.active)
                     verify_approx(dry1, expect_dry)
                     verify_approx(dry2, expect_dry)

@@ -17,7 +17,7 @@ class Tasks(ShoopQObject):
         return self._n_done >= len(self._tasks)
 
     # anything_to_do
-    anythingToDoChanged = ShoopSignal(bool)
+    anythingToDoChanged = Signal(bool)
     @ShoopProperty(bool, notify=anythingToDoChanged)
     def anything_to_do(self):
         return not self.calc_all_done()

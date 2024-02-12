@@ -43,17 +43,17 @@ class Backend(ShoopQQuickItem):
         self.lock = threading.Lock()
         self._last_processed = self._new_last_processed = 1
         self._n_updates_pending = 0
-
-        self.update.connect(self.updateOnGuiThread, Qt.QueuedConnection)
+        
+        self._signal_sender = SingleSignalObject()
+        self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
     
-    update = ShoopSignal()
-    updated = ShoopSignal()
+    updated = Signal()
 
     ######################
     # PROPERTIES
     ######################
 
-    updateIntervalMsChanged = ShoopSignal(int)
+    updateIntervalMsChanged = Signal(int)
     @ShoopProperty(int, notify=updateIntervalMsChanged)
     def update_interval_ms(self):
         return self._update_interval_ms
@@ -63,12 +63,12 @@ class Backend(ShoopQQuickItem):
             self._update_interval_ms = u
             self.init_timer()
     
-    initializedChanged = ShoopSignal(bool)
+    initializedChanged = Signal(bool)
     @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
     
-    actualBackendTypeChanged = ShoopSignal(int)
+    actualBackendTypeChanged = Signal(int)
     @ShoopProperty(int, notify=actualBackendTypeChanged)
     def actual_backend_type(self):
         return self._actual_driver_type if self._actual_driver_type != None else -1
@@ -79,7 +79,7 @@ class Backend(ShoopQQuickItem):
             self.logger.instanceIdentifier = AudioDriverType(n).name
             self.actualBackendTypeChanged.emit(n)
     
-    clientNameHintChanged = ShoopSignal(str)
+    clientNameHintChanged = Signal(str)
     @ShoopProperty(str, notify=clientNameHintChanged)
     def client_name_hint(self):
         return (self._client_name_hint if self._client_name_hint else "")
@@ -91,7 +91,7 @@ class Backend(ShoopQQuickItem):
         self.maybe_init()
 
     # TODO: rename
-    backendTypeChanged = ShoopSignal(int)
+    backendTypeChanged = Signal(int)
     @ShoopProperty(int, notify=backendTypeChanged)
     def backend_type(self):
         return (self._driver_type.value if self._driver_type else AudioDriverType.Dummy.value)
@@ -102,7 +102,7 @@ class Backend(ShoopQQuickItem):
         self._driver_type = AudioDriverType(n)
         self.maybe_init()
     
-    xrunsChanged = ShoopSignal(int)
+    xrunsChanged = Signal(int)
     @ShoopProperty(int, notify=xrunsChanged)
     def xruns(self):
         return self._xruns
@@ -112,7 +112,7 @@ class Backend(ShoopQQuickItem):
             self._xruns = n
             self.xrunsChanged.emit(n)
     
-    lastProcessedChanged = ShoopSignal(int)
+    lastProcessedChanged = Signal(int)
     @ShoopProperty(int, notify=lastProcessedChanged)
     def last_processed(self):
         return self._last_processed
@@ -122,7 +122,7 @@ class Backend(ShoopQQuickItem):
             self._last_processed = n
             self.lastProcessedChanged.emit(n)
     
-    dspLoadChanged = ShoopSignal(float)
+    dspLoadChanged = Signal(float)
     @ShoopProperty(float, notify=dspLoadChanged)
     def dsp_load(self):
         return self._dsp_load
@@ -132,7 +132,7 @@ class Backend(ShoopQQuickItem):
             self._dsp_load = n
             self.dspLoadChanged.emit(n)
     
-    driverSettingOverridesChanged = ShoopSignal('QVariant')
+    driverSettingOverridesChanged = Signal('QVariant')
     @ShoopProperty('QVariant', notify=driverSettingOverridesChanged)
     def driver_setting_overrides(self):
         return self._driver_setting_overrides
@@ -166,7 +166,7 @@ class Backend(ShoopQQuickItem):
         self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
         if self._n_updates_pending == 0:
             return
-        if not self._initialized:
+        if not self._initialized or not self.isValid():
             return
 
         # Calling the setters will force emitting a changed signal
@@ -215,8 +215,7 @@ class Backend(ShoopQQuickItem):
                 if _obj and hasattr(_obj, 'updateOnOtherThread'):
                     _obj.updateOnOtherThread()
         
-        if self:
-            self.update.emit()
+        self._signal_sender.do_emit()
     
     @ShoopSlot(result=int)
     def get_sample_rate(self):

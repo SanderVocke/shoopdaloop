@@ -38,7 +38,7 @@ class FetchChannelData(ShoopQQuickItem):
     ######################
 
     # channel
-    channelChanged = ShoopSignal('QVariant')
+    channelChanged = Signal('QVariant')
     @ShoopProperty('QVariant', notify=channelChanged)
     def channel(self):
         return self._channel
@@ -66,7 +66,7 @@ class FetchChannelData(ShoopQQuickItem):
     # channel_data
     # set automatically. Will hold the most recently
     # fetched data.
-    channelDataChanged = ShoopSignal('QVariant')
+    channelDataChanged = Signal('QVariant')
     @ShoopProperty('QVariant', notify=channelDataChanged)
     def channel_data(self):
         return self._data
@@ -81,7 +81,7 @@ class FetchChannelData(ShoopQQuickItem):
     # the incoming dirty status of the back-end.
     # if active == true, when the data turns dirty a
     # new fetch is started.
-    dirtyChanged = ShoopSignal(bool)
+    dirtyChanged = Signal(bool)
     @ShoopProperty(bool, notify=dirtyChanged)
     def dirty(self):
         return self._dirty
@@ -94,7 +94,7 @@ class FetchChannelData(ShoopQQuickItem):
     
     # active
     # if active is false, data will never be fetched.
-    activeChanged = ShoopSignal(bool)
+    activeChanged = Signal(bool)
     @ShoopProperty(bool, notify=activeChanged)
     def active(self):
         return self._active
@@ -108,7 +108,7 @@ class FetchChannelData(ShoopQQuickItem):
     # fetching
     # set automatically. Indicates whether data is
     # currently being fetched.
-    fetchingChanged = ShoopSignal(bool)
+    fetchingChanged = Signal(bool)
     @ShoopProperty(bool, notify=fetchingChanged)
     def fetching(self):
         return self._fetching
@@ -122,7 +122,7 @@ class FetchChannelData(ShoopQQuickItem):
     # if the data was a list of floats, this provides
     # a QImage of 8192 elems wide, ARGB32 format,
     # where each pixel holds the float in 32-bit integer range.
-    dataAsQImageChanged = ShoopSignal('QVariant')
+    dataAsQImageChanged = Signal('QVariant')
     @ShoopProperty('QVariant', notify=dataAsQImageChanged)
     def data_as_qimage(self):
         return self._data_as_qimage

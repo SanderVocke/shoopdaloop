@@ -26,17 +26,16 @@ class AudioPort(Port):
         self._gain = self._new_gain = 1.0
         self.logger = Logger("Frontend.AudioPort")
         self._n_updates_pending = 0
-
-        self.update.connect(self.updateOnGuiThread, Qt.QueuedConnection)
-
-    update = ShoopSignal()
+        self._signal_sender = SingleSignalObject()
+        
+        self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
     ######################
     # PROPERTIES
     ######################
 
     # input_peak
-    inputPeakChanged = ShoopSignal(float)
+    inputPeakChanged = Signal(float)
     @ShoopProperty(float, notify=inputPeakChanged)
     def input_peak(self):
         return self._input_peak
@@ -47,7 +46,7 @@ class AudioPort(Port):
             self.inputPeakChanged.emit(s)
     
     # output_peak
-    outputPeakChanged = ShoopSignal(float)
+    outputPeakChanged = Signal(float)
     @ShoopProperty(float, notify=outputPeakChanged)
     def output_peak(self):
         return self._output_peak
@@ -58,7 +57,7 @@ class AudioPort(Port):
             self.outputPeakChanged.emit(s)
     
     # gain
-    gainChanged = ShoopSignal(float)
+    gainChanged = Signal(float)
     @ShoopProperty(float, notify=gainChanged)
     def gain(self):
         return self._gain
@@ -87,14 +86,13 @@ class AudioPort(Port):
         self._new_passthrough_muted = state.passthrough_muted
         self._n_updates_pending += 1
 
-        if self:
-            self.update.emit()
+        self._signal_sender.do_emit()
     
     # Update the GUI thread.
     @ShoopSlot()
     def updateOnGuiThread(self):
         self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
-        if not self._initialized:
+        if not self._initialized or not self.isValid():
             return
         if self._n_updates_pending == 0:
             return

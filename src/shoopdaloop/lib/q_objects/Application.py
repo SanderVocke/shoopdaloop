@@ -22,7 +22,7 @@ from ..logging import *
 from ..directories import *
 
 class Application(ShoopQApplication):
-    exit_handler_called = ShoopSignal()
+    exit_handler_called = Signal()
 
     def __init__(self,
                  title,
@@ -45,7 +45,7 @@ class Application(ShoopQApplication):
         self.setApplicationVersion(pkg_version)
         self.setOrganizationName('ShoopDaLoop')
 
-        self.logger = Logger("Frontend.App")
+        self.logger = Logger("Frontend.Application")
 
         self.nsm_client = None
         self.title = title

@@ -42,7 +42,7 @@ class CompositeLoop(ShoopQQuickItem):
         self.modeChanged.connect(self.update_position, Qt.DirectConnection)
         self.syncPositionChanged.connect(self.update_position, Qt.DirectConnection)
     
-    cycled = ShoopSignal()
+    cycled = Signal()
 
     ######################
     ## PROPERTIES
@@ -50,7 +50,7 @@ class CompositeLoop(ShoopQQuickItem):
 
     # schedule
     # See CompositeLoop.qml for the format of this property.
-    scheduleChanged = ShoopSignal('QVariant')
+    scheduleChanged = Signal('QVariant')
     @ShoopProperty('QVariant', notify=scheduleChanged)
     def schedule(self):
         return self._schedule
@@ -63,7 +63,7 @@ class CompositeLoop(ShoopQQuickItem):
         self.scheduleChanged.emit(self._schedule)
     
     # sync_loop
-    syncLoopChanged = ShoopSignal('QVariant')
+    syncLoopChanged = Signal('QVariant')
     @ShoopProperty('QVariant', notify=syncLoopChanged)
     def sync_loop(self):
         return self._sync_loop
@@ -84,7 +84,7 @@ class CompositeLoop(ShoopQQuickItem):
             self.syncLoopChanged.emit(self._sync_loop)
     
     # running_loops
-    runningLoopsChanged = ShoopSignal('QVariant')
+    runningLoopsChanged = Signal('QVariant')
     @ShoopProperty('QVariant', notify=runningLoopsChanged)
     def running_loops(self):
         return list(self._running_loops)
@@ -96,7 +96,7 @@ class CompositeLoop(ShoopQQuickItem):
         self.runningLoopsChanged.emit(self._running_loops)
 
     # iteration
-    iterationChanged = ShoopSignal(int)
+    iterationChanged = Signal(int)
     @ShoopProperty(int, notify=iterationChanged)
     def iteration(self):
         return self._iteration
@@ -108,7 +108,7 @@ class CompositeLoop(ShoopQQuickItem):
             self.iterationChanged.emit(self._iteration)
 
     # mode
-    modeChanged = ShoopSignal(int)
+    modeChanged = Signal(int)
     @ShoopProperty(int, notify=modeChanged)
     def mode(self):
         return self._mode
@@ -120,7 +120,7 @@ class CompositeLoop(ShoopQQuickItem):
             self.modeChanged.emit(self._mode)
     
     # next_mode
-    nextModeChanged = ShoopSignal(int)
+    nextModeChanged = Signal(int)
     @ShoopProperty(int, notify=nextModeChanged)
     def next_mode(self):
         return self._next_mode
@@ -132,7 +132,7 @@ class CompositeLoop(ShoopQQuickItem):
             self.nextModeChanged.emit(self._next_mode)
     
     # next_transition_delay
-    nextTransitionDelayChanged = ShoopSignal(int)
+    nextTransitionDelayChanged = Signal(int)
     @ShoopProperty(int, notify=nextTransitionDelayChanged)
     def next_transition_delay(self):
         return self._next_transition_delay
@@ -144,7 +144,7 @@ class CompositeLoop(ShoopQQuickItem):
             self.nextTransitionDelayChanged.emit(self._next_transition_delay)
 
     # n_cycles
-    nCyclesChanged = ShoopSignal(int)
+    nCyclesChanged = Signal(int)
     ShoopSlot()
     def update_n_cycles(self):
         v = (max([int(k) for k in self._schedule.keys()]) if self._schedule else 0)
@@ -157,7 +157,7 @@ class CompositeLoop(ShoopQQuickItem):
         return self._n_cycles
 
     # length
-    lengthChanged = ShoopSignal(int)
+    lengthChanged = Signal(int)
     ShoopSlot()
     def update_length(self):
         v = self.sync_length * self.n_cycles
@@ -170,7 +170,7 @@ class CompositeLoop(ShoopQQuickItem):
         return self._length
 
     # kind
-    kindChanged = ShoopSignal(str)
+    kindChanged = Signal(str)
     @ShoopProperty(str, notify=kindChanged)
     def kind(self):
         return self._kind
@@ -182,7 +182,7 @@ class CompositeLoop(ShoopQQuickItem):
             self.kindChanged.emit(self._kind)
     
     # sync_position
-    syncPositionChanged = ShoopSignal(int)
+    syncPositionChanged = Signal(int)
     ShoopSlot()
     def update_sync_position(self):
         v = 0
@@ -197,7 +197,7 @@ class CompositeLoop(ShoopQQuickItem):
         return self._sync_position
     
     # sync_length
-    syncLengthChanged = ShoopSignal(int)
+    syncLengthChanged = Signal(int)
     ShoopSlot()
     def update_sync_length(self):
         v = 0
@@ -212,7 +212,7 @@ class CompositeLoop(ShoopQQuickItem):
         return self._sync_length
 
     # position
-    positionChanged = ShoopSignal(int)
+    positionChanged = Signal(int)
     ShoopSlot()
     def update_position(self):
         v = self.iteration * self.sync_length

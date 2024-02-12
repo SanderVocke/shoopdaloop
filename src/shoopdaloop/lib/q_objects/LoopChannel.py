@@ -40,10 +40,11 @@ class LoopChannel(ShoopQQuickItem):
         self._n_pending_updates = 0
         self.__logger = Logger('Frontend.LoopChannel')
 
-        self.update.connect(self.updateOnGuiThread, Qt.QueuedConnection)
+        self._signal_sender = SingleSignalObject()
+        self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
     
-    requestBackendInit = ShoopSignal() # This signal requests the loop to be instantiated in the backend
-    update = ShoopSignal()
+    requestBackendInit = Signal() # This signal requests the loop to be instantiated in the backend
+    update = Signal()
 
     def maybe_initialize(self):
         self.__logger.throw_error("Unimplemented for base class")
@@ -53,13 +54,13 @@ class LoopChannel(ShoopQQuickItem):
     ######################
 
     # initialized
-    initializedChanged = ShoopSignal(bool)
+    initializedChanged = Signal(bool)
     @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return bool(self._backend_obj)
 
     # loop
-    loopChanged = ShoopSignal('QVariant')
+    loopChanged = Signal('QVariant')
     @ShoopProperty('QVariant', notify=loopChanged)
     def loop(self):
         return self._loop
@@ -75,13 +76,13 @@ class LoopChannel(ShoopQQuickItem):
             self.maybe_initialize()
     
     # loop_mode
-    loopModeChanged = ShoopSignal(int)
+    loopModeChanged = Signal(int)
     @ShoopProperty(int, notify=loopModeChanged)
     def loop_mode(self):
         return (self._loop.mode if self._loop else 0)
 
     # recording_started_at
-    recordingStartedAtChanged = ShoopSignal('QVariant')
+    recordingStartedAtChanged = Signal('QVariant')
     @ShoopProperty('QVariant', notify=recordingStartedAtChanged)
     def recording_started_at(self):
         return self._recording_started_at
@@ -92,7 +93,7 @@ class LoopChannel(ShoopQQuickItem):
             self.recordingStartedAtChanged.emit(l)
 
     # mode
-    modeChanged = ShoopSignal(int)
+    modeChanged = Signal(int)
     @ShoopProperty(int, notify=modeChanged)
     def mode(self):
         return self._mode.value
@@ -108,19 +109,19 @@ class LoopChannel(ShoopQQuickItem):
                 self.initializedChanged.connect(lambda: self.set_mode(_mode))
     
     # data length
-    dataLengthChanged = ShoopSignal(int)
+    dataLengthChanged = Signal(int)
     @ShoopProperty(int, notify=dataLengthChanged)
     def data_length(self):
         return self._data_length
     
     # last played sample
-    playedBackSampleChanged = ShoopSignal('QVariant')
+    playedBackSampleChanged = Signal('QVariant')
     @ShoopProperty('QVariant', notify=playedBackSampleChanged)
     def played_back_sample(self):
         return self._played_back_sample
     
     # start offset
-    startOffsetChanged = ShoopSignal(int)
+    startOffsetChanged = Signal(int)
     @ShoopProperty(int, notify=startOffsetChanged)
     def start_offset(self):
         return self._start_offset
@@ -135,7 +136,7 @@ class LoopChannel(ShoopQQuickItem):
                 self.initializedChanged.connect(lambda: self.set_start_offset(offset))
     
     # n preplay samples
-    nPreplaySamplesChanged = ShoopSignal(int)
+    nPreplaySamplesChanged = Signal(int)
     @ShoopProperty(int, notify=nPreplaySamplesChanged)
     def n_preplay_samples(self):
         return self._n_preplay_samples
@@ -150,7 +151,7 @@ class LoopChannel(ShoopQQuickItem):
                 self.initializedChanged.connect(lambda: self.set_n_preplay_samples(n))
 
     # data dirty
-    dataDirtyChanged = ShoopSignal(bool)
+    dataDirtyChanged = Signal(bool)
     @ShoopProperty(int, notify=dataDirtyChanged)
     def data_dirty(self):
         return self._data_dirty
@@ -164,13 +165,13 @@ class LoopChannel(ShoopQQuickItem):
             self.initializedChanged.connect(lambda: self.clear_data_dirty())
 
     # connected ports
-    connectedPortsChanged = ShoopSignal(list)
+    connectedPortsChanged = Signal(list)
     @ShoopProperty(list, notify=connectedPortsChanged)
     def connected_ports(self):
         return [p for p in self._connected_ports if p and p.isValid()]
     
     # ports to connect
-    portsChanged = ShoopSignal(list)
+    portsChanged = Signal(list)
     @ShoopProperty(list, notify=portsChanged)
     def ports(self):
         return [p for p in self._ports if p and p.isValid()]
@@ -265,12 +266,11 @@ class LoopChannel(ShoopQQuickItem):
         
         self.updateOnOtherThreadSubclassImpl(state)
         
-        if self:
-            self.update.emit()
+        self._signal_sender.do_emit()
     
     @ShoopSlot()
     def updateOnGuiThread(self):
-        if not self._backend_obj:
+        if not self._backend_obj or not self.isValid():
             return
         if self._n_pending_updates == 0:
             return

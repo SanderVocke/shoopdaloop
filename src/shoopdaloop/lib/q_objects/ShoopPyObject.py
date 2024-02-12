@@ -56,6 +56,8 @@ def create_shoop_py_object_class(parent_class):
 # Wrapper for thread protection (see general note above)
 
 def check_thread_and_report(self, entity_name):
+    if not self.isValid():
+        return
     current_thread = QThread.currentThread()
     try:
         object_thread = self.thread()
@@ -127,24 +129,18 @@ class ShoopProperty:
                 check_thread_and_report(self, f'Property getter for {function}')
             return function(self, *args, **kwargs)
         return self.__shoop_prop.__call__(wrapper, *args, **kwargs)
-    
-class ShoopSlot:
-    def __init__(self, *args, **kwargs):
-        self.__shoop_thread_protect = kwargs.pop('thread_protected', True)
-        self.__shoop_obj = Slot(*args, **kwargs)
 
-    def __call__(self, function, *args, **kwargs):
-        __self = self
-        @functools.wraps(function)
+def ShoopSlot(*args, **kwargs):
+    thread_protected = kwargs.pop('thread_protected', True)
+    slot_decorator = Slot(*args, **kwargs)
+    def decorator(fn):
+        @functools.wraps(fn)
         def wrapper(self, *args, **kwargs):
-            if __self.__shoop_thread_protect:
-                check_thread_and_report(self, f'Slot {function}')
-            return function(self, *args, **kwargs)
-
-        return self.__shoop_obj.__call__(wrapper, *args, **kwargs)
-
-def ShoopSignal(*args, **kwargs):
-    return Signal(*args, **kwargs)
+            if thread_protected:
+                check_thread_and_report(self, f'Slot {fn}')
+            return fn(self, *args, **kwargs)
+        return slot_decorator(wrapper)
+    return slot_decorator
 
 ShoopQQuickItem = create_shoop_py_object_class(QQuickItem)
 ShoopQObject = create_shoop_py_object_class(QObject)
@@ -152,3 +148,13 @@ ShoopQGuiApplication = create_shoop_py_object_class(QGuiApplication)
 ShoopQQuickPaintedItem = create_shoop_py_object_class(QQuickPaintedItem)
 ShoopQApplication = create_shoop_py_object_class(QApplication)
 ShoopQThread = create_shoop_py_object_class(QThread)
+
+class SingleSignalObject(ShoopQObject):
+    def __init__(self, parent=None):
+        super(SingleSignalObject, self).__init__(parent)
+    
+    signal = Signal()
+    
+    def do_emit(self, *args, **kwargs):
+        if self.isValid():
+            self.signal.emit()

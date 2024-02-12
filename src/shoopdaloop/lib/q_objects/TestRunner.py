@@ -21,7 +21,7 @@ class TestRunner(ShoopQObject):
         return len(self.registered_testcases) > 0 and len(self.ran) == len(self.registered_testcases)
     
     # done
-    doneChanged = ShoopSignal()
+    doneChanged = Signal()
     @ShoopProperty(bool, notify=doneChanged)
     def done(self):
         return self.is_done()

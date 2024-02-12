@@ -21,7 +21,7 @@ from .Logger import Logger
 # Wraps a back-end loop.
 class Loop(ShoopQQuickItem):
     # Other signals
-    cycled = ShoopSignal()
+    cycled = Signal()
 
     def __init__(self, parent=None):
         super(Loop, self).__init__(parent)
@@ -40,6 +40,9 @@ class Loop(ShoopQQuickItem):
         self.logger = Logger(self)
         self.logger.name = "Frontend.Loop"
         self._n_updates_pending = 0
+        
+        self._signal_sender = SingleSignalObject()
+        self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
         self.initializedChanged.connect(lambda i: self.logger.debug("initialized -> {}".format(i)))
 
@@ -48,18 +51,15 @@ class Loop(ShoopQQuickItem):
                 self.rescan_parents()
         self.parentChanged.connect(lambda: rescan_on_parent_changed())
         self.rescan_parents()
-        
-        
-        self.update.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
-    update = ShoopSignal()
+    update = Signal()
 
     ######################
     # PROPERTIES
     ######################
     
     # backend
-    backendChanged = ShoopSignal(Backend)
+    backendChanged = Signal(Backend)
     @ShoopProperty(Backend, notify=backendChanged)
     def backend(self):
         return self._backend
@@ -73,13 +73,13 @@ class Loop(ShoopQQuickItem):
             self.maybe_initialize()
     
     # initialized
-    initializedChanged = ShoopSignal(bool)
+    initializedChanged = Signal(bool)
     @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
 
     # mode
-    modeChanged = ShoopSignal(int)
+    modeChanged = Signal(int)
     @ShoopProperty(int, notify=modeChanged)
     def mode(self):
         return self._mode
@@ -90,7 +90,7 @@ class Loop(ShoopQQuickItem):
         self._backend_loop.set_mode(mode)
 
     # length: loop length in samples
-    lengthChanged = ShoopSignal(int)
+    lengthChanged = Signal(int)
     @ShoopProperty(int, notify=lengthChanged)
     def length(self):
         return self._length
@@ -101,30 +101,30 @@ class Loop(ShoopQQuickItem):
         self._backend_loop.set_length(length)
 
     # position: loop playback position in samples
-    positionChanged = ShoopSignal(int)
+    positionChanged = Signal(int)
     @ShoopProperty(int, notify=positionChanged)
     def position(self):
         return self._position
     # Indirect setter via back-end
-    @ShoopSlot(int)
-    def set_position(self, position, thread_protected=False):
+    @ShoopSlot(int, thread_protected=False)
+    def set_position(self, position):
         self.logger.debug(lambda: 'Set position -> {}'.format(position))
         self._backend_loop.set_position(position)
 
     # next_mode: first upcoming mode change
-    nextModeChanged = ShoopSignal(int)
+    nextModeChanged = Signal(int)
     @ShoopProperty(int, notify=nextModeChanged)
     def next_mode(self):
         return self._next_mode
     
     # next_mode: first upcoming mode change
-    nextTransitionDelayChanged = ShoopSignal(int)
+    nextTransitionDelayChanged = Signal(int)
     @ShoopProperty(int, notify=nextTransitionDelayChanged)
     def next_transition_delay(self):
         return self._next_transition_delay
     
     # synchronization source loop
-    syncSourceChanged = ShoopSignal('QVariant')
+    syncSourceChanged = Signal('QVariant')
     @ShoopProperty('QVariant', notify=syncSourceChanged)
     def sync_source(self):
         return self._sync_source
@@ -143,19 +143,19 @@ class Loop(ShoopQQuickItem):
             self.initializedChanged.connect(do_set)
 
     # display_peaks : overall audio peaks of the loop
-    displayPeaksChanged = ShoopSignal(list)
+    displayPeaksChanged = Signal(list)
     @ShoopProperty(list, notify=displayPeaksChanged)
     def display_peaks(self):
         return self._display_peaks
 
     # display_midi_notes_active : sum of notes active in midi channels
-    displayMidiNotesActiveChanged = ShoopSignal(int)
+    displayMidiNotesActiveChanged = Signal(int)
     @ShoopProperty(int, notify=displayMidiNotesActiveChanged)
     def display_midi_notes_active(self):
         return self._display_midi_notes_active
     
     # display_midi_events_triggered : sum of events now processed in channels
-    displayMidiEventsTriggeredChanged = ShoopSignal(int)
+    displayMidiEventsTriggeredChanged = Signal(int)
     @ShoopProperty(int, notify=displayMidiEventsTriggeredChanged)
     def display_midi_events_triggered(self):
         return self._display_midi_events_triggered
@@ -213,14 +213,13 @@ class Loop(ShoopQQuickItem):
         
         self._n_updates_pending += 1
 
-        if self:
-            self.update.emit()
+        self._signal_sender.do_emit()
     
     # Update on GUI thread.
     @ShoopSlot()
     def updateOnGuiThread(self):
         self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
-        if not self._initialized:
+        if not self._initialized or not self.isValid():
             return
         if self._n_updates_pending == 0:
             return
@@ -357,7 +356,6 @@ class Loop(ShoopQQuickItem):
     
     @ShoopSlot(result="QVariant")
     def py_loop(self):
-        print(self)
         return self
     
     def maybe_initialize(self):

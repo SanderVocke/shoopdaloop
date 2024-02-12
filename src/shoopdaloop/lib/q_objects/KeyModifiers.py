@@ -10,7 +10,7 @@ class KeyModifiers(ShoopQObject):
         self._alt_pressed = False
     
     # shift
-    shiftPressedChanged = ShoopSignal(bool)
+    shiftPressedChanged = Signal(bool)
     @ShoopProperty(bool, notify=shiftPressedChanged)
     def shift_pressed(self):
         return self._shift_pressed
@@ -21,7 +21,7 @@ class KeyModifiers(ShoopQObject):
             self.shiftPressedChanged.emit(l)
     
     # control
-    controlPressedChanged = ShoopSignal(bool)
+    controlPressedChanged = Signal(bool)
     @ShoopProperty(bool, notify=controlPressedChanged)
     def control_pressed(self):
         return self._control_pressed
@@ -32,7 +32,7 @@ class KeyModifiers(ShoopQObject):
             self.controlPressedChanged.emit(l)
     
     # alt
-    altPressedChanged = ShoopSignal(bool)
+    altPressedChanged = Signal(bool)
     @ShoopProperty(bool, notify=altPressedChanged)
     def alt_pressed(self):
         return self._alt_pressed

@@ -9,7 +9,7 @@ class Task(ShoopQObject):
         self._anything_to_do = True
 
     # anything_to_do
-    anythingToDoChanged = ShoopSignal(bool)
+    anythingToDoChanged = Signal(bool)
     @ShoopProperty(bool, notify=anythingToDoChanged)
     def anything_to_do(self):
         return self._anything_to_do

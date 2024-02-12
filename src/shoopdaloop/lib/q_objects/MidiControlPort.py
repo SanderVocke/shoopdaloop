@@ -55,22 +55,22 @@ class MidiControlPort(ShoopQQuickItem):
     ######################
     ## SIGNALS
     ######################
-    msgReceived = ShoopSignal(list)
-    detectedExternalAutoconnectPartnerWhileClosed = ShoopSignal()
-    connected = ShoopSignal()
+    msgReceived = Signal(list)
+    detectedExternalAutoconnectPartnerWhileClosed = Signal()
+    connected = Signal()
 
     ######################
     # PROPERTIES
     ######################
     
     # lua_interface
-    luaInterfaceChanged = ShoopSignal('QVariant')
+    luaInterfaceChanged = Signal('QVariant')
     @ShoopProperty('QVariant', notify=luaInterfaceChanged)
     def lua_interface(self):
         return self._lua_obj
     
     # autoconnect_regexes
-    autoconnect_regexesChanged = ShoopSignal(list)
+    autoconnect_regexesChanged = Signal(list)
     @ShoopProperty(list, notify=autoconnect_regexesChanged)
     def autoconnect_regexes(self):
         return self._autoconnect_regexes
@@ -81,7 +81,7 @@ class MidiControlPort(ShoopQQuickItem):
             self.autoconnect_regexesChanged.emit(l)
 
     # name_hint
-    nameHintChanged = ShoopSignal(str)
+    nameHintChanged = Signal(str)
     @ShoopProperty(str, notify=nameHintChanged)
     def name_hint(self):
         return self._name_hint if self._name_hint else ''
@@ -93,13 +93,13 @@ class MidiControlPort(ShoopQQuickItem):
             self.maybe_init()
     
     # name
-    nameChanged = ShoopSignal(str)
+    nameChanged = Signal(str)
     @ShoopProperty(str, notify=nameChanged)
     def name(self):
         return self._name
     
     # direction
-    directionChanged = ShoopSignal(int)
+    directionChanged = Signal(int)
     @ShoopProperty(int, notify=directionChanged)
     def direction(self):
         return self._direction if self._direction else 0
@@ -111,7 +111,7 @@ class MidiControlPort(ShoopQQuickItem):
             self.maybe_init()
     
     # may_open
-    mayOpenChanged = ShoopSignal(bool)
+    mayOpenChanged = Signal(bool)
     @ShoopProperty(bool, notify=mayOpenChanged)
     def may_open(self):
         return self._may_open
@@ -123,7 +123,7 @@ class MidiControlPort(ShoopQQuickItem):
             self.maybe_init()
     
     # initialized
-    initializedChanged = ShoopSignal(bool)
+    initializedChanged = Signal(bool)
     @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._backend_obj != None

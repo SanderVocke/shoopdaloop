@@ -37,15 +37,15 @@ class AutoConnect(ShoopQQuickItem):
     ######################
     ## SIGNALS
     ######################
-    onlyExternalFound = ShoopSignal()
-    connected = ShoopSignal()
+    onlyExternalFound = Signal()
+    connected = Signal()
 
     ######################
     # PROPERTIES
     ######################
     
     # from_regex
-    fromRegexChanged = ShoopSignal('QVariant')
+    fromRegexChanged = Signal('QVariant')
     @ShoopProperty(str, notify=fromRegexChanged)
     def from_regex(self):
         return self._from_regex
@@ -57,7 +57,7 @@ class AutoConnect(ShoopQQuickItem):
             self.update()
     
     # to_regex
-    toRegexChanged = ShoopSignal('QVariant')
+    toRegexChanged = Signal('QVariant')
     @ShoopProperty(str, notify=toRegexChanged)
     def to_regex(self):
         return self._to_regex

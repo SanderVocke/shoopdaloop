@@ -27,15 +27,16 @@ class MidiPort(Port):
         self._n_output_notes_active = self._new_n_output_notes_active =0
         self._n_updates_pending = 0
         self.logger = Logger('Frontend.MidiPort')
-
-    update = ShoopSignal()
+        
+        self._signal_sender = SingleSignalObject()
+        self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
     ######################
     # PROPERTIES
     ######################
 
     # Number of events triggered since last update (input)
-    nInputEventsChanged = ShoopSignal(int)
+    nInputEventsChanged = Signal(int)
     @ShoopProperty(int, notify=nInputEventsChanged)
     def n_input_events(self):
         return self._n_input_events
@@ -46,7 +47,7 @@ class MidiPort(Port):
             self.nInputEventsChanged.emit(s)
     
     # Number of notes currently being played (input)
-    nInputNotesActiveChanged = ShoopSignal(int)
+    nInputNotesActiveChanged = Signal(int)
     @ShoopProperty(int, notify=nInputNotesActiveChanged)
     def n_input_notes_active(self):
         return self._n_input_notes_active
@@ -57,7 +58,7 @@ class MidiPort(Port):
             self.nInputNotesActiveChanged.emit(s)
     
     # Number of events triggered since last update (output)
-    nOutputEventsChanged = ShoopSignal(int)
+    nOutputEventsChanged = Signal(int)
     @ShoopProperty(int, notify=nOutputEventsChanged)
     def n_output_events(self):
         return self._n_output_events
@@ -68,7 +69,7 @@ class MidiPort(Port):
             self.nOutputEventsChanged.emit(s)
     
     # Number of notes currently being played (output)
-    nOutputNotesActiveChanged = ShoopSignal(int)
+    nOutputNotesActiveChanged = Signal(int)
     @ShoopProperty(int, notify=nOutputNotesActiveChanged)
     def n_output_notes_active(self):
         return self._n_output_notes_active
@@ -98,13 +99,12 @@ class MidiPort(Port):
         self._new_passthrough_muted = state.passthrough_muted
         self._n_updates_pending += 1
 
-        if self:
-            self.update.emit()
+        self._signal_sender.do_emit()
     
     @ShoopSlot()
     def updateOnGuiThread(self):
         self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
-        if not self._initialized:
+        if not self._initialized or not self.isValid():
             return
         if self._n_updates_pending == 0:
             return
