@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
 from .Port import Port
+from .ShoopPyObject import *
 
 from ..backend_wrappers import PortDirection
 from ..findFirstParent import findFirstParent
@@ -29,8 +30,8 @@ class MidiPort(Port):
     ######################
 
     # Number of events triggered since last update (input)
-    nInputEventsChanged = Signal(int)
-    @Property(int, notify=nInputEventsChanged)
+    nInputEventsChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=nInputEventsChanged)
     def n_input_events(self):
         return self._n_input_events
     @n_input_events.setter
@@ -40,8 +41,8 @@ class MidiPort(Port):
             self.nInputEventsChanged.emit(s)
     
     # Number of notes currently being played (input)
-    nInputNotesActiveChanged = Signal(int)
-    @Property(int, notify=nInputNotesActiveChanged)
+    nInputNotesActiveChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=nInputNotesActiveChanged)
     def n_input_notes_active(self):
         return self._n_input_notes_active
     @n_input_notes_active.setter
@@ -51,8 +52,8 @@ class MidiPort(Port):
             self.nInputNotesActiveChanged.emit(s)
     
     # Number of events triggered since last update (output)
-    nOutputEventsChanged = Signal(int)
-    @Property(int, notify=nOutputEventsChanged)
+    nOutputEventsChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=nOutputEventsChanged)
     def n_output_events(self):
         return self._n_output_events
     @n_output_events.setter
@@ -62,8 +63,8 @@ class MidiPort(Port):
             self.nOutputEventsChanged.emit(s)
     
     # Number of notes currently being played (output)
-    nOutputNotesActiveChanged = Signal(int)
-    @Property(int, notify=nOutputNotesActiveChanged)
+    nOutputNotesActiveChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=nOutputNotesActiveChanged)
     def n_output_notes_active(self):
         return self._n_output_notes_active
     @n_output_notes_active.setter
@@ -77,7 +78,7 @@ class MidiPort(Port):
     ###########
 
     # Update mode from the back-end.
-    @Slot()
+    @ShoopSlot()
     def update(self):
         if not self.initialized:
             return
@@ -90,19 +91,19 @@ class MidiPort(Port):
         self.muted = state.muted
         self.passthrough_muted = state.passthrough_muted
     
-    @Slot(list)
+    @ShoopSlot(list)
     def dummy_queue_msgs(self, msgs):
         self._backend_obj.dummy_queue_msgs(msgs)
     
-    @Slot(result=list)
+    @ShoopSlot(result=list)
     def dummy_dequeue_data(self):
         return self._backend_obj.dummy_dequeue_data()
     
-    @Slot(int)
+    @ShoopSlot(int)
     def dummy_request_data(self, n_frames):
         self._backend_obj.dummy_request_data(n_frames)
     
-    @Slot()
+    @ShoopSlot()
     def dummy_clear_queues(self):
         self._backend_obj.dummy_clear_queues()
     

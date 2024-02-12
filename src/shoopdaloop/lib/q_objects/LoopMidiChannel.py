@@ -12,6 +12,7 @@ from PySide6.QtQuick import QQuickItem
 
 from .MidiPort import MidiPort
 from .LoopChannel import LoopChannel
+from .ShoopPyObject import *
 
 from ..midi_helpers import msgs_to_notes
 
@@ -33,14 +34,14 @@ class LoopMidiChannel(LoopChannel):
     ######################
 
     # # of events triggered since last update
-    nEventsTriggeredChanged = Signal(int)
-    @Property(int, notify=nEventsTriggeredChanged)
+    nEventsTriggeredChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=nEventsTriggeredChanged)
     def n_events_triggered(self):
         return self._n_events_triggered
     
     # # number of notes currently being played
-    nNotesActiveChanged = Signal(int)
-    @Property(int, notify=nNotesActiveChanged)
+    nNotesActiveChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=nNotesActiveChanged)
     def n_notes_active(self):
         return self._n_notes_active
     
@@ -48,7 +49,7 @@ class LoopMidiChannel(LoopChannel):
     ## SLOTS
     #######################
 
-    @Slot()
+    @ShoopSlot()
     def update_impl(self, state):
         if state.n_events_triggered != self._n_events_triggered:
             self._n_events_triggered = state.n_events_triggered
@@ -57,14 +58,14 @@ class LoopMidiChannel(LoopChannel):
             self._n_notes_active = state.n_notes_active
             self.nNotesActiveChanged.emit(self._n_notes_active)
     
-    @Slot(result=list)
+    @ShoopSlot(result=list)
     def get_data(self):
         if self._backend_obj:
             return self._backend_obj.get_data()
         else:
             raise Exception("Getting data of un-loaded MIDI channel")
 
-    @Slot(list)
+    @ShoopSlot(list)
     def load_data(self, data):
         self.requestBackendInit.emit()
         if self._backend_obj:

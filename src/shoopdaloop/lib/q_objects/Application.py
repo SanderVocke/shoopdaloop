@@ -22,7 +22,7 @@ from ..logging import *
 from ..directories import *
 
 class Application(ShoopQApplication):
-    exit_handler_called = Signal()
+    exit_handler_called = ShoopSignal()
 
     def __init__(self,
                  title,
@@ -232,14 +232,14 @@ class Application(ShoopQApplication):
             self.root_context_items['key_modifiers'].process(event)
         return False
     
-    @Slot('QVariant', 'QVariant')
+    @ShoopSlot('QVariant', 'QVariant')
     def onQmlObjectCreated(self, obj, url):
         if obj:
             self.logger.debug(lambda: "Created QML object: {}".format(url))
         else:
             self.logger.error(lambda: "Failed to create QML object: {}".format(url))
     
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def onQmlWarnings(self, warnings):            
         for warning in warnings:
             msgtype = warning.messageType()
@@ -253,14 +253,14 @@ class Application(ShoopQApplication):
             else:
                 self.logger.error(lambda: msg)
     
-    @Slot(int)
+    @ShoopSlot(int)
     def wait(self, ms):
         end = time.time() + ms * 0.001
         while time.time() < end:
             self.processEvents()
             self.sendPostedEvents()
 
-    @Slot()
+    @ShoopSlot()
     def do_quit(self):
         self.logger.debug("Quit requested")
         if not self._quitting:

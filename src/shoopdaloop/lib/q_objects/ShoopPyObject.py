@@ -1,5 +1,5 @@
 from PySide6.QtQuick import QQuickItem, QQuickPaintedItem
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Property, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
@@ -34,11 +34,24 @@ class ShoopPyObjectImpl:
 
 def create_shoop_py_object_class(parent_class):
     class SubClass(ShoopPyObjectImpl, parent_class):
-        def __init__(self, *args, **kwargs):
+        def __init__(self, thread_protected=False, *args, **kwargs):
             ShoopPyObjectImpl.__init__(self, parent_class.__name__, self.__class__.__name__, *args, **kwargs)
             parent_class.__init__(self, *args, **kwargs)
             self.destroyed.connect(lambda: self._shoop_py_obj_logger.trace(lambda: "{} instance: QObject destroyed()".format(self.child_class_name), _id=self._obj_id))
+            # See qt_thread_protected module: if thread_protected is on, some extra threading sanity checks
+            # are enabled for the object. All we have to do here is store the setting.
+            self.thread_protected = thread_protected
     return SubClass
+
+# Wrap Property, ShoopSignal and Slot decorator wrappers which add some functionality.
+def ShoopProperty(*args, **kwargs):
+    return Property(*args, **kwargs)
+
+def ShoopSlot(*args, **kwargs):
+    return Slot(*args, **kwargs)
+
+def ShoopSignal(*args, **kwargs):
+    return Signal(*args, **kwargs)
 
 ShoopQQuickItem = create_shoop_py_object_class(QQuickItem)
 ShoopQObject = create_shoop_py_object_class(QObject)

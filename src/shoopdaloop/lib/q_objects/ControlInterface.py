@@ -59,29 +59,29 @@ class ControlInterface(ControlHandler):
     
     # Functions not meant for Lua use
 
-    engineRegisteredCallback = Signal('QVariant')
-    engineUnregisteredAll = Signal('QVariant')
+    engineRegisteredCallback = ShoopSignal('QVariant')
+    engineUnregisteredAll = ShoopSignal('QVariant')
 
-    @Slot('QVariant', result=bool)
+    @ShoopSlot('QVariant', result=bool)
     def engine_registered(self, engine):
         return any([cb[1] == engine for cb in self._keyboard_callbacks]) or \
             any([cb['engine'] == engine for cb in self._midi_input_port_rules]) or \
             any([cb['engine'] == engine for cb in self._midi_output_port_rules]) or \
             any([cb[1] == engine for cb in self._loop_callbacks])
     
-    @Slot(int, int)
+    @ShoopSlot(int, int)
     def key_pressed(self, key, modifiers):
         self.logger.trace(lambda: "Key pressed: {} ({})".format(key, modifiers))
         for cb in self._keyboard_callbacks:
             cb[0](KeyEventType.Pressed, key, modifiers)
     
-    @Slot(int, int)
+    @ShoopSlot(int, int)
     def key_released(self, key, modifiers):
         self.logger.trace(lambda: "Key pressed: {} ({})".format(key, modifiers))
         for cb in self._keyboard_callbacks:
             cb[0](KeyEventType.Released, key, modifiers)
     
-    @Slot(list, 'QVariant')
+    @ShoopSlot(list, 'QVariant')
     def loop_event(self, coords, event):
         self.logger.debug(lambda: "Loop event: {} ({})".format(coords, event.toVariant()))
         if isinstance(event, QJSValue):
@@ -91,19 +91,19 @@ class ControlInterface(ControlHandler):
         for cb in self._loop_callbacks:
             cb[0](coords, event)
             
-    midiInputPortRulesChanged = Signal()
-    @Property('QVariant', notify=midiInputPortRulesChanged)
+    midiInputPortRulesChanged = ShoopSignal()
+    @ShoopProperty('QVariant', notify=midiInputPortRulesChanged)
     def midi_input_port_rules(self):
         return self._midi_input_port_rules
     
-    midiOutputPortRulesChanged = Signal()
-    @Property('QVariant', notify=midiOutputPortRulesChanged)
+    midiOutputPortRulesChanged = ShoopSignal()
+    @ShoopProperty('QVariant', notify=midiOutputPortRulesChanged)
     def midi_output_port_rules(self):
         return self._midi_output_port_rules
     
     # Functions meant for Lua use
     
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def unregister_lua_engine(self, engine):
         self.logger.debug(lambda: "Unregistering Lua engine")
         self._keyboard_callbacks = [cb for cb in self._keyboard_callbacks if cb[1] != engine]
@@ -114,7 +114,7 @@ class ControlInterface(ControlHandler):
         self.midiOutputPortRulesChanged.emit()
         self.engineUnregisteredAll.emit(engine)
             
-    @Slot(list, 'QVariant')
+    @ShoopSlot(list, 'QVariant')
     def auto_open_device_specific_midi_control_input(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
@@ -136,7 +136,7 @@ class ControlInterface(ControlHandler):
         self._rule_id += 1
         self.engineRegisteredCallback.emit(lua_engine)
     
-    @Slot(list, 'QVariant')
+    @ShoopSlot(list, 'QVariant')
     def auto_open_device_specific_midi_control_output(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
@@ -160,7 +160,7 @@ class ControlInterface(ControlHandler):
         self._rule_id += 1
         self.engineRegisteredCallback.emit(lua_engine)
     
-    @Slot(list, 'QVariant')
+    @ShoopSlot(list, 'QVariant')
     def register_keyboard_event_cb(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
@@ -193,7 +193,7 @@ class ControlInterface(ControlHandler):
     # Loop event callback type. The callback takes arguments (coords, event), where coords is [x, y] coordinates of the event, and event is a table containing fields 'mode' (mode), 'selected' (bool), 'targeted' (bool) and 'length' (int). Coordinates map to the loop grid. Only the sync loop has a special location [-1,0].
     # @shoop_lua_fn_docstring.end
 
-    @Slot(list, 'QVariant')
+    @ShoopSlot(list, 'QVariant')
     def register_loop_event_cb(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start

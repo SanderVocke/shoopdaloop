@@ -21,7 +21,7 @@ from .Logger import Logger
 # Wraps a back-end loop.
 class Loop(ShoopQQuickItem):
     # Other signals
-    cycled = Signal()
+    cycled = ShoopSignal()
 
     def __init__(self, parent=None):
         super(Loop, self).__init__(parent)
@@ -51,8 +51,8 @@ class Loop(ShoopQQuickItem):
     ######################
     
     # backend
-    backendChanged = Signal(Backend)
-    @Property(Backend, notify=backendChanged)
+    backendChanged = ShoopSignal(Backend)
+    @ShoopProperty(Backend, notify=backendChanged)
     def backend(self):
         return self._backend
     @backend.setter
@@ -65,59 +65,59 @@ class Loop(ShoopQQuickItem):
             self.maybe_initialize()
     
     # initialized
-    initializedChanged = Signal(bool)
-    @Property(bool, notify=initializedChanged)
+    initializedChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
 
     # mode
-    modeChanged = Signal(int)
-    @Property(int, notify=modeChanged)
+    modeChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=modeChanged)
     def mode(self):
         return self._mode
     # Indirect setter via back-end
-    @Slot(int)
+    @ShoopSlot(int)
     def set_mode(self, mode):
         self.logger.debug(lambda: 'Set mode -> {}'.format(LoopMode(mode)))
         self._backend_loop.set_mode(mode)
 
     # length: loop length in samples
-    lengthChanged = Signal(int)
-    @Property(int, notify=lengthChanged)
+    lengthChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=lengthChanged)
     def length(self):
         return self._length
     # Indirect setter via back-end
-    @Slot(int)
+    @ShoopSlot(int)
     def set_length(self, length):
         self.logger.debug(lambda: 'Set length -> {}'.format(length))
         self._backend_loop.set_length(length)
 
     # position: loop playback position in samples
-    positionChanged = Signal(int)
-    @Property(int, notify=positionChanged)
+    positionChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=positionChanged)
     def position(self):
         return self._position
     # Indirect setter via back-end
-    @Slot(int)
+    @ShoopSlot(int)
     def set_position(self, position):
         self.logger.debug(lambda: 'Set position -> {}'.format(position))
         self._backend_loop.set_position(position)
 
     # next_mode: first upcoming mode change
-    nextModeChanged = Signal(int)
-    @Property(int, notify=nextModeChanged)
+    nextModeChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=nextModeChanged)
     def next_mode(self):
         return self._next_mode
     
     # next_mode: first upcoming mode change
-    nextTransitionDelayChanged = Signal(int)
-    @Property(int, notify=nextTransitionDelayChanged)
+    nextTransitionDelayChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=nextTransitionDelayChanged)
     def next_transition_delay(self):
         return self._next_transition_delay
     
     # synchronization source loop
-    syncSourceChanged = Signal('QVariant')
-    @Property('QVariant', notify=syncSourceChanged)
+    syncSourceChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=syncSourceChanged)
     def sync_source(self):
         return self._sync_source
     @sync_source.setter
@@ -135,20 +135,20 @@ class Loop(ShoopQQuickItem):
             self.initializedChanged.connect(do_set)
 
     # display_peaks : overall audio peaks of the loop
-    displayPeaksChanged = Signal(list)
-    @Property(list, notify=displayPeaksChanged)
+    displayPeaksChanged = ShoopSignal(list)
+    @ShoopProperty(list, notify=displayPeaksChanged)
     def display_peaks(self):
         return self._display_peaks
 
     # display_midi_notes_active : sum of notes active in midi channels
-    displayMidiNotesActiveChanged = Signal(int)
-    @Property(int, notify=displayMidiNotesActiveChanged)
+    displayMidiNotesActiveChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=displayMidiNotesActiveChanged)
     def display_midi_notes_active(self):
         return self._display_midi_notes_active
     
     # display_midi_events_triggered : sum of events now processed in channels
-    displayMidiEventsTriggeredChanged = Signal(int)
-    @Property(int, notify=displayMidiEventsTriggeredChanged)
+    displayMidiEventsTriggeredChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=displayMidiEventsTriggeredChanged)
     def display_midi_events_triggered(self):
         return self._display_midi_events_triggered
     
@@ -157,22 +157,22 @@ class Loop(ShoopQQuickItem):
     ###########
     
     # For debugging
-    @Slot(str)
+    @ShoopSlot(str)
     def set_logging_instance_identifier(self, id):
         self.logger.instanceIdentifier = id
 
-    @Slot(result=list)
+    @ShoopSlot(result=list)
     def get_audio_channels(self):
         from .LoopAudioChannel import LoopAudioChannel
         return findChildItems(self, lambda c: isinstance(c, LoopAudioChannel))
     
-    @Slot(result=list)
+    @ShoopSlot(result=list)
     def get_midi_channels(self):
         from .LoopMidiChannel import LoopMidiChannel
         return findChildItems(self, lambda c: isinstance(c, LoopMidiChannel))
 
     # Update mode from the back-end.
-    @Slot()
+    @ShoopSlot()
     def update(self):
         if not self.initialized:
             self.logger.trace(lambda: 'update: not initialized')
@@ -229,20 +229,20 @@ class Loop(ShoopQQuickItem):
             self.logger.debug(lambda: 'cycled')
             self.cycled.emit()
     
-    @Slot(int, int, bool)
+    @ShoopSlot(int, int, bool)
     def transition(self, mode, delay, wait_for_sync):
         if self.initialized:
             if wait_for_sync and not self.sync_source:
                 self.logger.warning(lambda: "Synchronous transition requested but no sync loop set")
             self._backend_loop.transition(LoopMode(mode), delay, wait_for_sync)
     
-    @Slot(list, int, int, bool)
+    @ShoopSlot(list, int, int, bool)
     def transition_multiple(self, loops, mode, delay, wait_for_sync):
         if self.initialized:
             backend_loops = [l._backend_loop for l in loops]
             BackendLoop.transition_multiple(backend_loops, LoopMode(mode), delay, wait_for_sync)
 
-    @Slot(int)
+    @ShoopSlot(int)
     def clear(self, length):
         if self.initialized:
             self.logger.debug(lambda: 'clear')
@@ -252,19 +252,19 @@ class Loop(ShoopQQuickItem):
             for c in self.get_midi_channels():
                 c.clear()
     
-    @Slot(int, result=BackendLoopMidiChannel)
+    @ShoopSlot(int, result=BackendLoopMidiChannel)
     def add_audio_channel(self, mode):
         if self.initialized:
             self.logger.debug(lambda: 'add audio channel')
             return self._backend_loop.add_audio_channel(ChannelMode(mode))
     
-    @Slot(int, result=BackendLoopMidiChannel)
+    @ShoopSlot(int, result=BackendLoopMidiChannel)
     def add_midi_channel(self, mode):
         if self.initialized:
             self.logger.debug(lambda: 'add midi channel')
             return self._backend_loop.add_midi_channel(ChannelMode(mode))
     
-    @Slot(list)
+    @ShoopSlot(list)
     def load_audio_data(self, sound_channels):
         if sound_channels is not None:
             self.logger.info(lambda: 'Loading {} audio channels'.format(len(sound_channels)))
@@ -277,7 +277,7 @@ class Loop(ShoopQQuickItem):
                 self.audio_channels()[idx].load_data(sound_channels[idx % len(sound_channels)])
             self.set_length(len(sound_channels[0]))
     
-    @Slot()
+    @ShoopSlot()
     def close(self):
         if self._backend_loop:
             self.logger.debug(lambda: 'close')
@@ -288,24 +288,24 @@ class Loop(ShoopQQuickItem):
             self._initialized = False
             self.initializedChanged.emit(False)
     
-    @Slot()
+    @ShoopSlot()
     def rescan_parents(self):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
         if maybe_backend:
             self.backend = maybe_backend
     
-    @Slot(result='QVariant')
+    @ShoopSlot(result='QVariant')
     def get_backend(self):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend'))
         if maybe_backend:
             return maybe_backend
         self.logger.throw_error("Could not find backend!")
     
-    @Slot(result="QVariant")
+    @ShoopSlot(result="QVariant")
     def get_backend_loop(self):
         return self._backend_loop
     
-    @Slot(result="QVariant")
+    @ShoopSlot(result="QVariant")
     def py_loop(self):
         print(self)
         return self

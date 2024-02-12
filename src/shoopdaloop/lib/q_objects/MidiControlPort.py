@@ -55,23 +55,23 @@ class MidiControlPort(ShoopQQuickItem):
     ######################
     ## SIGNALS
     ######################
-    msgReceived = Signal(list)
-    detectedExternalAutoconnectPartnerWhileClosed = Signal()
-    connected = Signal()
+    msgReceived = ShoopSignal(list)
+    detectedExternalAutoconnectPartnerWhileClosed = ShoopSignal()
+    connected = ShoopSignal()
 
     ######################
     # PROPERTIES
     ######################
     
     # lua_interface
-    luaInterfaceChanged = Signal('QVariant')
-    @Property('QVariant', notify=luaInterfaceChanged)
+    luaInterfaceChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=luaInterfaceChanged)
     def lua_interface(self):
         return self._lua_obj
     
     # autoconnect_regexes
-    autoconnect_regexesChanged = Signal(list)
-    @Property(list, notify=autoconnect_regexesChanged)
+    autoconnect_regexesChanged = ShoopSignal(list)
+    @ShoopProperty(list, notify=autoconnect_regexesChanged)
     def autoconnect_regexes(self):
         return self._autoconnect_regexes
     @autoconnect_regexes.setter
@@ -81,8 +81,8 @@ class MidiControlPort(ShoopQQuickItem):
             self.autoconnect_regexesChanged.emit(l)
 
     # name_hint
-    nameHintChanged = Signal(str)
-    @Property(str, notify=nameHintChanged)
+    nameHintChanged = ShoopSignal(str)
+    @ShoopProperty(str, notify=nameHintChanged)
     def name_hint(self):
         return self._name_hint if self._name_hint else ''
     @name_hint.setter
@@ -93,14 +93,14 @@ class MidiControlPort(ShoopQQuickItem):
             self.maybe_init()
     
     # name
-    nameChanged = Signal(str)
-    @Property(str, notify=nameChanged)
+    nameChanged = ShoopSignal(str)
+    @ShoopProperty(str, notify=nameChanged)
     def name(self):
         return self._name
     
     # direction
-    directionChanged = Signal(int)
-    @Property(int, notify=directionChanged)
+    directionChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=directionChanged)
     def direction(self):
         return self._direction if self._direction else 0
     @direction.setter
@@ -111,8 +111,8 @@ class MidiControlPort(ShoopQQuickItem):
             self.maybe_init()
     
     # may_open
-    mayOpenChanged = Signal(bool)
-    @Property(bool, notify=mayOpenChanged)
+    mayOpenChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=mayOpenChanged)
     def may_open(self):
         return self._may_open
     @may_open.setter
@@ -123,8 +123,8 @@ class MidiControlPort(ShoopQQuickItem):
             self.maybe_init()
     
     # initialized
-    initializedChanged = Signal(bool)
-    @Property(bool, notify=initializedChanged)
+    initializedChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._backend_obj != None
     
@@ -145,12 +145,12 @@ class MidiControlPort(ShoopQQuickItem):
     ## SLOTS
     ###########
     
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def register_lua_interface(self, lua_engine):
         # Create a Lua interface for ourselves
         self._lua_obj = create_lua_qobject_interface(lua_engine, self)
     
-    @Slot(int, int, result='QVariant')
+    @ShoopSlot(int, int, result='QVariant')
     def get_cc_state(self, channel, cc):
         """
         @shoop_lua_fn_docstring.start
@@ -160,7 +160,7 @@ class MidiControlPort(ShoopQQuickItem):
         """
         return self._cc_states[channel][cc]
     
-    @Slot(result=list)
+    @ShoopSlot(result=list)
     def get_active_notes(self):
         """
         @shoop_lua_fn_docstring.start
@@ -170,7 +170,7 @@ class MidiControlPort(ShoopQQuickItem):
         """
         return [list(_tuple) for _tuple in self._active_notes]
     
-    @Slot(list)
+    @ShoopSlot(list)
     def send_msg(self, msg):
         # NOTE: not for direct use from Lua.
         # Sends the given bytes as a MIDI message.
@@ -178,7 +178,7 @@ class MidiControlPort(ShoopQQuickItem):
         if self._direction == PortDirection.Output.value and self._backend_obj:
             self._backend_obj.send_midi(msg)
     
-    @Slot()
+    @ShoopSlot()
     def autoconnect_update(self):
         if self._autoconnect_regexes and self._direction != None:
             for conn in self._autoconnecters:
@@ -202,7 +202,7 @@ class MidiControlPort(ShoopQQuickItem):
                     conn.onlyExternalFound.connect(self.detectedExternalAutoconnectPartnerWhileClosed)
                     self._autoconnecters.append(conn)
     
-    @Slot()
+    @ShoopSlot()
     def poll(self):
         while True:
             r = self._backend_obj.maybe_next_message()
@@ -211,14 +211,14 @@ class MidiControlPort(ShoopQQuickItem):
             self.logger.debug(lambda: "Received: {}".format(r.data))
             self.handle_msg(r.data)
     
-    @Slot()
+    @ShoopSlot()
     def rescan_parents(self):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
         if maybe_backend:
             self._backend = maybe_backend
             self.maybe_init()
     
-    @Slot()
+    @ShoopSlot()
     def maybe_init(self):
         if self._backend and not self._backend.initialized:
             self._backend.initializedChanged.connect(self.maybe_init)
@@ -246,7 +246,7 @@ class MidiControlPort(ShoopQQuickItem):
             
             self.initializedChanged.emit(True)
     
-    @Slot(result='QVariant')
+    @ShoopSlot(result='QVariant')
     def get_py_send_fn(self):
         def send_fn(msg, self=self):
             _msg = list(msg.values())

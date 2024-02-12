@@ -27,11 +27,11 @@ def test_callback():
             ['const1', 'hello']
         ]
 
-        @Slot(list, 'QVariant', result=str)
+        @ShoopSlot(list, 'QVariant', result=str)
         def foo(self, args, engine):
             return 'bar'
         
-        @Slot(list, 'QVariant', result=str)
+        @ShoopSlot(list, 'QVariant', result=str)
         def foz(self, args, engine):
             return args[0]
     

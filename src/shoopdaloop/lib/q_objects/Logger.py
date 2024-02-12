@@ -1,6 +1,6 @@
 from PySide6.QtCore import Signal, Property, Slot, QTimer
 
-from .ShoopPyObject import ShoopQObject
+from .ShoopPyObject import *
 from ..logging import Logger as BaseLogger
 
 class Logger(ShoopQObject):
@@ -17,8 +17,8 @@ class Logger(ShoopQObject):
     ######################
 
     # name
-    nameChanged = Signal(str)
-    @Property(str, notify=nameChanged)
+    nameChanged = ShoopSignal(str)
+    @ShoopProperty(str, notify=nameChanged)
     def name(self):
         return self.logger.name()
     @name.setter
@@ -27,8 +27,8 @@ class Logger(ShoopQObject):
             self.logger = BaseLogger(l)
     
     # instanceIdentifier (for clarity in debugging)
-    instanceIdentifierChanged = Signal(str)
-    @Property(str, notify=instanceIdentifierChanged)
+    instanceIdentifierChanged = ShoopSignal(str)
+    @ShoopProperty(str, notify=instanceIdentifierChanged)
     def instanceIdentifier(self):
         return self._id
     @instanceIdentifier.setter
@@ -42,27 +42,27 @@ class Logger(ShoopQObject):
     ## SLOTS
     ###########
 
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def trace(self, msg):
         self.logger.trace(msg, _id=self._id_to_print)
     
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def debug(self, msg):
         self.logger.debug(msg, _id=self._id_to_print)
     
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def info(self, msg):
         self.logger.info(msg, _id=self._id_to_print)
     
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def warning(self, msg):
         self.logger.warning(msg, _id=self._id_to_print)
     
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def error(self, msg):
         self.logger.error(msg, _id=self._id_to_print)
     
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def throw_error(self, msg):
         self.logger.error(msg, _id=self._id_to_print)
         raise Exception(msg)

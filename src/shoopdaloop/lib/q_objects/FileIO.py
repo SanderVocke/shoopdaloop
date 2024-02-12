@@ -16,6 +16,7 @@ from PySide6.QtQml import QJSValue
 
 from .Task import Task
 from .Tasks import Tasks
+from .ShoopPyObject import *
 
 from shoopdaloop.lib.logging import Logger
 from shoopdaloop.lib.smf import generate_smf, parse_smf
@@ -33,68 +34,68 @@ class FileIO(QThread):
         super(FileIO, self).__init__(parent)
         self.logger = Logger("Frontend.FileIO")
 
-    startSavingFile = Signal()
-    doneSavingFile = Signal()
-    startLoadingFile = Signal()
-    doneLoadingFile = Signal()
+    startSavingFile = ShoopSignal()
+    doneSavingFile = ShoopSignal()
+    startLoadingFile = ShoopSignal()
+    doneLoadingFile = ShoopSignal()
     
     ######################
     # SLOTS
     ######################
     
-    @Slot(result=str)
+    @ShoopSlot(result=str)
     def get_current_directory(self):
         return os.getcwd()
     
-    @Slot(result=str)
+    @ShoopSlot(result=str)
     def get_installation_directory(self):
         return os.path.dirname(os.path.realpath(__file__)) + '/../..'
 
-    @Slot(str, str)
+    @ShoopSlot(str, str)
     def write_file(self, filename, content):
         with open(filename, 'w') as file:
             file.write(content)
 
-    @Slot(str, result=str)
+    @ShoopSlot(str, result=str)
     def read_file(self, filename):
         r = None
         with open(filename, 'r') as file:
             r = file.read()
         return r
     
-    @Slot(result=str)
+    @ShoopSlot(result=str)
     def create_temporary_folder(self):
         return tempfile.mkdtemp()
     
-    @Slot(result=str)
+    @ShoopSlot(result=str)
     def create_temporary_file(self):
         return tempfile.mkstemp()[1]
     
-    @Slot(result=str)
+    @ShoopSlot(result=str)
     def generate_temporary_filename(self):
         return tempfile.gettempdir() + '/' + next(tempfile._get_candidate_names())
 
-    @Slot(str)
+    @ShoopSlot(str)
     def delete_recursive(self, folder):
         shutil.rmtree(folder)
     
-    @Slot(str)
+    @ShoopSlot(str)
     def delete_file(self, filename):
         os.remove(filename)
 
-    @Slot(str, str, bool)
+    @ShoopSlot(str, str, bool)
     def make_tarfile(self, filename, source_dir, compress):
         flags = ("w:gz" if compress else "w")
         with tarfile.open(filename, flags) as tar:
             tar.add(source_dir, arcname='/')
     
-    @Slot(str, str)
+    @ShoopSlot(str, str)
     def extract_tarfile(self, filename, target_dir):
         flags = "r:*"
         with tarfile.open(filename, flags) as tar:
             tar.extractall(target_dir)
 
-    @Slot(str, int, list)
+    @ShoopSlot(str, int, list)
     def save_data_to_soundfile(self, filename, sample_rate, data):
         self.startSavingFile.emit()
         try:
@@ -110,13 +111,13 @@ class FileIO(QThread):
         finally:
             self.doneSavingFile.emit()
 
-    @Slot(str, int, list)
+    @ShoopSlot(str, int, list)
     def save_channels_to_soundfile(self, filename, sample_rate, channels):
         datas = [c.get_data() for c in channels]
         self.save_data_to_soundfile(filename, sample_rate, datas)
         self.logger.info(lambda: "Saved {}-channel audio to {} ({} samples)".format(len(channels), filename, len(datas[0])))
     
-    @Slot(str, int, 'QVariant')
+    @ShoopSlot(str, int, 'QVariant')
     def save_channel_to_midi(self, filename, sample_rate, channel):
         self.startSavingFile.emit()
         try:
@@ -149,7 +150,7 @@ class FileIO(QThread):
         finally:
             self.doneSavingFile.emit()
     
-    @Slot(str, int, 'QVariant', result=Task)
+    @ShoopSlot(str, int, 'QVariant', result=Task)
     def save_channel_to_midi_async(self, filename, sample_rate, channel):
         task = Task(parent=self)
         def do_save():
@@ -162,23 +163,23 @@ class FileIO(QThread):
         t.start()
         return task
 
-    @Slot(str, result=str)
+    @ShoopSlot(str, result=str)
     def basename(self, path):
         return os.path.basename(path)
     
-    @Slot(str, result=bool)
+    @ShoopSlot(str, result=bool)
     def is_absolute(self, path):
         return os.path.isabs(path)
 
-    @Slot(str, result=str)
+    @ShoopSlot(str, result=str)
     def realpath(self, path):
         return os.path.realpath(path)
 
-    @Slot(str, result=bool)
+    @ShoopSlot(str, result=bool)
     def exists(self, path):
         return os.path.exists(path)
     
-    @Slot(str, int, 'QVariant', 'QVariant', 'QVariant', 'QVariant')
+    @ShoopSlot(str, int, 'QVariant', 'QVariant', 'QVariant', 'QVariant')
     def load_midi_to_channels(self, 
                              filename,
                              sample_rate,
@@ -240,7 +241,7 @@ class FileIO(QThread):
         finally:
             self.doneLoadingFile.emit()
     
-    @Slot(str, int, 'QVariant', 'QVariant', 'QVariant', 'QVariant', result=Task)
+    @ShoopSlot(str, int, 'QVariant', 'QVariant', 'QVariant', 'QVariant', result=Task)
     def load_midi_to_channels_async(self, 
                                    filename,
                                    sample_rate,
@@ -260,7 +261,7 @@ class FileIO(QThread):
         t.start()
         return task
     
-    @Slot(str, int, list, result=Task)
+    @ShoopSlot(str, int, list, result=Task)
     def save_channels_to_soundfile_async(self, filename, sample_rate, channels):
         task = Task(parent=self)
         def do_save():
@@ -273,7 +274,7 @@ class FileIO(QThread):
         t.start()
         return task
     
-    @Slot(str, int, 'QVariant', list, 'QVariant', 'QVariant', 'QVariant')
+    @ShoopSlot(str, int, 'QVariant', list, 'QVariant', 'QVariant', 'QVariant')
     def load_soundfile_to_channels(
         self, 
         filename, 
@@ -335,7 +336,7 @@ class FileIO(QThread):
         finally:
             self.doneLoadingFile.emit()
     
-    @Slot(str, int, 'QVariant', list, 'QVariant', 'QVariant', 'QVariant', result=Task)
+    @ShoopSlot(str, int, 'QVariant', list, 'QVariant', 'QVariant', 'QVariant', result=Task)
     def load_soundfile_to_channels_async(
         self, 
         filename, 
@@ -366,7 +367,7 @@ class FileIO(QThread):
         t.start()
         return task
     
-    @Slot(str, result='QVariant')
+    @ShoopSlot(str, result='QVariant')
     def get_soundfile_info(self, filename):
         info = sf.info(filename)
         return {
@@ -375,10 +376,10 @@ class FileIO(QThread):
             'frames': info.frames
         }
     
-    @Slot(result='QVariant')
+    @ShoopSlot(result='QVariant')
     def get_soundfile_formats(self):
         return dict(sf.available_formats())
     
-    @Slot(str, bool, result='QVariant')
+    @ShoopSlot(str, bool, result='QVariant')
     def glob(self, pattern, recursive):
         return glob.glob(pattern, recursive=recursive)

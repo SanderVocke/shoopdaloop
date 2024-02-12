@@ -105,7 +105,7 @@ class LuaEngine(ShoopQQuickItem):
     ###########
     ## SLOTS
     ###########
-    @Slot(str, 'QVariant', bool, bool, result='QVariant')
+    @ShoopSlot(str, 'QVariant', bool, bool, result='QVariant')
     def evaluate(self, lua_code, script_name=None, sandboxed=True, catch_errors=True):
         try:
             self.logger.trace(lambda: 'evaluate:\n{}'.format(lua_code))
@@ -126,7 +126,7 @@ class LuaEngine(ShoopQQuickItem):
             else:
                 self.logger.error(lambda: 'Error evaluating expression: {}. Trace: {}'.format(str(e), traceback.format_exc()))
     
-    @Slot(str, 'QVariant', bool, bool)
+    @ShoopSlot(str, 'QVariant', bool, bool)
     def execute(self, lua_code, script_name=None, sandboxed=True, catch_errors=True):
         try:
             self.logger.trace(lambda: 'Execute:\n{}'.format(lua_code))
@@ -142,7 +142,7 @@ class LuaEngine(ShoopQQuickItem):
             else:
                 self.logger.error(lambda: 'Error executing statement: {}. Trace: {}'.format(str(e), traceback.format_exc()))
     
-    @Slot('QVariant', list, bool, result='QVariant')
+    @ShoopSlot('QVariant', list, bool, result='QVariant')
     def call(self, callable, args=[], convert_args=False):
         if convert_args:
             args = [self.to_lua_val(a) for a in args]
@@ -150,13 +150,13 @@ class LuaEngine(ShoopQQuickItem):
         rval = callable(*args)
         return rval
     
-    @Slot(str, 'QVariant')
+    @ShoopSlot(str, 'QVariant')
     def create_lua_qobject_interface_as_global(self, name, qobject):
         self.logger.debug(lambda: 'Creating Lua interface for QObject: {}'.format(qobject))
         module = create_lua_qobject_interface(self, qobject)
         self._G_registrar(name, module)
     
-    @Slot()
+    @ShoopSlot()
     def stop(self):
         del self.lua
         self.logger.debug(lambda: 'Lua runtime closed.')

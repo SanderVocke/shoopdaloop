@@ -31,8 +31,8 @@ class AudioPort(Port):
     ######################
 
     # input_peak
-    inputPeakChanged = Signal(float)
-    @Property(float, notify=inputPeakChanged)
+    inputPeakChanged = ShoopSignal(float)
+    @ShoopProperty(float, notify=inputPeakChanged)
     def input_peak(self):
         return self._input_peak
     @input_peak.setter
@@ -42,8 +42,8 @@ class AudioPort(Port):
             self.inputPeakChanged.emit(s)
     
     # output_peak
-    outputPeakChanged = Signal(float)
-    @Property(float, notify=outputPeakChanged)
+    outputPeakChanged = ShoopSignal(float)
+    @ShoopProperty(float, notify=outputPeakChanged)
     def output_peak(self):
         return self._output_peak
     @output_peak.setter
@@ -53,8 +53,8 @@ class AudioPort(Port):
             self.outputPeakChanged.emit(s)
     
     # gain
-    gainChanged = Signal(float)
-    @Property(float, notify=gainChanged)
+    gainChanged = ShoopSignal(float)
+    @ShoopProperty(float, notify=gainChanged)
     def gain(self):
         return self._gain
     @gain.setter
@@ -68,7 +68,7 @@ class AudioPort(Port):
     ###########
 
     # Update mode from the back-end.
-    @Slot()
+    @ShoopSlot()
     def update(self):
         if not self.initialized:
             return
@@ -80,20 +80,20 @@ class AudioPort(Port):
         self.muted = state.muted
         self.passthrough_muted = state.passthrough_muted
     
-    @Slot(float)
+    @ShoopSlot(float)
     def set_gain(self, gain):
         if self._backend_obj:
             self._backend_obj.set_gain(gain)
     
-    @Slot(list)
+    @ShoopSlot(list)
     def dummy_queue_data(self, data):
         self._backend_obj.dummy_queue_data(data)
     
-    @Slot(int, result=list)
+    @ShoopSlot(int, result=list)
     def dummy_dequeue_data(self, n):
         return self._backend_obj.dummy_dequeue_data(n)
     
-    @Slot(int)
+    @ShoopSlot(int)
     def dummy_request_data(self, n):
         self._backend_obj.dummy_request_data(n)
 

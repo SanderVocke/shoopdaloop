@@ -8,8 +8,8 @@ class ApplicationMetadata(ShoopQObject):
         self._version_string = ""
     
     # version_string
-    versionStringChanged = Signal(str)
-    @Property(str, notify=versionStringChanged)
+    versionStringChanged = ShoopSignal(str)
+    @ShoopProperty(str, notify=versionStringChanged)
     def version_string(self):
         return self._version_string
     @version_string.setter
