@@ -84,7 +84,7 @@ class Loop(ShoopQQuickItem):
     def mode(self):
         return self._mode
     # Indirect setter via back-end
-    @ShoopSlot(int)
+    @ShoopSlot(int, thread_protected=False)
     def set_mode(self, mode):
         self.logger.debug(lambda: 'Set mode -> {}'.format(LoopMode(mode)))
         self._backend_loop.set_mode(mode)
@@ -95,7 +95,7 @@ class Loop(ShoopQQuickItem):
     def length(self):
         return self._length
     # Indirect setter via back-end
-    @ShoopSlot(int)
+    @ShoopSlot(int, thread_protected=False)
     def set_length(self, length):
         self.logger.debug(lambda: 'Set length -> {}'.format(length))
         self._backend_loop.set_length(length)
@@ -107,7 +107,7 @@ class Loop(ShoopQQuickItem):
         return self._position
     # Indirect setter via back-end
     @ShoopSlot(int)
-    def set_position(self, position):
+    def set_position(self, position, thread_protected=False):
         self.logger.debug(lambda: 'Set position -> {}'.format(position))
         self._backend_loop.set_position(position)
 
@@ -221,6 +221,8 @@ class Loop(ShoopQQuickItem):
         self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
         if not self._initialized:
             return
+        if self._n_updates_pending == 0:
+            return
         
         audio_chans = self.get_audio_channels_impl()
         midi_chans = self.get_midi_channels_impl()
@@ -247,6 +249,8 @@ class Loop(ShoopQQuickItem):
         self._display_peaks = self._new_display_peaks
         self._display_midi_notes_active = self._new_display_midi_notes_active
         self._display_midi_events_triggered = self._new_display_midi_events_triggered
+
+        self._n_updates_pending = 0
 
         if prev_mode != self._mode:
             self.logger.debug(lambda: 'mode -> {}'.format(LoopMode(self._mode)))

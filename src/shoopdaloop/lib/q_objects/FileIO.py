@@ -11,7 +11,7 @@ import math
 import glob
 import json
 
-from PySide6.QtCore import QObject, Slot, Signal, QThread
+from PySide6.QtCore import QObject, Slot, Signal, QThread, QMetaObject, Qt
 from PySide6.QtQml import QJSValue
 
 from .Task import Task
@@ -29,7 +29,7 @@ def call_callable(callable, *args):
         return callable(*args)
 
 # Allow filesystem operations from QML
-class FileIO(QThread):
+class FileIO(ShoopQObject):
     def __init__(self, parent=None):
         super(FileIO, self).__init__(parent)
         self.logger = Logger("Frontend.FileIO")
@@ -95,8 +95,7 @@ class FileIO(QThread):
         with tarfile.open(filename, flags) as tar:
             tar.extractall(target_dir)
 
-    @ShoopSlot(str, int, list)
-    def save_data_to_soundfile(self, filename, sample_rate, data):
+    def save_data_to_soundfile_impl(self, filename, sample_rate, data):
         self.startSavingFile.emit()
         try:
             lengths = set()
@@ -110,21 +109,23 @@ class FileIO(QThread):
             sf.write(filename, _data, sample_rate)
         finally:
             self.doneSavingFile.emit()
-
+        
     @ShoopSlot(str, int, list)
-    def save_channels_to_soundfile(self, filename, sample_rate, channels):
+    def save_data_to_soundfile(self, filename, sample_rate, data):
+        self.save_data_to_soundfile_impl(filename, sample_rate, data)
+
+    def save_channels_to_soundfile_impl(self, filename, sample_rate, channels):
         datas = [c.get_data() for c in channels]
-        self.save_data_to_soundfile(filename, sample_rate, datas)
+        self.save_data_to_soundfile_impl(filename, sample_rate, datas)
         self.logger.info(lambda: "Saved {}-channel audio to {} ({} samples)".format(len(channels), filename, len(datas[0])))
     
-    @ShoopSlot(str, int, 'QVariant')
-    def save_channel_to_midi(self, filename, sample_rate, channel):
+    def save_channel_to_midi_impl(self, filename, sample_rate, channel):
         self.startSavingFile.emit()
         try:
             msgs = channel.get_data()
             if os.path.splitext(filename)[1] == '.smf':
                 with open(filename, 'w') as f:
-                    f.write(json.dumps(generate_smf(msgs, channel.data_length, sample_rate), indent=2))
+                    f.write(json.dumps(generate_smf(msgs, channel._data_length, sample_rate), indent=2))
             else:
                 mido_track = mido.MidiTrack()
                 mido_file = mido.MidiFile()
@@ -155,13 +156,17 @@ class FileIO(QThread):
         task = Task(parent=self)
         def do_save():
             try:
-                self.save_channel_to_midi(filename, sample_rate, channel)
+                self.save_channel_to_midi_impl(filename, sample_rate, channel)
             finally:
-                task.done()
+                QMetaObject.invokeMethod(task, 'done', Qt.QueuedConnection)
         
         t = Thread(target=do_save)
         t.start()
         return task
+
+    @ShoopSlot(str, int, 'QVariant')
+    def save_channel_to_midi(self, filename, sample_rate, channel):
+        self.save_channel_to_midi_impl(filename, sample_rate, channel)
 
     @ShoopSlot(str, result=str)
     def basename(self, path):
@@ -179,8 +184,7 @@ class FileIO(QThread):
     def exists(self, path):
         return os.path.exists(path)
     
-    @ShoopSlot(str, int, 'QVariant', 'QVariant', 'QVariant', 'QVariant')
-    def load_midi_to_channels(self, 
+    def load_midi_to_channels_impl(self, 
                              filename,
                              sample_rate,
                              channels,
@@ -252,30 +256,43 @@ class FileIO(QThread):
         task = Task(parent=self)
         def do_load():
             try:
-                self.load_midi_to_channels(filename, sample_rate, channels, maybe_set_n_preplay_samples,
+                self.load_midi_to_channels_impl(filename, sample_rate, channels, maybe_set_n_preplay_samples,
                                    maybe_set_start_offset, maybe_update_loop_to_datalength)
             finally:
-                task.done()
+                QMetaObject.invokeMethod(task, 'done', Qt.QueuedConnection)
         
         t = Thread(target=do_load)
         t.start()
         return task
+    
+    @ShoopSlot(str, int, 'QVariant', 'QVariant', 'QVariant', 'QVariant')
+    def load_midi_to_channels(self, 
+                                filename,
+                                sample_rate,
+                                channels,
+                                maybe_set_n_preplay_samples,
+                                maybe_set_start_offset,
+                                maybe_update_loop_to_datalength):
+        self.load_midi_to_channels_impl(filename, sample_rate, channels, maybe_set_n_preplay_samples, maybe_set_start_offset, maybe_update_loop_to_datalength)
     
     @ShoopSlot(str, int, list, result=Task)
     def save_channels_to_soundfile_async(self, filename, sample_rate, channels):
         task = Task(parent=self)
         def do_save():
             try:
-                self.save_channels_to_soundfile(filename, sample_rate, channels)
+                self.save_channels_to_soundfile_impl(filename, sample_rate, channels)
             finally:
-                task.done()
+                QMetaObject.invokeMethod(task, 'done', Qt.QueuedConnection)
         
         t = Thread(target=do_save)
         t.start()
         return task
+
+    @ShoopSlot(str, int, list)
+    def save_channels_to_soundfile(self, filename, sample_rate, channels):
+        self.save_channels_to_soundfile_impl(filename, sample_rate, channels)
     
-    @ShoopSlot(str, int, 'QVariant', list, 'QVariant', 'QVariant', 'QVariant')
-    def load_soundfile_to_channels(
+    def load_soundfile_to_channels_impl(
         self, 
         filename, 
         target_sample_rate, 
@@ -348,10 +365,9 @@ class FileIO(QThread):
         maybe_update_loop_to_datalength
     ):
         task = Task(parent=self)
-
         def do_load():
             try:
-                self.load_soundfile_to_channels(
+                self.load_soundfile_to_channels_impl(
                     filename, 
                     target_sample_rate, 
                     maybe_target_data_length, 
@@ -361,11 +377,24 @@ class FileIO(QThread):
                     maybe_update_loop_to_datalength
                 )
             finally:
-                task.done()
+                QMetaObject.invokeMethod(task, 'done', Qt.QueuedConnection)
         
         t = Thread(target=do_load)
         t.start()
         return task
+
+    @ShoopSlot(str, int, 'QVariant', list, 'QVariant', 'QVariant', 'QVariant')
+    def load_soundfile_to_channels(
+        self, 
+        filename, 
+        target_sample_rate, 
+        maybe_target_data_length, 
+        channels_to_loop_channels, 
+        maybe_set_n_preplay_samples,
+        maybe_set_start_offset,
+        maybe_update_loop_to_datalength
+    ):
+        self.load_soundfile_to_channels_impl(filename, target_sample_rate, maybe_target_data_length, channels_to_loop_channels, maybe_set_n_preplay_samples, maybe_set_start_offset, maybe_update_loop_to_datalength)
     
     @ShoopSlot(str, result='QVariant')
     def get_soundfile_info(self, filename):

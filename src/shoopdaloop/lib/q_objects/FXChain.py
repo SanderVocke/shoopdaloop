@@ -6,7 +6,7 @@ import json
 from typing import *
 import sys
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt
 from PySide6.QtQuick import QQuickItem
 
 from .ShoopPyObject import *
@@ -22,19 +22,24 @@ from ..logging import Logger
 class FXChain(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(FXChain, self).__init__(parent)
-        self._active = True
-        self._ready = False
-        self._ui_visible = False
+        self._active = self._new_active = True
+        self._ready = self._new_ready = False
+        self._ui_visible = self._new_ui_visible = False
         self._initialized = False
         self._backend = None
         self._backend_object = None
-        self._chain_type = None
-        self._title = ""
+        self._chain_type = self._new_chain_type = None
+        self._title = self._new_title = ""
+        self._n_pending_updates = 0
         self.logger = Logger('Frontend.FXChain')
 
         self.rescan_parents()
         if not self._backend:
             self.parentChanged.connect(self.rescan_parents)
+        
+        self.update.connect(self.updateOnGuiThread, Qt.QueuedConnection)
+    
+    update = ShoopSignal()
 
     ######################
     # PROPERTIES
@@ -123,19 +128,34 @@ class FXChain(ShoopQQuickItem):
     ###########
 
     # Update mode from the back-end.
+    @ShoopSlot(thread_protected = False)
+    def updateOnOtherThread(self):
+        if not self._initialized:
+            return
+
+        state = self._backend_object.get_state()
+        self._new_ready = state.ready
+        self._new_ui_visible = state.visible
+        self._new_active = state.active
+        self._n_pending_updates += 1
+    
+    # Update on GUI thread
     @ShoopSlot()
-    def update(self):
-        if not self.initialized:
+    def updateOnGuiThread(self):
+        if not self._initialized:
+            return
+        if self._n_pending_updates == 0:
             return
         
         prev_active = self._active
         prev_ready = self._ready
         prev_ui_visible = self._ui_visible
 
-        state = self._backend_object.get_state()
-        self._ready = state.ready
-        self._ui_visible = state.visible
-        self._active = state.active
+        self._ready = self._new_ready
+        self._ui_visible = self._new_ui_visible
+        self._active = self._new_active
+
+        self._n_pending_updates = 0
 
         if prev_ready != self._ready:
             self.logger.debug(lambda: f'ready -> {self._ready}')

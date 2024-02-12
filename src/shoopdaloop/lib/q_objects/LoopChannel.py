@@ -125,7 +125,7 @@ class LoopChannel(ShoopQQuickItem):
     def start_offset(self):
         return self._start_offset
     # indirect setter via back-end
-    @ShoopSlot(int)
+    @ShoopSlot(int, thread_protected=False)
     def set_start_offset(self, offset):
         if offset != self._start_offset:
             if self._backend_obj:
@@ -140,7 +140,7 @@ class LoopChannel(ShoopQQuickItem):
     def n_preplay_samples(self):
         return self._n_preplay_samples
     # indirect setter via back-end
-    @ShoopSlot(int)
+    @ShoopSlot(int, thread_protected=False)
     def set_n_preplay_samples(self, n):
         if n != self._n_preplay_samples:
             if self._backend_obj:
@@ -155,7 +155,7 @@ class LoopChannel(ShoopQQuickItem):
     def data_dirty(self):
         return self._data_dirty
     # indirect clear via back-end
-    @ShoopSlot()
+    @ShoopSlot(thread_protected=False)
     def clear_data_dirty(self):
         if self._backend_obj:
             self.__logger.debug(lambda: 'Set data dirty -> False')
@@ -258,9 +258,9 @@ class LoopChannel(ShoopQQuickItem):
         self._new_data_length = state.length
         self._new_start_offset = state.start_offset
         self._new_mode = state.mode
-        self._data_dirty = state.data_dirty
-        self._n_preplay_samples = state.n_preplay_samples
-        self._played_back_sample = state.played_back_sample
+        self._new_data_dirty = state.data_dirty
+        self._new_n_preplay_samples = state.n_preplay_samples
+        self._new_played_back_sample = state.played_back_sample
         self._n_pending_updates += 1
         
         self.updateOnOtherThreadSubclassImpl(state)
@@ -270,6 +270,8 @@ class LoopChannel(ShoopQQuickItem):
     @ShoopSlot()
     def updateOnGuiThread(self):
         if not self._backend_obj:
+            return
+        if self._n_pending_updates == 0:
             return
 
         if self._new_data_length != self._data_length:
@@ -296,6 +298,7 @@ class LoopChannel(ShoopQQuickItem):
             self.playedBackSampleChanged.emit(self._played_back_sample)
         
         self.updateOnGuiThreadSubclassImpl()
+        self._n_pending_updates = 0
     
     @ShoopSlot()
     def close(self):

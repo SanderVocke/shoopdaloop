@@ -72,14 +72,14 @@ class LoopMidiChannel(LoopChannel):
             self._n_notes_active = self._new_n_notes_active
             self.nNotesActiveChanged.emit(self._n_notes_active)
     
-    @ShoopSlot(result=list)
+    @ShoopSlot(result=list, thread_protected=False)
     def get_data(self):
         if self._backend_obj:
             return self._backend_obj.get_data()
         else:
             raise Exception("Getting data of un-loaded MIDI channel")
 
-    @ShoopSlot(list)
+    @ShoopSlot(list, thread_protected=False)
     def load_data(self, data):
         self.requestBackendInit.emit()
         if self._backend_obj:

@@ -268,7 +268,7 @@ class Backend(ShoopQQuickItem):
     def dummy_is_controlled(self):
         self._backend_driver_obj.dummy_is_controlled()
     
-    @ShoopSlot(int)
+    @ShoopSlot(int, thread_protected=False)
     def dummy_request_controlled_frames(self, n):
         self._backend_driver_obj.dummy_request_controlled_frames(n)
         
@@ -276,7 +276,7 @@ class Backend(ShoopQQuickItem):
     def dummy_n_requested_frames(self):
         return self._backend_driver_obj.dummy_n_requested_frames()
     
-    @ShoopSlot()
+    @ShoopSlot(thread_protected = False)
     def wait_process(self):
         self._backend_driver_obj.wait_process()
     

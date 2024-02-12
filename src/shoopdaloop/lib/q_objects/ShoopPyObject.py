@@ -56,14 +56,18 @@ def create_shoop_py_object_class(parent_class):
 
 def check_thread_and_report(self, entity_name):
     current_thread = QThread.currentThread()
-    object_thread = self.thread()
-    if object_thread != current_thread:
-        newline = '\n'
-        self._shoop_py_obj_logger.error(
+    try:
+        object_thread = self.thread()
+        if object_thread != current_thread:
+            newline = '\n'
+            self._shoop_py_obj_logger.error(
 f"""{entity_name} is running in another thread than the object lives on ({current_thread} vs. {object_thread}).
 Traceback:
 {newline.join(traceback.format_stack())}
 """)
+    except Exception as e:
+        self._shoop_py_obj_logger.warning(f"{entity_name}: Could not determine running thread ({e})")
+
 class ShoopProperty:
     def __init__(self, *args, **kwargs):
         self.__shoop_thread_protect = kwargs.pop('thread_protected', True)
@@ -146,3 +150,4 @@ ShoopQObject = create_shoop_py_object_class(QObject)
 ShoopQGuiApplication = create_shoop_py_object_class(QGuiApplication)
 ShoopQQuickPaintedItem = create_shoop_py_object_class(QQuickPaintedItem)
 ShoopQApplication = create_shoop_py_object_class(QApplication)
+ShoopQThread = create_shoop_py_object_class(QThread)
