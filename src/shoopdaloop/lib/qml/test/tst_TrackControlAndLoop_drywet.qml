@@ -131,6 +131,7 @@ ShoopTestFile {
                 c.input_gain_dB = 0.0
                 c.monitor = false
                 c.mute = false
+                testcase.wait_updated(session.backend)
             }
 
             function reset_loop(loopwidget) {

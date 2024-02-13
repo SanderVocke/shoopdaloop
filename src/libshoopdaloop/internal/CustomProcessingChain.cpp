@@ -51,6 +51,7 @@ void CustomProcessingChain<TimeType, SizeType>::set_freewheeling(bool enabled) {
 
 template<typename TimeType, typename SizeType>
 void CustomProcessingChain<TimeType, SizeType>::process(uint32_t frames) {
+    log<log_level_debug_trace>("Processing {} frames", frames);
     for(auto &p : m_output_audio_ports) {
         p->PROC_get_buffer(frames); // zero outputs
     }

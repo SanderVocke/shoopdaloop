@@ -13,6 +13,7 @@
 #include "ObjectPool.h"
 #include "AudioMidiLoop.h"
 #include "fmt/format.h"
+#include "fmt/ranges.h"
 #include "graph_dot.h"
 #include "shoop_globals.h"
 #include "types.h"
@@ -238,6 +239,11 @@ std::shared_ptr<GraphFXChain> BackendSession::create_fx_chain(shoop_fx_chain_typ
                     for (uint32_t i = 0; i < n; i++) {
                         out_buf_1[i] = in_1[i] / 2.0f;
                         out_buf_2[i] = in_2[i] / 2.0f;
+                    }
+
+                    if (should_log<log_level_debug_trace>()) {
+                        log<log_level_debug_trace>("FX output port 1: {}", out_buf_1);
+                        log<log_level_debug_trace>("FX output port 2: {}", out_buf_2);
                     }
 
                     // Midi: for any MIDI message, synthesize a single sample on the timestamp of the message.

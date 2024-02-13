@@ -114,14 +114,14 @@ inline bool should_log(shoop_log_level_t level) {
     return should_log_impl(name, level);
 }
 
+} // namespace internal
+
 template<ModuleName Name, shoop_log_level_t level>
 inline bool should_log() {
     constexpr std::string_view name = Name.value;
     constexpr shoop_log_level_t _level = level;
-    return should_log_impl(name, _level);
+    return internal::should_log_impl(name, _level);
 }
-
-} // namespace internal
 
 inline bool should_log(std::string module_name, shoop_log_level_t level) {
     return internal::should_log(module_name, level);
@@ -138,7 +138,7 @@ void log_impl(std::optional<shoop_log_level_t> maybe_log_level,
 {
     auto _log_level = maybe_log_level.value_or(log_level_info);
     parse_conf_from_env();
-    if(UseCompileTimeLevel && UseCompileTimeModuleName && !internal::should_log<MaybeName, MaybeLevel>()) { return; }
+    if(UseCompileTimeLevel && UseCompileTimeModuleName && !should_log<MaybeName, MaybeLevel>()) { return; }
     if(UseCompileTimeLevel && !UseCompileTimeModuleName && !internal::should_log<MaybeLevel>(std::string(*maybe_module_name))) { return; }
     if(!UseCompileTimeLevel && UseCompileTimeModuleName && !internal::should_log<MaybeName>(_log_level)) { return; }
     if(!UseCompileTimeLevel && !UseCompileTimeModuleName && !internal::should_log(std::string(*maybe_module_name), _log_level)) { return; }
