@@ -69,6 +69,7 @@ ShoopTestFile {
             }
 
             function clear() {
+                testcase.wait_updated(session.backend)
                 loop_at(0,0).create_backend_loop()
                 loop_at(0,1).create_backend_loop()
                 loop_at(1,0).create_backend_loop()
