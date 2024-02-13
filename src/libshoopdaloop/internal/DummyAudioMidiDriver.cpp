@@ -1,4 +1,5 @@
 #include "AudioMidiDriver.h"
+#include "LoggingBackend.h"
 #include "PortInterface.h"
 #include "WithCommandQueue.h"
 #include "fmt/format.h"
@@ -51,7 +52,8 @@ float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
 }
 
 void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
-    log<log_level_debug>("Queueing {} samples", n_frames);
+    auto s = m_queued_data.read_available();
+    log<log_level_debug>("Queueing {} samples, {} sets queued total", n_frames, s);
     m_queued_data.push(
         std::vector<audio_sample_t>(data, data + n_frames)
     );
@@ -82,7 +84,7 @@ void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
         auto &front = m_queued_data.front();
         uint32_t to_copy = std::min((size_t)(n_frames - filled), front.size());
         uint32_t total_copyable = m_queued_data.front().size();
-        log<log_level_debug>("Dequeueing {} of {} samples", to_copy, total_copyable);
+        log<log_level_debug>("Dequeueing {} of {} input samples", to_copy, total_copyable);
         memcpy((void *)(buf + filled), (void *)front.data(),
                sizeof(audio_sample_t) * to_copy);
         filled += to_copy;
@@ -101,9 +103,11 @@ void DummyAudioPort::request_data(uint32_t n_frames) {
 }
 
 std::vector<audio_sample_t> DummyAudioPort::dequeue_data(uint32_t n) {
-    if (n > m_retained_samples.size()) {
+    auto s = m_retained_samples.size();
+    if (n > s) {
         throw_error<std::runtime_error>("Not enough retained samples");
     }
+    log<log_level_debug>("Yielding {} of {} output samples", n, s);
     std::vector<audio_sample_t> rval(m_retained_samples.begin(), m_retained_samples.begin()+n);
     m_retained_samples.erase(m_retained_samples.begin(), m_retained_samples.begin()+n);
     return rval;

@@ -137,7 +137,6 @@ ShoopTestFile {
                 loopwidget.transition(ShoopConstants.LoopMode.Stopped, 0, false)
                 testcase.wait_updated(session.backend)
                 loopwidget.clear(0)
-                session.backend.wait_process()
             }
 
             function reset() {
@@ -145,6 +144,7 @@ ShoopTestFile {
                 reset_track(session.main_tracks[0])
                 reset_loop(lut)
                 session.backend.wait_process()
+                testcase.wait_updated(session.backend)
             }
 
             function synthed_value_for(midi_msg) {
@@ -169,7 +169,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    
+                    session.backend.wait_process()
                     testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)

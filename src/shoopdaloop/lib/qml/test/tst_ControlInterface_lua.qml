@@ -74,10 +74,12 @@ ShoopTestFile {
                 loop_at(0,1).create_backend_loop()
                 loop_at(1,0).create_backend_loop()
                 loop_at(1,1).create_backend_loop()
+                testcase.wait_updated(session.backend)
                 loop_at(0,0).clear()
                 loop_at(0,1).clear()
                 loop_at(1,0).clear()
                 loop_at(1,1).clear()
+                testcase.wait_updated(session.backend)
                 registries.state_registry.replace('sync_active', false)
                 loop_at(0,0).deselect()
                 loop_at(0,1).deselect()
@@ -259,21 +261,11 @@ ShoopTestFile {
 
                 // TODO: harder to test because this requires loops to
                 // trigger each other
-                // 'test_loop_record_n': () => {
-                //         check_backend()
-                //         clear()
-                //         verify(false)
-                //     })
-                // }
+                // 'test_loop_record_n'
 
                 // TODO: harder to test because this requires loops to
                 // trigger each other
-                // 'test_loop_record_with_targeted': () => {
-                //         check_backend()
-                //         clear()
-                //         verify(false)
-                //     })
-                // }
+                // 'test_loop_record_with_targeted'
 
                 'test_loop_select': () => {
                     check_backend()
