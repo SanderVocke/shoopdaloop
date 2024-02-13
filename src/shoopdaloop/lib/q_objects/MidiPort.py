@@ -28,7 +28,7 @@ class MidiPort(Port):
         self._n_updates_pending = 0
         self.logger = Logger('Frontend.MidiPort')
         
-        self._signal_sender = SingleSignalObject()
+        self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
     ######################
@@ -36,7 +36,7 @@ class MidiPort(Port):
     ######################
 
     # Number of events triggered since last update (input)
-    nInputEventsChanged = Signal(int)
+    nInputEventsChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=nInputEventsChanged)
     def n_input_events(self):
         return self._n_input_events
@@ -47,7 +47,7 @@ class MidiPort(Port):
             self.nInputEventsChanged.emit(s)
     
     # Number of notes currently being played (input)
-    nInputNotesActiveChanged = Signal(int)
+    nInputNotesActiveChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=nInputNotesActiveChanged)
     def n_input_notes_active(self):
         return self._n_input_notes_active
@@ -58,7 +58,7 @@ class MidiPort(Port):
             self.nInputNotesActiveChanged.emit(s)
     
     # Number of events triggered since last update (output)
-    nOutputEventsChanged = Signal(int)
+    nOutputEventsChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=nOutputEventsChanged)
     def n_output_events(self):
         return self._n_output_events
@@ -69,7 +69,7 @@ class MidiPort(Port):
             self.nOutputEventsChanged.emit(s)
     
     # Number of notes currently being played (output)
-    nOutputNotesActiveChanged = Signal(int)
+    nOutputNotesActiveChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=nOutputNotesActiveChanged)
     def n_output_notes_active(self):
         return self._n_output_notes_active
@@ -84,7 +84,7 @@ class MidiPort(Port):
     ###########
 
     # Update mode from the back-end.
-    @ShoopSlot(thread_protected = False)
+    @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
         self.logger.trace(lambda: f'update on back-end thread (initialized {self._initialized})')
         if not self._initialized:

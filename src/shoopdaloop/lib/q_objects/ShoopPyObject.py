@@ -1,5 +1,5 @@
 from PySide6.QtQuick import QQuickItem, QQuickPaintedItem
-from PySide6.QtCore import QObject, Property, Signal, Slot, QThread, SignalInstance
+from PySide6.QtCore import QObject, Property, Signal, Slot, QThread, SignalInstance, QMetaObject, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
@@ -11,9 +11,22 @@ from threading import Lock
 import functools
 import traceback
 from typing import *
+from enum import *
 
 ids_lock = Lock()
 next_obj_id = 1
+
+class ThreadProtectionType(Enum):
+    # The signal/slot/property may be used from any thread.
+    AnyThread = 0
+
+    # The signal/slot/property may only be used on the thread the owner lives on.
+    ObjectThread = 1
+
+    # The signal/slot/property may only be used on threads other than the one the owner lives on.
+    OtherThread = 2
+
+thread_protected_signals = dict()
 
 class ShoopPyObjectImpl:
     def __init__(self, parent_class_name, child_class_name, *args, **kwargs):
@@ -39,9 +52,28 @@ class ShoopPyObjectImpl:
 def create_shoop_py_object_class(parent_class):
     class SubClass(ShoopPyObjectImpl, parent_class):
         def __init__(self, *args, **kwargs):
+            global thread_protected_signals
+
+            # Superclass initializations
             ShoopPyObjectImpl.__init__(self, parent_class.__name__, self.__class__.__name__, *args, **kwargs)
             parent_class.__init__(self, *args, **kwargs)
+
+            # Destroyed notification
             self.destroyed.connect(lambda: self._shoop_py_obj_logger.trace(lambda: "{} instance: QObject destroyed()".format(self.child_class_name), _id=self._obj_id))
+
+            class_attrs = vars(self.__class__)
+            # Iterate over the class attributes and determine if they are thread-protected Signals.
+            # if so, connect to their signal instances a thread-protection function
+            for attr_name, attr_value in class_attrs.items():
+                protection = thread_protected_signals.get(attr_value, None) if isinstance(attr_value, Signal) else None
+                if protection:
+                    protection = thread_protected_signals[attr_value]
+                    signal_instance = attr_value.__get__(self, self.__class__)
+                    fmtstring = f'Signal emit of "{attr_name}" from {self}'
+                    def check_thread():
+                        check_thread_and_report(self, protection, fmtstring)
+                    signal_instance.connect(lambda: check_thread(), Qt.DirectConnection)
+    
     return SubClass
 
 # Thread protection
@@ -55,16 +87,23 @@ def create_shoop_py_object_class(parent_class):
 
 # Wrapper for thread protection (see general note above)
 
-def check_thread_and_report(self, entity_name):
+def check_thread_and_report(self, protection, entity_name):
     if not self.isValid():
         return
     current_thread = QThread.currentThread()
     try:
         object_thread = self.thread()
-        if object_thread != current_thread:
+        if protection == ThreadProtectionType.ObjectThread and object_thread != current_thread:
             newline = '\n'
             self._shoop_py_obj_logger.error(
 f"""{entity_name} is running in another thread than the object lives on ({current_thread} vs. {object_thread}).
+Traceback:
+{newline.join(traceback.format_stack())}
+""")
+        elif protection == ThreadProtectionType.OtherThread and object_thread == current_thread:
+            newline = '\n'
+            self._shoop_py_obj_logger.error(
+f"""{entity_name} is running on its owner object's thread while it is not allowed to ({current_thread} vs. {object_thread}).
 Traceback:
 {newline.join(traceback.format_stack())}
 """)
@@ -73,15 +112,14 @@ Traceback:
 
 class ShoopProperty:
     def __init__(self, *args, **kwargs):
-        self.__shoop_thread_protect = kwargs.pop('thread_protected', True)
+        self.__shoop_thread_protect = kwargs.pop('thread_protection', ThreadProtectionType.ObjectThread)
         self.__shoop_prop = Property(*args, **kwargs)
     
     def getter(self, function):
         __self = self
         @functools.wraps(function)
         def wrapper(self, *args, **kwargs):
-            if __self.__shoop_thread_protect:
-                check_thread_and_report(self, f'Property getter for {function}')
+            check_thread_and_report(self, __self.__shoop_thread_protect, f'Property getter for {function}')
             return function(self, *args, **kwargs)
         return self.__shoop_prop.getter(wrapper)
 
@@ -89,8 +127,7 @@ class ShoopProperty:
         __self = self
         @functools.wraps(function)
         def wrapper(self, *args, **kwargs):
-            if __self.__shoop_thread_protect:
-                check_thread_and_report(self, f'Property setter for {function}')
+            check_thread_and_report(self, __self.__shoop_thread_protect, f'Property setter for {function}')
             return function(self, *args, **kwargs)
         return self.__shoop_prop.setter(wrapper)
     
@@ -98,8 +135,7 @@ class ShoopProperty:
         __self = self
         @functools.wraps(function)
         def wrapper(self, *args, **kwargs):
-            if __self.__shoop_thread_protect:
-                check_thread_and_report(self, f'Property deleter for {function}')
+            check_thread_and_report(self, __self.__shoop_thread_protect, f'Property deleter for {function}')
             return function(self, *args, **kwargs)
         return self.__shoop_prop.deleter(wrapper)
 
@@ -107,8 +143,7 @@ class ShoopProperty:
         __self = self
         @functools.wraps(function)
         def wrapper(self, *args, **kwargs):
-            if __self.__shoop_thread_protect:
-                check_thread_and_report(self, f'Property reader for {function}')
+            check_thread_and_report(self, __self.__shoop_thread_protect, f'Property reader for {function}')
             return function(self, *args, **kwargs)
         return self.__shoop_prop.read(wrapper)
     
@@ -116,8 +151,7 @@ class ShoopProperty:
         __self = self
         @functools.wraps(function)
         def wrapper(self, *args, **kwargs):
-            if __self.__shoop_thread_protect:
-                check_thread_and_report(self, f'Property writer for {function}')
+            check_thread_and_report(self, __self.__shoop_thread_protect, f'Property writer for {function}')
             return function(self, *args, **kwargs)
         return self.__shoop_prop.write(wrapper)
 
@@ -125,22 +159,28 @@ class ShoopProperty:
         __self = self
         @functools.wraps(function)
         def wrapper(self, *args, **kwargs):
-            if __self.__shoop_thread_protect:
-                check_thread_and_report(self, f'Property getter for {function}')
+            check_thread_and_report(self, __self.__shoop_thread_protect, f'Property getter for {function}')
             return function(self, *args, **kwargs)
         return self.__shoop_prop.__call__(wrapper, *args, **kwargs)
 
 def ShoopSlot(*args, **kwargs):
-    thread_protected = kwargs.pop('thread_protected', True)
+    thread_protection = kwargs.pop('thread_protection', ThreadProtectionType.ObjectThread)
     slot_decorator = Slot(*args, **kwargs)
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(self, *args, **kwargs):
-            if thread_protected:
-                check_thread_and_report(self, f'Slot {fn}')
+            check_thread_and_report(self, thread_protection, f'Slot {fn}')
             return fn(self, *args, **kwargs)
         return slot_decorator(wrapper)
-    return slot_decorator
+    return decorator
+
+def ShoopSignal(*args, **kwargs):
+    global thread_protected_signals
+    thread_protection = kwargs.pop('thread_protection', ThreadProtectionType.ObjectThread)
+    rval = Signal(*args, **kwargs)
+    if thread_protection != ThreadProtectionType.AnyThread:
+        thread_protected_signals[rval] = thread_protection
+    return rval
 
 ShoopQQuickItem = create_shoop_py_object_class(QQuickItem)
 ShoopQObject = create_shoop_py_object_class(QObject)
@@ -149,11 +189,14 @@ ShoopQQuickPaintedItem = create_shoop_py_object_class(QQuickPaintedItem)
 ShoopQApplication = create_shoop_py_object_class(QApplication)
 ShoopQThread = create_shoop_py_object_class(QThread)
 
-class SingleSignalObject(ShoopQObject):
+# Convenience class. Has a single signal called "signal" which bypasses
+# our thread introspection and can emit from whatever thread without
+# warnings.
+class ThreadUnsafeSignalEmitter(ShoopQObject):
     def __init__(self, parent=None):
-        super(SingleSignalObject, self).__init__(parent)
+        super(ThreadUnsafeSignalEmitter, self).__init__(parent)
     
-    signal = Signal()
+    signal = ShoopSignal(thread_protection = ThreadProtectionType.AnyThread)
     
     def do_emit(self, *args, **kwargs):
         if self.isValid():

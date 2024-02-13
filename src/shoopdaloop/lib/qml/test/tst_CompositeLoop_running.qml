@@ -168,6 +168,7 @@ ShoopTestFile {
                                 0, 0, 0, 0)
 
                     m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
 
@@ -252,6 +253,7 @@ ShoopTestFile {
                                 0, 0, 0, 0)
 
                     m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
 
@@ -339,6 +341,7 @@ ShoopTestFile {
                                 0, 0, 0, 0)
 
                     m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
 
@@ -413,6 +416,7 @@ ShoopTestFile {
                                 0, 0, 0, 0)
 
                     m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
 
@@ -492,7 +496,6 @@ ShoopTestFile {
 
                     c().transition(ShoopConstants.LoopMode.Playing, 3, true)
                     m().transition(ShoopConstants.LoopMode.Playing, 0, false)
-
                     testcase.wait_updated(session.backend)
 
                     verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)
@@ -544,7 +547,6 @@ ShoopTestFile {
 
                     c().transition(ShoopConstants.LoopMode.Playing, 0, true)
                     m().transition(ShoopConstants.LoopMode.Playing, 0, false)
-
                     testcase.wait_updated(session.backend)
 
                     verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)

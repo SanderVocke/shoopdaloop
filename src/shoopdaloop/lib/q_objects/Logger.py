@@ -17,8 +17,8 @@ class Logger(ShoopQObject):
     ######################
 
     # name
-    nameChanged = Signal(str)
-    @ShoopProperty(str, notify=nameChanged, thread_protected=False)
+    nameChanged = ShoopSignal(str)
+    @ShoopProperty(str, notify=nameChanged, thread_protection=ThreadProtectionType.AnyThread)
     def name(self):
         return self.logger.name()
     @name.setter
@@ -27,8 +27,8 @@ class Logger(ShoopQObject):
             self.logger = BaseLogger(l)
     
     # instanceIdentifier (for clarity in debugging)
-    instanceIdentifierChanged = Signal(str)
-    @ShoopProperty(str, notify=instanceIdentifierChanged, thread_protected=False)
+    instanceIdentifierChanged = ShoopSignal(str)
+    @ShoopProperty(str, notify=instanceIdentifierChanged, thread_protection=ThreadProtectionType.AnyThread)
     def instanceIdentifier(self):
         return self._id
     @instanceIdentifier.setter
@@ -42,27 +42,27 @@ class Logger(ShoopQObject):
     ## SLOTS
     ###########
 
-    @ShoopSlot('QVariant', thread_protected=False)
+    @ShoopSlot('QVariant', thread_protection=ThreadProtectionType.AnyThread)
     def trace(self, msg):
         self.logger.trace(msg, _id=self._id_to_print)
     
-    @ShoopSlot('QVariant', thread_protected=False)
+    @ShoopSlot('QVariant', thread_protection=ThreadProtectionType.AnyThread)
     def debug(self, msg):
         self.logger.debug(msg, _id=self._id_to_print)
     
-    @ShoopSlot('QVariant', thread_protected=False)
+    @ShoopSlot('QVariant', thread_protection=ThreadProtectionType.AnyThread)
     def info(self, msg):
         self.logger.info(msg, _id=self._id_to_print)
     
-    @ShoopSlot('QVariant', thread_protected=False)
+    @ShoopSlot('QVariant', thread_protection=ThreadProtectionType.AnyThread)
     def warning(self, msg):
         self.logger.warning(msg, _id=self._id_to_print)
     
-    @ShoopSlot('QVariant', thread_protected=False)
+    @ShoopSlot('QVariant', thread_protection=ThreadProtectionType.AnyThread)
     def error(self, msg):
         self.logger.error(msg, _id=self._id_to_print)
     
-    @ShoopSlot('QVariant', thread_protected=False)
+    @ShoopSlot('QVariant', thread_protection=ThreadProtectionType.AnyThread)
     def throw_error(self, msg):
         self.logger.error(msg, _id=self._id_to_print)
         raise Exception(msg)

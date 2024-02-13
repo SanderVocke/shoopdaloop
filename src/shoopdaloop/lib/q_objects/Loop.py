@@ -21,27 +21,39 @@ from .Logger import Logger
 # Wraps a back-end loop.
 class Loop(ShoopQQuickItem):
     # Other signals
-    cycled = Signal()
+    cycled = ShoopSignal()
+    cycledUnsafe = ShoopSignal(thread_protection=ThreadProtectionType.OtherThread)
 
     def __init__(self, parent=None):
         super(Loop, self).__init__(parent)
-        self._position = self._new_position = 0
-        self._mode = self._new_mode = LoopMode.Unknown.value
-        self._next_mode = self._new_next_mode = LoopMode.Unknown.value
-        self._next_transition_delay = self._new_next_transition_delay = -1
+        self._position = 0
+        self._mode = LoopMode.Unknown.value
+        self._next_mode = LoopMode.Unknown.value
+        self._next_transition_delay = -1
         self._length = self._new_length = 0
-        self._sync_source = self._new_sync_source = None
+        self._sync_source = None
         self._initialized = False
         self._backend = None
         self._backend_loop = None
-        self._display_peaks = self._new_display_peaks = []
-        self._display_midi_notes_active = self._new_display_midi_notes_active = 0
-        self._display_midi_events_triggered = self._new_display_midi_events_triggered = 0
+        self._display_peaks = []
+        self._display_midi_notes_active = 0
+        self._display_midi_events_triggered = 0
         self.logger = Logger(self)
         self.logger.name = "Frontend.Loop"
-        self._n_updates_pending = 0
-        
-        self._signal_sender = SingleSignalObject()
+        self._pending_transitions = []
+
+        self.modeChangedUnsafe.connect(self.modeChanged, Qt.AutoConnection)
+        self.nextModeChangedUnsafe.connect(self.nextModeChanged, Qt.AutoConnection)
+        self.lengthChangedUnsafe.connect(self.lengthChanged, Qt.AutoConnection)
+        self.positionChangedUnsafe.connect(self.positionChanged, Qt.AutoConnection)
+        self.nextTransitionDelayChangedUnsafe.connect(self.nextTransitionDelayChanged, Qt.AutoConnection)
+        self.displayPeaksChangedUnsafe.connect(self.displayPeaksChanged, Qt.AutoConnection)
+        self.displayMidiNotesActiveChangedUnsafe.connect(self.displayMidiNotesActiveChanged, Qt.AutoConnection)
+        self.displayMidiEventsTriggeredChangedUnsafe.connect(self.displayMidiEventsTriggeredChanged, Qt.AutoConnection)
+
+        self.cycledUnsafe.connect(self.cycled, Qt.QueuedConnection)
+
+        self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
         self.initializedChanged.connect(lambda i: self.logger.debug("initialized -> {}".format(i)))
@@ -52,14 +64,14 @@ class Loop(ShoopQQuickItem):
         self.parentChanged.connect(lambda: rescan_on_parent_changed())
         self.rescan_parents()
 
-    update = Signal()
+    update = ShoopSignal()
 
     ######################
     # PROPERTIES
     ######################
     
     # backend
-    backendChanged = Signal(Backend)
+    backendChanged = ShoopSignal(Backend)
     @ShoopProperty(Backend, notify=backendChanged)
     def backend(self):
         return self._backend
@@ -73,58 +85,63 @@ class Loop(ShoopQQuickItem):
             self.maybe_initialize()
     
     # initialized
-    initializedChanged = Signal(bool)
+    initializedChanged = ShoopSignal(bool)
     @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
 
     # mode
-    modeChanged = Signal(int)
-    @ShoopProperty(int, notify=modeChanged)
+    modeChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
+    modeChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
+    @ShoopProperty(int, notify=modeChanged, thread_protection=ThreadProtectionType.AnyThread)
     def mode(self):
         return self._mode
     # Indirect setter via back-end
-    @ShoopSlot(int, thread_protected=False)
+    @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
     def set_mode(self, mode):
         self.logger.debug(lambda: 'Set mode -> {}'.format(LoopMode(mode)))
         self._backend_loop.set_mode(mode)
 
     # length: loop length in samples
-    lengthChanged = Signal(int)
-    @ShoopProperty(int, notify=lengthChanged)
+    lengthChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
+    lengthChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
+    @ShoopProperty(int, notify=lengthChanged, thread_protection=ThreadProtectionType.AnyThread)
     def length(self):
         return self._length
     # Indirect setter via back-end
-    @ShoopSlot(int, thread_protected=False)
+    @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
     def set_length(self, length):
         self.logger.debug(lambda: 'Set length -> {}'.format(length))
         self._backend_loop.set_length(length)
 
     # position: loop playback position in samples
-    positionChanged = Signal(int)
-    @ShoopProperty(int, notify=positionChanged)
+    positionChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
+    positionChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
+    @ShoopProperty(int, notify=positionChanged, thread_protection=ThreadProtectionType.AnyThread)
     def position(self):
         return self._position
     # Indirect setter via back-end
-    @ShoopSlot(int, thread_protected=False)
+    @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
     def set_position(self, position):
         self.logger.debug(lambda: 'Set position -> {}'.format(position))
         self._backend_loop.set_position(position)
 
     # next_mode: first upcoming mode change
-    nextModeChanged = Signal(int)
-    @ShoopProperty(int, notify=nextModeChanged)
+    nextModeChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
+    nextModeChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
+    @ShoopProperty(int, notify=nextModeChanged, thread_protection=ThreadProtectionType.AnyThread)
     def next_mode(self):
         return self._next_mode
     
     # next_mode: first upcoming mode change
-    nextTransitionDelayChanged = Signal(int)
-    @ShoopProperty(int, notify=nextTransitionDelayChanged)
+    nextTransitionDelayChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
+    nextTransitionDelayChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
+    @ShoopProperty(int, notify=nextTransitionDelayChanged, thread_protection=ThreadProtectionType.AnyThread)
     def next_transition_delay(self):
         return self._next_transition_delay
     
     # synchronization source loop
-    syncSourceChanged = Signal('QVariant')
+    syncSourceChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=syncSourceChanged)
     def sync_source(self):
         return self._sync_source
@@ -143,20 +160,23 @@ class Loop(ShoopQQuickItem):
             self.initializedChanged.connect(do_set)
 
     # display_peaks : overall audio peaks of the loop
-    displayPeaksChanged = Signal(list)
-    @ShoopProperty(list, notify=displayPeaksChanged)
+    displayPeaksChangedUnsafe = ShoopSignal(list, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
+    displayPeaksChanged = ShoopSignal(list) # on GUI thread only, for e.g. bindings
+    @ShoopProperty(list, notify=displayPeaksChanged, thread_protection=ThreadProtectionType.AnyThread)
     def display_peaks(self):
         return self._display_peaks
 
     # display_midi_notes_active : sum of notes active in midi channels
-    displayMidiNotesActiveChanged = Signal(int)
-    @ShoopProperty(int, notify=displayMidiNotesActiveChanged)
+    displayMidiNotesActiveChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
+    displayMidiNotesActiveChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
+    @ShoopProperty(int, notify=displayMidiNotesActiveChanged, thread_protection=ThreadProtectionType.AnyThread)
     def display_midi_notes_active(self):
         return self._display_midi_notes_active
     
     # display_midi_events_triggered : sum of events now processed in channels
-    displayMidiEventsTriggeredChanged = Signal(int)
-    @ShoopProperty(int, notify=displayMidiEventsTriggeredChanged)
+    displayMidiEventsTriggeredChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
+    displayMidiEventsTriggeredChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
+    @ShoopProperty(int, notify=displayMidiEventsTriggeredChanged, thread_protection=ThreadProtectionType.AnyThread)
     def display_midi_events_triggered(self):
         return self._display_midi_events_triggered
     
@@ -187,41 +207,10 @@ class Loop(ShoopQQuickItem):
         return self.get_midi_channels_impl()
 
     # Update on back-end thread.
-    @ShoopSlot(thread_protected = False)
+    @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
-        self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
+        #self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
         if not self._initialized:
-            return
-        
-        audio_chans = self.get_audio_channels_impl()
-        midi_chans = self.get_midi_channels_impl()
-        
-        for channel in audio_chans:
-            channel.updateOnOtherThread()
-        for channel in midi_chans:
-            channel.updateOnOtherThread()
-
-        state = self._backend_loop.get_state()
-        self._new_mode = state.mode
-        self._new_length = state.length
-        self._new_position = state.position
-        self._new_next_mode = (state.maybe_next_mode if state.maybe_next_mode != None else state.mode)
-        self._new_next_transition_delay = (state.maybe_next_delay if state.maybe_next_delay != None else -1)
-        self._new_display_peaks = [c._output_peak for c in [a for a in audio_chans if a._mode in [ChannelMode.Direct.value, ChannelMode.Wet.value]]]
-        self._new_display_midi_notes_active = (sum([c._n_notes_active for c in midi_chans]) if len(midi_chans) > 0 else 0)
-        self._new_display_midi_events_triggered = (sum([c._n_events_triggered for c in midi_chans]) if len(midi_chans) > 0 else 0)
-        
-        self._n_updates_pending += 1
-
-        self._signal_sender.do_emit()
-    
-    # Update on GUI thread.
-    @ShoopSlot()
-    def updateOnGuiThread(self):
-        self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
-        if not self._initialized or not self.isValid():
-            return
-        if self._n_updates_pending == 0:
             return
         
         audio_chans = self.get_audio_channels_impl()
@@ -241,53 +230,80 @@ class Loop(ShoopQQuickItem):
         prev_display_midi_notes_active = self._display_midi_notes_active
         prev_display_midi_events_triggered = self._display_midi_events_triggered
 
-        self._mode = self._new_mode
-        self._length = self._new_length
-        self._position = self._new_position
-        self._next_mode = self._new_next_mode
-        self._next_transition_delay = self._new_next_transition_delay
-        self._display_peaks = self._new_display_peaks
-        self._display_midi_notes_active = self._new_display_midi_notes_active
-        self._display_midi_events_triggered = self._new_display_midi_events_triggered
-
-        self._n_updates_pending = 0
-
+        state = self._backend_loop.get_state()
+        self._mode = state.mode
+        self._length = state.length
+        self._position = state.position
+        self._next_mode = (state.maybe_next_mode if state.maybe_next_mode != None else state.mode)
+        self._next_transition_delay = (state.maybe_next_delay if state.maybe_next_delay != None else -1)
+        self._display_peaks = [c._output_peak for c in [a for a in audio_chans if a._mode in [ChannelMode.Direct.value, ChannelMode.Wet.value]]]
+        self._display_midi_notes_active = (sum([c._n_notes_active for c in midi_chans]) if len(midi_chans) > 0 else 0)
+        self._display_midi_events_triggered = (sum([c._n_events_triggered for c in midi_chans]) if len(midi_chans) > 0 else 0)
+        
         if prev_mode != self._mode:
             self.logger.debug(lambda: 'mode -> {}'.format(LoopMode(self._mode)))
-            self.modeChanged.emit(self._mode)
+            self.modeChangedUnsafe.emit(self._mode)
         if prev_length != self._length:
             self.logger.trace(lambda: 'length -> {}'.format(self._length))
-            self.lengthChanged.emit(self._length)
+            self.lengthChangedUnsafe.emit(self._length)
         if prev_position != self._position:
             self.logger.trace(lambda: 'pos -> {}'.format(self._position))
-            self.positionChanged.emit(self._position)
+            self.positionChangedUnsafe.emit(self._position)
         if prev_next_mode != self._next_mode:
             self.logger.debug(lambda: 'next mode -> {}'.format(LoopMode(self._next_mode)))
-            self.nextModeChanged.emit(self._next_mode)
+            self.nextModeChangedUnsafe.emit(self._next_mode)
         if prev_next_delay != self._next_transition_delay:
             self.logger.debug(lambda: 'next transition -> {}'.format(self._next_transition_delay))
-            self.nextTransitionDelayChanged.emit(self._next_transition_delay)
+            self.nextTransitionDelayChangedUnsafe.emit(self._next_transition_delay)
         if prev_display_peaks != self._display_peaks:
-            self.displayPeaksChanged.emit(self._display_peaks)
+            self.displayPeaksChangedUnsafe.emit(self._display_peaks)
         if prev_display_midi_notes_active != self._display_midi_notes_active:
-            self.displayMidiNotesActiveChanged.emit(self._display_midi_notes_active)
+            self.displayMidiNotesActiveChangedUnsafe.emit(self._display_midi_notes_active)
         if prev_display_midi_events_triggered != self._display_midi_events_triggered:
-            self.displayMidiEventsTriggeredChanged.emit(self._display_midi_events_triggered)
+            self.displayMidiEventsTriggeredChangedUnsafe.emit(self._display_midi_events_triggered)
+
+        for transition in self._pending_transitions:
+            if isinstance(transition[0], list):
+                self.transition_multiple_impl(*transition)
+            else:
+                self.transition_impl(*transition)
+        self._pending_transitions = []
 
         if (self.position < prev_position and is_playing_mode(prev_mode) and is_playing_mode(self.mode)):
             self.logger.debug(lambda: 'cycled')
-            self.cycled.emit()
+            self.cycledUnsafe.emit()
+    
+    # Update on GUI thread.
+    @ShoopSlot()
+    def updateOnGuiThread(self):
+        #self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
+        if not self._initialized or not self.isValid():
+            return
+        
+        audio_chans = self.get_audio_channels_impl()
+        midi_chans = self.get_midi_channels_impl()
+        
+        for channel in audio_chans:
+            channel.updateOnGuiThread()
+        for channel in midi_chans:
+            channel.updateOnGuiThread()
     
     @ShoopSlot(int, int, bool)
     def transition(self, mode, delay, wait_for_sync):
-        if self.initialized:
-            if wait_for_sync and not self.sync_source:
+        self._pending_transitions.append([mode, delay, wait_for_sync])
+
+    def transition_impl(self, mode, delay, wait_for_sync):
+        if self._initialized:
+            if wait_for_sync and not self._sync_source:
                 self.logger.warning(lambda: "Synchronous transition requested but no sync loop set")
             self._backend_loop.transition(LoopMode(mode), delay, wait_for_sync)
     
     @ShoopSlot(list, int, int, bool)
     def transition_multiple(self, loops, mode, delay, wait_for_sync):
-        if self.initialized:
+        self._pending_transitions.append([loops, mode, delay, wait_for_sync])
+
+    def transition_multiple_impl(self, loops, mode, delay, wait_for_sync):
+        if self._initialized:
             backend_loops = [l._backend_loop for l in loops]
             BackendLoop.transition_multiple(backend_loops, LoopMode(mode), delay, wait_for_sync)
 

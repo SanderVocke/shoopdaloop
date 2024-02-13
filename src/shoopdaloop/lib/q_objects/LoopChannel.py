@@ -40,11 +40,11 @@ class LoopChannel(ShoopQQuickItem):
         self._n_pending_updates = 0
         self.__logger = Logger('Frontend.LoopChannel')
 
-        self._signal_sender = SingleSignalObject()
+        self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
     
-    requestBackendInit = Signal() # This signal requests the loop to be instantiated in the backend
-    update = Signal()
+    requestBackendInit = ShoopSignal() # This signal requests the loop to be instantiated in the backend
+    update = ShoopSignal()
 
     def maybe_initialize(self):
         self.__logger.throw_error("Unimplemented for base class")
@@ -54,13 +54,13 @@ class LoopChannel(ShoopQQuickItem):
     ######################
 
     # initialized
-    initializedChanged = Signal(bool)
+    initializedChanged = ShoopSignal(bool)
     @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return bool(self._backend_obj)
 
     # loop
-    loopChanged = Signal('QVariant')
+    loopChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=loopChanged)
     def loop(self):
         return self._loop
@@ -76,13 +76,13 @@ class LoopChannel(ShoopQQuickItem):
             self.maybe_initialize()
     
     # loop_mode
-    loopModeChanged = Signal(int)
+    loopModeChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=loopModeChanged)
     def loop_mode(self):
         return (self._loop.mode if self._loop else 0)
 
     # recording_started_at
-    recordingStartedAtChanged = Signal('QVariant')
+    recordingStartedAtChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=recordingStartedAtChanged)
     def recording_started_at(self):
         return self._recording_started_at
@@ -93,7 +93,7 @@ class LoopChannel(ShoopQQuickItem):
             self.recordingStartedAtChanged.emit(l)
 
     # mode
-    modeChanged = Signal(int)
+    modeChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=modeChanged)
     def mode(self):
         return self._mode.value
@@ -109,24 +109,24 @@ class LoopChannel(ShoopQQuickItem):
                 self.initializedChanged.connect(lambda: self.set_mode(_mode))
     
     # data length
-    dataLengthChanged = Signal(int)
+    dataLengthChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=dataLengthChanged)
     def data_length(self):
         return self._data_length
     
     # last played sample
-    playedBackSampleChanged = Signal('QVariant')
+    playedBackSampleChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=playedBackSampleChanged)
     def played_back_sample(self):
         return self._played_back_sample
     
     # start offset
-    startOffsetChanged = Signal(int)
+    startOffsetChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=startOffsetChanged)
     def start_offset(self):
         return self._start_offset
     # indirect setter via back-end
-    @ShoopSlot(int, thread_protected=False)
+    @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
     def set_start_offset(self, offset):
         if offset != self._start_offset:
             if self._backend_obj:
@@ -136,12 +136,12 @@ class LoopChannel(ShoopQQuickItem):
                 self.initializedChanged.connect(lambda: self.set_start_offset(offset))
     
     # n preplay samples
-    nPreplaySamplesChanged = Signal(int)
+    nPreplaySamplesChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=nPreplaySamplesChanged)
     def n_preplay_samples(self):
         return self._n_preplay_samples
     # indirect setter via back-end
-    @ShoopSlot(int, thread_protected=False)
+    @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
     def set_n_preplay_samples(self, n):
         if n != self._n_preplay_samples:
             if self._backend_obj:
@@ -151,12 +151,12 @@ class LoopChannel(ShoopQQuickItem):
                 self.initializedChanged.connect(lambda: self.set_n_preplay_samples(n))
 
     # data dirty
-    dataDirtyChanged = Signal(bool)
+    dataDirtyChanged = ShoopSignal(bool)
     @ShoopProperty(int, notify=dataDirtyChanged)
     def data_dirty(self):
         return self._data_dirty
     # indirect clear via back-end
-    @ShoopSlot(thread_protected=False)
+    @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def clear_data_dirty(self):
         if self._backend_obj:
             self.__logger.debug(lambda: 'Set data dirty -> False')
@@ -165,13 +165,13 @@ class LoopChannel(ShoopQQuickItem):
             self.initializedChanged.connect(lambda: self.clear_data_dirty())
 
     # connected ports
-    connectedPortsChanged = Signal(list)
+    connectedPortsChanged = ShoopSignal(list)
     @ShoopProperty(list, notify=connectedPortsChanged)
     def connected_ports(self):
         return [p for p in self._connected_ports if p and p.isValid()]
     
     # ports to connect
-    portsChanged = Signal(list)
+    portsChanged = ShoopSignal(list)
     @ShoopProperty(list, notify=portsChanged)
     def ports(self):
         return [p for p in self._ports if p and p.isValid()]
@@ -250,7 +250,7 @@ class LoopChannel(ShoopQQuickItem):
     def updateOnGuiThreadSubclassImpl(self):
         self.__logger.throw_error("Not implemented in base class")
     
-    @ShoopSlot(thread_protected = False)
+    @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
         if not self._backend_obj:
             return

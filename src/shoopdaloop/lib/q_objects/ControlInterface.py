@@ -59,8 +59,8 @@ class ControlInterface(ControlHandler):
     
     # Functions not meant for Lua use
 
-    engineRegisteredCallback = Signal('QVariant')
-    engineUnregisteredAll = Signal('QVariant')
+    engineRegisteredCallback = ShoopSignal('QVariant')
+    engineUnregisteredAll = ShoopSignal('QVariant')
 
     @ShoopSlot('QVariant', result=bool)
     def engine_registered(self, engine):
@@ -91,12 +91,12 @@ class ControlInterface(ControlHandler):
         for cb in self._loop_callbacks:
             cb[0](coords, event)
             
-    midiInputPortRulesChanged = Signal()
+    midiInputPortRulesChanged = ShoopSignal()
     @ShoopProperty('QVariant', notify=midiInputPortRulesChanged)
     def midi_input_port_rules(self):
         return self._midi_input_port_rules
     
-    midiOutputPortRulesChanged = Signal()
+    midiOutputPortRulesChanged = ShoopSignal()
     @ShoopProperty('QVariant', notify=midiOutputPortRulesChanged)
     def midi_output_port_rules(self):
         return self._midi_output_port_rules

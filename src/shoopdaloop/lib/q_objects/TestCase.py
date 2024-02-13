@@ -11,11 +11,11 @@ class TestCase(ShoopQQuickItem):
         self._name = ''
         self._skip = False
     
-    run_signal = Signal()
-    wait_signal = Signal(int)
+    run_signal = ShoopSignal()
+    wait_signal = ShoopSignal(int)
     
     # name
-    nameChanged = Signal(str)
+    nameChanged = ShoopSignal(str)
     @ShoopProperty(str, notify=nameChanged)
     def name(self):
         return self._name

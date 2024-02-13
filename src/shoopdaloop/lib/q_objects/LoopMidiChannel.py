@@ -34,13 +34,13 @@ class LoopMidiChannel(LoopChannel):
     ######################
 
     # # of events triggered since last update
-    nEventsTriggeredChanged = Signal(int)
+    nEventsTriggeredChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=nEventsTriggeredChanged)
     def n_events_triggered(self):
         return self._n_events_triggered
     
     # # number of notes currently being played
-    nNotesActiveChanged = Signal(int)
+    nNotesActiveChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=nNotesActiveChanged)
     def n_notes_active(self):
         return self._n_notes_active
@@ -74,14 +74,14 @@ class LoopMidiChannel(LoopChannel):
             self._n_notes_active = self._new_n_notes_active
             self.nNotesActiveChanged.emit(self._n_notes_active)
     
-    @ShoopSlot(result=list, thread_protected=False)
+    @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
     def get_data(self):
         if self._backend_obj:
             return self._backend_obj.get_data()
         else:
             raise Exception("Getting data of un-loaded MIDI channel")
 
-    @ShoopSlot(list, thread_protected=False)
+    @ShoopSlot(list, thread_protection=ThreadProtectionType.AnyThread)
     def load_data(self, data):
         self.requestBackendInit.emit()
         if self._backend_obj:

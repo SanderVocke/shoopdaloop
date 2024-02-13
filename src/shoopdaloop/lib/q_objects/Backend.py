@@ -44,16 +44,16 @@ class Backend(ShoopQQuickItem):
         self._last_processed = self._new_last_processed = 1
         self._n_updates_pending = 0
         
-        self._signal_sender = SingleSignalObject()
+        self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
     
-    updated = Signal()
+    updated = ShoopSignal()
 
     ######################
     # PROPERTIES
     ######################
 
-    updateIntervalMsChanged = Signal(int)
+    updateIntervalMsChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=updateIntervalMsChanged)
     def update_interval_ms(self):
         return self._update_interval_ms
@@ -63,12 +63,12 @@ class Backend(ShoopQQuickItem):
             self._update_interval_ms = u
             self.init_timer()
     
-    initializedChanged = Signal(bool)
+    initializedChanged = ShoopSignal(bool)
     @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
     
-    actualBackendTypeChanged = Signal(int)
+    actualBackendTypeChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=actualBackendTypeChanged)
     def actual_backend_type(self):
         return self._actual_driver_type if self._actual_driver_type != None else -1
@@ -79,7 +79,7 @@ class Backend(ShoopQQuickItem):
             self.logger.instanceIdentifier = AudioDriverType(n).name
             self.actualBackendTypeChanged.emit(n)
     
-    clientNameHintChanged = Signal(str)
+    clientNameHintChanged = ShoopSignal(str)
     @ShoopProperty(str, notify=clientNameHintChanged)
     def client_name_hint(self):
         return (self._client_name_hint if self._client_name_hint else "")
@@ -91,7 +91,7 @@ class Backend(ShoopQQuickItem):
         self.maybe_init()
 
     # TODO: rename
-    backendTypeChanged = Signal(int)
+    backendTypeChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=backendTypeChanged)
     def backend_type(self):
         return (self._driver_type.value if self._driver_type else AudioDriverType.Dummy.value)
@@ -102,7 +102,7 @@ class Backend(ShoopQQuickItem):
         self._driver_type = AudioDriverType(n)
         self.maybe_init()
     
-    xrunsChanged = Signal(int)
+    xrunsChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=xrunsChanged)
     def xruns(self):
         return self._xruns
@@ -112,7 +112,7 @@ class Backend(ShoopQQuickItem):
             self._xruns = n
             self.xrunsChanged.emit(n)
     
-    lastProcessedChanged = Signal(int)
+    lastProcessedChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=lastProcessedChanged)
     def last_processed(self):
         return self._last_processed
@@ -122,7 +122,7 @@ class Backend(ShoopQQuickItem):
             self._last_processed = n
             self.lastProcessedChanged.emit(n)
     
-    dspLoadChanged = Signal(float)
+    dspLoadChanged = ShoopSignal(float)
     @ShoopProperty(float, notify=dspLoadChanged)
     def dsp_load(self):
         return self._dsp_load
@@ -132,7 +132,7 @@ class Backend(ShoopQQuickItem):
             self._dsp_load = n
             self.dspLoadChanged.emit(n)
     
-    driverSettingOverridesChanged = Signal('QVariant')
+    driverSettingOverridesChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=driverSettingOverridesChanged)
     def driver_setting_overrides(self):
         return self._driver_setting_overrides
@@ -183,7 +183,7 @@ class Backend(ShoopQQuickItem):
                 _obj = obj()
                 if not _obj:
                     toRemove.append(obj)
-                else:
+                elif hasattr(_obj, 'updateOnGuiThread'):
                     _obj.updateOnGuiThread()
             for r in toRemove:
                 self._backend_child_objects.remove(r)
@@ -192,7 +192,7 @@ class Backend(ShoopQQuickItem):
         self.updated.emit()
 
     # Update data from the back-end. This function does not run in the GUI thread.
-    @ShoopSlot(thread_protected=False)
+    @ShoopSlot(thread_protection=ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
         self.logger.trace(lambda: f'update on back-end thread (initialized {self._initialized})')
         if not self._initialized:
@@ -268,7 +268,7 @@ class Backend(ShoopQQuickItem):
     def dummy_is_controlled(self):
         self._backend_driver_obj.dummy_is_controlled()
     
-    @ShoopSlot(int, thread_protected=False)
+    @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
     def dummy_request_controlled_frames(self, n):
         self._backend_driver_obj.dummy_request_controlled_frames(n)
         
@@ -276,7 +276,7 @@ class Backend(ShoopQQuickItem):
     def dummy_n_requested_frames(self):
         return self._backend_driver_obj.dummy_n_requested_frames()
     
-    @ShoopSlot(thread_protected = False)
+    @ShoopSlot(thread_protection = False)
     def wait_process(self):
         self._backend_driver_obj.wait_process()
     

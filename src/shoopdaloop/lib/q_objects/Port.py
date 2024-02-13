@@ -46,7 +46,7 @@ class Port(ShoopQQuickItem):
     ######################
 
     # backend
-    backendChanged = Signal(Backend)
+    backendChanged = ShoopSignal(Backend)
     @ShoopProperty(Backend, notify=backendChanged)
     def backend(self):
         return self._backend
@@ -60,13 +60,13 @@ class Port(ShoopQQuickItem):
             self.maybe_initialize()
 
     # initialized
-    initializedChanged = Signal(bool)
+    initializedChanged = ShoopSignal(bool)
     @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
 
     # name hint
-    nameHintChanged = Signal(str)
+    nameHintChanged = ShoopSignal(str)
     @ShoopProperty(str, notify=nameHintChanged)
     def name_hint(self):
         return self._name_hint if self._name_hint != None else ''
@@ -79,7 +79,7 @@ class Port(ShoopQQuickItem):
             self.maybe_initialize()
     
     # direction
-    directionChanged = Signal(int)
+    directionChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=directionChanged)
     def direction(self):
         return self._direction
@@ -92,7 +92,7 @@ class Port(ShoopQQuickItem):
             self.maybe_initialize()
     
     # is_internal
-    isInternalChanged = Signal(bool)
+    isInternalChanged = ShoopSignal(bool)
     @ShoopProperty(bool, notify=isInternalChanged)
     def is_internal(self):
         return (self._is_internal if self._is_internal != None else False)
@@ -105,7 +105,7 @@ class Port(ShoopQQuickItem):
             self.maybe_initialize()
     
     # name
-    nameChanged = Signal(str)
+    nameChanged = ShoopSignal(str)
     @ShoopProperty(str, notify=nameChanged)
     def name(self):
         return self._name
@@ -116,7 +116,7 @@ class Port(ShoopQQuickItem):
             self.nameChanged.emit(s)
 
     # muted
-    mutedChanged = Signal(bool)
+    mutedChanged = ShoopSignal(bool)
     @ShoopProperty(bool, notify=mutedChanged)
     def muted(self):
         return self._muted if self._muted != None else False
@@ -128,7 +128,7 @@ class Port(ShoopQQuickItem):
             self.maybe_initialize()
     
     # passthrough_muted
-    passthroughMutedChanged = Signal(bool)
+    passthroughMutedChanged = ShoopSignal(bool)
     @ShoopProperty(bool, notify=passthroughMutedChanged)
     def passthrough_muted(self):
         return self._passthrough_muted if self._passthrough_muted != None else False
@@ -140,7 +140,7 @@ class Port(ShoopQQuickItem):
             self.passthroughMutedChanged.emit(s)
     
     # passthrough_to : ports to which to passthrough
-    passthroughToChanged = Signal(list)
+    passthroughToChanged = ShoopSignal(list)
     @ShoopProperty(list, notify=passthroughToChanged)
     def passthrough_to(self):
         return self._passthrough_to
@@ -157,7 +157,7 @@ class Port(ShoopQQuickItem):
     ###########
 
     # Update from the back-end.
-    @ShoopSlot(thread_protected = False)
+    @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
         raise Exception('Unimplemented in base class')
     

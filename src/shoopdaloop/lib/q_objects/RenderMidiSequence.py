@@ -23,7 +23,7 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
         self.samplesPerBinChanged.connect(self.update)
         self.notesChanged.connect(self.update)
     
-    messagesChanged = Signal('QVariant')
+    messagesChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=messagesChanged)
     def messages(self):
         return self._messages
@@ -37,12 +37,12 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
         self.messagesChanged.emit(self._messages)
         self.parse()
         
-    notesChanged = Signal('QVariant')
+    notesChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=notesChanged)
     def notes(self):
         return self._notes
 
-    samplesPerBinChanged = Signal(float)
+    samplesPerBinChanged = ShoopSignal(float)
     @ShoopProperty(float, notify=samplesPerBinChanged)
     def samples_per_bin(self):
         return self._samples_per_bin
@@ -52,7 +52,7 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
             self._samples_per_bin = v
             self.samplesPerBinChanged.emit(v)
     
-    samplesOffsetChanged = Signal(int)
+    samplesOffsetChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=samplesOffsetChanged)
     def samples_offset(self):
         return self._samples_offset

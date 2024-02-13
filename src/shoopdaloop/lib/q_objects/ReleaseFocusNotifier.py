@@ -6,7 +6,7 @@ class ReleaseFocusNotifier(ShoopQObject):
     def __init__(self, parent=None):
         super(ReleaseFocusNotifier, self).__init__(parent)
     
-    focusReleased = Signal()
+    focusReleased = ShoopSignal()
 
     @ShoopSlot()
     def notify(self):

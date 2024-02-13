@@ -53,14 +53,14 @@ class JackControlClient(ShoopQQuickItem):
     ######################
     ## SIGNALS
     ######################
-    portRegistered = Signal(str)
-    portUnregistered = Signal(str)
-    portRenamed = Signal(str, str)
+    portRegistered = ShoopSignal(str)
+    portUnregistered = ShoopSignal(str)
+    portRenamed = ShoopSignal(str, str)
 
     # These proxies ensure decoupling through the Qt event loop.
-    portRegisteredProxy = Signal(str)
-    portUnregisteredProxy = Signal(str)
-    portRenamedProxy = Signal(str, str)
+    portRegisteredProxy = ShoopSignal(str)
+    portUnregisteredProxy = ShoopSignal(str)
+    portRenamedProxy = ShoopSignal(str, str)
 
     ######################
     # PROPERTIES

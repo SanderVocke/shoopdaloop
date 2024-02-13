@@ -26,7 +26,7 @@ class AudioPort(Port):
         self._gain = self._new_gain = 1.0
         self.logger = Logger("Frontend.AudioPort")
         self._n_updates_pending = 0
-        self._signal_sender = SingleSignalObject()
+        self._signal_sender = ThreadUnsafeSignalEmitter()
         
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
@@ -35,7 +35,7 @@ class AudioPort(Port):
     ######################
 
     # input_peak
-    inputPeakChanged = Signal(float)
+    inputPeakChanged = ShoopSignal(float)
     @ShoopProperty(float, notify=inputPeakChanged)
     def input_peak(self):
         return self._input_peak
@@ -46,7 +46,7 @@ class AudioPort(Port):
             self.inputPeakChanged.emit(s)
     
     # output_peak
-    outputPeakChanged = Signal(float)
+    outputPeakChanged = ShoopSignal(float)
     @ShoopProperty(float, notify=outputPeakChanged)
     def output_peak(self):
         return self._output_peak
@@ -57,7 +57,7 @@ class AudioPort(Port):
             self.outputPeakChanged.emit(s)
     
     # gain
-    gainChanged = Signal(float)
+    gainChanged = ShoopSignal(float)
     @ShoopProperty(float, notify=gainChanged)
     def gain(self):
         return self._gain
@@ -72,7 +72,7 @@ class AudioPort(Port):
     ###########
 
     # Update from the back-end.
-    @ShoopSlot(thread_protected = False)
+    @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
         self.logger.trace(lambda: f'update on back-end thread (initialized {self._initialized})')
         if not self._initialized:

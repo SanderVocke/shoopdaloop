@@ -65,7 +65,7 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
         self.samplesOffsetChanged.connect(self.update)
         self.samplesPerBinChanged.connect(self.update)
     
-    inputDataChanged = Signal('QVariant')
+    inputDataChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=inputDataChanged)
     def input_data(self):
         return self._input_data
@@ -76,7 +76,7 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
         self._input_data = v
         self.inputDataChanged.emit(self._input_data)
 
-    samplesPerBinChanged = Signal(float)
+    samplesPerBinChanged = ShoopSignal(float)
     @ShoopProperty(float, notify=samplesPerBinChanged)
     def samples_per_bin(self):
         return self._samples_per_bin
@@ -86,7 +86,7 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
             self._samples_per_bin = v
             self.samplesPerBinChanged.emit(v)
     
-    samplesOffsetChanged = Signal(int)
+    samplesOffsetChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=samplesOffsetChanged)
     def samples_offset(self):
         return self._samples_offset

@@ -37,7 +37,7 @@ class FXChain(ShoopQQuickItem):
         if not self._backend:
             self.parentChanged.connect(self.rescan_parents)
         
-        self._signal_sender = SingleSignalObject()
+        self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
     ######################
@@ -45,7 +45,7 @@ class FXChain(ShoopQQuickItem):
     ######################
     
     # backend
-    backendChanged = Signal(Backend)
+    backendChanged = ShoopSignal(Backend)
     @ShoopProperty(Backend, notify=backendChanged)
     def backend(self):
         return self._backend
@@ -58,13 +58,13 @@ class FXChain(ShoopQQuickItem):
             self.maybe_initialize()
     
     # initialized
-    initializedChanged = Signal(bool)
+    initializedChanged = ShoopSignal(bool)
     @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
 
     # ui_visible
-    uiVisibleChanged = Signal(bool)
+    uiVisibleChanged = ShoopSignal(bool)
     @ShoopProperty(bool, notify=uiVisibleChanged)
     def ui_visible(self):
         return self._ui_visible
@@ -77,7 +77,7 @@ class FXChain(ShoopQQuickItem):
             self.initializedChanged.connect(lambda: self._backend_object.set_visible(value))
     
     # title
-    titleChanged = Signal(str)
+    titleChanged = ShoopSignal(str)
     @ShoopProperty(str, notify=titleChanged)
     def title(self):
         return self._title
@@ -88,13 +88,13 @@ class FXChain(ShoopQQuickItem):
             self.titleChanged.emit(l)
     
     # ready
-    readyChanged = Signal(bool)
+    readyChanged = ShoopSignal(bool)
     @ShoopProperty(bool, notify=readyChanged)
     def ready(self):
         return self._ready
     
     # active
-    activeChanged = Signal(bool)
+    activeChanged = ShoopSignal(bool)
     @ShoopProperty(bool, notify=activeChanged)
     def active(self):
         return self._active
@@ -107,7 +107,7 @@ class FXChain(ShoopQQuickItem):
             self.initializedChanged.connect(lambda: self._backend_object.set_active(value))
     
     # chain type
-    chainTypeChanged = Signal(int)
+    chainTypeChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=chainTypeChanged)
     def chain_type(self):
         return (self._chain_type if self._chain_type != None else -1)
@@ -127,7 +127,7 @@ class FXChain(ShoopQQuickItem):
     ###########
 
     # Update mode from the back-end.
-    @ShoopSlot(thread_protected = False)
+    @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
         if not self._initialized:
             return

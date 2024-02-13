@@ -187,7 +187,7 @@ class ControlHandler(ShoopQQuickItem):
     
     lua_constants = generate_loop_mode_constants()
     
-    introspectedQmlInstanceChanged = Signal('QVariant')
+    introspectedQmlInstanceChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=introspectedQmlInstanceChanged)
     def introspected_qml_instance(self):
         return self._introspected_qml_instance
@@ -228,7 +228,7 @@ class ControlHandler(ShoopQQuickItem):
         self._introspected_qml_instance = self._qml_instance
         self.introspectedQmlInstanceChanged.emit(self._qml_instance)
 
-    qml_instance_changed = Signal('QVariant')
+    qml_instance_changed = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=qml_instance_changed)
     def qml_instance(self):
         return self._qml_instance
