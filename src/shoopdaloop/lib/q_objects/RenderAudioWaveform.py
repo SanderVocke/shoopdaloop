@@ -97,7 +97,7 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
             self.samplesOffsetChanged.emit(v)
     
     @ShoopSlot()
-    def preprocess(self):
+    def preprocess(self, *args):
         logger.trace(lambda: 'preprocess')
         self._pyramid.create(self._input_data)
         self.update()

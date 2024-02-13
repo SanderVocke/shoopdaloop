@@ -87,6 +87,7 @@ ShoopTestFile {
                 verify_loop_cleared(loop_at(0,1))
                 verify_loop_cleared(loop_at(1,0))
                 verify_loop_cleared(loop_at(1,1))
+                testcase.wait_updated(session.backend)
             }
 
             function do_eval(code) {

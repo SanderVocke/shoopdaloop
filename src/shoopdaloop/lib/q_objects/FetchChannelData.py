@@ -152,7 +152,7 @@ class FetchChannelData(ShoopQQuickItem):
             self.fetching = False
 
     @ShoopSlot()
-    def maybe_start_fetch(self):
+    def maybe_start_fetch(self, *args):
         if not self.channel or not self.channel.isValid() or not self.dirty or not self.active:
             return
         if not self.channel.initialized:

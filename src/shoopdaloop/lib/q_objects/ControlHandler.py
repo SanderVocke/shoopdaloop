@@ -1,5 +1,5 @@
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, Qt, Q_ARG, Q_RETURN_ARG, QMetaType
+from PySide6.QtCore import QObject, Signal, Property, Slot, Qt, Q_ARG, Q_RETURN_ARG, QMetaType ,QTimer
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtQml import QJSValue
 import inspect
@@ -102,8 +102,6 @@ class ControlHandler(ShoopQQuickItem):
         self.clear_call_cache()
         self._qml_instance = None
         self._methods = dict()
-        self.qml_instance_changed.connect(self.introspect)
-        self.qml_instance_changed.connect(lambda: "CONN QML INSTANCE CHANGED")
         self._introspected_qml_instance = None
         self.introspect()
     
@@ -191,9 +189,10 @@ class ControlHandler(ShoopQQuickItem):
     @ShoopProperty('QVariant', notify=introspectedQmlInstanceChanged)
     def introspected_qml_instance(self):
         return self._introspected_qml_instance
+    
     @ShoopSlot()
     def introspect(self):
-        self.logger.debug(lambda: f"Introspecting QML instance {self} to find overridden interfaces.")
+        self.logger.debug(lambda: f"Introspecting QML instance {self.qml_instance} to find overridden interfaces.")
         if not self._qml_instance:
             self.logger.debug(lambda: f"No QML instance found yet.")
             return
@@ -228,15 +227,17 @@ class ControlHandler(ShoopQQuickItem):
         self._introspected_qml_instance = self._qml_instance
         self.introspectedQmlInstanceChanged.emit(self._qml_instance)
 
-    qml_instance_changed = ShoopSignal('QVariant')
-    @ShoopProperty('QVariant', notify=qml_instance_changed)
+    qmlInstanceChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=qmlInstanceChanged)
     def qml_instance(self):
+        self.logger.debug(lambda: f'getter {self._qml_instance}')
         return self._qml_instance
     @qml_instance.setter
     def qml_instance(self, val):
         if val != self._qml_instance:
+            self.logger.debug(lambda: f'qml_instance -> {val}')
             self._qml_instance = val
-            self.qml_instance_changed.emit(val)
+            self.qmlInstanceChanged.emit(val)
 
     @ShoopSlot(list, 'QVariant', result=int)
     @allow_qml_override
