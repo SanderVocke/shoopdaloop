@@ -29,12 +29,11 @@ Item {
 
     readonly property string obj_id : initial_descriptor.id
 
-    property bool loaded : audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops.loaded
-    property int n_loops_loaded : 0
+    property bool loaded : audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops_loaded
 
     property var incubating_loops: []
-    property bool loops_ready : false
-    property bool track_ready : loops_ready
+    property bool loops_loaded : false
+    property bool track_ready : loops_loaded
     Item {
         width: 0
         height: 0
@@ -46,17 +45,29 @@ Item {
         if (incubating_loops.length == 0) {
             return
         }
+
+        function loop_loaded(incubator) {
+            if(incubator.status == Component.Loading) {
+                return false;
+            }
+            if(incubator.object && incubator.object.loaded == false) {
+                return false;
+            }
+            return true;
+        }
+
         for(var i=0; i<incubating_loops.length; i++) {
-            if (incubating_loops[i].status == Component.Loading) {
-                // Only move them all to the track together.
-                return
+            if (!loop_loaded(incubating_loops[i])) {
+                return;
             }
         }
 
         let new_loops = incubating_loops.filter((l) => l.status == Component.Ready).map((l) => l.object)
-        new_loops.forEach((l) => l.parent = loops_column)
+        new_loops.forEach((l) => {
+            l.parent = loops_column
+        })
         incubating_loops = []
-        root.loops_ready = true
+        root.loops_loaded = true
     }
 
     // The sync loop has its own special track widget,
@@ -131,13 +142,6 @@ Item {
                 if (status == Component.Ready) {
                     let loop = loop_incubator.object
                     loop.track_obj_id = Qt.binding(() => root.obj_id)
-                    if (loop.loaded) {
-                        loop_loaded_changed(loop)
-                    } else {
-                        loop.onLoadedChanged.connect(() => {
-                            loop_loaded_changed(loop)
-                        })
-                    }
                     checkIncubatingLoops()
                 }
             }
@@ -270,11 +274,9 @@ Item {
     property alias control_widget: lookup_control_widget.object
 
     Component.onCompleted: {
-        loaded = false
         if (initial_descriptor && initial_descriptor.width != undefined) {
             setWidth(initial_descriptor.width)
         }
-        var _n_loops_loaded = 0
         // Instantiate initial loops
         root.loop_descriptors.forEach((desc, idx) => {
             root.add_loop({
@@ -284,15 +286,6 @@ Item {
                 maybe_fx_chain: Qt.binding( () => root.maybe_fx_chain )
             });
         })
-        loaded = Qt.binding(() => { return n_loops_loaded >= num_slots })
-    }
-
-    function loop_loaded_changed(loop) {
-        if(loop.loaded) {
-            n_loops_loaded = n_loops_loaded + 1;
-        } else {
-            n_loops_loaded = n_loops_loaded - 1;
-        }
     }
 
     function add_default_loop() {

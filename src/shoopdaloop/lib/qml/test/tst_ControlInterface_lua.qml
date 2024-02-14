@@ -45,7 +45,7 @@ ShoopTestFile {
             name: 'ControlInterface'
             filename : TestFilename.test_filename()
             session: session
-            when: lua_engine.ready && registries.state_registry && loop_at(0,0) && loop_at(0,1) && loop_at(1,0) && loop_at(1,1)
+            additional_when_condition: lua_engine.ready && registries.state_registry && loop_at(0,0) && loop_at(0,1) && loop_at(1,0) && loop_at(1,1)
 
             function loop_at(track, idx) {
                 if (track == -1) { return session.sync_track.loops[idx] }
