@@ -131,12 +131,13 @@ ShoopTestFile {
                 c.input_gain_dB = 0.0
                 c.monitor = false
                 c.mute = false
+                testcase.wait_updated(session.backend)
             }
 
             function reset_loop(loopwidget) {
                 loopwidget.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                testcase.wait_updated(session.backend)
                 loopwidget.clear(0)
-                session.backend.wait_process()
             }
 
             function reset() {
@@ -144,6 +145,7 @@ ShoopTestFile {
                 reset_track(session.main_tracks[0])
                 reset_loop(lut)
                 session.backend.wait_process()
+                testcase.wait_updated(session.backend)
             }
 
             function synthed_value_for(midi_msg) {
@@ -168,7 +170,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    
+                    session.backend.wait_process()
                     testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
@@ -234,6 +236,7 @@ ShoopTestFile {
 
                     midi_input_port.dummy_clear_queues()
 
+                    testcase.wait_updated(session.backend)
                     verify_true(fx.active)
                     verify_approx(dry1, expect_dry)
                     verify_approx(dry2, expect_dry)

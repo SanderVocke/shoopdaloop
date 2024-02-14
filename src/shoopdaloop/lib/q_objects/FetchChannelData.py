@@ -38,8 +38,8 @@ class FetchChannelData(ShoopQQuickItem):
     ######################
 
     # channel
-    channelChanged = Signal('QVariant')
-    @Property('QVariant', notify=channelChanged)
+    channelChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=channelChanged)
     def channel(self):
         return self._channel
     @channel.setter
@@ -66,8 +66,8 @@ class FetchChannelData(ShoopQQuickItem):
     # channel_data
     # set automatically. Will hold the most recently
     # fetched data.
-    channelDataChanged = Signal('QVariant')
-    @Property('QVariant', notify=channelDataChanged)
+    channelDataChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=channelDataChanged)
     def channel_data(self):
         return self._data
     @channel_data.setter
@@ -81,8 +81,8 @@ class FetchChannelData(ShoopQQuickItem):
     # the incoming dirty status of the back-end.
     # if active == true, when the data turns dirty a
     # new fetch is started.
-    dirtyChanged = Signal(bool)
-    @Property(bool, notify=dirtyChanged)
+    dirtyChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=dirtyChanged)
     def dirty(self):
         return self._dirty
     @dirty.setter
@@ -94,8 +94,8 @@ class FetchChannelData(ShoopQQuickItem):
     
     # active
     # if active is false, data will never be fetched.
-    activeChanged = Signal(bool)
-    @Property(bool, notify=activeChanged)
+    activeChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=activeChanged)
     def active(self):
         return self._active
     @active.setter
@@ -108,8 +108,8 @@ class FetchChannelData(ShoopQQuickItem):
     # fetching
     # set automatically. Indicates whether data is
     # currently being fetched.
-    fetchingChanged = Signal(bool)
-    @Property(bool, notify=fetchingChanged)
+    fetchingChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=fetchingChanged)
     def fetching(self):
         return self._fetching
     @fetching.setter
@@ -122,8 +122,8 @@ class FetchChannelData(ShoopQQuickItem):
     # if the data was a list of floats, this provides
     # a QImage of 8192 elems wide, ARGB32 format,
     # where each pixel holds the float in 32-bit integer range.
-    dataAsQImageChanged = Signal('QVariant')
-    @Property('QVariant', notify=dataAsQImageChanged)
+    dataAsQImageChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=dataAsQImageChanged)
     def data_as_qimage(self):
         return self._data_as_qimage
     @data_as_qimage.setter
@@ -136,23 +136,23 @@ class FetchChannelData(ShoopQQuickItem):
     # INTERNAL FUNCTIONS
     ######################
 
-    @Slot(bool)
+    @ShoopSlot(bool)
     def set_dirty(self, dirty):
         self.dirty = dirty
         
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def set_loop(self, loop):
         self.loop = loop
 
-    @Slot('QVariant', int)
+    @ShoopSlot('QVariant', int)
     def fetch_finished(self, data, seq_nr):
         if seq_nr == self._active_request_seq_nr:
             self.channel_data = data
             self._active_request_seq_nr = None
             self.fetching = False
 
-    @Slot()
-    def maybe_start_fetch(self):
+    @ShoopSlot()
+    def maybe_start_fetch(self, *args):
         if not self.channel or not self.channel.isValid() or not self.dirty or not self.active:
             return
         if not self.channel.initialized:

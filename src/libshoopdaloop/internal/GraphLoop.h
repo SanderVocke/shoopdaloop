@@ -8,8 +8,7 @@ class AudioMidiLoop;
 class GraphLoopChannel;
 class BackendSession;
 
-class GraphLoop : public std::enable_shared_from_this<GraphLoop>,
-                      public HasGraphNode {
+class GraphLoop : public HasGraphNode {
 public:
 
     const std::shared_ptr<AudioMidiLoop> loop = nullptr;

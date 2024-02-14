@@ -3,8 +3,7 @@
 #include <memory>
 #include "shoop_globals.h"
 #include "GraphNode.h"
-class GraphFXChain : public std::enable_shared_from_this<GraphFXChain>,
-                         public HasGraphNode {
+class GraphFXChain:  public HasGraphNode {
 public:
     const std::shared_ptr<shoop_types::FXChain> chain = nullptr;
     std::weak_ptr<BackendSession> backend;

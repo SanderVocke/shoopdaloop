@@ -43,8 +43,8 @@ Item {
 
     property PythonLogger logger: PythonLogger { name: "Frontend.Qml.TrackControlLogic" }
 
-    onMute_drywet_input_passthroughChanged: logger.debug(() => ("mute fx in monitor: " + mute_drywet_input_passthrough))
-    onMute_drywet_output_passthroughChanged: logger.debug(() => ("mute fx out monitor: " + mute_drywet_output_passthrough))
+    onMute_drywet_input_passthroughChanged: logger.debug(() => ("mute drywet in passthrough: " + mute_drywet_input_passthrough))
+    onMute_drywet_output_passthroughChanged: logger.debug(() => ("mute drywet fx out passthrough: " + mute_drywet_output_passthrough))
     onMute_direct_passthroughChanged: logger.debug(() => ("mute monitor: " + mute_direct_passthrough))
     onEnable_fxChanged: logger.debug(() => ("enable fx: " + enable_fx))
     onForce_monitoring_offChanged: logger.debug(() => ("force monitoring off: " + force_monitoring_off))

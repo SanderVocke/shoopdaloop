@@ -12,13 +12,13 @@ class QoverageFileCollector(ShoopQObject):
         self.filename = filename
         self.lines_data = inital_lines_data
     
-    @Slot(list)
+    @ShoopSlot(list)
     def trace(self, lines):
         for line in lines:
             if self.lines_data[line] != None:
                 self.lines_data[line] += 1
     
-    @Slot()
+    @ShoopSlot()
     def report(self):
         self.logger.info(lambda: 
             '<QOVERAGERESULT file="{}">{}</QOVERAGERESULT>'.format(
@@ -34,7 +34,7 @@ class QoverageCollectorFactory(ShoopQObject):
         self.logger.debug(lambda: "Initialized")
         self.file_collectors = {}
     
-    @Slot(str, list, result='QVariant')
+    @ShoopSlot(str, list, result='QVariant')
     def create_file_collector(self, filename, initial_lines_data):
         # When running QML unit tests, the same qml files will get re-loaded and the same
         # collectors re-requested. Ensure we pass back the existing collectors such that

@@ -87,6 +87,7 @@ Item {
         }
         return rval
     }
+
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         var have_data_files = initial_descriptor.channels ? initial_descriptor.channels.map(c => {
             let r = ('data_file' in c)
@@ -1714,7 +1715,7 @@ Item {
             readonly property int n_channels : channels_to_load.length
             property int n_file_channels : 0
             property int file_sample_rate : 0
-            property int backend_sample_rate : root.maybe_backend_loop ? root.maybe_backend_loop.backend.get_sample_rate() : 0
+            property int backend_sample_rate : root.maybe_backend_loop && root.maybe_backend_loop.backend ? root.maybe_backend_loop.backend.get_sample_rate() : 0
             property bool will_resample : file_sample_rate != backend_sample_rate
 
             width: 300

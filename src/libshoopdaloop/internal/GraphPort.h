@@ -9,8 +9,7 @@
 #include "GraphNode.h"
 #include "PortInterface.h"
 
-class GraphPort : public std::enable_shared_from_this<GraphPort>,
-                      public HasTwoGraphNodes,
+class GraphPort :     public HasTwoGraphNodes,
                       protected ModuleLoggingEnabled<"Backend.GraphPort"> {
 public:
     

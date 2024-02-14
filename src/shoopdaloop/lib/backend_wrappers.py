@@ -180,9 +180,9 @@ class AudioPortState:
 
     def __init__(self, backend_state : 'bindings.shoop_audio_port_state_info_t' = None):
         if backend_state:
-            self.input_peak = backend_state.input_peak
-            self.output_peak = backend_state.output_peak
-            self.gain = backend_state.gain
+            self.input_peak = float(backend_state.input_peak)
+            self.output_peak = float(backend_state.output_peak)
+            self.gain = float(backend_state.gain)
             self.muted = bool(backend_state.muted)
             self.passthrough_muted = bool(backend_state.passthrough_muted)
             self.name = str(backend_state.name)

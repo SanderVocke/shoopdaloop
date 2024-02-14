@@ -9,7 +9,7 @@ import sys
 
 from .ShoopPyObject import *
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt
 from PySide6.QtQuick import QQuickItem
 
 from .Backend import Backend
@@ -28,9 +28,9 @@ class Port(ShoopQQuickItem):
         self._backend = None
         self._passthrough_to = []
         self._passthrough_connected_to = []
-        self._name = ''
-        self._muted = None
-        self._passthrough_muted = None
+        self._name = self._new_name = ''
+        self._muted = self._new_muted = None
+        self._passthrough_muted = self._new_passthrough_muted = None
         self._is_internal = None
         self._ever_initialized = False
         self.__logger = Logger("Frontend.Port")
@@ -46,8 +46,8 @@ class Port(ShoopQQuickItem):
     ######################
 
     # backend
-    backendChanged = Signal(Backend)
-    @Property(Backend, notify=backendChanged)
+    backendChanged = ShoopSignal(Backend)
+    @ShoopProperty(Backend, notify=backendChanged)
     def backend(self):
         return self._backend
     @backend.setter
@@ -60,14 +60,14 @@ class Port(ShoopQQuickItem):
             self.maybe_initialize()
 
     # initialized
-    initializedChanged = Signal(bool)
-    @Property(bool, notify=initializedChanged)
+    initializedChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
 
     # name hint
-    nameHintChanged = Signal(str)
-    @Property(str, notify=nameHintChanged)
+    nameHintChanged = ShoopSignal(str)
+    @ShoopProperty(str, notify=nameHintChanged)
     def name_hint(self):
         return self._name_hint if self._name_hint != None else ''
     @name_hint.setter
@@ -79,8 +79,8 @@ class Port(ShoopQQuickItem):
             self.maybe_initialize()
     
     # direction
-    directionChanged = Signal(int)
-    @Property(int, notify=directionChanged)
+    directionChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=directionChanged)
     def direction(self):
         return self._direction
     @direction.setter
@@ -92,8 +92,8 @@ class Port(ShoopQQuickItem):
             self.maybe_initialize()
     
     # is_internal
-    isInternalChanged = Signal(bool)
-    @Property(bool, notify=isInternalChanged)
+    isInternalChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=isInternalChanged)
     def is_internal(self):
         return (self._is_internal if self._is_internal != None else False)
     @is_internal.setter
@@ -105,8 +105,8 @@ class Port(ShoopQQuickItem):
             self.maybe_initialize()
     
     # name
-    nameChanged = Signal(str)
-    @Property(str, notify=nameChanged)
+    nameChanged = ShoopSignal(str)
+    @ShoopProperty(str, notify=nameChanged)
     def name(self):
         return self._name
     @name.setter
@@ -116,8 +116,8 @@ class Port(ShoopQQuickItem):
             self.nameChanged.emit(s)
 
     # muted
-    mutedChanged = Signal(bool)
-    @Property(bool, notify=mutedChanged)
+    mutedChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=mutedChanged)
     def muted(self):
         return self._muted if self._muted != None else False
     @muted.setter
@@ -128,8 +128,8 @@ class Port(ShoopQQuickItem):
             self.maybe_initialize()
     
     # passthrough_muted
-    passthroughMutedChanged = Signal(bool)
-    @Property(bool, notify=passthroughMutedChanged)
+    passthroughMutedChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=passthroughMutedChanged)
     def passthrough_muted(self):
         return self._passthrough_muted if self._passthrough_muted != None else False
     @passthrough_muted.setter
@@ -140,8 +140,8 @@ class Port(ShoopQQuickItem):
             self.passthroughMutedChanged.emit(s)
     
     # passthrough_to : ports to which to passthrough
-    passthroughToChanged = Signal(list)
-    @Property(list, notify=passthroughToChanged)
+    passthroughToChanged = ShoopSignal(list)
+    @ShoopProperty(list, notify=passthroughToChanged)
     def passthrough_to(self):
         return self._passthrough_to
     @passthrough_to.setter
@@ -156,17 +156,22 @@ class Port(ShoopQQuickItem):
     ## SLOTS
     ###########
 
-    # Update mode from the back-end.
-    @Slot()
-    def update(self):
+    # Update from the back-end.
+    @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
+    def updateOnOtherThread(self):
+        raise Exception('Unimplemented in base class')
+    
+    # Update GUI thread.
+    @ShoopSlot()
+    def updateOnGuiThread(self):
         raise Exception('Unimplemented in base class')
     
     # Get the wrapped back-end object.
-    @Slot(result='QVariant')
+    @ShoopSlot(result='QVariant')
     def get_backend_obj(self):
         return self._backend_obj
     
-    @Slot()
+    @ShoopSlot()
     def close(self):
         if self._backend_obj:
             self.__logger.debug(lambda: "{}: Closing port {}".format(self, self._name))
@@ -177,13 +182,13 @@ class Port(ShoopQQuickItem):
             self._initialized = False
             self.initializedChanged.emit(False)
     
-    @Slot()
+    @ShoopSlot()
     def rescan_parents(self):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
         if maybe_backend:
             self.backend = maybe_backend
     
-    @Slot(bool)
+    @ShoopSlot(bool)
     def set_muted(self, muted):
         if self._backend_obj:
             self._backend_obj.set_muted(muted)
@@ -191,7 +196,7 @@ class Port(ShoopQQuickItem):
             self.muted = muted
             self.maybe_initialize()
     
-    @Slot(bool)
+    @ShoopSlot(bool)
     def set_passthrough_muted(self, muted):
         if self._backend_obj:
             self._backend_obj.set_passthrough_muted(muted)
@@ -199,7 +204,7 @@ class Port(ShoopQQuickItem):
             self.passthrough_muted = muted
             self.maybe_initialize()
     
-    @Slot()
+    @ShoopSlot()
     def maybe_initialize(self):
         self.__logger.trace(lambda: 'maybe_initialize {}'.format(self._name_hint))
         if (not self._backend_obj) and \
@@ -220,33 +225,33 @@ class Port(ShoopQQuickItem):
                 self.initializedChanged.emit(True)
                 self._ever_initialized = True
 
-    @Slot(str)
+    @ShoopSlot(str)
     def connect_external_port(self, name):
         if self._backend_obj:
             self._backend_obj.connect_external_port(name)
         else:
             self.__logger.warning("Attempted to connect uninitialized port {}".format(self._name_hint))
     
-    @Slot(str)
+    @ShoopSlot(str)
     def disconnect_external_port(self, name):
         if self._backend_obj:
             self._backend_obj.disconnect_external_port(name)
         else:
             self.__logger.warning("Attempted to disconnect uninitialized port {}".format(self._name_hint))
 
-    @Slot(result='QVariant')
+    @ShoopSlot(result='QVariant')
     def get_connections_state(self):
         if self._backend_obj:
             return (self._backend_obj.get_connections_state() if self._backend_obj else dict())
         else:
             return dict()
 
-    @Slot(result=list)
+    @ShoopSlot(result=list)
     def get_connected_external_ports(self):
         state = self.get_connections_state()
         return [k for k in state.keys() if state[k]]
     
-    @Slot(list)
+    @ShoopSlot(list)
     def try_make_connections(self, port_names):
         if not self.initialized:
             return

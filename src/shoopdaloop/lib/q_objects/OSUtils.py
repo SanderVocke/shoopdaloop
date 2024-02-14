@@ -19,18 +19,18 @@ class OSUtils(ShoopQObject):
     ## SLOTS
     ###########
 
-    @Slot(str, result='QVariant')
+    @ShoopSlot(str, result='QVariant')
     def get_env(self, varname):
         return os.environ.get(varname, None)
     
-    @Slot()
+    @ShoopSlot()
     def test_segfault(self):
         test_segfault()
     
-    @Slot()
+    @ShoopSlot()
     def test_exception(self):
         test_exception()
     
-    @Slot()
+    @ShoopSlot()
     def test_abort(self):
         test_abort()

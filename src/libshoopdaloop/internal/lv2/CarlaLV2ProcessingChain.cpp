@@ -12,6 +12,7 @@
 #include <nlohmann/json.hpp>
 #include <base64.hpp>
 #include "LoadDynamicLibrary.h"
+#include "types.h"
 namespace carla_constants {
     constexpr uint32_t max_buffer_size = 8192;
     constexpr uint32_t min_buffer_size = 1;
@@ -425,38 +426,47 @@ bool CarlaLV2ProcessingChain<TimeType, SizeType>::visible() const {
 
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::show() {
-    if (!is_ready()) {
+    if (!is_ready() || m_busy_making_visible) {
+        log<log_level_debug>("Not ready or already starting to show.");
         return;
     }
 
-    if (!m_ui_widget) {
-        maybe_cleanup_ui();
-        LV2_Feature instance_access_feature{
-            .URI = LV2_INSTANCE_ACCESS_URI,
-            .data = (void *)lilv_instance_get_handle(m_instance)};
-        LV2_Feature external_ui_host_feature{.URI = LV2_EXTERNAL_UI__Host,
-                                             .data = (void *)&m_ui_host};
-        LV2UI_Widget ui_widget;
-        const char *ui_bundle_path =
-            lilv_node_get_path(lilv_ui_get_bundle_uri(m_ui), nullptr);
-        const LV2_Feature *const ui_features[] = {
-            &instance_access_feature, &external_ui_host_feature, nullptr};
-        m_ui_handle = m_ui_descriptor->instantiate(
-            m_ui_descriptor, m_plugin_uri.c_str(), ui_bundle_path,
-            (LV2UI_Write_Function)static_ui_write_fn, (LV2UI_Controller)this,
-            &ui_widget, ui_features);
-        m_ui_widget = (LV2_External_UI_Widget *)ui_widget;
-        if (!m_ui_widget) {
-            throw std::runtime_error("Could not instantiate Carla UI.");
-        }
+    log<log_level_debug>("Showing Carla UI.");
 
+    m_busy_making_visible = true;
+    if (!m_ui_widget) {
         // Create and start UI thread
         // (also join the old UI thread if still alive)
         if (m_ui_thread.joinable()) {
-            std::cout << "join!\n";
+            log<log_level_debug>("Waiting for UI thread to join.");
             m_ui_thread.join();
+            log<log_level_debug>("Joined UI thread.");
         }
         m_ui_thread = std::thread([this]() {
+            log<log_level_debug>("UI thread started.");
+            maybe_cleanup_ui();
+            LV2_Feature instance_access_feature{
+                .URI = LV2_INSTANCE_ACCESS_URI,
+                .data = (void *)lilv_instance_get_handle(m_instance)};
+            LV2_Feature external_ui_host_feature{.URI = LV2_EXTERNAL_UI__Host,
+                                                .data = (void *)&m_ui_host};
+            LV2UI_Widget ui_widget;
+            const char *ui_bundle_path =
+                lilv_node_get_path(lilv_ui_get_bundle_uri(m_ui), nullptr);
+            const LV2_Feature *const ui_features[] = {
+                &instance_access_feature, &external_ui_host_feature, nullptr};
+            m_ui_handle = m_ui_descriptor->instantiate(
+                m_ui_descriptor, m_plugin_uri.c_str(), ui_bundle_path,
+                (LV2UI_Write_Function)static_ui_write_fn, (LV2UI_Controller)this,
+                &ui_widget, ui_features);
+            m_ui_widget = (LV2_External_UI_Widget *)ui_widget;
+            if (!m_ui_widget) {
+                throw std::runtime_error("Could not instantiate Carla UI.");
+            }
+            m_ui_widget->show(m_ui_widget);
+            m_visible = true;
+            m_busy_making_visible = false;
+            log<log_level_debug>("UI thread reached update loop.");
             while (true) {
                 auto t = std::chrono::high_resolution_clock::now();
                 {
@@ -473,22 +483,27 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::show() {
             }
         });
     }
-    m_ui_widget->show(m_ui_widget);
-    m_visible = true;
 }
 
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::hide() {
-    std::cout << "Hide!\n";
+    log<log_level_debug>("Hiding Carla UI.");
     if (m_ui_widget) {
         m_ui_widget->hide(m_ui_widget);
     }
+    maybe_cleanup_ui();
+    if (m_ui_thread.joinable()) {
+        log<log_level_debug>("Waiting for UI thread to join.");
+        m_ui_thread.join();
+        log<log_level_debug>("Joined UI thread.");
+    }
+    m_busy_making_visible = false;
     m_visible = false;
 }
 
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::stop() {
-    std::cout << "Carla instance stopping." << std::endl;
+    log<log_level_debug>("Stopping Carla.");
     maybe_cleanup_ui();
     if (m_ui_thread.joinable()) {
         m_ui_thread.join();

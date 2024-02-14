@@ -21,6 +21,14 @@ public:
         }
     }
 
+    template<shoop_log_level_t Level>
+    bool should_log() const {
+        if constexpr (Level>=LevelFilter) {
+            return logging::should_log<Name, Level>();
+        }
+        return false;
+    }
+
     template<typename Exception, typename First, typename... Args>
     void throw_error(fmt::format_string<First, Args...>&& fmt, First && first, Args &&... args) const
     {

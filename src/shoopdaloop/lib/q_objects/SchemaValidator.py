@@ -21,7 +21,7 @@ class SchemaValidator(ShoopQObject):
     ###########
 
     # Validate a schema. Throws if wrong.
-    @Slot('QVariant', str)
+    @ShoopSlot('QVariant', str)
     def validate_schema(self, obj, schemaname):
         _obj = obj
         if isinstance(obj, QJSValue):

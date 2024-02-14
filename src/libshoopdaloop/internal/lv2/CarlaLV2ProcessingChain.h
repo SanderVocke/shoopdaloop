@@ -106,6 +106,7 @@ private:
     std::string m_unique_name = "";
     std::atomic<bool> m_active = false;
     std::atomic<bool> m_state_restore_active = false;
+    std::atomic<bool> m_busy_making_visible = false;
     std::shared_ptr<profiling::ProfilingItem> m_maybe_profiling_item = nullptr;
 
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;

@@ -22,11 +22,11 @@ class ClickTrackGenerator(ShoopQObject):
         'shaker_secondary': script_dir + '/../../resources/shaker_secondary.wav'
     }
 
-    @Slot(result=list)
+    @ShoopSlot(result=list)
     def get_possible_clicks(self):
         return list(self.clicks.keys())
 
-    @Slot(list, int, int, int, result=str)
+    @ShoopSlot(list, int, int, int, result=str)
     def generate_audio(self, click_names, bpm, n_beats, alt_click_delay_percent):
         click_filenames = [self.clicks[name] for name in click_names]
         out = tempfile.mkstemp()[1]
@@ -34,7 +34,7 @@ class ClickTrackGenerator(ShoopQObject):
         gen_click_track_audio(click_filenames, out, bpm, n_beats, alt_click_delay_percent)
         return out
 
-    @Slot(list, list, list, float, int, int, int, result=str)
+    @ShoopSlot(list, list, list, float, int, int, int, result=str)
     def generate_midi(self, notes, channels, velocities, note_length, bpm, n_beats, alt_click_delay_percent):
         smf_data = gen_click_track_midi_smf(notes, channels, velocities, note_length, bpm, n_beats, alt_click_delay_percent)
         out = tempfile.mkstemp(suffix='.smf')[1]
@@ -43,7 +43,7 @@ class ClickTrackGenerator(ShoopQObject):
             f.write(json.dumps(smf_data, indent=2))
         return out
 
-    @Slot(str)
+    @ShoopSlot(str)
     def preview(self, wav_filename):
         play_wav(wav_filename)
 

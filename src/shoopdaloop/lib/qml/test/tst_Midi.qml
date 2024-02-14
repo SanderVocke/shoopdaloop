@@ -79,6 +79,7 @@ ShoopTestFile {
 
             function reset_loop(loopwidget) {
                 loopwidget.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                testcase.wait_updated(session.backend)
                 loopwidget.clear(0)
                 session.backend.wait_process()
             }
@@ -120,6 +121,7 @@ ShoopTestFile {
 
                     // Data should now be in channel. Switch to playback.
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
 
                     midi_output_port.dummy_request_data(6)
 
@@ -146,6 +148,7 @@ ShoopTestFile {
                     // Set sync loop so that it will trigger in 2 frames from now
                     syncloop.set_length(4)
                     syncloop.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.wait_process()
 
@@ -171,6 +174,7 @@ ShoopTestFile {
 
                     // Data should now be in channel. Switch to playback.
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
 
                     midi_output_port.dummy_request_data(4)
 

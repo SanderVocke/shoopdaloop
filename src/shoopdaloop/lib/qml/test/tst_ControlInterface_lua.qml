@@ -27,7 +27,7 @@ ShoopTestFile {
             id: lua_engine
             ready: false
             function update() {
-                if (session.control_interface) {
+                if (session.control_interface && session.control_interface.ready) {
                     create_lua_qobject_interface_as_global('__shoop_control_interface', session.control_interface)
                     ready = true
                 }
@@ -45,7 +45,7 @@ ShoopTestFile {
             name: 'ControlInterface'
             filename : TestFilename.test_filename()
             session: session
-            when: lua_engine.ready && registries.state_registry && loop_at(0,0) && loop_at(0,1) && loop_at(1,0) && loop_at(1,1)
+            additional_when_condition: lua_engine.ready && registries.state_registry && loop_at(0,0) && loop_at(0,1) && loop_at(1,0) && loop_at(1,1)
 
             function loop_at(track, idx) {
                 if (track == -1) { return session.sync_track.loops[idx] }
@@ -69,14 +69,17 @@ ShoopTestFile {
             }
 
             function clear() {
+                testcase.wait_updated(session.backend)
                 loop_at(0,0).create_backend_loop()
                 loop_at(0,1).create_backend_loop()
                 loop_at(1,0).create_backend_loop()
                 loop_at(1,1).create_backend_loop()
+                testcase.wait_updated(session.backend)
                 loop_at(0,0).clear()
                 loop_at(0,1).clear()
                 loop_at(1,0).clear()
                 loop_at(1,1).clear()
+                testcase.wait_updated(session.backend)
                 registries.state_registry.replace('sync_active', false)
                 loop_at(0,0).deselect()
                 loop_at(0,1).deselect()
@@ -87,6 +90,7 @@ ShoopTestFile {
                 verify_loop_cleared(loop_at(0,1))
                 verify_loop_cleared(loop_at(1,0))
                 verify_loop_cleared(loop_at(1,1))
+                testcase.wait_updated(session.backend)
             }
 
             function do_eval(code) {
@@ -257,21 +261,11 @@ ShoopTestFile {
 
                 // TODO: harder to test because this requires loops to
                 // trigger each other
-                // 'test_loop_record_n': () => {
-                //         check_backend()
-                //         clear()
-                //         verify(false)
-                //     })
-                // }
+                // 'test_loop_record_n'
 
                 // TODO: harder to test because this requires loops to
                 // trigger each other
-                // 'test_loop_record_with_targeted': () => {
-                //         check_backend()
-                //         clear()
-                //         verify(false)
-                //     })
-                // }
+                // 'test_loop_record_with_targeted'
 
                 'test_loop_select': () => {
                     check_backend()

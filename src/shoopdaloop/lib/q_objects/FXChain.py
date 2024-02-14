@@ -6,7 +6,7 @@ import json
 from typing import *
 import sys
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt
 from PySide6.QtQuick import QQuickItem
 
 from .ShoopPyObject import *
@@ -22,27 +22,31 @@ from ..logging import Logger
 class FXChain(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(FXChain, self).__init__(parent)
-        self._active = True
-        self._ready = False
-        self._ui_visible = False
+        self._active = self._new_active = True
+        self._ready = self._new_ready = False
+        self._ui_visible = self._new_ui_visible = False
         self._initialized = False
         self._backend = None
         self._backend_object = None
-        self._chain_type = None
-        self._title = ""
+        self._chain_type = self._new_chain_type = None
+        self._title = self._new_title = ""
+        self._n_pending_updates = 0
         self.logger = Logger('Frontend.FXChain')
 
         self.rescan_parents()
         if not self._backend:
             self.parentChanged.connect(self.rescan_parents)
+        
+        self._signal_sender = ThreadUnsafeSignalEmitter()
+        self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
     ######################
     # PROPERTIES
     ######################
     
     # backend
-    backendChanged = Signal(Backend)
-    @Property(Backend, notify=backendChanged)
+    backendChanged = ShoopSignal(Backend)
+    @ShoopProperty(Backend, notify=backendChanged)
     def backend(self):
         return self._backend
     @backend.setter
@@ -54,18 +58,18 @@ class FXChain(ShoopQQuickItem):
             self.maybe_initialize()
     
     # initialized
-    initializedChanged = Signal(bool)
-    @Property(bool, notify=initializedChanged)
+    initializedChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
 
     # ui_visible
-    uiVisibleChanged = Signal(bool)
-    @Property(bool, notify=uiVisibleChanged)
+    uiVisibleChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=uiVisibleChanged)
     def ui_visible(self):
         return self._ui_visible
     # Indirect setter via back-end
-    @Slot(bool)
+    @ShoopSlot(bool)
     def set_ui_visible(self, value):
         if self._backend_object:
             self._backend_object.set_visible(value)
@@ -73,8 +77,8 @@ class FXChain(ShoopQQuickItem):
             self.initializedChanged.connect(lambda: self._backend_object.set_visible(value))
     
     # title
-    titleChanged = Signal(str)
-    @Property(str, notify=titleChanged)
+    titleChanged = ShoopSignal(str)
+    @ShoopProperty(str, notify=titleChanged)
     def title(self):
         return self._title
     @title.setter
@@ -84,18 +88,18 @@ class FXChain(ShoopQQuickItem):
             self.titleChanged.emit(l)
     
     # ready
-    readyChanged = Signal(bool)
-    @Property(bool, notify=readyChanged)
+    readyChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=readyChanged)
     def ready(self):
         return self._ready
     
     # active
-    activeChanged = Signal(bool)
-    @Property(bool, notify=activeChanged)
+    activeChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=activeChanged)
     def active(self):
         return self._active
     # Indirect setter via back-end
-    @Slot(bool)
+    @ShoopSlot(bool)
     def set_active(self, value):
         if self._backend_object:
             self._backend_object.set_active(value)
@@ -103,8 +107,8 @@ class FXChain(ShoopQQuickItem):
             self.initializedChanged.connect(lambda: self._backend_object.set_active(value))
     
     # chain type
-    chainTypeChanged = Signal(int)
-    @Property(int, notify=chainTypeChanged)
+    chainTypeChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=chainTypeChanged)
     def chain_type(self):
         return (self._chain_type if self._chain_type != None else -1)
     @chain_type.setter
@@ -123,19 +127,36 @@ class FXChain(ShoopQQuickItem):
     ###########
 
     # Update mode from the back-end.
-    @Slot()
-    def update(self):
-        if not self.initialized:
+    @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
+    def updateOnOtherThread(self):
+        if not self._initialized:
+            return
+
+        state = self._backend_object.get_state()
+        self._new_ready = state.ready
+        self._new_ui_visible = state.visible
+        self._new_active = state.active
+        self._n_pending_updates += 1
+        
+        self._signal_sender.do_emit()
+    
+    # Update on GUI thread
+    @ShoopSlot()
+    def updateOnGuiThread(self):
+        if not self._initialized or not self.isValid():
+            return
+        if self._n_pending_updates == 0:
             return
         
         prev_active = self._active
         prev_ready = self._ready
         prev_ui_visible = self._ui_visible
 
-        state = self._backend_object.get_state()
-        self._ready = state.ready
-        self._ui_visible = state.visible
-        self._active = state.active
+        self._ready = self._new_ready
+        self._ui_visible = self._new_ui_visible
+        self._active = self._new_active
+
+        self._n_pending_updates = 0
 
         if prev_ready != self._ready:
             self.logger.debug(lambda: f'ready -> {self._ready}')
@@ -147,31 +168,31 @@ class FXChain(ShoopQQuickItem):
             self.logger.debug(lambda: f'active -> {self._active}')
             self.activeChanged.emit(self._active)
     
-    @Slot()
+    @ShoopSlot()
     def rescan_parents(self):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
         if maybe_backend:
             self.backend = maybe_backend
     
-    @Slot(result='QVariant')
+    @ShoopSlot(result='QVariant')
     def get_backend(self):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend'))
         if maybe_backend:
             return maybe_backend
         self.logger.throw_error("Could not find backend!")
     
-    @Slot(result='QVariant')
+    @ShoopSlot(result='QVariant')
     def get_backend_obj(self):
         return self._backend_object
     
-    @Slot(result="QVariant")
+    @ShoopSlot(result="QVariant")
     def get_state_str(self):
         if self._backend_object:
             rval = self._backend_object.get_state_str()
             return rval
         self.logger.throw_error("Getting internal state of uninitialized FX chain")
     
-    @Slot(str)
+    @ShoopSlot(str)
     def restore_state(self, state_str):
         if self._backend_object:
             self._backend_object.restore_state(state_str)
@@ -189,7 +210,7 @@ class FXChain(ShoopQQuickItem):
                 self._backend.registerBackendObject(self)
                 self.initializedChanged.emit(True)
     
-    @Slot()
+    @ShoopSlot()
     def close(self):
         if self._backend:
             self._backend.unregisterBackendObject(self)

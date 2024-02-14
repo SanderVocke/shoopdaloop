@@ -53,14 +53,14 @@ class JackControlClient(ShoopQQuickItem):
     ######################
     ## SIGNALS
     ######################
-    portRegistered = Signal(str)
-    portUnregistered = Signal(str)
-    portRenamed = Signal(str, str)
+    portRegistered = ShoopSignal(str)
+    portUnregistered = ShoopSignal(str)
+    portRenamed = ShoopSignal(str, str)
 
     # These proxies ensure decoupling through the Qt event loop.
-    portRegisteredProxy = Signal(str)
-    portUnregisteredProxy = Signal(str)
-    portRenamedProxy = Signal(str, str)
+    portRegisteredProxy = ShoopSignal(str)
+    portUnregisteredProxy = ShoopSignal(str)
+    portRenamedProxy = ShoopSignal(str, str)
 
     ######################
     # PROPERTIES
@@ -70,29 +70,29 @@ class JackControlClient(ShoopQQuickItem):
     ## SLOTS
     ###########
 
-    @Slot(str, str)
+    @ShoopSlot(str, str)
     def connect_ports(self, port_from, port_to):
         self.logger.debug(lambda: "Connecting {} to {}".format(port_from, port_to))
         jack.connect(self._client, port_from, port_to)
     
-    @Slot(str, str)
+    @ShoopSlot(str, str)
     def disconnect_ports(self, port_from, port_to):
         self.logger.debug(lambda: "Disconnecting {} from {}".format(port_from, port_to))
         jack.disconnect(self._client, port_from, port_to)
         
-    @Slot('QVariant', 'QVariant', int, result=list)
+    @ShoopSlot('QVariant', 'QVariant', int, result=list)
     def find_ports(self, maybe_name_regex=None, maybe_type_regex=None, flags=0):
         ports = c_char_p_p_to_list(jack.get_ports(self._client, maybe_name_regex, maybe_type_regex, flags))
         return ports
     
-    @Slot(str, result=bool)
+    @ShoopSlot(str, result=bool)
     def port_is_mine(self, port_name):
         port = jack.port_by_name(self._client, port_name)
         if port:
             return bool(jack.port_is_mine(self._client, port))
         return False
 
-    @Slot(str, result=list)
+    @ShoopSlot(str, result=list)
     def all_port_connections(self, port_name):
         port = jack.port_by_name(self._client, port_name)
         if port:

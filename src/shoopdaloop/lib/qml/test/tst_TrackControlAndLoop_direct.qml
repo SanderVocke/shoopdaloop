@@ -113,6 +113,7 @@ ShoopTestFile {
 
             function reset_loop(loopwidget) {
                 loopwidget.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                testcase.wait_updated(session.backend)
                 loopwidget.clear(0)
                 session.backend.wait_process()
             }

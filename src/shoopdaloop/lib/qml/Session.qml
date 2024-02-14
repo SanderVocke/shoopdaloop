@@ -346,6 +346,7 @@ Rectangle {
     }
 
     LuaScriptManager {
+        // Only connect to the control interface when it is ready
         control_interface: control_interface
 
         RegisterInRegistry {
@@ -392,8 +393,8 @@ Rectangle {
         focus: true
         id: session_focus_item
 
-        Keys.onPressed: (event) => control_interface.key_pressed(event.key, event.modifiers)
-        Keys.onReleased: (event) => control_interface.key_released(event.key, event.modifiers)
+        Keys.onPressed: (event) => control_interface && control_interface.key_pressed(event.key, event.modifiers)
+        Keys.onReleased: (event) => control_interface && control_interface.key_released(event.key, event.modifiers)
 
         property var focusItem : Window.activeFocusItem
         onFocusItemChanged: {

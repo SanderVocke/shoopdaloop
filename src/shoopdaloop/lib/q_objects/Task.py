@@ -9,8 +9,8 @@ class Task(ShoopQObject):
         self._anything_to_do = True
 
     # anything_to_do
-    anythingToDoChanged = Signal(bool)
-    @Property(bool, notify=anythingToDoChanged)
+    anythingToDoChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=anythingToDoChanged)
     def anything_to_do(self):
         return self._anything_to_do
     @anything_to_do.setter
@@ -19,11 +19,11 @@ class Task(ShoopQObject):
             self._anything_to_do = s
             self.anythingToDoChanged.emit(s)
     
-    @Slot()
+    @ShoopSlot()
     def done(self):
         self.anything_to_do = False
 
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def when_finished(self, fn):
         def exec_fn():
             if callable(fn):

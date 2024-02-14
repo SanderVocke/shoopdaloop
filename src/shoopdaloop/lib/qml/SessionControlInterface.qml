@@ -6,7 +6,8 @@ import '../midi.js' as Midi
 
 LuaControlInterface {
     id: root
-    qml_instance: this
+    qml_instance: root
+
     property var session: null
 
     property PythonLogger logger : PythonLogger { name: "Frontend.Qml.SessionControlInterface" }

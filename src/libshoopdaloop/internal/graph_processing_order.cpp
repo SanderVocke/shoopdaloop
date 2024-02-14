@@ -94,12 +94,13 @@ std::vector<std::set<GraphNode*>> graph_processing_order(std::set<GraphNode *> n
         // Now we have all our processing steps. TODO: order them in priority order.
 
         // Schedule the eligible nodes.
-        std::vector<AnnotatedGraphNode*> nodes_to_schedule(no_incoming.begin(), no_incoming.end());
-        // First, order the to-be-scheduled nodes by name for determinism.
+        // We sort them by name too, but we need to store the names beforehand.
+        std::vector<std::pair<AnnotatedGraphNode*, std::string>> nodes_to_schedule;
+        nodes_to_schedule.reserve(no_incoming.size());
         auto compare_names = [](std::string a, std::string b) {
             return a < b;
         };
-        auto reduce_set = [&](std::set<GraphNode*>& s) {
+        auto reduce_to_name = [compare_names](std::set<GraphNode*>& s) {
             auto &node = *(*s.begin());
             auto result = node.graph_node_name();
             for(auto &g: s) {
@@ -109,17 +110,15 @@ std::vector<std::set<GraphNode*>> graph_processing_order(std::set<GraphNode *> n
             }
             return result;
         };
-        auto compare_sets = [&](std::set<GraphNode*>& a, std::set<GraphNode*>& b) {
-            return reduce_set(a) < reduce_set(b);
-        };
-        auto compare_annotated_nodes = [&](AnnotatedGraphNode* a, AnnotatedGraphNode* b) {
-            return compare_sets(a->m_nodes, b->m_nodes);
-        };
-        std::sort(nodes_to_schedule.begin(), nodes_to_schedule.end(), compare_annotated_nodes);
+        for(auto &n : no_incoming) {
+            nodes_to_schedule.push_back(std::make_pair(n, reduce_to_name(n->m_nodes)));
+        }
+        
+        std::sort(nodes_to_schedule.begin(), nodes_to_schedule.end(), [](auto &a, auto &b) {return a.second < b.second;});
 
         for(auto &n: nodes_to_schedule) {
-            scheduled.push_back(n);
-            unscheduled.erase(n);
+            scheduled.push_back(n.first);
+            unscheduled.erase(n.first);
         }
 
         // Remove the scheduled nodes from the unscheduled nodes' incoming edges.

@@ -417,7 +417,7 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
 
     auto process = [&](uint32_t n_samples) {
         std::set<std::shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
-        process_loops<AudioMidiLoop>(loops.begin(), loops.end(), n_samples);
+        process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
     };
 
     sync_source->set_length(100);

@@ -6,7 +6,7 @@ import json
 from typing import *
 import sys
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt
 from PySide6.QtQuick import QQuickItem
 
 from .ShoopPyObject import *
@@ -21,18 +21,22 @@ from ..logging import Logger
 class AudioPort(Port):
     def __init__(self, parent=None):
         super(AudioPort, self).__init__(parent)
-        self._input_peak = 0.0
-        self._output_peak = 0.0
-        self._gain = 1.0
+        self._input_peak = self._new_input_peak = 0.0
+        self._output_peak = self._new_output_peak = 0.0
+        self._gain = self._new_gain = 1.0
         self.logger = Logger("Frontend.AudioPort")
+        self._n_updates_pending = 0
+        self._signal_sender = ThreadUnsafeSignalEmitter()
+        
+        self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
     ######################
     # PROPERTIES
     ######################
 
     # input_peak
-    inputPeakChanged = Signal(float)
-    @Property(float, notify=inputPeakChanged)
+    inputPeakChanged = ShoopSignal(float)
+    @ShoopProperty(float, notify=inputPeakChanged)
     def input_peak(self):
         return self._input_peak
     @input_peak.setter
@@ -42,8 +46,8 @@ class AudioPort(Port):
             self.inputPeakChanged.emit(s)
     
     # output_peak
-    outputPeakChanged = Signal(float)
-    @Property(float, notify=outputPeakChanged)
+    outputPeakChanged = ShoopSignal(float)
+    @ShoopProperty(float, notify=outputPeakChanged)
     def output_peak(self):
         return self._output_peak
     @output_peak.setter
@@ -53,8 +57,8 @@ class AudioPort(Port):
             self.outputPeakChanged.emit(s)
     
     # gain
-    gainChanged = Signal(float)
-    @Property(float, notify=gainChanged)
+    gainChanged = ShoopSignal(float)
+    @ShoopProperty(float, notify=gainChanged)
     def gain(self):
         return self._gain
     @gain.setter
@@ -67,33 +71,53 @@ class AudioPort(Port):
     ## SLOTS
     ###########
 
-    # Update mode from the back-end.
-    @Slot()
-    def update(self):
-        if not self.initialized:
+    # Update from the back-end.
+    @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
+    def updateOnOtherThread(self):
+        self.logger.trace(lambda: f'update on back-end thread (initialized {self._initialized})')
+        if not self._initialized:
             return
         state = self._backend_obj.get_state()
-        self.input_peak = state.input_peak
-        self.output_peak = state.output_peak
-        self.name = state.name
-        self.gain = state.gain
-        self.muted = state.muted
-        self.passthrough_muted = state.passthrough_muted
+        self._new_input_peak = state.input_peak
+        self._new_output_peak = state.output_peak
+        self._new_name = state.name
+        self._new_gain = state.gain
+        self._new_muted = state.muted
+        self._new_passthrough_muted = state.passthrough_muted
+        self._n_updates_pending += 1
+
+        self._signal_sender.do_emit()
     
-    @Slot(float)
+    # Update the GUI thread.
+    @ShoopSlot()
+    def updateOnGuiThread(self):
+        self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
+        if not self._initialized or not self.isValid():
+            return
+        if self._n_updates_pending == 0:
+            return
+        self.input_peak = self._new_input_peak
+        self.output_peak = self._new_output_peak
+        self.name = self._new_name
+        self.gain = self._new_gain
+        self.muted = self._new_muted
+        self.passthrough_muted = self._new_passthrough_muted
+        self._n_updates_pending = 0
+    
+    @ShoopSlot(float)
     def set_gain(self, gain):
         if self._backend_obj:
             self._backend_obj.set_gain(gain)
     
-    @Slot(list)
+    @ShoopSlot(list)
     def dummy_queue_data(self, data):
         self._backend_obj.dummy_queue_data(data)
     
-    @Slot(int, result=list)
+    @ShoopSlot(int, result=list)
     def dummy_dequeue_data(self, n):
         return self._backend_obj.dummy_dequeue_data(n)
     
-    @Slot(int)
+    @ShoopSlot(int)
     def dummy_request_data(self, n):
         self._backend_obj.dummy_request_data(n)
 
