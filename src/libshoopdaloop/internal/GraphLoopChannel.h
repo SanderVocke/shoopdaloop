@@ -5,8 +5,7 @@
 #include "shoop_globals.h"
 #include "GraphNode.h"
 #include "LoggingEnabled.h"
-class GraphLoopChannel : public std::enable_shared_from_this<GraphLoopChannel>,
-                         public HasTwoGraphNodes,
+class GraphLoopChannel:  public HasTwoGraphNodes,
                          protected ModuleLoggingEnabled<"Backend.GraphLoopChannel"> {
 public:
     std::shared_ptr<ChannelInterface> channel = nullptr;

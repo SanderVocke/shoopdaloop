@@ -20,7 +20,7 @@ private:
     struct Buffers;
 
     // Members which may be accessed from any thread (ma prefix)
-    std::shared_ptr<BufferPool> ma_buffer_pool;
+    std::shared_ptr<BufferPool> ma_buffer_pool = nullptr;
     const uint32_t ma_buffer_size;
     std::atomic<int> ma_start_offset = 0;
     std::atomic<uint32_t> ma_pre_play_samples = 0;

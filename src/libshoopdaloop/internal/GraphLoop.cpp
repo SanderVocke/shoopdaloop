@@ -3,6 +3,7 @@
 #include "AudioMidiLoop.h"
 #include "BackendSession.h"
 #include "GraphNode.h"
+#include "LoopInterface.h"
 #include "process_loops.h"
 #include <memory>
 #include <fmt/format.h>
@@ -77,21 +78,24 @@ BackendSession &GraphLoop::get_backend() {
 }
 
 void GraphLoop::graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes, uint32_t nframes) {
-    process_loops<GraphNode>(
+    process_loops<std::set<std::shared_ptr<GraphNode>>::iterator>(
         nodes.begin(), nodes.end(), nframes,
-        [](GraphNode& node) {
-            auto rval = graph_node_parent_as<GraphLoop, HasGraphNode>(node).loop.get();
-            return rval;
+        [](std::set<std::shared_ptr<GraphNode>>::iterator &node_it) -> LoopInterface* {
+            std::shared_ptr<GraphLoop> l = graph_node_parent_as<GraphLoop, HasGraphNode>(**node_it);
+            if (l) {
+                return l->loop.get();
+            }
+            return nullptr;
         });
 }
 
 void GraphLoop::graph_node_process(uint32_t nframes) {
     std::array<std::shared_ptr<GraphLoop>, 1> loops;
-    loops[0] = shared_from_this();
-    process_loops<GraphLoop>(
+    loops[0] = static_pointer_cast<GraphLoop>(shared_from_this());
+    process_loops<std::shared_ptr<GraphLoop>*>(
         loops.begin(), loops.end(), nframes,
-        [](GraphLoop& node) {
-            return node.loop.get();
+        [](std::shared_ptr<GraphLoop>* &node) -> LoopInterface* {
+            return (*node)->loop.get();
         });
 }
 

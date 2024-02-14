@@ -102,7 +102,7 @@ BackendSession::BackendSession() :
           m_recalculate_graph_thread(std::make_unique<RecalculateGraphThread>(*this))
 {
     audio_buffer_pool = std::make_shared<ObjectPool<AudioBuffer<shoop_types::audio_sample_t>>>(
-        n_buffers_in_pool, audio_buffer_size);
+        "Session audio buffer pool", n_buffers_in_pool, audio_buffer_size);
     loops.reserve(initial_max_loops);
     ports.reserve(initial_max_ports);
     fx_chains.reserve(initial_max_fx_chains);
