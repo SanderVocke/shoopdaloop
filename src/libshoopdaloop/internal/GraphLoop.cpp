@@ -94,7 +94,7 @@ void GraphLoop::graph_node_process(uint32_t nframes) {
     loops[0] = static_pointer_cast<GraphLoop>(shared_from_this());
     process_loops<decltype(loops)::iterator>(
         loops.begin(), loops.end(), nframes,
-        [](std::shared_ptr<GraphLoop>* &node) -> LoopInterface* {
+        [](decltype(loops)::iterator &node) -> LoopInterface* {
             return (*node)->loop.get();
         });
 }
