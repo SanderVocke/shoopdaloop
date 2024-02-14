@@ -35,7 +35,7 @@ Item {
         }
         return false
     }
-    
+        
     property bool mute : {
         // Initial setting
         var ports = initial_track_descriptor.ports
@@ -104,7 +104,7 @@ Item {
         let modes = root.loops.map(l => l.mode)
         return Array.from(new Set(modes))
     }
-    readonly property var unique_next_cycle_loop_modes : {
+        readonly property var unique_next_cycle_loop_modes : {
         let modes = root.loops.map(l => {
             if (l.next_transition_delay == 1) { return l.next_mode; }
             else { return undefined }
