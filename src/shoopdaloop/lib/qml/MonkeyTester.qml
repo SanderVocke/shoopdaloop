@@ -12,8 +12,8 @@ Item {
     property var tracks: session ? session.main_tracks : []
 
     property var default_actions_distribution: ({
-        'add_track': 1.0,
-        'remove_track': 1.0,
+        'add_track': 0.6,
+        'remove_track': 0.6,
         'add_loop': 1.0,
         'loop_action': 4.0,
     })
@@ -98,7 +98,7 @@ Item {
 
     function action_possible(action) {
         if (action == 'add_track') { return root.tracks.length < 5 }
-        else if (action == 'add_loop') { return root.tracks.length > 0 }
+        else if (action == 'add_loop') { return root.tracks.some((t) => t.track_ready && t.loops.length > 0) }
         else if (action == 'remove_track') { return root.tracks.length > 3 }
         else if (action == 'loop_action') { return root.tracks.length > 0 }
         return false;
@@ -113,6 +113,7 @@ Item {
     function action() {
         try {
             let sync_loop = session.sync_track.loops[0]
+            if (!sync_loop) { return }
             if (sync_loop.length == 0) {
                 sync_loop.set_length(24000)
             }
@@ -189,13 +190,13 @@ Item {
     }
 
     function add_loop() {
-        let track = pick_random_from_list(root.tracks)
+        let track = pick_random_from_list(root.tracks, (t) => t.track_ready && t.loops.length > 0)
         root.logger.debug(`--> add to ${track.name}`)
         track.add_default_loop()   
     }
 
     function remove_track() {
-        let track = pick_random_from_list(root.tracks)
+        let track = pick_random_from_list(root.tracks, (t) => t.track_ready)
         root.logger.debug(`--> delete ${track.name}`)
         track.requestDelete()
     }

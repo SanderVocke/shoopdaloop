@@ -32,6 +32,33 @@ Item {
     property bool loaded : audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops.loaded
     property int n_loops_loaded : 0
 
+    property var incubating_loops: []
+    property bool loops_ready : false
+    property bool track_ready : loops_ready
+    Item {
+        width: 0
+        height: 0
+        visible: false
+        id: incubating_loops_parent
+    }
+
+    function checkIncubatingLoops() {
+        if (incubating_loops.length == 0) {
+            return
+        }
+        for(var i=0; i<incubating_loops.length; i++) {
+            if (incubating_loops[i].status == Component.Loading) {
+                // Only move them all to the track together.
+                return
+            }
+        }
+
+        let new_loops = incubating_loops.filter((l) => l.status == Component.Ready).map((l) => l.object)
+        new_loops.forEach((l) => l.parent = loops_column)
+        incubating_loops = []
+        root.loops_ready = true
+    }
+
     // The sync loop has its own special track widget,
     // which is mostly the same but more limited.
     property bool sync_loop_layout: false
@@ -98,12 +125,24 @@ Item {
         } else if (loop_factory.status != Component.Ready) {
             throw new Error("TrackWidget: Loop factory not ready")
         } else {
-            var loop = loop_factory.createObject(loops_column, properties);
-            loop.onLoadedChanged.connect(() => {
-                loop_loaded_changed(loop)
-            })
-            loop.track_obj_id = Qt.binding(() => root.obj_id)
-            return loop
+            var loop_incubator = loop_factory.incubateObject(incubating_loops_parent, properties);
+            incubating_loops.push(loop_incubator)
+            function on_status(status) {
+                if (status == Component.Ready) {
+                    let loop = loop_incubator.object
+                    loop.track_obj_id = Qt.binding(() => root.obj_id)
+                    if (loop.loaded) {
+                        loop_loaded_changed(loop)
+                    } else {
+                        loop.onLoadedChanged.connect(() => {
+                            loop_loaded_changed(loop)
+                        })
+                    }
+                    checkIncubatingLoops()
+                }
+            }
+            loop_incubator.onStatusChanged = on_status
+            checkIncubatingLoops()
         }
     }
 
@@ -238,15 +277,13 @@ Item {
         var _n_loops_loaded = 0
         // Instantiate initial loops
         root.loop_descriptors.forEach((desc, idx) => {
-            var loop = root.add_loop({
+            root.add_loop({
                 initial_descriptor: desc,
                 track_idx: Qt.binding( () => root.track_idx ),
                 all_loops_in_track: Qt.binding( () => root.loops ),
                 maybe_fx_chain: Qt.binding( () => root.maybe_fx_chain )
             });
-            if (loop.loaded) { _n_loops_loaded += 1 }
         })
-        n_loops_loaded = _n_loops_loaded
         loaded = Qt.binding(() => { return n_loops_loaded >= num_slots })
     }
 
@@ -260,8 +297,12 @@ Item {
 
     function add_default_loop() {
         // Descriptor is automatically determined from the previous loop...
-        var prev_loop = root.loops[root.loops.length - 1]
-        var prev_desc = prev_loop.initial_descriptor
+        var prev_desc
+        for(var i=root.loops.length; i>=0; i--) {
+            let l = root.loops[i]
+            let desc = l && l.initial_descriptor ? l.initial_descriptor : undefined
+            if (desc) { prev_desc = desc; break; }
+        }
         // ...id
         var prev_id = prev_desc.id
         var id_parts = prev_id.split("_")
@@ -362,6 +403,17 @@ Item {
     }
 
     Item {
+        anchors.fill: parent
+
+        BusyIndicator {
+            anchors.centerIn: parent
+            running: true
+            visible: !root.track_ready
+        }
+    }
+
+    Item {
+        visible: root.track_ready
         property int x_spacing: 8
         property int y_spacing: 4
 
