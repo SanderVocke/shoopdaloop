@@ -94,7 +94,7 @@ std::vector<std::set<GraphNode*>> graph_processing_order(std::set<GraphNode *> n
         // Now we have all our processing steps. TODO: order them in priority order.
 
         // Schedule the eligible nodes.
-        //std::vector<AnnotatedGraphNode*> nodes_to_schedule(no_incoming.begin(), no_incoming.end());
+        std::vector<AnnotatedGraphNode*> nodes_to_schedule(no_incoming.begin(), no_incoming.end());
         // First, order the to-be-scheduled nodes by name for determinism.
         auto compare_names = [](std::string a, std::string b) {
             return a < b;
@@ -115,9 +115,9 @@ std::vector<std::set<GraphNode*>> graph_processing_order(std::set<GraphNode *> n
         auto compare_annotated_nodes = [compare_sets](AnnotatedGraphNode* a, AnnotatedGraphNode* b) {
             return compare_sets(a->m_nodes, b->m_nodes);
         };
-        //std::sort(nodes_to_schedule.begin(), nodes_to_schedule.end(), compare_annotated_nodes);
+        std::sort(nodes_to_schedule.begin(), nodes_to_schedule.end(), compare_annotated_nodes);
 
-        for(auto &n: no_incoming) {
+        for(auto &n: nodes_to_schedule) {
             scheduled.push_back(n);
             unscheduled.erase(n);
         }
