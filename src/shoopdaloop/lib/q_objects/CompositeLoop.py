@@ -215,7 +215,7 @@ class CompositeLoop(ShoopQQuickItem):
     lengthChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
     lengthChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
     @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
-    def update_length(self):
+    def update_length(self, *args):
         self.logger.trace(lambda: 'updating length')
         v = self._sync_length * self._n_cycles
         if v != self._length:
@@ -253,7 +253,7 @@ class CompositeLoop(ShoopQQuickItem):
             self.update_position()
     
     @ShoopSlot()
-    def update_sync_position(self):
+    def update_sync_position(self, *args):
         self.logger.trace(lambda: 'updating sync position synchronously')
         v = 0
         if self.sync_loop:
@@ -282,7 +282,7 @@ class CompositeLoop(ShoopQQuickItem):
             self.update_position()
     
     @ShoopSlot()
-    def update_sync_length(self):
+    def update_sync_length(self, *args):
         self.logger.trace(lambda: 'updating sync length synchronously')
         v = 0
         if self.sync_loop:
@@ -301,7 +301,7 @@ class CompositeLoop(ShoopQQuickItem):
     positionChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
     positionChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
     @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
-    def update_position(self):
+    def update_position(self, *args):
         self.logger.trace(lambda: 'updating position')
         v = max(0, self._iteration) * self._sync_length
         if is_running_mode(self.mode):
