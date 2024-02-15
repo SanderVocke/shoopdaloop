@@ -16,3 +16,7 @@ portaudio
 
 # scripting stuff
 procps-ng
+
+# for coverage analysis
+lcov
+gcc
