@@ -57,9 +57,9 @@ Item {
         if (channels.length != 2) { throw new Error("Could not find stereo channels") }
         return Stereo.balance(channels[0].gain, channels[1].gain)
     }
-    readonly property bool has_audio: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
+    readonly property bool descriptor_has_audio: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
         (initial_descriptor.channels.filter(c => c.type == "audio").length > 0) : false
-    readonly property bool has_midi: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
+    readonly property bool descriptor_has_midi: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
         (initial_descriptor.channels.filter(c => c.type == "midi").length > 0) : false
 
     readonly property string object_schema : 'loop.1'
@@ -1161,7 +1161,7 @@ Item {
                 // Display the gain dial always
                 AudioDial {
                     id: gain_dial
-                    visible: root.has_audio
+                    visible: root.descriptor_has_audio && !root.maybe_composite_loop
                     anchors.fill: parent
                     from: -30.0
                     to:   20.0
@@ -1233,7 +1233,7 @@ Item {
                     y: 0
 
                     AudioDial {
-                        visible: root.has_audio
+                        visible: root.descriptor_has_audio && !root.maybe_composite_loop
                         id: balance_dial
                         from: -1.0
                         to:   1.0
@@ -1448,8 +1448,8 @@ Item {
             x: (parent.width-width) / 2
             y: (parent.height-height) / 2
 
-            audio_enabled: root.has_audio
-            midi_enabled: root.has_midi
+            audio_enabled: root.descriptor_has_audio
+            midi_enabled: root.descriptor_has_midi
 
             onAcceptedClickTrack: (kind, filename) => {
                 if (kind == 'audio') {
@@ -1511,16 +1511,16 @@ Item {
             ShoopMenuItem {
                 text: "Save audio..."
                 onClicked: presavedialog.open()
-                shown: root.has_audio
+                shown: root.descriptor_has_audio
             }
             ShoopMenuItem {
                 text: "Load audio..."
                 onClicked: loaddialog.open()
-                shown: root.has_audio
+                shown: root.descriptor_has_audio
             }
             ShoopMenuItem {
                 text: "Load MIDI..."
-                shown: root.has_midi
+                shown: root.descriptor_has_midi
                 onClicked: {
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to load"); }
@@ -1531,7 +1531,7 @@ Item {
             }
             ShoopMenuItem {
                 text: "Save MIDI..."
-                shown: root.has_midi
+                shown: root.descriptor_has_midi
                 onClicked: {
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to save"); }
