@@ -67,6 +67,7 @@ jobs:
             build_type: 'Debug'
             cmake_opts: '"ENABLE_COVERAGE" = "On"'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+            coverage: true
           # - name: windows_release
           #   os: windows-2022
           #   python: python.exe
@@ -175,6 +176,13 @@ jobs:
       with:
         name: debuginfo_${{ matrix.kind.name }}
         path: debuginfo
+    - name: Upload info context for coverage analysis
+      if: ${{ matrix.kind.coverage }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage_context
+        path: |
+          ./**/*.gcda
     # - name: TMate failure session
     #   if: ${{ failure() }}
     #   uses: SanderVocke/action-tmate@master
@@ -231,13 +239,13 @@ jobs:
             qpa_platform: vnc
             coverage: true
             # run_cmd_prefix: >-
-            #   BASEDIR=$SHOOP_SRC_DIR
+            #   BASEDIR=$(pwd)
             #   EXCLUDE=third_party,qt6,boost,c++
             #   REPORTDIR=coverage_reports
             #   REPORTNAME=test_runner
-            #   BUILDDIR=${{ steps.build.outputs.build_dir }}
+            #   BUILDDIR=$(realpath build/cp*/)
             #   DO_GENHTML=0
-            #   ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
+            #   scripts/run_and_generate_coverage.sh
           # - name: release_macos11
           #   python: python3
           #   pip: python3 -m pip
@@ -374,6 +382,7 @@ jobs:
         python_command: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
         macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
+        tee_all_output_to: test-qml-console-output.log
     - name: Generate QML Python coverage report
       if: ${{ matrix.kind.coverage }}
       run: |
@@ -384,6 +393,7 @@ jobs:
       with:
         strip: ".*/pip/shoopdaloop"
         package_path: ${{ steps.install.outputs.install_dir }}
+        console_output_file: test-qml-console-output.log
     - name: Screenshots
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_screenshots
