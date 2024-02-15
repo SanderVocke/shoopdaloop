@@ -18,6 +18,8 @@ from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from .Logger import Logger
 
+import traceback
+
 # Wraps a back-end loop.
 class Loop(ShoopQQuickItem):
     # Other signals
@@ -42,14 +44,14 @@ class Loop(ShoopQQuickItem):
         self.logger.name = "Frontend.Loop"
         self._pending_transitions = []
 
-        self.modeChangedUnsafe.connect(self.modeChanged, Qt.AutoConnection)
-        self.nextModeChangedUnsafe.connect(self.nextModeChanged, Qt.AutoConnection)
-        self.lengthChangedUnsafe.connect(self.lengthChanged, Qt.AutoConnection)
-        self.positionChangedUnsafe.connect(self.positionChanged, Qt.AutoConnection)
-        self.nextTransitionDelayChangedUnsafe.connect(self.nextTransitionDelayChanged, Qt.AutoConnection)
-        self.displayPeaksChangedUnsafe.connect(self.displayPeaksChanged, Qt.AutoConnection)
-        self.displayMidiNotesActiveChangedUnsafe.connect(self.displayMidiNotesActiveChanged, Qt.AutoConnection)
-        self.displayMidiEventsTriggeredChangedUnsafe.connect(self.displayMidiEventsTriggeredChanged, Qt.AutoConnection)
+        self.modeChangedUnsafe.connect(self.modeChanged, Qt.QueuedConnection)
+        self.nextModeChangedUnsafe.connect(self.nextModeChanged, Qt.QueuedConnection)
+        self.lengthChangedUnsafe.connect(self.lengthChanged, Qt.QueuedConnection)
+        self.positionChangedUnsafe.connect(self.positionChanged, Qt.QueuedConnection)
+        self.nextTransitionDelayChangedUnsafe.connect(self.nextTransitionDelayChanged, Qt.QueuedConnection)
+        self.displayPeaksChangedUnsafe.connect(self.displayPeaksChanged, Qt.QueuedConnection)
+        self.displayMidiNotesActiveChangedUnsafe.connect(self.displayMidiNotesActiveChanged, Qt.QueuedConnection)
+        self.displayMidiEventsTriggeredChangedUnsafe.connect(self.displayMidiEventsTriggeredChanged, Qt.QueuedConnection)
 
         self.cycledUnsafe.connect(self.cycled, Qt.QueuedConnection)
 
