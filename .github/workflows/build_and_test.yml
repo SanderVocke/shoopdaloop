@@ -378,12 +378,12 @@ jobs:
         pytest_command: ${{ matrix.kind.pytest }}
         python_coverage: ${{ matrix.kind.coverage }}
     - name: Generate Pytest Python coverage report
-      if: ${{ matrix.kind.coverage }}
+      if: ${{ (success() || failure()) && matrix.kind.coverage }}
       run: |
         ${{ matrix.kind.python }} -m coverage xml -i -o coverage_reports/pytest.xml
         sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest.xml
     - name: Test QML
-      if: ${{ (success() || failure()) && !matrix.kind.skip_qml }}
+      if: ${{ success() || failure() }}
       uses: ./.github/actions/test_qml
       timeout-minutes: 20
       with:
@@ -395,11 +395,12 @@ jobs:
         macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
         tee_all_output_to: test-qml-console-output.log
     - name: Generate QML Python coverage report
-      if: ${{ matrix.kind.coverage }}
+      if: ${{ (success() || failure()) && matrix.kind.coverage }}
       run: |
         ${{ matrix.kind.python }} -m coverage xml -i -o coverage_reports/qml.xml
         sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml.xml
     - name: Qoverage - Generate report
+      if: ${{ (success() || failure()) && matrix.kind.coverage }}
       uses: ./.github/actions/qoverage_generate_report
       with:
         strip: ".*/pip/shoopdaloop"
@@ -441,7 +442,7 @@ jobs:
   #       files: coverage_reports/test_runner.info
   #       verbose: true
     - name: Upload Pytest coverage to CodeCov
-      if: ${{ !env.ACT }}
+      if: ${{ (success() || failure()) && matrix.kind.coverage }}
       uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
@@ -450,7 +451,7 @@ jobs:
         files: coverage_reports/pytest.xml
         verbose: true
     - name: Upload QML test coverage to CodeCov
-      if: ${{ !env.ACT }}
+      if: ${{ (success() || failure()) && matrix.kind.coverage }}
       uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
