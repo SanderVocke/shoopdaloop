@@ -50,15 +50,15 @@ class CompositeLoop(ShoopQQuickItem):
 
         self.cycledUnsafe.connect(self.cycled, Qt.QueuedConnection)
         
-        self.scheduleChangedUnsafe.connect(self.update_n_cycles, Qt.AutoConnection)
+        self.scheduleChangedUnsafe.connect(self.update_n_cycles, Qt.DirectConnection)
         self.syncLoopChanged.connect(self.update_sync_position, Qt.AutoConnection)
         self.syncLoopChanged.connect(self.update_sync_length, Qt.AutoConnection)
-        self.nCyclesChangedUnsafe.connect(self.update_length, Qt.AutoConnection)
-        self.syncLengthChangedUnsafe.connect(self.update_length, Qt.AutoConnection)
-        self.iterationChangedUnsafe.connect(self.update_position, Qt.AutoConnection)
-        self.syncLengthChangedUnsafe.connect(self.update_position, Qt.AutoConnection)
-        self.modeChangedUnsafe.connect(self.update_position, Qt.AutoConnection)
-        self.syncPositionChangedUnsafe.connect(self.update_position, Qt.AutoConnection)
+        self.nCyclesChangedUnsafe.connect(self.update_length, Qt.DirectConnection)
+        self.syncLengthChangedUnsafe.connect(self.update_length, Qt.DirectConnection)
+        self.iterationChangedUnsafe.connect(self.update_position, Qt.DirectConnection)
+        self.syncLengthChangedUnsafe.connect(self.update_position, Qt.DirectConnection)
+        self.modeChangedUnsafe.connect(self.update_position, Qt.DirectConnection)
+        self.syncPositionChangedUnsafe.connect(self.update_position, Qt.DirectConnection)
 
         def rescan_on_parent_changed():
             if not self._backend:
@@ -123,10 +123,13 @@ class CompositeLoop(ShoopQQuickItem):
             self._sync_loop = val
             if val:
                 if hasattr(val, 'positionChangedUnsafe'):
-                    val.positionChangedUnsafe.connect(self.update_sync_position, Qt.DirectConnection)
-                    val.lengthChangedUnsafe.connect(self.update_sync_length, Qt.DirectConnection)
+                    self.logger.debug(lambda: 'connecting to sync loop (back-end thread)')
+                    val.positionChangedUnsafe.connect(self.update_sync_position_with_value, Qt.DirectConnection)
+                    val.lengthChangedUnsafe.connect(self.update_sync_length_with_value, Qt.DirectConnection)
                     val.cycledUnsafe.connect(self.handle_sync_loop_trigger, Qt.DirectConnection)
+                    val.cycledUnsafe.emit()
                 else:
+                    self.logger.warning(lambda: 'connecting to sync loop on GUI thread')
                     val.positionChanged.connect(self.update_sync_position, Qt.AutoConnection)
                     val.lengthChanged.connect(self.update_sync_length, Qt.AutoConnection)
                     val.cycled.connect(self.handle_sync_loop_trigger, Qt.AutoConnection)
@@ -216,7 +219,7 @@ class CompositeLoop(ShoopQQuickItem):
     # length
     lengthChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
     lengthChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
-    ShoopSlot()
+    ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def update_length(self):
         v = self.sync_length * self.n_cycles
         if v != self._length:
@@ -243,8 +246,18 @@ class CompositeLoop(ShoopQQuickItem):
     # sync_position
     syncPositionChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
     syncPositionChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
+    
+    ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
+    def update_sync_position_with_value(self, v):
+        self.logger.trace(lambda: 'updating sync position with value from signal')
+        if v != self._sync_position:
+            self.logger.trace(lambda: f'sync_position -> {v}')
+            self._sync_position = v
+            self.syncPositionChangedUnsafe.emit(v)
+    
     ShoopSlot()
     def update_sync_position(self):
+        self.logger.trace(lambda: 'updating sync position synchronously')
         v = 0
         if self.sync_loop:
             v = self.sync_loop.property('position')
@@ -259,8 +272,18 @@ class CompositeLoop(ShoopQQuickItem):
     # sync_length
     syncLengthChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
     syncLengthChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
+    
+    ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
+    def update_sync_length_with_value(self, v):
+        self.logger.trace(lambda: 'updating sync length with value from signal')
+        if v != self._sync_length:
+            self.logger.trace(lambda: f'sync_length -> {v}')
+            self._sync_length = v
+            self.syncLengthChangedUnsafe.emit(v)
+    
     ShoopSlot()
     def update_sync_length(self):
+        self.logger.trace(lambda: 'updating sync length synchronously')
         v = 0
         if self.sync_loop:
             v = self.sync_loop.property('length')
@@ -275,7 +298,7 @@ class CompositeLoop(ShoopQQuickItem):
     # position
     positionChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
     positionChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
-    ShoopSlot()
+    ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def update_position(self):
         v = max(0, self.iteration) * self.sync_length
         if is_running_mode(self.mode):
@@ -312,6 +335,7 @@ class CompositeLoop(ShoopQQuickItem):
         if not wait_for_sync:
             self.handle_sync_loop_trigger()
     
+    @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def handle_sync_loop_trigger(self):
         self.logger.debug(lambda: 'handle sync cycle')
 
