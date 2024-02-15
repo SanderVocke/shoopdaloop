@@ -176,6 +176,10 @@ jobs:
       with:
         name: debuginfo_${{ matrix.kind.name }}
         path: debuginfo
+    - name: Save build infor for coverage analyis
+      if: ${{ matrix.kind.coverage }}
+      run: |
+        echo "$(realpath build/cp*/)" | tee ori_build_dir.txt
     - name: Upload info context for coverage analysis
       if: ${{ matrix.kind.coverage }}
       uses: actions/upload-artifact@v4
@@ -183,6 +187,7 @@ jobs:
         name: coverage_context
         path: |
           ./**/*.gcda
+          ori_build_dir.txt
     # - name: TMate failure session
     #   if: ${{ failure() }}
     #   uses: SanderVocke/action-tmate@master
@@ -238,14 +243,15 @@ jobs:
             testrunner: test_runner
             qpa_platform: vnc
             coverage: true
-            # run_cmd_prefix: >-
-            #   BASEDIR=$(pwd)
-            #   EXCLUDE=third_party,qt6,boost,c++
-            #   REPORTDIR=coverage_reports
-            #   REPORTNAME=test_runner
-            #   BUILDDIR=$(realpath build/cp*/)
-            #   DO_GENHTML=0
-            #   scripts/run_and_generate_coverage.sh
+            run_cmd_prefix: >-
+              BASEDIR=$(pwd)
+              EXCLUDE=third_party,qt6,boost,c++
+              REPORTDIR=coverage_reports
+              REPORTNAME=test_runner
+              BUILDDIR=$(realpath build/cp*/)
+              ORI_BUILD_DIR=$(cat ori_build_dir.txt)
+              DO_GENHTML=0
+              scripts/run_and_generate_coverage.sh
           # - name: release_macos11
           #   python: python3
           #   pip: python3 -m pip
@@ -316,6 +322,11 @@ jobs:
       with:
         name: ${{ matrix.kind.wheel }}
         path: ~/wheel
+    - name: Retrieve info context for coverage analysis
+      if: ${{ matrix.kind.coverage }}
+      uses: actions/download-artifact@v4
+      with:
+        name: coverage_context
     - name: Pre-install ASAN shared lib
       if: ${{ matrix.kind.asan }}
       shell: bash
