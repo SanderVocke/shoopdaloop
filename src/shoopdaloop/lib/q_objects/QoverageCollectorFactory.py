@@ -40,10 +40,10 @@ class QoverageCollectorFactory(ShoopQObject):
         # collectors re-requested. Ensure we pass back the existing collectors such that
         # total coverage is added, not reset from scratch.
         if filename in self.file_collectors:
-            self.logger.debug(lambda: "Request existing collector for {}".format(filename))
+            self.logger.trace(lambda: "Request existing collector for {}".format(filename))
             return self.file_collectors[filename]
         else:
-            self.logger.debug(lambda: "New collector requested for {}".format(filename))
+            self.logger.debug(lambda: "New collector for {}".format(filename))
             rval = QoverageFileCollector(filename, initial_lines_data, self)
             self.file_collectors[filename] = rval
             return rval
