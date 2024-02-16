@@ -4,6 +4,7 @@
 ninja-build
 libsndfile
 libasan8
+libxkbcommon
 gcc-toolset-12-libasan-devel.x86_64
 perl-Time-HiRes
 perl-Capture-Tiny
