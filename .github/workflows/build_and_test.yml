@@ -251,6 +251,7 @@ jobs:
               BUILDDIR=$(realpath build/cp*/)
               ORI_BUILD_DIR=$(cat ori_build_dir.txt)
               DO_GENHTML=0
+              SHOOP_LOG=QoverageCollectorFactory=debug
               scripts/run_and_generate_coverage.sh
           # - name: release_macos11
           #   python: python3
@@ -339,7 +340,7 @@ jobs:
       id: install
       shell: bash
       run: |
-        SHOOP_LOG=debug ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
+        ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
         ${{ matrix.kind.python }} -m shoopdaloop --info
         mkdir -p crashdumps
         echo "install_dir=$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
