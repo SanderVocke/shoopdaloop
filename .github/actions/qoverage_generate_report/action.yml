@@ -10,6 +10,9 @@ inputs:
   console_output_file:
     type: string
     required: true
+  report_file:
+    type: string
+    required: true
 
 runs:
   using: "composite"
@@ -17,4 +20,4 @@ runs:
   - name: run
     shell: bash
     run: |
-      ~/.local/bin/qoverage collect --report qoverage-report.xml --files-path ${{ inputs.package_path }} --input ${{ inputs.console_output_file }} --strip-paths-expr "${{ inputs.strip }}" --report-prefix src/shoopdaloop/
+      ~/.local/bin/qoverage collect --report ${{ inputs.report_file }} --files-path ${{ inputs.package_path }} --input ${{ inputs.console_output_file }} --strip-paths-expr "${{ inputs.strip }}" --report-prefix src/shoopdaloop/
