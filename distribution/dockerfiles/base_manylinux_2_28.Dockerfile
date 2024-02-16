@@ -10,4 +10,12 @@ RUN ln -s /usr/local/bin/python3.8 /usr/local/bin/python && \
 
 COPY dependencies dependencies
 
+# System dependencies
 RUN dnf -y install $(dependencies/get_dependencies.sh base_manylinux_2_28)
+
+# Build and install lcov
+RUN curl -L https://github.com/linux-test-project/lcov/releases/download/v2.0/lcov-2.0.tar.gz --output lcov-2.0.tar.gz
+    tar -xzf lcov-2.0.tar.gz
+    pushd lcov-2.0
+    make install
+    popd
