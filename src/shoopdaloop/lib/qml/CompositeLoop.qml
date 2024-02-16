@@ -61,10 +61,52 @@ Item {
     // the n_cycles can be set to force how long the loop is activated in the schedule. If undefined, it will
     // just be determined from the current loop length or assumed to be 1 for empty loops.
     // if the mode is set, the loop will be triggered with that mode always.
-    property var playlists: (initial_composition_descriptor && initial_composition_descriptor.playlists) ?
+    property var playlists_in: (initial_composition_descriptor && initial_composition_descriptor.playlists) ?
         initial_composition_descriptor.playlists : []
 
+    // Copy the incoming playlists, but do some validity checking on them too.
+    property var playlists: []
     
+    onPlaylists_inChanged: {
+        let own_obj_id = root.obj_id
+
+        function for_each_loop_id(_playlists, fn) {
+            for(var pidx=0; pidx<_playlists.length; pidx++) {
+                let playlist = _playlists[pidx]
+                for (var i=0; i<playlist.length; i++) {
+                    for (var j=0; j<playlist[i].length; j++) {
+                        let elem = playlist[i][j]
+                        fn(elem.loop_id)
+                    }
+                }
+            }
+        }
+
+        var circular = false
+        var rval = JSON.parse(JSON.stringify(playlists_in))
+        for_each_loop_id(rval, (loop_id) => {
+            if (loop_id == own_obj_id) {
+                // Circular reference between two composite loops is not allowed.
+                root.logger.error(`A self-reference was made in a composite loop: ${own_obj_id}. This is not allowed - clearing the schedule.`)
+                circular = true
+            }
+            if (circular) { return; }
+            let loop_widget = registries.objects_registry.value_or(loop_id, undefined)
+            if (loop_widget && loop_widget.maybe_composite_loop) {
+                for_each_loop_id(loop_widget.maybe_composite_loop.playlists, (lid) => {
+                    if (lid == own_obj_id) {
+                        root.logger.error(`A circular reference was made between composite loops ${own_obj_id} and ${loop_id}. This is not allowed - clearing schedule of ${own_obj_id}.`)
+                        circular = true
+                    }
+                })
+            }
+        })
+        if (circular) {
+            playlists = []
+        } else {
+            playlists = rval
+        }
+    }
 
     // When the schedule is calculated, an enriched playlists copy is also calculated.
     // This is equal to the input playlists, just with each entry having its final
@@ -81,11 +123,11 @@ Item {
 
     function add_loop(loop, delay, n_cycles=undefined, playlist_idx=0) {
         root.logger.debug(`Adding loop ${loop.obj_id} to playlist ${playlist_idx} with delay ${delay}, n_cycles override ${n_cycles}`)
-        while (playlist_idx >= playlists.length) {
-            playlists.push([])
+        while (playlist_idx >= playlists_in.length) {
+            playlists_in.push([])
         }
-        playlists[playlist_idx].push([{loop_id: loop.obj_id, delay: delay, n_cycles: n_cycles}])
-        playlistsChanged()
+        playlists_in[playlist_idx].push([{loop_id: loop.obj_id, delay: delay, n_cycles: n_cycles}])
+        playlists_inChanged()
     }
 
     // Transform the playlists into a more useful format:
@@ -98,8 +140,8 @@ Item {
         root.logger.debug(() => 'Recalculating schedule.')
         root.logger.trace(() => `--> playlists to schedule: ${JSON.stringify(playlists, null, 2)}`)
 
-        var _scheduled_playlists = JSON.parse(JSON.stringify(playlists))
-        for (var pidx=0; pidx < playlists.length; pidx++) {
+        var _scheduled_playlists = playlists ? JSON.parse(JSON.stringify(playlists)) : []
+        for (var pidx=0; pidx < _scheduled_playlists.length; pidx++) {
             let playlist = _scheduled_playlists[pidx]
             var _it
             _it = 0
@@ -160,7 +202,7 @@ Item {
                     }
                     // If our target is a CompositeLoop, it does not directly inherit a Python loop.
                     // Instead it will be stored in its py_loop subobject.
-                    if (loop.py_loop) {
+                    if (loop instanceof CompositeLoop) {
                         loop = loop.py_loop
                     }
 
@@ -235,7 +277,7 @@ Item {
                 rval.mode = found_mode
                 return rval
             })))
-            playlists = new_playlists
+            playlists_in = new_playlists
         }
     }
     function update_schedule() {
@@ -259,6 +301,7 @@ Item {
 
     property var all_loop_ids: {
         var r = new Set()
+        if (!playlists) { return [] }
         for(var i = 0; i < playlists.length; i++) {
             for (var j = 0; j < playlists[i].length; j++) {
                 for (var h = 0; h < playlists[i][j].length; h++) {
@@ -284,8 +327,8 @@ Item {
     // If we didn't find all our loops, listen for registry changes to find them later
     Connections {
         target: all_loops_found ? null : registries.objects_registry
-        function onItemAdded(id, val) { if (all_loop_ids.has(id)) { playlistsChanged() } }
-        function onItemModified(id, val) { if (all_loop_ids.has(id)) { playlistsChanged() } }
+        function onItemAdded(id, val) { if (all_loop_ids.has(id)) { playlists_inChanged() } }
+        function onItemModified(id, val) { if (all_loop_ids.has(id)) { playlists_inChanged() } }
     }
 
     // If we did find all our loops, listen to length changes to update the schedule
@@ -314,7 +357,7 @@ Item {
     function qml_close() {}
 
     function clear() {
-        playlists = []
-        playlistsChanged()
+        playlists_in = []
+        playlists_inChanged()
     }
 }

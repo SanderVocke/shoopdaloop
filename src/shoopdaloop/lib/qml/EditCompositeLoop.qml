@@ -576,7 +576,7 @@ Item {
             }
             playlists.push(playlist)
         }
-        composite_loop.playlists = playlists
+        composite_loop.playlists_in = playlists
     }
 
     // Delete PlaylistElement from the schedule and push

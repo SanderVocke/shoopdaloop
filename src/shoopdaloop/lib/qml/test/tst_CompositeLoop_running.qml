@@ -592,7 +592,7 @@ ShoopTestFile {
                     l2().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 0, 'mode': ShoopConstants.LoopMode.Playing }],
                             ]
                         ]
                     })
@@ -669,7 +669,7 @@ ShoopTestFile {
                     l2().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                [{ 'loop_id': c().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': c().obj_id, 'delay': 0, 'mode': ShoopConstants.LoopMode.Playing }],
                             ]
                         ]
                     })
@@ -720,6 +720,84 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 50, 0, 0, 0)
                 },
+
+                'test_circular_composites': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+                    m().create_backend_loop()
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop()
+                    l1().create_composite_loop()
+
+                    c().maybe_composite_loop.playlists_in = [
+                        [ // playlist
+                            [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                        ]
+                    ]
+                    l1().maybe_composite_loop.playlists_in = [
+                        [ // playlist
+                            [{ 'loop_id': c().obj_id, 'delay': 0 }],
+                        ]
+                    ]
+
+                    // The setting of the playlists to a circular value should have been ignored.
+                    // The playlists are thrown away.
+                    verify_eq(l1().maybe_composite_loop.playlists, [])
+                    // The first loop should still have its schedule.
+                    verify_eq(c().maybe_composite_loop.playlists, [
+                        [
+                            [{ 'loop_id': l1().obj_id, 'delay': 0 }]
+                        ]
+                    ])
+                },
+
+                'test_make_scheduled_loop_composite': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+                    m().create_backend_loop()
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+
+                    l1().create_composite_loop()
+                    verify_true(l1().maybe_composite_loop)
+                },
+
+                'test_circular_composite_self': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+
+                    l1().create_backend_loop()
+                    m().create_backend_loop()
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': c().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+                    // The setting of the playlists to a circular value should have been ignored.
+                    // The playlists are thrown away.
+                    verify_eq(c().maybe_composite_loop.playlists, [])
+                }
             })
         }
     }
