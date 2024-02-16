@@ -19,3 +19,6 @@ RUN curl -L https://github.com/linux-test-project/lcov/releases/download/v2.0/lc
     pushd lcov-2.0 && \
     make install && \
     popd
+
+# Python packages
+RUN python3 -m pip install coverage pytest

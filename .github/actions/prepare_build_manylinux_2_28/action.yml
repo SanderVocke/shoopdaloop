@@ -12,15 +12,3 @@ runs:
   - name: Install JACK2
     id: install_jack2
     uses: ./.github/actions/install_jack2
-  - name: Other prep steps
-    shell: bash
-    run: |
-      # Skip if already done (local act builds)
-      if [ -f _manylinux_prepared ]; then
-        exit 0
-      fi
-
-      # Additional Python packages
-      python3 -m pip install coverage pytest
-
-      touch _manylinux_prepared
