@@ -36,6 +36,7 @@ Item {
     property alias position : py_loop.position
     property alias sync_position : py_loop.sync_position
     property alias length : py_loop.length
+    property alias py_loop : py_loop
     PythonCompositeLoop {
         id: py_loop
         iteration: 0
@@ -156,6 +157,11 @@ Item {
                             root.logger.warning(`Could not create a back-end loop for ${elem.loop_id}.`)
                             continue
                         }
+                    }
+                    // If our target is a CompositeLoop, it does not directly inherit a Python loop.
+                    // Instead it will be stored in its py_loop subobject.
+                    if (loop.py_loop) {
+                        loop = loop.py_loop
                     }
 
                     if (!_schedule[loop_start]) { _schedule[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set(), loop_modes: {} } }
