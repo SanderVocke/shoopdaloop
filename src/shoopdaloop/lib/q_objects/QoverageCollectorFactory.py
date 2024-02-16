@@ -18,8 +18,8 @@ class QoverageFileCollector(ShoopQObject):
             if self.lines_data[line] != None:
                 self.lines_data[line] += 1
     
-    @ShoopSlot()
     def report(self):
+        print("I AM ALIVE")
         self.logger.info(lambda: 
             '<QOVERAGERESULT file="{}">{}</QOVERAGERESULT>'.format(
                 self.filename,
@@ -53,4 +53,5 @@ class QoverageCollectorFactory(ShoopQObject):
         if len(self.file_collectors.items()) > 0:
             self.logger.info(lambda: 'Reporting {} file collectors'.format(len(self.file_collectors)))
             for fc in self.file_collectors.values():
+                print(fc)
                 fc.report()
