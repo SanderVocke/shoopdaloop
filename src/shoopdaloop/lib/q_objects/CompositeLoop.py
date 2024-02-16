@@ -136,7 +136,7 @@ class CompositeLoop(ShoopQQuickItem):
                     val.lengthChangedUnsafe.connect(self.update_sync_length_with_value, Qt.DirectConnection)
                     val.cycledUnsafe.connect(self.handle_sync_loop_trigger, Qt.DirectConnection)
                 else:
-                    self.logger.warning(lambda: 'connecting to sync loop on GUI thread')
+                    self.logger.warning(lambda: 'connecting to sync loop on GUI thread. Sync loop: {val}')
                     val.positionChanged.connect(self.update_sync_position, Qt.AutoConnection)
                     val.lengthChanged.connect(self.update_sync_length, Qt.AutoConnection)
                     val.cycled.connect(self.handle_sync_loop_trigger, Qt.AutoConnection)
