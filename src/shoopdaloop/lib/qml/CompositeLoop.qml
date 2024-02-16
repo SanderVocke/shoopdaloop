@@ -66,6 +66,10 @@ Item {
 
     // Copy the incoming playlists, but do some validity checking on them too.
     property var playlists: []
+    ExecuteNextCycle {
+        id: clear_playlists_in
+        onExecute: root.playlists_in = []
+    }
     
     onPlaylists_inChanged: {
         let own_obj_id = root.obj_id
@@ -102,7 +106,7 @@ Item {
             }
         })
         if (circular) {
-            playlists = []
+            clear_playlists_in.trigger()
         } else {
             playlists = rval
         }
