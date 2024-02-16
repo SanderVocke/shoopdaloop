@@ -186,7 +186,7 @@ jobs:
       with:
         name: coverage_context
         path: |
-          ./**/*.gcda
+          ./**/*.gcno
           ori_build_dir.txt
     # - name: TMate failure session
     #   if: ${{ failure() }}
