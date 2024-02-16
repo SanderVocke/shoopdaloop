@@ -107,7 +107,8 @@ class Application(ShoopQApplication):
                 else:
                     self.logger.debug(f"deleteLater on {obj}")
                     obj.deleteLater()
-            self.engine.deleteLater()
+            #self.engine.deleteLater()
+            del self.engine
             self.wait(100)
             self.engine = None
             self.wait(10)
