@@ -25,7 +25,7 @@ jobs:
           #   os: ubuntu-latest
           #   python: python3.8
           #   pip: python3 -m pip
-          #   container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+          #   container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
           #   prepare: 'manylinux_2_28'
           #   build_type: 'Release'
           #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
@@ -33,7 +33,7 @@ jobs:
           #   os: ubuntu-latest
           #   python: python3.8
           #   pip: python3 -m pip
-          #   container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+          #   container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
           #   prepare: 'manylinux_2_28'
           #   build_type: 'Debug'
           #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
@@ -41,7 +41,7 @@ jobs:
           #   os: ubuntu-latest
           #   python: python3.8
           #   pip: python3 -m pip
-          #   container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+          #   container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
           #   prepare: 'manylinux_2_28'
           #   build_type: 'Release'
           #   cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
@@ -53,7 +53,7 @@ jobs:
           #   os: ubuntu-latest
           #   python: python3.8
           #   pip: python3 -m pip
-          #   container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+          #   container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
           #   prepare: 'manylinux_2_28'
           #   build_type: 'Debug'
           #   cmake_opts: '"ENABLE_ASAN" = "On"'
@@ -61,8 +61,8 @@ jobs:
           - name: linux_coverage
             os: ubuntu-latest
             python: python3.8
-            pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+            pip: python3.8 -m pip
+            container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
             build_type: 'Debug'
             cmake_opts: '"ENABLE_COVERAGE" = "On"'
@@ -233,11 +233,11 @@ jobs:
           #   wheel: wheel_linux_release
           #   testrunner: test_runner
           #   qpa_platform: vnc
-          - name: coverage_ubuntu_latest
-            python: python3 -m coverage run --source=shoopdaloop
-            pip: python3 -m pip
-            pytest: python3 -m coverage run --source=shoopdaloop -m pytest
-            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+          - name: coverage_manylinux_2_28
+            python: python3.8 -m coverage run --source=shoopdaloop
+            pip: python3.8 -m pip
+            pytest: python3.8 -m coverage run --source=shoopdaloop -m pytest
+            container: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             os: ubuntu-latest
             wheel: wheel_linux_coverage
             testrunner: test_runner
@@ -535,7 +535,7 @@ jobs:
 # coverage:
   #   runs-on: ubuntu-latest
   #   container:
-  #     image: quay.io/pypa/manylinux_2_28_x86_64:latest
+  #     image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
   #     options: --user root --workdir /
   #   steps:
   #   - name: Checkout
