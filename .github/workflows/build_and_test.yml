@@ -247,7 +247,6 @@ jobs:
               BASEDIR=$(pwd)
               EXCLUDE=third_party,qt6,boost,c++
               REPORTDIR=coverage_reports
-              REPORTNAME=test_runner
               BUILDDIR=$(realpath build/cp*/)
               ORI_BUILD_DIR=$(cat ori_build_dir.txt)
               DO_GENHTML=0
@@ -368,7 +367,7 @@ jobs:
         variant_name: ${{ matrix.kind.name }}
         # note: build step generates run_cmd_prefix output
         # for usage with shared ASAN library.
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=test_runner ${{ matrix.kind.run_cmd_prefix }}
         test_runner: ${{ steps.install.outputs.install_dir }}/${{ matrix.kind.testrunner }}
     - name: Test Python
       if: ${{ success() || failure() }}
@@ -376,7 +375,7 @@ jobs:
       timeout-minutes: 5
       with:
         variant_name: release
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=pytest ${{ matrix.kind.run_cmd_prefix }}
         root_path: ${{ steps.install.outputs.install_dir }}
         pytest_command: ${{ matrix.kind.pytest }}
         python_coverage: ${{ matrix.kind.coverage }}
@@ -391,7 +390,7 @@ jobs:
       timeout-minutes: 20
       with:
         variant_name: release
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=qml ${{ matrix.kind.run_cmd_prefix }}
         root_path: ${{ steps.install.outputs.install_dir }}
         python_command: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
@@ -451,8 +450,7 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: pytest
-        #files: coverage_reports/pytest.info,coverage_reports/pytest.xml
-        files: coverage_reports/pytest.xml
+        files: coverage_reports/pytest.info,coverage_reports/pytest.xml
         verbose: true
     - name: Upload QML test coverage to CodeCov
       if: ${{ (success() || failure()) && matrix.kind.coverage }}
@@ -460,8 +458,7 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: qml
-        #files: coverage_reports/qmltest.info,coverage_reports/qml.xml
-        files: coverage_reports/qml.xml,qoverage_report.xml
+        files: coverage_reports/qml.info,coverage_reports/qml.xml
         verbose: true
     # - name: TMate failure session
     #   if: ${{ failure() && matrix.kind.asan }}
