@@ -342,7 +342,7 @@ jobs:
         SHOOP_LOG=debug ${{ matrix.kind.run_cmd_prefix }} ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
         ${{ matrix.kind.run_cmd_prefix }} shoopdaloop --info
         mkdir -p crashdumps
-        echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
+        echo "install_dir=$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
     - name: Install Python modules
       shell: bash
       run: |
