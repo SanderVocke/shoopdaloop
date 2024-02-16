@@ -8,7 +8,6 @@ from ..logging import Logger
 class QoverageFileCollector(ShoopQObject):
     def __init__(self, filename, inital_lines_data, parent=None):
         super(QoverageFileCollector, self).__init__(parent)
-        self.logger = Logger("Qoverage")
         self.filename = filename
         self.lines_data = inital_lines_data
     
@@ -19,13 +18,7 @@ class QoverageFileCollector(ShoopQObject):
                 self.lines_data[line] += 1
     
     def report(self):
-        print(f"I AM ALIVE {self.lines_data}")
-        self.logger.info(lambda: 
-            '<QOVERAGERESULT file="{}">{}</QOVERAGERESULT>'.format(
-                self.filename,
-                json.dumps(self.lines_data)
-            )
-        )
+        print(f'<QOVERAGERESULT file="{self.filename}">{json.dumps(self.lines_data)}</QOVERAGERESULT>')
 
 class QoverageCollectorFactory(ShoopQObject):
     def __init__(self, parent=None):
@@ -53,5 +46,4 @@ class QoverageCollectorFactory(ShoopQObject):
         if len(self.file_collectors.items()) > 0:
             self.logger.info(lambda: 'Reporting {} file collectors'.format(len(self.file_collectors)))
             for fc in self.file_collectors.values():
-                print(fc)
                 fc.report()
