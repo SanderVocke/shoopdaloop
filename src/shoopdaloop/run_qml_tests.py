@@ -167,8 +167,6 @@ def exit_handler(reason=None):
             print("Failing because process abnormally terminated ({}). Test results overview:".format(reason))
         print(exit_text)
         exit_text_printed = True
-    if not coverage_reported:
-        qoverage_collector_factory.report_all()
 
 def signal_handler(signum, frame):
     exit_handler('signal {}'.format(signum))
@@ -210,6 +208,7 @@ if args.junit_xml:
 
 if not coverage_reported:
     qoverage_collector_factory.report_all()
+    app.wait(1000)
 
 app.unload_qml()
 app.wait(50)
