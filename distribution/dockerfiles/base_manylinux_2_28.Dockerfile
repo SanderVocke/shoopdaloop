@@ -12,7 +12,7 @@ COPY dependencies dependencies
 
 # System dependencies
 RUN dnf config-manager --set-enabled powertools && \
-    dny -y install epel-release && \
+    dnf -y install epel-release && \
     dnf -y install $(dependencies/get_dependencies.sh base_manylinux_2_28)
 
 # Build and install lcov

@@ -13,6 +13,8 @@ from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from ..logging import Logger
 
+from collections.abc import Mapping, Sequence
+
 import traceback
 
 # Manage a back-end composite loop, keeps running if GUI thread stalls
@@ -79,8 +81,18 @@ class CompositeLoop(ShoopQQuickItem):
         return self._schedule
     @schedule.setter
     def schedule(self, val):
-        if isinstance(val, QJSValue):
-            val = val.toVariant()
+        # The schedule may arrive as a JSValue and loops in the schedule may be JSValues too
+        def recursively_convert(obj):
+            if isinstance(obj, QJSValue):
+                return recursively_convert(obj.toVariant())
+            if isinstance(obj, Mapping):
+                for v in obj.values():
+                    v = recursively_convert(v)
+            if isinstance(obj, Sequence):
+                for v in obj:
+                    v = recursively_convert(v)
+            return obj
+        val = recursively_convert(val)
         self.logger.trace(lambda: f'schedule -> {val}')
         self._schedule = val
         self.scheduleChangedUnsafe.emit(self._schedule)
