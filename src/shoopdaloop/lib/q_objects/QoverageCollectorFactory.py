@@ -19,7 +19,7 @@ class QoverageFileCollector(ShoopQObject):
                 self.lines_data[line] += 1
     
     def report(self):
-        print("I AM ALIVE")
+        print(f"I AM ALIVE {self.lines_data}")
         self.logger.info(lambda: 
             '<QOVERAGERESULT file="{}">{}</QOVERAGERESULT>'.format(
                 self.filename,
