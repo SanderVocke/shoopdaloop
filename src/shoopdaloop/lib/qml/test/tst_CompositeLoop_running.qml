@@ -566,6 +566,238 @@ ShoopTestFile {
                     verify_eq(l2().mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(c().maybe_loop.iteration, 2)
                 },
+
+                'test_composite_triggers_script': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+
+                    l1().create_backend_loop()
+                    m().create_backend_loop()
+
+                    testcase.wait_updated(session.backend)
+
+                    l1().set_length(200)
+
+                    // use c as the composite (triggers the script)
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l2().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+                    // use l2 as the script (triggers the loop)
+                    l2().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l1().obj_id, 'delay': 0, 'mode': ShoopConstants.LoopMode.Playing }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                0, 0, 0, 0)
+
+                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+
+                    process(50); // sync loop is playing
+
+                    // trigger the composite loop
+                    c().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                    testcase.wait_updated(session.backend)
+                    verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l2().next_mode, ShoopConstants.LoopMode.Playing)
+
+                    process(100) // middle of 1st step
+
+                    verify_states(ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                50, 50, 50, 50)
+
+                    process(100) // middle of 2nd step
+
+                    verify_states(ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                50, 150, 150, 150)
+                    
+                    process(100) // middle of 3rd step.
+                    // A script would normally have stopped now. But because a composite
+                    // is triggering it, that one should make sure it keeps looping
+
+                    verify_states(ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                50, 50, 50, 50)
+                },
+
+                'test_script_triggers_composite': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+
+                    l1().create_backend_loop()
+                    m().create_backend_loop()
+
+                    testcase.wait_updated(session.backend)
+
+                    l1().set_length(200)
+
+                    // use c as the composite (triggers the loop)
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+                    // use l2 as the script (triggers the composite)
+                    l2().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': c().obj_id, 'delay': 0, 'mode': ShoopConstants.LoopMode.Playing }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                0, 0, 0, 0)
+
+                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+
+                    process(50); // sync loop is playing
+
+                    // trigger the composite loop
+                    l2().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                    testcase.wait_updated(session.backend)
+                    verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l2().next_mode, ShoopConstants.LoopMode.Playing)
+
+                    process(100) // middle of 1st step
+
+                    verify_states(ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                50, 50, 50, 50)
+
+                    process(100) // middle of 2nd step
+
+                    verify_states(ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Playing,
+                                50, 150, 150, 150)
+                    
+                    process(100) // middle of 3rd step.
+                    // A composite would normally have looped now. But because a script is
+                    // controlling it, it should stop it after 1 iteration.
+
+                    verify_states(ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                50, 0, 0, 0)
+                },
+
+                'test_circular_composites': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+                    m().create_backend_loop()
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop()
+                    l1().create_composite_loop()
+
+                    c().maybe_composite_loop.playlists_in = [
+                        [ // playlist
+                            [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                        ]
+                    ]
+                    l1().maybe_composite_loop.playlists_in = [
+                        [ // playlist
+                            [{ 'loop_id': c().obj_id, 'delay': 0 }],
+                        ]
+                    ]
+
+                    // The setting of the playlists to a circular value should have been ignored.
+                    // The playlists are thrown away.
+                    verify_eq(l1().maybe_composite_loop.playlists, [])
+                    // The first loop should still have its schedule.
+                    verify_eq(c().maybe_composite_loop.playlists, [
+                        [
+                            [{ 'loop_id': l1().obj_id, 'delay': 0 }]
+                        ]
+                    ])
+                },
+
+                'test_make_scheduled_loop_composite': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+                    m().create_backend_loop()
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+
+                    l1().create_composite_loop()
+                    verify_true(l1().maybe_composite_loop)
+                },
+
+                'test_circular_composite_self': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+
+                    l1().create_backend_loop()
+                    m().create_backend_loop()
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': c().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+                    // The setting of the playlists to a circular value should have been ignored.
+                    // The playlists are thrown away.
+                    verify_eq(c().maybe_composite_loop.playlists, [])
+                }
             })
         }
     }

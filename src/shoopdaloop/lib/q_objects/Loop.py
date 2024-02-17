@@ -43,6 +43,7 @@ class Loop(ShoopQQuickItem):
         self.logger = Logger(self)
         self.logger.name = "Frontend.Loop"
         self._pending_transitions = []
+        self._pending_cycles = 0
 
         self.modeChangedUnsafe.connect(self.modeChanged, Qt.QueuedConnection)
         self.nextModeChangedUnsafe.connect(self.nextModeChanged, Qt.QueuedConnection)
@@ -290,7 +291,7 @@ class Loop(ShoopQQuickItem):
         for channel in midi_chans:
             channel.updateOnGuiThread()
     
-    @ShoopSlot(int, int, bool)
+    @ShoopSlot(int, int, bool, thread_protection=ThreadProtectionType.AnyThread)
     def transition(self, mode, delay, wait_for_sync):
         self._pending_transitions.append([mode, delay, wait_for_sync])
 

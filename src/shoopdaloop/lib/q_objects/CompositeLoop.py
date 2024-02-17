@@ -9,9 +9,12 @@ from .ShoopPyObject import *
 from ..backend_wrappers import *
 from ..mode_helpers import is_playing_mode, is_running_mode, is_recording_mode
 from ..q_objects.Backend import Backend
+from ..q_objects.Logger import Logger
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
-from ..logging import Logger
+from ..recursive_jsvalue_convert import recursively_convert_jsvalue
+
+from collections.abc import Mapping, Sequence
 
 import traceback
 
@@ -20,7 +23,8 @@ class CompositeLoop(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(CompositeLoop, self).__init__(parent)
         self._schedule = {}
-        self.logger = Logger('Frontend.CompositeLoop')
+        self.logger = Logger(self)
+        self.logger.name = 'Frontend.CompositeLoop'
         self._sync_loop = None
         self._running_loops = set()
         self._iteration = 0
@@ -34,6 +38,7 @@ class CompositeLoop(ShoopQQuickItem):
         self._n_cycles = 0
         self._kind = 'regular'
         self._pending_transitions = []
+        self._pending_cycles = 0
         self._backend = None
         self._initialized = False
 
@@ -79,8 +84,8 @@ class CompositeLoop(ShoopQQuickItem):
         return self._schedule
     @schedule.setter
     def schedule(self, val):
-        if isinstance(val, QJSValue):
-            val = val.toVariant()
+        # The schedule may arrive as a JSValue and loops in the schedule may be JSValues too
+        val = recursively_convert_jsvalue(val)
         self.logger.trace(lambda: f'schedule -> {val}')
         self._schedule = val
         self.scheduleChangedUnsafe.emit(self._schedule)
@@ -131,7 +136,7 @@ class CompositeLoop(ShoopQQuickItem):
                     val.lengthChangedUnsafe.connect(self.update_sync_length_with_value, Qt.DirectConnection)
                     val.cycledUnsafe.connect(self.handle_sync_loop_trigger, Qt.DirectConnection)
                 else:
-                    self.logger.warning(lambda: 'connecting to sync loop on GUI thread')
+                    self.logger.warning(lambda: 'connecting to sync loop on GUI thread. Sync loop: {val}')
                     val.positionChanged.connect(self.update_sync_position, Qt.AutoConnection)
                     val.lengthChanged.connect(self.update_sync_length, Qt.AutoConnection)
                     val.cycled.connect(self.handle_sync_loop_trigger, Qt.AutoConnection)
@@ -314,7 +319,7 @@ class CompositeLoop(ShoopQQuickItem):
     def position(self):
         return self._position
     
-    @ShoopSlot(int, int, bool)
+    @ShoopSlot(int, int, bool, thread_protection=ThreadProtectionType.AnyThread)
     def transition(self, mode, delay, wait_for_sync):
         self._pending_transitions.append([mode, delay, wait_for_sync])
 
@@ -340,6 +345,9 @@ class CompositeLoop(ShoopQQuickItem):
     
     @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def handle_sync_loop_trigger(self):
+        self._pending_cycles += 1
+
+    def handle_sync_loop_trigger_impl(self):
         self.logger.debug(lambda: 'handle sync cycle')
 
         if self._next_transition_delay == 0:
@@ -359,8 +367,8 @@ class CompositeLoop(ShoopQQuickItem):
             self.do_triggers(self.iteration+1, self.mode)
             if ((self.iteration+1) >= self.n_cycles):
                 self.logger.debug(lambda: 'preparing cycle end')
-                if self.kind == 'script':
-                    self.logger.debug(lambda: 'ending script')
+                if self.kind == 'script' and not (self.next_transition_delay >= 0 and is_running_mode(self.next_mode)):
+                    self.logger.debug(lambda: f'ending script {self.mode} {self.next_mode} {self.next_transition_delay}')
                     self.transition_impl(LoopMode.Stopped.value, 0, True)
                 elif is_recording_mode(self.mode):
                     self.logger.debug(lambda: 'cycle: recording to playing')
@@ -379,7 +387,7 @@ class CompositeLoop(ShoopQQuickItem):
     def cancel_all(self):
         self.logger.trace(lambda: 'cancel_all')
         for loop in self._running_loops:
-            loop.transition_impl(LoopMode.Stopped.value, 0, True)
+            loop.transition(LoopMode.Stopped.value, 0, True)
         self.running_loops = []
 
     def handle_transition(self, mode):
@@ -393,14 +401,14 @@ class CompositeLoop(ShoopQQuickItem):
     def do_triggers(self, iteration, mode):
         schedule = self._schedule
         sched_keys = [int(k) for k in schedule.keys()]
-        self.logger.debug(lambda: f'do_triggers({iteration}, {mode})')
+        self.logger.debug(lambda: f'{self.kind} do_triggers({iteration}, {mode})')
         if iteration in sched_keys:
             elem = schedule[str(iteration)]
             loops_end = elem['loops_end']
             loops_start = elem['loops_start']
             for loop in loops_end:
                 self.logger.debug(lambda: f'loop end: {loop}')
-                loop.transition_impl(LoopMode.Stopped.value, 0, True)
+                loop.transition(LoopMode.Stopped.value, 0, True)
                 if loop in self._running_loops:
                     self._running_loops.remove(loop)
                 self.runningLoopsChanged.emit(self._running_loops)
@@ -427,7 +435,7 @@ class CompositeLoop(ShoopQQuickItem):
                                     if loop in other_starts:
                                         # We have already recorded this loop. Don't record it again.
                                         self.logger.debug(lambda: f'Not re-recording {loop}')
-                                        loop.transition_impl(LoopMode.Stopped.value, 0, True)
+                                        loop.transition(LoopMode.Stopped.value, 0, True)
                                         self._running_loops.remove(loop)
                                         self.runningLoopsChanged.emit(self._running_loops)
                                         handled = True
@@ -437,7 +445,7 @@ class CompositeLoop(ShoopQQuickItem):
                             continue
 
                     self.logger.debug(lambda: f'loop start: {loop}')
-                    loop.transition_impl(loop_mode, 0, True)
+                    loop.transition(loop_mode, 0, True)
                     self._running_loops.add(loop)
                     self.runningLoopsChangedUnsafe.emit(self._running_loops)
 
@@ -456,7 +464,10 @@ class CompositeLoop(ShoopQQuickItem):
     # Update from the back-end.
     @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
+        for _ in range(self._pending_cycles):
+            self.handle_sync_loop_trigger_impl()
         for transition in self._pending_transitions:
             self.transition_impl(*transition)
         self._pending_transitions = []
+        self._pending_cycles = 0
     

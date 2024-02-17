@@ -157,9 +157,11 @@ Totals:
 - Skipped: {}{}{}
 '''.format(final_result_readable, passed+failed+skipped, passed, failed, skipped, maybe_failures_string, maybe_skip_string)
 exit_text_printed = False
+coverage_reported = False
 
 def exit_handler(reason=None):
     global exit_text_printed
+    global coverage_reported
     if not exit_text_printed:
         if reason:
             print("Failing because process abnormally terminated ({}). Test results overview:".format(reason))
@@ -203,6 +205,10 @@ if args.junit_xml:
     
     print("Writing JUnit XML to {}".format(args.junit_xml))
     root.writexml(open(args.junit_xml, 'w'), indent='  ', addindent='  ', newl='\n')
+
+if not coverage_reported:
+    qoverage_collector_factory.report_all()
+    app.wait(1000)
 
 app.unload_qml()
 app.wait(50)

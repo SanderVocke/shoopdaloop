@@ -25,7 +25,7 @@ jobs:
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+            container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
             build_type: 'Release'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
@@ -33,7 +33,7 @@ jobs:
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+            container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
             build_type: 'Debug'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
@@ -41,7 +41,7 @@ jobs:
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+            container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
             build_type: 'Release'
             cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
@@ -53,7 +53,7 @@ jobs:
             os: ubuntu-latest
             python: python3.8
             pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+            container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
             build_type: 'Debug'
             cmake_opts: '"ENABLE_ASAN" = "On"'
@@ -61,12 +61,13 @@ jobs:
           - name: linux_coverage
             os: ubuntu-latest
             python: python3.8
-            pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
+            pip: python3.8 -m pip
+            container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
             build_type: 'Debug'
             cmake_opts: '"ENABLE_COVERAGE" = "On"'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+            coverage: true
           - name: windows_release
             os: windows-2022
             python: python.exe
@@ -175,6 +176,18 @@ jobs:
       with:
         name: debuginfo_${{ matrix.kind.name }}
         path: debuginfo
+    - name: Save build infor for coverage analyis
+      if: ${{ matrix.kind.coverage }}
+      run: |
+        echo "$(realpath build/cp*/)" | tee ori_build_dir.txt
+    - name: Upload info context for coverage analysis
+      if: ${{ matrix.kind.coverage }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage_context
+        path: |
+          ./**/*.gcno
+          ori_build_dir.txt
     # - name: TMate failure session
     #   if: ${{ failure() }}
     #   uses: SanderVocke/action-tmate@master
@@ -187,6 +200,7 @@ jobs:
           - name: release_debian_stable
             python: python3
             pip: python3 -m pip
+            pytest: python3 -m pytest
             container: sandervocke/shoopdaloop_run_base_debian_stable:latest
             os: ubuntu-latest
             wheel: wheel_linux_release
@@ -195,6 +209,7 @@ jobs:
           - name: barebones_debian_stable
             python: python3
             pip: python3 -m pip
+            pytest: python3 -m pytest
             container: sandervocke/shoopdaloop_run_base_debian_stable:latest
             os: ubuntu-latest
             wheel: wheel_linux_barebones
@@ -203,6 +218,7 @@ jobs:
           - name: release_ubuntu_latest
             python: python3
             pip: python3 -m pip
+            pytest: python3 -m pytest
             container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
             os: ubuntu-latest
             wheel: wheel_linux_release
@@ -211,23 +227,35 @@ jobs:
           - name: release_arch
             python: python
             pip: python -m pip
+            pytest: python3 -m pytest
             container: sandervocke/shoopdaloop_run_base_arch:latest
             os: ubuntu-latest
             wheel: wheel_linux_release
             testrunner: test_runner
             qpa_platform: vnc
-          - name: coverage_ubuntu_latest
-            python: python3
-            pip: python3 -m pip
-            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+          - name: coverage_manylinux_2_28
+            python: python3.8 -m coverage run --source=shoopdaloop
+            pip: python3.8 -m pip
+            pytest: python3.8 -m coverage run --source=shoopdaloop -m pytest
+            container: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             os: ubuntu-latest
             wheel: wheel_linux_coverage
             testrunner: test_runner
             qpa_platform: vnc
             coverage: true
+            run_cmd_prefix: >-
+              BASEDIR=$(pwd)
+              EXCLUDE=third_party,qt6,boost,c++
+              REPORTDIR=coverage_reports
+              BUILDDIR=$(realpath build/cp*/)
+              ORI_BUILD_DIR=$(cat ori_build_dir.txt)
+              DO_GENHTML=0
+              SHOOP_LOG=QoverageCollectorFactory=debug
+              scripts/run_and_generate_coverage.sh
           - name: release_macos11
             python: python3
             pip: python3 -m pip
+            pytest: python3 -m pytest
             container: null
             os: macos-11
             wheel: wheel_macos_release
@@ -236,6 +264,7 @@ jobs:
           - name: release_macos12
             python: python3
             pip: python3 -m pip
+            pytest: python3 -m pytest
             container: null
             os: macos-12
             wheel: wheel_macos_release
@@ -244,6 +273,7 @@ jobs:
           - name: release_macos13
             python: python3
             pip: python3 -m pip
+            pytest: python3 -m pytest
             container: null
             os: macos-13
             wheel: wheel_macos_release
@@ -252,6 +282,7 @@ jobs:
           - name: debug_macos13
             python: python3
             pip: python3 -m pip
+            pytest: python3 -m pytest
             container: null
             os: macos-13
             wheel: wheel_macos_debug
@@ -260,6 +291,7 @@ jobs:
           - name: release_windows
             python: python.exe
             pip: python.exe -m pip
+            pytest: python.exe -m pytest
             container: null
             os: windows-2022
             wheel: wheel_windows_release
@@ -269,6 +301,7 @@ jobs:
           - name: debug_windows
             python: python.exe
             pip: python.exe -m pip
+            pytest: python.exe -m pytest
             container: null
             os: windows-2022
             wheel: wheel_windows_debug
@@ -284,11 +317,18 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
+      with:
+        submodules: recursive
     - name: Retrieve wheel
       uses: actions/download-artifact@v4
       with:
         name: ${{ matrix.kind.wheel }}
         path: ~/wheel
+    - name: Retrieve info context for coverage analysis
+      if: ${{ matrix.kind.coverage }}
+      uses: actions/download-artifact@v4
+      with:
+        name: coverage_context
     - name: Pre-install ASAN shared lib
       if: ${{ matrix.kind.asan }}
       shell: bash
@@ -301,14 +341,14 @@ jobs:
       id: install
       shell: bash
       run: |
-        SHOOP_LOG=debug ${{ matrix.kind.run_cmd_prefix }} ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
-        ${{ matrix.kind.run_cmd_prefix }} shoopdaloop --info
+        ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
+        ${{ matrix.kind.python }} -m shoopdaloop --info
         mkdir -p crashdumps
-        echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
+        echo "install_dir=$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
     - name: Install Python modules
       shell: bash
       run: |
-        ${{ matrix.kind.pip }} install pytest pipx
+        ${{ matrix.kind.pip }} install pytest coverage pipx
     - name: Install Qoverage
       if: ${{ matrix.kind.coverage }}
       uses: ./.github/actions/install_qoverage
@@ -324,10 +364,10 @@ jobs:
       uses: ./.github/actions/test_backend
       timeout-minutes: 5
       with:
-        variant_name: release
+        variant_name: ${{ matrix.kind.name }}
         # note: build step generates run_cmd_prefix output
         # for usage with shared ASAN library.
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=test_runner ${{ matrix.kind.run_cmd_prefix }}
         test_runner: ${{ steps.install.outputs.install_dir }}/${{ matrix.kind.testrunner }}
     - name: Test Python
       if: ${{ success() || failure() }}
@@ -335,20 +375,40 @@ jobs:
       timeout-minutes: 5
       with:
         variant_name: release
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=pytest ${{ matrix.kind.run_cmd_prefix }}
         root_path: ${{ steps.install.outputs.install_dir }}
-        pytest_command: ${{ matrix.kind.python }} -m pytest
+        pytest_command: ${{ matrix.kind.pytest }}
+        python_coverage: ${{ matrix.kind.coverage }}
+    - name: Generate Pytest Python coverage report
+      if: ${{ (success() || failure()) && matrix.kind.coverage }}
+      run: |
+        ${{ matrix.kind.python }} -m coverage xml -i -o coverage_reports/pytest.xml
+        sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest.xml
     - name: Test QML
-      if: ${{ (success() || failure()) && !matrix.kind.skip_qml }}
+      if: ${{ success() || failure() }}
       uses: ./.github/actions/test_qml
       timeout-minutes: 20
       with:
         variant_name: release
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=qml ${{ matrix.kind.run_cmd_prefix }}
         root_path: ${{ steps.install.outputs.install_dir }}
         python_command: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
         macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
+        tee_all_output_to: test-qml-console-output.log
+    - name: Generate QML Python coverage report
+      if: ${{ (success() || failure()) && matrix.kind.coverage }}
+      run: |
+        ${{ matrix.kind.python }} -m coverage xml -i -o coverage_reports/qml.xml
+        sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml.xml
+    - name: Qoverage - Generate report
+      if: ${{ (success() || failure()) && matrix.kind.coverage }}
+      uses: ./.github/actions/qoverage_generate_report
+      with:
+        strip: ".*/pip/shoopdaloop"
+        package_path: ${{ steps.install.outputs.install_dir }}
+        console_output_file: test-qml-console-output.log
+        report_file: qoverage_report.xml
     - name: Screenshots
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_screenshots
@@ -376,6 +436,30 @@ jobs:
         dumps_dir: crashdumps
         python: ${{ matrix.kind.python }}
         variant: ${{ matrix.kind.name }}
+    - name: Upload back-end coverage to CodeCov
+      if: ${{ (success() || failure()) && matrix.kind.coverage }}
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        flags: back-end
+        files: coverage_reports/test_runner.info
+        verbose: true
+    - name: Upload Pytest coverage to CodeCov
+      if: ${{ (success() || failure()) && matrix.kind.coverage }}
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        flags: pytest
+        files: coverage_reports/pytest.info,coverage_reports/pytest.xml
+        verbose: true
+    - name: Upload QML test coverage to CodeCov
+      if: ${{ (success() || failure()) && matrix.kind.coverage }}
+      uses: codecov/codecov-action@v3
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        flags: qml
+        files: coverage_reports/qml.info,coverage_reports/qml.xml
+        verbose: true
     # - name: TMate failure session
     #   if: ${{ failure() && matrix.kind.asan }}
     #   uses: SanderVocke/action-tmate@master
