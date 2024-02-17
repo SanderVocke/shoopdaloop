@@ -22,3 +22,6 @@ procps
 # for coverage analysis
 lcov
 gcc
+
+#for checkout
+git
