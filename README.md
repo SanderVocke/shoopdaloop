@@ -6,7 +6,7 @@
 
 # ShoopDaLoop
 
-ShoopDaLoop is a live looping application for Linux with a few DAW-like features. It offers clips/loops in a grid-style layout, aimed at free-form "jamming" and pre-scripted looping sessions.
+ShoopDaLoop is a live looping application with a few DAW-like features. It offers clips/loops in a grid-style layout, aimed at free-form "jamming" and pre-scripted looping sessions.
 
 [Documentation](https://sandervocke.github.io/shoopdaloop/) lives here.
 
