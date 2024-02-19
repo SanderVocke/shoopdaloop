@@ -245,7 +245,7 @@ jobs:
             coverage: true
             run_cmd_prefix: >-
               BASEDIR=$(pwd)
-              EXCLUDE='"\"/*/third_party/*\""'
+              EXCLUDE='"\"/*\""'
               REPORTDIR=coverage_reports
               BUILDDIR=$(realpath build/cp*/)
               ORI_BUILD_DIR=$(cat ori_build_dir.txt)
