@@ -245,7 +245,7 @@ jobs:
             coverage: true
             run_cmd_prefix: >-
               BASEDIR=$(pwd)
-              EXCLUDE=third_party,src/third_party,qt6,boost,c++
+              EXCLUDE='/*/third_party/* /*/catch2/*'
               REPORTDIR=coverage_reports
               BUILDDIR=$(realpath build/cp*/)
               ORI_BUILD_DIR=$(cat ori_build_dir.txt)
@@ -367,7 +367,7 @@ jobs:
         variant_name: ${{ matrix.kind.name }}
         # note: build step generates run_cmd_prefix output
         # for usage with shared ASAN library.
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=test_runner ${{ matrix.kind.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=backend_lcov ${{ matrix.kind.run_cmd_prefix }}
         test_runner: ${{ steps.install.outputs.install_dir }}/${{ matrix.kind.testrunner }}
     - name: Test Python
       if: ${{ success() || failure() }}
@@ -375,22 +375,22 @@ jobs:
       timeout-minutes: 5
       with:
         variant_name: release
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=pytest ${{ matrix.kind.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=pytest_lcov ${{ matrix.kind.run_cmd_prefix }}
         root_path: ${{ steps.install.outputs.install_dir }}
         pytest_command: ${{ matrix.kind.pytest }}
         python_coverage: ${{ matrix.kind.coverage }}
     - name: Generate Pytest Python coverage report
       if: ${{ (success() || failure()) && matrix.kind.coverage }}
       run: |
-        ${{ matrix.kind.python }} -m coverage xml -i -o coverage_reports/pytest.xml
-        sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest.xml
+        ${{ matrix.kind.python }} -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
+        sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
     - name: Test QML
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_qml
       timeout-minutes: 20
       with:
         variant_name: release
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=qml ${{ matrix.kind.run_cmd_prefix }}
+        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=qml_lcov ${{ matrix.kind.run_cmd_prefix }}
         root_path: ${{ steps.install.outputs.install_dir }}
         python_command: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
@@ -399,8 +399,8 @@ jobs:
     - name: Generate QML Python coverage report
       if: ${{ (success() || failure()) && matrix.kind.coverage }}
       run: |
-        ${{ matrix.kind.python }} -m coverage xml -i -o coverage_reports/qml.xml
-        sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml.xml
+        ${{ matrix.kind.python }} -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
+        sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
     - name: Qoverage - Generate report
       if: ${{ (success() || failure()) && matrix.kind.coverage }}
       uses: ./.github/actions/qoverage_generate_report
@@ -408,7 +408,7 @@ jobs:
         strip: ".*/pip/shoopdaloop"
         package_path: ${{ steps.install.outputs.install_dir }}
         console_output_file: test-qml-console-output.log
-        report_file: qoverage_report.xml
+        report_file: coverage_reports/qml_qoverage.xml
     - name: Screenshots
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_screenshots
@@ -442,7 +442,7 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: back-end
-        files: coverage_reports/test_runner.info
+        files: coverage_reports/backend_lcov.info
         verbose: true
     - name: Upload Pytest coverage to CodeCov
       if: ${{ (success() || failure()) && matrix.kind.coverage }}
@@ -450,7 +450,7 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: pytest
-        files: coverage_reports/pytest.info,coverage_reports/pytest.xml
+        files: coverage_reports/pytest_lcov.info,coverage_reports/pytest_pycoverage.xml
         verbose: true
     - name: Upload QML test coverage to CodeCov
       if: ${{ (success() || failure()) && matrix.kind.coverage }}
@@ -458,8 +458,14 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         flags: qml
-        files: coverage_reports/qml.info,coverage_reports/qml.xml
+        files: coverage_reports/qml_lcov.info,coverage_reports/qml_pycoverage.xml,coverage_reports/qml_qoverage.xml
         verbose: true
+    - name: Upload raw coverage reports
+      if: ${{ (success() || failure()) && matrix.kind.coverage }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage_reports
+        path: coverage_reports
     # - name: TMate failure session
     #   if: ${{ failure() && matrix.kind.asan }}
     #   uses: SanderVocke/action-tmate@master
