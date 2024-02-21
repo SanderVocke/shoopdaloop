@@ -57,7 +57,6 @@ runs:
     uses: mikepenz/action-junit-report@v3
     with:
       report_paths: ${{ env.results_xml }}
-      detailed_summary: true
-      include_passed: true
+      include_passed: false
       check_name: 'QML test (${{ inputs.variant_name }})'
 
