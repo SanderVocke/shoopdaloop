@@ -16,6 +16,12 @@ class QoverageFileCollector(ShoopQObject):
         for line in lines:
             if self.lines_data[line] != None:
                 self.lines_data[line] += 1
+
+    @ShoopSlot()
+    def on_about_to_quit():
+        # Ignore this signal. It is the method Qoverage usually uses to trigger reporting,
+        # but we have our own.
+        pass
     
     def report(self):
         print(f'<QOVERAGERESULT file="{self.filename}">{json.dumps(self.lines_data)}</QOVERAGERESULT>')
