@@ -251,6 +251,7 @@ jobs:
               ORI_BUILD_DIR=$(cat ori_build_dir.txt)
               DO_GENHTML=0
               SHOOP_LOG=QoverageCollectorFactory=debug
+              QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
               scripts/run_and_generate_coverage.sh
           - name: release_macos11
             python: python3
