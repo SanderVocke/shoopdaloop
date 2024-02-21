@@ -18,7 +18,7 @@ class QoverageFileCollector(ShoopQObject):
                 self.lines_data[line] += 1
 
     @ShoopSlot()
-    def on_about_to_quit():
+    def on_about_to_quit(self):
         # Ignore this signal. It is the method Qoverage usually uses to trigger reporting,
         # but we have our own.
         pass
