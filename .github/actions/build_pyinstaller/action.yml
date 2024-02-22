@@ -13,6 +13,9 @@ outputs:
     description: "Folder where the finished PyInstaller distribution is located"
     value: ${{ steps.pyinstaller.outputs.output }}
 
+runs:
+  using: "composite"
+  steps:
   - name: PyInstaller
     shell: bash
     id: pyinstaller
