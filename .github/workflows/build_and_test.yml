@@ -348,9 +348,16 @@ jobs:
         submodules: recursive
     - name: Retrieve wheel
       uses: actions/download-artifact@v4
+      if: ${{ matrix.kind.wheel }}
       with:
         name: ${{ matrix.kind.wheel }}
         path: ~/wheel
+    - name: Retrieve PyInstaller package
+      if: ${{ matrix.kind.pyinstaller }}
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ matrix.kind.pyinstaller }}
+        path: ~/pyinstaller
     - name: Retrieve info context for coverage analysis
       if: ${{ matrix.kind.coverage }}
       uses: actions/download-artifact@v4
@@ -366,12 +373,19 @@ jobs:
         cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
     - name: Install wheel
       id: install
+      if: ${{ matrix.kind.wheel }}
       shell: bash
       run: |
         ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
         ${{ matrix.kind.python }} -m shoopdaloop --info
         mkdir -p crashdumps
         echo "install_dir=$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
+    - name: Install PyInstaller package
+      if: ${{ matrix.kind.pyinstaller }}
+      shell: bash
+      run: |
+        ls -la ~/pyinstaller
+        ls -la ~/pyinstaller/*
     - name: Install Python modules
       shell: bash
       run: |
