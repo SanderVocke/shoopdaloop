@@ -1,6 +1,9 @@
 # Install a wheel and then build a PyInstaller package from it
  
 inputs:
+  python:
+    description: "Python command"
+    required: true
   pip:
     description: "Pip command"
     required: true
@@ -23,6 +26,6 @@ runs:
       ${{ inputs.pip }} install pyinstaller
       ${{ inputs.pip }} install ${{ inputs.wheel }}
       cd distribution/pyinstaller
-      pyinstaller shoopdaloop.spec
+      ${{ inputs.python }} -m pyinstaller shoopdaloop.spec
       echo "output=distribution/pyinstaller/dist/shoopdaloop" >> $GITHUB_OUTPUT
     
