@@ -25,7 +25,9 @@ runs:
     run: |
       ${{ inputs.pip }} install pyinstaller
       ${{ inputs.pip }} install ${{ inputs.wheel }}
+      export PYINSTALLER=$(${{ inputs.pip }} show pyinstaller | grep Location | sed 's/Location: //g')/$(${{ inputs.pip }} show -f pyinstaller | grep -E '.*/pyinstaller')
+      echo "Found PyInstaller @ $PYINSTALLER"
       cd distribution/pyinstaller
-      ${{ inputs.python }} -m pyinstaller shoopdaloop.spec
+      $PYINSTALLER shoopdaloop.spec
       echo "output=distribution/pyinstaller/dist/shoopdaloop" >> $GITHUB_OUTPUT
     
