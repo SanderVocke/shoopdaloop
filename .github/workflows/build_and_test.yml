@@ -380,12 +380,14 @@ jobs:
         ${{ matrix.kind.python }} -m shoopdaloop --info
         mkdir -p crashdumps
         echo "install_dir=$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
-    - name: Install PyInstaller package
-      if: ${{ matrix.kind.pyinstaller }}
+    - name: Determine ShoopDaLoop command
       shell: bash
+      id: shoop_cmd
       run: |
-        ls -la ~/pyinstaller
-        ls -la ~/pyinstaller/*
+        export WHEEL_CMD=${{ matrix.kind.python }} -m shoopdaloop
+        export PYINST_CMD=pyinstaller/shoopdaloop
+        export CMD=${{ matrix.kind.pyinstaller && '$PYINST_CMD' || '$WHEEL_CMD' }}
+        echo "command=$CMD" | tee -a $GITHUB_OUTPUT
     - name: Install Python modules
       shell: bash
       run: |
@@ -401,7 +403,7 @@ jobs:
       with:
         package_path: ${{ steps.install.outputs.install_dir }}
     - name: Test back-end
-      if: ${{ success() || failure() }}
+      if: ${{ (success() || failure()) && !(matrix.kind.pyinstaller) }}
       uses: ./.github/actions/test_backend
       timeout-minutes: 5
       with:
@@ -411,7 +413,7 @@ jobs:
         run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=backend_lcov ${{ matrix.kind.run_cmd_prefix }}
         test_runner: ${{ steps.install.outputs.install_dir }}/${{ matrix.kind.testrunner }}
     - name: Test Python
-      if: ${{ success() || failure() }}
+      if: ${{ (success() || failure()) && !(matrix.kind.pyinstaller) }}
       uses: ./.github/actions/test_python
       timeout-minutes: 5
       with:
@@ -432,7 +434,7 @@ jobs:
       with:
         variant_name: release
         run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=qml_lcov ${{ matrix.kind.run_cmd_prefix }}
-        root_path: ${{ steps.install.outputs.install_dir }}
+        shoopdaloop_command: ${{ steps.shoop_cmd.outputs.command }}
         python_command: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
         macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
@@ -478,7 +480,7 @@ jobs:
         python: ${{ matrix.kind.python }}
         variant: ${{ matrix.kind.name }}
     - name: Upload back-end coverage to CodeCov
-      if: ${{ (success() || failure()) && matrix.kind.coverage }}
+      if: ${{ (success() || failure()) && matrix.kind.coverage && !(matrix.kind.pyinstaller) }}
       uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
@@ -486,7 +488,7 @@ jobs:
         files: coverage_reports/backend_lcov.info
         verbose: true
     - name: Upload Pytest coverage to CodeCov
-      if: ${{ (success() || failure()) && matrix.kind.coverage }}
+      if: ${{ (success() || failure()) && matrix.kind.coverage && !(matrix.kind.pyinstaller) }}
       uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
