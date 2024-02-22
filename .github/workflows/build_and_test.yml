@@ -28,6 +28,7 @@ jobs:
             container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
             build_type: 'Release'
+            pyinstaller: true
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_debug
             os: ubuntu-latest
@@ -75,6 +76,7 @@ jobs:
             container_image: null
             prepare: 'windows'
             build_type: 'Release'
+            pyinstaller: true
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: windows_barebones
             os: windows-2022
@@ -100,6 +102,7 @@ jobs:
             container_image: null
             prepare: 'macos'
             build_type: 'Release'
+            pyinstaller: true
             # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
             # Also remove the double dot if any.
             rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
@@ -164,6 +167,13 @@ jobs:
       id: find
       run: |
         echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
+    - name: PyInstaller
+      id: pyinstaller
+      if: ${{ matrix.kind.pyinstaller }}
+      uses: ./.github/actions/build_pyinstaller
+      with:
+        pip: ${{ matrix.kind.pip }}
+        wheel: ${{ steps.find.outputs.name }}
     - name: Upload wheel (${{ inputs.variant_name }})
       if: ${{ !env.ACT }}
       uses: actions/upload-artifact@v4
@@ -176,6 +186,12 @@ jobs:
       with:
         name: debuginfo_${{ matrix.kind.name }}
         path: debuginfo
+    - name: Upload PyInstaller (${{ inputs.variant_name }})
+      if: ${{ matrix.kind.pyinstaller }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: pyinstaller_${{ matrix.kind.name }}
+        path: ${{ steps.pyinstaller.outputs.distribution }}
     - name: Save build infor for coverage analyis
       if: ${{ matrix.kind.coverage }}
       run: |
