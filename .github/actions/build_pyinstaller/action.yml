@@ -28,5 +28,6 @@ runs:
       echo "Found PyInstaller @ $PYINSTALLER"
       cd distribution/pyinstaller
       $PYINSTALLER shoopdaloop.spec
-      echo "output=distribution/pyinstaller/dist/shoopdaloop" >> $GITHUB_OUTPUT
+      tar -czfv shoopdaloop.tar.gz dist/shoopdaloop
+      echo "output=distribution/pyinstaller/shoopdaloop.tar.gz" >> $GITHUB_OUTPUT
     
