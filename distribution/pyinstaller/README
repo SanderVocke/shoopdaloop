@@ -1,0 +1,7 @@
+To build a pyinstaller package:
+
+- make sure ShoopDaLoop package is installed into the Python system (this source tree won't do).
+  It should be a full installation, not an editable dev install.
+- cd into this directory
+- run: pyinstaller shoopdaloop.spec
+- The result will be in dist/shoopdaloop
