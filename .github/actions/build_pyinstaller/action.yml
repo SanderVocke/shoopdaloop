@@ -4,9 +4,6 @@ inputs:
   python:
     description: "Python command"
     required: true
-  pip:
-    description: "Pip command"
-    required: true
   wheel:
     description: "Wheel to install"
     required: true
@@ -23,9 +20,11 @@ runs:
     shell: bash
     id: pyinstaller
     run: |
-      ${{ inputs.pip }} install pyinstaller
-      ${{ inputs.pip }} install ${{ inputs.wheel }}
-      export PYINSTALLER=$(${{ inputs.pip }} show pyinstaller | grep Location | sed 's/Location: //g')/$(${{ inputs.pip }} show -f pyinstaller | grep -E '.*/pyinstaller' | sed -r 's/^\s+//g')
+      export PIP="${{ inputs.python }} -m pip"
+      $PIP install --upgrade pip
+      $PIP install pyinstaller
+      $PIP install ${{ inputs.wheel }}
+      export PYINSTALLER=$($PIP show pyinstaller | grep Location | sed 's/Location: //g')/$($PIP show -f pyinstaller | grep -E '.*/pyinstaller' | sed -r 's/^\s+//g')
       echo "Found PyInstaller @ $PYINSTALLER"
       cd distribution/pyinstaller
       $PYINSTALLER shoopdaloop.spec

@@ -23,7 +23,8 @@ jobs:
         kind:
           - name: linux_release
             os: ubuntu-latest
-            python: python3.8
+            python: python3.8 # Manylinux-provided
+            pyinstaller_python: /usr/bin/python3.8 # pyinstaller uses the official AlmaLinux Python because it has shared libs
             pip: python3.8 -m pip
             container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
@@ -172,8 +173,7 @@ jobs:
       if: ${{ matrix.kind.pyinstaller }}
       uses: ./.github/actions/build_pyinstaller
       with:
-        pip: ${{ matrix.kind.pip }}
-        python: ${{ matrix.kind.python }}
+        python: ${{ matrix.kind.pyinstaller_python && matrix.kind.pyinstaller_python || matrix.kind.python }}
         wheel: ${{ steps.find.outputs.name }}
     - name: Upload wheel (${{ inputs.variant_name }})
       if: ${{ !env.ACT }}
