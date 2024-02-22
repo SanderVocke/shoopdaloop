@@ -9,6 +9,9 @@ inputs:
     type: string
     required: false
     default: /tmp/screenshots
+  shoopdaloop_command:
+    type: string
+    required: true
   artifact_name:
     required: true
     type: string
@@ -25,7 +28,7 @@ runs:
   - name: Save screenshots
     shell: bash
     run: |
-        LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }} SHOOP_LOG=Frontend.TestScreenGrabber=debug ${{ inputs.python }} -m shoopdaloop -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
+        LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }} SHOOP_LOG=Frontend.TestScreenGrabber=debug ${{ inputs.shoopdaloop_command }} -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
   
   - name: Upload screenshots
     uses: actions/upload-artifact@v4

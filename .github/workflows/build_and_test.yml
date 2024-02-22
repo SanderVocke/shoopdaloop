@@ -466,6 +466,7 @@ jobs:
         artifact_name: screenshots_${{ matrix.kind.name }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
         python: ${{ matrix.kind.python }}
+        shoopdaloop_command: ${{ steps.shoop_cmd.outputs.command }}
     - name: Test Run App
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_run_app
@@ -476,6 +477,7 @@ jobs:
         root_path: ${{ steps.install.outputs.install_dir }}
         python: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
+        shoopdaloop_command: ${{ steps.shoop_cmd.outputs.command }}
     - name: Process Crash Dumps
       if: ${{ success() || failure() }}
       uses: ./.github/actions/process_crashdumps
