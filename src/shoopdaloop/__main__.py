@@ -59,7 +59,7 @@ def main():
         if args.qml_self_test:
             import shoopdaloop.qml_tests
             result = shoopdaloop.qml_tests.run_qml_tests(bare_args[1] if len(bare_args) > 1 else [])
-            exit(result)
+            sys.exit(result)
 
         if args.info:
             version=None
@@ -68,7 +68,7 @@ def main():
             print('ShoopDaLoop {}'.format(version.strip()))
             print('Installed @ {}'.format(installation_dir()))
             print('Scripts @ {}'.format(scripts_dir()))
-            exit(0)
+            sys.exit(0)
         
         global_args = {
             'backend_type': args.backend.value,
@@ -91,7 +91,7 @@ def main():
         app.exec()
     except Exception as e:
         logger.error(lambda: "Exception: " + str(e) + "\n" + traceback.format_exc())
-        exit()
+        sys.exit()
 
 
 if __name__ == "__main__":

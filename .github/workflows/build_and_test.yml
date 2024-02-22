@@ -24,7 +24,7 @@ jobs:
           - name: linux_release
             os: ubuntu-latest
             python: python3.8
-            pip: python3 -m pip
+            pip: python3.8 -m pip
             container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
             build_type: 'Release'
@@ -33,7 +33,7 @@ jobs:
           - name: linux_debug
             os: ubuntu-latest
             python: python3.8
-            pip: python3 -m pip
+            pip: python3.8 -m pip
             container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
             build_type: 'Debug'
@@ -41,7 +41,7 @@ jobs:
           - name: linux_barebones
             os: ubuntu-latest
             python: python3.8
-            pip: python3 -m pip
+            pip: python3.8 -m pip
             container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
             build_type: 'Release'
@@ -53,7 +53,7 @@ jobs:
             # build process still works. To use ASAN, compile like this natively.
             os: ubuntu-latest
             python: python3.8
-            pip: python3 -m pip
+            pip: python3.8 -m pip
             container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             prepare: 'manylinux_2_28'
             build_type: 'Debug'
