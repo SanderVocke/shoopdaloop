@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import sys
 import os
 from shoopdaloop.lib.directories import *
@@ -15,6 +17,16 @@ def main():
         from shoopdaloop.lib.backend_wrappers import AudioDriverType
         mains = [ os.path.basename(p).replace('.qml','') for p in glob.glob('{}/lib/qml/applications/*.qml'.format(installation_dir())) ]
 
+        bare_args = []
+        current_args = []
+        for a in sys.argv[1:]:
+            if a == '--':
+                bare_args.append(current_args)
+                current_args = []
+            else:
+                current_args.append(a)   
+        bare_args.append(current_args)             
+
         parser = argparse.ArgumentParser(
             prog="ShoopDaLoop",
             description="An Audio+MIDI looper with some DAW-like features"
@@ -28,8 +40,9 @@ def main():
         parser.add_argument('--test-grab-screens', type=str, help='For debugging: will open several windows, grab and save screenshots of them, store them in the given folder (will create if not existing) and then exit.')
         parser.add_argument('--quit-after', type=float, default=-1.0, help='For debugging: quit X seconds after app is fully loaded.')
         parser.add_argument('--monkey-tester', action='store_true', help='Start the monkey tester, which will randomly, rapidly perform actions on the session.')
+        parser.add_argument('--qml-self-test', action='store_true', help='Run QML tests and exit. Pass additional args to the tester after "--".')
         parser.add_argument('session_filename', type=str, default=None, nargs='?', help='(optional) Load a session from a file upon startup.')
-        args = parser.parse_args()
+        args = parser.parse_args(bare_args[0])
         
         from shoopdaloop.lib.q_objects.Application import Application
         from shoopdaloop.lib.crash_handling import init_crash_handling
@@ -42,6 +55,11 @@ def main():
         if platform.system() == 'Windows':
             myappid = 'shoopdaloop.shoopdaloop' # arbitrary string
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+            
+        if args.qml_self_test:
+            import shoopdaloop.qml_tests
+            result = shoopdaloop.qml_tests.run_qml_tests(bare_args[1] if len(bare_args) > 1 else [])
+            exit(result)
 
         if args.info:
             version=None

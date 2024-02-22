@@ -14,8 +14,8 @@ from ..lua_qobject_interface import create_lua_qobject_interface
 
 import os
 import inspect
-script_pwd = os.path.dirname(__file__)
-lua_scriptdir = script_pwd + '/../lua'
+from ..directories import installation_dir
+lua_scriptdir = installation_dir() + '/lib/lua'
 
 class ScriptExecutionError(Exception):
     pass
