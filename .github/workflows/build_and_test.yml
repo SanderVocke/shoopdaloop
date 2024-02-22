@@ -384,9 +384,9 @@ jobs:
       shell: bash
       id: shoop_cmd
       run: |
-        export WHEEL_CMD=${{ matrix.kind.python }} -m shoopdaloop
-        export PYINST_CMD=pyinstaller/shoopdaloop
-        export CMD=${{ matrix.kind.pyinstaller && '$PYINST_CMD' || '$WHEEL_CMD' }}
+        export WHEEL_CMD="${{ matrix.kind.python }} -m shoopdaloop"
+        export PYINST_CMD="./pyinstaller/shoopdaloop"
+        export CMD="${{ matrix.kind.pyinstaller && '$PYINST_CMD' || '$WHEEL_CMD' }}"
         echo "command=$CMD" | tee -a $GITHUB_OUTPUT
     - name: Install Python modules
       shell: bash
