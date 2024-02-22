@@ -8,18 +8,18 @@ from PySide6.QtCore import QObject, Slot
 from .ShoopPyObject import *
 
 from ..gen_click_track import gen_click_track_audio, gen_click_track_midi_smf
+from ..directories import installation_dir
 
 def play_wav(filename):
     data, fs = sf.read(filename, dtype='float32')
     sd.play(data, fs)
 
 class ClickTrackGenerator(ShoopQObject):
-    script_dir = os.path.dirname(os.path.abspath(__file__))
     clicks = {
-        'click_high': script_dir + '/../../resources/click_high.wav',
-        'click_low': script_dir + '/../../resources/click_low.wav',
-        'shaker_primary': script_dir + '/../../resources/shaker_primary.wav',
-        'shaker_secondary': script_dir + '/../../resources/shaker_secondary.wav'
+        'click_high': installation_dir() + '/resources/click_high.wav',
+        'click_low': installation_dir() + '/resources/click_low.wav',
+        'shaker_primary': installation_dir() + '/resources/shaker_primary.wav',
+        'shaker_secondary': installation_dir() + '/resources/shaker_secondary.wav'
     }
 
     @ShoopSlot(result=list)
