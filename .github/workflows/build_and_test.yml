@@ -380,7 +380,11 @@ jobs:
     - name: Decompress PyInstaller package
       if: ${{ matrix.kind.pyinstaller }}
       run: |
-        tar -xvf pyinstaller/*.tar.gz -C pyinstaller
+        echo "top:"
+        ls ./pyinstaller
+        echo "subdirs:"
+        ls ./pyinstaller/*
+        tar -xvf ./pyinstaller/*.tar.gz -C ./pyinstaller
     - name: Retrieve info context for coverage analysis
       if: ${{ matrix.kind.coverage }}
       uses: actions/download-artifact@v4
