@@ -8,7 +8,7 @@ inputs:
   run_cmd_prefix:
     type: string
     description: "Command-line prefix to use when running the test runner"
-  root_path:
+  shoopdaloop_command:
     type: string
     required: true
   python_command:
@@ -41,8 +41,8 @@ runs:
       QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}
       QT_ASSUME_STDERR_HAS_CONSOLE=1
       ${{ inputs.run_cmd_prefix }}
-      ${{ inputs.python_command }}
-      ${{ inputs.root_path }}/run_qml_tests.py
+      ${{ inputs.shoopdaloop_command }} --qml-self-test
+      --
       --junit ${{ env.results_xml }}
       2>&1 | tee ${{ inputs.tee_all_output_to }}
   

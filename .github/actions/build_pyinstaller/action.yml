@@ -1,27 +1,49 @@
-# TODO finish 
+# Install a wheel and then build a PyInstaller package from it
  
- 
- - name: Prepare PyInstaller
-    shell: bash
-    id: prepare_pyinstaller
-    if: ${{ inputs.pyinstaller == 'true' }}
-    run: |
-      echo "pyinstaller_dir=$(pwd)/pyinstaller" | tee -a $GITHUB_OUTPUT
+inputs:
+  python:
+    description: "Python command"
+    required: true
+  wheel:
+    description: "Wheel to install"
+    required: true
+  find_pyinstaller:
+    description: "Don't assume pyinstaller is in the PATH, find it via pip"
+    required: false
 
+outputs:
+  distribution:
+    description: "Folder where the finished PyInstaller distribution is located"
+    value: ${{ steps.pyinstaller.outputs.output }}
+
+runs:
+  using: "composite"
+  steps:
   - name: PyInstaller
     shell: bash
-    id: pyinstaller
-    if: ${{ inputs.pyinstaller == 'true' }}
     run: |
-      . $HOME/.bashrc
-      cd ${{ steps.install.outputs.install_dir }}
-      ${{ inputs.python }} -m pip install ${{ inputs.pip_install_extra_args }} pyinstaller
-      pyinstaller __main__.py -n shoopdaloop --collect-all shoopdaloop --collect-all lupa --distpath ${{ steps.prepare_pyinstaller.outputs.pyinstaller_dir }} --clean
+      export PIP="${{ inputs.python }} -m pip"
+      $PIP install --upgrade pip
+      $PIP install pyinstaller
+      $PIP install ${{ inputs.wheel }}
   
-  - name: Upload PyInstaller distribution (${{ inputs.variant_name }})
-    if: ${{ !env.ACT && inputs.pyinstaller == 'true' }}
-    uses: actions/upload-artifact@v4
-    with:
-      name: ${{ inputs.pyinstaller_artifact_name }}
-      path: ${{ steps.prepare_pyinstaller.outputs.pyinstaller_dir }}
+  - name: Find PyInstaller
+    shell: bash
+    id: find
+    run: |
+      export PIP="${{ inputs.python }} -m pip"
+      export PYINSTALLER_SEARCH=$($PIP show pyinstaller | grep Location | sed 's/Location: //g')/$($PIP show -f pyinstaller | grep -E '.*/pyinstaller' | sed -r 's/^\s+//g')
+      export PYINSTALLER_DEFAULT=pyinstaller
+      export PYINSTALLER="${{ inputs.find_pyinstaller && '$PYINSTALLER_SEARCH' || '$PYINSTALLER_DEFAULT' }}"
+      echo "PyInstaller: $PYINSTALLER"
+      echo "pyinstaller=$PYINSTALLER" | tee -a $GITHUB_OUTPUT
+
+  - name: Build
+    shell: bash
+    id: pyinstaller
+    run: |
+      cd distribution/pyinstaller
+      ${{ steps.find.outputs.pyinstaller }} shoopdaloop.spec
+      tar -czvf shoopdaloop.tar.gz -C dist/shoopdaloop .
+      echo "output=distribution/pyinstaller/shoopdaloop.tar.gz" | tee -a $GITHUB_OUTPUT
     

@@ -4,6 +4,7 @@ FROM quay.io/pypa/manylinux_2_28_x86_64:latest
 WORKDIR /
 
 # Python alias
+# (note: pre-installed python is a static build from manylinux)
 RUN ln -s /usr/local/bin/python3.8 /usr/local/bin/python && \
     ln -s /usr/local/bin/python3.8 /usr/local/bin/python3 && \
     echo "export PATH=\"\$PATH:$(find /opt/_internal -name "cpython-3.8.*")/bin\"" >> $HOME/.bashrc
