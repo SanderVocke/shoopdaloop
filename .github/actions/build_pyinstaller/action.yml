@@ -7,6 +7,9 @@ inputs:
   wheel:
     description: "Wheel to install"
     required: true
+  find_pyinstaller:
+    description: "Don't assume pyinstaller is in the PATH, find it via pip"
+    required: false
 
 outputs:
   distribution:
@@ -24,10 +27,22 @@ runs:
       $PIP install --upgrade pip
       $PIP install pyinstaller
       $PIP install ${{ inputs.wheel }}
-      export PYINSTALLER=$($PIP show pyinstaller | grep Location | sed 's/Location: //g')/$($PIP show -f pyinstaller | grep -E '.*/pyinstaller' | sed -r 's/^\s+//g')
-      echo "Found PyInstaller @ $PYINSTALLER"
+  
+  - name: Find PyInstaller
+    shell: bash
+    id: find
+    run: |
+      export PYINSTALLER_SEARCH=$($PIP show pyinstaller | grep Location | sed 's/Location: //g')/$($PIP show -f pyinstaller | grep -E '.*/pyinstaller' | sed -r 's/^\s+//g')
+      export PYINSTALLER_DEFAULT=pyinstaller
+      export PYINSTALLER="${{ inputs.find_pyinstaller && '$PYINSTALLER_SEARCH' || '$PYINSTALLER_DEFAULT' }}"
+      echo "PyInstaller: $PYINSTALLER"
+      echo "pyinstaller=$PYINSTALLER" | tee -a $GITHUB_OUTPUT
+
+  - name: Build
+    shell: bash
+    run:
       cd distribution/pyinstaller
-      $PYINSTALLER shoopdaloop.spec
+      ${{ steps.find.outputs.pyinstaller }} shoopdaloop.spec
       tar -czvf shoopdaloop.tar.gz -C dist/shoopdaloop .
-      echo "output=distribution/pyinstaller/shoopdaloop.tar.gz" >> $GITHUB_OUTPUT
+      echo "output=distribution/pyinstaller/shoopdaloop.tar.gz" | tee -a $GITHUB_OUTPUT
     
