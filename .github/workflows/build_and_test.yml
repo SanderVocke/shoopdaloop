@@ -31,103 +31,103 @@ jobs:
             build_type: 'Release'
             pyinstaller: true
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          # - name: linux_debug
-          #   os: ubuntu-latest
-          #   python: python3.8
-          #   pip: python3.8 -m pip
-          #   container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
-          #   prepare: 'manylinux_2_28'
-          #   build_type: 'Debug'
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          # - name: linux_barebones
-          #   os: ubuntu-latest
-          #   python: python3.8
-          #   pip: python3.8 -m pip
-          #   container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
-          #   prepare: 'manylinux_2_28'
-          #   build_type: 'Release'
-          #   cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          # - name: linux_asan
-          #   # Note: ASAN build does not have a test because it is not trivial to deploy
-          #   # an asan-built program on another system. The build is here to ensure the
-          #   # build process still works. To use ASAN, compile like this natively.
-          #   os: ubuntu-latest
-          #   python: python3.8
-          #   pip: python3.8 -m pip
-          #   container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
-          #   prepare: 'manylinux_2_28'
-          #   build_type: 'Debug'
-          #   cmake_opts: '"ENABLE_ASAN" = "On"'
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          # - name: linux_coverage
-          #   os: ubuntu-latest
-          #   python: python3.8
-          #   pip: python3.8 -m pip
-          #   container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
-          #   prepare: 'manylinux_2_28'
-          #   build_type: 'Debug'
-          #   cmake_opts: '"ENABLE_COVERAGE" = "On"'
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          #   coverage: true
-          # - name: windows_release
-          #   os: windows-2022
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container_image: null
-          #   prepare: 'windows'
-          #   build_type: 'Release'
-          #   pyinstaller: true
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          # - name: windows_barebones
-          #   os: windows-2022
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container_image: null
-          #   prepare: 'windows'
-          #   build_type: 'Release'
-          #   cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          # - name: windows_debug
-          #   os: windows-2022
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container_image: null
-          #   prepare: 'windows'
-          #   build_type: 'Debug'
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          # - name: macos_release
-          #   os: macos-11
-          #   python: python3.8
-          #   pip: python3.8 -m pip
-          #   container_image: null
-          #   prepare: 'macos'
-          #   build_type: 'Release'
-          #   pyinstaller: true
-          #   # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
-          #   # Also remove the double dot if any.
-          #   rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
-          # - name: macos_debug
-          #   os: macos-11
-          #   python: python3.8
-          #   pip: python3.8 -m pip
-          #   container_image: null
-          #   prepare: 'macos'
-          #   build_type: 'Debug'
-          #   # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
-          #   # Also remove the double dot if any.
-          #   rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
-          # - name: macos_barebones
-          #   os: macos-11
-          #   python: python3.8
-          #   pip: python3.8 -m pip
-          #   container_image: null
-          #   prepare: 'macos'
-          #   build_type: 'Debug'
-          #   cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
-          #   # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
-          #   # Also remove the double dot if any.
-          #   rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+          - name: linux_debug
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3.8 -m pip
+            container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            build_type: 'Debug'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: linux_barebones
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3.8 -m pip
+            container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            build_type: 'Release'
+            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: linux_asan
+            # Note: ASAN build does not have a test because it is not trivial to deploy
+            # an asan-built program on another system. The build is here to ensure the
+            # build process still works. To use ASAN, compile like this natively.
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3.8 -m pip
+            container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            build_type: 'Debug'
+            cmake_opts: '"ENABLE_ASAN" = "On"'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: linux_coverage
+            os: ubuntu-latest
+            python: python3.8
+            pip: python3.8 -m pip
+            container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            build_type: 'Debug'
+            cmake_opts: '"ENABLE_COVERAGE" = "On"'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+            coverage: true
+          - name: windows_release
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            build_type: 'Release'
+            pyinstaller: true
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: windows_barebones
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            build_type: 'Release'
+            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: windows_debug
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            build_type: 'Debug'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: macos_release
+            os: macos-11
+            python: python3.8
+            pip: python3.8 -m pip
+            container_image: null
+            prepare: 'macos'
+            build_type: 'Release'
+            pyinstaller: true
+            # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+            # Also remove the double dot if any.
+            rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+          - name: macos_debug
+            os: macos-11
+            python: python3.8
+            pip: python3.8 -m pip
+            container_image: null
+            prepare: 'macos'
+            build_type: 'Debug'
+            # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+            # Also remove the double dot if any.
+            rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+          - name: macos_barebones
+            os: macos-11
+            python: python3.8
+            pip: python3.8 -m pip
+            container_image: null
+            prepare: 'macos'
+            build_type: 'Debug'
+            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
+            # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+            # Also remove the double dot if any.
+            rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
     runs-on: ${{ matrix.kind.os}}
     container:
       image: ${{ matrix.kind.container_image }}
@@ -223,24 +223,24 @@ jobs:
             wheel: wheel_linux_release
             testrunner: test_runner
             qpa_platform: vnc
-          # - name: barebones_debian_stable
-          #   python: python3
-          #   pip: python3 -m pip
-          #   pytest: python3 -m pytest
-          #   container: sandervocke/shoopdaloop_run_base_debian_stable:latest
-          #   os: ubuntu-latest
-          #   wheel: wheel_linux_barebones
-          #   testrunner: test_runner
-          #   qpa_platform: vnc
-          # - name: release_ubuntu_latest
-          #   python: python3
-          #   pip: python3 -m pip
-          #   pytest: python3 -m pytest
-          #   container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
-          #   os: ubuntu-latest
-          #   wheel: wheel_linux_release
-          #   testrunner: test_runner
-          #   qpa_platform: vnc
+          - name: barebones_debian_stable
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_debian_stable:latest
+            os: ubuntu-latest
+            wheel: wheel_linux_barebones
+            testrunner: test_runner
+            qpa_platform: vnc
+          - name: release_ubuntu_latest
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+            os: ubuntu-latest
+            wheel: wheel_linux_release
+            testrunner: test_runner
+            qpa_platform: vnc
           - name: release_ubuntu_latest_pyinstaller
             python: python3
             pip: python3 -m pip
@@ -250,91 +250,91 @@ jobs:
             pyinstaller: pyinstaller_linux_release
             testrunner: test_runner
             qpa_platform: vnc
-          # - name: release_arch
-          #   python: python
-          #   pip: python -m pip
-          #   pytest: python3 -m pytest
-          #   container: sandervocke/shoopdaloop_run_base_arch:latest
-          #   os: ubuntu-latest
-          #   wheel: wheel_linux_release
-          #   testrunner: test_runner
-          #   qpa_platform: vnc
-          # - name: coverage_manylinux_2_28
-          #   python: python3.8 -m coverage run --source=shoopdaloop
-          #   pip: python3.8 -m pip
-          #   pytest: python3.8 -m coverage run --source=shoopdaloop -m pytest
-          #   container: sandervocke/shoopdaloop_base_manylinux_2_28:latest
-          #   os: ubuntu-latest
-          #   wheel: wheel_linux_coverage
-          #   testrunner: test_runner
-          #   qpa_platform: vnc
-          #   coverage: true
-          #   run_cmd_prefix: >-
-          #     BASEDIR=$(pwd)
-          #     EXCLUDE='/*/third_party/* /*/catch2/*'
-          #     REPORTDIR=coverage_reports
-          #     BUILDDIR=$(realpath build/cp*/)
-          #     ORI_BUILD_DIR=$(cat ori_build_dir.txt)
-          #     DO_GENHTML=0
-          #     SHOOP_LOG=QoverageCollectorFactory=debug
-          #     QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
-          #     scripts/run_and_generate_coverage.sh
-          # - name: release_macos11
-          #   python: python3
-          #   pip: python3 -m pip
-          #   pytest: python3 -m pytest
-          #   container: null
-          #   os: macos-11
-          #   wheel: wheel_macos_release
-          #   testrunner: test_runner
-          #   qpa_platform: offscreen
-          # - name: release_macos12
-          #   python: python3
-          #   pip: python3 -m pip
-          #   pytest: python3 -m pytest
-          #   container: null
-          #   os: macos-12
-          #   wheel: wheel_macos_release
-          #   testrunner: test_runner
-          #   qpa_platform: offscreen
-          # - name: release_macos13
-          #   python: python3
-          #   pip: python3 -m pip
-          #   pytest: python3 -m pytest
-          #   container: null
-          #   os: macos-13
-          #   wheel: wheel_macos_release
-          #   testrunner: test_runner
-          #   qpa_platform: offscreen
-          # - name: debug_macos13
-          #   python: python3
-          #   pip: python3 -m pip
-          #   pytest: python3 -m pytest
-          #   container: null
-          #   os: macos-13
-          #   wheel: wheel_macos_debug
-          #   testrunner: test_runner
-          #   qpa_platform: offscreen
-          # - name: release_windows
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   pytest: python.exe -m pytest
-          #   container: null
-          #   os: windows-2022
-          #   wheel: wheel_windows_release
-          #   testrunner: test_runner.exe
-          #   qpa_platform: offscreen
-          #   pathconvert: "| cygpath -u -f -"
-          # - name: debug_windows
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   pytest: python.exe -m pytest
-          #   container: null
-          #   os: windows-2022
-          #   wheel: wheel_windows_debug
-          #   testrunner: test_runner.exe
-          #   qpa_platform: offscreen
-          #   pathconvert: "| cygpath -u -f -"
+          - name: release_arch
+            python: python
+            pip: python -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_arch:latest
+            os: ubuntu-latest
+            wheel: wheel_linux_release
+            testrunner: test_runner
+            qpa_platform: vnc
+          - name: coverage_manylinux_2_28
+            python: python3.8 -m coverage run --source=shoopdaloop
+            pip: python3.8 -m pip
+            pytest: python3.8 -m coverage run --source=shoopdaloop -m pytest
+            container: sandervocke/shoopdaloop_base_manylinux_2_28:latest
+            os: ubuntu-latest
+            wheel: wheel_linux_coverage
+            testrunner: test_runner
+            qpa_platform: vnc
+            coverage: true
+            run_cmd_prefix: >-
+              BASEDIR=$(pwd)
+              EXCLUDE='/*/third_party/* /*/catch2/*'
+              REPORTDIR=coverage_reports
+              BUILDDIR=$(realpath build/cp*/)
+              ORI_BUILD_DIR=$(cat ori_build_dir.txt)
+              DO_GENHTML=0
+              SHOOP_LOG=QoverageCollectorFactory=debug
+              QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
+              scripts/run_and_generate_coverage.sh
+          - name: release_macos11
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: null
+            os: macos-11
+            wheel: wheel_macos_release
+            testrunner: test_runner
+            qpa_platform: offscreen
+          - name: release_macos12
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: null
+            os: macos-12
+            wheel: wheel_macos_release
+            testrunner: test_runner
+            qpa_platform: offscreen
+          - name: release_macos13
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: null
+            os: macos-13
+            wheel: wheel_macos_release
+            testrunner: test_runner
+            qpa_platform: offscreen
+          - name: debug_macos13
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: null
+            os: macos-13
+            wheel: wheel_macos_debug
+            testrunner: test_runner
+            qpa_platform: offscreen
+          - name: release_windows
+            python: python.exe
+            pip: python.exe -m pip
+            pytest: python.exe -m pytest
+            container: null
+            os: windows-2022
+            wheel: wheel_windows_release
+            testrunner: test_runner.exe
+            qpa_platform: offscreen
+            pathconvert: "| cygpath -u -f -"
+          - name: debug_windows
+            python: python.exe
+            pip: python.exe -m pip
+            pytest: python.exe -m pytest
+            container: null
+            os: windows-2022
+            wheel: wheel_windows_debug
+            testrunner: test_runner.exe
+            qpa_platform: offscreen
+            pathconvert: "| cygpath -u -f -"
     runs-on: ${{ matrix.kind.os }}
     needs: build
     if: ${{ always() }}
