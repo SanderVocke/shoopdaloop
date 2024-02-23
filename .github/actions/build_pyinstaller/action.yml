@@ -41,7 +41,7 @@ runs:
 
   - name: Build
     shell: bash
-    run:
+    run: |
       cd distribution/pyinstaller
       ${{ steps.find.outputs.pyinstaller }} shoopdaloop.spec
       tar -czvf shoopdaloop.tar.gz -C dist/shoopdaloop .
