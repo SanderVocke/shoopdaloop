@@ -306,6 +306,15 @@ jobs:
             wheel: wheel_macos_release
             testrunner: test_runner
             qpa_platform: offscreen
+          - name: release_macos13_pyinstaller
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: null
+            os: macos-13
+            pyinstaller: pyinstaller_macos_release
+            testrunner: test_runner
+            qpa_platform: offscreen
           - name: debug_macos13
             python: python3
             pip: python3 -m pip
@@ -322,6 +331,16 @@ jobs:
             container: null
             os: windows-2022
             wheel: wheel_windows_release
+            testrunner: test_runner.exe
+            qpa_platform: offscreen
+            pathconvert: "| cygpath -u -f -"
+          - name: release_windows_pyinstaller
+            python: python.exe
+            pip: python.exe -m pip
+            pytest: python.exe -m pytest
+            container: null
+            os: windows-2022
+            pyinstaller: pyinstaller_windows_release
             testrunner: test_runner.exe
             qpa_platform: offscreen
             pathconvert: "| cygpath -u -f -"
