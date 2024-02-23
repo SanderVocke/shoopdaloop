@@ -32,6 +32,7 @@ runs:
     shell: bash
     id: find
     run: |
+      export PIP="${{ inputs.python }} -m pip"
       export PYINSTALLER_SEARCH=$($PIP show pyinstaller | grep Location | sed 's/Location: //g')/$($PIP show -f pyinstaller | grep -E '.*/pyinstaller' | sed -r 's/^\s+//g')
       export PYINSTALLER_DEFAULT=pyinstaller
       export PYINSTALLER="${{ inputs.find_pyinstaller && '$PYINSTALLER_SEARCH' || '$PYINSTALLER_DEFAULT' }}"
