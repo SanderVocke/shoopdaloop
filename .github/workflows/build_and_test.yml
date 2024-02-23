@@ -384,7 +384,7 @@ jobs:
         ls ./pyinstaller
         echo "subdirs:"
         ls ./pyinstaller/*
-        tar -xvf ./pyinstaller/*.tar.gz -C ./pyinstaller
+        tar -xvf ./pyinstaller/shoopdaloop.tar.gz -C ./pyinstaller
     - name: Retrieve info context for coverage analysis
       if: ${{ matrix.kind.coverage }}
       uses: actions/download-artifact@v4
