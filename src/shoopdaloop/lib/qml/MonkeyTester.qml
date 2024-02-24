@@ -12,8 +12,8 @@ Item {
     property var tracks: session ? session.main_tracks : []
 
     property var default_actions_distribution: ({
-        'add_track': 0.6,
-        'remove_track': 0.6,
+        'add_track': 0.3,
+        'remove_track': 0.3,
         'add_loop': 1.0,
         'loop_action': 4.0,
     })
@@ -32,7 +32,7 @@ Item {
     property var actions_distribution: default_actions_distribution
     property var track_type_distribution: default_track_type_distribution
     property var loop_action_distribution: default_loop_action_distribution
-    property real interval: 0.1
+    property real interval: 0.3
 
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.MonkeyTester" }
 
