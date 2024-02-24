@@ -77,7 +77,7 @@ void DummyAudioPort::PROC_process(uint32_t n_frames) {
         log<log_level_debug>("Buffering {} samples ({} total)", to_store, m_retained_samples.size() + to_store);
         if (should_log<log_level_debug_trace>()) {
             std::array<audio_sample_t, 16> arr;
-            std::copy(buf, buf+to_store, arr.begin());
+            std::copy(buf, buf+std::min(to_store, (uint32_t)16), arr.begin());
             log<log_level_debug_trace>("--> first 16 buffered samples: {}", arr);
         }
         m_retained_samples.insert(m_retained_samples.end(), buf, buf+to_store);
@@ -291,7 +291,7 @@ DummyMidiPort::~DummyMidiPort() { DummyPort::close(); }
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::enter_mode(DummyAudioMidiDriverMode mode) {
     if (m_mode.load() != mode) {
-        log<log_level_debug>("DummyAudioMidiDriver: mode -> {}", mode_names.at(mode));
+        Log::log<log_level_debug>("DummyAudioMidiDriver: mode -> {}", mode_names.at(mode));
         m_mode = mode;
         m_controlled_mode_samples_to_process = 0;
 
@@ -309,7 +309,7 @@ template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::controlled_mode_request_samples(uint32_t samples) {
     m_controlled_mode_samples_to_process += samples;
     uint32_t requested = m_controlled_mode_samples_to_process.load();
-    log<log_level_debug>("DummyAudioMidiDriver: request {} samples ({} total)", samples, requested);
+    Log::log<log_level_debug>("DummyAudioMidiDriver: request {} samples ({} total)", samples, requested);
 }
 
 template <typename Time, typename Size>
@@ -331,7 +331,7 @@ DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver()
     m_audio_ports.clear();
     m_midi_ports.clear();
 
-    log<log_level_debug>("DummyAudioMidiDriver: constructed");
+    Log::log<log_level_debug>("DummyAudioMidiDriver: constructed");
 }
 
 template <typename Time, typename Size>
@@ -348,10 +348,14 @@ void DummyAudioMidiDriver<Time, Size>::start(
     AudioMidiDriver::set_dsp_load(0.0f);
     AudioMidiDriver::set_maybe_client_handle(nullptr);
 
-    log<log_level_debug>("Starting (sample rate {}, buf size {})", _settings.sample_rate, _settings.buffer_size);
+    Log::log<log_level_debug>("Starting (sample rate {}, buf size {})", _settings.sample_rate, _settings.buffer_size);
+
+    // Processing the command queue once will ensure that it knows processing is active.
+    // That way commands added from now on will be executed on the process thread.
+    ma_queue.PROC_exec_all();
 
     m_proc_thread = std::thread([this] {
-        log<log_level_debug>("Starting process thread - {}", mode_names.at(m_mode));
+        Log::log<log_level_debug>("Starting process thread - {}", mode_names.at(m_mode));
         auto bufs_per_second = AudioMidiDriver::get_sample_rate() / AudioMidiDriver::get_buffer_size();
         auto interval = 1.0f / ((float)bufs_per_second);
         auto micros = uint32_t(interval * 1000000.0f);
@@ -366,7 +370,7 @@ void DummyAudioMidiDriver<Time, Size>::start(
                 uint32_t to_process = mode == DummyAudioMidiDriverMode::Controlled ?
                     std::min(samples_to_process, AudioMidiDriver::get_buffer_size()) :
                     AudioMidiDriver::get_buffer_size();
-                log<log_level_debug_trace>("Process {}", to_process);
+                Log::log<log_level_debug_trace>("Process {}", to_process);
                 AudioMidiDriver::PROC_process(to_process);
                 if (mode == DummyAudioMidiDriverMode::Controlled) {
                     m_controlled_mode_samples_to_process -= to_process;
@@ -375,23 +379,21 @@ void DummyAudioMidiDriver<Time, Size>::start(
                 time_taken = duration_cast<std::chrono::microseconds>(end - start).count();
             }
         }
-        log<log_level_debug>(
-            "Ending process thread");
+        Log::log<log_level_debug>("Ending process thread");
     });
-
     AudioMidiDriver::set_active(true);
 }
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::pause() {
-    log<log_level_debug>("DummyAudioMidiDriver: pause");
+    Log::log<log_level_debug>("DummyAudioMidiDriver: pause");
     m_paused = true;
     wait_process();
 }
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::resume() {
-    log<log_level_debug>("DummyAudioMidiDriver: resume");
+    Log::log<log_level_debug>("DummyAudioMidiDriver: resume");
     m_paused = false;
 }
 
@@ -404,7 +406,7 @@ template <typename Time, typename Size>
 std::shared_ptr<AudioPort<audio_sample_t>>
 DummyAudioMidiDriver<Time, Size>::open_audio_port(std::string name,
                                               shoop_port_direction_t direction) {
-    log<log_level_debug>("DummyAudioMidiDriver : add audio port");
+    Log::log<log_level_debug>("DummyAudioMidiDriver : add audio port");
     auto rval = std::make_shared<DummyAudioPort>(name, direction);
     m_audio_ports.insert(rval);
     return rval;
@@ -414,7 +416,7 @@ template <typename Time, typename Size>
 std::shared_ptr<MidiPort>
 DummyAudioMidiDriver<Time, Size>::open_midi_port(std::string name,
                                              shoop_port_direction_t direction) {
-    log<log_level_debug>("DummyAudioMidiDriver: add midi port");
+    Log::log<log_level_debug>("DummyAudioMidiDriver: add midi port");
     auto rval = std::make_shared<DummyMidiPort>(name, direction);
     m_midi_ports.insert(rval);
     return rval;
@@ -434,7 +436,7 @@ void DummyAudioMidiDriver<Time, Size>::close() {
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::controlled_mode_run_request(uint32_t timeout) {
-    log<log_level_debug>("DummyAudioMidiDriver: run request");
+    Log::log<log_level_debug>("DummyAudioMidiDriver: run request");
     auto s = std::chrono::high_resolution_clock::now();
     auto timed_out = [this, &timeout, &s]() {
         return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -452,7 +454,7 @@ void DummyAudioMidiDriver<Time, Size>::controlled_mode_run_request(uint32_t time
     wait_process();
 
     if (m_controlled_mode_samples_to_process > 0) {
-        log<log_level_error>("DummyAudioMidiDriver: run request timed out");
+        Log::log<log_level_error>("DummyAudioMidiDriver: run request timed out");
     }
 }
 

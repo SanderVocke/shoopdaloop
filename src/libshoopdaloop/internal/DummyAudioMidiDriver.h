@@ -158,6 +158,8 @@ enum class DummyAudioMidiDriverMode {
 template<typename Time, typename Size>
 class DummyAudioMidiDriver : public AudioMidiDriver,
                              private ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver"> {
+    using Log = ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver">;
+
     std::atomic<bool> m_finish = false;
     std::atomic<DummyAudioMidiDriverMode> m_mode = DummyAudioMidiDriverMode::Automatic;
     std::atomic<uint32_t> m_controlled_mode_samples_to_process = 0;

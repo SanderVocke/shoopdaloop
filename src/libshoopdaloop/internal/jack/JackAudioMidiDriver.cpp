@@ -86,11 +86,11 @@ void GenericJackAudioMidiDriver<API>::start(
 
     jack_status_t status;
 
-    log<log_level_info>("Opening JACK client with name {}.", _settings.client_name_hint);
+    Log::log<log_level_info>("Opening JACK client with name {}.", _settings.client_name_hint);
     auto client = API::client_open(_settings.client_name_hint.c_str(), JackNullOption, &status);
 
     if (client == nullptr) {
-        throw_error<std::runtime_error>("Unable to open JACK client.");
+        Log::throw_error<std::runtime_error>("Unable to open JACK client.");
     }
     AudioMidiDriver::set_maybe_client_handle((void*) client);
     AudioMidiDriver::set_client_name(API::get_client_name(client));
@@ -113,9 +113,12 @@ void GenericJackAudioMidiDriver<API>::start(
     
     m_all_ports_tracker->update(client);
 
+    // Processing the command queue once will ensure that it knows processing is active.
+    // That way commands added from now on will be executed on the process thread.
+    ma_queue.PROC_exec_all();
 
     if (API::activate(client)) {
-        throw_error<std::runtime_error>("Could not activate JACK client.");
+        Log::throw_error<std::runtime_error>("Could not activate JACK client.");
     }
 
     set_maybe_client_handle((void*)client);
@@ -158,11 +161,11 @@ std::shared_ptr<MidiPort> GenericJackAudioMidiDriver<API>::open_midi_port(std::s
 template<typename API>
 void GenericJackAudioMidiDriver<API>::close() {
     if (get_maybe_client_handle()) {
-        log<log_level_debug>("Closing JACK client.");
+        Log::log<log_level_debug>("Closing JACK client.");
         try {
             run_in_thread_with_timeout_unsafe([this]() { API::client_close((jack_client_t*)get_maybe_client_handle()); }, 10000);
         } catch (std::exception &e) {
-            log<log_level_warning>("Attempt to close JACK client failed: {}. Abandoning.", e.what());
+            Log::log<log_level_warning>("Attempt to close JACK client failed: {}. Abandoning.", e.what());
         }
         set_maybe_client_handle(nullptr);
     }

@@ -8,7 +8,7 @@
 #include <set>
 
 struct Tracker : public HasAudioProcessingFunction {
-    std::atomic<uint32_t> total_samples_processed;
+    std::atomic<uint32_t> total_samples_processed = 0;
     std::vector<uint32_t> each_n_samples_processed;
 
     Tracker() {
@@ -60,7 +60,7 @@ TEST_CASE("DummyAudioMidiDriver - Automatic", "[DummyAudioMidiDriver]") {
         256
     );
     
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    dut.wait_process();\
     dut.close();
 
     REQUIRE(dut.tracker.total_samples_processed.load() > 0);
@@ -77,7 +77,7 @@ TEST_CASE("DummyAudioMidiDriver - Controlled", "[DummyAudioMidiDriver]") {
         256
     );
     
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    dut.wait_process();
     dut.pause();
     
     REQUIRE(dut.tracker.total_samples_processed.load() == 0);
@@ -88,7 +88,7 @@ TEST_CASE("DummyAudioMidiDriver - Controlled", "[DummyAudioMidiDriver]") {
     REQUIRE(dut.get_controlled_mode_samples_to_process() == 64);
 
     dut.resume();
-    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    dut.wait_process();
     dut.pause();
 
     REQUIRE(dut.tracker.total_samples_processed.load() == 64);

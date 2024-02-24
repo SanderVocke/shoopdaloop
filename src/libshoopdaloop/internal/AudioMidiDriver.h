@@ -6,6 +6,7 @@
 #include "AudioPort.h"
 #include <stdint.h>
 #include "WithCommandQueue.h"
+#include "LoggingEnabled.h"
 #include "types.h"
 #include <set>
 #include "shoop_globals.h"
@@ -29,6 +30,7 @@ public:
 };
 
 class AudioMidiDriver : public WithCommandQueue,
+                        private ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
                         private std::enable_shared_from_this<AudioMidiDriver> {
     std::shared_ptr<std::set<HasAudioProcessingFunction*>> m_processors;
     std::atomic<uint32_t> m_xruns = 0;

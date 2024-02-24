@@ -21,6 +21,7 @@ class GenericJackAudioMidiDriver :
     public AudioMidiDriver,
     private ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">
 {
+    using Log = ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">;
 private:
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
     std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker = nullptr;
