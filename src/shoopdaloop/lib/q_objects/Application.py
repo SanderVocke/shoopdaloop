@@ -157,9 +157,7 @@ class Application(ShoopQApplication):
         self.exit_handler()
     
     def exit_handler(self):
-        if self.engine:
-            QMetaObject.invokeMethod(self.engine, 'quit')
-            self.exit_handler_called.emit()
+        self.do_quit()
     
     # The following ensures the Python interpreter has a chance to run, which
     # would not happen otherwise once the Qt event loop starts - and this 
@@ -197,7 +195,7 @@ class Application(ShoopQApplication):
         self.logger.info(lambda: "NSM: load session {}".format(path))
         session = self.engine.rootObjects()[0].findChild(QObject, 'session')
         if session:
-            QMetaObject.invokeMethod(session, "load_session", Qt.ConnectionType.DirectConnection, Q_ARG('QVariant', path))
+            QMetaObject.invokeMethod(session, "load_session", Qt.ConnectionType.DirectConnection, Q_ARG('QVariant', path), Q_ARG('QVariant', False))
             while session.property("loading"):
                 time.sleep(0.01)
                 self.processEvents()
@@ -221,8 +219,6 @@ class Application(ShoopQApplication):
     def nsm_exit_handler(self):
         self.logger.info(lambda: 'Exiting due to NSM request.')
         self.exit_handler()
-        self.logger.info(lambda: "Exiting.")
-        sys.exit(0)
     
     def exec(self):
         return super(Application, self).exec()
@@ -268,6 +264,7 @@ class Application(ShoopQApplication):
             if self.engine:
                 self.engine.destroyed.connect(self.quit)
                 self.unload_qml()
+                QTimer.singleShot(1, lambda: self.do_quit())
             else:
                 terminate_all_backends()
                 self.quit()
