@@ -261,7 +261,6 @@ class Application(ShoopQApplication):
         if not self._quitting:
             self._quitting = True
             if self.engine:
-                self.engine.destroyed.connect(self.quit)
                 self.unload_qml()
             else:
                 terminate_all_backends()
