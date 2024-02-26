@@ -46,6 +46,8 @@ class Backend(ShoopQQuickItem):
         
         self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
+        
+        self.setObjectName("ShoopBackend")
     
     updated = ShoopSignal()
 

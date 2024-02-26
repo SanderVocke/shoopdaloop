@@ -92,10 +92,6 @@ def run_qml_tests(args):
         additional_root_context
     )
 
-    def exit_now():
-        app.quit()
-        sys.exit(1)
-
     app.exit_handler_called.connect(lambda: sys.exit(1))
 
     for file in test_files:
@@ -212,10 +208,8 @@ def run_qml_tests(args):
         qoverage_collector_factory.report_all()
         app.wait(1000)
 
-    app.unload_qml()
-    app.wait(50)
     app.do_quit()
-    app.exit(final_result)
+    app.exit()
 
     if args.list:
         return 0

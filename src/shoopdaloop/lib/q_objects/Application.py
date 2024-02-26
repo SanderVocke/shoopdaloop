@@ -108,9 +108,7 @@ class Application(ShoopQApplication):
                     self.logger.debug(f"deleteLater on {obj}")
                     obj.deleteLater()
             self.engine.deleteLater()
-            self.wait(100)
             self.engine = None
-            self.wait(10)
     
     def load_qml(self, filename, quit_on_quit=True):
         self.engine = QQmlApplicationEngine(parent=self)
@@ -134,16 +132,13 @@ class Application(ShoopQApplication):
         self.unload_qml()
         self.load_qml(filename, quit_on_quit)        
     
-    def exit(self, retcode):
+    def exit(self):
         if self.nsm_client:
             self.logger.debug(lambda: "Requesting exit from NSM.")
             self.nsm_client.serverSendExitToSelf()
         else:
             self.logger.debug(lambda: "Exiting.")
-            self.really_exit(retcode)
-
-    def really_exit(self, retcode):
-        super(Application, self).exit(retcode)
+            self.do_quit()
     
     # Ensure that we forward any terminating signals to our child
     # processes
@@ -270,6 +265,7 @@ class Application(ShoopQApplication):
                 self.unload_qml()
             else:
                 terminate_all_backends()
-                self.quit()
+                QTimer.singleShot(1, lambda: self.quit())
+                self.exec()
     
         
