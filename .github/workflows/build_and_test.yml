@@ -615,6 +615,8 @@ jobs:
         done
     - uses: actions/setup-node@v4
       name: Install NodeJS
+      with:
+        node-version: 18
     - name: Upload symbols to BugSplat
       if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
       uses: BugSplat-Git/symbol-upload@main
