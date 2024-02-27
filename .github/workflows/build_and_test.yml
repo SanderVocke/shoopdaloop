@@ -593,7 +593,6 @@ jobs:
       if: ${{ steps.count.outputs.crashdumps != 0 }}
       shell: bash
       run: |
-        tree debuginfo
         tree crashdumps
         cp -r debuginfo crashdumps/debuginfo
         for dump in $(find crashdumps -name "*.dmp"); do
@@ -603,8 +602,19 @@ jobs:
           echo "================================================="
           minidump-stackwalk $dump debuginfo/breakpad_symbols | tee $dump.stackwalk
         done
-    - name: Upload crash dumps
-      if: ${{ steps.count.outputs.crashdumps != 0 }}
+    - name: Upload crash dumps to Bugsplat
+      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
+      shell: bash
+      run: |
+        for dump in $(find crashdumps -name "*.dmp"); do
+          echo ""
+          echo "================================================="
+          echo "Uploading $dump..."
+          echo "================================================="
+          bash ./scripts/upload_minidump.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        done
+    - name: Upload crash dumps as artifact
+      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
       uses: actions/upload-artifact@v4
       with:
         name: crashdumps_summary
