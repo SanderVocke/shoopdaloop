@@ -613,6 +613,8 @@ jobs:
           echo "================================================="
           bash ./scripts/upload_minidump.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         done
+    - uses: actions/setup-node@v4
+      name: Install NodeJS
     - name: Upload symbols to BugSplat
       if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
       uses: BugSplat-Git/symbol-upload@main
