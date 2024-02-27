@@ -3,15 +3,8 @@ import faulthandler
 import ctypes
 import os
 
-# Keep track of active javascript engines in order to attempt to get tracebacks from them
-g_active_js_engines = set()
-
 from shoopdaloop.lib.init_dynlibs import init_dynlibs
 init_dynlibs()
-
-def crashed_callback(filename):
-    print("Python callback!")
-    print(f"{len(g_active_js_engines)} engines are active")
 
 def init_crash_handling():
     td = os.environ.get("SHOOP_CRASH_DUMP_DIR")
@@ -19,7 +12,7 @@ def init_crash_handling():
         td = tempfile.gettempdir()
     try:
         import shoopdaloop.shoop_crashhandling
-        shoopdaloop.shoop_crashhandling.shoop_init_crashhandling_with_cb(td, shoopdaloop.shoop_crashhandling.CrashedCallback(crashed_callback))
+        shoopdaloop.shoop_crashhandling.shoop_init_crashhandling(td)
     except Exception as e:
         from shoopdaloop.lib.logging import Logger
         logger = Logger('Frontend.CrashHandling')
@@ -42,7 +35,3 @@ def test_segfault():
 def test_abort():
     import shoopdaloop.shoop_crashhandling
     shoopdaloop.shoop_crashhandling.shoop_test_crash_abort()
-
-def register_js_engine(eng):
-    global g_active_js_engines
-    g_active_js_engines.add(eng)
