@@ -572,15 +572,21 @@ jobs:
         path: debuginfo
         pattern: debuginfo_*
         merge-multiple: true
+    - name: Cache minidump-stackwalk
+      id: cache-minidump
+      uses: actions/cache@v4
+      with:
+        path: minidump-stackwalk
+        key: minidump-stackwalk-1
     - name: Install tools part 1
-      if: ${{ steps.count.outputs.crashdumps != 0 }}
+      if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-primes.outputs.cache-hit != 'true' }}
       shell: bash
       run: |
         pacman --noconfirm -Syy
         pacman --noconfirm -S --needed git base-devel tree && git clone https://aur.archlinux.org/minidump-stackwalk.git
     - name: Makepkg Build
       id: makepkg
-      if: ${{ steps.count.outputs.crashdumps != 0 }}
+      if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-primes.outputs.cache-hit != 'true' }}
       uses: edlanglois/pkgbuild-action@v1
       with:
         pkgdir: minidump-stackwalk
@@ -588,7 +594,7 @@ jobs:
       if: ${{ steps.count.outputs.crashdumps != 0 }}
       shell: bash
       run: |
-        pacman --noconfirm -U ${{ steps.makepkg.outputs.pkgfile0 }}
+        pacman --noconfirm -U minidump-stackwalk/minidump-stackwalk*.pkg*
     - name: Process dumps
       if: ${{ steps.count.outputs.crashdumps != 0 }}
       shell: bash
