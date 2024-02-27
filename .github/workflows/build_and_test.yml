@@ -565,6 +565,8 @@ jobs:
       run: |
         mkdir -p crashdumps
         echo "crashdumps=$(ls crashdumps/crashdumps_* | wc -l)" | tee -a $GITHUB_OUTPUT
+        pacman --noconfirm -Syy
+        pacman --noconfirm -S --needed tree git
     - name: Download debug information
       uses: actions/download-artifact@v4
       if: ${{ steps.count.outputs.crashdumps != 0 }}
@@ -572,23 +574,29 @@ jobs:
         path: debuginfo
         pattern: debuginfo_*
         merge-multiple: true
-    - name: Install tools part 1
-      if: ${{ steps.count.outputs.crashdumps != 0 }}
+    - name: Cache minidump-stackwalk
+      id: cache-minidump
+      uses: actions/cache@v4
+      with:
+        path: minidump-stackwalk
+        key: minidump-stackwalk-1
+    - name: Get minidump package sources
+      if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true' }}
       shell: bash
       run: |
         pacman --noconfirm -Syy
-        pacman --noconfirm -S --needed git base-devel tree && git clone https://aur.archlinux.org/minidump-stackwalk.git
+        pacman --noconfirm -S --needed git base-devel && git clone https://aur.archlinux.org/minidump-stackwalk.git
     - name: Makepkg Build
       id: makepkg
-      if: ${{ steps.count.outputs.crashdumps != 0 }}
+      if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true' }}
       uses: edlanglois/pkgbuild-action@v1
       with:
         pkgdir: minidump-stackwalk
-    - name: Install tools part 2
+    - name: Install minidump package
       if: ${{ steps.count.outputs.crashdumps != 0 }}
       shell: bash
       run: |
-        pacman --noconfirm -U ${{ steps.makepkg.outputs.pkgfile0 }}
+        pacman --noconfirm -U minidump-stackwalk/minidump-stackwalk*.pkg*
     - name: Process dumps
       if: ${{ steps.count.outputs.crashdumps != 0 }}
       shell: bash
@@ -613,6 +621,20 @@ jobs:
           echo "================================================="
           bash ./scripts/upload_minidump.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         done
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 19
+    - name: Upload BugSplat debug symbols
+      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
+      uses: SanderVocke/symbol-upload@test_action
+      with:
+        clientId: "${{ secrets.BUGSPLAT_CLIENT_ID }}"
+        clientSecret: "${{ secrets.BUGSPLAT_CLIENT_SECRET }}"
+        database: shoopdaloop
+        application: shoopdaloop
+        version: git-${{ github.sha }}
+        files: "**/*.sym"
+        directory: crashdumps/debuginfo
     - name: Upload crash dumps as artifact
       if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
       uses: actions/upload-artifact@v4

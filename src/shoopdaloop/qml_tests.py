@@ -26,7 +26,6 @@ def run_qml_tests(args):
     import sys
 
     from PySide6.QtCore import QObject, Slot
-    from PySide6.QtQml import QQmlEngine
     from PySide6.QtTest import QTest
     from shiboken6 import Shiboken
     import json
