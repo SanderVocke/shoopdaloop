@@ -3,6 +3,8 @@ import faulthandler
 import ctypes
 import os
 import traceback
+import threading
+import time
 
 from PySide6.QtQml import QJSValue
 from shiboken6 import Shiboken
@@ -33,6 +35,18 @@ def crashed_callback(filename):
         js_stacks = []
         for idx, eng in enumerate(g_active_js_engines):
             if eng and Shiboken.isValid(eng):
+                # An interruptor in case the jsengine gets stuck
+                d = {
+                    'finished': False
+                }
+                def do_interrupt(eng=eng, d=d):
+                    time.sleep(1.0)
+                    if eng and Shiboken.isValid(eng) and not d['finished']:
+                        eng.setInterrupted(True)
+                interruptor = threading.Thread(target=do_interrupt, daemon=True)
+                interruptor.start()
+                
+                # use an error throwing mechanism to get a stack trace from the engine
                 eng.throwError("Crash handler stack retrieval helper error")
                 err = eng.catchError()
                 if err:
@@ -40,6 +54,7 @@ def crashed_callback(filename):
                     if stack:
                         stack_str = stack.toString()
                         js_stacks.append(stack_str)
+                        d['finished'] = True
         
         if len(js_stacks) > 0:
             with open(more_info_filename, 'a') as f:
