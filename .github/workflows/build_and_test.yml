@@ -617,8 +617,8 @@ jobs:
       if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
       uses: BugSplat-Git/symbol-upload@main
       with:
-        clientId: "${{ secrets.SYMBOL_UPLOAD_CLIENT_ID }}"
-        clientSecret: "${{ secrets.SYMBOL_UPLOAD_CLIENT_SECRET }}"
+        clientId: "${{ secrets.BUGSPLAT_CLIENT_ID }}"
+        clientSecret: "${{ secrets.BUGSPLAT_CLIENT_SECRET }}"
         database: "shoopdaloop"
         application: "shoopdaloop"
         version: "git-${{ github.sha }}"
