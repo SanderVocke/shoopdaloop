@@ -578,19 +578,19 @@ jobs:
       with:
         path: minidump-stackwalk
         key: minidump-stackwalk-1
-    - name: Install tools part 1
-      if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-primes.outputs.cache-hit != 'true' }}
+    - name: Get minidump package sources
+      if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true' }}
       shell: bash
       run: |
         pacman --noconfirm -Syy
         pacman --noconfirm -S --needed git base-devel tree && git clone https://aur.archlinux.org/minidump-stackwalk.git
     - name: Makepkg Build
       id: makepkg
-      if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-primes.outputs.cache-hit != 'true' }}
+      if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true' }}
       uses: edlanglois/pkgbuild-action@v1
       with:
         pkgdir: minidump-stackwalk
-    - name: Install tools part 2
+    - name: Install minidump package
       if: ${{ steps.count.outputs.crashdumps != 0 }}
       shell: bash
       run: |
