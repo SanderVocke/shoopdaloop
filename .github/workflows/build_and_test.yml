@@ -603,7 +603,7 @@ jobs:
           minidump-stackwalk $dump debuginfo/breakpad_symbols | tee $dump.stackwalk
         done
     - name: Upload crash dumps to Bugsplat
-      if: ${{ steps.count.outputs.crashdumps != 0 }}
+      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
       shell: bash
       run: |
         for dump in $(find crashdumps -name "*.dmp"); do
@@ -613,8 +613,19 @@ jobs:
           echo "================================================="
           bash ./scripts/upload_minidump.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         done
+    - name: Upload symbols to BugSplat
+      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
+      uses: BugSplat-Git/symbol-upload@main
+      with:
+        clientId: "${{ secrets.SYMBOL_UPLOAD_CLIENT_ID }}"
+        clientSecret: "${{ secrets.SYMBOL_UPLOAD_CLIENT_SECRET }}"
+        database: "shoopdaloop"
+        application: "shoopdaloop"
+        version: "git-${{ github.sha }}"
+        files: "**/*.sym"
+        directory: "crashdumps"
     - name: Upload crash dumps as artifact
-      if: ${{ steps.count.outputs.crashdumps != 0 }}
+      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
       uses: actions/upload-artifact@v4
       with:
         name: crashdumps_summary
