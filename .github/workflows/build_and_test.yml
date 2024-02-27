@@ -566,7 +566,7 @@ jobs:
         mkdir -p crashdumps
         echo "crashdumps=$(ls crashdumps/crashdumps_* | wc -l)" | tee -a $GITHUB_OUTPUT
         pacman --noconfirm -Syy
-        pacman --noconfirm -S --needed tree
+        pacman --noconfirm -S --needed tree git
     - name: Download debug information
       uses: actions/download-artifact@v4
       if: ${{ steps.count.outputs.crashdumps != 0 }}
