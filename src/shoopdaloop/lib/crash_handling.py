@@ -18,6 +18,15 @@ init_dynlibs()
 # In the crash callback, attempt to gather additional information about the Python and QML state.
 def crashed_callback(filename):
     global g_active_js_engines
+
+    # Crash data gathering may get stuck (in particular on execution in JS engines).
+    # Make sure we exit soon.
+    def do_exit():
+        time.sleep(5.0)
+        if eng and Shiboken.isValid(eng) and not d['finished']:
+            eng.setInterrupted(True)
+    exiter = threading.Thread(target=do_exit, daemon=True)
+    exiter.start()
     
     more_info_filename = str(filename + '.info')
     
@@ -34,18 +43,7 @@ def crashed_callback(filename):
     try:
         js_stacks = []
         for idx, eng in enumerate(g_active_js_engines):
-            if eng and Shiboken.isValid(eng):
-                # An interruptor in case the jsengine gets stuck
-                d = {
-                    'finished': False
-                }
-                def do_interrupt(eng=eng, d=d):
-                    time.sleep(1.0)
-                    if eng and Shiboken.isValid(eng) and not d['finished']:
-                        eng.setInterrupted(True)
-                interruptor = threading.Thread(target=do_interrupt, daemon=True)
-                interruptor.start()
-                
+            if eng and Shiboken.isValid(eng):                
                 # use an error throwing mechanism to get a stack trace from the engine
                 eng.throwError("Crash handler stack retrieval helper error")
                 err = eng.catchError()
