@@ -565,6 +565,8 @@ jobs:
       run: |
         mkdir -p crashdumps
         echo "crashdumps=$(ls crashdumps/crashdumps_* | wc -l)" | tee -a $GITHUB_OUTPUT
+        pacman --noconfirm -Syy
+        pacman --noconfirm -S --needed tree
     - name: Download debug information
       uses: actions/download-artifact@v4
       if: ${{ steps.count.outputs.crashdumps != 0 }}
@@ -583,7 +585,7 @@ jobs:
       shell: bash
       run: |
         pacman --noconfirm -Syy
-        pacman --noconfirm -S --needed git base-devel tree && git clone https://aur.archlinux.org/minidump-stackwalk.git
+        pacman --noconfirm -S --needed git base-devel && git clone https://aur.archlinux.org/minidump-stackwalk.git
     - name: Makepkg Build
       id: makepkg
       if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true' }}
