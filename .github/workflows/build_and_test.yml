@@ -619,7 +619,7 @@ jobs:
           echo "================================================="
           echo "Uploading $dump..."
           echo "================================================="
-          bash ./scripts/upload_minidump.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          bash ./scripts/upload_crash_info.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} ${dump}.info"
         done
     - uses: actions/setup-node@v4
       with:
