@@ -978,6 +978,14 @@ class BackendSession:
                     bindings.destroy_backend_session(self._c_handle)
             except Exception:
                 pass
+    
+    def segfault_on_process_thread(self):
+        if self.active():
+            bindings.do_segfault_on_process_thread(self._c_handle)
+    
+    def abort_on_process_thread(self):
+        if self.active():
+            bindings.do_abort_on_process_thread(self._c_handle)
 
 class AudioDriver:
     def create(driver_type : Type[AudioDriverType]):

@@ -876,6 +876,26 @@ void clear_midi_channel (shoopdaloop_loop_midi_channel_t *channel) {
   });
 }
 
+void do_segfault_on_process_thread(shoop_backend_session_t *backend) {
+  return api_impl<void>("do_segfault_on_process_thread", [&]() {
+    auto _backend = internal_backend_session(backend);
+    if (!_backend) { return; }
+    _backend->queue_process_thread_command([=]() {
+      volatile int* a = (int*)(NULL); *a = 1;
+    });
+  });
+}
+
+void do_abort_on_process_thread(shoop_backend_session_t *backend) {
+  return api_impl<void>("do_abort_on_process_thread", [&]() {
+    auto _backend = internal_backend_session(backend);
+    if (!_backend) { return; }
+    _backend->queue_process_thread_command([=]() {
+      abort();
+    });
+  });
+}
+
 shoopdaloop_audio_port_t *open_audio_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction) {
   return api_impl<shoopdaloop_audio_port_t*>("open_audio_port", [&]() -> shoopdaloop_audio_port_t* {
     auto _backend = internal_backend_session(backend);
