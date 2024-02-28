@@ -19,4 +19,4 @@ runs:
     id: find_output
     run: |
       ls distribution/innosetup
-      echo "output=distribution/innosetup/Output/shoopdaloop.exe" | tee -a $GITHUB_OUTPUT
+      echo "output=$(find distribution/innosetup -name "ShoopDaLoop-*.exe") | tee -a $GITHUB_OUTPUT

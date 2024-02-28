@@ -6,6 +6,7 @@
 #define MyAppPublisher "ShoopDaLoop"
 #define MyAppURL "https://sandervocke.github.io/shoopdaloop"
 #define MyAppExeName "shoopdaloop.exe"
+#define MyAppInstallerExeName MyAppName + "-" + MyAppVersion
 #define MyAppAssocName MyAppName + " Session"
 #define MyAppAssocExt ".shl"
 #define MyAppAssocKey StringChange(MyAppAssocName, " ", "") + MyAppAssocExt
@@ -27,7 +28,7 @@ DisableProgramGroupPage=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-OutputBaseFilename=shoopdaloop
+OutputBaseFilename={#MyAppInstallerExeName}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
