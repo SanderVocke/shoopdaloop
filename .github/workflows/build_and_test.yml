@@ -410,7 +410,7 @@ jobs:
         ls setup/*
         export INSTALLER=$(find setup -name "ShoopDaLoop-*.exe")
         echo "Found installer @ $INSTALLER"
-        $INSTALLER /SILENT
+        runas /user:administrator /profile: %UserProfile% cmd /c "$INSTALLER /SILENT"
     - name: Retrieve info context for coverage analysis
       if: ${{ matrix.kind.coverage }}
       uses: actions/download-artifact@v4
@@ -646,7 +646,7 @@ jobs:
           echo "================================================="
           echo "Uploading $dump..."
           echo "================================================="
-          bash ./scripts/upload_crash_info.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} ${dump}.info"
+          bash ./scripts/upload_crash_info.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} ${dump}.moreinfo"
         done
     - uses: actions/setup-node@v4
       with:
