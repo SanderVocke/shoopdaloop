@@ -1,0 +1,22 @@
+# Install a wheel and then build a PyInstaller package from it
+
+outputs:
+  output:
+    description: "Built setup installer"
+    value: ${{ steps.find_output.outputs.output }}
+
+runs:
+  using: "composite"
+  steps:
+  - name: Compile .ISS to .EXE Installer
+    uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+    with:
+      path: distribution/innosetup/shoopdaloop.iss
+      options: /O+
+  
+  - name: Set output
+    shell: bash
+    id: find_output
+    run: |
+      ls distribution/innosetup
+      echo "output=distribution/innosetup/Output/shoopdaloop.exe" | tee -a $GITHUB_OUTPUT
