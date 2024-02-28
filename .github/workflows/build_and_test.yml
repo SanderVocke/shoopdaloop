@@ -410,7 +410,8 @@ jobs:
         ls setup/*
         export INSTALLER=$(find setup -name "ShoopDaLoop-*.exe")
         echo "Found installer @ $INSTALLER"
-        runas /user:administrator /profile: %UserProfile% cmd /c "$INSTALLER /SILENT"
+        echo "Command: $INSTALLER /SILENT /SUPPRESSMSGBOXES"
+        $INSTALLER /SILENT /SUPPRESSMSGBOXES
     - name: Retrieve info context for coverage analysis
       if: ${{ matrix.kind.coverage }}
       uses: actions/download-artifact@v4
