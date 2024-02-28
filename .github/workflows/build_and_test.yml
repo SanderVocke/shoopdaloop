@@ -410,9 +410,11 @@ jobs:
         ls setup/*
         export INSTALLER=$(find setup -name "ShoopDaLoop-*.exe")
         echo "Found installer @ $INSTALLER"
-        export CMD="powershell ./distribution/innosetup/install_silent.ps1 $INSTALLER install.log"
+        export CMD="$INSTALLER /SILENT /SUPPRESSMSGBOXES /CURRENTUSER /LOG=install.log"
         echo "Install command: $CMD"
         $CMD
+        echo "Installation log:"
+        cat install.log
     - name: Retrieve info context for coverage analysis
       if: ${{ matrix.kind.coverage }}
       uses: actions/download-artifact@v4
