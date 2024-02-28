@@ -12,6 +12,8 @@ Item {
 
     signal saveSession(string filename)
     signal loadSession(string filename)
+    signal processThreadSegfault()
+    signal processThreadAbort()
 
     property bool loading_session : false
     property bool saving_session : false
@@ -85,23 +87,37 @@ Item {
                         }
 
                         ShoopMenuItem {
-                            text: "Test throw back-end exception"
+                            text: "Test throw exception (UI thread)"
                             onClicked: {
                                 os_utils.test_exception()
                             }
                         }
 
                         ShoopMenuItem {
-                            text: "Test back-end segfault"
+                            text: "Test segfault (UI thread)"
                             onClicked: {
                                 os_utils.test_segfault()
                             }
                         }
 
                         ShoopMenuItem {
-                            text: "Test back-end abort"
+                            text: "Test abort (UI thread)"
                             onClicked: {
                                 os_utils.test_abort()
+                            }
+                        }
+
+                        ShoopMenuItem {
+                            text: "Test segfault (process thread)"
+                            onClicked: {
+                                root.processThreadSegfault()
+                            }
+                        }
+
+                        ShoopMenuItem {
+                            text: "Test abort (process thread)"
+                            onClicked: {
+                                root.processThreadAbort()
                             }
                         }
                     }

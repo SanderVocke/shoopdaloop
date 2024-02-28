@@ -12,7 +12,7 @@ CrashedCallback g_crashed_callback = nullptr;
 
 #if __APPLE__
 static bool dumpCallback(const char* dump_dir, const char* minidump_id, void* context, bool succeeded) {
-    std::cout << "ShoopDaLoop crashed. Breakpad crash minidump saved @ " << dump_dir << "/" << minidump_id << ".dmp." << std::endl;
+    std::cout << "\n\nShoopDaLoop crashed.\n  - Breakpad crash minidump saved @ " << dump_dir << "/" << minidump_id << ".dmp." << std::endl;
     std::string _dd(dump_dir), _did(minidump_id);
     std::string filename = _dd + "/" + _did + ".dmp";
     if (g_crashed_callback) {
@@ -22,7 +22,7 @@ static bool dumpCallback(const char* dump_dir, const char* minidump_id, void* co
 }
 #elif defined(_WIN32)
 static bool dumpCallback(const wchar_t* dump_dir, const wchar_t* minidump_id, void* context, EXCEPTION_POINTERS* exinfo, MDRawAssertionInfo *assertion, bool succeeded) {
-    std::wcout << "ShoopDaLoop crashed. Breakpad crash minidump saved @ " << dump_dir << "/" << minidump_id << ".dmp." << std::endl;
+    std::wcout << "\n\nShoopDaLoop crashed.\n  - Breakpad crash minidump saved @ " << dump_dir << "/" << minidump_id << ".dmp." << std::endl;
     std::wstring _dd(dump_dir), _did(minidump_id);
     std::wstring wfilename = _dd + L"/" + _did + L".dmp";
     std::string filename = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(wfilename);
@@ -34,7 +34,7 @@ static bool dumpCallback(const wchar_t* dump_dir, const wchar_t* minidump_id, vo
 #else
 static bool dumpCallback(const google_breakpad::MinidumpDescriptor& descriptor,
 void* context, bool succeeded) {
-    std::cout << "ShoopDaLoop crashed. Breakpad crash minidump saved @ " << descriptor.path() << "." << std::endl;
+    std::cout << "\n\nShoopDaLoop crashed.\n  - Breakpad crash minidump saved @ " << descriptor.path() << "." << std::endl;
     if (g_crashed_callback) {
         g_crashed_callback(descriptor.path());
     }

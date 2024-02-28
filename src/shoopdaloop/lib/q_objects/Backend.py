@@ -323,6 +323,16 @@ class Backend(ShoopQQuickItem):
     @ShoopSlot(str, int, result='QVariant')
     def open_midi_port(self, name_hint, direction):
         return backend_open_midi_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction)
+
+    @ShoopSlot()
+    def segfault_on_process_thread(self):
+        if (self._backend_session_obj):
+            self._backend_session_obj.segfault_on_process_thread()
+    
+    @ShoopSlot()
+    def abort_on_process_thread(self):
+        if (self._backend_session_obj):
+            self._backend_session_obj.abort_on_process_thread()
     
     ################
     ## INTERNAL METHODS

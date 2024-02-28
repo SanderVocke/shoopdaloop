@@ -473,6 +473,8 @@ Rectangle {
 
             onLoadSession: (filename) => root.load_session(filename)
             onSaveSession: (filename) => root.save_session(filename)
+            onProcessThreadSegfault: session_backend.segfault_on_process_thread()
+            onProcessThreadAbort: session_backend.abort_on_process_thread()
         }
 
         Item {

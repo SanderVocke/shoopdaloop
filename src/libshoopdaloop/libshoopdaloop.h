@@ -24,6 +24,10 @@ SHOOP_EXPORT void start_dummy_driver(shoop_audio_driver_t *driver, shoop_dummy_a
 SHOOP_EXPORT void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_settings_t settings);
 SHOOP_EXPORT void wait_process(shoop_audio_driver_t *driver);
 
+// Test functions
+SHOOP_EXPORT void do_segfault_on_process_thread(shoop_backend_session_t *backend);
+SHOOP_EXPORT void do_abort_on_process_thread(shoop_backend_session_t *backend);
+
 // Session
 SHOOP_EXPORT shoop_backend_session_t *create_backend_session ();
 SHOOP_EXPORT void destroy_backend_session (shoop_backend_session_t *session);

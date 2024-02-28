@@ -10,6 +10,7 @@ from PySide6.QtQml import QQmlDebuggingEnabler
 from PySide6.QtQuick import QQuickWindow
 
 from .ShoopPyObject import *
+import shoopdaloop.lib.crash_handling as crash_handling
 
 have_nsm = os.name == 'posix'
 if have_nsm:
@@ -112,6 +113,7 @@ class Application(ShoopQApplication):
     
     def load_qml(self, filename, quit_on_quit=True):
         self.engine = QQmlApplicationEngine(parent=self)
+        crash_handling.register_js_engine(self.engine)
         self.engine.destroyed.connect(lambda: self.logger.debug("QML engine being destroyed."))
         self.engine.addImportPath(os.path.join(scripts_dir(), 'lib', 'qml'))
         self.engine.addImportPath(os.path.join(installation_dir(), 'lib', 'qml', 'generated'))
