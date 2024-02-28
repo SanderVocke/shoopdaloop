@@ -1,0 +1,37 @@
+# Create a package using fpm
+
+inputs:
+  pyinstaller_folder:
+    description: "built PyInstaller folder / app bundle"
+    type: string
+  output:
+    description: "output package needed (extension determines what kind of package)"
+    type: string
+
+runs:
+  using: "composite"
+  steps:
+  - name: Determine package kind
+    shell: bash
+    id: get_type
+    run: |
+       filename=${{ inputs.output }}
+       type="${filename##*.}"
+       if [[ "$type" == "zst" ]]; then
+          type="pacman"
+       fi
+       echo "type=$type" | tee -a $GITHUB_OUTPUT
+  
+  - name: Build .deb / pacman / .rpm
+    if: ${{ steps.get_type.outputs.type in ['deb', 'pacman', 'rpm'] }}
+    shell: bash
+    run: >
+      fpm
+        -s dir
+        -t ${{ steps.get_type.outputs.type }}
+        -p ${{ inputs.output }}
+        --name shoopdaloop
+        --license gpl3
+        --url "https://sandervocke.github.io/shoopdaloop/"
+        --maintainer "Sander Vocke <sandervocke@gmail.com>"
+        ${{ inputs.pyinstaller_folder }}=/opt/shoopdaloop
