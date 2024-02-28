@@ -335,26 +335,26 @@ jobs:
           #   wheel: wheel_macos_debug
           #   testrunner: test_runner
           #   qpa_platform: offscreen
-          - name: release_windows
-            python: python.exe
-            pip: python.exe -m pip
-            pytest: python.exe -m pytest
-            container: null
-            os: windows-2022
-            wheel: wheel_windows_release
-            testrunner: test_runner.exe
-            qpa_platform: offscreen
-            pathconvert: "| cygpath -u -f -"
-          # - name: release_windows_pyinstaller
+          # - name: release_windows
           #   python: python.exe
           #   pip: python.exe -m pip
           #   pytest: python.exe -m pytest
           #   container: null
           #   os: windows-2022
-          #   pyinstaller: pyinstaller_windows_release
+          #   wheel: wheel_windows_release
           #   testrunner: test_runner.exe
           #   qpa_platform: offscreen
           #   pathconvert: "| cygpath -u -f -"
+          - name: release_windows_installer
+            python: python.exe
+            pip: python.exe -m pip
+            pytest: python.exe -m pytest
+            container: null
+            os: windows-2022
+            setup_exe: setup_windows_release
+            testrunner: test_runner.exe
+            qpa_platform: offscreen
+            pathconvert: "| cygpath -u -f -"
           # - name: debug_windows
           #   python: python.exe
           #   pip: python.exe -m pip
@@ -396,6 +396,21 @@ jobs:
         echo "subdirs:"
         ls ./pyinstaller/*
         tar -xvf ./pyinstaller/shoopdaloop.tar.gz -C ./pyinstaller
+    - name: Retrieve setup executable
+      if: ${{ matrix.kind.setup_exe }}
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ matrix.kind.setup_exe }}
+        path: ./setup
+    - name: Install Windows ShoopDaLoop via setup
+      if: ${{ matrix.kind.setup_exe }}
+      shell: bash
+      run: |
+        ls setup
+        ls setup/*
+        export INSTALLER=$(find setup -name "ShoopDaLoop-*.exe")
+        echo "Found installer @ $INSTALLER"
+        $INSTALLER /SILENT
     - name: Retrieve info context for coverage analysis
       if: ${{ matrix.kind.coverage }}
       uses: actions/download-artifact@v4
@@ -424,7 +439,8 @@ jobs:
       run: |
         export WHEEL_CMD="${{ matrix.kind.python }} -m shoopdaloop"
         export PYINST_CMD="./pyinstaller/shoopdaloop"
-        export CMD="${{ matrix.kind.pyinstaller && '$PYINST_CMD' || '$WHEEL_CMD' }}"
+        export SETUP_CMD="C:\Program Files (x86)\ShoopDaLoop\shoopdaloop.exe"
+        export CMD="${{ matrix.kind.pyinstaller && '$PYINST_CMD' || (matrix.kind.setup_exe && '$SETUP_CMD' || '$WHEEL_CMD') }}"
         echo "command=$CMD" | tee -a $GITHUB_OUTPUT
     - name: Install Python modules
       shell: bash
