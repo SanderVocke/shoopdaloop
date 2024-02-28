@@ -5,6 +5,7 @@ import os
 import traceback
 import threading
 import time
+import sys
 
 from PySide6.QtQml import QJSValue
 from PySide6.QtCore import QThread
@@ -29,10 +30,21 @@ def crashed_callback(filename):
     exiter = threading.Thread(target=do_exit, daemon=True)
     exiter.start()
     
-    more_info_filename = str(filename + '.info')
+    more_info_filename = str(filename + '.moreinfo')
+
+    try:
+        command = ' '.join(sys.argv)
+        with open(more_info_filename, 'w') as f:
+            f.write("=====================================\n")
+            f.write("Command\n")
+            f.write("=====================================\n\n")
+            f.write(command)
+            f.write('\n\n')
+    except Exception as e:
+        pass
     
     try:
-        with open(more_info_filename, 'w') as f:
+        with open(more_info_filename, 'a') as f:
             f.write("=====================================\n")
             f.write("Python traceback\n")
             f.write("=====================================\n\n")
@@ -80,7 +92,7 @@ def crashed_callback(filename):
     except Exception as e:
         pass
     
-    print("  - Python/QML crash info saved @ {}".format(more_info_filename))
+    print("  - Supplemental crash info saved @ {}".format(more_info_filename))
     
 c_crashed_callback = None
 

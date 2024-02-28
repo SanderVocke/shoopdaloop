@@ -31,9 +31,6 @@ def run_qml_tests(args):
     import json
     from xml.dom import minidom
 
-    from shoopdaloop.lib.crash_handling import init_crash_handling
-    init_crash_handling()
-
     from shoopdaloop.libshoopdaloop_bindings import set_global_logging_level, log_level_error
     from shoopdaloop.lib.qml_helpers import register_qml_class
     from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
