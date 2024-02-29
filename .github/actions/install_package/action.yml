@@ -1,0 +1,45 @@
+# Install a package
+
+inputs:
+  package:
+    description: "package file"
+    type: string
+
+outputs:
+  shoopdaloop:
+    description: "command to run ShoopDaLoop"
+    type: string
+    value: ${{ steps.get_cmd.outputs.cmd }}
+  
+
+runs:
+  using: "composite"
+  steps:
+  - name: Determine package kind
+    shell: bash
+    id: get_type
+    run: |
+       filename=${{ inputs.package }}
+       type="${filename##*.}"
+       if [[ "$type" == "zst" ]]; then
+          type="pacman"
+       fi
+       echo "type=$type" | tee -a $GITHUB_OUTPUT
+  
+  # Windows (InnoSetup)
+  - name: Install tools for InnoSetup
+    if: ${{ steps.get_type.outputs.type == 'exe' }}
+    uses: MinoruSekine/setup-scoop@v3
+  - name: Install InnoSetup .exe by extracting
+    if: ${{ steps.get_type.outputs.type == 'exe' }}
+    shell: bash
+    run: |
+      scoop install innounp
+      innounp -x -dextracted ${{ inputs.package }}
+      echo "cmd=extracted/{app}/shoopdaloop.exe" | $GITHUB_ENV
+
+  - name: Get command
+    shell: bash
+    run: |
+      echo "cmd=${{ env.cmd }}" | tee -a $GITHUB_OUTPUT
+      

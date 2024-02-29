@@ -79,7 +79,7 @@ jobs:
             prepare: 'windows'
             build_type: 'Release'
             pyinstaller: true
-            innosetup: true
+            package_kind: innosetup
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           # - name: windows_barebones
           #   os: windows-2022
@@ -177,10 +177,13 @@ jobs:
       with:
         python: ${{ matrix.kind.pyinstaller_python && matrix.kind.pyinstaller_python || matrix.kind.python }}
         wheel: ${{ steps.find.outputs.name }}
-    - name: InnoSetup
-      id: innosetup
-      if: ${{ matrix.kind.innosetup }}
-      uses: ./.github/actions/build_innosetup
+    - name: Build package
+      id: package
+      if: ${{ matrix.kind.package_kind }}
+      uses: ./.github/actions/build_package
+      with:
+        pyinstaller_folder: distribution/pyinstaller/dist/shoopdaloop
+        package_kind: ${{ matrix.kind.package_kind }}
     - name: Upload wheel (${{ inputs.variant_name }})
       if: ${{ !env.ACT }}
       uses: actions/upload-artifact@v4
@@ -199,12 +202,12 @@ jobs:
       with:
         name: pyinstaller_${{ matrix.kind.name }}
         path: ${{ steps.pyinstaller.outputs.distribution }}
-    - name: Upload InnoSetup installer (${{ inputs.variant_name }})
-      if: ${{ matrix.kind.innosetup }}
+    - name: Upload package (${{ inputs.variant_name }})
+      if: ${{ matrix.kind.package_kind }}
       uses: actions/upload-artifact@v4
       with:
-        name: setup_${{ matrix.kind.name }}
-        path: ${{ steps.innosetup.outputs.output }}
+        name: package_${{ matrix.kind.name }}
+        path: ${{ steps.package.outputs.output }}
     - name: Save build infor for coverage analyis
       if: ${{ matrix.kind.coverage }}
       run: |
@@ -352,7 +355,7 @@ jobs:
             pytest: python.exe -m pytest
             container: null
             os: windows-2022
-            setup_exe: setup_windows_release
+            package: package_windows_release
             testrunner: test_runner.exe
             qpa_platform: offscreen
             pathconvert: "| cygpath -u -f -"
@@ -397,25 +400,24 @@ jobs:
         echo "subdirs:"
         ls ./pyinstaller/*
         tar -xvf ./pyinstaller/shoopdaloop.tar.gz -C ./pyinstaller
-    - name: Retrieve setup executable
-      if: ${{ matrix.kind.setup_exe }}
+    - name: Retrieve package
+      if: ${{ matrix.kind.package }}
       uses: actions/download-artifact@v4
       with:
-        name: ${{ matrix.kind.setup_exe }}
-        path: ./setup
-    - name: Install Windows ShoopDaLoop via setup
-      if: ${{ matrix.kind.setup_exe }}
+        name: ${{ matrix.kind.package }}
+        path: ./package
+    - name: Find package
+      if: ${{ matrix.kind.package }}
+      id: find_package
       shell: bash
       run: |
-        ls setup
-        ls setup/*
-        export INSTALLER=$(find setup -name "ShoopDaLoop-*.exe")
-        echo "Found installer @ $INSTALLER"
-        export CMD="$INSTALLER /SILENT /SUPPRESSMSGBOXES /CURRENTUSER /LOG=install.log"
-        echo "Install command: $CMD"
-        $CMD
-        echo "Installation log:"
-        cat install.log
+        echo "package=$(find package -type f)" | tee -a $GITHUB_OUTPUT
+    - name: Install package (${{ matrix.kind.package }})
+      if: ${{ matrix.kind.package }}
+      id: install_package
+      uses: ./.github/actions/install_package
+      with:
+        package: ${{ steps.find_package.outputs.package }}
     - name: Retrieve info context for coverage analysis
       if: ${{ matrix.kind.coverage }}
       uses: actions/download-artifact@v4
@@ -444,8 +446,8 @@ jobs:
       run: |
         export WHEEL_CMD="${{ matrix.kind.python }} -m shoopdaloop"
         export PYINST_CMD="./pyinstaller/shoopdaloop"
-        export SETUP_CMD="C:\Program Files (x86)\ShoopDaLoop\shoopdaloop.exe"
-        export CMD="${{ matrix.kind.pyinstaller && '$PYINST_CMD' || (matrix.kind.setup_exe && '$SETUP_CMD' || '$WHEEL_CMD') }}"
+        export PKG_CMD=${{ steps.install_package.outputs.shoopdaloop }}
+        export CMD="${{ matrix.kind.pyinstaller && '$PYINST_CMD' || (matrix.kind.package && '$PKG_CMD' || '$WHEEL_CMD') }}"
         echo "command=$CMD" | tee -a $GITHUB_OUTPUT
     - name: Install Python modules
       shell: bash

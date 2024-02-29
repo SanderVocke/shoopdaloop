@@ -1,37 +1,61 @@
-# Create a package using fpm
+# Create a package/installer using fpm or InnoSetup
 
 inputs:
   pyinstaller_folder:
     description: "built PyInstaller folder / app bundle"
     type: string
-  output:
-    description: "output package needed (extension determines what kind of package)"
+  package_kind:
+    description: "innosetup / deb / pacman / rpm"
     type: string
+
+outputs:
+  output:
+    description: "Built artifact"
+    value: ${{ steps.find_output.outputs.output }}
+  
 
 runs:
   using: "composite"
-  steps:
-  - name: Determine package kind
-    shell: bash
-    id: get_type
-    run: |
-       filename=${{ inputs.output }}
-       type="${filename##*.}"
-       if [[ "$type" == "zst" ]]; then
-          type="pacman"
-       fi
-       echo "type=$type" | tee -a $GITHUB_OUTPUT
-  
+  steps:  
   - name: Build .deb / pacman / .rpm
-    if: ${{ steps.get_type.outputs.type in ['deb', 'pacman', 'rpm'] }}
+    if: ${{ inputs.package_kind in ['deb', 'pacman', 'rpm'] }}
     shell: bash
     run: >
       fpm
         -s dir
-        -t ${{ steps.get_type.outputs.type }}
-        -p ${{ inputs.output }}
+        -t ${{ inputs.package_kind }}
         --name shoopdaloop
         --license gpl3
         --url "https://sandervocke.github.io/shoopdaloop/"
         --maintainer "Sander Vocke <sandervocke@gmail.com>"
         ${{ inputs.pyinstaller_folder }}=/opt/shoopdaloop
+  
+  - name: Find fpm package
+    if: ${{ inputs.package_kind in ['deb', 'pacman', 'rpm'] }}
+    shell: bash
+    run:
+      ls
+      PKG=$(find . -name "shoopdaloop*.${{ inputs.package_kind }}")
+      echo "pkg=$PKG" | tee -a $GITHUB_ENV
+
+  - name: Compile .ISS to .EXE Installer
+    uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+    if: ${{ steps.get_type.outputs.type == "exe" }}
+    with:
+      path: distribution/innosetup/shoopdaloop.iss
+      options: /O+
+  
+  - name: Move .EXE installer
+    if: ${{ steps.get_type.outputs.type == "exe" }}    
+    shell: bash
+    run: |
+      ls distribution/innosetup
+      INSTALLER=$(find distribution/innosetup -name "ShoopDaLoop-*.exe")
+      echo "pkg=$INSTALLER" | tee -a $GITHUB_ENV
+  
+  - name: Find output
+    id: find_output
+    shell: bash
+    run: |
+      echo "output=${{ env.pkg }}" | tee -a $GITHUB_OUTPUT
+      
