@@ -438,7 +438,7 @@ jobs:
         mkdir -p crashdumps
         export WHEEL_CMD="${{ matrix.kind.python }} -m shoopdaloop"
         export PYINST_CMD="./pyinstaller/shoopdaloop"
-        export PKG_CMD=${{ steps.install_package.outputs.shoopdaloop }}
+        export PKG_CMD="${{ steps.install_package.outputs.shoopdaloop }}"
         export CMD="${{ matrix.kind.pyinstaller && '$PYINST_CMD' || (matrix.kind.package && '$PKG_CMD' || '$WHEEL_CMD') }}"
         echo "command=$CMD" | tee -a $GITHUB_OUTPUT
     - name: Install Python modules
