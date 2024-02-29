@@ -37,8 +37,8 @@ runs:
       scoop install innounp
       innounp -x -dextracted ${{ inputs.package }}
       "extracted/{app}/shoopdaloop.exe" --info
-      echo "cmd=extracted/{app}/shoopdaloop.exe" | $GITHUB_ENV
-      echo "install_dir=extracted/{app}" | $GITHUB_ENV
+      echo "cmd=extracted/{app}/shoopdaloop.exe" | tee -a $GITHUB_ENV
+      echo "install_dir=extracted/{app}" | tee -a $GITHUB_ENV
 
   # Python wheel
   - name: Install wheel
@@ -47,7 +47,7 @@ runs:
     run: |
       ${{ matrix.kind.pip }} install --force-reinstall ${{ inputs.package }}
       ${{ matrix.kind.python }} -m shoopdaloop --info
-      echo "cmd=${{ matrix.kind.python }} -m shoopdaloop" | $GITHUB_ENV
+      echo "cmd=${{ matrix.kind.python }} -m shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_ENV
 
   - name: Get command
