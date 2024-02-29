@@ -3,16 +3,13 @@
 inputs:
   package:
     description: "package file"
-    type: string
 
 outputs:
   shoopdaloop:
     description: "command to run ShoopDaLoop"
-    type: string
     value: ${{ steps.get_cmd.outputs.cmd }}
   install_dir:
     description: "location where ShoopDaLoop lives"
-    type: string
     value: ${{ steps.get_cmd.outputs.install_dir }}
   
 runs:

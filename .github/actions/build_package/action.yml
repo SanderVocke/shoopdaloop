@@ -3,10 +3,8 @@
 inputs:
   pyinstaller_folder:
     description: "built PyInstaller folder / app bundle"
-    type: string
   package_kind:
     description: "innosetup / deb / pacman / rpm"
-    type: string
 
 outputs:
   output:
