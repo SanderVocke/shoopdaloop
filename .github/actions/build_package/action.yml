@@ -40,13 +40,13 @@ runs:
 
   - name: Compile .ISS to .EXE Installer
     uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
-    if: ${{ steps.get_type.outputs.type == "exe" }}
+    if: ${{ steps.get_type.outputs.type == 'exe' }}
     with:
       path: distribution/innosetup/shoopdaloop.iss
       options: /O+
   
   - name: Move .EXE installer
-    if: ${{ steps.get_type.outputs.type == "exe" }}    
+    if: ${{ steps.get_type.outputs.type == 'exe' }}    
     shell: bash
     run: |
       ls distribution/innosetup
