@@ -18,7 +18,7 @@ runs:
   using: "composite"
   steps:  
   - name: Build .deb / pacman / .rpm
-    if: ${{ inputs.package_kind in ['deb', 'pacman', 'rpm'] }}
+    if: ${{ contains(fromJSON('["deb", "pacman", "rpm"]'), inputs.package_kind) }}
     shell: bash
     run: >
       fpm
@@ -31,7 +31,7 @@ runs:
         ${{ inputs.pyinstaller_folder }}=/opt/shoopdaloop
   
   - name: Find fpm package
-    if: ${{ inputs.package_kind in ['deb', 'pacman', 'rpm'] }}
+    if: ${{ contains(fromJSON('["deb", "pacman", "rpm"]'), inputs.package_kind) }}
     shell: bash
     run:
       ls

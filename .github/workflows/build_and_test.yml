@@ -339,16 +339,16 @@ jobs:
           #   wheel: wheel_macos_debug
           #   testrunner: test_runner
           #   qpa_platform: offscreen
-          # - name: release_windows
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   pytest: python.exe -m pytest
-          #   container: null
-          #   os: windows-2022
-          #   wheel: wheel_windows_release
-          #   testrunner: test_runner.exe
-          #   qpa_platform: offscreen
-          #   pathconvert: "| cygpath -u -f -"
+          - name: release_windows
+            python: python.exe
+            pip: python.exe -m pip
+            pytest: python.exe -m pytest
+            container: null
+            os: windows-2022
+            package: wheel_windows_release
+            testrunner: test_runner.exe
+            qpa_platform: offscreen
+            pathconvert: "| cygpath -u -f -"
           - name: release_windows_installer
             python: python.exe
             pip: python.exe -m pip
@@ -431,19 +431,11 @@ jobs:
         mkdir unzip_whl
         ${{ matrix.kind.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
         cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
-    - name: Install wheel
-      id: install
-      if: ${{ matrix.kind.wheel }}
-      shell: bash
-      run: |
-        ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
-        ${{ matrix.kind.python }} -m shoopdaloop --info
-        mkdir -p crashdumps
-        echo "install_dir=$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
     - name: Determine ShoopDaLoop command
       shell: bash
       id: shoop_cmd
       run: |
+        mkdir -p crashdumps
         export WHEEL_CMD="${{ matrix.kind.python }} -m shoopdaloop"
         export PYINST_CMD="./pyinstaller/shoopdaloop"
         export PKG_CMD=${{ steps.install_package.outputs.shoopdaloop }}
@@ -462,7 +454,7 @@ jobs:
       if: ${{ matrix.kind.coverage }}
       uses: ./.github/actions/qoverage_instrument
       with:
-        package_path: ${{ steps.install.outputs.install_dir }}
+        package_path: ${{ steps.install_package.outputs.install_dir }}
     - name: Test back-end
       if: ${{ (success() || failure()) && !(matrix.kind.pyinstaller) }}
       uses: ./.github/actions/test_backend
@@ -472,7 +464,7 @@ jobs:
         # note: build step generates run_cmd_prefix output
         # for usage with shared ASAN library.
         run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=backend_lcov ${{ matrix.kind.run_cmd_prefix }}
-        test_runner: ${{ steps.install.outputs.install_dir }}/${{ matrix.kind.testrunner }}
+        test_runner: ${{ steps.install_package.outputs.install_dir }}/${{ matrix.kind.testrunner }}
     - name: Test Python
       if: ${{ (success() || failure()) && !(matrix.kind.pyinstaller) }}
       uses: ./.github/actions/test_python
@@ -480,7 +472,7 @@ jobs:
       with:
         variant_name: release
         run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=pytest_lcov ${{ matrix.kind.run_cmd_prefix }}
-        root_path: ${{ steps.install.outputs.install_dir }}
+        root_path: ${{ steps.install_package.outputs.install_dir }}
         pytest_command: ${{ matrix.kind.pytest }}
         python_coverage: ${{ matrix.kind.coverage }}
     - name: Generate Pytest Python coverage report
@@ -510,7 +502,7 @@ jobs:
       uses: ./.github/actions/qoverage_generate_report
       with:
         strip: ".*/pip/shoopdaloop"
-        package_path: ${{ steps.install.outputs.install_dir }}
+        package_path: ${{ steps.install_package.outputs.install_dir }}
         console_output_file: test-qml-console-output.log
         report_file: coverage_reports/qml_qoverage.xml
     - name: Screenshots
@@ -518,7 +510,7 @@ jobs:
       uses: ./.github/actions/test_screenshots
       timeout-minutes: 5
       with:
-        root_path: ${{ steps.install.outputs.install_dir }}
+        root_path: ${{ steps.install_package.outputs.install_dir }}
         screenshots_path: _grabbed_screenshots
         artifact_name: screenshots_${{ matrix.kind.name }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
@@ -531,7 +523,7 @@ jobs:
       with:
         variant_name: release
         run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
-        root_path: ${{ steps.install.outputs.install_dir }}
+        root_path: ${{ steps.install_package.outputs.install_dir }}
         python: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
         shoopdaloop_command: ${{ steps.shoop_cmd.outputs.command }}
