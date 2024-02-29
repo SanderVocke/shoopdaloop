@@ -51,6 +51,7 @@ runs:
       echo "install_dir=$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_ENV
 
   - name: Get command
+    id: get_cmd
     shell: bash
     run: |
       echo "cmd=${{ env.cmd }}" | tee -a $GITHUB_OUTPUT
