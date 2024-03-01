@@ -4,11 +4,11 @@ inputs:
   input_path:
     description: "input path for the build, if needed"
   package_kind:
-    description: "innosetup / deb / pacman / rpm / pyinstaller"
+    description: "innosetup / linuxes / pyinstaller"
 
 outputs:
   output:
-    description: "Built artifact"
+    description: "Built artifact(s)"
     value: ${{ steps.find_output.outputs.output }}
   
 
@@ -17,25 +17,43 @@ runs:
   steps:  
 
   # Linux packages
-  - name: Build .deb / pacman / .rpm
-    if: ${{ contains(fromJSON('["deb", "pacman", "rpm"]'), inputs.package_kind) }}
+  - name: Build .deb + pacman + .rpm
+    if: ${{ inputs.package_kind == 'linuxes' }}
     shell: bash
-    run: >
-      fpm
-        -s dir
-        -t ${{ inputs.package_kind }}
-        --name shoopdaloop
-        --license gpl3
-        --url "https://sandervocke.github.io/shoopdaloop/"
-        --maintainer "Sander Vocke <sandervocke@gmail.com>"
+    run: |
+      mkdir -p linux_packages
+      cd linux_packages
+      fpm \
+        -s dir \
+        -t deb \
+        --name shoopdaloop \
+        --license gpl3 \
+        --url "https://sandervocke.github.io/shoopdaloop/" \
+        --maintainer "Sander Vocke <sandervocke@gmail.com>" \
+        ${{ inputs.input_path }}=/opt/shoopdaloop
+      fpm \
+        -s dir \
+        -t rpm \
+        --name shoopdaloop \
+        --license gpl3 \
+        --url "https://sandervocke.github.io/shoopdaloop/" \
+        --maintainer "Sander Vocke <sandervocke@gmail.com>" \
+        ${{ inputs.input_path }}=/opt/shoopdaloop
+      fpm \
+        -s dir \
+        -t pacman \
+        --name shoopdaloop \
+        --license gpl3 \
+        --url "https://sandervocke.github.io/shoopdaloop/" \
+        --maintainer "Sander Vocke <sandervocke@gmail.com>" \
         ${{ inputs.input_path }}=/opt/shoopdaloop
   - name: Find fpm package
-    if: ${{ contains(fromJSON('["deb", "pacman", "rpm"]'), inputs.package_kind) }}
+    if: ${{ inputs.package_kind == 'linuxes' }}
     shell: bash
     run:
       ls
-      PKG=$(find . -name "shoopdaloop*.${{ inputs.package_kind }}")
-      echo "pkg=$PKG" | tee -a $GITHUB_ENV
+      PKGS=$(find ./linux_packages -type f -name "shoopdaloop*")
+      echo "pkg=$PKGS" | tee -a $GITHUB_ENV
 
   # Windows installer (InnoSetup)
   - name: Compile .ISS to .EXE Installer
