@@ -32,7 +32,7 @@ runs:
        fi
        echo "type=$type" | tee -a $GITHUB_OUTPUT
   
-  # Windows (InnoSetup)
+  # Windows (InnoSetup) (no pytest and test_runner included)
   - name: Install tools for InnoSetup
     if: ${{ steps.get_type.outputs.type == 'exe' }}
     uses: MinoruSekine/setup-scoop@v3
@@ -57,6 +57,7 @@ runs:
       echo "cmd=${{ matrix.kind.python }} -m shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "pytest_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
+      echo "test_runner=$INSTALLDIR/test_runner" | tee -a $GITHUB_ENV
 
   - name: Get command
     id: get_cmd
