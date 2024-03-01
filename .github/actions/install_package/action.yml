@@ -25,7 +25,7 @@ runs:
     shell: bash
     id: get_type
     run: |
-       if [ ! -f ${{ inputs.package }}]; then
+       if [ ! -f ${{ inputs.package }} ]; then
           type="pyinstaller"
        fi
        filename=${{ inputs.package }}
