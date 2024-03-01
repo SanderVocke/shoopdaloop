@@ -1,10 +1,10 @@
 # Create a package/installer using fpm or InnoSetup
 
 inputs:
-  pyinstaller_folder:
-    description: "built PyInstaller folder / app bundle"
+  input_path:
+    description: "input path for the build, if needed"
   package_kind:
-    description: "innosetup / deb / pacman / rpm"
+    description: "innosetup / deb / pacman / rpm / pyinstaller"
 
 outputs:
   output:
@@ -15,6 +15,8 @@ outputs:
 runs:
   using: "composite"
   steps:  
+
+  # Linux packages
   - name: Build .deb / pacman / .rpm
     if: ${{ contains(fromJSON('["deb", "pacman", "rpm"]'), inputs.package_kind) }}
     shell: bash
@@ -26,8 +28,7 @@ runs:
         --license gpl3
         --url "https://sandervocke.github.io/shoopdaloop/"
         --maintainer "Sander Vocke <sandervocke@gmail.com>"
-        ${{ inputs.pyinstaller_folder }}=/opt/shoopdaloop
-  
+        ${{ inputs.input_path }}=/opt/shoopdaloop
   - name: Find fpm package
     if: ${{ contains(fromJSON('["deb", "pacman", "rpm"]'), inputs.package_kind) }}
     shell: bash
@@ -36,13 +37,13 @@ runs:
       PKG=$(find . -name "shoopdaloop*.${{ inputs.package_kind }}")
       echo "pkg=$PKG" | tee -a $GITHUB_ENV
 
+  # Windows installer (InnoSetup)
   - name: Compile .ISS to .EXE Installer
     uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
     if: ${{ inputs.package_kind == 'innosetup' }}  
     with:
       path: distribution/innosetup/shoopdaloop.iss
       options: /O+
-  
   - name: Move .EXE installer
     if: ${{ inputs.package_kind == 'innosetup' }}   
     shell: bash

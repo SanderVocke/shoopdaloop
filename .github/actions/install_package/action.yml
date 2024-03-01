@@ -2,7 +2,7 @@
 
 inputs:
   package:
-    description: "package file"
+    description: "package file / directory"
 
 outputs:
   shoopdaloop:
@@ -25,6 +25,9 @@ runs:
     shell: bash
     id: get_type
     run: |
+       if [ ! -f ${{ inputs.package }}]; then
+          type="pyinstaller"
+       fi
        filename=${{ inputs.package }}
        type="${filename##*.}"
        if [[ "$type" == "zst" ]]; then
@@ -59,6 +62,16 @@ runs:
       echo "pytest_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "test_runner=$INSTALLDIR/test_runner" | tee -a $GITHUB_ENV
 
+  # PyInstaller portable folder
+  - name: Install PyIntaller portable folder (decompress)
+    if: ${{ steps.get_type.outputs.type == 'pyinstaller' }}
+    shell: bash
+    run: |
+      tar -xvf ${{ inputs.package }}/shoopdaloop.tar.gz -C ./shoop_portable
+      echo "cmd=./shoop_portable/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=./shoop_portable" | tee -a $GITHUB_ENV
+
+  # Final step: gather env to outputs
   - name: Get command
     id: get_cmd
     shell: bash

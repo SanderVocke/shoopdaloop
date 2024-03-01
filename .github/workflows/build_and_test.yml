@@ -259,7 +259,7 @@ jobs:
             pytest: python3 -m pytest
             container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
             os: ubuntu-latest
-            pyinstaller: pyinstaller_linux_release
+            package: pyinstaller_linux_release
             qpa_platform: vnc
           # - name: release_arch
           #   python: python
@@ -337,7 +337,7 @@ jobs:
             package: wheel_windows_release
             qpa_platform: offscreen
             pathconvert: "| cygpath -u -f -"
-          - name: release_windows_installer
+          - name: release_windows_innosetup
             python: python.exe
             pip: python.exe -m pip
             pytest: python.exe -m pytest
@@ -366,26 +366,6 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Retrieve wheel
-      uses: actions/download-artifact@v4
-      if: ${{ matrix.kind.wheel }}
-      with:
-        name: ${{ matrix.kind.wheel }}
-        path: ~/wheel
-    - name: Retrieve PyInstaller package
-      if: ${{ matrix.kind.pyinstaller }}
-      uses: actions/download-artifact@v4
-      with:
-        name: ${{ matrix.kind.pyinstaller }}
-        path: ./pyinstaller
-    - name: Decompress PyInstaller package
-      if: ${{ matrix.kind.pyinstaller }}
-      run: |
-        echo "top:"
-        ls ./pyinstaller
-        echo "subdirs:"
-        ls ./pyinstaller/*
-        tar -xvf ./pyinstaller/shoopdaloop.tar.gz -C ./pyinstaller
     - name: Retrieve package
       if: ${{ matrix.kind.package }}
       uses: actions/download-artifact@v4
@@ -417,15 +397,10 @@ jobs:
         mkdir unzip_whl
         ${{ matrix.kind.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
         cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
-    - name: Determine ShoopDaLoop command
+    - name: Create crashdumps folder
       shell: bash
-      id: shoop_cmd
       run: |
         mkdir -p crashdumps
-        export PYINST_CMD="./pyinstaller/shoopdaloop"
-        export PKG_CMD="${{ steps.install_package.outputs.shoopdaloop }}"
-        export CMD="${{ matrix.kind.pyinstaller && '$PYINST_CMD' || '$PKG_CMD' }}"
-        echo "command=$CMD" | tee -a $GITHUB_OUTPUT
     - name: Install Python modules
       shell: bash
       run: |
@@ -472,7 +447,7 @@ jobs:
       with:
         variant_name: release
         run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=qml_lcov ${{ matrix.kind.run_cmd_prefix }}
-        shoopdaloop_command: ${{ steps.shoop_cmd.outputs.command }}
+        shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
         python_command: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
         macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
@@ -500,7 +475,7 @@ jobs:
         artifact_name: screenshots_${{ matrix.kind.name }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
         python: ${{ matrix.kind.python }}
-        shoopdaloop_command: ${{ steps.shoop_cmd.outputs.command }}
+        shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
     - name: Test Run App
       if: ${{ success() || failure() }}
       uses: ./.github/actions/test_run_app
@@ -511,7 +486,7 @@ jobs:
         root_path: ${{ steps.install_package.outputs.install_dir }}
         python: ${{ matrix.kind.python }}
         qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-        shoopdaloop_command: ${{ steps.shoop_cmd.outputs.command }}
+        shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
     - name: Process Crash Dumps
       if: ${{ success() || failure() }}
       uses: ./.github/actions/process_crashdumps
