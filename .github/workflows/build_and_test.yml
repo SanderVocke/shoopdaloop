@@ -22,16 +22,16 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: linux_release
-          #   os: ubuntu-latest
-          #   python: python3.8 # Manylinux-provided
-          #   pyinstaller_python: /usr/bin/python3.8 # pyinstaller uses the official AlmaLinux Python because it has shared libs
-          #   pip: python3.8 -m pip
-          #   container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
-          #   prepare: 'manylinux_2_28'
-          #   build_type: 'Release'
-          #   pyinstaller: true
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: linux_release
+            os: ubuntu-latest
+            python: python3.8 # Manylinux-provided
+            pyinstaller_python: /usr/bin/python3.8 # pyinstaller uses the official AlmaLinux Python because it has shared libs
+            pip: python3.8 -m pip
+            container_image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
+            prepare: 'manylinux_2_28'
+            build_type: 'Release'
+            pyinstaller: true
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           # - name: linux_debug
           #   os: ubuntu-latest
           #   python: python3.8
@@ -229,23 +229,21 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: release_debian_stable
-          #   python: python3
-          #   pip: python3 -m pip
-          #   pytest: python3 -m pytest
-          #   container: sandervocke/shoopdaloop_run_base_debian_stable:latest
-          #   os: ubuntu-latest
-          #   wheel: wheel_linux_release
-          #   testrunner: test_runner
-          #   qpa_platform: vnc
+          - name: release_debian_stable
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_debian_stable:latest
+            os: ubuntu-latest
+            package: wheel_linux_release
+            qpa_platform: vnc
           # - name: barebones_debian_stable
           #   python: python3
           #   pip: python3 -m pip
           #   pytest: python3 -m pytest
           #   container: sandervocke/shoopdaloop_run_base_debian_stable:latest
           #   os: ubuntu-latest
-          #   wheel: wheel_linux_barebones
-          #   testrunner: test_runner
+          #   package: wheel_linux_barebones
           #   qpa_platform: vnc
           # - name: release_ubuntu_latest
           #   python: python3
@@ -253,26 +251,23 @@ jobs:
           #   pytest: python3 -m pytest
           #   container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
           #   os: ubuntu-latest
-          #   wheel: wheel_linux_release
-          #   testrunner: test_runner
+          #   package: wheel_linux_release
           #   qpa_platform: vnc
-          # - name: release_ubuntu_latest_pyinstaller
-          #   python: python3
-          #   pip: python3 -m pip
-          #   pytest: python3 -m pytest
-          #   container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
-          #   os: ubuntu-latest
-          #   pyinstaller: pyinstaller_linux_release
-          #   testrunner: test_runner
-          #   qpa_platform: vnc
+          - name: release_ubuntu_latest_pyinstaller
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+            os: ubuntu-latest
+            pyinstaller: pyinstaller_linux_release
+            qpa_platform: vnc
           # - name: release_arch
           #   python: python
           #   pip: python -m pip
           #   pytest: python3 -m pytest
           #   container: sandervocke/shoopdaloop_run_base_arch:latest
           #   os: ubuntu-latest
-          #   wheel: wheel_linux_release
-          #   testrunner: test_runner
+          #   package: wheel_linux_release
           #   qpa_platform: vnc
           # - name: coverage_manylinux_2_28
           #   python: python3.8 -m coverage run --source=shoopdaloop
@@ -280,8 +275,7 @@ jobs:
           #   pytest: python3.8 -m coverage run --source=shoopdaloop -m pytest
           #   container: sandervocke/shoopdaloop_base_manylinux_2_28:latest
           #   os: ubuntu-latest
-          #   wheel: wheel_linux_coverage
-          #   testrunner: test_runner
+          #   package: wheel_linux_coverage
           #   qpa_platform: vnc
           #   coverage: true
           #   run_cmd_prefix: >-
@@ -300,8 +294,7 @@ jobs:
           #   pytest: python3 -m pytest
           #   container: null
           #   os: macos-11
-          #   wheel: wheel_macos_release
-          #   testrunner: test_runner
+          #   package: wheel_macos_release
           #   qpa_platform: offscreen
           # - name: release_macos12
           #   python: python3
@@ -309,8 +302,7 @@ jobs:
           #   pytest: python3 -m pytest
           #   container: null
           #   os: macos-12
-          #   wheel: wheel_macos_release
-          #   testrunner: test_runner
+          #   package: wheel_macos_release
           #   qpa_platform: offscreen
           # - name: release_macos13
           #   python: python3
@@ -318,8 +310,7 @@ jobs:
           #   pytest: python3 -m pytest
           #   container: null
           #   os: macos-13
-          #   wheel: wheel_macos_release
-          #   testrunner: test_runner
+          #   package: wheel_macos_release
           #   qpa_platform: offscreen
           # - name: release_macos13_pyinstaller
           #   python: python3
@@ -328,7 +319,6 @@ jobs:
           #   container: null
           #   os: macos-13
           #   pyinstaller: pyinstaller_macos_release
-          #   testrunner: test_runner
           #   qpa_platform: offscreen
           # - name: debug_macos13
           #   python: python3
@@ -336,8 +326,7 @@ jobs:
           #   pytest: python3 -m pytest
           #   container: null
           #   os: macos-13
-          #   wheel: wheel_macos_debug
-          #   testrunner: test_runner
+          #   package: wheel_macos_debug
           #   qpa_platform: offscreen
           - name: release_windows
             python: python.exe
@@ -346,7 +335,6 @@ jobs:
             container: null
             os: windows-2022
             package: wheel_windows_release
-            testrunner: test_runner.exe
             qpa_platform: offscreen
             pathconvert: "| cygpath -u -f -"
           - name: release_windows_installer
@@ -356,7 +344,6 @@ jobs:
             container: null
             os: windows-2022
             package: package_windows_release
-            testrunner: test_runner.exe
             qpa_platform: offscreen
             pathconvert: "| cygpath -u -f -"
           # - name: debug_windows
@@ -365,8 +352,7 @@ jobs:
           #   pytest: python.exe -m pytest
           #   container: null
           #   os: windows-2022
-          #   wheel: wheel_windows_debug
-          #   testrunner: test_runner.exe
+          #   package: wheel_windows_debug
           #   qpa_platform: offscreen
           #   pathconvert: "| cygpath -u -f -"
     runs-on: ${{ matrix.kind.os }}
@@ -436,10 +422,9 @@ jobs:
       id: shoop_cmd
       run: |
         mkdir -p crashdumps
-        export WHEEL_CMD="${{ matrix.kind.python }} -m shoopdaloop"
         export PYINST_CMD="./pyinstaller/shoopdaloop"
         export PKG_CMD="${{ steps.install_package.outputs.shoopdaloop }}"
-        export CMD="${{ matrix.kind.pyinstaller && '$PYINST_CMD' || (matrix.kind.package && '$PKG_CMD' || '$WHEEL_CMD') }}"
+        export CMD="${{ matrix.kind.pyinstaller && '$PYINST_CMD' || '$PKG_CMD' }}"
         echo "command=$CMD" | tee -a $GITHUB_OUTPUT
     - name: Install Python modules
       shell: bash
@@ -456,7 +441,7 @@ jobs:
       with:
         package_path: ${{ steps.install_package.outputs.install_dir }}
     - name: Test back-end
-      if: ${{ (success() || failure()) && !(matrix.kind.pyinstaller) }}
+      if: ${{ (success() || failure()) && steps.install_package.outputs.test_runner }}
       uses: ./.github/actions/test_backend
       timeout-minutes: 5
       with:
@@ -464,15 +449,15 @@ jobs:
         # note: build step generates run_cmd_prefix output
         # for usage with shared ASAN library.
         run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=backend_lcov ${{ matrix.kind.run_cmd_prefix }}
-        test_runner: ${{ steps.install_package.outputs.install_dir }}/${{ matrix.kind.testrunner }}
+        test_runner: ${{ steps.install_package.outputs.test_runner }}
     - name: Test Python
-      if: ${{ (success() || failure()) && !(matrix.kind.pyinstaller) }}
+      if: ${{ (success() || failure()) && steps.install_package.outputs.pytest_dir }}
       uses: ./.github/actions/test_python
       timeout-minutes: 5
       with:
         variant_name: release
         run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=pytest_lcov ${{ matrix.kind.run_cmd_prefix }}
-        root_path: ${{ steps.install_package.outputs.install_dir }}
+        root_path: ${{ steps.install_package.outputs.pytest_dir }}
         pytest_command: ${{ matrix.kind.pytest }}
         python_coverage: ${{ matrix.kind.coverage }}
     - name: Generate Pytest Python coverage report

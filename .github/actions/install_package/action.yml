@@ -11,7 +11,13 @@ outputs:
   install_dir:
     description: "location where ShoopDaLoop lives"
     value: ${{ steps.get_cmd.outputs.install_dir }}
-  
+  pytest_dir:
+    description: "directory to run pytest, if any"
+    value: ${{ steps.get_cmd.outputs.pytest_dir }}
+  test_runner:
+    description: "path to back-end testrunner, if any"
+    value: ${{ steps.get_cmd.outputs.test_runner }}
+
 runs:
   using: "composite"
   steps:
@@ -47,8 +53,10 @@ runs:
     run: |
       ${{ matrix.kind.pip }} install --force-reinstall ${{ inputs.package }}
       ${{ matrix.kind.python }} -m shoopdaloop --info
+      export INSTALLDIR="$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})
       echo "cmd=${{ matrix.kind.python }} -m shoopdaloop" | tee -a $GITHUB_ENV
-      echo "install_dir=$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_ENV
+      echo "install_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
+      echo "pytest_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
 
   - name: Get command
     id: get_cmd
@@ -56,4 +64,6 @@ runs:
     run: |
       echo "cmd=${{ env.cmd }}" | tee -a $GITHUB_OUTPUT
       echo "install_dir=${{ env.install_dir }}" | tee -a $GITHUB_OUTPUT
+      echo "pytest_dir=${{ env.pytest_dir }}" | tee -a $GITHUB_OUTPUT
+      echo "test_runner=${{ env.test_runner }}" | tee -a $GITHUB_OUTPUT
       
