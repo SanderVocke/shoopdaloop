@@ -5,6 +5,8 @@ inputs:
     description: "input path for the build, if needed"
   package_kind:
     description: "innosetup / linuxes / pyinstaller"
+  upload_name:
+    description: "if set, will upload the package(s) with the given name (prefix)"
 
 outputs:
   output:
@@ -51,9 +53,28 @@ runs:
     if: ${{ inputs.package_kind == 'linuxes' }}
     shell: bash
     run:
-      ls
-      PKGS=$(find ./linux_packages -type f -name "shoopdaloop*")
-      echo "pkg=$PKGS" | tee -a $GITHUB_ENV
+      echo "pkg=$(find ./linux_packages -type f -name "shoopdaloop*")" | tee -a $GITHUB_ENV
+      echo "rpm=$(find ./linux_packages -type f -name "shoopdaloop*.rpm")" | tee -a $GITHUB_ENV
+      echo "deb=$(find ./linux_packages -type f -name "shoopdaloop*.deb")" | tee -a $GITHUB_ENV
+      echo "pacman=$(find ./linux_packages -type f -name "shoopdaloop*pkg*.tar.*")" | tee -a $GITHUB_ENV
+  - name: Upload RPM package
+    if: ${{ inputs.package_kind == 'linuxes' && inputs.upload_name }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: ${{ inputs.upload_name }}_rpm
+      path: ${{ env.rpm }}
+  - name: Upload RPM package
+    if: ${{ inputs.package_kind == 'linuxes' && inputs.upload_name }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: ${{ inputs.upload_name }}_deb
+      path: ${{ env.deb }}
+  - name: Upload RPM package
+    if: ${{ inputs.package_kind == 'linuxes' && inputs.upload_name }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: ${{ inputs.upload_name }}_pacman
+      path: ${{ env.pacman }}
 
   # Windows installer (InnoSetup)
   - name: Compile .ISS to .EXE Installer
@@ -69,6 +90,12 @@ runs:
       ls distribution/innosetup
       INSTALLER=$(find distribution/innosetup -name "ShoopDaLoop-*.exe")
       echo "pkg=$INSTALLER" | tee -a $GITHUB_ENV
+  - name: Upload .exe installer
+    if: ${{ inputs.package_kind == 'innosetup' && inputs.upload_name }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: ${{ inputs.upload_name }}
+      path: ${{ env.pkg }}
   
   - name: Find output
     id: find_output

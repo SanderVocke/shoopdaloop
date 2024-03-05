@@ -190,6 +190,7 @@ jobs:
       with:
         input_path: ${{ steps.cwd.outputs.cwd }}/distribution/pyinstaller/dist/shoopdaloop
         package_kind: ${{ matrix.kind.package_kind }}
+        upload_name: package_${{ matrix.kind.name }}
     - name: Upload wheel (${{ inputs.variant_name }})
       if: ${{ !env.ACT }}
       uses: actions/upload-artifact@v4
@@ -208,12 +209,6 @@ jobs:
       with:
         name: pyinstaller_${{ matrix.kind.name }}
         path: ${{ steps.pyinstaller.outputs.distribution }}
-    - name: Upload package (${{ inputs.variant_name }})
-      if: ${{ matrix.kind.package_kind }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: package_${{ matrix.kind.name }}
-        path: ${{ steps.package.outputs.output }}
     - name: Save build infor for coverage analyis
       if: ${{ matrix.kind.coverage }}
       run: |
