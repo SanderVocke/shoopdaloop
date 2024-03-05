@@ -55,27 +55,24 @@ runs:
     shell: bash
     run: |
       echo "pkg=$(find ./linux_packages -type f -name "shoopdaloop*")" | tee -a $GITHUB_ENV
-      echo "rpm=$(find ./linux_packages -type f -name "shoopdaloop*.rpm")" | tee -a $GITHUB_ENV
-      echo "deb=$(find ./linux_packages -type f -name "shoopdaloop*.deb")" | tee -a $GITHUB_ENV
-      echo "pacman=$(find ./linux_packages -type f -name "shoopdaloop*pkg*.tar.*")" | tee -a $GITHUB_ENV
   - name: Upload RPM package
     if: ${{ inputs.package_kind == 'linuxes' && inputs.upload_name }}
     uses: actions/upload-artifact@v4
     with:
       name: ${{ inputs.upload_name }}_rpm
-      path: ${{ env.rpm }}
+      path: linux_packages/shoopdaloop*.rpm
   - name: Upload RPM package
     if: ${{ inputs.package_kind == 'linuxes' && inputs.upload_name }}
     uses: actions/upload-artifact@v4
     with:
       name: ${{ inputs.upload_name }}_deb
-      path: ${{ env.deb }}
+      path: linux_packages/shoopdaloop*.deb
   - name: Upload RPM package
     if: ${{ inputs.package_kind == 'linuxes' && inputs.upload_name }}
     uses: actions/upload-artifact@v4
     with:
       name: ${{ inputs.upload_name }}_pacman
-      path: ${{ env.pacman }}
+      path: linux_packages/shoopdaloop*pkg*.tar*
 
   # Windows installer (InnoSetup)
   - name: Compile .ISS to .EXE Installer
