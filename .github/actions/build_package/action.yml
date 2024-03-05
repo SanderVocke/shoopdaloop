@@ -50,11 +50,7 @@ runs:
         --url "https://sandervocke.github.io/shoopdaloop/" \
         --maintainer "Sander Vocke <sandervocke@gmail.com>" \
         ${{ inputs.input_path }}=/opt/shoopdaloop
-  - name: Find fpm package
-    if: ${{ inputs.package_kind == 'linuxes' }}
-    shell: bash
-    run: |
-      echo "pkg=$(find ./linux_packages -type f -name "shoopdaloop*")" | tee -a $GITHUB_ENV
+      echo "pkg=linux_packages" | tee -a $GITHUB_ENV
   - name: Upload RPM package
     if: ${{ inputs.package_kind == 'linuxes' && inputs.upload_name }}
     uses: actions/upload-artifact@v4
