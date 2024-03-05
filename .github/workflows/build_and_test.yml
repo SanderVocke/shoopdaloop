@@ -183,7 +183,7 @@ jobs:
       if: ${{ matrix.kind.package_kind }}
       uses: ./.github/actions/build_package
       with:
-        pyinstaller_folder: distribution/pyinstaller/dist/shoopdaloop
+        input_path: distribution/pyinstaller/dist/shoopdaloop
         package_kind: ${{ matrix.kind.package_kind }}
     - name: Upload wheel (${{ inputs.variant_name }})
       if: ${{ !env.ACT }}
