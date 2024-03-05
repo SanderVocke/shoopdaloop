@@ -21,4 +21,7 @@ portaudio
 # has the shared libraries as well, needed for PyInstaller
 python38
 
+# Packaging
+rpm-build
+
 # Note: additional dependencies in Dockerfile
