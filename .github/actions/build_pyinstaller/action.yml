@@ -44,6 +44,5 @@ runs:
     run: |
       cd distribution/pyinstaller
       ${{ steps.find.outputs.pyinstaller }} shoopdaloop.spec
-      tar -czvf shoopdaloop.tar.gz -C dist/shoopdaloop .
-      echo "output=distribution/pyinstaller/shoopdaloop.tar.gz" | tee -a $GITHUB_OUTPUT
+      echo "output=distribution/pyinstaller/dist/shoopdaloop" | tee -a $GITHUB_OUTPUT
     
