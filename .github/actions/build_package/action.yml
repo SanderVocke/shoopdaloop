@@ -34,8 +34,8 @@ runs:
         --license gpl3 \
         --url "https://sandervocke.github.io/shoopdaloop/" \
         --maintainer "Sander Vocke <sandervocke@gmail.com>" \
-        ${{ inputs.input_path }}/shoopdaloop=/opt/shoopdaloop \
-        $ROOTSRC=/
+        ${{ inputs.input_path }}/shoopdaloop=/opt \
+        $ROOTSRC/usr=/
       fpm \
         -s dir \
         -t rpm \
@@ -43,8 +43,8 @@ runs:
         --license gpl3 \
         --url "https://sandervocke.github.io/shoopdaloop/" \
         --maintainer "Sander Vocke <sandervocke@gmail.com>" \
-        ${{ inputs.input_path }}/shoopdaloop=/opt/shoopdaloop \
-        $ROOTSRC=/
+        ${{ inputs.input_path }}/shoopdaloop=/opt \
+        $ROOTSRC/usr=/
       fpm \
         -s dir \
         -t pacman \
@@ -53,8 +53,8 @@ runs:
         --license gpl3 \
         --url "https://sandervocke.github.io/shoopdaloop/" \
         --maintainer "Sander Vocke <sandervocke@gmail.com>" \
-        ${{ inputs.input_path }}/shoopdaloop=/opt/shoopdaloop \
-        $ROOTSRC=/
+        ${{ inputs.input_path }}=/opt \
+        $ROOTSRC/usr=/
       echo "pkg=linux_packages" | tee -a $GITHUB_ENV
   - name: Upload RPM package
     if: ${{ inputs.package_kind == 'linuxes' && inputs.upload_name }}
