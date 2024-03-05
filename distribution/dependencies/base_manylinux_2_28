@@ -23,5 +23,6 @@ python38
 
 # Packaging
 rpm-build
+bsdtar
 
 # Note: additional dependencies in Dockerfile
