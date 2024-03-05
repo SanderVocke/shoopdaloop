@@ -12,7 +12,3 @@ runs:
   - name: Install JACK2
     id: install_jack2
     uses: ./.github/actions/install_jack2
-  - name: Install FPM
-    shell: bash
-    run: |
-      gem install fpm

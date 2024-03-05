@@ -21,6 +21,4 @@ portaudio
 # has the shared libraries as well, needed for PyInstaller
 python38
 
-# For packaging
-ruby
-ruby-devel
+# Note: additional dependencies in Dockerfile
