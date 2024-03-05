@@ -53,7 +53,7 @@ runs:
   - name: Find fpm package
     if: ${{ inputs.package_kind == 'linuxes' }}
     shell: bash
-    run:
+    run: |
       echo "pkg=$(find ./linux_packages -type f -name "shoopdaloop*")" | tee -a $GITHUB_ENV
       echo "rpm=$(find ./linux_packages -type f -name "shoopdaloop*.rpm")" | tee -a $GITHUB_ENV
       echo "deb=$(find ./linux_packages -type f -name "shoopdaloop*.deb")" | tee -a $GITHUB_ENV
