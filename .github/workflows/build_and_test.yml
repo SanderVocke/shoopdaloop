@@ -150,6 +150,7 @@ jobs:
         python: ${{ matrix.kind.python }}
         rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
         pyinstaller: ${{ matrix.kind.pyinstaller }}
+        pyinstaller_python: ${{ matrix.kind.pyinstaller_python }}
         package_kind: ${{ matrix.kind.package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         
