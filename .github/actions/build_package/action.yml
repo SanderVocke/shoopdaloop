@@ -34,7 +34,7 @@ runs:
         --license gpl3 \
         --url "https://sandervocke.github.io/shoopdaloop/" \
         --maintainer "Sander Vocke <sandervocke@gmail.com>" \
-        ${{ inputs.input_path }}/shoopdaloop=/opt \
+        ${{ inputs.input_path }}=/opt \
         $ROOTSRC/usr=/
       fpm \
         -s dir \
@@ -43,7 +43,7 @@ runs:
         --license gpl3 \
         --url "https://sandervocke.github.io/shoopdaloop/" \
         --maintainer "Sander Vocke <sandervocke@gmail.com>" \
-        ${{ inputs.input_path }}/shoopdaloop=/opt \
+        ${{ inputs.input_path }}=/opt \
         $ROOTSRC/usr=/
       fpm \
         -s dir \
