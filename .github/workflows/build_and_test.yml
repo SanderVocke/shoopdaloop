@@ -72,16 +72,16 @@ jobs:
           #   cmake_opts: '"ENABLE_COVERAGE" = "On"'
           #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           #   coverage: true
-          - name: windows_release
-            os: windows-2022
-            python: python.exe
-            pip: python.exe -m pip
-            container_image: null
-            prepare: 'windows'
-            build_type: 'Release'
-            pyinstaller: true
-            package_kind: innosetup
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          # - name: windows_release
+          #   os: windows-2022
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container_image: null
+          #   prepare: 'windows'
+          #   build_type: 'Release'
+          #   pyinstaller: true
+          #   package_kind: innosetup
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           # - name: windows_barebones
           #   os: windows-2022
           #   python: python.exe
@@ -329,24 +329,24 @@ jobs:
           #   os: macos-13
           #   package: wheel_macos_debug
           #   qpa_platform: offscreen
-          - name: release_windows
-            python: python.exe
-            pip: python.exe -m pip
-            pytest: python.exe -m pytest
-            container: null
-            os: windows-2022
-            package: wheel_windows_release
-            qpa_platform: offscreen
-            pathconvert: "| cygpath -u -f -"
-          - name: release_windows_innosetup
-            python: python.exe
-            pip: python.exe -m pip
-            pytest: python.exe -m pytest
-            container: null
-            os: windows-2022
-            package: package_windows_release
-            qpa_platform: offscreen
-            pathconvert: "| cygpath -u -f -"
+          # - name: release_windows
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   pytest: python.exe -m pytest
+          #   container: null
+          #   os: windows-2022
+          #   package: wheel_windows_release
+          #   qpa_platform: offscreen
+          #   pathconvert: "| cygpath -u -f -"
+          # - name: release_windows_innosetup
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   pytest: python.exe -m pytest
+          #   container: null
+          #   os: windows-2022
+          #   package: package_windows_release
+          #   qpa_platform: offscreen
+          #   pathconvert: "| cygpath -u -f -"
           # - name: debug_windows
           #   python: python.exe
           #   pip: python.exe -m pip
