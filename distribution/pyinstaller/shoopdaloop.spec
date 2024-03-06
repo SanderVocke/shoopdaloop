@@ -9,7 +9,9 @@ shoopdaloop_install_path = os.path.dirname(shoopdaloop.__file__)
 a = Analysis(
     [f'{shoopdaloop_install_path}/__main__.py'],
     pathex=[],
-    binaries=[],
+    binaries=[
+        'libcrypt.so.1', # Apparently this is blacklisted by default
+    ],
     datas=[],
     hiddenimports=['shoopdaloop'],
     hookspath=['.'],
@@ -23,6 +25,9 @@ excluded_binaries = [
     'libjack.so.*',    # JACK client library should always come from the system
     'libxkbcommon.*',  # TODO: figure out root-cause, having libxkbcommon but not libxkbcommon-x11 in the package caused a segfault on Arch
     'libstdc\+\+.*',     # MESA won't roll with old c++ std libraries. See discussion @ https://github.com/pyinstaller/pyinstaller/issues/6993
+]
+added_binaries = [
+    'libcrypt.so.1',  # This is in Pyinstaller's default blacklist apparently. Arch does need it
 ]
 a.binaries = TOC([x for x in a.binaries if len([e for e in excluded_binaries if re.match(e, x[0])]) == 0])
 
