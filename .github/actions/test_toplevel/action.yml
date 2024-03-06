@@ -1,0 +1,188 @@
+# Create a package/installer using fpm or InnoSetup
+
+inputs:
+  package:
+    description: "Package artifact to install"
+  asan:
+    description: "Whether to enable ASAN"
+  coverage:
+    description: "Whether to gather code coverage"
+  pip:
+    description: "pip command"
+  python:
+    description: "python command"
+  name:
+    description: "workflow name"
+  pytest:
+    description: "PyTest command"
+  run_cmd_prefix:
+    description: "Prefix for running commands"
+  qpa_platform:
+    description: "Qt QPA platform"
+  pyinstaller:
+    description: "Whether to build PyInstaller"
+  
+runs:
+  using: "composite"
+  steps:
+  - name: Retrieve package
+    if: ${{ inputs.package }}
+    uses: actions/download-artifact@v4
+    with:
+      name: ${{ inputs.package }}
+      path: ./package
+  - name: Find package
+    if: ${{ inputs.package }}
+    id: find_package
+    shell: bash
+    run: |
+      echo "package=package/$(ls package | head -n1)" | tee -a $GITHUB_OUTPUT
+  - name: Install package (${{ inputs.package }})
+    if: ${{ inputs.package }}
+    id: install_package
+    uses: ./.github/actions/install_package
+    with:
+      package: ${{ steps.find_package.outputs.package }}
+  - name: Retrieve info context for coverage analysis
+    if: ${{ inputs.coverage }}
+    uses: actions/download-artifact@v4
+    with:
+      name: coverage_context
+  - name: Pre-install ASAN shared lib
+    if: ${{ inputs.asan }}
+    shell: bash
+    run: |
+      ${{ inputs.pip }} install wheel
+      mkdir unzip_whl
+      ${{ inputs.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
+      cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
+  - name: Create crashdumps folder
+    shell: bash
+    run: |
+      mkdir -p crashdumps
+  - name: Install Python modules
+    shell: bash
+    run: |
+      ${{ inputs.pip }} install pytest coverage pipx
+  - name: Install Qoverage
+    if: ${{ inputs.coverage }}
+    uses: ./.github/actions/install_qoverage
+    with:
+      python: ${{ inputs.python }}
+  - name: Qoverage - Instrument QML files
+    if: ${{ inputs.coverage }}
+    uses: ./.github/actions/qoverage_instrument
+    with:
+      package_path: ${{ steps.install_package.outputs.install_dir }}
+  - name: Test back-end
+    if: ${{ (success() || failure()) && steps.install_package.outputs.test_runner }}
+    uses: ./.github/actions/test_backend
+    timeout-minutes: 5
+    with:
+      variant_name: ${{ inputs.name }}
+      # note: build step generates run_cmd_prefix output
+      # for usage with shared ASAN library.
+      run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=backend_lcov ${{ inputs.run_cmd_prefix }}
+      test_runner: ${{ steps.install_package.outputs.test_runner }}
+  - name: Test Python
+    if: ${{ (success() || failure()) && steps.install_package.outputs.pytest_dir }}
+    uses: ./.github/actions/test_python
+    timeout-minutes: 5
+    with:
+      variant_name: release
+      run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=pytest_lcov ${{ inputs.run_cmd_prefix }}
+      root_path: ${{ steps.install_package.outputs.pytest_dir }}
+      pytest_command: ${{ inputs.pytest }}
+      python_coverage: ${{ inputs.coverage }}
+  - name: Generate Pytest Python coverage report
+    if: ${{ (success() || failure()) && inputs.coverage }}
+    run: |
+      ${{ inputs.python }} -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
+      sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
+  - name: Test QML
+    if: ${{ success() || failure() }}
+    uses: ./.github/actions/test_qml
+    timeout-minutes: 20
+    with:
+      variant_name: release
+      run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=qml_lcov ${{ inputs.run_cmd_prefix }}
+      shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
+      python_command: ${{ inputs.python }}
+      qt_qpa_platform: ${{ inputs.qpa_platform }}
+      macos_rpath_patch: ${{ contains(inputs.name, 'macos') }}
+      tee_all_output_to: test-qml-console-output.log
+  - name: Generate QML Python coverage report
+    if: ${{ (success() || failure()) && inputs.coverage }}
+    run: |
+      ${{ inputs.python }} -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
+      sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
+  - name: Qoverage - Generate report
+    if: ${{ (success() || failure()) && inputs.coverage }}
+    uses: ./.github/actions/qoverage_generate_report
+    with:
+      strip: ".*/pip/shoopdaloop"
+      package_path: ${{ steps.install_package.outputs.install_dir }}
+      console_output_file: test-qml-console-output.log
+      report_file: coverage_reports/qml_qoverage.xml
+  - name: Screenshots
+    if: ${{ success() || failure() }}
+    uses: ./.github/actions/test_screenshots
+    timeout-minutes: 5
+    with:
+      root_path: ${{ steps.install_package.outputs.install_dir }}
+      screenshots_path: _grabbed_screenshots
+      artifact_name: screenshots_${{ inputs.name }}
+      qt_qpa_platform: ${{ inputs.qpa_platform }}
+      python: ${{ inputs.python }}
+      shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
+  - name: Test Run App
+    if: ${{ success() || failure() }}
+    uses: ./.github/actions/test_run_app
+    timeout-minutes: 15
+    with:
+      variant_name: release
+      run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ inputs.run_cmd_prefix }}
+      root_path: ${{ steps.install_package.outputs.install_dir }}
+      python: ${{ inputs.python }}
+      qt_qpa_platform: ${{ inputs.qpa_platform }}
+      shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
+  - name: Process Crash Dumps
+    if: ${{ success() || failure() }}
+    uses: ./.github/actions/process_crashdumps
+    with:
+      dumps_dir: crashdumps
+      python: ${{ inputs.python }}
+      variant: ${{ inputs.name }}
+  - name: Upload back-end coverage to CodeCov
+    if: ${{ (success() || failure()) && inputs.coverage && !(inputs.pyinstaller) }}
+    uses: codecov/codecov-action@v3
+    with:
+      token: ${{ secrets.CODECOV_TOKEN }}
+      flags: back-end
+      files: coverage_reports/backend_lcov.info
+      verbose: true
+  - name: Upload Pytest coverage to CodeCov
+    if: ${{ (success() || failure()) && inputs.coverage && !(inputs.pyinstaller) }}
+    uses: codecov/codecov-action@v3
+    with:
+      token: ${{ secrets.CODECOV_TOKEN }}
+      flags: pytest
+      files: coverage_reports/pytest_lcov.info,coverage_reports/pytest_pycoverage.xml
+      verbose: true
+  - name: Upload QML test coverage to CodeCov
+    if: ${{ (success() || failure()) && inputs.coverage }}
+    uses: codecov/codecov-action@v3
+    with:
+      token: ${{ secrets.CODECOV_TOKEN }}
+      flags: qml
+      files: coverage_reports/qml_lcov.info,coverage_reports/qml_pycoverage.xml,coverage_reports/qml_qoverage.xml
+      verbose: true
+  - name: Upload raw coverage reports
+    if: ${{ (success() || failure()) && inputs.coverage }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: coverage_reports
+      path: coverage_reports
+  # - name: TMate failure session
+  #   if: ${{ failure() && inputs.asan }}
+  #   uses: SanderVocke/action-tmate@master
