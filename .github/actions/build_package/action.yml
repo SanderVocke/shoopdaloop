@@ -50,6 +50,7 @@ runs:
         -t pacman \
         --pacman-compression gz \
         --name shoopdaloop \
+        --depends libxcrypt-compat \
         --license gpl3 \
         --url "https://sandervocke.github.io/shoopdaloop/" \
         --maintainer "Sander Vocke <sandervocke@gmail.com>" \
