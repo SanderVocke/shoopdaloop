@@ -141,7 +141,7 @@ jobs:
       with:
         submodules: recursive
     - name: Build
-      uses: .github/actions/build
+      uses: ./.github/actions/build
       with:
         name: ${{ matrix.kind.name }}
         cmake_build_type: ${{ matrix.kind.build_type }}
