@@ -152,6 +152,7 @@ jobs:
         pytest: ${{ matrix.kind.pytest }}
         qpa_platform: vnc
         pyinstaller: ${{ matrix.kind.pyinstaller }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
 
 
 
@@ -278,6 +279,7 @@ jobs:
         pytest: ${{ matrix.kind.pytest }}
         qpa_platform: ${{ matrix.kind.qpa_platform }}
         pyinstaller: ${{ matrix.kind.pyinstaller }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
 
 
 
@@ -412,6 +414,7 @@ jobs:
         pytest: ${{ matrix.kind.pytest }}
         qpa_platform: ${{ matrix.kind.qpa_platform }}
         pyinstaller: ${{ matrix.kind.pyinstaller }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
 
 
 

@@ -21,6 +21,8 @@ inputs:
     description: "Qt QPA platform"
   pyinstaller:
     description: "Whether to build PyInstaller"
+  codecov_token:
+    description: "Token for CodeCov"
   
 runs:
   using: "composite"
@@ -77,7 +79,6 @@ runs:
   - name: Test back-end
     if: ${{ (success() || failure()) && steps.install_package.outputs.test_runner }}
     uses: ./.github/actions/test_backend
-    timeout-minutes: 5
     with:
       variant_name: ${{ inputs.name }}
       # note: build step generates run_cmd_prefix output
@@ -87,7 +88,6 @@ runs:
   - name: Test Python
     if: ${{ (success() || failure()) && steps.install_package.outputs.pytest_dir }}
     uses: ./.github/actions/test_python
-    timeout-minutes: 5
     with:
       variant_name: release
       run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=pytest_lcov ${{ inputs.run_cmd_prefix }}
@@ -96,13 +96,13 @@ runs:
       python_coverage: ${{ inputs.coverage }}
   - name: Generate Pytest Python coverage report
     if: ${{ (success() || failure()) && inputs.coverage }}
+    shell: bash
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
       sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
   - name: Test QML
     if: ${{ success() || failure() }}
     uses: ./.github/actions/test_qml
-    timeout-minutes: 20
     with:
       variant_name: release
       run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=qml_lcov ${{ inputs.run_cmd_prefix }}
@@ -113,6 +113,7 @@ runs:
       tee_all_output_to: test-qml-console-output.log
   - name: Generate QML Python coverage report
     if: ${{ (success() || failure()) && inputs.coverage }}
+    shell: bash
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
       sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
@@ -127,7 +128,6 @@ runs:
   - name: Screenshots
     if: ${{ success() || failure() }}
     uses: ./.github/actions/test_screenshots
-    timeout-minutes: 5
     with:
       root_path: ${{ steps.install_package.outputs.install_dir }}
       screenshots_path: _grabbed_screenshots
@@ -138,7 +138,6 @@ runs:
   - name: Test Run App
     if: ${{ success() || failure() }}
     uses: ./.github/actions/test_run_app
-    timeout-minutes: 15
     with:
       variant_name: release
       run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ inputs.run_cmd_prefix }}
@@ -157,7 +156,7 @@ runs:
     if: ${{ (success() || failure()) && inputs.coverage && !(inputs.pyinstaller) }}
     uses: codecov/codecov-action@v3
     with:
-      token: ${{ secrets.CODECOV_TOKEN }}
+      token: ${{ inputs.codecov_token }}
       flags: back-end
       files: coverage_reports/backend_lcov.info
       verbose: true
@@ -165,7 +164,7 @@ runs:
     if: ${{ (success() || failure()) && inputs.coverage && !(inputs.pyinstaller) }}
     uses: codecov/codecov-action@v3
     with:
-      token: ${{ secrets.CODECOV_TOKEN }}
+      token: ${{ inputs.codecov_token }}
       flags: pytest
       files: coverage_reports/pytest_lcov.info,coverage_reports/pytest_pycoverage.xml
       verbose: true
@@ -173,7 +172,7 @@ runs:
     if: ${{ (success() || failure()) && inputs.coverage }}
     uses: codecov/codecov-action@v3
     with:
-      token: ${{ secrets.CODECOV_TOKEN }}
+      token: ${{ inputs.codecov_token }}
       flags: qml
       files: coverage_reports/qml_lcov.info,coverage_reports/qml_pycoverage.xml,coverage_reports/qml_qoverage.xml
       verbose: true
