@@ -95,6 +95,7 @@ runs:
     if: ${{ steps.get_type.outputs.type == 'pyinstaller' }}
     shell: bash
     run: |
+      chmod a+x ${{ inputs.package }}/shoopdaloop
       echo "cmd=${{ inputs.package }}/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=${{ inputs.package }}" | tee -a $GITHUB_ENV
 
