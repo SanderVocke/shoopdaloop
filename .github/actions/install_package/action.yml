@@ -67,7 +67,7 @@ runs:
     if: ${{ steps.get_type.outputs.type == 'pacman' }}
     shell: bash
     run: |
-      pacman -U ${{ inputs.package }}
+      pacman -Uv --noconfirm ${{ inputs.package }}
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
       echo "pytest_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
@@ -78,7 +78,7 @@ runs:
     if: ${{ steps.get_type.outputs.type == 'deb' }}
     shell: bash
     run: |
-      DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical dpkg -i ${{ inputs.package }}
+      DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical dpkg --debug=10 -i ${{ inputs.package }}
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
       echo "pytest_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV

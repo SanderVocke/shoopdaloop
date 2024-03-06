@@ -140,91 +140,19 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Store cwd
-      shell: bash
-      id: cwd
-      run: |
-         echo "cwd=$(pwd)" | tee -a $GITHUB_OUTPUT
-    - name: Prepare
-      id: prepare
-      uses: ./.github/actions/prepare_build
+    - name: Build
+      uses: .github/actions/build
       with:
-        variant: ${{ matrix.kind.prepare }}
-    - name: Set overrides
-      shell: bash
-      run: |
-        echo 'cmake.build_type = "${{ matrix.kind.build_type }}"' > py-build-cmake.local.toml
-        echo 'cmake.options = { ${{ matrix.kind.cmake_opts }} }' >> py-build-cmake.local.toml
-    - name: Build wheel
-      id: buildwheel
-      uses: ./.github/actions/build_wheel
-      with:
-        variant_name: ${{ matrix.kind.name }}
-        python: ${{ matrix.kind.python}}
-        prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
-        windows: ${{ matrix.kind.prepare == 'windows' && 'true' || 'false' }}
+        name: ${{ matrix.kind.name }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: ${{ matrix.kind.prepare }}
+        python: ${{ matrix.kind.python }}
         rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
-    - name: Post-build steps
-      id: postbuild
-      uses: ./.github/actions/post_build
-      with:
-        variant: ${{ matrix.kind.prepare }}
-        wheel: ${{ steps.buildwheel.outputs.wheel_filename }}
-        build_dir: ${{ steps.buildwheel.outputs.build_dir }}
-    - name: Find wheel
-      shell: bash
-      id: find
-      run: |
-        echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
-    - name: PyInstaller
-      id: pyinstaller
-      if: ${{ matrix.kind.pyinstaller }}
-      uses: ./.github/actions/build_pyinstaller
-      with:
-        python: ${{ matrix.kind.pyinstaller_python && matrix.kind.pyinstaller_python || matrix.kind.python }}
-        wheel: ${{ steps.find.outputs.name }}
-    - name: Build package
-      id: package
-      if: ${{ matrix.kind.package_kind }}
-      uses: ./.github/actions/build_package
-      with:
-        input_path: ${{ steps.cwd.outputs.cwd }}/distribution/pyinstaller/dist/shoopdaloop
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
         package_kind: ${{ matrix.kind.package_kind }}
-        upload_name: package_${{ matrix.kind.name }}
-    - name: Upload wheel (${{ inputs.variant_name }})
-      if: ${{ !env.ACT }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheel_${{ matrix.kind.name }}
-        path: ${{ steps.find.outputs.name }}
-    - name: Upload debug info (${{ inputs.variant_name }})
-      if: ${{ !env.ACT }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: debuginfo_${{ matrix.kind.name }}
-        path: debuginfo
-    - name: Upload PyInstaller (${{ inputs.variant_name }})
-      if: ${{ matrix.kind.pyinstaller }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: pyinstaller_${{ matrix.kind.name }}
-        path: ${{ steps.pyinstaller.outputs.distribution }}
-    - name: Save build infor for coverage analyis
-      if: ${{ matrix.kind.coverage }}
-      run: |
-        echo "$(realpath build/cp*/)" | tee ori_build_dir.txt
-    - name: Upload info context for coverage analysis
-      if: ${{ matrix.kind.coverage }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage_context
-        path: |
-          ./**/*.gcno
-          ori_build_dir.txt
-    # - name: TMate failure session
-    #   if: ${{ failure() }}
-    #   uses: SanderVocke/action-tmate@master
-  
+        coverage: ${{ matrix.kind.coverage }}
+        
   test:
     strategy:
       fail-fast: false
@@ -552,7 +480,7 @@ jobs:
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
-        pattern: crashdumps_*
+        pattern: crashdumps_*_${{ github.run_number }}
         path: crashdumps
     - name: Count crash dumps
       id: count
