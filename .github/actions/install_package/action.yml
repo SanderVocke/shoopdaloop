@@ -27,11 +27,12 @@ runs:
     run: |
        if [ ! -f ${{ inputs.package }} ]; then
           type="pyinstaller"
-       fi
-       filename=${{ inputs.package }}
-       type="${filename##*.}"
-       if [[ "$type" == "gz" ]]; then
-          type="pacman"
+       else
+          filename=${{ inputs.package }}
+          type="${filename##*.}"
+          if [[ "$type" == "gz" ]]; then
+              type="pacman"
+          fi
        fi
        echo "type=$type" | tee -a $GITHUB_OUTPUT
   
