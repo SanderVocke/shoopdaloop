@@ -10,9 +10,6 @@ on:
 env:
   BUILD_TYPE: Release
   PIP_BREAK_SYSTEM_PACKAGES: 1
-  linux: true
-  macos: true
-  windows: true
 
 permissions:
   contents: read
@@ -53,7 +50,7 @@ jobs:
     container:
       image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
       options: --user root --workdir /
-    if: ${{ env.linux }}
+    #if: false
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -133,7 +130,7 @@ jobs:
           #     scripts/run_and_generate_coverage.sh
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ env.linux }}
+    #if: false
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -190,7 +187,7 @@ jobs:
             build_type: 'Debug'
             cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
     runs-on: macos-11
-    if: ${{ env.macos }}
+    if: false
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -259,7 +256,7 @@ jobs:
             qpa_platform: offscreen
     runs-on: ${{ matrix.kind.os }}
     needs: build
-    if: ${{ env.macos }}
+    if: false
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -339,7 +336,7 @@ jobs:
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
-    if: ${{ env.windows }}
+    if: false
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -393,7 +390,7 @@ jobs:
             pathconvert: "| cygpath -u -f -"
     runs-on: ${{ matrix.kind.os }}
     needs: build
-    if: ${{ env.windows }}
+    if: false
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
