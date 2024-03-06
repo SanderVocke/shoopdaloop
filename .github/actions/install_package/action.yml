@@ -30,7 +30,7 @@ runs:
        fi
        filename=${{ inputs.package }}
        type="${filename##*.}"
-       if [[ "$type" == "zst" ]]; then
+       if [[ "$type" == "gz" ]]; then
           type="pacman"
        fi
        echo "type=$type" | tee -a $GITHUB_OUTPUT
@@ -62,12 +62,44 @@ runs:
       echo "pytest_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "test_runner=$INSTALLDIR/test_runner" | tee -a $GITHUB_ENV
 
+  # Pacman
+  - name: Install Pacman
+    if: ${{ steps.get_type.outputs.type == 'pacman' }}
+    shell: bash
+    run: |
+      pacman -U ${{ inputs.package }}
+      echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "pytest_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "test_runner=/opt/shoopdaloop/test_runner" | tee -a $GITHUB_ENV
+  
+  # Debian
+  - name: Install deb
+    if: ${{ steps.get_type.outputs.type == 'deb' }}
+    shell: bash
+    run: |
+      DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical dpkg -i ${{ inputs.package }}
+      echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "pytest_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "test_runner=/opt/shoopdaloop/test_runner" | tee -a $GITHUB_ENV
+  
+  # RPM
+  - name: Install rpm
+    if: ${{ steps.get_type.outputs.type == 'rpm' }}
+    shell: bash
+    run: |
+      dnf -y install ${{ inputs.package }}
+      echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "pytest_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "test_runner=/opt/shoopdaloop/test_runner" | tee -a $GITHUB_ENV
+
   # PyInstaller portable folder
   - name: Install PyIntaller portable folder (just determine contents)
     if: ${{ steps.get_type.outputs.type == 'pyinstaller' }}
     shell: bash
     run: |
-      tar -xvf ${{ inputs.package }}/shoopdaloop.tar.gz -C ./shoop_portable
       echo "cmd=${{ inputs.package }}/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=./shoop_portable" | tee -a $GITHUB_ENV
 
