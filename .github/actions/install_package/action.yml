@@ -70,8 +70,6 @@ runs:
       pacman -Uv --noconfirm ${{ inputs.package }}
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "pytest_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "test_runner=/opt/shoopdaloop/test_runner" | tee -a $GITHUB_ENV
   
   # Debian
   - name: Install deb
@@ -81,8 +79,6 @@ runs:
       DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical dpkg --debug=10 -i ${{ inputs.package }}
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "pytest_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "test_runner=/opt/shoopdaloop/test_runner" | tee -a $GITHUB_ENV
   
   # RPM
   - name: Install rpm
@@ -92,8 +88,6 @@ runs:
       dnf -y install ${{ inputs.package }}
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "pytest_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "test_runner=/opt/shoopdaloop/test_runner" | tee -a $GITHUB_ENV
 
   # PyInstaller portable folder
   - name: Install PyIntaller portable folder (just determine contents)
@@ -101,7 +95,8 @@ runs:
     shell: bash
     run: |
       echo "cmd=${{ inputs.package }}/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "install_dir=./shoop_portable" | tee -a $GITHUB_ENV
+      echo "install_dir=${{ inputs.package }}" | tee -a $GITHUB_ENV
+
 
   # Final step: gather env to outputs
   - name: Get command
