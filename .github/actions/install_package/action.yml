@@ -63,12 +63,12 @@ runs:
       echo "test_runner=$INSTALLDIR/test_runner" | tee -a $GITHUB_ENV
 
   # PyInstaller portable folder
-  - name: Install PyIntaller portable folder (decompress)
+  - name: Install PyIntaller portable folder (just determine contents)
     if: ${{ steps.get_type.outputs.type == 'pyinstaller' }}
     shell: bash
     run: |
       tar -xvf ${{ inputs.package }}/shoopdaloop.tar.gz -C ./shoop_portable
-      echo "cmd=./shoop_portable/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "cmd=${{ inputs.package }}/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=./shoop_portable" | tee -a $GITHUB_ENV
 
   # Final step: gather env to outputs

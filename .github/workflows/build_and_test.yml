@@ -230,7 +230,7 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: release_debian_stable
+          - name: release_wheel_debian_stable
             python: python3
             pip: python3 -m pip
             pytest: python3 -m pytest
@@ -254,7 +254,15 @@ jobs:
           #   os: ubuntu-latest
           #   package: wheel_linux_release
           #   qpa_platform: vnc
-          - name: release_ubuntu_latest_pyinstaller
+          - name: release_deb_ubuntu_latest
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+            os: ubuntu-latest
+            package: package_linux_release_deb
+            qpa_platform: vnc
+          - name: release_pyinst_ubuntu_latest
             python: python3
             pip: python3 -m pip
             pytest: python3 -m pytest
@@ -262,14 +270,14 @@ jobs:
             os: ubuntu-latest
             package: pyinstaller_linux_release
             qpa_platform: vnc
-          # - name: release_arch
-          #   python: python
-          #   pip: python -m pip
-          #   pytest: python3 -m pytest
-          #   container: sandervocke/shoopdaloop_run_base_arch:latest
-          #   os: ubuntu-latest
-          #   package: wheel_linux_release
-          #   qpa_platform: vnc
+          - name: release_pacman_arch
+            python: python
+            pip: python -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_arch:latest
+            os: ubuntu-latest
+            package: package_linux_release_pacman
+            qpa_platform: vnc
           # - name: coverage_manylinux_2_28
           #   python: python3.8 -m coverage run --source=shoopdaloop
           #   pip: python3.8 -m pip
@@ -378,7 +386,7 @@ jobs:
       id: find_package
       shell: bash
       run: |
-        echo "package=$(find package -type f)" | tee -a $GITHUB_OUTPUT
+        echo "package=$(ls package | head -n1)" | tee -a $GITHUB_OUTPUT
     - name: Install package (${{ matrix.kind.package }})
       if: ${{ matrix.kind.package }}
       id: install_package
