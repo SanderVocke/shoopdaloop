@@ -9,9 +9,7 @@ shoopdaloop_install_path = os.path.dirname(shoopdaloop.__file__)
 a = Analysis(
     [f'{shoopdaloop_install_path}/__main__.py'],
     pathex=[],
-    binaries=[
-        'libcrypt.so.1', # Apparently this is blacklisted by default
-    ],
+    binaries=[],
     datas=[],
     hiddenimports=['shoopdaloop'],
     hookspath=['.'],
