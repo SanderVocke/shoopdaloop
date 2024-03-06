@@ -386,7 +386,7 @@ jobs:
       id: find_package
       shell: bash
       run: |
-        echo "package=$(ls package | head -n1)" | tee -a $GITHUB_OUTPUT
+        echo "package=package/$(ls package | head -n1)" | tee -a $GITHUB_OUTPUT
     - name: Install package (${{ matrix.kind.package }})
       if: ${{ matrix.kind.package }}
       id: install_package
