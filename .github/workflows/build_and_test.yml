@@ -182,6 +182,7 @@ jobs:
           - name: macos_release
             build_type: 'Release'
             appbundle: true
+            package_kind: osxpkg
           - name: macos_debug
             build_type: 'Debug'
           - name: macos_barebones

@@ -102,7 +102,7 @@ runs:
     if: ${{ inputs.package_kind }}
     uses: ./.github/actions/build_package
     with:
-      input_path: ${{ steps.cwd.outputs.cwd }}/distribution/pyinstaller/dist/shoopdaloop
+      input_path: ${{ steps.cwd.outputs.cwd }}/distribution/pyinstaller/dist/shoopdaloop${{ inputs.appbundle && '.app' || '' }}
       package_kind: ${{ inputs.package_kind }}
       upload_name: package_${{ inputs.name }}
   - shell: bash

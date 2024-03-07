@@ -117,7 +117,28 @@ runs:
     with:
       name: ${{ inputs.upload_name }}
       path: ${{ env.pkg }}
-  
+
+  # MacOS .pkg
+  - name: Build MacOSX .pkg
+    if: ${{ inputs.package_kind == 'osxpkg' }}
+    shell: bash
+    run: |
+      mkdir -p macos_package
+      WORKDIR=$(pwd)
+      cd macos_package
+
+      fpm \
+        -s dir \
+        -t osxpkg \
+        --name shoopdaloop \
+        --version ${{ env.version }} \
+        --license gpl3 \
+        --url "https://sandervocke.github.io/shoopdaloop/" \
+        --maintainer "Sander Vocke <sandervocke@gmail.com>" \
+        ${{ inputs.input_path }}
+      
+      echo "pkg=$(ls macos_package/*.pkg)" | tee -a $GITHUB_ENV
+
   - name: Find output
     id: find_output
     shell: bash
