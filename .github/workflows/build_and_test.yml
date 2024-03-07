@@ -31,21 +31,21 @@ jobs:
             build_type: 'Release'
             pyinstaller: true
             package_kind: linuxes
-          # - name: linux_debug
-          #   build_type: 'Debug'
-          # - name: linux_barebones
-          #   build_type: 'Release'
-          #   cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
-          # - name: linux_asan
-          #   # Note: ASAN build does not have a test because it is not trivial to deploy
-          #   # an asan-built program on another system. The build is here to ensure the
-          #   # build process still works. To use ASAN, compile like this natively.
-          #   build_type: 'Debug'
-          #   cmake_opts: '"ENABLE_ASAN" = "On"'
-          # - name: linux_coverage
-          #   build_type: 'Debug'
-          #   cmake_opts: '"ENABLE_COVERAGE" = "On"'
-          #   coverage: true
+          - name: linux_debug
+            build_type: 'Debug'
+          - name: linux_barebones
+            build_type: 'Release'
+            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
+          - name: linux_asan
+            # Note: ASAN build does not have a test because it is not trivial to deploy
+            # an asan-built program on another system. The build is here to ensure the
+            # build process still works. To use ASAN, compile like this natively.
+            build_type: 'Debug'
+            cmake_opts: '"ENABLE_ASAN" = "On"'
+          - name: linux_coverage
+            build_type: 'Debug'
+            cmake_opts: '"ENABLE_COVERAGE" = "On"'
+            coverage: true
     runs-on: ubuntu-latest
     container:
       image: sandervocke/shoopdaloop_base_manylinux_2_28:latest

@@ -30,10 +30,11 @@ runs:
         echo "cwd=$(pwd)" | tee -a $GITHUB_OUTPUT
   - shell: bash
     run: |
+      printf "\n\n\n\n\n\n"
       echo "=========================================="
       echo "Preparing environment"
       echo "=========================================="
-      echo "::group::Preparing environment"
+      printf "\n\n\n\n\n\n"
   - name: Prepare
     id: prepare
     uses: ./.github/actions/prepare_build
@@ -46,11 +47,11 @@ runs:
       echo 'cmake.options = { ${{ inputs.cmake_opts }} }' >> py-build-cmake.local.toml
   - shell: bash
     run: |
-      echo "::endgroup::"
+      printf "\n\n\n\n\n\n"
       echo "=========================================="
       echo "Building wheel"
       echo "=========================================="
-      echo "::group::Building wheel"
+      printf "\n\n\n\n\n\n"
   - name: Build wheel
     id: buildwheel
     uses: ./.github/actions/build_wheel
@@ -74,7 +75,11 @@ runs:
       echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
   - shell: bash
     run: |
-      echo "::endgroup::"
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "PyInstaller"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
   - name: PyInstaller
     id: pyinstaller
     if: ${{ inputs.pyinstaller }}
@@ -82,6 +87,13 @@ runs:
     with:
       python: ${{ inputs.pyinstaller_python && inputs.pyinstaller_python || inputs.python }}
       wheel: ${{ steps.find.outputs.name }}
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Build package: ${{ inputs.package_kind }}"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
   - name: Build package
     id: package
     if: ${{ inputs.package_kind }}
@@ -90,6 +102,13 @@ runs:
       input_path: ${{ steps.cwd.outputs.cwd }}/distribution/pyinstaller/dist/shoopdaloop
       package_kind: ${{ inputs.package_kind }}
       upload_name: package_${{ inputs.name }}
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Upload artifacts"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
   - name: Upload wheel (${{ inputs.variant_name }})
     if: ${{ !env.ACT }}
     uses: actions/upload-artifact@v4

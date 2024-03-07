@@ -27,6 +27,13 @@ inputs:
 runs:
   using: "composite"
   steps:
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Install package"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
   - name: Retrieve package
     if: ${{ inputs.package }}
     uses: actions/download-artifact@v4
@@ -45,6 +52,13 @@ runs:
     uses: ./.github/actions/install_package
     with:
       package: ${{ steps.find_package.outputs.package }}
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Preparing environment"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
   - name: Retrieve info context for coverage analysis
     if: ${{ inputs.coverage }}
     uses: actions/download-artifact@v4
@@ -76,6 +90,13 @@ runs:
     uses: ./.github/actions/qoverage_instrument
     with:
       package_path: ${{ steps.install_package.outputs.install_dir }}
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Back-end test"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
   - name: Test back-end
     if: ${{ (success() || failure()) && steps.install_package.outputs.test_runner }}
     uses: ./.github/actions/test_backend
@@ -85,6 +106,13 @@ runs:
       # for usage with shared ASAN library.
       run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=backend_lcov ${{ inputs.run_cmd_prefix }}
       test_runner: ${{ steps.install_package.outputs.test_runner }}
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Pytest"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
   - name: Test Python
     if: ${{ (success() || failure()) && steps.install_package.outputs.pytest_dir }}
     uses: ./.github/actions/test_python
@@ -100,6 +128,13 @@ runs:
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
       sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "QML test"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
   - name: Test QML
     if: ${{ success() || failure() }}
     uses: ./.github/actions/test_qml
@@ -125,6 +160,13 @@ runs:
       package_path: ${{ steps.install_package.outputs.install_dir }}
       console_output_file: test-qml-console-output.log
       report_file: coverage_reports/qml_qoverage.xml
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Screenshots"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
   - name: Screenshots
     if: ${{ success() || failure() }}
     uses: ./.github/actions/test_screenshots
@@ -135,6 +177,13 @@ runs:
       qt_qpa_platform: ${{ inputs.qpa_platform }}
       python: ${{ inputs.python }}
       shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Monkey test"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
   - name: Test Run App
     if: ${{ success() || failure() }}
     uses: ./.github/actions/test_run_app
@@ -145,6 +194,13 @@ runs:
       python: ${{ inputs.python }}
       qt_qpa_platform: ${{ inputs.qpa_platform }}
       shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Processing results"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
   - name: Process Crash Dumps
     if: ${{ success() || failure() }}
     uses: ./.github/actions/process_crashdumps
