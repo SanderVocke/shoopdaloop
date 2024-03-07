@@ -1,0 +1,114 @@
+# Install a package
+
+inputs:
+  package:
+    description: "package file / directory"
+
+outputs:
+  shoopdaloop:
+    description: "command to run ShoopDaLoop"
+    value: ${{ steps.get_cmd.outputs.cmd }}
+  install_dir:
+    description: "location where ShoopDaLoop lives"
+    value: ${{ steps.get_cmd.outputs.install_dir }}
+  pytest_dir:
+    description: "directory to run pytest, if any"
+    value: ${{ steps.get_cmd.outputs.pytest_dir }}
+  test_runner:
+    description: "path to back-end testrunner, if any"
+    value: ${{ steps.get_cmd.outputs.test_runner }}
+
+runs:
+  using: "composite"
+  steps:
+  - name: Determine package kind
+    shell: bash
+    id: get_type
+    run: |
+       if [ ! -f ${{ inputs.package }} ]; then
+          type="pyinstaller"
+       else
+          filename=${{ inputs.package }}
+          type="${filename##*.}"
+          if [[ "$type" == "gz" ]]; then
+              type="pacman"
+          fi
+       fi
+       echo "type=$type" | tee -a $GITHUB_OUTPUT
+  
+  # Windows (InnoSetup) (no pytest and test_runner included)
+  - name: Install tools for InnoSetup
+    if: ${{ steps.get_type.outputs.type == 'exe' }}
+    uses: MinoruSekine/setup-scoop@v3
+  - name: Install InnoSetup .exe by extracting
+    if: ${{ steps.get_type.outputs.type == 'exe' }}
+    shell: bash
+    run: |
+      scoop install innounp
+      innounp -x -dextracted ${{ inputs.package }}
+      "extracted/{app}/shoopdaloop.exe" --info
+      echo "cmd=extracted/{app}/shoopdaloop.exe" | tee -a $GITHUB_ENV
+      echo "install_dir=extracted/{app}" | tee -a $GITHUB_ENV
+
+  # Python wheel
+  - name: Install wheel
+    if: ${{ steps.get_type.outputs.type == 'whl' }}
+    shell: bash
+    run: |
+      ${{ matrix.kind.pip }} install --force-reinstall ${{ inputs.package }}
+      ${{ matrix.kind.python }} -m shoopdaloop --info
+      export INSTALLDIR="$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})"
+      echo "cmd=${{ matrix.kind.python }} -m shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
+      echo "pytest_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
+      echo "test_runner=$INSTALLDIR/test_runner" | tee -a $GITHUB_ENV
+
+  # Pacman
+  - name: Install Pacman
+    if: ${{ steps.get_type.outputs.type == 'pacman' }}
+    shell: bash
+    run: |
+      pacman -Uv --noconfirm ${{ inputs.package }}
+      pacman -Ql shoopdaloop
+      echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+  
+  # Debian
+  - name: Install deb
+    if: ${{ steps.get_type.outputs.type == 'deb' }}
+    shell: bash
+    run: |
+      DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical dpkg --debug=10 -i ${{ inputs.package }}
+      dpkg-query -L shoopdaloop
+      echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+  
+  # RPM
+  - name: Install rpm
+    if: ${{ steps.get_type.outputs.type == 'rpm' }}
+    shell: bash
+    run: |
+      dnf -y install ${{ inputs.package }}
+      echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+
+  # PyInstaller portable folder
+  - name: Install PyIntaller portable folder (just determine contents)
+    if: ${{ steps.get_type.outputs.type == 'pyinstaller' }}
+    shell: bash
+    run: |
+      chmod a+x ${{ inputs.package }}/shoopdaloop
+      echo "cmd=${{ inputs.package }}/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=${{ inputs.package }}" | tee -a $GITHUB_ENV
+
+
+  # Final step: gather env to outputs
+  - name: Get command
+    id: get_cmd
+    shell: bash
+    run: |
+      echo "cmd=${{ env.cmd }}" | tee -a $GITHUB_OUTPUT
+      echo "install_dir=${{ env.install_dir }}" | tee -a $GITHUB_OUTPUT
+      echo "pytest_dir=${{ env.pytest_dir }}" | tee -a $GITHUB_OUTPUT
+      echo "test_runner=${{ env.test_runner }}" | tee -a $GITHUB_OUTPUT
+      

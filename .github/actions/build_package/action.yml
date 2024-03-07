@@ -1,0 +1,106 @@
+# Create a package/installer using fpm or InnoSetup
+
+inputs:
+  input_path:
+    description: "input path for the build, if needed"
+  package_kind:
+    description: "innosetup / linuxes / pyinstaller"
+  upload_name:
+    description: "if set, will upload the package(s) with the given name (prefix)"
+
+outputs:
+  output:
+    description: "Built artifact(s)"
+    value: ${{ steps.find_output.outputs.output }}
+  
+
+runs:
+  using: "composite"
+  steps:  
+
+  # Linux packages
+  - name: Build .deb + pacman + .rpm
+    if: ${{ inputs.package_kind == 'linuxes' }}
+    shell: bash
+    run: |
+      mkdir -p linux_packages
+      WORKDIR=$(pwd)
+      ROOTSRC=$WORKDIR/distribution/linux/root
+      cd linux_packages
+      fpm \
+        -s dir \
+        -t deb \
+        --name shoopdaloop \
+        --license gpl3 \
+        --url "https://sandervocke.github.io/shoopdaloop/" \
+        --maintainer "Sander Vocke <sandervocke@gmail.com>" \
+        ${{ inputs.input_path }}=/opt \
+        $ROOTSRC/usr=/
+      fpm \
+        -s dir \
+        -t rpm \
+        --name shoopdaloop \
+        --rpm-rpmbuild-define  "_build_id_links none" \
+        --license gpl3 \
+        --url "https://sandervocke.github.io/shoopdaloop/" \
+        --maintainer "Sander Vocke <sandervocke@gmail.com>" \
+        ${{ inputs.input_path }}=/opt \
+        $ROOTSRC/usr=/
+      fpm \
+        -s dir \
+        -t pacman \
+        --pacman-compression gz \
+        --name shoopdaloop \
+        --depends libxcrypt-compat \
+        --license gpl3 \
+        --url "https://sandervocke.github.io/shoopdaloop/" \
+        --maintainer "Sander Vocke <sandervocke@gmail.com>" \
+        ${{ inputs.input_path }}=/opt \
+        $ROOTSRC/usr=/
+      echo "pkg=linux_packages" | tee -a $GITHUB_ENV
+  - name: Upload RPM package
+    if: ${{ inputs.package_kind == 'linuxes' && inputs.upload_name }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: ${{ inputs.upload_name }}_rpm
+      path: linux_packages/shoopdaloop*.rpm
+  - name: Upload RPM package
+    if: ${{ inputs.package_kind == 'linuxes' && inputs.upload_name }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: ${{ inputs.upload_name }}_deb
+      path: linux_packages/shoopdaloop*.deb
+  - name: Upload RPM package
+    if: ${{ inputs.package_kind == 'linuxes' && inputs.upload_name }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: ${{ inputs.upload_name }}_pacman
+      path: linux_packages/shoopdaloop*pkg*.tar*
+
+  # Windows installer (InnoSetup)
+  - name: Compile .ISS to .EXE Installer
+    uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+    if: ${{ inputs.package_kind == 'innosetup' }}  
+    with:
+      path: distribution/innosetup/shoopdaloop.iss
+      options: /O+
+  - name: Move .EXE installer
+    if: ${{ inputs.package_kind == 'innosetup' }}   
+    shell: bash
+    run: |
+      ls distribution/innosetup
+      INSTALLER=$(find distribution/innosetup -name "ShoopDaLoop-*.exe")
+      echo "pkg=$INSTALLER" | tee -a $GITHUB_ENV
+  - name: Upload .exe installer
+    if: ${{ inputs.package_kind == 'innosetup' && inputs.upload_name }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: ${{ inputs.upload_name }}
+      path: ${{ env.pkg }}
+  
+  - name: Find output
+    id: find_output
+    shell: bash
+    run: |
+      echo "output=${{ env.pkg }}" | tee -a $GITHUB_OUTPUT
+      
