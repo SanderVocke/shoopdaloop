@@ -22,6 +22,26 @@ For currently open known issues, check the GitHub Issues page.
 
 ![Screenshot](docs/source/resources/screenshot.png)
 
+# In a nutshell
+
+- **Fast**: can easily handle a large number of loops.
+- **Tracks**: loops are organized into tracks, which share inputs/outputs and effects/synthesis.
+- **MIDI and audio**: can both be looped, including alongside each other in the same loop.
+- **FX/synthesis**: can be inserted into a loop via external JACK connections or by using plugins. The same loop can simultaneously record "dry" and "wet", akin to [Luppp](http://openavproductions.com/luppp/), to save precious CPU during playback.
+- **Synchronization**: every loop is synced to the "sync loop", which typically holds a beat, click-track or just fixed-length silence. Loops may also be a multiple of the sync loop length.
+- **Click tracks**: can be generated via a dialog in the app.
+- **NSM**: Non/New Session Manager support (experimental).
+- **Hackable**: Users can run their own Lua scripts to control the application in new ways.
+
+These features are explained in detail in the [docs](https://sandervocke.github.io/shoopdaloop/).
+
+# Status
+
+ShoopDaLoop is in early development. The basics work but not nearly all of its intended functionality is finished yet (see below).
+The intent is for the master branch to always work and pass CI tests, but at the moment, some significant bugs will probably come and go. Check the issues list for currently known issues and please add any you encounter yourself.
+As such, it obviously has not been used for on-stage performing and definitely shouldn't until after doing some serious testing.
+Note however that having automated testing with high coverage is among the project goals.
+
 # Comparison table
 
 To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar open-source software gives a good picture. Of course, the devil is in the details: the other listed software is great and in many ways different and better. The aim here is not to take away from them in any way.
@@ -57,26 +77,6 @@ Disclaimers:
 
 As seen in the comparison table, ShoopDaLoop is closest to Luppp in what it offers, the main differentiators being built-in MIDI support and the planned features for song construction. And of course, the details of how loops are managed exactly differ between all these tools and are a matter of preference.
 
-# Summary
-
-- **Fast**: can easily handle a large number of loops.
-- **Tracks**: loops are organized into tracks, which share inputs/outputs and effects/synthesis.
-- **MIDI and audio**: can both be looped, including alongside each other in the same loop.
-- **FX/synthesis**: can be inserted into a loop via external JACK connections or by using plugins. The same loop can simultaneously record "dry" and "wet", akin to [Luppp](http://openavproductions.com/luppp/), to save precious CPU during playback.
-- **Synchronization**: every loop is synced to the "sync loop", which typically holds a beat, click-track or just fixed-length silence. Loops may also be a multiple of the sync loop length.
-- **Click tracks**: can be generated via a dialog in the app.
-- **NSM**: Non/New Session Manager support (experimental).
-- **Hackable**: Users can run their own Lua scripts to control the application in new ways.
-
-These features are explained in detail in the [docs](https://sandervocke.github.io/shoopdaloop/).
-
-# Status
-
-ShoopDaLoop is in early development. The basics work but not nearly all of its intended functionality is finished yet (see below).
-The intent is for the master branch to always work and pass CI tests, but at the moment, some significant bugs will probably come and go. Check the issues list for currently known issues and please add any you encounter yourself.
-As such, it obviously has not been used for on-stage performing and definitely shouldn't until after doing some serious testing.
-Note however that having automated testing with high coverage is among the project goals.
-
 # Roadmap
 
 All the basic features needed for a 1.0 release are there. The following items are planned before a first release:
@@ -84,10 +84,6 @@ All the basic features needed for a 1.0 release are there. The following items a
 - **Polishing**: Many features are there but some need to be tweaked and improved.
 - **Distribution**: Currently the build process is quite convoluted and error-prone. This will be improved and tested for several repos.
 - **Bugfixing**: Fix the most critical bugs in the list. Improve test coverage.
-
-After first release:
-
-- **OS support**: Plan to include Windows and Mac. 
 
 # Installation
 

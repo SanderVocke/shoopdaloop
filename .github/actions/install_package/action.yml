@@ -69,6 +69,7 @@ runs:
     shell: bash
     run: |
       pacman -Uv --noconfirm ${{ inputs.package }}
+      pacman -Q shoopdaloop
       pacman -Ql shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
@@ -79,6 +80,7 @@ runs:
     shell: bash
     run: |
       DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical dpkg --debug=10 -i ${{ inputs.package }}
+      dpkg -l shoopdaloop
       dpkg-query -L shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
@@ -89,6 +91,7 @@ runs:
     shell: bash
     run: |
       dnf -y install ${{ inputs.package }}
+      dnf list installed shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
 

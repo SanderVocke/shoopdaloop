@@ -1,0 +1,19 @@
+[Desktop Entry]
+
+# The type as listed above
+Type=Application
+
+# The name of the application
+Name=ShoopDaLoop
+
+# A comment which can/will be used as a tooltip
+Comment=Live looping application with DAW elements
+
+# The path to the folder in which the executable is run
+Path=/opt/shoopdaloop
+
+# The executable of the application, possibly with arguments.
+Exec=shoopdaloop
+
+# Describes the categories in which this entry should be shown
+Categories=Music

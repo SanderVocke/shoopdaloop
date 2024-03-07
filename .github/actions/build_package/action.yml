@@ -16,7 +16,18 @@ outputs:
 
 runs:
   using: "composite"
-  steps:  
+  steps:
+
+  # Versions
+  - name: Determine version
+    shell: bash
+    run: |
+      VERSION=$(cat ${{ inputs.input_path }}/_internal/shoopdaloop/version.txt | tr -d ' ')
+      FULLGITVERSION=${{ github.sha }}
+      GITVERSION=$(echo ${GITVERSION:0:8} | tr -d ' ')
+
+      echo "version=$VERSION" | tee -a $GITHUB_ENV
+      echo "gitversion=$GITVERSION" | tee -a $GITHUB_ENV
 
   # Linux packages
   - name: Build .deb + pacman + .rpm
@@ -27,30 +38,39 @@ runs:
       WORKDIR=$(pwd)
       ROOTSRC=$WORKDIR/distribution/linux/root
       cd linux_packages
+
+      # Debian
       fpm \
         -s dir \
         -t deb \
         --name shoopdaloop \
+        --version ${{ env.version }}+${{ env.gitversion }}-1 \
         --license gpl3 \
         --url "https://sandervocke.github.io/shoopdaloop/" \
         --maintainer "Sander Vocke <sandervocke@gmail.com>" \
         ${{ inputs.input_path }}=/opt \
         $ROOTSRC/usr=/
+
+      # RPM
       fpm \
         -s dir \
         -t rpm \
         --name shoopdaloop \
+        --version ${{ env.version }}^${{ env.gitversion }} \
         --rpm-rpmbuild-define  "_build_id_links none" \
         --license gpl3 \
         --url "https://sandervocke.github.io/shoopdaloop/" \
         --maintainer "Sander Vocke <sandervocke@gmail.com>" \
         ${{ inputs.input_path }}=/opt \
         $ROOTSRC/usr=/
+
+      # Pacman
       fpm \
         -s dir \
         -t pacman \
         --pacman-compression gz \
         --name shoopdaloop \
+        --version ${{ env.version }}.r0.${{ env.gitversion }}-1 \
         --depends libxcrypt-compat \
         --license gpl3 \
         --url "https://sandervocke.github.io/shoopdaloop/" \
@@ -83,7 +103,7 @@ runs:
     if: ${{ inputs.package_kind == 'innosetup' }}  
     with:
       path: distribution/innosetup/shoopdaloop.iss
-      options: /O+
+      options: /O+ /DMyAppVersion="${{ env.version }}"
   - name: Move .EXE installer
     if: ${{ inputs.package_kind == 'innosetup' }}   
     shell: bash
