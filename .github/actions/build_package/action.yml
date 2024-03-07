@@ -40,6 +40,7 @@ runs:
         -s dir \
         -t rpm \
         --name shoopdaloop \
+        --rpm-rpmbuild-define  "_build_id_links none" \
         --license gpl3 \
         --url "https://sandervocke.github.io/shoopdaloop/" \
         --maintainer "Sander Vocke <sandervocke@gmail.com>" \
