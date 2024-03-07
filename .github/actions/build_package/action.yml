@@ -22,7 +22,7 @@ runs:
   - name: Determine version
     shell: bash
     run: |
-      VERSION=$(cat ${{ inputs.input_path }}/_internal/shoopdaloop/version.txt | tr -d ' ')
+      VERSION=$(cat $(find ${{ inputs.input_path }} -name version.txt) | tr -d ' ')
       FULLGITVERSION=${{ github.sha }}
       GITVERSION=$(echo ${FULLGITVERSION:0:8} | tr -d ' ')
 
