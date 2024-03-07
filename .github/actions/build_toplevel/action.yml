@@ -28,6 +28,12 @@ runs:
     id: cwd
     run: |
         echo "cwd=$(pwd)" | tee -a $GITHUB_OUTPUT
+  - shell: bash
+    run: |
+      echo "=========================================="
+      echo "Preparing environment"
+      echo "=========================================="
+      echo "::group::Preparing environment"
   - name: Prepare
     id: prepare
     uses: ./.github/actions/prepare_build
@@ -38,6 +44,13 @@ runs:
     run: |
       echo 'cmake.build_type = "${{ inputs.cmake_build_type }}"' > py-build-cmake.local.toml
       echo 'cmake.options = { ${{ inputs.cmake_opts }} }' >> py-build-cmake.local.toml
+  - shell: bash
+    run: |
+      echo "::endgroup::"
+      echo "=========================================="
+      echo "Building wheel"
+      echo "=========================================="
+      echo "::group::Building wheel"
   - name: Build wheel
     id: buildwheel
     uses: ./.github/actions/build_wheel
@@ -59,6 +72,9 @@ runs:
     id: find
     run: |
       echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
+  - shell: bash
+    run: |
+      echo "::endgroup::"
   - name: PyInstaller
     id: pyinstaller
     if: ${{ inputs.pyinstaller }}
