@@ -1,6 +1,7 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
+import Qt.labs.platform as LabsPlatform
 
 import ShoopConstants
 
@@ -128,7 +129,7 @@ Item {
 
             ShoopFileDialog {
                 id: savesessiondialog
-                fileMode: FileDialog.SaveFile
+                fileMode: LabsPlatform.FileDialog.SaveFile
                 acceptLabel: 'Save'
                 nameFilters: ["ShoopDaLoop session files (*.shl)", "All files (*)"]
                 defaultSuffix: 'shl'
@@ -141,7 +142,7 @@ Item {
 
             ShoopFileDialog {
                 id: loadsessiondialog
-                fileMode: FileDialog.OpenFile
+                fileMode: LabsPlatform.FileDialog.OpenFile
                 acceptLabel: 'Load'
                 nameFilters: ["ShoopDaLoop session files (*.shl)", "All files (*)"]
                 onAccepted: {
@@ -279,7 +280,7 @@ Item {
 
             Dialog {
                 id: confirm_clear_dialog
-                standardButtons: StandardButton.Yes | StandardButton.Cancel
+                standardButtons: Dialog.Yes | Dialog.Cancel
 
                 implicitWidth: 300
 

@@ -74,7 +74,8 @@ if platform.system() == "Darwin":
             'NSAppleScriptEnabled': False,
             'CFBundleDocumentTypes': [
                 {
-                    'CFBundleTypeName': 'ShoopDaLoop session',
+                    'CFBundleTypeName': 'ShoopDaLoop Session',
+                    'CFBundleTypeRole': 'Editor',
                     'LSItemContentTypes': ['com.shoopdaloop.session'],
                     'LSHandlerRank': 'Owner'
                 }
