@@ -58,7 +58,7 @@ runs:
     if: ${{ inputs.appbundle }}
     run: |
       mkdir -p appbundle
-      mv distribution/pyinstaller/dist/shoopdaloop/shoopdaloop.app appbundle/shoopdaloop.app
+      mv distribution/pyinstaller/dist/shoopdaloop.app appbundle/shoopdaloop.app
       echo "distribution=appbundle" | tee -a $GITHUB_ENV
 
   - name: Set output
