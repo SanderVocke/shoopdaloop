@@ -17,3 +17,6 @@ Exec=shoopdaloop
 
 # Describes the categories in which this entry should be shown
 Categories=Music
+
+# Icon file
+Icon=/opt/shoopdaloop/_internal/shoopdaloop/resources/icon/icon-64.png

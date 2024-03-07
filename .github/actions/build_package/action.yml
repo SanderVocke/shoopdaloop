@@ -24,7 +24,7 @@ runs:
     run: |
       VERSION=$(cat ${{ inputs.input_path }}/_internal/shoopdaloop/version.txt | tr -d ' ')
       FULLGITVERSION=${{ github.sha }}
-      GITVERSION=$(echo ${GITVERSION:0:8} | tr -d ' ')
+      GITVERSION=$(echo ${FULLGITVERSION:0:8} | tr -d ' ')
 
       echo "version=$VERSION" | tee -a $GITHUB_ENV
       echo "gitversion=$GITVERSION" | tee -a $GITHUB_ENV
@@ -44,7 +44,7 @@ runs:
         -s dir \
         -t deb \
         --name shoopdaloop \
-        --version ${{ env.version }}+${{ env.gitversion }}-1 \
+        --version ${{ env.version }}+${{ env.gitversion }} \
         --license gpl3 \
         --url "https://sandervocke.github.io/shoopdaloop/" \
         --maintainer "Sander Vocke <sandervocke@gmail.com>" \
@@ -70,7 +70,7 @@ runs:
         -t pacman \
         --pacman-compression gz \
         --name shoopdaloop \
-        --version ${{ env.version }}.r0.${{ env.gitversion }}-1 \
+        --version ${{ env.version }}.r0.${{ env.gitversion }} \
         --depends libxcrypt-compat \
         --license gpl3 \
         --url "https://sandervocke.github.io/shoopdaloop/" \
