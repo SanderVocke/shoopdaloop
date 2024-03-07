@@ -64,7 +64,7 @@ opts = {
 
 if platform.system() == "Darwin":
     app = BUNDLE(
-        exe,
+        coll,
         name='shoopdaloop.app',
         icon=None,
         bundle_identifier=None,
