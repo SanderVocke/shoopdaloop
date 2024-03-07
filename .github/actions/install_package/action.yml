@@ -26,7 +26,13 @@ runs:
     id: get_type
     run: |
        if [ ! -f ${{ inputs.package }} ]; then
-          type="pyinstaller"
+          foldername=${{ inputs.package }}
+          lastpart="${filename##*.}"
+          if [[ "$lastpart" == "app" ]]; then
+              type="appbundle"
+          else
+              type="pyinstaller"
+          fi
        else
           filename=${{ inputs.package }}
           type="${filename##*.}"
@@ -104,6 +110,14 @@ runs:
       echo "cmd=${{ inputs.package }}/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=${{ inputs.package }}" | tee -a $GITHUB_ENV
 
+  # MacOS App Bundle folder
+  - name: Install MacOS App Bundle folder
+    if: ${{ steps.get_type.outputs.type == 'appbundle' }}
+    shell: bash
+    run: |
+      chmod a+x ${{ inputs.package }}/Contents/MacOS/shoopdaloop
+      echo "cmd=${{ inputs.package }}/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=${{ inputs.package }}/Contents/MacOS" | tee -a $GITHUB_ENV
 
   # Final step: gather env to outputs
   - name: Get command

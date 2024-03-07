@@ -181,7 +181,7 @@ jobs:
         kind:
           - name: macos_release
             build_type: 'Release'
-            pyinstaller: true
+            appbundle: true
           - name: macos_debug
             build_type: 'Debug'
           - name: macos_barebones
@@ -203,6 +203,7 @@ jobs:
         prepare_kind: 'macos'
         python: python3.8
         pyinstaller: ${{ matrix.kind.pyinstaller }}
+        appbundle: ${{ matrix.kind.appbundle }}
         pyinstaller_python: ${{ matrix.kind.pyinstaller_python }}
         package_kind: ${{ matrix.kind.package_kind }}
         coverage: ${{ matrix.kind.coverage }}

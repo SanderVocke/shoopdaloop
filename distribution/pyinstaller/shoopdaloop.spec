@@ -2,6 +2,7 @@
 import shoopdaloop
 import os
 import re
+import platform
 
 # Always use the system-installed shoopdaloop
 shoopdaloop_install_path = os.path.dirname(shoopdaloop.__file__)
@@ -60,3 +61,23 @@ coll = COLLECT(
 opts = {
     'windowed': True
 }
+
+if platform.system() == "Darwin":
+    app = BUNDLE(
+        exe,
+        name='shoopdaloop.app',
+        icon=None,
+        bundle_identifier=None,
+        version='0.0.1',
+        info_plist={
+            'NSPrincipalClass': 'NSApplication',
+            'NSAppleScriptEnabled': False,
+            'CFBundleDocumentTypes': [
+                {
+                    'CFBundleTypeName': 'ShoopDaLoop session',
+                    'LSItemContentTypes': ['com.shoopdaloop.session'],
+                    'LSHandlerRank': 'Owner'
+                }
+            ]
+        },
+    )
