@@ -16,6 +16,7 @@ runs:
       brew install ninja libsndfile libtool automake autoconf cmake
       brew install jack liblo coreutils
       brew install python@3.8
+      brew install create-dmg
 
       # Install Python packages
       python3.8 -m pip install build

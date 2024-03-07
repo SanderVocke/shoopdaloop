@@ -95,7 +95,7 @@ class Application(ShoopQApplication):
                 if len(self.engine.rootObjects()) > 0:
                     self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
         
-        self.setWindowIcon(QIcon(os.path.join(installation_dir(), 'resources', 'icon', 'icon-128.png')))
+        self.setWindowIcon(QIcon(os.path.join(installation_dir(), 'resources', 'iconset', 'icon_128x128.png')))
     
     def unload_qml(self):
         if self.engine:

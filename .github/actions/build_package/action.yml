@@ -118,26 +118,25 @@ runs:
       name: ${{ inputs.upload_name }}
       path: ${{ env.pkg }}
 
-  # MacOS .pkg
+  # MacOS .dmg
   - name: Build MacOSX .pkg
-    if: ${{ inputs.package_kind == 'osxpkg' }}
+    if: ${{ inputs.package_kind == 'dmg' }}
     shell: bash
     run: |
-      mkdir -p macos_package
-      WORKDIR=$(pwd)
-      cd macos_package
-
-      fpm \
-        -s dir \
-        -t osxpkg \
-        --name shoopdaloop \
-        --version ${{ env.version }} \
-        --license gpl3 \
-        --url "https://sandervocke.github.io/shoopdaloop/" \
-        --maintainer "Sander Vocke <sandervocke@gmail.com>" \
+      DMGFILE=shoopdaloop-${{ env.version }}.${{ env.gitversion }}.dmg
+      create-dmg \
+        --volname "ShoopDaLoop" \
+        --volicon "src/shoopdaloop/resources/iconset/icon.icns" \
+        --window-pos 200 120 \
+        --window-size 800 400 \
+        --icon-size 100 \
+        --icon "shoopdaloop.app" 200 190 \
+        --hide-extension "shoopdaloop.app" \
+        --app-drop-link 600 185 \
+        $DMGFILE \
         ${{ inputs.input_path }}
-      
-      echo "pkg=$(ls macos_package/*.pkg)" | tee -a $GITHUB_ENV
+
+      echo "pkg=$DMGFILE" | tee -a $GITHUB_ENV
 
   - name: Find output
     id: find_output
