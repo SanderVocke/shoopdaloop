@@ -41,3 +41,7 @@ def scripts_dir():
 # Dynlibs_dir is the path where we can find dynamic back-end libraries.
 def dynlibs_dir():
     return installation_dir()
+
+# Resources directory.
+def resource_dir():
+    return os.path.join(installation_dir(), 'resources')

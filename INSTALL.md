@@ -1,11 +1,27 @@
 
 # Installation
 
-ShoopDaLoop is built and distributed as a Python package. Installation options are still quite limited as this is in pre-alpha development.
+There is no release yet, but there are multiple ways to install the latest development ShoopDaLoop from source or from GitHub CI build artifacts.
 
-There are no official binaries or packages yet. However, you can probably grab a recent .whl package from a continuous integration build. Navigate to the 'Actions' tab on GitHub, select the 'Build And Test' workflow, choose the build you want to pick the wheel from and download one of the wheels there. Of course, YMMV.
+# Packages
 
-Be aware that a recent version of Qt/PySide is needed in any case (>=6.4.2). This is not yet offered by most distros, although you may have luck by using PySide from the PyPi repositories.
+The CI build generates packages which can be installed directly. Find them under the 'Actions' tab on GitHub. You need to be logged in (under any GitHub account) to download them. They include:
+
+- Python whl's for Linux/Windows/Mac (artifacts `wheel_...`). Installing these with `pip` will pull in dependencies from PyPi.
+- PyInstaller portable runnable folders (artifacts `pyinstaller_...`). These include dependencies. They can be extracted and run directly.
+- Packages per platform (`package_...`):
+   - For Linux, there are `rpm`, `deb` and `pacman` binary packages. These are "fat" packages which install `shoopdaloop` into `/opt` along with all dependencies (many of which are sourced from PyPi). If you want to utilize your distro's libraries instead, building from source is needed.
+   - For Windows, the package is a `.exe` installer.
+   - For Mac, there is a `.dmg` disk image package. Double-click it to mount the image. The app can be started directly from the mounted volume, or copied to the Applications folder for a permanent installation. If MacOS complains that you cannot start due to not being able to check for malicious software, you can go to your Mac's privacy settings screen and make an exception at the bottom.
+
+> :warning: **For all binary wheels, packages and installers: install at your own risk. I do not take responsibility for any harm done to your system.** Be aware that these wheels and packages include code from not just this repository, but also:
+>  - several GitHub linked repo's;
+>  - packages pulled in during the CI build from PyPi repositories;
+>  - in case of "fat" packages: system libraries duplicated from the `manylinux` build distro;
+> 
+> All of the above are not created, controlled or thoroughly audited by ShoopDaLoop developers. For maximum control, you can build your own packages and dependencies from source.
+
+There are also plans for an AUR package for Arch, which links against the distro's libraries. For other Linuxes, I do not plan to create and maintain additional packages.
 
 ## From source
 

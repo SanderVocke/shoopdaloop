@@ -15,6 +15,8 @@ inputs:
     description: "Sed command to use for renaming the built wheel"
   pyinstaller:
     description: "Whether to build pyinstaller folder"
+  appbundle:
+    description: "Whether to build app bundle using pyinstaller"
   package_kind:
     description: "Kind of package to build"
   coverage:
@@ -82,11 +84,12 @@ runs:
       printf "\n\n\n\n\n\n"
   - name: PyInstaller
     id: pyinstaller
-    if: ${{ inputs.pyinstaller }}
+    if: ${{ inputs.pyinstaller || inputs.appbundle }}
     uses: ./.github/actions/build_pyinstaller
     with:
       python: ${{ inputs.pyinstaller_python && inputs.pyinstaller_python || inputs.python }}
       wheel: ${{ steps.find.outputs.name }}
+      appbundle: ${{ inputs.appbundle }}
   - shell: bash
     run: |
       printf "\n\n\n\n\n\n"
@@ -99,7 +102,7 @@ runs:
     if: ${{ inputs.package_kind }}
     uses: ./.github/actions/build_package
     with:
-      input_path: ${{ steps.cwd.outputs.cwd }}/distribution/pyinstaller/dist/shoopdaloop
+      input_path: ${{ steps.cwd.outputs.cwd }}/distribution/pyinstaller/dist/shoopdaloop${{ inputs.appbundle && '.app' || '' }}
       package_kind: ${{ inputs.package_kind }}
       upload_name: package_${{ inputs.name }}
   - shell: bash
@@ -126,6 +129,12 @@ runs:
     uses: actions/upload-artifact@v4
     with:
       name: pyinstaller_${{ inputs.name }}
+      path: ${{ steps.pyinstaller.outputs.distribution }}
+  - name: Upload MacOS app bundle
+    if: ${{ inputs.appbundle }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: appbundle_${{ inputs.name }}
       path: ${{ steps.pyinstaller.outputs.distribution }}
   - name: Save build infor for coverage analyis
     shell: bash

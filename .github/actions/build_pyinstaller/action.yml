@@ -10,11 +10,14 @@ inputs:
   find_pyinstaller:
     description: "Don't assume pyinstaller is in the PATH, find it via pip"
     required: false
+  appbundle:
+    description: "Build an app bundle"
+    required: false
 
 outputs:
   distribution:
-    description: "Folder where the finished PyInstaller distribution is located"
-    value: ${{ steps.pyinstaller.outputs.output }}
+    description: "Folder where the finished PyInstaller/AppBundle distribution is located"
+    value: ${{ steps.output.outputs.distribution }}
 
 runs:
   using: "composite"
@@ -44,5 +47,23 @@ runs:
     run: |
       cd distribution/pyinstaller
       ${{ steps.find.outputs.pyinstaller }} shoopdaloop.spec
-      echo "output=distribution/pyinstaller/dist" | tee -a $GITHUB_OUTPUT
+
+  - name: Find distribution
+    shell: bash
+    if: ${{ ! inputs.appbundle }}
+    run: echo "distribution=distribution/pyinstaller/dist" | tee -a $GITHUB_ENV
+  
+  - name: Find app bundle
+    shell: bash
+    if: ${{ inputs.appbundle }}
+    run: |
+      mkdir -p appbundle
+      cp -r distribution/pyinstaller/dist/shoopdaloop.app appbundle/shoopdaloop.app
+      echo "distribution=appbundle" | tee -a $GITHUB_ENV
+
+  - name: Set output
+    id: output
+    shell: bash
+    run: |
+      echo "distribution=${{ env.distribution }}" | tee -a $GITHUB_OUTPUT
     

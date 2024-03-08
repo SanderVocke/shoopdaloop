@@ -26,7 +26,13 @@ runs:
     id: get_type
     run: |
        if [ ! -f ${{ inputs.package }} ]; then
-          type="pyinstaller"
+          foldername=${{ inputs.package }}
+          lastpart="${filename##*.}"
+          if [[ "$lastpart" == "app" ]]; then
+              type="appbundle"
+          else
+              type="pyinstaller"
+          fi
        else
           filename=${{ inputs.package }}
           type="${filename##*.}"
@@ -69,6 +75,7 @@ runs:
     shell: bash
     run: |
       pacman -Uv --noconfirm ${{ inputs.package }}
+      pacman -Q shoopdaloop
       pacman -Ql shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
@@ -79,6 +86,7 @@ runs:
     shell: bash
     run: |
       DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical dpkg --debug=10 -i ${{ inputs.package }}
+      dpkg -l shoopdaloop
       dpkg-query -L shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
@@ -89,6 +97,7 @@ runs:
     shell: bash
     run: |
       dnf -y install ${{ inputs.package }}
+      dnf list installed shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
 
@@ -101,6 +110,23 @@ runs:
       echo "cmd=${{ inputs.package }}/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=${{ inputs.package }}" | tee -a $GITHUB_ENV
 
+  # MacOS App Bundle folder
+  - name: Install MacOS App Bundle folder
+    if: ${{ steps.get_type.outputs.type == 'appbundle' }}
+    shell: bash
+    run: |
+      chmod a+x ${{ inputs.package }}/Contents/MacOS/shoopdaloop
+      echo "cmd=${{ inputs.package }}/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=${{ inputs.package }}/Contents/MacOS" | tee -a $GITHUB_ENV
+  
+  # MacOS .dmg installer
+  - name: Install MacOS .dmg
+    if: ${{ steps.get_type.outputs.type == 'dmg' }}
+    shell: bash
+    run: |
+      hdiutil attach ${{ inputs.package }}
+      echo "cmd=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS" | tee -a $GITHUB_ENV
 
   # Final step: gather env to outputs
   - name: Get command
