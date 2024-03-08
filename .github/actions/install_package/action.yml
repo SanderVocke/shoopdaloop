@@ -118,6 +118,15 @@ runs:
       chmod a+x ${{ inputs.package }}/Contents/MacOS/shoopdaloop
       echo "cmd=${{ inputs.package }}/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=${{ inputs.package }}/Contents/MacOS" | tee -a $GITHUB_ENV
+  
+  # MacOS .dmg installer
+  - name: Install MacOS .dmg
+    if: ${{ steps.get_type.outputs.type == 'dmg' }}
+    shell: bash
+    run: |
+      hdiutil attach ${{ inputs.package }}
+      echo "cmd=/Volumes/ShoopDaLoop/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=/Volumes/ShoopDaLoop/Contents/MacOS" | tee -a $GITHUB_ENV
 
   # Final step: gather env to outputs
   - name: Get command
