@@ -23,7 +23,7 @@ runs:
     shell: bash
     run: |
       set -x
-      VERSION=$(cat $(find ${{ inputs.input_path }} -name version.txt) | tr -d ' ')
+      VERSION=$(cat $(find ${{ inputs.input_path }} -name version.txt -print -quit) | tr -d ' ')
       FULLGITVERSION=${{ github.sha }}
       GITVERSION=$(echo ${FULLGITVERSION:0:8} | tr -d ' ')
 
