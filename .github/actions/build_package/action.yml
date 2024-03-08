@@ -138,6 +138,12 @@ runs:
         ${{ inputs.input_path }}
 
       echo "pkg=$DMGFILE" | tee -a $GITHUB_ENV
+  - name: Upload .dmg package
+    if: ${{ inputs.package_kind == 'dmg' && inputs.upload_name }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: ${{ inputs.upload_name }}
+      path: ${{ env.pkg }}
 
   - name: Find output
     id: find_output
