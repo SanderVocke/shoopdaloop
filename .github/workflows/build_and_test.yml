@@ -217,7 +217,7 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: release_macos11
+          - name: release_whl_macos11
             python: python3
             pip: python3 -m pip
             pytest: python3 -m pytest
@@ -225,7 +225,7 @@ jobs:
             os: macos-11
             package: wheel_macos_release
             qpa_platform: offscreen
-          - name: release_macos12
+          - name: release_whl_macos12
             python: python3
             pip: python3 -m pip
             pytest: python3 -m pytest
@@ -233,7 +233,7 @@ jobs:
             os: macos-12
             package: wheel_macos_release
             qpa_platform: offscreen
-          - name: release_macos13
+          - name: release_whl_macos13
             python: python3
             pip: python3 -m pip
             pytest: python3 -m pytest
@@ -241,13 +241,21 @@ jobs:
             os: macos-13
             package: wheel_macos_release
             qpa_platform: offscreen
-          - name: debug_macos13
+          - name: debug_whl_macos13
             python: python3
             pip: python3 -m pip
             pytest: python3 -m pytest
             container: null
             os: macos-13
             package: wheel_macos_debug
+            qpa_platform: offscreen
+          - name: release_dmg_macos13
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: null
+            os: macos-13
+            package: package_macos_release
             qpa_platform: offscreen
     runs-on: ${{ matrix.kind.os }}
     needs: build_macos

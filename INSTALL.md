@@ -12,7 +12,7 @@ The CI build generates packages which can be installed directly. Find them under
 - Packages per platform (`package_...`):
    - For Linux, there are `rpm`, `deb` and `pacman` binary packages. These are "fat" packages which install `shoopdaloop` into `/opt` along with all dependencies (many of which are sourced from PyPi). If you want to utilize your distro's libraries instead, building from source is needed.
    - For Windows, the package is a `.exe` installer.
-   - For Mac, there is no package yet - use the PyInstaller instead. There will be an app bundle in the future.
+   - For Mac, there is a `.dmg` disk image package. Double-click it to mount the image. The app can be started directly from the mounted volume, or copied to the Applications folder for a permanent installation.
 
 There are also plans for an AUR package for Arch, which links against the distro's libraries. For other Linuxes, I do not plan to create and maintain additional packages.
 

@@ -4,6 +4,8 @@ import os
 import re
 import platform
 
+from shoopdaloop.lib.directories import *
+
 # Always use the system-installed shoopdaloop
 shoopdaloop_install_path = os.path.dirname(shoopdaloop.__file__)
 
@@ -66,7 +68,7 @@ if platform.system() == "Darwin":
     app = BUNDLE(
         coll,
         name='shoopdaloop.app',
-        icon=None,
+        icon=os.path.join(resource_dir(), 'iconset', 'icon.icns'),
         bundle_identifier=None,
         version='0.0.1',
         info_plist={
