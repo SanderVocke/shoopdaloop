@@ -125,8 +125,8 @@ runs:
     shell: bash
     run: |
       hdiutil attach ${{ inputs.package }}
-      echo "cmd=/Volumes/ShoopDaLoop/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "install_dir=/Volumes/ShoopDaLoop/Contents/MacOS" | tee -a $GITHUB_ENV
+      echo "cmd=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "install_dir=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS" | tee -a $GITHUB_ENV
 
   # Final step: gather env to outputs
   - name: Get command

@@ -12,7 +12,14 @@ The CI build generates packages which can be installed directly. Find them under
 - Packages per platform (`package_...`):
    - For Linux, there are `rpm`, `deb` and `pacman` binary packages. These are "fat" packages which install `shoopdaloop` into `/opt` along with all dependencies (many of which are sourced from PyPi). If you want to utilize your distro's libraries instead, building from source is needed.
    - For Windows, the package is a `.exe` installer.
-   - For Mac, there is a `.dmg` disk image package. Double-click it to mount the image. The app can be started directly from the mounted volume, or copied to the Applications folder for a permanent installation.
+   - For Mac, there is a `.dmg` disk image package. Double-click it to mount the image. The app can be started directly from the mounted volume, or copied to the Applications folder for a permanent installation. If MacOS complains that you cannot start due to not being able to check for malicious software, you can go to your Mac's privacy settings screen and make an exception at the bottom.
+
+> :warning: **For all binary wheels, packages and installers: install at your own risk. I do not take responsibility for any harm done to your system.** Be aware that these wheels and packages include code from not just this repository, but also:
+>  - several GitHub linked repo's;
+>  - packages pulled in during the CI build from PyPi repositories;
+>  - in case of "fat" packages: system libraries duplicated from the `manylinux` build distro;
+> 
+> All of the above are not created, controlled or thoroughly audited by ShoopDaLoop developers. For maximum control, you can build your own packages and dependencies from source.
 
 There are also plans for an AUR package for Arch, which links against the distro's libraries. For other Linuxes, I do not plan to create and maintain additional packages.
 
