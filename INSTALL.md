@@ -33,6 +33,8 @@ To build from source, ensure the build dependencies for your OS are installed. T
 
 It may also be possible to skip installing some of the Python dependencies and let them be installed later by `pip` (YMMV).
 
+Make sure all the subrepositories are checked out (`git submodule init; git submodule update`).
+
 ### Building the .whl from source
 
 The regular way to install ShoopDaLoop is to build a Python .whl package and install it. Usually this should happen in a virtual environment. 
@@ -40,7 +42,7 @@ The regular way to install ShoopDaLoop is to build a Python .whl package and ins
 Building the .whl:
 
 ```
-python -m build --no-isolation -wheel .
+python -m build --wheel .
 ```
 
 Note that ShoopDaLoop does not support generating a source distribution, hence the `--wheel` argument to build the .whl directly.
