@@ -1,11 +1,11 @@
 
 # Installation
 
-There is no release yet, but there are multiple ways to install the latest development ShoopDaLoop from source or from GitHub CI build artifacts.
+There is no release yet, but there are multiple ways to install the latest development ShoopDaLoop from source or from pre-release binaries.
 
 # Packages
 
-The CI build generates packages which can be installed directly. Find them under the 'Actions' tab on GitHub. You need to be logged in (under any GitHub account) to download them. They include:
+Automatically built packages include:
 
 - Python whl's for Linux/Windows/Mac (artifacts `wheel_...`). Installing these with `pip` will pull in dependencies from PyPi.
 - PyInstaller portable runnable folders (artifacts `pyinstaller_...`). These include dependencies. They can be extracted and run directly.
@@ -13,6 +13,10 @@ The CI build generates packages which can be installed directly. Find them under
    - For Linux, there are `rpm`, `deb` and `pacman` binary packages. These are "fat" packages which install `shoopdaloop` into `/opt` along with all dependencies (many of which are sourced from PyPi). If you want to utilize your distro's libraries instead, building from source is needed.
    - For Windows, the package is a `.exe` installer.
    - For Mac, there is a `.dmg` disk image package. Double-click it to mount the image. The app can be started directly from the mounted volume, or copied to the Applications folder for a permanent installation. If MacOS complains that you cannot start due to not being able to check for malicious software, you can go to your Mac's privacy settings screen and make an exception at the bottom.
+
+I keep a pre-release page (see the Releases section from the main GitHub code page), where I keep recent development binaries for easy access to download.
+
+To get other versions: the CI build generates these packages on every commit. Find them under the 'Actions' tab on GitHub, or by clicking the CI cross/checkmark next to any commit in the history. On the Actions page, go to the Summary and scroll down past the warnings/alert messages to get to the artifacts. You need to be logged in (under any GitHub account) to download them. 
 
 > :warning: **For all binary wheels, packages and installers: install at your own risk. I do not take responsibility for any harm done to your system.** Be aware that these wheels and packages include code from not just this repository, but also:
 >  - several GitHub linked repo's;
