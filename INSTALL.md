@@ -47,6 +47,8 @@ python -m build --wheel .
 
 Note that ShoopDaLoop does not support generating a source distribution, hence the `--wheel` argument to build the .whl directly.
 
+Also note that depending on OS some extra preparation may be needed to get the compilers and tools all configured correctly. Work is needed to document these steps properly, but for now I would point anyone to the Github Actions CI scripts in the .github folder - in particular the `prepare_build_...` actions that set up environments for the build per OS.
+
 ### Installing the .whl (regular)
 
 Assuming you are in a virtualenv (probably best to use `--system-site-packages` to prevent duplication):
