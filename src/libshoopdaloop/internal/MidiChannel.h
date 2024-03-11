@@ -32,8 +32,7 @@ private:
         uint32_t events_left() const;
     };
 
-    // Tracks or remembers a MIDI state (controls, pedals, etc).
-    // Doesn't track notes.
+    // Tracks or remembers a MIDI state (controls, pedals, active notes, etc).
     // Also keeps track of the diff between that state and the tracked state on the
     // MIDI out of the channel.
     struct TrackedState {
@@ -48,7 +47,11 @@ private:
         void reset();
         bool valid() const;
         void set_valid(bool v);
-        void resolve_to_output(std::function<void(uint32_t size, uint8_t *data)> send_cb);
+
+        // "Resolve" the diff. That means that for any difference that exists between
+        // the saved state and the current state, message(s) will be sent to get back to the saved
+        // state (e.g. CC value messages, note on, note off etc.)
+        void resolve_to_output(std::function<void(uint32_t size, uint8_t *data)> send_cb, bool ccs=true, bool notes=true, bool programs=true);
     };
 
     // Process thread access only (mp*)
