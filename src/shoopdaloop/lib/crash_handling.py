@@ -21,16 +21,16 @@ init_dynlibs()
 def crashed_callback(filename):
     global g_active_js_engines
 
+    more_info_filename = str(filename + '.moreinfo')
+
     # Crash data gathering may get stuck (in particular on execution in JS engines).
     # Make sure we exit soon.
     def do_exit():
-        time.sleep(5.0)
-        if eng and Shiboken.isValid(eng) and not d['finished']:
-            eng.setInterrupted(True)
+        time.sleep(10.0)
+        print("  - Partial supplemental crash info saved @ {}".format(more_info_filename))
+        os.kill(os.getpid(), 9)
     exiter = threading.Thread(target=do_exit, daemon=True)
     exiter.start()
-    
-    more_info_filename = str(filename + '.moreinfo')
 
     try:
         command = ' '.join(sys.argv)
