@@ -22,18 +22,17 @@ public:
 
 private:
     std::atomic<int> m_n_notes_active = 0;
-    std::vector<std::optional<uint8_t>> m_notes_active_velocities; // Track Note On / Note Off (16*128)
+    std::vector<std::vector<std::optional<uint8_t>>> m_notes_active_velocities; // Track Note On / Note Off (16*128)
     std::vector<uint8_t> m_controls;                       // Track CC values          (128*128)
     std::vector<uint8_t> m_programs;                       // Track Program values     (16)
     std::vector<uint16_t> m_pitch_wheel;                    // 16 channels
     std::vector<uint8_t> m_channel_pressure;               // 16 channels
     std::set<std::weak_ptr<Subscriber>, std::owner_less<std::weak_ptr<Subscriber>>> m_subscribers;
 
-
-    static uint32_t note_index (uint8_t channel, uint8_t note);
     static uint32_t cc_index (uint8_t channel, uint8_t cc);
     void process_noteOn(uint8_t channel, uint8_t note, uint8_t velocity);
     void process_noteOff(uint8_t channel, uint8_t note);
+    void process_allNotesOff(uint8_t channel);
     void process_cc(uint8_t channel, uint8_t controller, uint8_t value);
     void process_program(uint8_t channel, uint8_t value);
     void process_pitch_wheel(uint8_t channel, uint16_t value);

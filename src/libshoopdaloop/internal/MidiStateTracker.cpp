@@ -11,45 +11,62 @@
 
 using namespace logging;
 
-uint32_t MidiStateTracker::note_index(uint8_t channel, uint8_t note) {
-    return (uint32_t)channel * 128 + (uint32_t)note;
-}
 uint32_t MidiStateTracker::cc_index(uint8_t channel, uint8_t cc) {
     return (uint32_t)channel * 128 + (uint32_t)cc;
 }
 
 void MidiStateTracker::process_noteOn(uint8_t channel, uint8_t note,
                                       uint8_t velocity) {
-    log<log_level_debug_trace>("Process note on: {}, {}, {}", channel, note,
-                         velocity);
-
     if (m_notes_active_velocities.size() == 0) {
+        log<log_level_debug_trace>("Ignore note on (not tracking)");
         return;
     }
+    
+    log<log_level_debug_trace>("Process note on: {}, {}, {}", channel, note, velocity);
 
-    auto idx = note_index(channel & 0x0F, note);
-    if (!m_notes_active_velocities.at(idx).has_value()) {
+    if (!m_notes_active_velocities.at(channel).at(note).has_value()) {
         m_n_notes_active++;
     }
-    if (m_notes_active_velocities.at(idx).value_or(255) != velocity) {
+    if (m_notes_active_velocities.at(channel).at(note).value_or(255) != velocity) {
         for (auto const &s : m_subscribers) {
             if (auto ss = s.lock()) {
                 ss->note_changed(this, channel, note, velocity);
             }
         }
     }
-    m_notes_active_velocities.at(idx) = velocity;
+    m_notes_active_velocities.at(channel).at(note) = velocity;
 }
 
-void MidiStateTracker::process_noteOff(uint8_t channel, uint8_t note) {
-    log<log_level_debug_trace>("Process note off: {}, {}", channel, note);
-
+void MidiStateTracker::process_allNotesOff(uint8_t channel) {
     if (m_notes_active_velocities.size() == 0) {
+        log<log_level_debug_trace>("Ignore all notes off (not tracking)");
         return;
     }
 
-    auto idx = note_index(channel & 0x0F, note);
-    if (m_notes_active_velocities.at(idx).has_value()) {
+    log<log_level_debug_trace>("Process all notes off: {}", channel);
+
+    for (size_t note=0; note < 128; note++) {
+        if (m_notes_active_velocities.at(channel).at(note).has_value()) {
+            m_n_notes_active = std::max(0, m_n_notes_active - 1);
+            for (auto const &s : m_subscribers) {
+                if (auto ss = s.lock()) {
+                    ss->note_changed(this, channel, note, std::nullopt);
+                }
+            }
+        }
+        m_notes_active_velocities.at(channel).at(note).reset();
+    }
+}
+
+void MidiStateTracker::process_noteOff(uint8_t channel, uint8_t note) {
+    if (m_notes_active_velocities.size() == 0) {
+        log<log_level_debug_trace>("Ignore note off (not tracking)");
+        return;
+    }
+
+    log<log_level_debug_trace>("Process note off: {}, {}", channel, note);
+
+    if (m_notes_active_velocities.at(channel).at(note).has_value()) {
         m_n_notes_active = std::max(0, m_n_notes_active - 1);
         for (auto const &s : m_subscribers) {
             if (auto ss = s.lock()) {
@@ -57,16 +74,17 @@ void MidiStateTracker::process_noteOff(uint8_t channel, uint8_t note) {
             }
         }
     }
-    m_notes_active_velocities.at(idx).reset();
+    m_notes_active_velocities.at(channel).at(note).reset();
 }
 
 void MidiStateTracker::process_cc(uint8_t channel, uint8_t controller,
                                   uint8_t value) {
-    log<log_level_debug_trace>("Process cc: {}, {}, {}", channel, controller, value);
-
     if (m_controls.size() == 0) {
+        log<log_level_debug_trace>("Ignore CC (not tracking)");
         return;
     }
+
+    log<log_level_debug_trace>("Process cc: {}, {}, {}", channel, controller, value);
 
     auto idx = cc_index(channel & 0x0F, controller);
     if (m_controls.at(idx) != value) {
@@ -80,11 +98,12 @@ void MidiStateTracker::process_cc(uint8_t channel, uint8_t controller,
 }
 
 void MidiStateTracker::process_program(uint8_t channel, uint8_t value) {
-    log<log_level_debug_trace>("Process program: {}, {}", channel, value);
-
     if (m_programs.size() == 0) {
+        log<log_level_debug_trace>("Ignore PC (not tracking)");
         return;
     }
+    log<log_level_debug_trace>("Process program: {}, {}", channel, value);
+
     if (m_programs.at(channel & 0x0F) != value) {
         for (auto const &s : m_subscribers) {
             if (auto ss = s.lock()) {
@@ -96,11 +115,12 @@ void MidiStateTracker::process_program(uint8_t channel, uint8_t value) {
 }
 
 void MidiStateTracker::process_pitch_wheel(uint8_t channel, uint16_t value) {
-    log<log_level_debug_trace>("Process pitch wheel: {}, {}", channel, value);
-
     if (m_pitch_wheel.size() == 0) {
+        log<log_level_debug_trace>("Ignore pitch wheel (not tracking)");
         return;
     }
+    log<log_level_debug_trace>("Process pitch wheel: {}, {}", channel, value);
+
     if (m_pitch_wheel.at(channel & 0x0F) != value) {
         for (auto const &s : m_subscribers) {
             if (auto ss = s.lock()) {
@@ -113,11 +133,12 @@ void MidiStateTracker::process_pitch_wheel(uint8_t channel, uint16_t value) {
 
 void MidiStateTracker::process_channel_pressure(uint8_t channel,
                                                 uint8_t value) {
-    log<log_level_debug_trace>("Process channel pressure: {}, {}", channel, value);
-
     if (m_channel_pressure.size() == 0) {
+        log<log_level_debug_trace>("Ignore channel pressure (not tracking)");
         return;
     }
+    log<log_level_debug_trace>("Process channel pressure: {}, {}", channel, value);
+    
     if (m_channel_pressure.at(channel & 0x0F) != value) {
         for (auto const &s : m_subscribers) {
             if (auto ss = s.lock()) {
@@ -173,7 +194,12 @@ void MidiStateTracker::clear() {
     log<log_level_debug>("Clear");
 
     for (uint32_t i = 0; i < m_notes_active_velocities.size(); i++) {
-        m_notes_active_velocities[i].reset();
+        if (m_notes_active_velocities[i].size() == 0) {
+            m_notes_active_velocities[i].resize(128);
+        }
+        for (uint32_t j = 0; j < m_notes_active_velocities[i].size(); j++) {
+            m_notes_active_velocities[i][j].reset();
+        }
     }
     m_n_notes_active = 0;
     for (auto &p : m_pitch_wheel) {
@@ -201,13 +227,9 @@ void MidiStateTracker::process_msg(const uint8_t *data) {
         auto _note = note(data);
         process_noteOff(_channel, _note);
     } else if (auto chan = is_all_notes_off_for_channel(data)) {
-        for (uint32_t i = 0; i < 128; i++) {
-            process_noteOff(*chan, i);
-        }
+        process_allNotesOff(*chan);
     } else if (auto chan = is_all_sound_off_for_channel(data)) {
-        for (uint32_t i = 0; i < 128; i++) {
-            process_noteOff(*chan, i);
-        }
+        process_allNotesOff(*chan);
     } else if (is_pitch_wheel(data)) {
         uint16_t value = (uint16_t)data[1] | ((uint16_t)data[2] << 7);
         process_pitch_wheel(channel(data), value);
@@ -229,7 +251,7 @@ uint32_t MidiStateTracker::n_notes_active() const { return m_n_notes_active; }
 std::optional<uint8_t>
 MidiStateTracker::maybe_current_note_velocity(uint8_t channel,
                                               uint8_t note) const {
-    return m_notes_active_velocities.at(note_index(channel & 0x0F, note));
+    return m_notes_active_velocities.at(channel & 0x0F).at(note);
 }
 
 bool MidiStateTracker::tracking_controls() const {
