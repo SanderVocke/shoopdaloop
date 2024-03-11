@@ -290,6 +290,8 @@ class Backend(ShoopQQuickItem):
            self._driver_setting_overrides != None:
             self.logger.debug(lambda: "Initializing")
             self.init()
+        elif self._initialized:
+            self.logger.trace(lambda: "Already initialized")
         else:
             self.logger.debug(lambda: "Not initializing yet")
     
@@ -376,6 +378,7 @@ class Backend(ShoopQQuickItem):
         if not self._backend_driver_obj.active():
             raise Exception("Failed to initialize back-end driver.")
         
+        self.logger.debug(lambda: "Initialized")
         self._initialized = True
         self.initializedChanged.emit(True)
         self.init_timer()
