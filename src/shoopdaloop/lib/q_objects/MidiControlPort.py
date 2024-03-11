@@ -122,10 +122,10 @@ class MidiControlPort(ShoopQQuickItem):
             self.mayOpenChanged.emit(l)
             self.maybe_init()
     
-    # initialized
-    initializedChanged = ShoopSignal(bool)
-    @ShoopProperty(bool, notify=initializedChanged)
-    def initialized(self):
+    # backend_initialized
+    backendInitializedChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=backendInitializedChanged)
+    def backend_initialized(self):
         return self._backend_obj != None
     
     ###########
@@ -214,12 +214,14 @@ class MidiControlPort(ShoopQQuickItem):
     @ShoopSlot()
     def rescan_parents(self):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
+        self.logger.trace(lambda: f"Rescanned parents, backend {maybe_backend}")
         if maybe_backend:
             self._backend = maybe_backend
             self.maybe_init()
     
     @ShoopSlot()
     def maybe_init(self):
+        self.logger.trace(lambda: f'Attempting to initialize. Backend: {self._backend}. Backend init: {self._backend.initialized if self._backend else None}')
         if self._backend and not self._backend.initialized:
             self._backend.initializedChanged.connect(self.maybe_init)
             return
@@ -244,7 +246,7 @@ class MidiControlPort(ShoopQQuickItem):
                 self.timer.timeout.connect(self.poll)
                 self.timer.start()
             
-            self.initializedChanged.emit(True)
+            self.backendInitializedChanged.emit(True)
     
     @ShoopSlot(result='QVariant')
     def get_py_send_fn(self):
