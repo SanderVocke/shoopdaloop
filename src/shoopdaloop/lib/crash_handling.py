@@ -22,15 +22,7 @@ def crashed_callback(filename):
     global g_active_js_engines
 
     more_info_filename = str(filename + '.moreinfo')
-
-    # Crash data gathering may get stuck (in particular on execution in JS engines).
-    # Make sure we exit soon.
-    def do_exit():
-        time.sleep(10.0)
-        print("  - Partial supplemental crash info saved @ {}".format(more_info_filename))
-        os.kill(os.getpid(), 9)
-    exiter = threading.Thread(target=do_exit, daemon=True)
-    exiter.start()
+    print("  - Attempting to write supplemental crash info @ {}".format(more_info_filename))
 
     try:
         command = ' '.join(sys.argv)
@@ -92,7 +84,7 @@ def crashed_callback(filename):
     except Exception as e:
         pass
     
-    print("  - Supplemental crash info saved @ {}".format(more_info_filename))
+    print("  - Done.")
     
 c_crashed_callback = None
 
