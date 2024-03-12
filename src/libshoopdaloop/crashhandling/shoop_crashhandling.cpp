@@ -49,7 +49,7 @@ static bool dumpCallback(const char* dump_dir, const char* minidump_id, void* co
     std::string _dd(dump_dir), _did(minidump_id);
     std::string filename = _dd + "/" + _did + ".dmp";
     if (g_crashed_callback) {
-        g_crashed_callback(filename.c_str());
+        call_crashed_callback_with_timeout(filename.c_str());
     }
     return succeeded;
 }
@@ -60,7 +60,7 @@ static bool dumpCallback(const wchar_t* dump_dir, const wchar_t* minidump_id, vo
     std::wstring wfilename = _dd + L"/" + _did + L".dmp";
     std::string filename = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(wfilename);
     if (g_crashed_callback) {
-        g_crashed_callback(filename.c_str());
+        call_crashed_callback_with_timeout(filename.c_str());
     }
     return succeeded;
 }
@@ -69,7 +69,7 @@ static bool dumpCallback(const google_breakpad::MinidumpDescriptor& descriptor,
 void* context, bool succeeded) {
     std::cout << "\n\nShoopDaLoop crashed.\n  - Breakpad crash minidump saved @ " << descriptor.path() << "." << std::endl;
     if (g_crashed_callback) {
-        g_crashed_callback(descriptor.path());
+        call_crashed_callback_with_timeout(descriptor.path());
     }
     return succeeded;
 }
