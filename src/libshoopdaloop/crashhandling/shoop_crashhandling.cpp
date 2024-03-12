@@ -6,9 +6,42 @@
 #include <stdexcept>
 #include <locale>
 #include <codecvt>
+#include <thread>
 
 std::unique_ptr<google_breakpad::ExceptionHandler> g_exception_handler;
 CrashedCallback g_crashed_callback = nullptr;
+
+#if defined(_WIN32)
+#include <windows.h>
+void hard_kill_self() {
+    std::cout << "Timeout, terminating." << std::endl;
+    TerminateProcess(GetCurrentProcess(), 1);
+}
+#else
+#include <signal.h>
+void hard_kill_self() {
+    std::cout << "Timeout, terminating with SIGKILL." << std::endl;
+    raise(SIGKILL);
+}
+#endif
+
+void call_crashed_callback_with_timeout(const char* filename) {
+    std::atomic<bool> done = false;
+    std::thread timeout_handler([&done]() {
+        float waited = 0.0;
+        while (waited < 10.0 && !done.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            waited += 0.01;
+        }
+        if (!done) {
+            hard_kill_self();
+        }
+    });
+
+    // Call the crashed callback, but use a timeout thread to ensure we will exit eventually.
+    g_crashed_callback(filename);
+    timeout_handler.join();
+}
 
 #if __APPLE__
 static bool dumpCallback(const char* dump_dir, const char* minidump_id, void* context, bool succeeded) {
