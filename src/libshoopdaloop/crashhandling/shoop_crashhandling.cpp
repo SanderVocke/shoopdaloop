@@ -40,6 +40,7 @@ void call_crashed_callback_with_timeout(const char* filename) {
 
     // Call the crashed callback, but use a timeout thread to ensure we will exit eventually.
     g_crashed_callback(filename);
+    done = true;
     timeout_handler.join();
 }
 
