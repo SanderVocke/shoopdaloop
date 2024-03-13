@@ -306,7 +306,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             m_midi_in_lilv_ports.push_back(p);
             m_midi_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
             auto internal = std::make_shared<InternalLV2MidiOutputPort>(
-                sym, shoop_port_direction_t::Output, mc_midi_buf_capacities,
+                sym, shoop_port_direction_t::ShoopPortDirection_Output, mc_midi_buf_capacities,
                 m_atom_chunk_type, m_atom_sequence_type, m_midi_event_type);
             m_input_midi_ports.push_back(internal);
             m_generic_input_midi_ports.push_back(

@@ -25,8 +25,8 @@ public:
     };
 
     enum class Direction {
-        Input,
-        Output
+        ShoopPortDirection_Input,
+        ShoopPortDirection_Output
     };
 
     struct Port;
@@ -38,7 +38,7 @@ public:
 
         std::string name = "";
         Type type = Type::Audio;
-        Direction direction = Direction::Input;
+        Direction direction = Direction::ShoopPortDirection_Input;
         std::set<std::string> connections;
         Client &client;
         bool valid = false;
@@ -57,7 +57,7 @@ public:
             }
         }
         Client &get_client() { return client; }
-        unsigned long get_flags() { return direction == Direction::Input ? JackPortIsInput : JackPortIsOutput; }
+        unsigned long get_flags() { return direction == Direction::ShoopPortDirection_Input ? JackPortIsInput : JackPortIsOutput; }
         std::set<std::string> &get_connections() { return connections; }
     };
 
@@ -83,6 +83,12 @@ public:
             return ports.at(name);
         }
         void close_port(std::string name) {}
+        bool has_port(jack_port_t* p) {
+            for( auto &pp: ports ) {
+                if(pp.second.as_ptr() == p) { return true; }
+            }
+            return false;
+        }
     };
 
     static Port &internal_port_data(jack_port_t* port) {
@@ -213,6 +219,10 @@ public:
 
     static int connect(jack_client_t* client, const char* src, const char* dst);
     static int disconnect(jack_client_t* client, const char* src, const char* dst);
+
+    static void free(void* ptr);
+
+    static bool port_is_mine(jack_client_t* client, jack_port_t* port);
 };
 
 namespace jacktestapi_globals {

@@ -4,7 +4,7 @@
 
 class InternalLV2MidiOutputPort : public MidiPort, public MidiWriteableBufferInterface {
     std::string m_name = "";
-    shoop_port_direction_t m_direction = Input;
+    shoop_port_direction_t m_direction = ShoopPortDirection_Input;
     LV2_Evbuf *m_evbuf = nullptr;
     uint32_t m_midi_event_type_urid = 0;
     LV2_Evbuf_Iterator m_iter;
@@ -15,7 +15,7 @@ public:
     // ShoopDaLoop.
     InternalLV2MidiOutputPort(
         std::string name,
-        shoop_port_direction_t direction = Input,
+        shoop_port_direction_t direction = ShoopPortDirection_Input,
         uint32_t capacity = 0,
         uint32_t atom_chunk_urid = 0,
         uint32_t atom_sequence_urid = 0,

@@ -23,6 +23,7 @@ SHOOP_EXPORT unsigned get_driver_active (shoop_audio_driver_t *driver);
 SHOOP_EXPORT void start_dummy_driver(shoop_audio_driver_t *driver, shoop_dummy_audio_driver_settings_t settings);
 SHOOP_EXPORT void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_settings_t settings);
 SHOOP_EXPORT void wait_process(shoop_audio_driver_t *driver);
+SHOOP_EXPORT shoop_external_port_descriptors_t *find_external_ports(shoop_audio_driver_t *driver, const char* maybe_name_regex, shoop_port_direction_t maybe_port_direction_filter, shoop_port_data_type_t maybe_data_type_filter);
 
 // Test functions
 SHOOP_EXPORT void do_segfault_on_process_thread(shoop_backend_session_t *backend);
@@ -46,6 +47,15 @@ SHOOP_EXPORT shoop_loop_state_info_t *get_loop_state          (shoopdaloop_loop_
 SHOOP_EXPORT void              set_loop_length          (shoopdaloop_loop_t *loop, unsigned length);
 SHOOP_EXPORT void              set_loop_position        (shoopdaloop_loop_t *loop, unsigned position);
 SHOOP_EXPORT void              set_loop_sync_source     (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_source);
+SHOOP_EXPORT void loop_transition(shoopdaloop_loop_t *loop,
+                      shoop_loop_mode_t mode,
+                      unsigned delay, // In # of triggers
+                      unsigned wait_for_sync);
+SHOOP_EXPORT void loops_transition(unsigned int n_loops,
+                      shoopdaloop_loop_t **loops,
+                      shoop_loop_mode_t mode,
+                      unsigned delay, // In # of triggers
+                      unsigned wait_for_sync);
 
 // Loop channels
 SHOOP_EXPORT void                   clear_audio_channel      (shoopdaloop_loop_audio_channel_t *channel, unsigned length);
@@ -77,16 +87,6 @@ SHOOP_EXPORT void                   set_audio_channel_n_preplay_samples (shoopda
 SHOOP_EXPORT void                   set_midi_channel_n_preplay_samples  (shoopdaloop_loop_midi_channel_t *channel, unsigned n);
 SHOOP_EXPORT void                   clear_audio_channel_data_dirty (shoopdaloop_loop_audio_channel_t * channel);
 SHOOP_EXPORT void                   clear_midi_channel_data_dirty (shoopdaloop_loop_midi_channel_t * channel);
-
-SHOOP_EXPORT void loop_transition(shoopdaloop_loop_t *loop,
-                      shoop_loop_mode_t mode,
-                      unsigned delay, // In # of triggers
-                      unsigned wait_for_sync);
-SHOOP_EXPORT void loops_transition(unsigned int n_loops,
-                      shoopdaloop_loop_t **loops,
-                      shoop_loop_mode_t mode,
-                      unsigned delay, // In # of triggers
-                      unsigned wait_for_sync);
 
 // FX chains
 SHOOP_EXPORT shoopdaloop_fx_chain_t *create_fx_chain(shoop_backend_session_t *backend, shoop_fx_chain_type_t type, const char* title);
@@ -157,6 +157,7 @@ SHOOP_EXPORT void destroy_port_connections_state(shoop_port_connections_state_t 
 SHOOP_EXPORT void destroy_logger(shoopdaloop_logger_t *logger);
 SHOOP_EXPORT void destroy_audio_driver_state(shoop_audio_driver_state_t *state);
 SHOOP_EXPORT void destroy_multichannel_audio(shoop_multichannel_audio_t *audio);
+SHOOP_EXPORT void destroy_external_port_descriptors(shoop_external_port_descriptors_t *desc);
 
 // Helpers for allocating data objects
 SHOOP_EXPORT shoop_midi_event_t *alloc_midi_event(unsigned data_bytes);
@@ -186,6 +187,9 @@ SHOOP_EXPORT void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, shoo
 SHOOP_EXPORT shoop_midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port);
 SHOOP_EXPORT void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, unsigned n_frames);
 SHOOP_EXPORT void dummy_midi_port_clear_queues(shoopdaloop_midi_port_t* port);
+SHOOP_EXPORT void dummy_driver_add_external_mock_port(shoop_audio_driver_t* driver, const char* name, shoop_port_direction_t direction, shoop_port_data_type_t data_type);
+SHOOP_EXPORT void dummy_driver_remove_external_mock_port(shoop_audio_driver_t* driver, const char* name);
+SHOOP_EXPORT void dummy_driver_remove_all_external_mock_ports(shoop_audio_driver_t* driver);
 
 // Resampling
 SHOOP_EXPORT shoop_multichannel_audio_t *resample_audio(shoop_multichannel_audio_t *in, unsigned new_n_frames);

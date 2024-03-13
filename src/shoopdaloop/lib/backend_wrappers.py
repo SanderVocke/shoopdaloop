@@ -38,8 +38,14 @@ def to_int(val):
     return max(min(v, intmax), intmin)
 
 class PortDirection(Enum):
-    Input = bindings.Input
-    Output = bindings.Output
+    Input = bindings.ShoopPortDirection_Input
+    Output = bindings.ShoopPortDirection_Output
+    Any = bindings.ShoopPortDirection_Any
+
+class PortDataType(Enum):
+    Audio = bindings.ShoopPortDataType_Audio
+    Midi = bindings.ShoopPortDataType_Midi
+    Any = bindings.ShoopPortDataType_Any
 
 class BackendResult(Enum):
     Success = bindings.Success
@@ -334,6 +340,22 @@ class DummyAudioDriverSettings:
         rval.sample_rate = self.sample_rate
         rval.buffer_size = self.buffer_size
         return rval
+    
+@dataclass
+class ExternalPortDescriptor:
+    name : str
+    direction : PortDirection
+    data_type : PortDataType
+
+    def __init__(self, backend_obj : 'bindings.shoop_external_port_descriptor_t'):
+        if backend_obj:
+            self.name = str(backend_obj.name)
+            self.direction = backend_obj.direction
+            self.data_type = backend_obj.data_type
+        else:
+            self.name = None
+            self.direction = None
+            self.data_type = None
 
 def deref_ptr(backend_ptr):
     if not backend_ptr:
@@ -1067,6 +1089,13 @@ class AudioDriver:
     
     def wait_process(self):
         bindings.wait_process(self._c_handle)
+    
+    def find_external_ports(self, maybe_name_regex, port_direction, data_type):
+        result = bindings.find_external_ports(self._c_handle, maybe_name_regex, port_direction, data_type)
+        rval = []
+        for i in range(result.n_ports):
+            rval.push(ExternalPortDescriptor(result.ports[i]))
+        bindings.destroy_external_port_descriptors(result)
     
     def destroy(self):
         global all_active_drivers

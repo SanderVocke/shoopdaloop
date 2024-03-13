@@ -3,12 +3,15 @@
 #include "LoggingBackend.h"
 #include "MidiPort.h"
 #include "PortInterface.h"
+#include <cstring>
 #include <stdexcept>
 #include <memory>
 #include <atomic>
+#include "jack/types.h"
 #include "run_in_thread_with_timeout.h"
 #include "JackAudioPort.h"
 #include "JackMidiPort.h"
+#include "types.h"
 
 template<typename API>
 int GenericJackAudioMidiDriver<API>::PROC_process_cb_static(jack_nframes_t nframes, void *arg) {
@@ -149,7 +152,7 @@ template<typename API>
 std::shared_ptr<MidiPort> GenericJackAudioMidiDriver<API>::open_midi_port(std::string name, shoop_port_direction_t direction) {
     std::shared_ptr<PortInterface> port;
     
-    if (direction == Input) {
+    if (direction == ShoopPortDirection_Input) {
         port = std::make_shared<GenericJackMidiInputPort<API>>(name, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker);
     } else {
         port = std::make_shared<GenericJackMidiOutputPort<API>>(name, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker);
@@ -185,6 +188,54 @@ template<typename API>
 void GenericJackAudioMidiDriver<API>::maybe_update_dsp_load() {
     AudioMidiDriver::set_dsp_load(API::cpu_load((jack_client_t*) get_maybe_client_handle()));
 };
+
+template<typename API>
+std::vector<ExternalPortDescriptor> GenericJackAudioMidiDriver<API>::find_external_ports(
+        const char* maybe_name_regex,
+        shoop_port_direction_t maybe_direction_filter,
+        shoop_port_data_type_t maybe_data_type_filter
+    )
+{
+    const char* maybe_type_regex =
+        (maybe_data_type_filter == ShoopPortDataType_Audio) ? JACK_DEFAULT_AUDIO_TYPE :
+        (maybe_data_type_filter == ShoopPortDataType_Midi)  ? JACK_DEFAULT_MIDI_TYPE  :
+        nullptr;
+    
+    unsigned flags =
+        (maybe_direction_filter == ShoopPortDirection_Input)  ? JackPortIsInput  :
+        (maybe_direction_filter == ShoopPortDirection_Output) ? JackPortIsOutput :
+        0;
+
+    auto client = (jack_client_t*) get_maybe_client_handle();
+    const char** result = API::get_ports(client, maybe_name_regex, maybe_type_regex, flags);
+
+    // First gather up the names
+    std::vector<std::string> names;
+    for(auto it = result; *it != nullptr; it++) {
+        ExternalPortDescriptor desc;
+        names.push_back(std::string(*it));
+        API::free((void*) *it);
+    }
+
+    // Now fill in further data
+    std::vector<ExternalPortDescriptor> rval;
+    for (auto &n : names) {
+        jack_port_t *p = API::port_by_name(client, n.c_str());
+        if (p && !API::port_is_mine(client, p)) {
+            ExternalPortDescriptor desc;
+            desc.name = n;
+            auto flags = API::port_flags(p);
+            desc.direction = (flags & JackPortIsInput) ? ShoopPortDirection_Input : ShoopPortDirection_Output;
+            auto type = API::port_type(p);
+            if (!strcmp(type, JACK_DEFAULT_AUDIO_TYPE)) { desc.data_type = ShoopPortDataType_Audio; }
+            else if (!strcmp(type, JACK_DEFAULT_MIDI_TYPE)) { desc.data_type = ShoopPortDataType_Midi; }
+            else { continue; /* Ignore other types */ }
+            rval.push_back(desc);
+        }
+    }
+
+    return rval;
+}
 
 template class GenericJackAudioMidiDriver<JackApi>;
 template class GenericJackAudioMidiDriver<JackTestApi>;

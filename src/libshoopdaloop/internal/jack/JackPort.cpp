@@ -44,7 +44,7 @@ GenericJackPort<API>::GenericJackPort(std::string name,
             m_client,
             name.c_str(),
             m_type == PortDataType::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE,
-            direction == shoop_port_direction_t::Input ? JackPortIsInput : JackPortIsOutput,
+            direction == shoop_port_direction_t::ShoopPortDirection_Input ? JackPortIsInput : JackPortIsOutput,
             0);
         if (p != nullptr) { break; }
 
@@ -97,7 +97,7 @@ void GenericJackPort<API>::connect_external(std::string name) {
         return;
     }
 
-    if (m_direction == shoop_port_direction_t::Input) {
+    if (m_direction == shoop_port_direction_t::ShoopPortDirection_Input) {
         API::connect(m_client, name.c_str(), API::port_name(m_port));
     } else {
         API::connect(m_client, API::port_name(m_port), name.c_str());
@@ -110,7 +110,7 @@ void GenericJackPort<API>::disconnect_external(std::string name) {
         return;
     }
 
-    if (m_direction == shoop_port_direction_t::Input) {
+    if (m_direction == shoop_port_direction_t::ShoopPortDirection_Input) {
         API::disconnect(m_client, name.c_str(), API::port_name(m_port));
     } else {
         API::disconnect(m_client, API::port_name(m_port), name.c_str());

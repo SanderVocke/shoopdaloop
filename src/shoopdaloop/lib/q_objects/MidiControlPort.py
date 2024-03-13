@@ -2,6 +2,7 @@ from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
 from .ShoopPyObject import *
+from .FindParentBackend import FindParentBackend
 
 from ..logging import Logger as BaseLogger
 from ..findFirstParent import findFirstParent
@@ -12,7 +13,7 @@ from ..backend_wrappers import *
 from ..midi_helpers import *
 
 from ..lua_qobject_interface import create_lua_qobject_interface, lua_int
-class MidiControlPort(ShoopQQuickItem):
+class MidiControlPort(FindParentBackend):
     
     # MIDI control port has several Lua interfaces to query its state
     # from the Lua side.
@@ -44,10 +45,9 @@ class MidiControlPort(ShoopQQuickItem):
         self.autoconnect_update()
     
         self._lua_obj = None
-        
-        self.rescan_parents()
-        if not self._backend:
-            self.parentChanged.connect(self.rescan_parents)
+
+        self.backendChanged.connect(lambda: self.maybe_init())
+        self.backendInitializedChanged.connect(lambda: self.maybe_init())
         
         self.msgReceived.connect(lambda msg: self.logger.debug(lambda: "Received: {}".format(msg)))
         self.connected.connect(lambda: self.logger.debug(lambda: "{}: connected".format(self._name_hint)))
@@ -121,12 +121,6 @@ class MidiControlPort(ShoopQQuickItem):
             self._may_open = l
             self.mayOpenChanged.emit(l)
             self.maybe_init()
-    
-    # backend_initialized
-    backendInitializedChanged = ShoopSignal(bool)
-    @ShoopProperty(bool, notify=backendInitializedChanged)
-    def backend_initialized(self):
-        return self._backend_obj != None
     
     ###########
     ## METHODS
@@ -210,14 +204,6 @@ class MidiControlPort(ShoopQQuickItem):
                 break
             self.logger.debug(lambda: "Received: {}".format(r.data))
             self.handle_msg(r.data)
-    
-    @ShoopSlot()
-    def rescan_parents(self):
-        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
-        self.logger.trace(lambda: f"Rescanned parents, backend {maybe_backend}")
-        if maybe_backend:
-            self._backend = maybe_backend
-            self.maybe_init()
     
     @ShoopSlot()
     def maybe_init(self):

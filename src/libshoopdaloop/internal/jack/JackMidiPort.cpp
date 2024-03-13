@@ -69,7 +69,7 @@ GenericJackMidiInputPort<API>::GenericJackMidiInputPort(
         std::string name,
         jack_client_t *client,
         std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
-    ) : GenericJackMidiPort<API>(name, Input, client, all_ports_tracker),
+    ) : GenericJackMidiPort<API>(name, ShoopPortDirection_Input, client, all_ports_tracker),
         MidiBufferingInputPort()
 {}
 

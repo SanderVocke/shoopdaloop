@@ -336,6 +336,32 @@ unsigned driver_type_supported(shoop_audio_driver_type_t type) {
   }, 0);
 }
 
+shoop_external_port_descriptors_t *find_external_ports(
+  shoop_audio_driver_t *driver,
+  const char* maybe_name_regex,
+  shoop_port_direction_t maybe_port_direction_filter,
+  shoop_port_data_type_t maybe_data_type_filter)
+{
+  return api_impl<shoop_external_port_descriptors_t*>("find_external_ports", [&]() -> shoop_external_port_descriptors_t* {
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return nullptr; }
+    auto ports = _driver->find_external_ports(
+      maybe_name_regex,
+      maybe_port_direction_filter,
+      maybe_data_type_filter
+    );
+    auto rval = new shoop_external_port_descriptors_t;
+    rval->n_ports = ports.size();
+    rval->ports = (shoop_external_port_descriptor_t*) malloc(sizeof(shoop_external_port_descriptor_t) * ports.size());
+    for(size_t i=0; i<ports.size(); i++) {
+      rval->ports[i].name = strdup(ports[i].name.c_str());
+      rval->ports[i].direction = ports[i].direction;
+      rval->ports[i].data_type = ports[i].data_type;
+    }
+    return rval;
+  }, (shoop_external_port_descriptors_t*) nullptr);
+}
+
 shoop_result_t set_audio_driver(shoop_backend_session_t *backend, shoop_audio_driver_t *driver) {
   return api_impl<shoop_result_t>("set_audio_driver", [&]() -> shoop_result_t {
     auto _backend = internal_backend_session(backend);
@@ -1746,6 +1772,16 @@ void destroy_profiling_report(shoop_profiling_report_t *d) {
   });
 }
 
+void destroy_external_port_descriptors(shoop_external_port_descriptors_t *d) {
+  return api_impl<void, log_level_debug_trace>("destroy_profiling_report", [&]() {
+    for(int i=0; i<d->n_ports; i++) {
+      free((void*)d->ports[i].name);
+    }
+    free(d->ports);
+    free(d);
+  });
+}
+
 shoopdaloop_logger_t *get_logger(const char* name) {
   return api_impl<shoopdaloop_logger_t*, log_level_debug_trace>("get_logger", [&]() {
     return (shoopdaloop_logger_t*) strdup(name);
@@ -1953,6 +1989,42 @@ unsigned dummy_audio_n_requested_frames(shoop_audio_driver_t *driver) {
         return 0;
     }
   }, (unsigned)0);
+}
+
+void dummy_driver_add_external_mock_port(shoop_audio_driver_t* driver, const char* name, shoop_port_direction_t direction, shoop_port_data_type_t data_type) {
+  return api_impl<void>("dummy_driver_add_external_mock_port", [&]()  {
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
+        maybe_dummy->add_external_mock_port(std::string(name), direction, data_type);
+    } else {
+        logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_driver_add_external_mock_port called on non-dummy backend");
+    }
+  });
+}
+
+void dummy_driver_remove_external_mock_port(shoop_audio_driver_t* driver, const char* name) {
+  return api_impl<void>("dummy_driver_remove_external_mock_port", [&]()  {
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
+        maybe_dummy->remove_external_mock_port(std::string(name));
+    } else {
+        logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_driver_remove_external_mock_port called on non-dummy backend");
+    }
+  });
+}
+
+void dummy_driver_remove_all_external_mock_ports(shoop_audio_driver_t* driver) {
+  return api_impl<void>("dummy_driver_remove_all_external_mock_ports", [&]()  {
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
+        maybe_dummy->remove_all_external_mock_ports();
+    } else {
+        logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_driver_remove_all_external_mock_ports called on non-dummy backend");
+    }
+  });
 }
 
 void wait_process(shoop_audio_driver_t *driver) {

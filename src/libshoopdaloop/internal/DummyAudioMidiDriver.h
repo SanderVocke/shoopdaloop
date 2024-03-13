@@ -19,7 +19,7 @@
 class DummyPort : public virtual PortInterface {
 protected:
     std::string m_name = "";
-    shoop_port_direction_t m_direction = Input;
+    shoop_port_direction_t m_direction = ShoopPortDirection_Input;
 
 public:
     DummyPort(
@@ -42,7 +42,7 @@ class DummyAudioPort : public virtual AudioPort<audio_sample_t>,
                        private ModuleLoggingEnabled<"Backend.DummyAudioPort"> {
 
     std::string m_name = "";
-    shoop_port_direction_t m_direction = Input;
+    shoop_port_direction_t m_direction = ShoopPortDirection_Input;
     boost::lockfree::spsc_queue<std::vector<audio_sample_t>> m_queued_data;
     std::atomic<uint32_t> m_n_requested_samples = 0;
     std::vector<audio_sample_t> m_retained_samples;
@@ -65,10 +65,10 @@ public:
     void request_data(uint32_t n_frames);
     std::vector<audio_sample_t> dequeue_data(uint32_t n);
 
-    bool has_internal_read_access() const override { return m_direction == Input; }
-    bool has_internal_write_access() const override { return m_direction == Output; }
-    bool has_implicit_input_source() const override { return m_direction == Input; }
-    bool has_implicit_output_sink() const override { return m_direction == Output; }
+    bool has_internal_read_access() const override { return m_direction == ShoopPortDirection_Input; }
+    bool has_internal_write_access() const override { return m_direction == ShoopPortDirection_Output; }
+    bool has_implicit_input_source() const override { return m_direction == ShoopPortDirection_Input; }
+    bool has_implicit_output_sink() const override { return m_direction == ShoopPortDirection_Output; }
     
     void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;
@@ -169,6 +169,9 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
     std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
     std::string m_client_name_str = "";
 
+    std::vector<std::pair<DummyPort*, std::string>> m_external_connections;
+    std::vector<ExternalPortDescriptor> m_external_mock_ports;
+
     std::function<void(std::string, shoop_port_direction_t)> m_audio_port_opened_cb = nullptr;
     std::function<void(std::string, shoop_port_direction_t)> m_midi_port_opened_cb = nullptr;
     std::function<void(std::string)> m_audio_port_closed_cb = nullptr;
@@ -193,6 +196,12 @@ public:
 
     void close() override;
 
+    std::vector<ExternalPortDescriptor> find_external_ports(
+        const char* maybe_name_regex,
+        shoop_port_direction_t maybe_direction_filter,
+        shoop_port_data_type_t maybe_data_type_filter
+    ) override;
+
     void pause();
     void resume();
 
@@ -214,6 +223,10 @@ public:
 
     // Run until the requested amount of samples has been completed.
     void controlled_mode_run_request(uint32_t timeout_ms = 100);
+
+    void add_external_mock_port(std::string name, shoop_port_direction_t direction, shoop_port_data_type_t data_type);
+    void remove_external_mock_port(std::string name);
+    void remove_all_external_mock_ports();
 };
 
 extern template class DummyAudioMidiDriver<uint32_t, uint16_t>;

@@ -88,7 +88,7 @@ public:
         std::string name,
         jack_client_t *client,
         std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
-    ) : GenericJackMidiPort<API>(name, Output, client, all_ports_tracker),
+    ) : GenericJackMidiPort<API>(name, ShoopPortDirection_Output, client, all_ports_tracker),
         MidiSortingReadWritePort(true, false, false),
         m_write_buffer(JackMidiWriteBuffer{}) {}
 

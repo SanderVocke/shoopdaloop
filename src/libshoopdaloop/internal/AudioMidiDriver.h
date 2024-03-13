@@ -1,15 +1,12 @@
 #pragma once
 #include <memory>
-#include "PortInterface.h"
-#include "MidiPort.h"
 #include <string>
-#include "AudioPort.h"
 #include <stdint.h>
 #include "WithCommandQueue.h"
-#include "LoggingEnabled.h"
 #include "types.h"
 #include <set>
-#include "shoop_globals.h"
+#include <atomic>
+#include "LoggingEnabled.h"
 
 enum class ProcessFunctionResult {
     Continue,  // Continue processing next cycle
@@ -19,6 +16,12 @@ enum class ProcessFunctionResult {
 struct AudioMidiDriverSettingsInterface {
     AudioMidiDriverSettingsInterface() {}
     virtual ~AudioMidiDriverSettingsInterface() {}
+};
+
+struct ExternalPortDescriptor {
+    std::string name;
+    shoop_port_direction_t direction;
+    shoop_port_data_type_t data_type;
 };
 
 class HasAudioProcessingFunction {
@@ -100,6 +103,12 @@ public:
     uint32_t get_last_processed() const;
 
     void wait_process();
+
+    virtual std::vector<ExternalPortDescriptor> find_external_ports(
+        const char* maybe_name_regex,
+        shoop_port_direction_t maybe_direction_filter,
+        shoop_port_data_type_t maybe_data_type_filter
+    ) = 0;
 
     AudioMidiDriver();
     virtual ~AudioMidiDriver() {}

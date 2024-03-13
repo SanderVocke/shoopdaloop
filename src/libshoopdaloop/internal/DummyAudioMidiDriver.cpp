@@ -11,6 +11,7 @@
 #include "DummyAudioMidiDriver.h"
 #include <map>
 #include <algorithm>
+#include <regex>
 
 const std::map<DummyAudioMidiDriverMode, const char*> mode_names = {
     {DummyAudioMidiDriverMode::Automatic, "Automatic"},
@@ -222,7 +223,7 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
 }
 
 void DummyMidiPort::PROC_process(uint32_t nframes) {
-    if (m_direction == shoop_port_direction_t::Output) {
+    if (m_direction == shoop_port_direction_t::ShoopPortDirection_Output) {
         std::stable_sort(m_buffer_data.begin(), m_buffer_data.end(), [](StoredMessage const& a, StoredMessage const& b) {
             return a.time < b.time;
         });
@@ -456,6 +457,49 @@ void DummyAudioMidiDriver<Time, Size>::controlled_mode_run_request(uint32_t time
     if (m_controlled_mode_samples_to_process > 0) {
         Log::log<log_level_error>("DummyAudioMidiDriver: run request timed out");
     }
+}
+
+template <typename Time, typename Size>
+std::vector<ExternalPortDescriptor> DummyAudioMidiDriver<Time, Size>::find_external_ports(
+        const char* maybe_name_regex,
+        shoop_port_direction_t maybe_direction_filter,
+        shoop_port_data_type_t maybe_data_type_filter
+    )
+{
+    std::vector<ExternalPortDescriptor> rval;
+    for(auto &p : m_external_mock_ports) {
+        bool name_matched = (!maybe_name_regex || std::regex_match(p.name, std::regex(std::string(maybe_name_regex))));
+        bool direction_matched = (maybe_direction_filter == ShoopPortDirection_Any) || maybe_direction_filter == p.direction;
+        bool data_type_matched = (maybe_data_type_filter == ShoopPortDataType_Any) || maybe_data_type_filter == p.data_type;
+        if (name_matched && direction_matched && data_type_matched) {
+            rval.push_back(p);
+        }
+    }
+
+    return rval;
+}
+
+template <typename Time, typename Size>
+void DummyAudioMidiDriver<Time, Size>::add_external_mock_port(std::string name, shoop_port_direction_t direction, shoop_port_data_type_t data_type) {
+    if (std::find_if(m_external_mock_ports.begin(), m_external_mock_ports.end(), [name](auto &a) { return a.name == name; }) == m_external_mock_ports.end()) {
+        m_external_mock_ports.push_back(ExternalPortDescriptor {
+            .name = name,
+            .direction = direction,
+            .data_type = data_type
+        });
+    } else {
+        Log::log<log_level_error>("Cannot add mock port: {} already exists", name);
+    }
+}
+
+template <typename Time, typename Size>
+void DummyAudioMidiDriver<Time, Size>::remove_external_mock_port(std::string name) {
+#error implement
+}
+
+template <typename Time, typename Size>
+void DummyAudioMidiDriver<Time, Size>::remove_all_external_mock_ports() {
+#error implement
 }
 
 template class DummyAudioMidiDriver<uint32_t, uint16_t>;

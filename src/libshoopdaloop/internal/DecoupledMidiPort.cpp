@@ -21,7 +21,7 @@ std::shared_ptr<MidiPort> const& DecoupledMidiPort<TimeType, SizeType>::get_port
 
 template <typename TimeType, typename SizeType>
 void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
-    if (direction == shoop_port_direction_t::Input) {
+    if (direction == shoop_port_direction_t::ShoopPortDirection_Input) {
         port->PROC_prepare(n_frames);
         port->PROC_process(n_frames);
         auto buf = port->PROC_get_read_output_data_buffer(n_frames);
@@ -39,7 +39,7 @@ void DecoupledMidiPort<TimeType, SizeType>::PROC_process(uint32_t n_frames) {
             memcpy((void *)m.data.data(), (void *)data, size);
             ma_queue.push(m);
         }
-    } else {
+    } else if (direction == shoop_port_direction_t::ShoopPortDirection_Output) {
         port->PROC_prepare(n_frames);
         auto buf = port->PROC_get_write_data_into_port_buffer(n_frames);
         Message m;
@@ -58,7 +58,7 @@ const char* DecoupledMidiPort<TimeType, SizeType>::name() const {
 template <typename TimeType, typename SizeType>
 std::optional<typename DecoupledMidiPort<TimeType, SizeType>::Message>
 DecoupledMidiPort<TimeType, SizeType>::pop_incoming() {
-    if (direction != shoop_port_direction_t::Input) {
+    if (direction != shoop_port_direction_t::ShoopPortDirection_Input) {
         throw std::runtime_error(
             "Attempt to pop input message from output port");
     }

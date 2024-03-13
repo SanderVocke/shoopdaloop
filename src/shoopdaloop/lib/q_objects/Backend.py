@@ -336,6 +336,10 @@ class Backend(ShoopQQuickItem):
         if (self._backend_session_obj):
             self._backend_session_obj.abort_on_process_thread()
     
+    @ShoopSlot(str, int, int)
+    def find_external_ports(self, maybe_name_regex, port_direction, data_type):
+        return self._backend_driver_obj.find_external_ports(maybe_name_regex, port_direction, data_type)
+    
     ################
     ## INTERNAL METHODS
     ################

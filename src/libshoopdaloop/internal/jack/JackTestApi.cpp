@@ -37,10 +37,10 @@ void JackTestApi::init() {
     auto test_client_2 = client_open("test_client_2", JackNullOption, &s);
 
     for (auto &c : {test_client_1, test_client_2}) {
-        Client::from_ptr(c).open_port("audio_in", Direction::Input, Type::Audio);
-        Client::from_ptr(c).open_port("audio_out", Direction::Output, Type::Audio);
-        Client::from_ptr(c).open_port("midi_in", Direction::Input, Type::Midi);
-        Client::from_ptr(c).open_port("midi_out", Direction::Output, Type::Midi);
+        Client::from_ptr(c).open_port("audio_in", Direction::ShoopPortDirection_Input, Type::Audio);
+        Client::from_ptr(c).open_port("audio_out", Direction::ShoopPortDirection_Output, Type::Audio);
+        Client::from_ptr(c).open_port("midi_in", Direction::ShoopPortDirection_Input, Type::Midi);
+        Client::from_ptr(c).open_port("midi_out", Direction::ShoopPortDirection_Output, Type::Midi);
     }
 
     initialized = true;
@@ -72,7 +72,7 @@ jack_port_t* JackTestApi::port_register(
     unsigned long bufsize)
 {
     auto &c = Client::from_ptr(client);
-    auto &p = c.open_port(port_name, flags & JackPortIsInput ? Direction::Input : Direction::Output,
+    auto &p = c.open_port(port_name, flags & JackPortIsInput ? Direction::ShoopPortDirection_Input : Direction::ShoopPortDirection_Output,
     std::string(port_type) == std::string(JACK_DEFAULT_AUDIO_TYPE) ? Type::Audio : Type::Midi);
     
     if (jacktestapi_globals::port_registration_callback) {
@@ -147,8 +147,8 @@ int JackTestApi::port_flags(const jack_port_t* port) {
     auto &p = Port::from_ptr((jack_port_t*) port);
     int rval;
     switch (p.direction) {
-        case Direction::Input:  rval = JackPortIsInput; break;
-        case Direction::Output: rval = JackPortIsOutput; break;
+        case Direction::ShoopPortDirection_Input:  rval = JackPortIsInput; break;
+        case Direction::ShoopPortDirection_Output: rval = JackPortIsOutput; break;
     }
 
     logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "Get port flags {} -> {}", (void*)port, rval);
@@ -212,3 +212,11 @@ int JackTestApi::disconnect(jack_client_t* client, const char* src, const char* 
     
     return 0;
 };
+
+void JackTestApi::free(void* ptr) {
+    if(ptr) { free(ptr); }
+}
+
+bool JackTestApi::port_is_mine(jack_client_t* client, jack_port_t* port) {
+    return Client::from_ptr(client).has_port(port);
+}

@@ -7,6 +7,7 @@ import json
 from typing import *
 import sys
 
+from .FindParentBackend import FindParentBackend
 from .ShoopPyObject import *
 
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt
@@ -18,14 +19,13 @@ from ..logging import Logger
 from ..findFirstParent import findFirstParent
 
 # Wraps a back-end port.
-class Port(ShoopQQuickItem):
+class Port(FindParentBackend):
     def __init__(self, parent=None):
         super(Port, self).__init__(parent)
         self._name_hint = None
         self._backend_obj = None
         self._direction = None
         self._initialized = False
-        self._backend = None
         self._passthrough_to = []
         self._passthrough_connected_to = []
         self._name = self._new_name = ''
@@ -33,31 +33,15 @@ class Port(ShoopQQuickItem):
         self._passthrough_muted = self._new_passthrough_muted = None
         self._is_internal = None
         self._ever_initialized = False
-        self.__logger = Logger("Frontend.Port")
+        self.logger = Logger("Frontend.Port")
         
-        self.rescan_parents()
-        if not self._backend:
-            self.parentChanged.connect(lambda: self.rescan_parents())
-        
+        self.backendChanged.connect(lambda: self.maybe_initialize())
+        self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
         self.initializedChanged.connect(lambda: self.update_passthrough_connections())
 
     ######################
     # PROPERTIES
     ######################
-
-    # backend
-    backendChanged = ShoopSignal(Backend)
-    @ShoopProperty(Backend, notify=backendChanged)
-    def backend(self):
-        return self._backend
-    @backend.setter
-    def backend(self, l):
-        if l and l != self._backend:
-            if self._backend or self._backend_obj:
-                raise Exception('May not change backend of existing port')
-            self._backend = l
-            self._backend.initializedChanged.connect(lambda: self.maybe_initialize())
-            self.maybe_initialize()
 
     # initialized
     initializedChanged = ShoopSignal(bool)
@@ -173,20 +157,13 @@ class Port(ShoopQQuickItem):
     
     @ShoopSlot()
     def close(self):
+        FindParentBackend.close(self)
         if self._backend_obj:
-            self.__logger.debug(lambda: "{}: Closing port {}".format(self, self._name))
-            if self._backend:
-                self._backend.unregisterBackendObject(self)
+            self.logger.debug(lambda: "{}: Closing port {}".format(self, self._name))
             self._backend_obj.destroy()
             self._backend_obj = None
             self._initialized = False
             self.initializedChanged.emit(False)
-    
-    @ShoopSlot()
-    def rescan_parents(self):
-        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
-        if maybe_backend:
-            self.backend = maybe_backend
     
     @ShoopSlot(bool)
     def set_muted(self, muted):
@@ -206,7 +183,7 @@ class Port(ShoopQQuickItem):
     
     @ShoopSlot()
     def maybe_initialize(self):
-        self.__logger.trace(lambda: 'maybe_initialize {}'.format(self._name_hint))
+        self.logger.trace(lambda: 'maybe_initialize {}'.format(self._name_hint))
         if (not self._backend_obj) and \
             (not self._ever_initialized) and \
             self._name_hint != None and \
@@ -217,11 +194,10 @@ class Port(ShoopQQuickItem):
             self._backend and \
             self._backend.initialized:
             
-            self.__logger.debug(lambda: "{}: Initializing port {}".format(self, self._name_hint))
+            self.logger.debug(lambda: "{}: Initializing port {}".format(self, self._name_hint))
             self.maybe_initialize_impl(self._name_hint, self._direction, self._is_internal)
             if self._backend_obj:
                 self._initialized = True
-                self._backend.registerBackendObject(self)
                 self.initializedChanged.emit(True)
                 self._ever_initialized = True
 
@@ -230,14 +206,14 @@ class Port(ShoopQQuickItem):
         if self._backend_obj:
             self._backend_obj.connect_external_port(name)
         else:
-            self.__logger.warning("Attempted to connect uninitialized port {}".format(self._name_hint))
+            self.logger.warning("Attempted to connect uninitialized port {}".format(self._name_hint))
     
     @ShoopSlot(str)
     def disconnect_external_port(self, name):
         if self._backend_obj:
             self._backend_obj.disconnect_external_port(name)
         else:
-            self.__logger.warning("Attempted to disconnect uninitialized port {}".format(self._name_hint))
+            self.logger.warning("Attempted to disconnect uninitialized port {}".format(self._name_hint))
 
     @ShoopSlot(result='QVariant')
     def get_connections_state(self):
