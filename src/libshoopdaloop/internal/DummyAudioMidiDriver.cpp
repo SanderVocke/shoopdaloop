@@ -7,6 +7,7 @@
 #include "types.h"
 #include <chrono>
 #include <cstdint>
+#include <string>
 #include <thread>
 #include "DummyAudioMidiDriver.h"
 #include <map>
@@ -21,26 +22,40 @@ const std::map<DummyAudioMidiDriverMode, const char*> mode_names = {
 DummyPort::DummyPort(
     std::string name,
     shoop_port_direction_t direction,
-    PortDataType type
-) : m_name(name), m_direction(direction) {}
+    PortDataType type,
+    std::weak_ptr<DummyExternalConnections> external_connections
+) : m_name(name), m_direction(direction), m_external_connections(external_connections) {}
 
 const char* DummyPort::name() const { return m_name.c_str(); }
 
 void DummyPort::close() {}
 
-PortExternalConnectionStatus DummyPort::get_external_connection_status() const { return PortExternalConnectionStatus(); }
+PortExternalConnectionStatus DummyPort::get_external_connection_status() const {
+    if (auto e = m_external_connections.lock()) {
+        return e->connection_status_of(this);
+    }
+    return PortExternalConnectionStatus();
+}
 
-void DummyPort::connect_external(std::string name) {}
+void DummyPort::connect_external(std::string name) {
+    if (auto e = m_external_connections.lock()) {
+        e->connect(this, name);
+    }
+}
 
-void DummyPort::disconnect_external(std::string name) {}
+void DummyPort::disconnect_external(std::string name) {
+    if (auto e = m_external_connections.lock()) {
+        e->disconnect(this, name);
+    }
+}
 
 void *DummyPort::maybe_driver_handle() const {
     return (void*)this;
 }
 
-DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction)
+DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, std::weak_ptr<DummyExternalConnections> external_connections)
     : AudioPort<audio_sample_t>(), m_name(name),
-      DummyPort(name, direction, PortDataType::Audio),
+      DummyPort(name, direction, PortDataType::Audio, external_connections),
       m_direction(direction),
       m_queued_data(128) { }
 
@@ -166,8 +181,8 @@ bool DummyMidiPort::write_by_reference_supported() const { return true; }
 
 bool DummyMidiPort::write_by_value_supported() const { return true; }
 
-DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction)
-    : MidiPort(true, false, false), DummyPort(name, direction, PortDataType::Midi){
+DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction, std::weak_ptr<DummyExternalConnections> external_connections)
+    : MidiPort(true, false, false), DummyPort(name, direction, PortDataType::Midi, external_connections) {
 }
 
 void DummyMidiPort::clear_queues() {
@@ -327,7 +342,8 @@ DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver()
       m_mode(DummyAudioMidiDriverMode::Automatic),
       m_controlled_mode_samples_to_process(0),
       m_audio_port_closed_cb(nullptr), m_audio_port_opened_cb(nullptr),
-      m_midi_port_closed_cb(nullptr), m_midi_port_opened_cb(nullptr)
+      m_midi_port_closed_cb(nullptr), m_midi_port_opened_cb(nullptr),
+      m_external_connections(std::make_shared<DummyExternalConnections>())
 {
     m_audio_ports.clear();
     m_midi_ports.clear();
@@ -459,8 +475,7 @@ void DummyAudioMidiDriver<Time, Size>::controlled_mode_run_request(uint32_t time
     }
 }
 
-template <typename Time, typename Size>
-std::vector<ExternalPortDescriptor> DummyAudioMidiDriver<Time, Size>::find_external_ports(
+std::vector<ExternalPortDescriptor> DummyExternalConnections::find_external_ports(
         const char* maybe_name_regex,
         shoop_port_direction_t maybe_direction_filter,
         shoop_port_data_type_t maybe_data_type_filter
@@ -479,27 +494,89 @@ std::vector<ExternalPortDescriptor> DummyAudioMidiDriver<Time, Size>::find_exter
     return rval;
 }
 
-template <typename Time, typename Size>
-void DummyAudioMidiDriver<Time, Size>::add_external_mock_port(std::string name, shoop_port_direction_t direction, shoop_port_data_type_t data_type) {
+template<typename Time, typename Size>
+std::vector<ExternalPortDescriptor> DummyAudioMidiDriver<Time, Size>::find_external_ports(
+        const char* maybe_name_regex,
+        shoop_port_direction_t maybe_direction_filter,
+        shoop_port_data_type_t maybe_data_type_filter
+    )
+{
+    return m_external_connections->find_external_ports(maybe_name_regex, maybe_direction_filter, maybe_data_type_filter);
+}
+
+void DummyExternalConnections::add_external_mock_port(std::string name, shoop_port_direction_t direction, shoop_port_data_type_t data_type) {
     if (std::find_if(m_external_mock_ports.begin(), m_external_mock_ports.end(), [name](auto &a) { return a.name == name; }) == m_external_mock_ports.end()) {
         m_external_mock_ports.push_back(ExternalPortDescriptor {
             .name = name,
             .direction = direction,
             .data_type = data_type
         });
-    } else {
-        Log::log<log_level_error>("Cannot add mock port: {} already exists", name);
     }
+}
+
+void DummyExternalConnections::remove_external_mock_port(std::string name) {
+    auto new_end = std::remove_if(m_external_mock_ports.begin(), m_external_mock_ports.end(), [name](auto &a) { return a.name == name; });
+    
+    if(!(new_end == m_external_mock_ports.end())) {
+        m_external_mock_ports.erase(new_end, m_external_mock_ports.end());
+        // Remove connections also
+        auto new_conns_end = std::remove_if(m_external_connections.begin(), m_external_connections.end(), [name](auto &a) { return a.second == name; });
+        m_external_connections.erase(
+            new_conns_end,
+            m_external_connections.end()
+        );
+    }
+}
+
+void DummyExternalConnections::remove_all_external_mock_ports() {
+    m_external_mock_ports.clear();
+    m_external_connections.clear();
+}
+
+ExternalPortDescriptor &DummyExternalConnections::get_port(std::string name) {
+    auto it = std::find_if(m_external_mock_ports.begin(), m_external_mock_ports.end(), [name](auto &a) { return a.name == name; });
+    if (it == m_external_mock_ports.end()) {
+        throw std::runtime_error("Port not found");
+    }
+    return *it;
+}
+
+void DummyExternalConnections::connect(DummyPort* port, std::string external_port_name) {
+    auto &desc = get_port(external_port_name);
+    auto conn = std::make_pair(port, desc.name);
+    if (std::find(m_external_connections.begin(), m_external_connections.end(), conn) == m_external_connections.end()) {
+        m_external_connections.push_back(conn);
+    }
+}
+
+void DummyExternalConnections::disconnect(DummyPort* port, std::string external_port_name) {
+    auto &desc = get_port(external_port_name);
+    auto conn = std::make_pair(port, desc.name);
+    auto new_end = std::remove(m_external_connections.begin(), m_external_connections.end(), conn);
+    m_external_connections.erase(new_end, m_external_connections.end());
+}
+
+PortExternalConnectionStatus DummyExternalConnections::connection_status_of(const DummyPort* port) {
+    PortExternalConnectionStatus rval;
+    for (auto &conn : m_external_connections) {
+        rval[conn.second] = conn.first == port;
+    }
+    return rval;
+}
+
+template <typename Time, typename Size>
+void DummyAudioMidiDriver<Time, Size>::add_external_mock_port(std::string name, shoop_port_direction_t direction, shoop_port_data_type_t data_type) {
+    m_external_connections->add_external_mock_port(name, direction, data_type);
 }
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::remove_external_mock_port(std::string name) {
-#error implement
+    m_external_connections->remove_external_mock_port(name);
 }
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::remove_all_external_mock_ports() {
-#error implement
+    m_external_connections->remove_all_external_mock_ports();
 }
 
 template class DummyAudioMidiDriver<uint32_t, uint16_t>;
