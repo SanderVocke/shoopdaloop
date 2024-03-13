@@ -131,6 +131,9 @@ SHOOP_EXPORT shoop_midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_p
 SHOOP_EXPORT void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned length, unsigned char *data);
 SHOOP_EXPORT const char* get_decoupled_midi_port_name(shoopdaloop_decoupled_midi_port_t *port);
 SHOOP_EXPORT void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port);
+SHOOP_EXPORT shoop_port_connections_state_t *get_decoupled_midi_port_connections_state(shoopdaloop_decoupled_midi_port_t *port);
+SHOOP_EXPORT void connect_external_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *ours, const char* external_port_name);
+SHOOP_EXPORT void disconnect_external_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *ours, const char* external_port_name);
 
 // Helpers for freeing any objects/handles obtained from this API.
 // This will always safely destroy, including breaking any made connections to other objects, etc.

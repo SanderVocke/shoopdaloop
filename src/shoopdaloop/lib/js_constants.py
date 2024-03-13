@@ -1,6 +1,6 @@
 from PySide6.QtQml import QJSValue
 
-from .backend_wrappers import LoopMode, ChannelMode, AudioDriverType, PortDirection, FXChainType
+from .backend_wrappers import LoopMode, ChannelMode, AudioDriverType, PortDirection, FXChainType, PortDataType
 from .types import KeyEventType
 
 # Create a QJSValue which contains a multitude of ShoopDaLoop constant
@@ -23,6 +23,7 @@ def create_js_constants(engine):
     add_enum('PortDirection', PortDirection)
     add_enum('FXChainType', FXChainType)
     add_enum('KeyEventType', KeyEventType)
+    add_enum('PortDataType', PortDataType)
 
     return rval
 

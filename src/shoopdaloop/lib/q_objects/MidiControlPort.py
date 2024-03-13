@@ -56,7 +56,6 @@ class MidiControlPort(FindParentBackend):
     ## SIGNALS
     ######################
     msgReceived = ShoopSignal(list)
-    detectedExternalAutoconnectPartnerWhileClosed = ShoopSignal()
     connected = ShoopSignal()
 
     ######################
@@ -135,9 +134,35 @@ class MidiControlPort(FindParentBackend):
             self._cc_states[channel(msg)][msg[1]] = msg[2]
         self.msgReceived.emit(msg)
     
+    def get_data_type(self):
+        return PortDataType.Midi.value
+    
     ###########
     ## SLOTS
     ###########
+    
+    @ShoopSlot(result='QVariant')
+    def get_connections_state(self):
+        if self._backend_obj:
+            return (self._backend_obj.get_connections_state() if self._backend_obj else dict())
+        else:
+            return dict()
+    
+    @ShoopSlot(str)
+    def connect_external_port(self, name):
+        if self._backend_obj:
+            self.logger.debug(lambda: "Connecting to external port {}".format(name))
+            self._backend_obj.connect_external_port(name)
+        else:
+            self.logger.error(lambda: "Attempted to connect uninitialized port {}".format(self._name_hint))
+    
+    @ShoopSlot(str)
+    def disconnect_external_port(self, name):
+        if self._backend_obj:
+            self.logger.debug(lambda: "Disconnecting from external port {}".format(name))
+            self._backend_obj.disconnect_external_port(name)
+        else:
+            self.logger.error(lambda: "Attempted to disconnect uninitialized port {}".format(self._name_hint))
     
     @ShoopSlot('QVariant')
     def register_lua_interface(self, lua_engine):
@@ -179,22 +204,12 @@ class MidiControlPort(FindParentBackend):
                 conn.destroy()
             self._autoconnecters = []
             
-            if self._direction == PortDirection.Input.value:
-                for regex in self._autoconnect_regexes:
-                    conn = AutoConnect(self)
-                    conn.connected.connect(self.connected)
-                    conn.from_regex = regex
-                    conn.to_regex = self._name.replace('.', '\.') if self._name else None
-                    conn.onlyExternalFound.connect(self.detectedExternalAutoconnectPartnerWhileClosed)
-                    self._autoconnecters.append(conn)
-            else:
-                for regex in self._autoconnect_regexes:
-                    conn = AutoConnect(self)
-                    conn.connected.connect(self.connected)
-                    conn.from_regex = self._name.replace('.', '\.') if self._name else None
-                    conn.to_regex = regex
-                    conn.onlyExternalFound.connect(self.detectedExternalAutoconnectPartnerWhileClosed)
-                    self._autoconnecters.append(conn)
+            for regex in self._autoconnect_regexes:
+                conn = AutoConnect(self)
+                conn.connected.connect(self.connected)
+                conn.to_regex = regex
+                conn.internal_port = self
+                self._autoconnecters.append(conn)
     
     @ShoopSlot()
     def poll(self):
@@ -207,6 +222,8 @@ class MidiControlPort(FindParentBackend):
     
     @ShoopSlot()
     def maybe_init(self):
+        if self._backend_obj:
+            return
         self.logger.trace(lambda: f'Attempting to initialize. Backend: {self._backend}. Backend init: {self._backend.initialized if self._backend else None}')
         if self._backend and not self._backend.initialized:
             self._backend.initializedChanged.connect(self.maybe_init)

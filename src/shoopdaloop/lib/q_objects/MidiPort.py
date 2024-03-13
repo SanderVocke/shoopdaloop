@@ -12,7 +12,7 @@ from PySide6.QtQuick import QQuickItem
 from .Port import Port
 from .ShoopPyObject import *
 
-from ..backend_wrappers import PortDirection
+from ..backend_wrappers import PortDirection, PortDataType
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from ..logging import Logger
@@ -136,6 +136,9 @@ class MidiPort(Port):
     ##########
     ## INTERNAL MEMBERS
     ##########
+    
+    def get_data_type(self):
+        return PortDataType.Midi.value
     
     def maybe_initialize_internal(self, name_hint, direction):
         # Internal ports are owned by FX chains.

@@ -1012,6 +1012,25 @@ shoop_port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi
   }, new shoop_port_connections_state_t);
 }
 
+shoop_port_connections_state_t *get_decoupled_midi_port_connections_state(shoopdaloop_decoupled_midi_port_t *port) {
+  return api_impl<shoop_port_connections_state_t*, log_level_debug_trace, log_level_warning>("get_decoupled_midi_port_connections_state", [&]() -> shoop_port_connections_state_t* {
+    auto _port = internal_decoupled_midi_port(port);
+    if (!port) { return nullptr; }
+    auto connections = _port->get_port()->get_external_connection_status();
+
+    auto rval = new shoop_port_connections_state_t;
+    rval->n_ports = connections.size();
+    rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
+    uint32_t idx = 0;
+    for (auto &pair : connections) {
+        rval->ports[idx].name = strdup(pair.first.c_str());
+        rval->ports[idx].connected = pair.second;
+        idx++;
+    }
+    return rval;
+  }, new shoop_port_connections_state_t);
+}
+
 void destroy_port_connections_state(shoop_port_connections_state_t *d) {
   return api_impl<void, log_level_debug_trace>("destroy_port_connections_state", [&]() {
     for (uint32_t idx=0; idx<d->n_ports; idx++) {
@@ -1035,6 +1054,22 @@ void disconnect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* ex
     auto _port = internal_midi_port(ours);
     if (!_port) { return; }
     _port->get_port().disconnect_external(std::string(external_port_name));
+  });
+}
+
+void connect_external_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *ours, const char* external_port_name) {
+  return api_impl<void>("connect_external_decoupled_midi_port", [&]() {
+    auto _port = internal_decoupled_midi_port(ours);
+    if (!_port) { return; }
+    _port->get_port()->connect_external(std::string(external_port_name));
+  });
+}
+
+void disconnect_external_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *ours, const char* external_port_name) {
+  return api_impl<void>("disconnect_external_decoupled_midi_port", [&]() {
+    auto _port = internal_decoupled_midi_port(ours);
+    if (!_port) { return; }
+    _port->get_port()->disconnect_external(std::string(external_port_name));
   });
 }
 

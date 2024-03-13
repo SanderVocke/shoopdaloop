@@ -278,6 +278,18 @@ class Backend(ShoopQQuickItem):
     def dummy_n_requested_frames(self):
         return self._backend_driver_obj.dummy_n_requested_frames()
     
+    @ShoopSlot(str, int, int)
+    def dummy_add_external_mock_port(self, name, direction, data_type):
+        return self._backend_driver_obj.dummy_add_external_mock_port(name, direction, data_type)
+    
+    @ShoopSlot(str)
+    def dummy_remove_external_mock_port(self, name):
+        return self._backend_driver_obj.dummy_remove_external_mock_port(name)
+    
+    @ShoopSlot()
+    def dummy_remove_all_external_mock_ports(self):
+        return self._backend_driver_obj.dummy_remove_all_external_mock_ports()
+    
     @ShoopSlot(thread_protection = False)
     def wait_process(self):
         self._backend_driver_obj.wait_process()

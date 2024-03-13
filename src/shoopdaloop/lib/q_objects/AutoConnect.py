@@ -11,7 +11,7 @@ class AutoConnect(FindParentBackend):
     def __init__(self, parent=None):
         super(AutoConnect, self).__init__(parent)
         self.logger = BaseLogger("Frontend.AutoConnect")
-        self._from_regex = None
+        self._internal_port = None
         self._to_regex = None
 
         self.backendChanged.connect(lambda: self.update())
@@ -63,11 +63,13 @@ class AutoConnect(FindParentBackend):
     @ShoopSlot()
     def update(self):
         if self._backend and self._internal_port and self._backend.initialized:
-            external_candidates = None
+            external_candidates = []
             my_connections = self._internal_port.get_connections_state()
+            
+            data_type = self._internal_port.get_data_type()
 
             if self._to_regex is not None:
-                external_candidates = self._backend.find_external_ports(self._to_regex, None, PortDirection.Input)
+                external_candidates = self._backend.find_external_ports(self._to_regex, PortDirection.Any.value, data_type)
             
             self.logger.trace(lambda: f"AutoConnect update: internal_port={self._internal_port}, external_candidates={external_candidates}")
 

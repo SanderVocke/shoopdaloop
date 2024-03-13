@@ -542,6 +542,8 @@ ExternalPortDescriptor &DummyExternalConnections::get_port(std::string name) {
 }
 
 void DummyExternalConnections::connect(DummyPort* port, std::string external_port_name) {
+    auto pname = port->name();
+    log<log_level_debug>("connect {} to {}", pname, external_port_name);
     auto &desc = get_port(external_port_name);
     auto conn = std::make_pair(port, desc.name);
     if (std::find(m_external_connections.begin(), m_external_connections.end(), conn) == m_external_connections.end()) {
@@ -550,6 +552,8 @@ void DummyExternalConnections::connect(DummyPort* port, std::string external_por
 }
 
 void DummyExternalConnections::disconnect(DummyPort* port, std::string external_port_name) {
+    auto pname = port->name();
+    log<log_level_debug>("disconnect {} from {}", pname, external_port_name);
     auto &desc = get_port(external_port_name);
     auto conn = std::make_pair(port, desc.name);
     auto new_end = std::remove(m_external_connections.begin(), m_external_connections.end(), conn);
@@ -566,16 +570,19 @@ PortExternalConnectionStatus DummyExternalConnections::connection_status_of(cons
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::add_external_mock_port(std::string name, shoop_port_direction_t direction, shoop_port_data_type_t data_type) {
+    Log::log<log_level_debug>("add external mock port {}", name);
     m_external_connections->add_external_mock_port(name, direction, data_type);
 }
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::remove_external_mock_port(std::string name) {
+    Log::log<log_level_debug>("remove external mock port {}", name);
     m_external_connections->remove_external_mock_port(name);
 }
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::remove_all_external_mock_ports() {
+    Log::log<log_level_debug>("remove all external mock ports");
     m_external_connections->remove_all_external_mock_ports();
 }
 
