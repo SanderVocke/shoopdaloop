@@ -786,6 +786,8 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     auto source_buf = MidiTestBuffer();
     source_buf.read.push_back(note_on_msg(10, 0, 100, 90)); // Note On, @ t=10, note 100, vel. 90, chan 0
     source_buf.read.push_back(note_off_msg(20, 0, 100, 80)); // Note Off, @ t=20, note 100, vel. 80, chan 0
+    source_buf.read.push_back(note_on_msg(30, 0, 100, 70)); // Note On, @ t=30, note 100, vel. 70, chan 0
+    source_buf.read.push_back(note_off_msg(40, 0, 100, 60)); // Note Off, @ t=40, note 100, vel. 60, chan 0
     channel.PROC_set_recording_buffer(&source_buf, 512);
 
     // Nothing recorded, but the noteOn should be caught by MIDI channel state tracking
@@ -800,35 +802,35 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     REQUIRE(loop.get_length() == 0);
     REQUIRE(loop.get_position() == 0);
 
-    // NoteOff should be recorded
+    // NoteOff and 2nd note on+off should be recorded
     REQUIRE(loop.PROC_get_next_poi().value() > 10); // sanity check
-    loop.PROC_process(10);
+    loop.PROC_process(30);
 
     REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi() == 490); // end of buffer
-    REQUIRE(loop.get_length() == 10);
+    REQUIRE(loop.PROC_get_next_poi() == 470); // end of buffer
+    REQUIRE(loop.get_length() == 30);
     REQUIRE(loop.get_position() == 0);
 
-    CHECK(channel.retrieve_contents(false).size() == 1);
+    CHECK(channel.retrieve_contents(false).size() == 3);
 
     // Stop for a while
     loop.plan_transition(LoopMode_Stopped, 0, false, false);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt); // sanity check
     loop.PROC_process(50);
 
-    // Start playback and play for 20 samples.
+    // Start playback and play.
     // The NoteOn should now be played based only on the fact that a note which was active
     // when recording started, is now not active when playback starts.
-    // The NoteOff is played normally from the recording buffer @ sample 8.
+    // The NoteOff and the second note are played normally from the recording buffer @ sample 8, 18, 28.
     auto playback_buf = MidiTestBuffer();
     channel.PROC_set_playback_buffer(&playback_buf, 512);
     loop.plan_transition(LoopMode_Playing, 0, false, false);
 
     REQUIRE(loop.PROC_get_next_poi().value() >= 10); // sanity check
-    loop.PROC_process(10);
+    loop.PROC_process(30);
     
     auto msgs = playback_buf.written;
-    REQUIRE(msgs.size() == 2);
+    REQUIRE(msgs.size() == 4);
 
     CHECK(msgs[0].data[0] == 0x90); // NoteOn
     CHECK(msgs[0].data[1] == 100);
@@ -840,25 +842,45 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     CHECK(msgs[1].data[2] == 80);
     CHECK(msgs[1].time == 8);
 
+    CHECK(msgs[2].data[0] == 0x90); // NoteOn
+    CHECK(msgs[2].data[1] == 100);
+    CHECK(msgs[2].data[2] == 70);
+    CHECK(msgs[2].time == 18);
+
+    CHECK(msgs[3].data[0] == 0x80); // NoteOff
+    CHECK(msgs[3].data[1] == 100);
+    CHECK(msgs[3].data[2] == 60);
+    CHECK(msgs[3].time == 28);
+
     // Play another loop to make sure it works twice in a row
     playback_buf.written.clear();
     REQUIRE(loop.PROC_get_next_poi().value() >= 10); // sanity check
-    loop.PROC_process(10);
+    loop.PROC_process(30);
     
     msgs = playback_buf.written;
-    REQUIRE(msgs.size() == 3);
+    REQUIRE(msgs.size() == 5);
 
     CHECK(msgs[0].data[0] == 0xB0); // All sound off
 
     CHECK(msgs[1].data[0] == 0x90); // NoteOn
     CHECK(msgs[1].data[1] == 100);
     CHECK(msgs[1].data[2] == 90);
-    CHECK(msgs[1].time == 10); // Written at start of 2nd playback
+    CHECK(msgs[1].time == 30); // Written at start of 2nd playback
 
     CHECK(msgs[2].data[0] == 0x80); // NoteOff
     CHECK(msgs[2].data[1] == 100);
     CHECK(msgs[2].data[2] == 80);
-    CHECK(msgs[2].time == 18);
+    CHECK(msgs[2].time == 38);
+
+    CHECK(msgs[3].data[0] == 0x90); // NoteOn
+    CHECK(msgs[3].data[1] == 100);
+    CHECK(msgs[3].data[2] == 70);
+    CHECK(msgs[3].time == 48); // Written at start of 2nd playback
+
+    CHECK(msgs[4].data[0] == 0x80); // NoteOff
+    CHECK(msgs[4].data[1] == 100);
+    CHECK(msgs[4].data[2] == 60);
+    CHECK(msgs[4].time == 58);
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "[AudioMidiLoop][midi]") {
@@ -893,6 +915,8 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     auto source_buf = MidiTestBuffer();
     source_buf.read.push_back(note_on_msg(5, 0, 100, 90)); // Note On, @ t=5, note 100, vel. 90, chan 0
     source_buf.read.push_back(note_off_msg(15, 0, 100, 80)); // Note Off, @ t=15, note 100, vel. 80, chan 0
+    source_buf.read.push_back(note_on_msg(17, 0, 100, 70)); // Note On, @ t=17, note 100, vel. 70, chan 0
+    source_buf.read.push_back(note_off_msg(19, 0, 100, 60)); // Note Off, @ t=19, note 100, vel. 60, chan 0
     channel.PROC_set_recording_buffer(&source_buf, 512);
 
     // Plan recording (pre-record starts), record will start after 10 frames
@@ -908,7 +932,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     CHECK(loop.get_length() == 0);
     CHECK(loop.get_position() == 0);
 
-    // NoteOff is recorded
+    // NoteOff and 2nd note recorded
     CHECK(loop.PROC_get_next_poi().value() >= 10); // sanity check
     process(10);
 
@@ -916,14 +940,18 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     CHECK(loop.get_length() == 10);
     CHECK(loop.get_position() == 0);
 
-    // Total msgs in the buffer is now 2
+    // Total msgs in the buffer is now 4
     auto contents = channel.retrieve_contents(false);
-    CHECK(contents.size() == 2);
+    CHECK(contents.size() == 4);
     CHECK(channel.get_start_offset() == 10);
     CHECK(contents[0].get_time() == 5);
     CHECK(contents[0].get_data()[0] == 0x90);
     CHECK(contents[1].get_time() == 15);
     CHECK(contents[1].get_data()[0] == 0x80);
+    CHECK(contents[2].get_time() == 17);
+    CHECK(contents[2].get_data()[0] == 0x90);
+    CHECK(contents[3].get_time() == 19);
+    CHECK(contents[3].get_data()[0] == 0x80);
 
     // Set the preplay amount
     channel.set_pre_play_samples(6);
@@ -955,19 +983,23 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     msgs.clear();
 
     // Play 10 more samples. That should cover the normal play period.
-    // Only a note off is played, since note on was already played during pre-play period.
+    // Only a note off + the 2nd note is played, since note on was already played during pre-play period.
     process(10);
-    CHECK(msgs.size() == 1);
+    CHECK(msgs.size() == 3);
     CHECK(msgs[0].data[0] == 0x80); // NoteOff
     CHECK(msgs[0].data[1] == 100);
     CHECK(msgs[0].data[2] == 80);
     CHECK(msgs[0].time == 15);
+    CHECK(msgs[1].data[0] == 0x90); // NoteOn
+    CHECK(msgs[1].time == 17);
+    CHECK(msgs[2].data[0] == 0x80); // NoteOff
+    CHECK(msgs[2].time == 19);
     msgs.clear();
 
     // Play another cycle. This time, the cycle should end in all notes off,
     // and a NoteOn should be inserted because there is no pre-play anymore.
     process(10);
-    CHECK(msgs.size() == 3);
+    CHECK(msgs.size() == 5);
 
     CHECK(msgs[0].data[0] == 0xB0); // All sound off
 
@@ -980,4 +1012,148 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     CHECK(msgs[2].data[1] == 100);
     CHECK(msgs[2].data[2] == 80);
     CHECK(msgs[2].time == 25);
+
+    CHECK(msgs[3].data[0] == 0x90); // NoteOn
+    CHECK(msgs[3].data[1] == 100);
+    CHECK(msgs[3].data[2] == 70);
+    CHECK(msgs[3].time == 27);
+
+    CHECK(msgs[4].data[0] == 0x80); // NoteOff
+    CHECK(msgs[4].data[1] == 100);
+    CHECK(msgs[4].data[2] == 60);
+    CHECK(msgs[4].time == 29);
+};
+
+TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay", "[AudioMidiLoop][midi]") {
+    auto loop_ptr = std::make_shared<AudioMidiLoop>();
+    auto &loop = *loop_ptr;
+    auto sync_source = std::make_shared<AudioMidiLoop>();
+    sync_source->set_length(10);
+    sync_source->plan_transition(LoopMode_Playing);
+    REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 10);
+
+    loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
+    loop.PROC_update_poi();
+    loop.PROC_update_trigger_eta();
+    REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 10);
+
+    auto process = [&](uint32_t n_samples) {
+        std::set<std::shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
+        process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
+    };
+
+    loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
+    auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
+
+    REQUIRE(loop.get_mode() == LoopMode_Stopped);
+    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
+    REQUIRE(loop.get_length() == 0);
+    REQUIRE(loop.get_position() == 0);
+
+    auto source_buf = MidiTestBuffer();
+    source_buf.read.push_back(note_on_msg(5, 0, 100, 90)); // Note On, @ t=5, note 100, vel. 90, chan 0
+    source_buf.read.push_back(note_off_msg(15, 0, 100, 80)); // Note Off, @ t=15, note 100, vel. 80, chan 0
+    source_buf.read.push_back(note_on_msg(17, 0, 100, 70)); // Note On, @ t=17, note 100, vel. 70, chan 0
+    source_buf.read.push_back(note_off_msg(19, 0, 100, 60)); // Note Off, @ t=19, note 100, vel. 60, chan 0
+    channel.PROC_set_recording_buffer(&source_buf, 512);
+
+    // Plan recording (pre-record starts), record will start after 10 frames
+    loop.plan_transition(LoopMode_Recording, 0, true, false);
+
+    // Note On is prerecorded
+    process(10);
+    loop.PROC_update_poi();
+    loop.PROC_update_trigger_eta();
+
+    // Now should be recording
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
+
+    // NoteOff and 2nd note recorded
+    CHECK(loop.PROC_get_next_poi().value() >= 10); // sanity check
+    process(10);
+
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.get_length() == 10);
+    CHECK(loop.get_position() == 0);
+
+    // Total msgs in the buffer is now 4
+    auto contents = channel.retrieve_contents(false);
+    CHECK(contents.size() == 4);
+    CHECK(channel.get_start_offset() == 10);
+    CHECK(contents[0].get_time() == 5);
+    CHECK(contents[0].get_data()[0] == 0x90);
+    CHECK(contents[1].get_time() == 15);
+    CHECK(contents[1].get_data()[0] == 0x80);
+    CHECK(contents[2].get_time() == 17);
+    CHECK(contents[2].get_data()[0] == 0x90);
+    CHECK(contents[3].get_time() == 19);
+    CHECK(contents[3].get_data()[0] == 0x80);
+
+    // Stop for a while
+    loop.plan_transition(LoopMode_Stopped, 0, false, false);
+    REQUIRE(loop.PROC_get_next_poi() == std::nullopt); // sanity check
+    process(50);
+
+    // Plan playback
+    loop.plan_transition(LoopMode_Playing, 0, true, false);
+
+    // process 10 samples. That should cover the pre-play period.
+    // Nothing is played because no pre-play is enabled.
+    auto playback_buf = MidiTestBuffer();
+    auto &msgs = playback_buf.written;
+    channel.PROC_set_playback_buffer(&playback_buf, 512);
+    process(9);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+    CHECK(msgs.size() == 0);
+    process(1);
+
+    CHECK(loop.get_mode() == LoopMode_Playing);
+    CHECK(msgs.size() == 0);
+
+    // Play 10 more samples. That should cover the normal play period.
+    // Only a note off + the 2nd note is played, plus an extra note on at the start.
+    process(10);
+    CHECK(msgs.size() == 4);
+    CHECK(msgs[0].data[0] == 0x90); // NoteOn
+    CHECK(msgs[0].data[1] == 100);
+    CHECK(msgs[0].data[2] == 90);
+    CHECK(msgs[0].time == 10);
+    CHECK(msgs[1].data[0] == 0x80); // NoteOff
+    CHECK(msgs[1].data[1] == 100);
+    CHECK(msgs[1].data[2] == 80);
+    CHECK(msgs[1].time == 15);
+    CHECK(msgs[2].data[0] == 0x90); // NoteOn
+    CHECK(msgs[2].time == 17);
+    CHECK(msgs[3].data[0] == 0x80); // NoteOff
+    CHECK(msgs[3].time == 19);
+    msgs.clear();
+
+    // Play another cycle. This time, the cycle should end in all notes off,
+    // and a NoteOn should be inserted again.
+    process(10);
+    CHECK(msgs.size() == 5);
+
+    CHECK(msgs[0].data[0] == 0xB0); // All sound off
+
+    CHECK(msgs[1].data[0] == 0x90); // NoteOn
+    CHECK(msgs[1].data[1] == 100);
+    CHECK(msgs[1].data[2] == 90);
+    CHECK(msgs[1].time == 20); // Written at start of 2nd playback
+
+    CHECK(msgs[2].data[0] == 0x80); // NoteOff
+    CHECK(msgs[2].data[1] == 100);
+    CHECK(msgs[2].data[2] == 80);
+    CHECK(msgs[2].time == 25);
+
+    CHECK(msgs[3].data[0] == 0x90); // NoteOn
+    CHECK(msgs[3].data[1] == 100);
+    CHECK(msgs[3].data[2] == 70);
+    CHECK(msgs[3].time == 27);
+
+    CHECK(msgs[4].data[0] == 0x80); // NoteOff
+    CHECK(msgs[4].data[1] == 100);
+    CHECK(msgs[4].data[2] == 60);
+    CHECK(msgs[4].time == 29);
 };
