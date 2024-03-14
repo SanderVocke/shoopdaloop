@@ -205,7 +205,6 @@ def run_qml_tests(args):
         app.wait(1000)
 
     app.do_quit()
-    app.exit(final_result)
 
     if args.list:
         return 0

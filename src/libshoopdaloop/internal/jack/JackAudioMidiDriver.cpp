@@ -211,11 +211,11 @@ std::vector<ExternalPortDescriptor> GenericJackAudioMidiDriver<API>::find_extern
 
     // First gather up the names
     std::vector<std::string> names;
-    for(auto it = result; *it != nullptr; it++) {
+    for(auto it = result; it != nullptr && *it != nullptr; it++) {
         ExternalPortDescriptor desc;
         names.push_back(std::string(*it));
-        API::free((void*) *it);
     }
+    if (result) { API::free((void*) result); }
 
     // Now fill in further data
     std::vector<ExternalPortDescriptor> rval;

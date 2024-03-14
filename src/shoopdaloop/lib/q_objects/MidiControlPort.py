@@ -4,7 +4,7 @@ from PySide6.QtQuick import QQuickItem
 from .ShoopPyObject import *
 from .FindParentBackend import FindParentBackend
 
-from ..logging import Logger as BaseLogger
+from .Logger import Logger as BaseLogger
 from ..findFirstParent import findFirstParent
 
 from .AutoConnect import AutoConnect
@@ -27,11 +27,13 @@ class MidiControlPort(FindParentBackend):
         self._name_hint = None
         self._direction = None
         self._backend_obj = None
-        self.logger = BaseLogger("Frontend.MidiControlPort")
+        self.logger = BaseLogger(parent=self)
+        self.logger.name = "Frontend.MidiControlPort"
         self._backend = None
         self._autoconnect_regexes = []
         self._name = None
         self._may_open = False
+        self._initialized = False
         
         # Track CC states
         self._cc_states = [[ None for cc in range(128)] for channel in range(128)]
@@ -39,9 +41,9 @@ class MidiControlPort(FindParentBackend):
         self._active_notes = set()
         
         self._autoconnecters = []
-        self.nameChanged.connect(self.autoconnect_update)
-        self.autoconnect_regexesChanged.connect(self.autoconnect_update)
-        self.directionChanged.connect(self.autoconnect_update)
+        self.nameChanged.connect(lambda: self.autoconnect_update())
+        self.autoconnect_regexesChanged.connect(lambda: self.autoconnect_update())
+        self.directionChanged.connect(lambda: self.autoconnect_update())
         self.autoconnect_update()
     
         self._lua_obj = None
@@ -56,11 +58,18 @@ class MidiControlPort(FindParentBackend):
     ## SIGNALS
     ######################
     msgReceived = ShoopSignal(list)
+    detectedExternalAutoconnectPartnerWhileClosed = ShoopSignal()
     connected = ShoopSignal()
 
     ######################
     # PROPERTIES
     ######################
+    
+    # initialized
+    initializedChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=initializedChanged)
+    def initialized(self):
+        return self._backend_obj != None
     
     # lua_interface
     luaInterfaceChanged = ShoopSignal('QVariant')
@@ -76,6 +85,7 @@ class MidiControlPort(FindParentBackend):
     @autoconnect_regexes.setter
     def autoconnect_regexes(self, l):
         if l != self._autoconnect_regexes:
+            self.logger.trace(lambda: f'autoconnect_regexes -> {l}')
             self._autoconnect_regexes = l
             self.autoconnect_regexesChanged.emit(l)
 
@@ -88,6 +98,7 @@ class MidiControlPort(FindParentBackend):
     def name_hint(self, l):
         if l and l != self._name_hint:
             self._name_hint = l
+            self.logger.trace(lambda: f'name_hint -> {l}')
             self.nameHintChanged.emit(l)
             self.maybe_init()
     
@@ -106,6 +117,7 @@ class MidiControlPort(FindParentBackend):
     def direction(self, l):
         if l != self._direction:
             self._direction = l
+            self.logger.trace(lambda: f'direction -> {l}')
             self.directionChanged.emit(l)
             self.maybe_init()
     
@@ -144,8 +156,9 @@ class MidiControlPort(FindParentBackend):
     @ShoopSlot(result='QVariant')
     def get_connections_state(self):
         if self._backend_obj:
-            return (self._backend_obj.get_connections_state() if self._backend_obj else dict())
+            return self._backend_obj.get_connections_state()
         else:
+            self.logger.trace(lambda: "Attempted to get connections state of uninitialized port {}".format(self._name_hint))
             return dict()
     
     @ShoopSlot(str)
@@ -193,12 +206,13 @@ class MidiControlPort(FindParentBackend):
     def send_msg(self, msg):
         # NOTE: not for direct use from Lua.
         # Sends the given bytes as a MIDI message.
-        self.logger.debug(lambda: "Sending: {}".format(msg))
+        self.logger.trace(lambda: "Sending: {}".format(msg))
         if self._direction == PortDirection.Output.value and self._backend_obj:
             self._backend_obj.send_midi(msg)
     
     @ShoopSlot()
     def autoconnect_update(self):
+        self.logger.trace(lambda: f"autoconnect_update {self._autoconnect_regexes} {self._direction} {self._autoconnecters}")
         if self._autoconnect_regexes and self._direction != None:
             for conn in self._autoconnecters:
                 conn.destroy()
@@ -206,10 +220,13 @@ class MidiControlPort(FindParentBackend):
             
             for regex in self._autoconnect_regexes:
                 conn = AutoConnect(self)
+                conn.onlyExternalFound.connect(self.detectedExternalAutoconnectPartnerWhileClosed)
                 conn.connected.connect(self.connected)
                 conn.to_regex = regex
                 conn.internal_port = self
                 self._autoconnecters.append(conn)
+            
+            self.logger.trace(lambda: f"Autoconnecters: {self._autoconnecters}")
     
     @ShoopSlot()
     def poll(self):
@@ -228,10 +245,7 @@ class MidiControlPort(FindParentBackend):
         if self._backend and not self._backend.initialized:
             self._backend.initializedChanged.connect(self.maybe_init)
             return
-        if self._name_hint and self._backend and self._direction != None and self._may_open:
-            if self._backend_obj:
-                return
-            
+        if self._name_hint and self._backend and self._direction != None and self._may_open:            
             self.logger.debug(lambda: "Opening decoupled MIDI port {}".format(self._name_hint))
             self._backend_obj = self._backend.get_backend_driver_obj().open_decoupled_midi_port(self._name_hint, self._direction)
             
@@ -248,8 +262,8 @@ class MidiControlPort(FindParentBackend):
                 self.timer.setInterval(0)
                 self.timer.timeout.connect(self.poll)
                 self.timer.start()
-            
-            self.backendInitializedChanged.emit(True)
+                
+            self.initializedChanged.emit(True)
     
     @ShoopSlot(result='QVariant')
     def get_py_send_fn(self):

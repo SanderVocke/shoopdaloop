@@ -16,10 +16,17 @@ class AutoConnect(FindParentBackend):
 
         self.backendChanged.connect(lambda: self.update())
         self.backendInitializedChanged.connect(lambda: self.update())
+
+        self._timer = QTimer()
+        self._timer.setSingleShot(False)
+        self._timer.setInterval(1000)
+        self._timer.timeout.connect(self.update)
+        self._timer.start()
     
     ######################
     ## SIGNALS
     ######################
+    onlyExternalFound = ShoopSignal()
     connected = ShoopSignal()
 
     ######################
@@ -35,6 +42,7 @@ class AutoConnect(FindParentBackend):
     def internal_port(self, l):
         if l and l != self._internal_port:
             self._internal_port = l
+            self.logger.trace(lambda: f"internal_port -> {l}")
             self.internalPortChanged.emit(l)
             self.update()
     
@@ -47,6 +55,7 @@ class AutoConnect(FindParentBackend):
     def to_regex(self, l):
         if l and l != self._to_regex:
             self._to_regex = l
+            self.logger.trace(lambda: f"to_regex -> {l}")
             self.toRegexChanged.emit(l)
             self.update()
     
@@ -64,17 +73,21 @@ class AutoConnect(FindParentBackend):
     def update(self):
         if self._backend and self._internal_port and self._backend.initialized:
             external_candidates = []
-            my_connections = self._internal_port.get_connections_state()
-            
+            my_connections = self._internal_port.get_connections_state() if self._internal_port else {}
             data_type = self._internal_port.get_data_type()
 
             if self._to_regex is not None:
                 external_candidates = self._backend.find_external_ports(self._to_regex, PortDirection.Any.value, data_type)
             
-            self.logger.trace(lambda: f"AutoConnect update: internal_port={self._internal_port}, external_candidates={external_candidates}")
-
             for c in external_candidates:
-                if c.direction != self._internal_port.direction and c.name not in my_connections.keys():
-                    self.logger.info(lambda: f"Autoconnecting {self._internal_port.name} to {c.name}")
-                    self._internal_port.connect_external_port(c.name)
-                    self.connected.emit()
+                connected = c.name in my_connections.keys() and my_connections[c.name] == True
+                if connected:
+                    self.logger.trace(lambda: f"{self._internal_port.name} already connected to {c.name}")
+                elif c.direction != self._internal_port.direction:
+                    if self._internal_port.initialized:
+                        self.logger.info(lambda: f"Autoconnecting {self._internal_port.name} to {c.name}")
+                        self._internal_port.connect_external_port(c.name)
+                        self.connected.emit()
+                    else:
+                        self.logger.debug(lambda: f"Found external autoconnect port {c.name}, internal port not yet opened")
+                        self.onlyExternalFound.emit()

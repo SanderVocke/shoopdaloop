@@ -19,21 +19,21 @@ Column {
         delegate: EditMidiControlItem {
             width: root.width
             
-            Component.onCompleted: { item = configuration.contents[index]; itemChanged() }
+            Component.onCompleted: { edited_item = configuration.contents[index]; edited_itemChanged() }
 
             Connections {
                 target: configuration
                 function onContentsChanged() {
-                    if (JSON.stringify(item) !== JSON.stringify(configuration.contents[index])) {
-                        item = configuration.contents[index]
-                        itemChanged()
+                    if (JSON.stringify(edited_item) !== JSON.stringify(configuration.contents[index])) {
+                        edited_item = configuration.contents[index]
+                        edited_itemChanged()
                     }
                 }
             }
 
-            onItemChanged: {
-                if (JSON.stringify(item) !== JSON.stringify(configuration.contents[index])) {
-                    configuration.contents[index] = item
+            onEdited_itemChanged: {
+                if (JSON.stringify(edited_item) !== JSON.stringify(configuration.contents[index])) {
+                    configuration.contents[index] = edited_item
                     configuration.contentsChanged()
                 }
             }
@@ -68,7 +68,9 @@ Column {
             dialog.accepted.connect(function() {
                 var new_contents = configuration.contents.concat([{
                     'filters': dialog.filters,
-                    'action': MidiControl.default_action_config
+                    'action': MidiControl.default_action_config.action,
+                    'inputs': MidiControl.default_action_config.inputs,
+                    'condition': MidiControl.default_action_config.condition
                 }])
                 root.logger.info(() => (JSON.stringify(new_contents)))
                 configuration.contents = new_contents
@@ -79,11 +81,11 @@ Column {
     }
 
     component EditMidiControlItem: GroupBox {
-        property var item
-        id: box
+        property var edited_item
+        id: edit_control_item_groupbox
 
-        property var rule_descriptor: MidiControl.parse_midi_filters(item.filters)
-        property var builtin_action: (MidiControl.builtin_actions[item.action] || {
+        property var rule_descriptor: MidiControl.parse_midi_filters(edited_item.filters)
+        property var builtin_action: (MidiControl.builtin_actions[edited_item.action] || {
             'name': 'Custom...',
             'description': 'Custom action',
             'script': 'print_debug("hello")'
@@ -132,12 +134,12 @@ Column {
                         }
                         onClicked: {
                             var dialog = midi_filters_dialog_factory.createObject(root, {
-                                'filters': item.filters,
+                                'filters': edited_item.filters,
                             })
 
                             dialog.open()
                             dialog.accepted.connect(function() {
-                                box.updateFilters(dialog.filters)
+                                edit_control_item_groupbox.updateFilters(dialog.filters)
                                 configuration.contentsChanged()
                                 dialog.close()
                                 dialog.destroy()
@@ -158,7 +160,7 @@ Column {
                     height: filter_row.height
 
                     onClicked: {
-                        box.deleteItem()
+                        edit_control_item_groupbox.deleteItem()
                     }
                 }
 
@@ -166,18 +168,18 @@ Column {
                     anchors.right: delete_rule_button.left
                     text: 'Add condition'
                     height: filter_row.height
-                    visible: !item.hasOwnProperty('condition')
+                    visible: !edited_item.hasOwnProperty('condition')
 
                     onClicked: {
-                        box.item.condition = ''
-                        box.itemChanged()
+                        edit_control_item_groupbox.edited_item.condition = ''
+                        edit_control_item_groupbox.edited_itemChanged()
                     }
                 }
             }
 
             Row {
                 spacing: 3
-                visible: item.hasOwnProperty('condition')
+                visible: edited_item.hasOwnProperty('condition')
 
                 Label {
                     text: 'If '
@@ -188,11 +190,11 @@ Column {
                     id: condition_field
                     height: 30
                     placeholderText: 'custom condition expression'
-                    text: box.item.condition || ''
+                    text: edit_control_item_groupbox.edited_item.condition || ''
                     width: 500
                     onAccepted: {
-                        box.item.condition = text
-                        box.itemChanged()
+                        edit_control_item_groupbox.edited_item.condition = text
+                        edit_control_item_groupbox.edited_itemChanged()
                     }
                 }
 
@@ -208,9 +210,9 @@ Column {
                         anchors.centerIn: parent
                     }
                     onClicked: {
-                        if(item.hasOwnProperty('condition')) {
-                            delete item.condition
-                            box.itemChanged()
+                        if(edited_item.hasOwnProperty('condition')) {
+                            delete edited_item.condition
+                            edit_control_item_groupbox.edited_itemChanged()
                         }
                     }
                 }
@@ -232,19 +234,19 @@ Column {
                     model: Object.keys(MidiControl.builtin_actions).concat(['Custom...'])
                     onActivated: (idx) => {
                         if (model[idx] === 'Custom...') {
-                            box.item.action = ''
-                            if (item.hasOwnProperty('inputs')) { delete item.inputs }
+                            edit_control_item_groupbox.edited_item.action = ''
+                            if (edited_item.hasOwnProperty('inputs')) { delete edited_item.inputs }
                         } else {
-                            box.item.action = model[idx]
-                            item.inputs = {}
+                            edit_control_item_groupbox.edited_item.action = model[idx]
+                            edited_item.inputs = {}
                             for (var input_name in MidiControl.builtin_actions[model[idx]].inputs) {
-                                item.inputs[input_name] = MidiControl.builtin_actions[model[idx]].inputs[input_name].default
+                                edited_item.inputs[input_name] = MidiControl.builtin_actions[model[idx]].inputs[input_name].default
                             }
                         }
-                        box.itemChanged()
+                        edit_control_item_groupbox.edited_itemChanged()
                     }
                     currentIndex: {
-                        let idx = action_combo.model.indexOf(box.item.action)
+                        let idx = action_combo.model.indexOf(edit_control_item_groupbox.edited_item.action)
                         currentIndex = (idx < 0) ? model.length - 1 : idx
                     }
                 }
@@ -272,11 +274,11 @@ Column {
                     id: custom_action_script_field
                     height: 30
                     placeholderText: 'custom action script'
-                    text: box.item.action
+                    text: edit_control_item_groupbox.edited_item.action
                     width: 500
                     onAccepted: {
-                        box.item.action = text
-                        box.itemChanged()
+                        edit_control_item_groupbox.edited_item.action = text
+                        edit_control_item_groupbox.edited_itemChanged()
                     }
                 }
             }
@@ -289,8 +291,8 @@ Column {
                     id: action_row
                     property var input: Object.values(action_inputs)[index]
                     property string input_name: Object.keys(action_inputs)[index]
-                    property var maybe_configured_value: (item.hasOwnProperty('inputs') && item.inputs.hasOwnProperty(input_name)) ?
-                        item.inputs[input_name] : null
+                    property var maybe_configured_value: (edited_item.hasOwnProperty('inputs') && edited_item.inputs.hasOwnProperty(input_name)) ?
+                        edited_item.inputs[input_name] : null
 
                     Item { width: 200; height: 30; anchors.verticalCenter: input_combo.verticalCenter }
 
@@ -312,9 +314,9 @@ Column {
                         }
                         onActivated: (idx) => {
                             if (idx < (model.length - 1)) {
-                                if (!box.item.hasOwnProperty('inputs')) { box.item.inputs = {} }
-                                box.item["inputs"][action_row.input_name] = model[idx]
-                                box.itemChanged()
+                                if (!edit_control_item_groupbox.edited_item.hasOwnProperty('inputs')) { edit_control_item_groupbox.edited_item.inputs = {} }
+                                edit_control_item_groupbox.edited_item["inputs"][action_row.input_name] = model[idx]
+                                edit_control_item_groupbox.edited_itemChanged()
                             }
                         }
                     }
@@ -332,9 +334,9 @@ Column {
                         text: maybe_configured_value || ''
 
                         onAccepted: {
-                            if (!box.item.hasOwnProperty('inputs')) { box.item.inputs = {} }
-                            box.item["inputs"][action_row.input_name] = text
-                            box.itemChanged()
+                            if (!edit_control_item_groupbox.edited_item.hasOwnProperty('inputs')) { edit_control_item_groupbox.edited_item.inputs = {} }
+                            edit_control_item_groupbox.edited_item["inputs"][action_row.input_name] = text
+                            edit_control_item_groupbox.edited_itemChanged()
                         }
                     }
                 }

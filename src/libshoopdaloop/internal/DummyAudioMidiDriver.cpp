@@ -424,7 +424,7 @@ std::shared_ptr<AudioPort<audio_sample_t>>
 DummyAudioMidiDriver<Time, Size>::open_audio_port(std::string name,
                                               shoop_port_direction_t direction) {
     Log::log<log_level_debug>("DummyAudioMidiDriver : add audio port");
-    auto rval = std::make_shared<DummyAudioPort>(name, direction);
+    auto rval = std::make_shared<DummyAudioPort>(name, direction, m_external_connections);
     m_audio_ports.insert(rval);
     return rval;
 }
@@ -434,7 +434,7 @@ std::shared_ptr<MidiPort>
 DummyAudioMidiDriver<Time, Size>::open_midi_port(std::string name,
                                              shoop_port_direction_t direction) {
     Log::log<log_level_debug>("DummyAudioMidiDriver: add midi port");
-    auto rval = std::make_shared<DummyMidiPort>(name, direction);
+    auto rval = std::make_shared<DummyMidiPort>(name, direction, m_external_connections);
     m_midi_ports.insert(rval);
     return rval;
 }
