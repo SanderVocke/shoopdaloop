@@ -17,7 +17,7 @@ from PySide6.QtQml import QJSValue
 from .Task import Task
 from .Tasks import Tasks
 from .ShoopPyObject import *
-from ..directories import installation_dir
+from ..directories import installation_dir, scripts_dir
 
 from shoopdaloop.lib.logging import Logger
 from shoopdaloop.lib.smf import generate_smf, parse_smf
@@ -51,6 +51,10 @@ class FileIO(ShoopQObject):
     @ShoopSlot(result=str)
     def get_installation_directory(self):
         return installation_dir()
+
+    @ShoopSlot(result=str)
+    def get_scripts_directory(self):
+        return scripts_dir()
 
     @ShoopSlot(str, str)
     def write_file(self, filename, content):

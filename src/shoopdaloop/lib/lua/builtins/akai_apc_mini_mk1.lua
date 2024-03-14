@@ -11,6 +11,10 @@
 -- - The sync loop is mapped to the unmarked button above "Shift".
 --   Since it does not support multiple LED colors, it just becomes
 --   green if playing or recording, and off otherwise.
+-- - Faders control the track gain levels.
+--
+-- Note that for now, the loops and tracks simply map to the first 8x8 items
+-- on the grid. A movable window will be added in the future.
 
 print_debug("Init akai_apc_mini_mk1.lua")
 

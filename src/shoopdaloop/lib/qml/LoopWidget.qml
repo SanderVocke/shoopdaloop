@@ -1510,7 +1510,7 @@ Item {
             }
             ShoopMenuItem {
                 text: "Save audio..."
-                onClicked: presavedialog.open()
+                onClicked: { presavedialog.update(); presavedialog.open() }
                 shown: root.descriptor_has_audio
             }
             ShoopMenuItem {
