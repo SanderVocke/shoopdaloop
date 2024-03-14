@@ -103,7 +103,7 @@ const default_action_config =({
   'inputs': {
     'loops': 'selection'
   },
-  'condition': undefined
+  'condition': null
 })
 
 // To specify what MIDI messages to react to, and how to react to them,

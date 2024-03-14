@@ -19,6 +19,8 @@ from ..backend_wrappers import open_audio_port as backend_open_audio_port, open_
 from ..findChildItems import findChildItems
 from .Logger import Logger
 
+all_active_backend_objs = set()
+
 # Wraps the back-end session + driver in a single object.
 class Backend(ShoopQQuickItem):
     def __init__(self, parent=None):
@@ -48,6 +50,9 @@ class Backend(ShoopQQuickItem):
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
         
         self.setObjectName("ShoopBackend")
+        
+        global all_active_backend_objs
+        all_active_backend_objs.add(self)
     
     updated = ShoopSignal()
 
@@ -241,9 +246,10 @@ class Backend(ShoopQQuickItem):
         )
         while self._timer.isActive():
             time.sleep(0.005)
-        self._timer_thread.exit()
-        while self._timer_thread.isRunning():
-            time.sleep(0.005)
+        if Shiboken.isValid(self._timer_thread):
+            self._timer_thread.exit()
+            while self._timer_thread.isRunning():
+                time.sleep(0.005)
         if self._initialized:
             self._backend_session_obj.destroy()
             self._backend_driver_obj.destroy()
@@ -411,3 +417,8 @@ class Backend(ShoopQQuickItem):
             Q_ARG(int, self._update_interval_ms)
         )
     
+def close_all_backends():
+    global all_active_backend_objs
+    a = copy.copy(all_active_backend_objs)
+    for b in a:
+        b.close()

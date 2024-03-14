@@ -36,7 +36,7 @@ ShoopTestFile {
 
         ShoopSessionTestCase {
             id: testcase
-            name: 'TrackControlAndLoop_direct'
+            name: 'Midi'
             filename : TestFilename.test_filename()
             session: session
 
@@ -93,7 +93,7 @@ ShoopTestFile {
             }
 
             test_fns: ({
-                'test_midi_direct_record_then_play': () => {
+                'midi_record_then_play': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -102,9 +102,9 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     let input = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  },
-                        { 'time': 4, 'data': [0x90, 10,  10]  }
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  },
+                        { 'time': 4, 'data': [0x80, 10,  10]  }
                     ]
                     let chan = lut.get_midi_output_channels()[0]
 
@@ -139,7 +139,7 @@ ShoopTestFile {
                     verify_eq(out, input, null, true)
                 },
 
-                'test_midi_direct_prerecord_then_play': () => {
+                'midi_prerecord_then_play': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -157,9 +157,9 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     let input = [
-                        { 'time': 0, 'data': [0x90, 100, 100] }, // during pre-reord
-                        { 'time': 3, 'data': [0x90, 50,  50]  }, // during record
-                        { 'time': 4, 'data': [0x90, 10,  10]  }  // during record
+                        { 'time': 0, 'data': [0x80, 100, 100] }, // during pre-reord
+                        { 'time': 3, 'data': [0x80, 50,  50]  }, // during record
+                        { 'time': 4, 'data': [0x80, 10,  10]  }  // during record
                     ]
                     let chan = lut.get_midi_output_channels()[0]
 
@@ -188,8 +188,8 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     let expect_output = [
-                        { 'time': 1, 'data': [0x90, 50,  50]  }, // from input[1]
-                        { 'time': 2, 'data': [0x90, 10,  10]  }  // from input[2]
+                        { 'time': 1, 'data': [0x80, 50,  50]  }, // from input[1]
+                        { 'time': 2, 'data': [0x80, 10,  10]  }  // from input[2]
                     ]
 
                     verify_eq(chan.get_data(), input, null, true)

@@ -21,7 +21,7 @@
                         "type": "object",
                         "additionalProperties": { "type": "string" }
                     },
-                    "condition": { "type": "string" }
+                    "condition": { "type": ["string", "null"] }
                 },
                 "required": ["filters", "action"]
             }
