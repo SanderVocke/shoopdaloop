@@ -13,6 +13,7 @@ class AutoConnect(FindParentBackend):
         self.logger = BaseLogger("Frontend.AutoConnect")
         self._internal_port = None
         self._to_regex = None
+        self._closed = False
 
         self.backendChanged.connect(self.update)
         self.backendInitializedChanged.connect(self.update)
@@ -65,14 +66,14 @@ class AutoConnect(FindParentBackend):
     
     @ShoopSlot()
     def destroy(self):
-        print("DESTROY")
         self._to_regex = None
         self._internal_port = None
         self._backend = None
+        self._closed = True
     
     @ShoopSlot()
     def update(self):
-        if self._backend and self._internal_port and self._backend.initialized:
+        if self._backend and self._internal_port and self._backend.initialized and not self._closed:
             external_candidates = []
             my_connections = self._internal_port.get_connections_state() if self._internal_port else {}
             data_type = self._internal_port.get_data_type()
