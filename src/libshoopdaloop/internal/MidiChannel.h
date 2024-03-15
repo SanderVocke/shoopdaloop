@@ -91,8 +91,6 @@ private:
     std::atomic<uint32_t> ma_pre_play_samples = 0;
     std::atomic<int> ma_last_played_back_sample = 0;
 
-    const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
-
 public:
     MidiChannel(uint32_t data_size, shoop_channel_mode_t mode);
     ~MidiChannel();
@@ -136,7 +134,7 @@ public:
                              uint32_t n_samples);
 
     void clear(bool thread_safe=true);
-    void PROC_send_all_sound_off();
+    void PROC_send_all_sound_off(unsigned frame=0);
 
     void PROC_send_message_ref(MidiWriteableBufferInterface &buf, MidiSortableMessageInterface const &event);
 

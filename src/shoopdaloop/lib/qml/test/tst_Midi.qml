@@ -194,6 +194,71 @@ ShoopTestFile {
 
                     verify_eq(chan.get_data(), input, null, true)
                     verify_eq(out, expect_output, null, true)
+                },
+
+                'midi_prerecord_then_play_stateful': () => {
+                    check_backend()
+                    reset()
+                    tut_control().monitor = false
+                    tut_control().mute = false
+
+                    // Set sync loop so that it will trigger in 20 frames from now
+                    syncloop.set_length(20)
+                    syncloop.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(20)
+                    session.backend.wait_process()
+
+                    // Set main loop to record (will pre-record, then transition @ sync)
+                    lut.transition(ShoopConstants.LoopMode.Recording, 0, true)
+                    testcase.wait_updated(session.backend)
+
+                    let input = [
+                        { 'time': 10, 'data': Midi.create_noteOn(0, 100, 100) }, // during pre-reord
+                        { 'time': 26, 'data': Midi.create_noteOff(0, 100, 90) }, // during record
+                        { 'time': 28,'data': Midi.create_noteOn(0, 120, 80) },
+                        { 'time': 32,'data': Midi.create_noteOff(0, 120, 70) }
+                    ]
+                    let chan = lut.get_midi_output_channels()[0]
+
+                    midi_input_port.dummy_clear_queues()
+                    midi_output_port.dummy_clear_queues()
+
+                    midi_input_port.dummy_queue_msgs(input)
+
+                    // Process 40 frames (prerecord then record)
+                    session.backend.dummy_request_controlled_frames(40)
+                    session.backend.wait_process()
+
+                    // Data should now be in channel. Switch to playback.
+                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+
+                    midi_output_port.dummy_request_data(40)
+
+                    // Process 40 frames (play back twice)
+                    session.backend.dummy_request_controlled_frames(40)
+                    session.backend.wait_process()
+
+                    let out = midi_output_port.dummy_dequeue_data()
+
+                    midi_input_port.dummy_clear_queues()
+                    midi_output_port.dummy_clear_queues()
+
+                    let expect_output = [
+                        { 'time': 0, 'data':  input[0]['data']  }, // from state (no pre-play was done)
+                        { 'time': 6, 'data':  input[1]['data']  },
+                        { 'time': 8, 'data':  input[2]['data']  },
+                        { 'time': 12, 'data': input[3]['data']  },
+                        { 'time': 20, 'data':  Midi.create_all_sound_off(0) }, // end-of-loop
+                        { 'time': 20, 'data':  input[0]['data']  }, // from state (no pre-play was done)
+                        { 'time': 26, 'data':  input[1]['data']  },
+                        { 'time': 28, 'data':  input[2]['data']  },
+                        { 'time': 32, 'data': input[3]['data']  },
+                    ]
+
+                    verify_eq(chan.get_data(), input, null, true)
+                    verify_eq(out, expect_output, null, true)
                 }
             })
         }

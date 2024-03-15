@@ -14,8 +14,8 @@ class AutoConnect(FindParentBackend):
         self._internal_port = None
         self._to_regex = None
 
-        self.backendChanged.connect(lambda: self.update())
-        self.backendInitializedChanged.connect(lambda: self.update())
+        self.backendChanged.connect(self.update)
+        self.backendInitializedChanged.connect(self.update)
 
         self._timer = QTimer()
         self._timer.setSingleShot(False)
@@ -65,9 +65,10 @@ class AutoConnect(FindParentBackend):
     
     @ShoopSlot()
     def destroy(self):
-        self._from_regex = None
+        print("DESTROY")
         self._to_regex = None
-        self.update()
+        self._internal_port = None
+        self._backend = None
     
     @ShoopSlot()
     def update(self):

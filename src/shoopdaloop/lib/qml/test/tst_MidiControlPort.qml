@@ -38,6 +38,8 @@ ShoopTestFile {
             filename : TestFilename.test_filename()
             when: backend.initialized || backend.backend_type == null
 
+            testcase_deinit_fn: () => { backend.close() }
+
             test_fns: ({
                 'test_autoconnect_internal_in_external_out': () => {
                     backend.dummy_remove_all_external_mock_ports();

@@ -26,4 +26,8 @@ ShoopTestCase {
     testcase_init_fn: () =>  {
         check_backend()
     }
+
+    testcase_deinit_fn: () => {
+        backend.close()
+    }
 }

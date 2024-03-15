@@ -195,8 +195,9 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
         ((!(process_flags & ChannelPlayback)) ||
             pos_before != mp_prev_pos_after);
     if (playback_interrupted && n_samples > 0) {
-        log<log_level_debug>("Playback interrupted -> All Sound Off");
-        PROC_send_all_sound_off();
+        auto time = mp_playback_target_buffer->first.n_frames_processed;
+        log<log_level_debug>("Playback interrupted -> All Sound Off @ {}", time);
+        PROC_send_all_sound_off(time);
     }
 
     if (!(process_flags & ChannelPreRecord) &&
@@ -399,13 +400,15 @@ MidiChannel<TimeType, SizeType>::clear(bool thread_safe) {
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::PROC_send_all_sound_off() {
+MidiChannel<TimeType, SizeType>::PROC_send_all_sound_off(unsigned frame) {
     auto &buf = mp_playback_target_buffer.value();
+    static const uint8_t all_sound_off_data[] = {0xB0, 120, 0};
     if (buf.first.frames_left() < 1) {
         throw_error<std::runtime_error>(
             "Attempting to play back out of bounds");
     }
-    PROC_send_message_ref(*buf.second, all_sound_off_message_channel_0);
+    PROC_send_message_value(*buf.second,
+        frame, 3, (uint8_t*) all_sound_off_data);
 }
 
 template <typename TimeType, typename SizeType>
@@ -496,11 +499,12 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
                         "Restoring port state for playback @ sample {}",
                         event->storage_time);
                     mp_pre_playback_state.resolve_to_output(
-                        [this, &buf, &proc_time](uint32_t size, uint8_t *data) {
-                            log<log_level_debug_trace>("  - Restore msg: {} {} {}",
-                                                data[0], data[1], data[2]);
+                        [this, valid_from, &buf, &proc_time](uint32_t size, uint8_t *data) {
                             // Play state resolving msgs ASAP (at current buffer pos)
-                            auto time = buf.first.n_frames_processed;
+                            auto time = mp_playback_target_buffer->first.n_frames_processed;
+                            log<log_level_debug_trace>("  - Restore msg @ {}: {} {} {}",
+                                                time,
+                                                data[0], data[1], data[2]);
                             PROC_send_message_value(*buf.second, time, size,
                                                     data);
                         });

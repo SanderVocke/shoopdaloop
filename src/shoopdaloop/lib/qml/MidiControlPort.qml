@@ -13,4 +13,6 @@ PythonMidiControlPort {
     }
     Component.onCompleted: { initialize_lua(); rescan_parents() }
     onLua_engineChanged: initialize_lua()
+
+    Component.onDestruction: { close() }
 }

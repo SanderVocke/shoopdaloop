@@ -30,6 +30,7 @@ class Backend(ShoopQQuickItem):
         self._timer_thread = QThread(self)
         self._timer_thread.start()
         self._initialized = False
+        self._closed = False
         self._client_name_hint = None
         self._driver_type = None
         self._backend_session_obj = None
@@ -239,6 +240,8 @@ class Backend(ShoopQQuickItem):
 
     @ShoopSlot()
     def close(self):
+        if self._closed:
+            return
         self.logger.debug(lambda: "Closing")
         QMetaObject.invokeMethod(
             self._timer,
@@ -254,6 +257,7 @@ class Backend(ShoopQQuickItem):
             self._backend_session_obj.destroy()
             self._backend_driver_obj.destroy()
         self._initialized = False
+        self._closed = True
     
     # Get the wrapped back-end object.
     @ShoopSlot(result='QVariant')
@@ -303,11 +307,14 @@ class Backend(ShoopQQuickItem):
     @ShoopSlot()
     def maybe_init(self):
         if not self._initialized and \
+           not self._closed and \
            self._client_name_hint != None and \
            self._driver_type != None and \
            self._driver_setting_overrides != None:
             self.logger.debug(lambda: "Initializing")
             self.init()
+        elif self._closed:
+            self.logger.trace(lambda: "Already closed")
         elif self._initialized:
             self.logger.trace(lambda: "Already initialized")
         else:

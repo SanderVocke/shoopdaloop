@@ -229,6 +229,11 @@ class MidiControlPort(FindParentBackend):
             self.logger.trace(lambda: f"Autoconnecters: {self._autoconnecters}")
     
     @ShoopSlot()
+    def close(self):
+        self._autoconnect_regexes = []
+        self.autoconnect_update()
+    
+    @ShoopSlot()
     def poll(self):
         while True:
             r = self._backend_obj.maybe_next_message()
