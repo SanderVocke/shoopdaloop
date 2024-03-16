@@ -18,7 +18,7 @@ class AutoConnect(FindParentBackend):
         self.backendChanged.connect(self.update)
         self.backendInitializedChanged.connect(self.update)
 
-        self._timer = QTimer()
+        self._timer = QTimer(self)
         self._timer.setSingleShot(False)
         self._timer.setInterval(1000)
         self._timer.timeout.connect(self.update)
@@ -66,6 +66,7 @@ class AutoConnect(FindParentBackend):
     
     @ShoopSlot()
     def destroy(self):
+        self._timer.stop()
         self._to_regex = None
         self._internal_port = None
         self._backend = None
