@@ -259,6 +259,27 @@ ShoopTestFile {
 
                     verify_eq(chan.get_data(), input, null, true)
                     verify_eq(out, expect_output, null, true)
+
+                    syncloop.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                    session.backend.dummy_request_controlled_frames(20)
+                    session.backend.wait_process()
+
+                    // When saving this to disk and re-loading, the state stuff should still work
+                    // and play back in the exact same way. That means the state itself should be
+                    // somehow saved. Test here that it works.
+                    var filename = file_io.generate_temporary_filename() + '.smf'
+                    file_io.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
+                    chan.clear()
+                    verify_eq(chan.get_data(), [], null, true)
+                    file_io.load_midi_to_channels(
+                                filename,
+                                session.backend.get_sample_rate(),
+                                [chan],
+                                0,
+                                20,
+                                false)
+
+                    // TODO finish
                 }
             })
         }

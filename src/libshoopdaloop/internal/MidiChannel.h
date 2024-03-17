@@ -62,21 +62,33 @@ private:
     std::shared_ptr<StorageCursor> mp_playback_cursor = nullptr;
     std::shared_ptr<profiling::ProfilingItem> mp_profiling_item = nullptr;
 
-    // Track the MIDI state on the channel's output.
+    // Holds and updates the current MIDI state on the channel output.
     std::shared_ptr<MidiStateTracker> mp_output_midi_state = nullptr;
 
-    // Track the MIDI state on the channel's input.
+    // Holds and updates the current MIDI state on the channel input.
     std::shared_ptr<MidiStateTracker> mp_input_midi_state = nullptr;
 
-    // We need to track what the MIDI state was at multiple interesting points
-    // in order to restore that state quickly.
-    TrackedState mp_track_start_state;
-    TrackedState mp_track_prerecord_start_state;
+    // Hold the state that the MIDI channel output had at the time of the recording
+    // start. Also keep track of the difference between this state and the current state.
+    TrackedState mp_recording_start_state_tracker;
+
+    // While pre-recording, we save our start state tracker separately because it might
+    // need to be discarded and the old one kept. Once pre-recording turns into actual
+    // recording, the start state tracker will be moved to mp_recording_start_state_tracker.
+    TrackedState mp_temp_prerecording_start_state_tracker;
+
     // We also have a state which represents what the current playback
     // state is **supposed** to be. For example, this tracks control messages
     // while the channel is muted or playing back before the first sample,
     // keeping track of the state.
-    TrackedState mp_pre_playback_state;
+
+    // When (pre-)playback starts, the channel may be muted or not at its start offset
+    // sample yet. Messages may be skipped and not played because of this. Once an actual
+    // note needs to be played, we still need to send any additional messages necessary
+    // to first achieve the state that was supposed to be at this point in playback.
+    // This tracker is used to track unplayed MIDI messages as if they were played, so
+    // that the correct state can be reached.
+    TrackedState mp_track_state_until_first_msg_playback;
 
     uint32_t mp_prev_pos_after = 0;
     unsigned mp_prev_process_flags = 0;
