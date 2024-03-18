@@ -482,7 +482,7 @@ class BackendLoopMidiChannel:
     def available(self):
         return self.shoop_c_handle and self.loop_shoop_c_handle and self._backend and self._backend.active()
     
-    def get_data(self):
+    def get_all_midi_data(self):
         if self.available():
             r = bindings.get_midi_channel_data(self.shoop_c_handle)
             if r:
@@ -490,8 +490,14 @@ class BackendLoopMidiChannel:
                 bindings.destroy_midi_sequence(r)
                 return msgs
         return []
+
+    def get_recorded_midi_msgs(self):
+        return [m for m in self.get_all_midi_data() if m.time >= 0.0]
+
+    def get_state_midi_msgs(self):
+        return [m for m in self.get_all_midi_data() if m.time < 0.0]
     
-    def load_data(self, msgs):
+    def load_all_midi_data(self, msgs):
         if self.available():
             d = bindings.alloc_midi_sequence(len(msgs))
             if d:

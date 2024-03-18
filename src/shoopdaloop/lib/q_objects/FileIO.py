@@ -237,7 +237,8 @@ class FileIO(ShoopQObject):
             if isinstance(channels, QJSValue):
                 channels = channels.toVariant()
             for channel in channels:
-                channel.load_data(backend_msgs)            
+                channel.load_all_midi_data(backend_msgs)
+                print(f"START OFFSET? {maybe_set_start_offset} {channel}")            
                 if maybe_set_start_offset != None:
                     channel.set_start_offset(maybe_set_start_offset)
                 if maybe_set_n_preplay_samples != None:

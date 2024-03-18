@@ -144,17 +144,30 @@ shoop_audio_channel_data_t *external_audio_data(std::vector<audio_sample_t> f) {
     return d;
 }
 
-shoop_midi_sequence_t *external_midi_data(std::vector<_MidiMessage> m) {
+shoop_midi_sequence_t *external_midi_data(shoop_types::LoopMidiChannel::Contents const& m) {
     auto d = new shoop_midi_sequence_t;
-    d->n_events = m.size();
-    d->events = (shoop_midi_event_t**) malloc(sizeof(shoop_midi_event_t*) * m.size());
-    for (uint32_t idx=0; idx < m.size(); idx++) {
-        auto e = alloc_midi_event(m[idx].size);
-        e->size = m[idx].size;
-        e->time = m[idx].time;
-        memcpy((void*)e->data, (void*)m[idx].data.data(), m[idx].size);
+
+    // The sequence will include state-defining messages and recorded messages.
+    d->n_events = m.starting_state_msg_datas.size() + m.recorded_msgs.size();
+    d->events = (shoop_midi_event_t**) malloc(sizeof(shoop_midi_event_t*) * d->n_events);
+
+    // State-defining messages stored first at time=-1
+    for (uint32_t idx=0; idx < m.starting_state_msg_datas.size(); idx++) {
+        auto e = alloc_midi_event(m.starting_state_msg_datas[idx].size());
+        e->size = m.starting_state_msg_datas[idx].size();
+        e->time = -1;
+        memcpy((void*)e->data, (void*)m.starting_state_msg_datas[idx].data(), m.starting_state_msg_datas[idx].size());
         d->events[idx] = e;
     }
+    // Rest is recorded messages
+    for (uint32_t idx=0; idx < m.recorded_msgs.size(); idx++) {
+        auto e = alloc_midi_event(m.recorded_msgs[idx].size);
+        e->size = m.recorded_msgs[idx].size;
+        e->time = m.recorded_msgs[idx].time;
+        memcpy((void*)e->data, (void*)m.recorded_msgs[idx].data.data(), m.recorded_msgs[idx].size);
+        d->events[idx + m.starting_state_msg_datas.size()] = e;
+    }
+
     return d;
 }
 
@@ -164,18 +177,24 @@ std::vector<float> internal_audio_data(shoop_audio_channel_data_t const& d) {
     return r;
 }
 
-std::vector<_MidiMessage> internal_midi_data(shoop_midi_sequence_t const& d) {
-    auto r = std::vector<_MidiMessage>(d.n_events);
+shoop_types::LoopMidiChannel::Contents internal_midi_data(shoop_midi_sequence_t const& d) {
+    shoop_types::LoopMidiChannel::Contents rval;
     for (uint32_t idx=0; idx < d.n_events; idx++) {
         auto &from = *d.events[idx];
-        _MidiMessage m(
+        if (from.time < 0) {
+          std::vector<uint8_t> data(from.size);
+          memcpy((void*)data.data(), (void*)from.data, from.size);
+          rval.starting_state_msg_datas.push_back(data);
+        } else {
+          _MidiMessage m(
             from.time,
             from.size,
             std::vector<uint8_t>(from.size));
-        memcpy((void*)m.data.data(), (void*)from.data, from.size);
-        r[idx] = m;
+          memcpy((void*)m.data.data(), (void*)from.data, from.size);
+          rval.recorded_msgs.push_back(m);
+        }
     }
-    return r;
+    return rval;
 }
 
 shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<_DecoupledMidiPort> port) {
@@ -720,8 +739,8 @@ shoop_midi_sequence_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *
     if (!_chan) { return nullptr; }
     auto _backend = _chan->backend.lock();
     if (!_backend) { return nullptr; }
-    auto data = evaluate_before_or_after_process<std::vector<_MidiMessage>>(
-        [=]() -> std::vector<_MidiMessage> {
+    auto contents = evaluate_before_or_after_process<shoop_types::LoopMidiChannel::Contents>(
+        [=]() -> shoop_types::LoopMidiChannel::Contents {
           auto _channel = internal_midi_channel(channel);
           if (!_channel) { return {}; }
           return _channel->maybe_midi()->retrieve_contents();
@@ -729,7 +748,7 @@ shoop_midi_sequence_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *
         _chan->maybe_midi(),
         *_backend);
 
-    return external_midi_data(data);
+    return external_midi_data(contents);
   }, nullptr);
 }
 
@@ -756,12 +775,12 @@ void load_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel, shoop_mi
     if (!_chan) { return; }
     auto _backend = _chan->backend.lock();
     if (!_backend) { return; }
-    auto _data = internal_midi_data(*data);
+    auto contents = internal_midi_data(*data);
     evaluate_before_or_after_process<void>(
         [&]() {
           auto _channel = internal_midi_channel(channel);
           if (!_channel) { return; }
-          _channel->maybe_midi()->set_contents(_data, data->length_samples);
+          _channel->maybe_midi()->set_contents(contents, data->length_samples);
         },
         _chan->maybe_midi(),
         *_backend);

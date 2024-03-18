@@ -185,7 +185,7 @@ ShoopTestFile {
                     session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
-                    let chan_data = chan.get_data()
+                    let chan_data = chan.get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -253,7 +253,7 @@ ShoopTestFile {
                     session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
-                    let chan_data = chan.get_data()
+                    let chan_data = chan.get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -309,7 +309,7 @@ ShoopTestFile {
                     tut_control().monitor = false
                     tut_control().mute = false
                     let chan = lut.get_midi_output_channels()[0]
-                    chan.load_data(loop)
+                    chan.load_all_midi_data(loop)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
@@ -325,7 +325,7 @@ ShoopTestFile {
                     session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
-                    let chan_data = chan.get_data()
+                    let chan_data = chan.get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -386,7 +386,7 @@ ShoopTestFile {
                     tut_control().monitor = true
                     tut_control().mute = false
                     let chan = lut.get_midi_output_channels()[0]
-                    chan.load_data(loop)
+                    chan.load_all_midi_data(loop)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
@@ -402,7 +402,7 @@ ShoopTestFile {
                     session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
-                    let chan_data = chan.get_data()
+                    let chan_data = chan.get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()

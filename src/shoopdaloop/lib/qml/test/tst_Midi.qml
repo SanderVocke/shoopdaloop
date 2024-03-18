@@ -192,7 +192,7 @@ ShoopTestFile {
                         { 'time': 2, 'data': [0x80, 10,  10]  }  // from input[2]
                     ]
 
-                    verify_eq(chan.get_data(), input, null, true)
+                    verify_eq(chan.get_recorded_midi_msgs(), input, null, true)
                     verify_eq(out, expect_output, null, true)
                 },
 
@@ -239,7 +239,6 @@ ShoopTestFile {
                     // Process 40 frames (play back twice)
                     session.backend.dummy_request_controlled_frames(40)
                     session.backend.wait_process()
-
                     let out = midi_output_port.dummy_dequeue_data()
 
                     midi_input_port.dummy_clear_queues()
@@ -257,12 +256,15 @@ ShoopTestFile {
                         { 'time': 32, 'data': input[3]['data']  },
                     ]
 
-                    verify_eq(chan.get_data(), input, null, true)
+                    verify_eq(chan.get_recorded_midi_msgs(), input, null, true)
                     verify_eq(out, expect_output, null, true)
 
-                    syncloop.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)
                     session.backend.wait_process()
+                    midi_input_port.dummy_clear_queues()
+                    midi_output_port.dummy_clear_queues()
 
                     // When saving this to disk and re-loading, the state stuff should still work
                     // and play back in the exact same way. That means the state itself should be
@@ -270,7 +272,9 @@ ShoopTestFile {
                     var filename = file_io.generate_temporary_filename() + '.smf'
                     file_io.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
                     chan.clear()
-                    verify_eq(chan.get_data(), [], null, true)
+                    testcase.wait_updated(session.backend)
+                    testcase.wait_updated(session.backend)
+                    verify_eq(chan.get_recorded_midi_msgs(), [], null, true)
                     file_io.load_midi_to_channels(
                                 filename,
                                 session.backend.get_sample_rate(),
@@ -279,7 +283,16 @@ ShoopTestFile {
                                 20,
                                 false)
 
-                    // TODO finish
+                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    midi_output_port.dummy_request_data(40)
+                    session.backend.dummy_request_controlled_frames(40)
+                    session.backend.wait_process()
+                    out = midi_output_port.dummy_dequeue_data()
+
+                    // Verify same as before
+                    verify_eq(chan.get_recorded_midi_msgs(), input, null, true)
+                    verify_eq(out, expect_output, null, true)
                 }
             })
         }

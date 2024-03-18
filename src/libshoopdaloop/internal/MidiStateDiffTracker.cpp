@@ -1,10 +1,12 @@
 #include "MidiStateDiffTracker.h"
+#include "types.h"
 #include <algorithm>
 #include <array>
 #include <boost/container/flat_set.hpp>
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <fmt/format.h>
 
 void MidiStateDiffTracker::note_changed(MidiStateTracker *tracker,
                                         uint8_t channel, uint8_t note,
@@ -16,22 +18,25 @@ void MidiStateDiffTracker::note_changed(MidiStateTracker *tracker,
 
     if (other && other->tracking_notes() &&
         other->maybe_current_note_velocity(channel, note) != maybe_velocity) {
+        log<log_level_debug_trace>("New note diff: tracker {}, chan {}, note {}, vel -> {}", fmt::ptr(tracker), channel, note, maybe_velocity.value_or(0));
         m_diffs.insert({(uint8_t)(0x90 | channel), note});
     } else {
+        log<log_level_debug_trace>("Forget note diff: tracker {}, chan {}, note {}", fmt::ptr(tracker), channel, note);
         m_diffs.erase({(uint8_t)(0x90 | channel), note});
     }
 }
 
 void MidiStateDiffTracker::cc_changed(MidiStateTracker *tracker,
                                       uint8_t channel, uint8_t cc,
-                                      uint8_t value) {
+                                      std::optional<uint8_t> value) {
     if (tracker != m_a.get() && tracker != m_b.get()) {
         return;
     }
     auto &other = tracker == m_a.get() ? m_b : m_a;
 
     if (other && other->tracking_controls() &&
-        other->cc_value(channel, cc) != value) {
+        other->maybe_cc_value(channel, cc) != value &&
+        value.has_value()) {
         m_diffs.insert({(uint8_t)(0xB0 | channel), cc});
     } else {
         m_diffs.erase({(uint8_t)(0xB0 | channel), cc});
@@ -39,14 +44,15 @@ void MidiStateDiffTracker::cc_changed(MidiStateTracker *tracker,
 }
 
 void MidiStateDiffTracker::program_changed(MidiStateTracker *tracker,
-                                           uint8_t channel, uint8_t program) {
+                                           uint8_t channel, std::optional<uint8_t> program) {
     if (tracker != m_a.get() && tracker != m_b.get()) {
         return;
     }
     auto &other = tracker == m_a.get() ? m_b : m_a;
 
     if (other && other->tracking_programs() &&
-        other->program_value(channel) != program) {
+        other->maybe_program_value(channel) != program &&
+        program.has_value()) {
         m_diffs.insert({(uint8_t)(0xC0 | channel), 0});
     } else {
         m_diffs.erase({(uint8_t)(0xC0 | channel), 0});
@@ -55,14 +61,15 @@ void MidiStateDiffTracker::program_changed(MidiStateTracker *tracker,
 
 void MidiStateDiffTracker::pitch_wheel_changed(MidiStateTracker *tracker,
                                                uint8_t channel,
-                                               uint16_t pitch) {
+                                               std::optional<uint16_t> pitch) {
     if (tracker != m_a.get() && tracker != m_b.get()) {
         return;
     }
     auto &other = tracker == m_a.get() ? m_b : m_a;
 
     if (other && other->tracking_controls() &&
-        other->pitch_wheel_value(channel) != pitch) {
+        other->maybe_pitch_wheel_value(channel) != pitch &&
+        pitch.has_value()) {
         m_diffs.insert({(uint8_t)(0xE0 | channel), 0});
     } else {
         m_diffs.erase({(uint8_t)(0xE0 | channel), 0});
@@ -71,14 +78,15 @@ void MidiStateDiffTracker::pitch_wheel_changed(MidiStateTracker *tracker,
 
 void MidiStateDiffTracker::channel_pressure_changed(MidiStateTracker *tracker,
                                                     uint8_t channel,
-                                                    uint8_t pressure) {
+                                                    std::optional<uint8_t> pressure) {
     if (tracker != m_a.get() && tracker != m_b.get()) {
         return;
     }
     auto &other = tracker == m_a.get() ? m_b : m_a;
 
     if (other && other->tracking_controls() &&
-        other->channel_pressure_value(channel) != pressure) {
+        other->maybe_channel_pressure_value(channel) != pressure &&
+        pressure.has_value()) {
         m_diffs.insert({(uint8_t)(0xE0 | channel), 0});
     } else {
         m_diffs.erase({(uint8_t)(0xE0 | channel), 0});
@@ -142,8 +150,8 @@ void MidiStateDiffTracker::check_note(uint8_t channel, uint8_t note) {
 
 void MidiStateDiffTracker::check_cc(uint8_t channel, uint8_t controller) {
     if (m_a->tracking_controls() && m_b->tracking_controls()) {
-        auto a = m_a->cc_value(channel, controller);
-        auto b = m_b->cc_value(channel, controller);
+        auto a = m_a->maybe_cc_value(channel, controller);
+        auto b = m_b->maybe_cc_value(channel, controller);
         if (a == b) {
             m_diffs.erase({(uint8_t)(0xB0 | channel), controller});
         } else {
@@ -154,8 +162,8 @@ void MidiStateDiffTracker::check_cc(uint8_t channel, uint8_t controller) {
 
 void MidiStateDiffTracker::check_program(uint8_t channel) {
     if (m_a->tracking_programs() && m_b->tracking_programs()) {
-        auto a = m_a->program_value(channel);
-        auto b = m_b->program_value(channel);
+        auto a = m_a->maybe_program_value(channel);
+        auto b = m_b->maybe_program_value(channel);
         if (a == b) {
             m_diffs.erase({(uint8_t)(0xC0 | channel), 0});
         } else {
@@ -166,8 +174,8 @@ void MidiStateDiffTracker::check_program(uint8_t channel) {
 
 void MidiStateDiffTracker::check_channel_pressure(uint8_t channel) {
     if (m_a->tracking_controls() && m_b->tracking_controls()) {
-        auto a = m_a->channel_pressure_value(channel);
-        auto b = m_b->channel_pressure_value(channel);
+        auto a = m_a->maybe_channel_pressure_value(channel);
+        auto b = m_b->maybe_channel_pressure_value(channel);
         if (a == b) {
             m_diffs.erase({(uint8_t)(0xD0 | channel), 0});
         } else {
@@ -178,8 +186,8 @@ void MidiStateDiffTracker::check_channel_pressure(uint8_t channel) {
 
 void MidiStateDiffTracker::check_pitch_wheel(uint8_t channel) {
     if (m_a->tracking_controls() && m_b->tracking_controls()) {
-        auto a = m_a->pitch_wheel_value(channel);
-        auto b = m_b->pitch_wheel_value(channel);
+        auto a = m_a->maybe_pitch_wheel_value(channel);
+        auto b = m_b->maybe_pitch_wheel_value(channel);
         if (a == b) {
             m_diffs.erase({(uint8_t)(0xE0 | channel), 0});
         } else {
@@ -245,35 +253,46 @@ void MidiStateDiffTracker::resolve_to(
             break;
         case 0xB0:
             if (controls) {
-                data[0] = d[0];
-                data[1] = d[1];
-                data[2] = other->cc_value(channel_part, d[1]);
-                put_message_cb(3, data);
+                v = other->maybe_cc_value(channel_part, d[1]);
+                if (v.has_value()) {
+                    data[0] = d[0];
+                    data[1] = d[1];
+                    data[2] = v.value();
+                    put_message_cb(3, data);
+                }
             }
             break;
         case 0xC0:
             if (programs) {
-                data[0] = d[0];
-                data[1] = d[1];
-                data[2] = other->program_value(channel_part);
-                put_message_cb(3, data);
+                v = other->maybe_program_value(channel_part);
+                if (v.has_value()) {
+                    data[0] = d[0];
+                    data[1] = d[1];
+                    data[2] = v.value();
+                    put_message_cb(3, data);
+                }
             }
             break;
         case 0xD0:
             if (controls) {
-                data[0] = d[0];
-                data[1] = d[1];
-                data[2] = other->channel_pressure_value(channel_part);
-                put_message_cb(3, data);
+                v = other->maybe_channel_pressure_value(channel_part);
+                if (v.has_value()) {
+                    data[0] = d[0];
+                    data[1] = d[1];
+                    data[2] = v.value();
+                    put_message_cb(3, data);
+                }
             }
             break;
         case 0xE0:
             if (controls) {
-                auto v = other->pitch_wheel_value(channel_part);
-                data[0] = d[0];
-                data[1] = v & 0b1111111;
-                data[2] = (v >> 7) & 0b1111111;
-                put_message_cb(3, data);
+                auto v = other->maybe_pitch_wheel_value(channel_part);
+                if (v.has_value()) {
+                    data[0] = d[0];
+                    data[1] = v.value() & 0b1111111;
+                    data[2] = (v.value() >> 7) & 0b1111111;
+                    put_message_cb(3, data);
+                }
             }
             break;
         }

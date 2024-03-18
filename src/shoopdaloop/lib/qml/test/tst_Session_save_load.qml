@@ -159,20 +159,20 @@ ShoopTestFile {
                         { 'time': 101, 'data': [0x90, 70,  70]  },
                         { 'time': 201, 'data': [0x80, 60,  60]  }
                     ]
-                    mt_midi_channels()[0].load_data(midichan)
+                    mt_midi_channels()[0].load_all_midi_data(midichan)
                     testcase.wait_updated(session.backend)
                     var filename = file_io.generate_temporary_filename() + '.mid'
                     file_io.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
 
                     mt_loop().clear()
                     testcase.wait_updated(session.backend)
-                    verify_eq(mt_midi_channels()[0].get_data(), [])
+                    verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
 
                     file_io.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)
                     testcase.wait_updated(session.backend)
 
                     // Storing in MIDI files is not sample-accurate but should be quite close
-                    let data = mt_midi_channels()[0].get_data()
+                    let data = mt_midi_channels()[0].get_recorded_midi_msgs()
                     verify_eq(data.length, 2)
                     verify_true(data[0].time >= 100 && data[0].time <= 102)
                     verify_true(data[1].time >= 200 && data[0].time <= 202)
@@ -187,20 +187,20 @@ ShoopTestFile {
                         { 'time': 101, 'data': [0x90, 70,  70]  },
                         { 'time': 201, 'data': [0x80, 60,  60]  }
                     ]
-                    mt_midi_channels()[0].load_data(midichan)
+                    mt_midi_channels()[0].load_all_midi_data(midichan)
                     testcase.wait_updated(session.backend)
                     var filename = file_io.generate_temporary_filename() + '.smf'
                     file_io.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
 
                     mt_loop().clear()
                     testcase.wait_updated(session.backend)
-                    verify_eq(mt_midi_channels()[0].get_data(), [])
+                    verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
 
                     file_io.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)
                     testcase.wait_updated(session.backend)
 
                     // Storing in MIDI files is not sample-accurate but should be quite close
-                    let data = mt_midi_channels()[0].get_data()
+                    let data = mt_midi_channels()[0].get_recorded_midi_msgs()
                     verify_eq(data.length, 2)
                     verify_true(data[0].time >= 100 && data[0].time <= 102)
                     verify_true(data[1].time >= 200 && data[0].time <= 202)
@@ -215,7 +215,7 @@ ShoopTestFile {
                         { 'time': 101, 'data': [0x90, 70,  70]  },
                         { 'time': 201, 'data': [0x80, 60,  60]  }
                     ]
-                    mt_midi_channels()[0].load_data(midichan)
+                    mt_midi_channels()[0].load_all_midi_data(midichan)
                     dt_loop_channels()[0].load_data([0.1, 0.2, 0.3, 0.4])
                     dt_loop_channels()[1].load_data([0.4, 0.3, 0.2, 0.1])
                     dwt_dry_loop_channels()[0].load_data([0.5, 0.6, 0.7, 0.8])
@@ -241,7 +241,7 @@ ShoopTestFile {
                     
                     verify_eq(dt_loop_channels()[0].get_data(), [])
                     verify_eq(dt_loop_channels()[1].get_data(), [])
-                    verify_eq(mt_midi_channels()[0].get_data(), [])
+                    verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
                     verify_eq(dwt_dry_loop_channels()[0].get_data(), [])
                     verify_eq(dwt_dry_loop_channels()[1].get_data(), [])
                     verify_eq(dwt_wet_loop_channels()[0].get_data(), [])
@@ -261,7 +261,7 @@ ShoopTestFile {
                     verify_approx(dwt_dry_loop_channels()[1].get_data(), [0.8, 0.7, 0.6, 0.5])
                     verify_approx(dwt_wet_loop_channels()[0].get_data(), [0.9, 0.10, 0.11, 0.12])
                     verify_approx(dwt_wet_loop_channels()[1].get_data(), [0.12, 0.11, 0.10, 0.9])
-                    verify_eq(mt_midi_channels()[0].get_data(), midichan)
+                    verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), midichan)
                 },
 
                 "test_save_load_session_audio_and_midi_resampled": () => {
@@ -277,7 +277,7 @@ ShoopTestFile {
                         { 'time': 120, 'data': [0x80, 60,  60]  }
                     ]
 
-                    mt_midi_channels()[0].load_data(midichan)
+                    mt_midi_channels()[0].load_all_midi_data(midichan)
                     let _data = [0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0] // 12 samples
@@ -325,7 +325,7 @@ ShoopTestFile {
                     verify_eq(dwt_wet_loop_channels(other_session)[1].data_length, 8)
                     verify_eq(dt_loop(other_session).length, 4)
                     verify_eq(dwt_loop(other_session).length, 8)
-                    verify_eq(mt_midi_channels(other_session)[0].get_data(), midichan_resampled)
+                    verify_eq(mt_midi_channels(other_session)[0].get_recorded_midi_msgs(), midichan_resampled)
                 },
             })
         }

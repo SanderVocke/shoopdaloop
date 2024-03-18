@@ -75,16 +75,30 @@ class LoopMidiChannel(LoopChannel):
             self.nNotesActiveChanged.emit(self._n_notes_active)
     
     @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
-    def get_data(self):
+    def get_all_midi_data(self):
         if self._backend_obj:
-            return self._backend_obj.get_data()
+            return self._backend_obj.get_all_midi_data()
+        else:
+            raise Exception("Getting data of un-loaded MIDI channel")
+
+    @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
+    def get_recorded_midi_msgs(self):
+        if self._backend_obj:
+            return self._backend_obj.get_recorded_midi_msgs()
+        else:
+            raise Exception("Getting data of un-loaded MIDI channel")
+    
+    @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
+    def get_state_midi_msgs(self):
+        if self._backend_obj:
+            return self._backend_obj.get_state_midi_msgs()
         else:
             raise Exception("Getting data of un-loaded MIDI channel")
 
     @ShoopSlot(list, thread_protection=ThreadProtectionType.AnyThread)
-    def load_data(self, data):
+    def load_all_midi_data(self, data):
         self.requestBackendInit.emit()
         if self._backend_obj:
-            self._backend_obj.load_data(data)
+            self._backend_obj.load_all_midi_data(data)
         else:
-            self.initializedChanged.connect(lambda: self._backend_obj.load_data(data))
+            self.initializedChanged.connect(lambda: self._backend_obj.load_all_midi_data(data))

@@ -193,7 +193,10 @@ typedef struct {
 } shoop_audio_channel_data_t;
 
 typedef struct {
-    unsigned int time;
+    // Regular messages have time >= 0. However, a midi sequence can also be used to store
+    // the state of a MIDI port at the time of recording start. Such state should be saved
+    // as MIDI messages with time = -1.
+    int time;
     unsigned int size;
     unsigned char *data;
 } shoop_midi_event_t;

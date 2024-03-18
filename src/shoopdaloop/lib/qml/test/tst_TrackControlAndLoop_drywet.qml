@@ -232,7 +232,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -321,7 +321,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -384,7 +384,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_data(midichan)
+                    midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
@@ -412,7 +412,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -476,7 +476,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_data(midichan)
+                    midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
@@ -509,7 +509,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -573,7 +573,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_data(midichan)
+                    midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, false)
                     testcase.wait_updated(session.backend)
@@ -613,7 +613,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -676,7 +676,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_data(midichan)
+                    midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, false)
                     testcase.wait_updated(session.backend)
@@ -717,7 +717,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -781,7 +781,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_data(midichan)
+                    midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, 0, false)
                     testcase.wait_updated(session.backend)
@@ -821,7 +821,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -885,7 +885,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_data(midichan)
+                    midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, 0, false)
                     testcase.wait_updated(session.backend)
@@ -926,7 +926,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 

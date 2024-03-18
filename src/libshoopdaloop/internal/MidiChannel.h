@@ -70,12 +70,12 @@ private:
 
     // Hold the state that the MIDI channel output had at the time of the recording
     // start. Also keep track of the difference between this state and the current state.
-    TrackedState mp_recording_start_state_tracker;
+    std::shared_ptr<TrackedState> mp_recording_start_state_tracker;
 
     // While pre-recording, we save our start state tracker separately because it might
     // need to be discarded and the old one kept. Once pre-recording turns into actual
     // recording, the start state tracker will be moved to mp_recording_start_state_tracker.
-    TrackedState mp_temp_prerecording_start_state_tracker;
+    std::shared_ptr<TrackedState> mp_temp_prerecording_start_state_tracker;
 
     // We also have a state which represents what the current playback
     // state is **supposed** to be. For example, this tracks control messages
@@ -88,7 +88,7 @@ private:
     // to first achieve the state that was supposed to be at this point in playback.
     // This tracker is used to track unplayed MIDI messages as if they were played, so
     // that the correct state can be reached.
-    TrackedState mp_track_state_until_first_msg_playback;
+    std::shared_ptr<TrackedState> mp_track_state_until_first_msg_playback;
 
     uint32_t mp_prev_pos_after = 0;
     unsigned mp_prev_process_flags = 0;
@@ -164,9 +164,17 @@ public:
 
     void PROC_set_recording_buffer(MidiReadableBufferInterface *buffer, uint32_t n_frames);
 
-    std::vector<Message> retrieve_contents(bool thread_safe = true);
+    struct Contents {
+        std::vector<Message> recorded_msgs;
+        std::vector<std::vector<uint8_t>> starting_state_msg_datas;
+    };
 
-    void set_contents(std::vector<Message> contents, uint32_t length_samples, bool thread_safe = true);
+    Contents retrieve_contents(bool thread_safe = true);
+
+    void set_contents(
+        Contents contents,
+        uint32_t length_samples,
+        bool thread_safe = true);
 
     void PROC_handle_poi(shoop_loop_mode_t mode,
                     uint32_t length,

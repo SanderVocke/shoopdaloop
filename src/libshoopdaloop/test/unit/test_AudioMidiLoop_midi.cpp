@@ -132,7 +132,7 @@ TEST_CASE("AudioMidiLoop - Midi - Record", "[AudioMidiLoop][midi]") {
     REQUIRE(loop.get_position() == 0);
 
     uint32_t length = loop.get_length();
-    auto msgs = channel.retrieve_contents(false);
+    auto msgs = channel.retrieve_contents(false).recorded_msgs;
     REQUIRE(length == 20);
     REQUIRE(msgs.size() == 2);
     check_msgs_equal(msgs.at(0), source_buf.read.at(0));
@@ -166,7 +166,7 @@ TEST_CASE("AudioMidiLoop - Midi - Record Append Out-of-order", "[AudioMidiLoop][
     REQUIRE(loop.get_position() == 0);
 
     uint32_t length = loop.get_length();
-    auto msgs = channel.retrieve_contents(false);
+    auto msgs = channel.retrieve_contents(false).recorded_msgs;
     REQUIRE(msgs.size() == 2);
     REQUIRE(length == 120);
     check_msgs_equal(msgs.at(0), with_time(source_buf.read.at(0), 110));
@@ -243,7 +243,7 @@ TEST_CASE("AudioMidiLoop - Midi - Record multiple source buffers", "[AudioMidiLo
     REQUIRE(loop.get_length() == 35);
     REQUIRE(loop.get_position() == 0);
 
-    auto msgs = channel.retrieve_contents(false);
+    auto msgs = channel.retrieve_contents(false).recorded_msgs;
     REQUIRE(msgs.size() == 9);
     check_msgs_equal(msgs.at(0), source_bufs[0].read.at(0));
     check_msgs_equal(msgs.at(1), source_bufs[0].read.at(1));
@@ -261,7 +261,8 @@ TEST_CASE("AudioMidiLoop - Midi - Record onto longer buffer", "[AudioMidiLoop][m
     loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
     auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
     using Message = MidiChannel<uint32_t, uint16_t>::Message;
-    std::vector<Message> contents = {
+    MidiChannel<uint32_t, uint16_t>::Contents contents;
+    contents.recorded_msgs = {
         Message(0,  1, { 0x01 }),
         Message(10, 1, { 0x02 }),
         Message(21, 1, { 0x03 }),
@@ -297,9 +298,9 @@ TEST_CASE("AudioMidiLoop - Midi - Record onto longer buffer", "[AudioMidiLoop][m
     REQUIRE(loop.PROC_get_next_poi() == 492); // end of buffer
     REQUIRE(loop.get_length() == 45);
     REQUIRE(loop.get_position() == 0);
-    auto msgs = channel.retrieve_contents(false);
+    auto msgs = channel.retrieve_contents(false).recorded_msgs;
     REQUIRE(msgs.size() == 6);
-    for (uint32_t i=0; i<3; i++) { check_msgs_equal(msgs.at(i), contents.at(i)); }
+    for (uint32_t i=0; i<3; i++) { check_msgs_equal(msgs.at(i), contents.recorded_msgs.at(i)); }
     for (uint32_t i=3; i<6; i++) { check_msgs_equal(msgs.at(i), source_buf.read.at(i-3), 25); }
 };
 
@@ -308,7 +309,8 @@ TEST_CASE("AudioMidiLoop - Midi - Playback", "[AudioMidiLoop][midi]") {
     loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
     auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
     using Message = MidiChannel<uint32_t, uint16_t>::Message;
-    std::vector<Message> contents = {
+    MidiChannel<uint32_t, uint16_t>::Contents contents;
+    contents.recorded_msgs = {
         Message(0,  1, { 0x01 }),
         Message(10, 1, { 0x02 }),
         Message(21, 1, { 0x03 }),
@@ -342,8 +344,8 @@ TEST_CASE("AudioMidiLoop - Midi - Playback", "[AudioMidiLoop][midi]") {
 
     auto msgs = play_buf.written;
     REQUIRE(msgs.size() == 2);
-    check_msgs_equal(msgs.at(0), contents.at(0));
-    check_msgs_equal(msgs.at(1), contents.at(1));
+    check_msgs_equal(msgs.at(0), contents.recorded_msgs.at(0));
+    check_msgs_equal(msgs.at(1), contents.recorded_msgs.at(1));
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Prerecord", "[AudioMidiLoop][midi]") {
@@ -397,7 +399,7 @@ TEST_CASE("AudioMidiLoop - Midi - Prerecord", "[AudioMidiLoop][midi]") {
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 80);
 
     // Due to prerecord, should have captured all the messages.
-    auto msgs = chan.retrieve_contents(false);
+    auto msgs = chan.retrieve_contents(false).recorded_msgs;
     REQUIRE(msgs.size() == 4);
     REQUIRE(chan.get_start_offset() == 20);
     check_msgs_equal(msgs.at(0), source_buf.read.at(0));
@@ -433,9 +435,9 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
     auto chan = loop.add_midi_channel<uint32_t, uint16_t>(100000, ChannelMode_Direct, false);
 
     using Message = MidiChannel<uint32_t, uint16_t>::Message;
-    std::vector<Message> data;
+    MidiChannel<uint32_t, uint16_t>::Contents contents;
     for(uint32_t idx=0; idx<256; idx++) {
-        data.push_back(
+        contents.recorded_msgs.push_back(
             Message {
                 (unsigned)idx,
                 3,
@@ -448,7 +450,7 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
         ); 
     }
 
-    chan->set_contents(data, 256);
+    chan->set_contents(contents, 256);
     chan->set_start_offset(110);
     chan->set_pre_play_samples(90);
     loop.set_length(128);
@@ -488,7 +490,7 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
     uint32_t output_msg_idx = 0;
     for (uint32_t t=0; t<128; t++) {
         if (t < 10) { input_msg_idx++; continue; }
-        Message exp = data.at(input_msg_idx++);
+        Message exp = contents.recorded_msgs.at(input_msg_idx++);
         exp.time = t;
         check_msgs_equal(msgs.at(output_msg_idx++), exp, 0, std::to_string(t));
     }
@@ -811,7 +813,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     REQUIRE(loop.get_length() == 30);
     REQUIRE(loop.get_position() == 0);
 
-    CHECK(channel.retrieve_contents(false).size() == 3);
+    CHECK(channel.retrieve_contents(false).recorded_msgs.size() == 3);
 
     // Stop for a while
     loop.plan_transition(LoopMode_Stopped, 0, false, false);
@@ -832,24 +834,24 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     auto msgs = playback_buf.written;
     REQUIRE(msgs.size() == 4);
 
-    CHECK(msgs[0].data[0] == 0x90); // NoteOn
-    CHECK(msgs[0].data[1] == 100);
-    CHECK(msgs[0].data[2] == 90);
+    CHECK((int)msgs[0].data[0] == 0x90); // NoteOn
+    CHECK((int)msgs[0].data[1] == 100);
+    CHECK((int)msgs[0].data[2] == 90);
     CHECK(msgs[0].time == 0); // Written at start of playback
 
-    CHECK(msgs[1].data[0] == 0x80); // NoteOff
-    CHECK(msgs[1].data[1] == 100);
-    CHECK(msgs[1].data[2] == 80);
-    CHECK(msgs[1].time == 8);
+    CHECK((int)msgs[1].data[0] == 0x80); // NoteOff
+    CHECK((int)msgs[1].data[1] == 100);
+    CHECK((int)msgs[1].data[2] == 80);
+    CHECK((int)msgs[1].time == 8);
 
-    CHECK(msgs[2].data[0] == 0x90); // NoteOn
-    CHECK(msgs[2].data[1] == 100);
-    CHECK(msgs[2].data[2] == 70);
+    CHECK((int)msgs[2].data[0] == 0x90); // NoteOn
+    CHECK((int)msgs[2].data[1] == 100);
+    CHECK((int)msgs[2].data[2] == 70);
     CHECK(msgs[2].time == 18);
 
-    CHECK(msgs[3].data[0] == 0x80); // NoteOff
-    CHECK(msgs[3].data[1] == 100);
-    CHECK(msgs[3].data[2] == 60);
+    CHECK((int)msgs[3].data[0] == 0x80); // NoteOff
+    CHECK((int)msgs[3].data[1] == 100);
+    CHECK((int)msgs[3].data[2] == 60);
     CHECK(msgs[3].time == 28);
 
     // Play another loop to make sure it works twice in a row
@@ -941,7 +943,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     CHECK(loop.get_position() == 0);
 
     // Total msgs in the buffer is now 4
-    auto contents = channel.retrieve_contents(false);
+    auto contents = channel.retrieve_contents(false).recorded_msgs;
     CHECK(contents.size() == 4);
     CHECK(channel.get_start_offset() == 10);
     CHECK(contents[0].get_time() == 5);
@@ -1079,7 +1081,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
     CHECK(loop.get_position() == 0);
 
     // Total msgs in the buffer is now 4
-    auto contents = channel.retrieve_contents(false);
+    auto contents = channel.retrieve_contents(false).recorded_msgs;
     CHECK(contents.size() == 4);
     CHECK(channel.get_start_offset() == 10);
     CHECK(contents[0].get_time() == 5);
