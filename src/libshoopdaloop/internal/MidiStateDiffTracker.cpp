@@ -18,11 +18,16 @@ void MidiStateDiffTracker::note_changed(MidiStateTracker *tracker,
 
     if (other && other->tracking_notes() &&
         other->maybe_current_note_velocity(channel, note) != maybe_velocity) {
-        log<log_level_debug_trace>("New note diff: tracker {}, chan {}, note {}, vel -> {}", fmt::ptr(tracker), channel, note, maybe_velocity.value_or(0));
         m_diffs.insert({(uint8_t)(0x90 | channel), note});
+        if (should_log<log_level_debug_trace>()) {
+            auto _f = other->maybe_current_note_velocity(channel, note);
+            int f = _f.has_value() ? _f.value() : -1;
+            int t = maybe_velocity.has_value() ? maybe_velocity.value() : -1;
+            log<log_level_debug_trace>("New note diff: tracker {} updated vs. {}, chan {}, note {}, vel {} -> {}", fmt::ptr(tracker), fmt::ptr(other.get()), channel, note, f, t);
+        }
     } else {
-        log<log_level_debug_trace>("Forget note diff: tracker {}, chan {}, note {}", fmt::ptr(tracker), channel, note);
         m_diffs.erase({(uint8_t)(0x90 | channel), note});
+        log<log_level_debug_trace>("Forget note diff: tracker {} updated vs. {}, chan {}, note {}", fmt::ptr(tracker), fmt::ptr(other.get()), channel, note);
     }
 }
 
@@ -233,7 +238,8 @@ void MidiStateDiffTracker::resolve_to(
     if (!m_a || !m_b) {
         return;
     }
-    auto &other = to == m_a.get() ? m_b : m_a;
+    auto &from = to == m_a.get() ? *m_b : *m_a;
+    log<log_level_debug_trace>("Resolve from {} to {}", fmt::ptr(&from), fmt::ptr(to));
     uint8_t data[3];
     for (auto &d : m_diffs) {
         uint8_t kind_part = d[0] & 0xF0;
@@ -243,7 +249,13 @@ void MidiStateDiffTracker::resolve_to(
         case 0x80:
         case 0x90:
             if (notes) {
-                v = other->maybe_current_note_velocity(d[0], d[1]);
+                v = from.maybe_current_note_velocity(d[0], d[1]);
+                if (should_log<log_level_debug_trace>()) {
+                    auto o = to->maybe_current_note_velocity(d[0], d[1]);
+                    int _v = v.has_value() ? (int) v.value() : -1;
+                    int _o = o.has_value() ? (int) o.value() : -1;
+                    log<log_level_debug_trace>("  - note {}.{} : {} -> {}", d[0], d[1], _o, _v);
+                }
                 data[0] =
                     v.has_value() ? 0x90 | channel_part : 0x80 | channel_part;
                 data[1] = d[1];
@@ -253,8 +265,14 @@ void MidiStateDiffTracker::resolve_to(
             break;
         case 0xB0:
             if (controls) {
-                v = other->maybe_cc_value(channel_part, d[1]);
+                v = from.maybe_cc_value(channel_part, d[1]);
                 if (v.has_value()) {
+                    if (should_log<log_level_debug_trace>()) {
+                        auto o = to->maybe_cc_value(d[0], d[1]);
+                        int _v = v.has_value() ? (int) v.value() : -1;
+                        int _o = o.has_value() ? (int) o.value() : -1;
+                        log<log_level_debug_trace>("  - control {}.{} : {} -> {}", d[0], d[1], _o, _v);
+                    }
                     data[0] = d[0];
                     data[1] = d[1];
                     data[2] = v.value();
@@ -264,8 +282,14 @@ void MidiStateDiffTracker::resolve_to(
             break;
         case 0xC0:
             if (programs) {
-                v = other->maybe_program_value(channel_part);
+                v = from.maybe_program_value(channel_part);
                 if (v.has_value()) {
+                    if (should_log<log_level_debug_trace>()) {
+                        auto o = to->maybe_program_value(channel_part);
+                        int _v = v.has_value() ? (int) v.value() : -1;
+                        int _o = o.has_value() ? (int) o.value() : -1;
+                        log<log_level_debug_trace>("  - program {}: {} -> {}", channel_part, _o, _v);
+                    }
                     data[0] = d[0];
                     data[1] = d[1];
                     data[2] = v.value();
@@ -275,8 +299,14 @@ void MidiStateDiffTracker::resolve_to(
             break;
         case 0xD0:
             if (controls) {
-                v = other->maybe_channel_pressure_value(channel_part);
+                v = from.maybe_channel_pressure_value(channel_part);
                 if (v.has_value()) {
+                    if (should_log<log_level_debug_trace>()) {
+                        auto o = to->maybe_channel_pressure_value(channel_part);
+                        int _v = v.has_value() ? (int) v.value() : -1;
+                        int _o = o.has_value() ? (int) o.value() : -1;
+                        log<log_level_debug_trace>("  - channel pressure {}: {} -> {}", channel_part, _o, _v);
+                    }
                     data[0] = d[0];
                     data[1] = d[1];
                     data[2] = v.value();
@@ -286,8 +316,14 @@ void MidiStateDiffTracker::resolve_to(
             break;
         case 0xE0:
             if (controls) {
-                auto v = other->maybe_pitch_wheel_value(channel_part);
+                auto v = from.maybe_pitch_wheel_value(channel_part);
                 if (v.has_value()) {
+                    if (should_log<log_level_debug_trace>()) {
+                        auto o = to->maybe_pitch_wheel_value(channel_part);
+                        int _v = v.has_value() ? (int) v.value() : -1;
+                        int _o = v.has_value() ? (int) o.value() : -1;
+                        log<log_level_debug_trace>("  - pitch wheel {}: {} -> {}", channel_part, _o, _v);
+                    }
                     data[0] = d[0];
                     data[1] = v.value() & 0b1111111;
                     data[2] = (v.value() >> 7) & 0b1111111;

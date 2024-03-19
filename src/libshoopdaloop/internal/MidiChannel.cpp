@@ -362,7 +362,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_record(Storage &storage,
                 // other CCs, pitch wheel, etc.) so we can restore it later.
                 log<log_level_debug_trace>("record msg");
                 if (storage.n_events() == 0) {
-                    log<log_level_debug>("cache port state for record");
+                    log<log_level_debug>("cache port state {} -> {} for record", fmt::ptr(mp_input_midi_state.get()), fmt::ptr(track_start_state.state.get()));
                     track_start_state.set_from(mp_input_midi_state);
                 }
                 storage.append(record_from + (TimeType)t -

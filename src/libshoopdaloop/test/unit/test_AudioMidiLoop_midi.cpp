@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
+#include <cstdlib>
 #include <memory>
 #include <functional>
 #include <numeric>
@@ -775,13 +776,13 @@ TEST_CASE("AudioMidiLoop - Midi - CC State tracking", "[AudioMidiLoop][midi]") {
 TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundary", "[AudioMidiLoop][midi]") {
     // If a note started being played before the loop boundary, but ended inside - we should
     // playback a Note On when the loop starts, such that the note is not "lost".
-
+    
     AudioMidiLoop loop;
     loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
     auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
 
     REQUIRE(loop.get_mode() == LoopMode_Stopped);
-    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
+    REQUIRE(loop.PROC_get_next_poi().has_value() == false);
     REQUIRE(loop.get_length() == 0);
     REQUIRE(loop.get_position() == 0);
 
@@ -793,23 +794,23 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     channel.PROC_set_recording_buffer(&source_buf, 512);
 
     // Nothing recorded, but the noteOn should be caught by MIDI channel state tracking
-    REQUIRE(loop.PROC_get_next_poi() == std::nullopt); // sanity check
+    REQUIRE(loop.PROC_get_next_poi().has_value() == false); // sanity check
     loop.PROC_process(12);
 
     // Start recording
     loop.plan_transition(LoopMode_Recording, 0, false, false);
 
     REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi() == 500); // end of buffer
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 500); // end of buffer
     REQUIRE(loop.get_length() == 0);
     REQUIRE(loop.get_position() == 0);
 
     // NoteOff and 2nd note on+off should be recorded
-    REQUIRE(loop.PROC_get_next_poi().value() > 10); // sanity check
+    REQUIRE(loop.PROC_get_next_poi().value_or(0) > 10); // sanity check
     loop.PROC_process(30);
 
     REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi() == 470); // end of buffer
+    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 470); // end of buffer
     REQUIRE(loop.get_length() == 30);
     REQUIRE(loop.get_position() == 0);
 
@@ -817,7 +818,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
 
     // Stop for a while
     loop.plan_transition(LoopMode_Stopped, 0, false, false);
-    REQUIRE(loop.PROC_get_next_poi() == std::nullopt); // sanity check
+    REQUIRE(loop.PROC_get_next_poi().has_value() == false); // sanity check
     loop.PROC_process(50);
 
     // Start playback and play.
@@ -828,7 +829,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     channel.PROC_set_playback_buffer(&playback_buf, 512);
     loop.plan_transition(LoopMode_Playing, 0, false, false);
 
-    REQUIRE(loop.PROC_get_next_poi().value() >= 10); // sanity check
+    REQUIRE(loop.PROC_get_next_poi().value_or(0) >= 10); // sanity check
     loop.PROC_process(30);
     
     auto msgs = playback_buf.written;
@@ -856,7 +857,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
 
     // Play another loop to make sure it works twice in a row
     playback_buf.written.clear();
-    REQUIRE(loop.PROC_get_next_poi().value() >= 10); // sanity check
+    REQUIRE(loop.PROC_get_next_poi().value_or(0) >= 10); // sanity check
     loop.PROC_process(30);
     
     msgs = playback_buf.written;

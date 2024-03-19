@@ -8,11 +8,16 @@
 #include <memory>
 #include <optional>
 #include <vector>
+#include <fmt/format.h>
 
 using namespace logging;
 
 uint32_t MidiStateTracker::cc_index(uint8_t channel, uint8_t cc) {
-    return (uint32_t)channel * 128 + (uint32_t)cc;
+    return (uint32_t)(channel & 0x0F) * 128 + (uint32_t)cc;
+}
+
+uint32_t MidiStateTracker::note_index(uint8_t channel, uint8_t note) {
+    return (uint32_t)(channel & 0x0F) * 128 + (uint32_t)note;
 }
 
 void MidiStateTracker::process_noteOn(uint8_t channel, uint8_t note,
@@ -24,17 +29,17 @@ void MidiStateTracker::process_noteOn(uint8_t channel, uint8_t note,
     
     log<log_level_debug_trace>("Process note on: {}, {}, {}", channel, note, velocity);
 
-    if (m_notes_active_velocities.at(channel * 128 + note) != NoteInactive) {
+    if (m_notes_active_velocities.at(note_index(channel, note)) != NoteInactive) {
         m_n_notes_active++;
     }
-    if (m_notes_active_velocities.at(channel * 128 + note) != velocity) {
+    if (m_notes_active_velocities.at(note_index(channel, note)) != velocity) {
         for (auto const &s : m_subscribers) {
             if (auto ss = s.lock()) {
                 ss->note_changed(this, channel, note, velocity);
             }
         }
     }
-    m_notes_active_velocities.at(channel * 128 + note) = velocity;
+    m_notes_active_velocities.at(note_index(channel, note)) = velocity;
 }
 
 void MidiStateTracker::process_allNotesOff(uint8_t channel) {
@@ -46,7 +51,7 @@ void MidiStateTracker::process_allNotesOff(uint8_t channel) {
     log<log_level_debug_trace>("Process all notes off: {}", channel);
 
     for (size_t note=0; note < 128; note++) {
-        if (m_notes_active_velocities.at(channel * 128 + note) != NoteInactive) {
+        if (m_notes_active_velocities.at(note_index(channel, note)) != NoteInactive) {
             m_n_notes_active = std::max(0, m_n_notes_active - 1);
             for (auto const &s : m_subscribers) {
                 if (auto ss = s.lock()) {
@@ -54,7 +59,7 @@ void MidiStateTracker::process_allNotesOff(uint8_t channel) {
                 }
             }
         }
-        m_notes_active_velocities.at(channel * 128 + note) = NoteInactive;
+        m_notes_active_velocities.at(note_index(channel, note)) = NoteInactive;
     }
 }
 
@@ -66,7 +71,7 @@ void MidiStateTracker::process_noteOff(uint8_t channel, uint8_t note) {
 
     log<log_level_debug_trace>("Process note off: {}, {}", channel, note);
 
-    if (m_notes_active_velocities.at(channel * 128 + note) != NoteInactive) {
+    if (m_notes_active_velocities.at(note_index(channel, note)) != NoteInactive) {
         m_n_notes_active = std::max(0, m_n_notes_active - 1);
         for (auto const &s : m_subscribers) {
             if (auto ss = s.lock()) {
@@ -74,7 +79,7 @@ void MidiStateTracker::process_noteOff(uint8_t channel, uint8_t note) {
             }
         }
     }
-    m_notes_active_velocities.at(channel * 128 + note) = NoteInactive;
+    m_notes_active_velocities.at(note_index(channel, note)) = NoteInactive;
 }
 
 void MidiStateTracker::process_cc(uint8_t channel, uint8_t controller,
@@ -174,7 +179,7 @@ MidiStateTracker &MidiStateTracker::operator=(MidiStateTracker const &other) {
 }
 
 void MidiStateTracker::copy_relevant_state(MidiStateTracker const &other) {
-    log<log_level_debug>("Copy state from other");
+    log<log_level_debug>("Copy state from {}", fmt::ptr(&other));
 
     if (tracking_notes()) {
         m_n_notes_active = other.m_n_notes_active.load();
@@ -217,7 +222,7 @@ std::vector<std::vector<uint8_t>> MidiStateTracker::state_as_messages() {
     if (tracking_notes()) {
         for (uint8_t chan=0; chan < (uint8_t) m_notes_active_velocities.size(); chan++) {
             for (uint8_t note=0; note < 128; note++) {
-                auto v = m_notes_active_velocities[chan * 128 + note];
+                auto v = m_notes_active_velocities[note_index(chan, note)];
                 if (v != NoteInactive) {
                     rval.push_back(noteOn(chan, note, v));
                 }
@@ -284,8 +289,8 @@ uint32_t MidiStateTracker::n_notes_active() const { return m_n_notes_active; }
 std::optional<uint8_t>
 MidiStateTracker::maybe_current_note_velocity(uint8_t channel,
                                               uint8_t note) const {
-    if (m_notes_active_velocities.size() < (channel * 128 + note)) { return std::nullopt; }
-    auto v =  m_notes_active_velocities[channel*128 + note];
+    if (m_notes_active_velocities.size() < (note_index(channel, note))) { return std::nullopt; }
+    auto v =  m_notes_active_velocities[note_index(channel, note)];
     if (v == NoteInactive) { return std::nullopt; }
     return v;
 }

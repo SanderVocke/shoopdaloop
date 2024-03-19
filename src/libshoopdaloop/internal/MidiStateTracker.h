@@ -40,6 +40,8 @@ private:
     std::set<std::weak_ptr<Subscriber>, std::owner_less<std::weak_ptr<Subscriber>>> m_subscribers;
 
     static uint32_t cc_index (uint8_t channel, uint8_t cc);
+    static uint32_t note_index(uint8_t channel, uint8_t note);
+
     void process_noteOn(uint8_t channel, uint8_t note, uint8_t velocity);
     void process_noteOff(uint8_t channel, uint8_t note);
     void process_allNotesOff(uint8_t channel);
