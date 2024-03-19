@@ -163,13 +163,13 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     let input = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  },
-                        { 'time': 4, 'data': [0x90, 10,  10]  }
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  },
+                        { 'time': 4, 'data': [0x80, 10,  10]  }
                     ]
                     let expect_loop = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  },
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  },
                     ]
                     let expect_out = []
                     let chan = lut.get_midi_output_channels()[0]
@@ -231,13 +231,13 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     let input = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  },
-                        { 'time': 4, 'data': [0x90, 10,  10]  }
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  },
+                        { 'time': 4, 'data': [0x80, 10,  10]  }
                     ]
                     let expect_loop = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  },
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  },
                     ]
                     let expect_out = expect_loop
                     let chan = lut.get_midi_output_channels()[0]
@@ -295,12 +295,12 @@ ShoopTestFile {
 
                 'test_midi_direct_play_no_monitor': () => {
                     let input = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  }
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  }
                     ]
                     let loop = [
-                        { 'time': 1, 'data': [0x90, 20, 20] },
-                        { 'time': 2, 'data': [0x90, 10, 10] },
+                        { 'time': 1, 'data': [0x80, 20, 20] },
+                        { 'time': 2, 'data': [0x80, 10, 10] },
                     ]
                     let expect_out = loop
 
@@ -367,18 +367,18 @@ ShoopTestFile {
 
                 'test_midi_direct_play_monitor': () => {
                     let input = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  }
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  }
                     ]
                     let loop = [
-                        { 'time': 1, 'data': [0x90, 20, 20] },
-                        { 'time': 2, 'data': [0x90, 10, 10] },
+                        { 'time': 1, 'data': [0x80, 20, 20] },
+                        { 'time': 2, 'data': [0x80, 10, 10] },
                     ]
                     let expect_out = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 1, 'data': [0x90, 20, 20]   },
-                        { 'time': 2, 'data': [0x90, 10, 10]   },
-                        { 'time': 3, 'data': [0x90, 50,  50]  }
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 1, 'data': [0x80, 20, 20]   },
+                        { 'time': 2, 'data': [0x80, 10, 10]   },
+                        { 'time': 3, 'data': [0x80, 50,  50]  }
                     ]
 
                     check_backend()

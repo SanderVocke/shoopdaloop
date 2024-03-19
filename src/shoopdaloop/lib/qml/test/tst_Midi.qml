@@ -274,7 +274,7 @@ ShoopTestFile {
                     chan.clear()
                     testcase.wait_updated(session.backend)
                     testcase.wait_updated(session.backend)
-                    verify_eq(chan.get_recorded_midi_msgs(), [], null, true)
+                    verify_eq(chan.get_all_midi_data(), [], null, true)
                     file_io.load_midi_to_channels(
                                 filename,
                                 session.backend.get_sample_rate(),
@@ -293,7 +293,90 @@ ShoopTestFile {
                     // Verify same as before
                     verify_eq(chan.get_recorded_midi_msgs(), input, null, true)
                     verify_eq(out, expect_output, null, true)
-                }
+                },
+
+                'midi_record_then_play_stateful': () => {
+                    check_backend()
+                    reset()
+                    tut_control().monitor = false
+                    tut_control().mute = false
+
+                    let input = [
+                        { 'time': 1, 'data': [0x90, 100, 100] }, // before record
+                        { 'time': 4, 'data': [0x80, 100,  50] }, // during record
+                    ]
+                    let chan = lut.get_midi_output_channels()[0]
+
+                    midi_input_port.dummy_clear_queues()
+                    midi_output_port.dummy_clear_queues()
+
+                    midi_input_port.dummy_queue_msgs(input)
+
+                    // Process 6 frames (record)
+                    session.backend.dummy_request_controlled_frames(2)
+                    session.backend.wait_process()
+                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(4)
+                    session.backend.wait_process()
+
+                    // NoteOn should now be in state, NoteOff should be in the
+                    // recording. Start playback.
+                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+
+                    midi_output_port.dummy_request_data(4)
+
+                    // Process 4 frames (play back)
+                    session.backend.dummy_request_controlled_frames(4)
+                    session.backend.wait_process()
+                    let out = midi_output_port.dummy_dequeue_data()
+
+                    midi_input_port.dummy_clear_queues()
+                    midi_output_port.dummy_clear_queues()
+
+                    let expect = [
+                        { 'time': 0, 'data': [0x90, 100, 100] },
+                        { 'time': 2, 'data': [0x80, 100,  50] },
+                    ]
+                    verify_eq(out, expect, null, true)
+
+                    // Now, save the channel to disk, load it in again and verify that
+                    // playback behavior is still the same.
+
+                    // First stop for a while
+                    lut.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(20)
+                    session.backend.wait_process()
+                    midi_input_port.dummy_clear_queues()
+                    midi_output_port.dummy_clear_queues()
+
+                    // Save and re-load
+                    var filename = file_io.generate_temporary_filename() + '.smf'
+                    file_io.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
+                    chan.clear()
+                    testcase.wait_updated(session.backend)
+                    testcase.wait_updated(session.backend)
+                    verify_eq(chan.get_all_midi_data(), [], null, true)
+                    file_io.load_midi_to_channels(
+                                filename,
+                                session.backend.get_sample_rate(),
+                                [chan],
+                                0,
+                                4,
+                                false)
+
+                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    midi_output_port.dummy_request_data(4)
+                    session.backend.dummy_request_controlled_frames(4)
+                    session.backend.wait_process()
+                    out = midi_output_port.dummy_dequeue_data()
+
+                    // Verify same as before
+                    verify_eq(out, expect, null, true)
+                },
             })
         }
     }

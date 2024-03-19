@@ -128,7 +128,6 @@ class LoopChannel(ShoopQQuickItem):
     # indirect setter via back-end
     @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
     def set_start_offset(self, offset):
-        print(f"STATE: {self._start_offset} -> {offset}")
         if offset != self._start_offset:
             if self._backend_obj:
                 self.__logger.debug(lambda: 'Set start offset -> {}'.format(offset))

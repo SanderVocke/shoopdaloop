@@ -492,10 +492,10 @@ class BackendLoopMidiChannel:
         return []
 
     def get_recorded_midi_msgs(self):
-        return [m for m in self.get_all_midi_data() if m.time >= 0.0]
+        return [m for m in self.get_all_midi_data() if m['time'] >= 0.0]
 
     def get_state_midi_msgs(self):
-        return [m for m in self.get_all_midi_data() if m.time < 0.0]
+        return [m for m in self.get_all_midi_data() if m['time'] < 0.0]
     
     def load_all_midi_data(self, msgs):
         if self.available():

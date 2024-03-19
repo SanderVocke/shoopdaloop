@@ -4,6 +4,7 @@
 #include "MidiPort.h"
 #include "MidiStateTracker.h"
 #include "channel_mode_helpers.h"
+#include "types.h"
 #include <memory>
 #include <optional>
 #include <functional>
@@ -60,7 +61,15 @@ MidiChannel<TimeType, SizeType>::TrackedState::set_from(std::shared_ptr<MidiStat
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::TrackedState::reset() { m_valid = false; }
+MidiChannel<TimeType, SizeType>::TrackedState::reset() {
+    if (state) {
+        state->clear();
+    }
+    if (diff) {
+        diff->reset();
+    }
+    m_valid = false;
+}
 
 template <typename TimeType, typename SizeType>
 bool
@@ -245,7 +254,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
         // Upon the first message played back, we can
         // restore the state to what it should be at that point.
         if (!(mp_prev_process_flags & ChannelPlayback) || (ma_last_played_back_sample > process_params.position)) {
-            log<log_level_debug_trace>("Playback start, reset cursor");
+            log<log_level_debug_trace>("Playback start, reset cursor, start state {} (valid {})", fmt::ptr(mp_recording_start_state_tracker->state.get()), mp_recording_start_state_tracker->valid());
             mp_playback_cursor->reset();
             *mp_track_state_until_first_msg_playback = *mp_recording_start_state_tracker;
         }
@@ -360,11 +369,15 @@ MidiChannel<TimeType, SizeType>::PROC_process_record(Storage &storage,
                 // If it is the first recorded message, this is also the moment
                 // to cache the MIDI state on the input (such as hold pedal,
                 // other CCs, pitch wheel, etc.) so we can restore it later.
-                log<log_level_debug_trace>("record msg");
                 if (storage.n_events() == 0) {
                     log<log_level_debug>("cache port state {} -> {} for record", fmt::ptr(mp_input_midi_state.get()), fmt::ptr(track_start_state.state.get()));
                     track_start_state.set_from(mp_input_midi_state);
                 }
+                log<log_level_debug_trace>("record msg: {} {} {}",
+                    (s > 0) ? (int)d[0] : -1,
+                    (s > 1) ? (int)d[1] : -1,
+                    (s > 2) ? (int)d[2] : -1
+                );
                 storage.append(record_from + (TimeType)t -
                                    recbuf.first.n_frames_processed,
                                (SizeType)s, d);
@@ -475,7 +488,10 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
     mp_playback_cursor->find_time_forward(
         std::max(0, _pos), [&](typename Storage::Elem *e) {
             if (mp_track_state_until_first_msg_playback->valid()) {
+                log<log_level_debug_trace>("process pre-playback message");
                 mp_track_state_until_first_msg_playback->state->process_msg(e->data());
+            } else {
+                log<log_level_debug_trace>("ignore pre-playback message: tracker not enabled");
             }
             ma_last_played_back_sample = e->storage_time;
         });
@@ -597,6 +613,7 @@ MidiChannel<TimeType, SizeType>::retrieve_contents(bool thread_safe) {
     MidiStateTracker state(true, true, true);
     auto s = std::make_shared<Storage>(mp_storage->bytes_capacity());
     auto fn = [this, &s, &state]() {
+        log<log_level_debug_trace>("retrieving contents");
         mp_storage->copy(*s);
         state.copy_relevant_state(*mp_recording_start_state_tracker->state);
     };
@@ -636,7 +653,10 @@ MidiChannel<TimeType, SizeType>::set_contents(Contents contents, uint32_t length
         log<log_level_debug_trace>("Applying loaded data (storage @ {}).", fmt::ptr(s.get()));
         mp_storage = s;
         mp_playback_cursor = mp_storage->create_cursor();
+        mp_recording_start_state_tracker->set_valid(true);
         mp_recording_start_state_tracker->state->copy_relevant_state(*new_start_state);
+        mp_recording_start_state_tracker->diff->reset(mp_input_midi_state,
+                                                      mp_recording_start_state_tracker->state, StateDiffTrackerAction::ScanDiff);
         PROC_set_length(length_samples);
         data_changed();
     };

@@ -335,7 +335,7 @@ PythonTestCase {
         logger.debug(() => "running testcase_deinit_fn")
         testcase_deinit_fn()
         var casename = name
-        if (state == 'fail') {
+        if (status == 'fail') {
             logger.error(() => (`----------     ${filename}::${casename}: FAIL`))
         } else {
             logger.info(() => (`----------     ${filename}::${casename}: ${status.toUpperCase()}`))

@@ -1,5 +1,6 @@
 #include "MidiStateTracker.h"
 #include "midi_helpers.h"
+#include "types.h"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -204,34 +205,46 @@ std::vector<std::vector<uint8_t>> MidiStateTracker::state_as_messages() {
         for (uint8_t channel; channel < (uint8_t) m_programs.size(); channel++) {
             auto v = m_programs[channel];
             if (v != ProgramUnknown) {
+                log<log_level_debug_trace>("state msg: program @ {} = {}", channel, v);
                 rval.push_back(programChange(channel, v));
             }
         }
     }
     if (tracking_controls()) {
-        for (uint8_t channel; channel < (uint8_t) m_programs.size(); channel++) {
+        for (uint8_t channel; channel < 16; channel++) {
             auto pw = m_pitch_wheel[channel];
             auto cp = m_channel_pressure[channel];
-            if (pw != PitchWheelUnknown && pw != PitchWheelDefault) { rval.push_back(pitchWheelChange(channel, pw)); }
-            if (cp != ChannelPressureUnknown) { rval.push_back(channelPressure(channel, cp)); }
+            if (pw != PitchWheelUnknown && pw != PitchWheelDefault) {
+                log<log_level_debug_trace>("state msg: pitch wheel @ {} = {}", channel, pw);
+                rval.push_back(pitchWheelChange(channel, pw));
+            }
+            if (cp != ChannelPressureUnknown) {
+                log<log_level_debug_trace>("state msg: channel pressure @ {} = {}", channel, cp);
+                rval.push_back(channelPressure(channel, cp));
+            }
 
             for (uint8_t controller; controller < 128; controller++) {
                 auto v = m_controls[channel * 128 + controller];
-                if (v != default_cc(channel, controller)) { rval.push_back(cc(channel, controller, v)); }
+                if (v != default_cc(channel, controller)) {
+                    log<log_level_debug_trace>("state msg: CC @ {}.{} = {}", channel, controller, v);
+                    rval.push_back(cc(channel, controller, v));
+                }
             }
         }
     }
     if (tracking_notes()) {
-        for (uint8_t chan=0; chan < (uint8_t) m_notes_active_velocities.size(); chan++) {
+        for (uint8_t chan=0; chan < 16; chan++) {
             for (uint8_t note=0; note < 128; note++) {
                 auto v = m_notes_active_velocities[note_index(chan, note)];
                 if (v != NoteInactive) {
+                    log<log_level_debug_trace>("state msg: note on @ {}.{} = {}", chan, note, v);
                     rval.push_back(noteOn(chan, note, v));
                 }
             }
         }
     }
 
+    log<log_level_debug>("represented as {} state messages", rval.size());
     return rval;    
 }
 
