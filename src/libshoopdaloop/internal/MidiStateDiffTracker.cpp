@@ -12,6 +12,7 @@ void MidiStateDiffTracker::note_changed(MidiStateTracker *tracker,
                                         uint8_t channel, uint8_t note,
                                         std::optional<uint8_t> maybe_velocity) {
     if (tracker != m_a.get() && tracker != m_b.get()) {
+        log<log_level_debug_trace>("ignore note change: unknown tracker");
         return;
     }
     auto &other = tracker == m_a.get() ? m_b : m_a;
@@ -35,6 +36,7 @@ void MidiStateDiffTracker::cc_changed(MidiStateTracker *tracker,
                                       uint8_t channel, uint8_t cc,
                                       std::optional<uint8_t> value) {
     if (tracker != m_a.get() && tracker != m_b.get()) {
+        log<log_level_debug_trace>("ignore cc change: unknown tracker");
         return;
     }
     auto &other = tracker == m_a.get() ? m_b : m_a;
@@ -43,14 +45,22 @@ void MidiStateDiffTracker::cc_changed(MidiStateTracker *tracker,
         other->maybe_cc_value(channel, cc) != value &&
         value.has_value()) {
         m_diffs.insert({(uint8_t)(0xB0 | channel), cc});
+        if (should_log<log_level_debug_trace>()) {
+            auto _f = other->maybe_cc_value(channel, cc);
+            int f = _f.has_value() ? _f.value() : -1;
+            int t = value.has_value() ? value.value() : -1;
+            log<log_level_debug_trace>("New CC diff: tracker {} updated vs. {}, chan {}, CC {}, val {} -> {}", fmt::ptr(tracker), fmt::ptr(other.get()), channel, cc, f, t);
+        }
     } else {
         m_diffs.erase({(uint8_t)(0xB0 | channel), cc});
+        log<log_level_debug_trace>("Forget CC diff: tracker {} updated vs. {}, chan {}, CC {}", fmt::ptr(tracker), fmt::ptr(other.get()), channel, cc);
     }
 }
 
 void MidiStateDiffTracker::program_changed(MidiStateTracker *tracker,
                                            uint8_t channel, std::optional<uint8_t> program) {
     if (tracker != m_a.get() && tracker != m_b.get()) {
+        log<log_level_debug_trace>("ignore program change: unknown tracker");
         return;
     }
     auto &other = tracker == m_a.get() ? m_b : m_a;
@@ -59,8 +69,15 @@ void MidiStateDiffTracker::program_changed(MidiStateTracker *tracker,
         other->maybe_program_value(channel) != program &&
         program.has_value()) {
         m_diffs.insert({(uint8_t)(0xC0 | channel), 0});
+        if (should_log<log_level_debug_trace>()) {
+            auto _f = other->maybe_program_value(channel);
+            int f = _f.has_value() ? _f.value() : -1;
+            int t = program.has_value() ? program.value() : -1;
+            log<log_level_debug_trace>("New program diff: tracker {} updated vs. {}, chan {}, program {} -> {}", fmt::ptr(tracker), fmt::ptr(other.get()), channel, f, t);
+        }
     } else {
         m_diffs.erase({(uint8_t)(0xC0 | channel), 0});
+        log<log_level_debug_trace>("Forget program diff: tracker {} updated vs. {}, chan {}", fmt::ptr(tracker), fmt::ptr(other.get()), channel);
     }
 }
 
@@ -68,6 +85,7 @@ void MidiStateDiffTracker::pitch_wheel_changed(MidiStateTracker *tracker,
                                                uint8_t channel,
                                                std::optional<uint16_t> pitch) {
     if (tracker != m_a.get() && tracker != m_b.get()) {
+        log<log_level_debug_trace>("ignore pitch wheel change: unknown tracker");
         return;
     }
     auto &other = tracker == m_a.get() ? m_b : m_a;
@@ -76,8 +94,15 @@ void MidiStateDiffTracker::pitch_wheel_changed(MidiStateTracker *tracker,
         other->maybe_pitch_wheel_value(channel) != pitch &&
         pitch.has_value()) {
         m_diffs.insert({(uint8_t)(0xE0 | channel), 0});
+        if (should_log<log_level_debug_trace>()) {
+            auto _f = other->maybe_program_value(channel);
+            int f = _f.has_value() ? _f.value() : -1;
+            int t = pitch.has_value() ? pitch.value() : -1;
+            log<log_level_debug_trace>("New pitch wheel diff: tracker {} updated vs. {}, chan {}, wheel {} -> {}", fmt::ptr(tracker), fmt::ptr(other.get()), channel, f, t);
+        }
     } else {
         m_diffs.erase({(uint8_t)(0xE0 | channel), 0});
+        log<log_level_debug_trace>("Forget pitch wheel diff: tracker {} updated vs. {}, chan {}", fmt::ptr(tracker), fmt::ptr(other.get()), channel);
     }
 }
 
@@ -85,6 +110,7 @@ void MidiStateDiffTracker::channel_pressure_changed(MidiStateTracker *tracker,
                                                     uint8_t channel,
                                                     std::optional<uint8_t> pressure) {
     if (tracker != m_a.get() && tracker != m_b.get()) {
+        log<log_level_debug_trace>("ignore channel pressure change: unknown tracker");
         return;
     }
     auto &other = tracker == m_a.get() ? m_b : m_a;
@@ -93,8 +119,15 @@ void MidiStateDiffTracker::channel_pressure_changed(MidiStateTracker *tracker,
         other->maybe_channel_pressure_value(channel) != pressure &&
         pressure.has_value()) {
         m_diffs.insert({(uint8_t)(0xE0 | channel), 0});
+        if (should_log<log_level_debug_trace>()) {
+            auto _f = other->maybe_program_value(channel);
+            int f = _f.has_value() ? _f.value() : -1;
+            int t = pressure.has_value() ? pressure.value() : -1;
+            log<log_level_debug_trace>("New channel pressure diff: tracker {} updated vs. {}, chan {}, pressure {} -> {}", fmt::ptr(tracker), fmt::ptr(other.get()), channel, f, t);
+        }
     } else {
         m_diffs.erase({(uint8_t)(0xE0 | channel), 0});
+        log<log_level_debug_trace>("Forget channel pressure diff: tracker {} updated vs. {}, chan {}", fmt::ptr(tracker), fmt::ptr(other.get()), channel);
     }
 }
 

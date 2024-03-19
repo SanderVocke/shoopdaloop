@@ -29,7 +29,7 @@ void MidiStateTracker::process_noteOn(uint8_t channel, uint8_t note,
     
     log<log_level_debug_trace>("Process note on: {}, {}, {}", channel, note, velocity);
 
-    if (m_notes_active_velocities.at(note_index(channel, note)) != NoteInactive) {
+    if (m_notes_active_velocities.at(note_index(channel, note)) == NoteInactive) {
         m_n_notes_active++;
     }
     if (m_notes_active_velocities.at(note_index(channel, note)) != velocity) {
@@ -89,10 +89,12 @@ void MidiStateTracker::process_cc(uint8_t channel, uint8_t controller,
         return;
     }
 
-    log<log_level_debug_trace>("Process cc: {}, {}, {}", channel, controller, value);
-
     auto idx = cc_index(channel & 0x0F, controller);
-    if (m_controls.at(idx) != value) {
+    auto current = m_controls.at(idx);
+
+    log<log_level_debug_trace>("Process cc: {}, {}, {} -> {}", channel, controller, current, value);
+
+    if (current != value) {
         for (auto const &s : m_subscribers) {
             if (auto ss = s.lock()) {
                 ss->cc_changed(this, channel, controller, value);
@@ -210,12 +212,12 @@ std::vector<std::vector<uint8_t>> MidiStateTracker::state_as_messages() {
         for (uint8_t channel; channel < (uint8_t) m_programs.size(); channel++) {
             auto pw = m_pitch_wheel[channel];
             auto cp = m_channel_pressure[channel];
-            if (pw != PitchWheelUnknown) { rval.push_back(pitchWheelChange(channel, pw)); }
+            if (pw != PitchWheelUnknown && pw != PitchWheelDefault) { rval.push_back(pitchWheelChange(channel, pw)); }
             if (cp != ChannelPressureUnknown) { rval.push_back(channelPressure(channel, cp)); }
 
             for (uint8_t controller; controller < 128; controller++) {
                 auto v = m_controls[channel * 128 + controller];
-                if (v != CCValueUnknown) { rval.push_back(cc(channel, controller, v)); }
+                if (v != default_cc(channel, controller)) { rval.push_back(cc(channel, controller, v)); }
             }
         }
     }
@@ -233,6 +235,15 @@ std::vector<std::vector<uint8_t>> MidiStateTracker::state_as_messages() {
     return rval;    
 }
 
+uint8_t MidiStateTracker::default_cc (uint8_t channel, uint8_t controller) {
+    if (controller == 64 || controller == 69) {
+        // Special case: hold pedal assumed off
+        return 0;
+    } else {
+        return CCValueUnknown;
+    }
+}
+
 void MidiStateTracker::clear() {
     log<log_level_debug>("Clear");
 
@@ -241,7 +252,7 @@ void MidiStateTracker::clear() {
     }
     m_n_notes_active = 0;
     for (auto &p : m_pitch_wheel) {
-        p = PitchWheelUnknown;
+        p = PitchWheelDefault;
     }
     for (auto &p : m_programs) {
         p = ProgramUnknown;
@@ -250,7 +261,7 @@ void MidiStateTracker::clear() {
         p = ChannelPressureUnknown;
     }
     for (size_t cc=0; cc < m_controls.size(); cc++) {
-        m_controls[cc] = CCValueUnknown;
+        m_controls[cc] = default_cc(cc / 128, cc % 128);
     }
 }
 

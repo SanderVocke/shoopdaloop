@@ -30,6 +30,7 @@ private:
     static constexpr auto ChannelPressureUnknown = Unknown8bit;
     static constexpr uint16_t Unknown16bit = (uint16_t) 0b1000000000000000;
     static constexpr auto PitchWheelUnknown = Unknown16bit;
+    static constexpr auto PitchWheelDefault = 0x2000;
 
     std::atomic<int> m_n_notes_active = 0;
     std::vector<uint8_t> m_notes_active_velocities; // Track Note On / Note Off (16*128)
@@ -49,6 +50,8 @@ private:
     void process_program(uint8_t channel, uint8_t value);
     void process_pitch_wheel(uint8_t channel, uint16_t value);
     void process_channel_pressure(uint8_t channel, uint8_t value);
+
+    uint8_t default_cc (uint8_t channel, uint8_t controller);
 
 public:
     MidiStateTracker(bool track_notes=false, bool track_controls=false, bool track_programs=false);

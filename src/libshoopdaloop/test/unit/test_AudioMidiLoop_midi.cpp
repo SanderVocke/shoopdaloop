@@ -7,6 +7,7 @@
 #include "AudioMidiLoop.h"
 #include "MidiChannel.h"
 #include "MidiStateTracker.h"
+#include "boost/stacktrace/stacktrace_fwd.hpp"
 #include "helpers.h"
 #include "types.h"
 #include "process_loops.h"
@@ -15,6 +16,7 @@
 #include <valarray>
 #include "midi_helpers.h"
 #include "LoggingEnabled.h"
+#include <boost/stacktrace.hpp>
 
 using namespace std::chrono_literals;
 
@@ -35,6 +37,7 @@ inline void check_msgs_equal(
     std::string log_level_info=""
     )
 {
+    INFO(log_level_info);
     CHECK(a.time == b.time+time_offset);
     CHECK(a.size == b.size);
     for (uint32_t i=0; i<a.size && i<b.size; i++) {
@@ -48,6 +51,8 @@ inline void check_msg_vectors_equal(
     std::vector<MessageB> const& b,
     std::string log_level_info = "")
 {
+    INFO(log_level_info);
+    INFO(boost::stacktrace::stacktrace());
     CHECK(a.size() == b.size());
     for (uint32_t i=0; i<a.size() && i < b.size(); i++) {
         check_msgs_equal(a[i], b[i], 0, "(msg " + std::to_string(i) + ") " + log_level_info);
@@ -73,6 +78,12 @@ std::vector<uint8_t> pitch_wheel_bytes (uint8_t channel, uint16_t val) {
 inline
 Msg pitch_wheel_msg(uint32_t time, uint8_t channel, uint16_t val) {
     return Msg(time, 3, pitch_wheel_bytes(channel, val));
+}
+
+inline
+Msg hold_pedal_msg(uint32_t time, uint8_t channel, bool hold) {
+    std::vector<uint8_t> bytes =  { (uint8_t)(0xB0 + channel), 64, (uint8_t)(hold ? 127 : 0) };
+    return Msg(time, 3, bytes);
 }
 
 inline Msg note_on_msg (uint32_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
@@ -716,7 +727,7 @@ TEST_CASE("AudioMidiLoop - Midi - CC State tracking", "[AudioMidiLoop][midi]") {
     // Also an unrelated pitch wheel change on other channel
     another.read.push_back(pitch_wheel_msg(0, 10, 100));
     // Also press the hold pedal
-    another.read.push_back(Msg(0, 3, {0xB1, 64, 127 }));
+    another.read.push_back(hold_pedal_msg(0, 1, true));
     REQUIRE(loop.get_mode() == LoopMode_Stopped);
     chan.PROC_set_recording_buffer(&another, 10);
     loop.PROC_update_poi();
@@ -776,7 +787,7 @@ TEST_CASE("AudioMidiLoop - Midi - CC State tracking", "[AudioMidiLoop][midi]") {
 TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundary", "[AudioMidiLoop][midi]") {
     // If a note started being played before the loop boundary, but ended inside - we should
     // playback a Note On when the loop starts, such that the note is not "lost".
-    
+
     AudioMidiLoop loop;
     loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
     auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
