@@ -290,11 +290,7 @@ uint32_t MidiStorageCursor<TimeType, SizeType>::find_time_forward(
     auto print_offset = m_offset.has_value() ? (int)m_offset.value() : (int)-1;
     log<log_level_debug_trace>("find_time_forward (storage {}, cursor {}, target time {})", fmt::ptr(m_storage), print_offset, time);
     if (!valid()) {
-        log<log_level_debug_trace>("find_time_forward: resetting (not valid)");
-        reset();
-    }
-    if (!valid()) {
-        log<log_level_debug_trace>("find_time_forward: not valid after reset (no msgs)");
+        log<log_level_debug_trace>("find_time_forward: not valid, returning");
         return 0;
     }
     std::optional<uint32_t> prev = m_offset;
@@ -325,8 +321,7 @@ uint32_t MidiStorageCursor<TimeType, SizeType>::find_time_forward(
 
     // If we reached here, we reached the end. Reset to an invalid
     // cursor.
-    log<log_level_debug_trace>("find_time_forward to {}: none found, reset", time);
-    reset();
+    log<log_level_debug_trace>("find_time_forward to {}: none found", time);
     return n_processed;
 }
 
