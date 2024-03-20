@@ -582,7 +582,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
     } else {
         log<log_level_debug_trace>("playback: done, reached end.");
     }
-    ma_last_played_back_sample = std::min((int)(our_pos + n_samples) - 1, (int)our_length);
+    ma_last_played_back_sample = (int)(our_pos + n_samples) - 1;
 }
 
 
