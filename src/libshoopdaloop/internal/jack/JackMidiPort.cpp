@@ -4,6 +4,7 @@
 #include "MidiSortingReadWritePort.h"
 #include <stdexcept>
 #include <iostream>
+#include "types.h"
 
 template<typename API>
 GenericJackMidiInputPort<API>::JackMidiReadBuffer::JackMidiReadBuffer() : m_jack_buffer(nullptr) {}
@@ -36,6 +37,26 @@ void GenericJackMidiInputPort<API>::JackMidiReadBuffer::PROC_get_event_value(uin
     size_out = event.size;
     time_out = event.time;
     data_out = event.buffer;
+}
+
+template<typename API>
+unsigned GenericJackMidiInputPort<API>::input_connectability() const {
+    return External;
+}
+
+template<typename API>
+unsigned GenericJackMidiInputPort<API>::output_connectability() const {
+    return Internal;
+}
+
+template<typename API>
+unsigned GenericJackMidiOutputPort<API>::input_connectability() const {
+    return Internal;
+}
+
+template<typename API>
+unsigned GenericJackMidiOutputPort<API>::output_connectability() const {
+    return External;
 }
 
 template<typename API>

@@ -92,11 +92,11 @@ ApplicationWindow {
                 }
 
                 ItemRow {
-                    label: "passthrough to:"
+                    label: "internal port connections:"
                     Row {
                         spacing: 3
                         Mapper {
-                            model: object.passthrough_to
+                            model: object.internal_port_connections
                             Text {
                                 property var mapped_item
                                 property int index

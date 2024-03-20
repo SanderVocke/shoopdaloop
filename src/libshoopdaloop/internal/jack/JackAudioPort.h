@@ -27,6 +27,9 @@ public:
 
     // Access the cached buffer.
     float *PROC_get_buffer(uint32_t n_frames) override;
+
+    unsigned input_connectability() const override;
+    unsigned output_connectability() const override;
 };
 
 using JackAudioPort = GenericJackAudioPort<JackApi>;

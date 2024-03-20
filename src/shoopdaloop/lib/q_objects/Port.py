@@ -26,8 +26,8 @@ class Port(FindParentBackend):
         self._backend_obj = None
         self._direction = None
         self._initialized = False
-        self._passthrough_to = []
-        self._passthrough_connected_to = []
+        self._internal_port_connections = []
+        self._internally_connected_to = []
         self._name = self._new_name = ''
         self._muted = self._new_muted = None
         self._passthrough_muted = self._new_passthrough_muted = None
@@ -37,7 +37,7 @@ class Port(FindParentBackend):
         
         self.backendChanged.connect(lambda: self.maybe_initialize())
         self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
-        self.initializedChanged.connect(lambda: self.update_passthrough_connections())
+        self.initializedChanged.connect(lambda: self.update_internal_connections())
 
     ######################
     # PROPERTIES
@@ -123,18 +123,18 @@ class Port(FindParentBackend):
             self.maybe_initialize()
             self.passthroughMutedChanged.emit(s)
     
-    # passthrough_to : ports to which to passthrough
-    passthroughToChanged = ShoopSignal(list)
-    @ShoopProperty(list, notify=passthroughToChanged)
-    def passthrough_to(self):
-        return self._passthrough_to
-    @passthrough_to.setter
-    def passthrough_to(self, s):
-        if self._passthrough_to != s:
-            self._passthrough_to = s
-            self.update_passthrough_connections()
+    # internal_port_connections : ports to which to connect internally
+    internalPortConnectionsChanged = ShoopSignal(list)
+    @ShoopProperty(list, notify=internalPortConnectionsChanged)
+    def internal_port_connections(self):
+        return self._internal_port_connections
+    @internal_port_connections.setter
+    def internal_port_connections(self, s):
+        if self._internal_port_connections != s:
+            self._internal_port_connections = s
+            self.update_internal_connections()
             self.maybe_initialize()
-            self.passthroughToChanged.emit(s)
+            self.internalPortConnectionsChanged.emit(s)
     
     ###########
     ## SLOTS
@@ -245,9 +245,9 @@ class Port(FindParentBackend):
     def maybe_initialize_impl(self, name_hint, direction, is_internal):
         raise Exception('Unimplemented in base class')
     
-    def update_passthrough_connections(self):
-        for other in self._passthrough_to:
-            if other and other.initialized and self.initialized and other not in self._passthrough_connected_to:
-                self._backend_obj.connect_passthrough(other.get_backend_obj())
+    def update_internal_connections(self):
+        for other in self._internal_port_connections:
+            if other and other.initialized and self.initialized and other not in self._internally_connected_to:
+                self._backend_obj.connect_internal(other.get_backend_obj())
             elif other and not other.initialized:
-                other.initializedChanged.connect(lambda: self.update_passthrough_connections())
+                other.initializedChanged.connect(lambda: self.update_internal_connections())

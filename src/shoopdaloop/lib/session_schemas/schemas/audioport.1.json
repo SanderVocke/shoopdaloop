@@ -1,15 +1,16 @@
 {
     "type": "object",
     "properties": {
-        "schema":           { "const": "audioport.1" },
-        "id":               { "type": "string"  },
-        "name_parts":       { "type": "array", "items": { "type": "string" } },
-        "direction":        { "enum": ["input", "output"] },
-        "gain":           { "type": "number" },
-        "muted":            { "type": "boolean" },
-        "passthrough_muted":{ "type": "boolean" },
-        "passthrough_to":   { "type": "array", "items": { "type": "string" } },
+        "schema":            { "const": "audioport.1" },
+        "id":                { "type": "string"  },
+        "name_parts":        { "type": "array", "items": { "type": "string" } },
+        "type":              { "enum": ["driver", "internal"] },
+        "driver_direction":  { "enum": ["input", "output"] },
+        "gain":              { "type": "number" },
+        "muted":             { "type": "boolean" },
+        "passthrough_muted": { "type": "boolean" },
+        "internal_port_connections": { "type": "array", "items": { "type": "string" } },
         "external_port_connections": { "type": "array", "items": { "type": "string" } }
     },
-    "required": ["schema", "id", "name_parts", "direction", "gain", "muted", "passthrough_to", "external_port_connections"]
+    "required": ["schema", "id", "name_parts", "type", "gain", "muted", "internal_port_connections", "external_port_connections"]
 }

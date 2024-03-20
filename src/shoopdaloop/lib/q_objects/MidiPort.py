@@ -172,7 +172,7 @@ class MidiPort(Port):
     def maybe_initialize_external(self, name_hint, direction):
         if self._backend_obj:
             return # never initialize more than once
-        self._backend_obj = self.backend.open_midi_port(name_hint, direction)
+        self._backend_obj = self.backend.open_driver_midi_port(name_hint, direction)
         self.push_state()
 
     def maybe_initialize_impl(self, name_hint, direction, is_internal):

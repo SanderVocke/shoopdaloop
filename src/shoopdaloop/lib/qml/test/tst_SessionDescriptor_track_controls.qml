@@ -54,7 +54,7 @@ ShoopTestFile {
 
         ShoopSessionTestCase {
             id: testcase
-            name: 'SessionDescriptor_default'
+            name: 'SessionDescriptor_track_controls'
             filename : TestFilename.test_filename()
             session: session
 

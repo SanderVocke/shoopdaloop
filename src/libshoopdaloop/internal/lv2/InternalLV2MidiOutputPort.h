@@ -52,5 +52,8 @@ public:
 
     void PROC_prepare(uint32_t n_frames) override;
 
+    unsigned input_connectability() const override { return 0; }
+    unsigned output_connectability() const override { return Internal; }
+
     ~InternalLV2MidiOutputPort();
 };

@@ -15,7 +15,7 @@ from PySide6.QtQml import QJSValue
 from .ShoopPyObject import *
 
 from ..backend_wrappers import *
-from ..backend_wrappers import open_audio_port as backend_open_audio_port, open_midi_port as backend_open_midi_port
+from ..backend_wrappers import open_driver_audio_port as backend_open_driver_audio_port, open_driver_midi_port as backend_open_driver_midi_port
 from ..findChildItems import findChildItems
 from .Logger import Logger
 
@@ -344,12 +344,12 @@ class Backend(ShoopQQuickItem):
         return audio_driver_type_supported(AudioDriverType(type))
     
     @ShoopSlot(str, int, result='QVariant')
-    def open_audio_port(self, name_hint, direction):
-        return backend_open_audio_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction)
+    def open_driver_audio_port(self, name_hint, direction):
+        return backend_open_driver_audio_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction)
     
     @ShoopSlot(str, int, result='QVariant')
-    def open_midi_port(self, name_hint, direction):
-        return backend_open_midi_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction)
+    def open_driver_midi_port(self, name_hint, direction):
+        return backend_open_driver_midi_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction)
 
     @ShoopSlot()
     def segfault_on_process_thread(self):

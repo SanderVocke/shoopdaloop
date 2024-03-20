@@ -22,6 +22,15 @@
                 "required": ["name", "tracks"]
             }
         },
+        "buses": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "schema": { "const": "bus.1", "$comment": "see bus.1 schema" }
+                }
+            }
+        },
         "ports": {
             "type": "array",
             "items": {

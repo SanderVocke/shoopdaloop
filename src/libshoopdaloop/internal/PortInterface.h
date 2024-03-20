@@ -55,6 +55,10 @@ public:
     virtual void connect_external(std::string name) = 0;
     virtual void disconnect_external(std::string name) = 0;
 
+    // Connectability (see shoop_port_connectability_t flags)
+    virtual unsigned input_connectability() const = 0;
+    virtual unsigned output_connectability() const = 0;
+
     virtual bool get_muted() const = 0;
     virtual void set_muted(bool muted) = 0;
 

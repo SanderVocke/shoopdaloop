@@ -4,11 +4,12 @@
         "schema":           { "const": "midiport.1" },
         "id":               { "type": "string"  },
         "name_parts":       { "type": "array", "items": { "type": "string" } },
-        "direction":        { "enum": ["input", "output"] },
+        "type":             { "enum": ["driver", "internal"] },
+        "driver_direction": { "enum": ["input", "output"] },
         "muted":            { "type": "boolean" },
         "passthrough_muted":{ "type": "boolean" },
-        "passthrough_to":   { "type": "array", "items": { "type": "string" } },
+        "internal_port_connections": { "type": "array", "items": { "type": "string" } },
         "external_port_connections": { "type": "array", "items": { "type": "string" } }
     },
-    "required": ["schema", "id", "name_parts", "muted", "direction", "passthrough_to", "external_port_connections"]
+    "required": ["schema", "id", "name_parts", "muted", "type", "internal_port_connections", "external_port_connections"]
 }

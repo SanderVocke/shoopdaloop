@@ -44,5 +44,15 @@ void GenericJackAudioPort<API>::PROC_process(uint32_t nframes) {
     AudioPort<jack_default_audio_sample_t>::PROC_process(nframes);
 }
 
+template<typename API>
+unsigned GenericJackAudioPort<API>::input_connectability() const {
+    return (m_direction == ShoopPortDirection_Input) ? External : Internal;
+}
+
+template<typename API>
+unsigned GenericJackAudioPort<API>::output_connectability() const {
+    return (m_direction == ShoopPortDirection_Output) ? External : Internal;
+}
+
 template class GenericJackAudioPort<JackApi>;
 template class GenericJackAudioPort<JackTestApi>;

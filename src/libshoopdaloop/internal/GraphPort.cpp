@@ -19,13 +19,13 @@ BackendSession &GraphPort::get_backend() {
     return *b;
 }
 
-void GraphPort::connect_passthrough(const std::shared_ptr<GraphPort> &other) {
-    for (auto &_other : mp_passthrough_to) {
+void GraphPort::connect_internal(const std::shared_ptr<GraphPort> &other) {
+    for (auto &_other : mp_internal_port_connections) {
         if(auto __other = _other.lock()) {
             if (__other.get() == other.get()) { return; } // already connected
         }
     }
-    mp_passthrough_to.push_back(other);
+    mp_internal_port_connections.push_back(other);
     get_backend().set_graph_node_changes_pending();
 }
 
@@ -38,14 +38,14 @@ void GraphPort::graph_node_0_process(uint32_t nframes) {
 
 void GraphPort::graph_node_1_process(uint32_t nframes) {
     get_port().PROC_process(nframes);
-    PROC_passthrough(nframes);
+    PROC_internal_connections(nframes);
 }
 
 WeakGraphNodeSet GraphPort::graph_node_1_incoming_edges() {
     WeakGraphNodeSet rval;
     // Ensure we execute after our first node
     rval.insert(first_graph_node());
-    for (auto &other : mp_passthrough_to) {
+    for (auto &other : mp_internal_port_connections) {
         if(auto _other = other.lock()) {
             // ensure we execute after other port has
             // prepared buffers
@@ -58,7 +58,7 @@ WeakGraphNodeSet GraphPort::graph_node_1_incoming_edges() {
 
 WeakGraphNodeSet GraphPort::graph_node_1_outgoing_edges() {
     WeakGraphNodeSet rval;
-    for (auto &other : mp_passthrough_to) {
+    for (auto &other : mp_internal_port_connections) {
         if(auto _other = other.lock()) {
             auto shared = _other->second_graph_node();
             rval.insert(shared);

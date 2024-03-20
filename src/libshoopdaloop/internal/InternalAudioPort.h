@@ -34,6 +34,9 @@ public:
 
     void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;
+
+    unsigned input_connectability() const override;
+    unsigned output_connectability() const override;
 };
 
 extern template class InternalAudioPort<float>;

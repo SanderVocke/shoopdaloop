@@ -163,7 +163,7 @@ class AudioPort(Port):
     def maybe_initialize_external(self, name_hint, direction):
         if self._backend_obj:
             return # never create_backend more than once
-        self._backend_obj = self.backend.open_audio_port(name_hint, direction)
+        self._backend_obj = self.backend.open_driver_audio_port(name_hint, direction)
         self.push_state()
 
     def push_state(self):
