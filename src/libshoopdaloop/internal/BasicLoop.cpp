@@ -165,9 +165,6 @@ void BasicLoop::PROC_process(uint32_t n_samples) {
         case LoopMode_PlayingDryThroughWet:
         case LoopMode_RecordingDryIntoWet:
             pos_after = std::min(pos_after + n_samples, length_after);
-            if (pos_after == pos_before) {
-                process_channel_mode = LoopMode_Stopped;
-            }
             break;
         default:
             break;

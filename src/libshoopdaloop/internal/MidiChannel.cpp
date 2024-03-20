@@ -210,7 +210,6 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
                   std::optional<uint32_t> maybe_next_mode_eta, uint32_t n_samples,
                   uint32_t pos_before, uint32_t pos_after, uint32_t length_before,
                   uint32_t length_after) {
-
     PROC_handle_command_queue();
 
     auto process_params = get_channel_process_params(
@@ -271,15 +270,21 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
         // Upon the first message played back, we can
         // restore the state to what it should be at that point.
         if (!(mp_prev_process_flags & ChannelPlayback) || (ma_last_played_back_sample > process_params.position)) {
-            log<log_level_debug_trace>("Playback start, reset cursor, start state {} (valid {})", fmt::ptr(mp_recording_start_state_tracker->state.get()), mp_recording_start_state_tracker->valid());
+            log<log_level_debug_trace>("Playback start, reset cursor, prev flags {}, last {}, pos {}, start state {} (valid {})",
+                mp_prev_process_flags,
+                ma_last_played_back_sample.load(),
+                process_params.position,
+                fmt::ptr(mp_recording_start_state_tracker->state.get()),
+                mp_recording_start_state_tracker->valid()
+            );
             mp_playback_cursor->reset();
             *mp_track_state_until_first_msg_playback = *mp_recording_start_state_tracker;
         }
 
-        ma_last_played_back_sample = process_params.position;
         PROC_process_playback(process_params.position, length_before,
                                 n_samples, false);
-    } else {
+    } else if (ma_last_played_back_sample.load() >= 0) {
+        log<log_level_debug_trace>("Playback ended, clearing last played sample");
         ma_last_played_back_sample = -1;
     }
     if (process_flags & ChannelRecord) {
@@ -494,8 +499,8 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
     }
     auto _pos = (int)our_pos;
 
-    log<log_level_debug_trace>("playback {} frames, start {}, buf {}, {} msgs total",
-        n_samples, our_pos, buf.first.n_frames_processed, mp_storage->n_events());
+    log<log_level_debug_trace>("playback {} frames, start {}, buf {}, last {}, {} msgs total",
+        n_samples, our_pos, buf.first.n_frames_processed, ma_last_played_back_sample.load(), mp_storage->n_events());
 
     // Playback any events.
     uint32_t end = buf.first.n_frames_processed + n_samples;
@@ -577,6 +582,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
     } else {
         log<log_level_debug_trace>("playback: done, reached end.");
     }
+    ma_last_played_back_sample = (int)(our_pos + n_samples) - 1;
 }
 
 
