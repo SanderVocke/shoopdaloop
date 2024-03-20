@@ -53,6 +53,19 @@ To hear the pre-recorded part back, you need to enable **pre-playback**. This is
 ..
   TODO: describe in detail with pictures
 
+MIDI looping
+^^^^^^^^^^^^
+
+In principle, MIDI loops work the same as audio loops. However, playing back a MIDI signal will not always result in the exact same sound as the first recording, because:
+
+* The audio synthesis (in plugin or external JACK application) may have internal state that is not directly controlled by MIDI;
+* MIDI has a state, which includes all CC values, pitch bend, notes already active at recording start, etc.
+
+The way ShoopDaLoop approaches MIDI playback is to approximate the state at the start of recording as closely as possible. That means:
+
+* ShoopDaLoop will restore states like CCs (including sustain pedal, mod wheel, pitch) to the state they were in when recording started, at the start of every playback loop.
+* If a note was already active when recording started, ShoopDaLoop will remember this and play the same note at the start of every playback loop. One advantage of this is if a note was played just slightly before recording start, it will sound indistinguishable in most cases. Note that this does not in include notes that are finished (on + off) just before recording start.
+
 Composite Loops
 ^^^^^^^^^^^^^^^
 
