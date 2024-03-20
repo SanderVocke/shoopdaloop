@@ -91,3 +91,6 @@ class LoopAudioChannel(LoopChannel):
             if self._gain != self._new_gain:
                 self._gain = self._new_gain
                 self.gainChanged.emit(self._gain)
+    
+    def get_display_data(self):
+        return self.get_data()

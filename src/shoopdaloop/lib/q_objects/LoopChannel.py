@@ -307,3 +307,7 @@ class LoopChannel(ShoopQQuickItem):
             self.__logger.debug(lambda: 'destroy')
             self._backend_obj.destroy()
             self._backend_obj = None
+    
+    @ShoopSlot(result='QVariant')
+    def get_display_data(self):
+        raise NotImplementedError()

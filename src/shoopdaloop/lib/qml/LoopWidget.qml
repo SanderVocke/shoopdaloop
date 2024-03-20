@@ -1522,10 +1522,11 @@ Item {
                 text: "Load MIDI..."
                 shown: root.descriptor_has_midi
                 onClicked: {
+                    create_backend_loop()
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to load"); }
                     if (chans.length > 1) { throw new Error("Cannot load into more than 1 MIDI channel"); }
-                    midiloadoptionsdialog.channel = chans[0]
+                    midiloadoptionsdialog.channels = [chans[0]]
                     midiloaddialog.open()
                 }
             }

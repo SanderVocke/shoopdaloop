@@ -102,3 +102,6 @@ class LoopMidiChannel(LoopChannel):
             self._backend_obj.load_all_midi_data(data)
         else:
             self.initializedChanged.connect(lambda: self._backend_obj.load_all_midi_data(data))
+    
+    def get_display_data(self):
+        return self.get_recorded_midi_msgs()

@@ -171,7 +171,7 @@ class FetchChannelData(ShoopQQuickItem):
 
         def worker(channel=self.channel, seq_nr=self._active_request_seq_nr, cb_to=self, logger=self.logger):
             logger.debug(lambda: "Fetching channel data to front-end.")
-            data = channel.get_data()
+            data = channel.get_display_data()
             channel.clear_data_dirty()
             QMetaObject.invokeMethod(
                 cb_to,
