@@ -630,7 +630,7 @@ MidiChannel<TimeType, SizeType>::PROC_set_recording_buffer(MidiReadableBufferInt
 }
 
 template <typename TimeType, typename SizeType>
-MidiChannel<TimeType, SizeType>::Contents
+typename MidiChannel<TimeType, SizeType>::Contents
 MidiChannel<TimeType, SizeType>::retrieve_contents(bool thread_safe) {
     MidiStateTracker state(true, true, true);
     auto s = std::make_shared<Storage>(mp_storage->bytes_capacity());
