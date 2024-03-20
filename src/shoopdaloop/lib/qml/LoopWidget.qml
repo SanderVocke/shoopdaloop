@@ -1511,7 +1511,7 @@ Item {
             ShoopMenuItem {
                 text: "Save audio..."
                 onClicked: { presavedialog.update(); presavedialog.open() }
-                shown: root.descriptor_has_audio
+                shown: root.descriptor_has_audio && root.maybe_backend_loop
             }
             ShoopMenuItem {
                 text: "Load audio..."
@@ -1532,7 +1532,7 @@ Item {
             }
             ShoopMenuItem {
                 text: "Save MIDI..."
-                shown: root.descriptor_has_midi
+                shown: root.descriptor_has_midi && root.maybe_backend_loop
                 onClicked: {
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to save"); }
