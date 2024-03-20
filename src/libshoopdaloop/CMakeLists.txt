@@ -49,6 +49,8 @@ set(OVERRIDE_COMPILE_LOG_LEVEL "" CACHE STRING "If set, overrides the compile-ti
 if (WIN32)
 add_compile_definitions(BOOST_STACKTRACE_USE_WINDBG)
 link_libraries(dbgeng.lib)
+elseif (APPLE)
+add_compile_definitions(_GNU_SOURCE)
 endif ()
 
 # Find pkgs
