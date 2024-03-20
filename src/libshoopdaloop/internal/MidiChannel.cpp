@@ -507,6 +507,28 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
     int valid_to = _pos + (int)n_samples;
     while (mp_playback_cursor->valid()) {
         auto *event = mp_playback_cursor->get();
+
+        // If there is an upcoming event to play back in the future, and we have a pending
+        // pre-playback state, we need to resolve it now.
+        if (mp_track_state_until_first_msg_playback->valid() &&    // <-- there is a state to restore
+            (int)event->storage_time >= valid_from &&              // <-- the upcoming recorded event will be "playable"
+            !muted &&                                              // <-- we are not muted
+            (our_pos + n_samples) > valid_from)                    // <-- we are in the playback window
+        {
+            log<log_level_debug_trace>("Resolve pre-playback state");
+            mp_track_state_until_first_msg_playback->resolve_to_output(
+                [this, &buf](uint32_t size, uint8_t *data) {
+                    // Play state resolving msgs ASAP (at current buffer pos)
+                    auto time = mp_playback_target_buffer->first.n_frames_processed;
+                    log<log_level_debug_trace>("  - Restore msg @ {}: {} {} {}",
+                                        time,
+                                        data[0], data[1], data[2]);
+                    PROC_send_message_value(*buf.second, time, size, data);
+                });
+            mp_track_state_until_first_msg_playback->set_valid(false);
+        }
+
+        // Now, we move on to playing back the recorded content.
         if ((int)event->storage_time >= valid_to) {
             // Future event
             break;
@@ -519,23 +541,6 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
                 // sending additional messages.
                 auto proc_time =
                     (int)event->storage_time - _pos + buf.first.n_frames_processed;
-
-                if (mp_track_state_until_first_msg_playback->valid()) {
-                    log<log_level_debug_trace>(
-                        "Restoring port state for playback @ sample {}",
-                        event->storage_time);
-                    mp_track_state_until_first_msg_playback->resolve_to_output(
-                        [this, valid_from, &buf, &proc_time](uint32_t size, uint8_t *data) {
-                            // Play state resolving msgs ASAP (at current buffer pos)
-                            auto time = mp_playback_target_buffer->first.n_frames_processed;
-                            log<log_level_debug_trace>("  - Restore msg @ {}: {} {} {}",
-                                                time,
-                                                data[0], data[1], data[2]);
-                            PROC_send_message_value(*buf.second, time, size,
-                                                    data);
-                        });
-                    mp_track_state_until_first_msg_playback->set_valid(false);
-                }
 
                 log<log_level_debug_trace>("playback: play msg @ {}", event->storage_time);
                 event->proc_time = proc_time;

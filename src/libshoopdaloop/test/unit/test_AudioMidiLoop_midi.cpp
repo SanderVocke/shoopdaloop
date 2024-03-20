@@ -454,7 +454,7 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
                 (unsigned)idx,
                 3,
                 {
-                    0xB0,
+                    0x80,
                     100,
                     (unsigned char)(idx % 128)
                 }
@@ -496,7 +496,7 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
     // We expect the first 10 messages to be skipped, playback
     // starting immediately from msg 10.
     auto msgs = play_buf.written;
-    REQUIRE(msgs.size() == 118);
+    CHECK(msgs.size() == 118);
 
     uint32_t input_msg_idx = 10;
     uint32_t output_msg_idx = 0;
