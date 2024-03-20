@@ -312,7 +312,7 @@ ShoopTestFile {
 
                     midi_input_port.dummy_queue_msgs(input)
 
-                    // Process 6 frames (record)
+                    // Process 6 frames (nothing, then record)
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.wait_process()
                     lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
@@ -364,7 +364,7 @@ ShoopTestFile {
                                 session.backend.get_sample_rate(),
                                 [chan],
                                 0,
-                                4,
+                                0,
                                 false)
 
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)

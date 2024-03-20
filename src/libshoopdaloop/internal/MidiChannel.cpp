@@ -2,6 +2,7 @@
 #include "LoggingBackend.h"
 #include "MidiChannel.h"
 #include "MidiPort.h"
+#include "MidiStateDiffTracker.h"
 #include "MidiStateTracker.h"
 #include "channel_mode_helpers.h"
 #include "types.h"
@@ -53,9 +54,25 @@ MidiChannel<TimeType, SizeType>::TrackedState::operator=(
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::TrackedState::set_from(std::shared_ptr<MidiStateTracker> &t) {
+MidiChannel<TimeType, SizeType>::TrackedState::start_tracking_from(std::shared_ptr<MidiStateTracker> &t) {
     state->copy_relevant_state(*t);
     diff->reset(t, state, StateDiffTrackerAction::ClearDiff);
+    m_valid = true;
+}
+
+template <typename TimeType, typename SizeType>
+void
+MidiChannel<TimeType, SizeType>::TrackedState::start_tracking_from_with_state(std::shared_ptr<MidiStateTracker> &to_track,
+                                            std::shared_ptr<MidiStateTracker> const& starting_state)
+{
+    auto tmp_diff = std::make_shared<MidiStateDiffTracker>();
+    tmp_diff->reset(to_track, starting_state, StateDiffTrackerAction::ScanDiff);
+    
+    start_tracking_from(to_track);
+    diff->reset(to_track, state, StateDiffTrackerAction::ClearDiff);
+    diff->set_diff(tmp_diff->get_diff());
+    state->copy_relevant_state(*starting_state);
+
     m_valid = true;
 }
 
@@ -371,7 +388,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_record(Storage &storage,
                 // other CCs, pitch wheel, etc.) so we can restore it later.
                 if (storage.n_events() == 0) {
                     log<log_level_debug>("cache port state {} -> {} for record", fmt::ptr(mp_input_midi_state.get()), fmt::ptr(track_start_state.state.get()));
-                    track_start_state.set_from(mp_input_midi_state);
+                    track_start_state.start_tracking_from(mp_input_midi_state);
                 }
                 log<log_level_debug_trace>("record msg: {} {} {}",
                     (s > 0) ? (int)d[0] : -1,
@@ -658,10 +675,7 @@ MidiChannel<TimeType, SizeType>::set_contents(Contents contents, uint32_t length
         log<log_level_debug_trace>("Applying loaded data (storage @ {}).", fmt::ptr(s.get()));
         mp_storage = s;
         mp_playback_cursor = mp_storage->create_cursor();
-        mp_recording_start_state_tracker->set_valid(true);
-        mp_recording_start_state_tracker->state->copy_relevant_state(*new_start_state);
-        mp_recording_start_state_tracker->diff->reset(mp_input_midi_state,
-                                                      mp_recording_start_state_tracker->state, StateDiffTrackerAction::ScanDiff);
+        mp_recording_start_state_tracker->start_tracking_from_with_state(mp_input_midi_state, new_start_state);
         PROC_set_length(length_samples);
         data_changed();
     };

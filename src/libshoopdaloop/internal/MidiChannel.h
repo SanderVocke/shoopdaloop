@@ -43,7 +43,18 @@ private:
         TrackedState(bool notes=false, bool controls=false, bool programs=false);
         TrackedState& operator= (TrackedState const& other);
 
-        void set_from(std::shared_ptr<MidiStateTracker> &t);
+        // Take the given state tracker's current state as a starting point.
+        // Store a reference to it in "state" and start tracking differences to
+        // the current state.
+        void start_tracking_from(std::shared_ptr<MidiStateTracker> &t);
+
+        // Start tracking from the given state, but don't take the current state
+        // as a starting point. Rather use another state as the point to later
+        // resolve back to.
+        // Note that this requires scanning the states for differences.
+        void start_tracking_from_with_state(std::shared_ptr<MidiStateTracker> &to_track,
+                                            std::shared_ptr<MidiStateTracker> const&starting_state);
+
         void reset();
         bool valid() const;
         void set_valid(bool v);

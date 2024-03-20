@@ -128,16 +128,19 @@ class FileIO(ShoopQObject):
         self.startSavingFile.emit()
         try:
             msgs = channel.get_all_midi_data()
+            recorded_msgs = [m for m in msgs if m['time'] >= 0]
+            state_msgs = [m for m in msgs if m['time'] < 0]
             if os.path.splitext(filename)[1] == '.smf':
                 with open(filename, 'w') as f:
                     f.write(json.dumps(generate_smf(msgs, channel._data_length, sample_rate), indent=2))
+                self.logger.info(lambda: "Saved MIDI channel to {} ({} messages, {} state messages)".format(filename, len(recorded_msgs), len(state_msgs)))
             else:
                 mido_track = mido.MidiTrack()
                 mido_file = mido.MidiFile()
                 mido_file.tracks.append(mido_track)
                 current_tick = 0
 
-                for msg in msgs:
+                for msg in recorded_msgs:
                     beat_length_s = mido.bpm2tempo(120) / 1000000.0
                     abstime_s = msg['time'] / float(sample_rate)
                     abstime_ticks = int(abstime_s / beat_length_s * mido_file.ticks_per_beat)
@@ -152,7 +155,7 @@ class FileIO(ShoopQObject):
                 # TODO: append an End-Of-Track message to determine the length
                 
                 mido_file.save(filename)
-            self.logger.info(lambda: "Saved MIDI channel to {} ({} messages)".format(filename, len(msgs)))
+                self.logger.info(lambda: "Saved MIDI channel to {} ({} messages, discarded {} state messages)".format(filename, len(recorded_msgs), len(state_msgs)))
         finally:
             self.doneSavingFile.emit()
     
