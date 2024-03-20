@@ -45,6 +45,12 @@ if(ENABLE_PROCESS_PROFILING)
 endif()
 set(OVERRIDE_COMPILE_LOG_LEVEL "" CACHE STRING "If set, overrides the compile-time log level filter. Valid options are LOG_LEVEL_[TRACE, DEBUG, INFO, WARNING, ERROR].")
 
+# Needed for windows to get backtraces from Boost
+if (WIN32)
+add_compile_definitions(BOOST_STACKTRACE_USE_WINDBG)
+link_libraries(dbgeng.lib)
+endif ()
+
 # Find pkgs
 find_package(Boost REQUIRED)
 

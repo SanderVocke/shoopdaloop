@@ -18,7 +18,7 @@ protected:
     std::atomic<void*> m_buffer = nullptr;
     jack_client_t* m_client = nullptr;
     std::string m_name = "";
-    shoop_port_direction_t m_direction = Input;
+    shoop_port_direction_t m_direction = ShoopPortDirection_Input;
     PortDataType m_type;
     std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
 
@@ -28,10 +28,10 @@ public:
 
     void* maybe_driver_handle() const override;
 
-    bool has_internal_read_access() const override { return m_direction == Input; }
-    bool has_internal_write_access() const override { return m_direction == Output; }
-    bool has_implicit_input_source() const override { return m_direction == Input; }
-    bool has_implicit_output_sink() const override { return m_direction == Output; }
+    bool has_internal_read_access() const override { return m_direction == ShoopPortDirection_Input; }
+    bool has_internal_write_access() const override { return m_direction == ShoopPortDirection_Output; }
+    bool has_implicit_input_source() const override { return m_direction == ShoopPortDirection_Input; }
+    bool has_implicit_output_sink() const override { return m_direction == ShoopPortDirection_Output; }
 
     jack_port_t *get_jack_port() const;
     void *get_buffer() const;

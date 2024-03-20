@@ -48,7 +48,7 @@ def run_qml_tests(args):
     parser.add_argument('test_file_glob_pattern', nargs=argparse.REMAINDER, help='Glob pattern(s) for test QML files.')
     parser.add_argument('--list', '-l', action='store_true', help="Don't run but list all found test functions.")
     parser.add_argument('--filter', '-f', default=None, help='Regex filter for testcases.')
-    parser.add_argument('--junit-xml', '-j', default=None, help='Output file for JUnit XML report.')
+    parser.add_argument('--junit-xml', '-j', default=None, help='ShoopPortDirection_Output file for JUnit XML report.')
     args = parser.parse_args(args=args)
 
     qoverage_collector_factory = QoverageCollectorFactory()
@@ -205,7 +205,6 @@ def run_qml_tests(args):
         app.wait(1000)
 
     app.do_quit()
-    app.exit()
 
     if args.list:
         return 0

@@ -19,7 +19,7 @@ CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(
         m_output_audio_ports.push_back(std::make_shared<InternalAudioPort<shoop_types::audio_sample_t>>("fx_audio_out_" + std::to_string(i+1), 4096));
     }
     for(uint32_t i=0; i<n_midi_inputs; i++) {
-        m_input_midi_ports.push_back(std::make_shared<DummyMidiPort>("fx_midi_in_" + std::to_string(i+1), Output));
+        m_input_midi_ports.push_back(std::make_shared<DummyMidiPort>("fx_midi_in_" + std::to_string(i+1), ShoopPortDirection_Output));
     }
 }
     

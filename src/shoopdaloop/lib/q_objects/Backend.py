@@ -19,6 +19,8 @@ from ..backend_wrappers import open_audio_port as backend_open_audio_port, open_
 from ..findChildItems import findChildItems
 from .Logger import Logger
 
+all_active_backend_objs = set()
+
 # Wraps the back-end session + driver in a single object.
 class Backend(ShoopQQuickItem):
     def __init__(self, parent=None):
@@ -28,6 +30,7 @@ class Backend(ShoopQQuickItem):
         self._timer_thread = QThread(self)
         self._timer_thread.start()
         self._initialized = False
+        self._closed = False
         self._client_name_hint = None
         self._driver_type = None
         self._backend_session_obj = None
@@ -48,6 +51,9 @@ class Backend(ShoopQQuickItem):
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
         
         self.setObjectName("ShoopBackend")
+        
+        global all_active_backend_objs
+        all_active_backend_objs.add(self)
     
     updated = ShoopSignal()
 
@@ -234,6 +240,8 @@ class Backend(ShoopQQuickItem):
 
     @ShoopSlot()
     def close(self):
+        if self._closed:
+            return
         self.logger.debug(lambda: "Closing")
         QMetaObject.invokeMethod(
             self._timer,
@@ -241,13 +249,15 @@ class Backend(ShoopQQuickItem):
         )
         while self._timer.isActive():
             time.sleep(0.005)
-        self._timer_thread.exit()
-        while self._timer_thread.isRunning():
-            time.sleep(0.005)
+        if Shiboken.isValid(self._timer_thread):
+            self._timer_thread.exit()
+            while self._timer_thread.isRunning():
+                time.sleep(0.005)
         if self._initialized:
             self._backend_session_obj.destroy()
             self._backend_driver_obj.destroy()
         self._initialized = False
+        self._closed = True
     
     # Get the wrapped back-end object.
     @ShoopSlot(result='QVariant')
@@ -278,6 +288,18 @@ class Backend(ShoopQQuickItem):
     def dummy_n_requested_frames(self):
         return self._backend_driver_obj.dummy_n_requested_frames()
     
+    @ShoopSlot(str, int, int)
+    def dummy_add_external_mock_port(self, name, direction, data_type):
+        return self._backend_driver_obj.dummy_add_external_mock_port(name, direction, data_type)
+    
+    @ShoopSlot(str)
+    def dummy_remove_external_mock_port(self, name):
+        return self._backend_driver_obj.dummy_remove_external_mock_port(name)
+    
+    @ShoopSlot()
+    def dummy_remove_all_external_mock_ports(self):
+        return self._backend_driver_obj.dummy_remove_all_external_mock_ports()
+    
     @ShoopSlot(thread_protection = False)
     def wait_process(self):
         self._backend_driver_obj.wait_process()
@@ -285,11 +307,14 @@ class Backend(ShoopQQuickItem):
     @ShoopSlot()
     def maybe_init(self):
         if not self._initialized and \
+           not self._closed and \
            self._client_name_hint != None and \
            self._driver_type != None and \
            self._driver_setting_overrides != None:
             self.logger.debug(lambda: "Initializing")
             self.init()
+        elif self._closed:
+            self.logger.trace(lambda: "Already closed")
         elif self._initialized:
             self.logger.trace(lambda: "Already initialized")
         else:
@@ -335,6 +360,10 @@ class Backend(ShoopQQuickItem):
     def abort_on_process_thread(self):
         if (self._backend_session_obj):
             self._backend_session_obj.abort_on_process_thread()
+    
+    @ShoopSlot(str, int, int)
+    def find_external_ports(self, maybe_name_regex, port_direction, data_type):
+        return self._backend_driver_obj.find_external_ports(maybe_name_regex, port_direction, data_type)
     
     ################
     ## INTERNAL METHODS
@@ -395,3 +424,8 @@ class Backend(ShoopQQuickItem):
             Q_ARG(int, self._update_interval_ms)
         )
     
+def close_all_backends():
+    global all_active_backend_objs
+    a = copy.copy(all_active_backend_objs)
+    for b in a:
+        b.close()

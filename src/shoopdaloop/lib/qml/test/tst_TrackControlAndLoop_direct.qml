@@ -163,13 +163,13 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     let input = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  },
-                        { 'time': 4, 'data': [0x90, 10,  10]  }
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  },
+                        { 'time': 4, 'data': [0x80, 10,  10]  }
                     ]
                     let expect_loop = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  },
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  },
                     ]
                     let expect_out = []
                     let chan = lut.get_midi_output_channels()[0]
@@ -185,7 +185,7 @@ ShoopTestFile {
                     session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
-                    let chan_data = chan.get_data()
+                    let chan_data = chan.get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -231,13 +231,13 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     let input = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  },
-                        { 'time': 4, 'data': [0x90, 10,  10]  }
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  },
+                        { 'time': 4, 'data': [0x80, 10,  10]  }
                     ]
                     let expect_loop = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  },
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  },
                     ]
                     let expect_out = expect_loop
                     let chan = lut.get_midi_output_channels()[0]
@@ -253,7 +253,7 @@ ShoopTestFile {
                     session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
-                    let chan_data = chan.get_data()
+                    let chan_data = chan.get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -295,12 +295,12 @@ ShoopTestFile {
 
                 'test_midi_direct_play_no_monitor': () => {
                     let input = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  }
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  }
                     ]
                     let loop = [
-                        { 'time': 1, 'data': [0x90, 20, 20] },
-                        { 'time': 2, 'data': [0x90, 10, 10] },
+                        { 'time': 1, 'data': [0x80, 20, 20] },
+                        { 'time': 2, 'data': [0x80, 10, 10] },
                     ]
                     let expect_out = loop
 
@@ -309,7 +309,7 @@ ShoopTestFile {
                     tut_control().monitor = false
                     tut_control().mute = false
                     let chan = lut.get_midi_output_channels()[0]
-                    chan.load_data(loop)
+                    chan.load_all_midi_data(loop)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
@@ -325,7 +325,7 @@ ShoopTestFile {
                     session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
-                    let chan_data = chan.get_data()
+                    let chan_data = chan.get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -367,18 +367,18 @@ ShoopTestFile {
 
                 'test_midi_direct_play_monitor': () => {
                     let input = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  }
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  }
                     ]
                     let loop = [
-                        { 'time': 1, 'data': [0x90, 20, 20] },
-                        { 'time': 2, 'data': [0x90, 10, 10] },
+                        { 'time': 1, 'data': [0x80, 20, 20] },
+                        { 'time': 2, 'data': [0x80, 10, 10] },
                     ]
                     let expect_out = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 1, 'data': [0x90, 20, 20]   },
-                        { 'time': 2, 'data': [0x90, 10, 10]   },
-                        { 'time': 3, 'data': [0x90, 50,  50]  }
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 1, 'data': [0x80, 20, 20]   },
+                        { 'time': 2, 'data': [0x80, 10, 10]   },
+                        { 'time': 3, 'data': [0x80, 50,  50]  }
                     ]
 
                     check_backend()
@@ -386,7 +386,7 @@ ShoopTestFile {
                     tut_control().monitor = true
                     tut_control().mute = false
                     let chan = lut.get_midi_output_channels()[0]
-                    chan.load_data(loop)
+                    chan.load_all_midi_data(loop)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
@@ -402,7 +402,7 @@ ShoopTestFile {
                     session.backend.wait_process()
 
                     let out = midi_output_port.dummy_dequeue_data()
-                    let chan_data = chan.get_data()
+                    let chan_data = chan.get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()

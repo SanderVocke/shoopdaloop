@@ -7,6 +7,7 @@ from typing import *
 import sys
 
 from .ShoopPyObject import *
+from .FindParentBackend import FindParentBackend
 
 from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
@@ -21,7 +22,7 @@ from .Logger import Logger
 import traceback
 
 # Wraps a back-end loop.
-class Loop(ShoopQQuickItem):
+class Loop(FindParentBackend):
     # Other signals
     cycled = ShoopSignal()
     cycledUnsafe = ShoopSignal(thread_protection=ThreadProtectionType.OtherThread)
@@ -35,7 +36,6 @@ class Loop(ShoopQQuickItem):
         self._length = self._new_length = 0
         self._sync_source = None
         self._initialized = False
-        self._backend = None
         self._backend_loop = None
         self._display_peaks = []
         self._display_midi_notes_active = 0
@@ -59,13 +59,10 @@ class Loop(ShoopQQuickItem):
         self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
-        self.initializedChanged.connect(lambda i: self.logger.debug("initialized -> {}".format(i)))
+        self.backendChanged.connect(lambda: self.maybe_initialize())
+        self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
 
-        def rescan_on_parent_changed():
-            if not self._backend:
-                self.rescan_parents()
-        self.parentChanged.connect(lambda: rescan_on_parent_changed())
-        self.rescan_parents()
+        self.initializedChanged.connect(lambda i: self.logger.debug("initialized -> {}".format(i)))
 
     update = ShoopSignal()
 
@@ -355,12 +352,6 @@ class Loop(ShoopQQuickItem):
             self._backend_loop = None
             self._initialized = False
             self.initializedChanged.emit(False)
-    
-    @ShoopSlot()
-    def rescan_parents(self):
-        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
-        if maybe_backend:
-            self.backend = maybe_backend
     
     @ShoopSlot(result='QVariant')
     def get_backend(self):

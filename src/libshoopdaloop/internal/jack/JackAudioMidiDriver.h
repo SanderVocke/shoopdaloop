@@ -62,6 +62,12 @@ public:
     ) override;
 
     void close() override;
+
+    std::vector<ExternalPortDescriptor> find_external_ports(
+        const char* maybe_name_regex,
+        shoop_port_direction_t maybe_direction_filter,
+        shoop_port_data_type_t maybe_data_type_filter
+    ) override;
 };
 
 using JackAudioMidiDriver = GenericJackAudioMidiDriver<JackApi>;

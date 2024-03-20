@@ -43,6 +43,7 @@ PythonTestCase {
 
     property var test_fns: ({})
     property var testcase_init_fn: () => { root.wait(50) }
+    property var testcase_deinit_fn: () => {}
 
     ExecuteNextCycle {
         id: update_next_cycle
@@ -65,20 +66,6 @@ PythonTestCase {
     function verify_loop_cleared(loop) {
         verify_eq(loop.mode, ShoopConstants.LoopMode.Stopped)
         verify_eq(loop.length, 0)
-    }
-
-    function cleanup() {
-        logger.debug(() => ("cleanup " + root.name))
-        // Note: the fact that this works is due to the internal TestCase.qml implementation of Qt Quick Test.
-        // Tested on Qt 6.3
-        var failed = qtest_results.failed || qtest_results.dataFailed
-        var skipped = qtest_results.skipped
-        var statusdesc = failed ? 'fail' :
-                         skipped ? 'skip' :
-                         'pass'
-        var casename = name
-        var func = qtest_results.functionName
-        logger.info(() => (`${filename}::${casename}::${func}: ${statusdesc}`))
     }
 
     function format_error(failstring, stack=null) {
@@ -303,7 +290,7 @@ PythonTestCase {
         testcase_init_fn()
 
         for (var key in test_fns) {
-            shoop_test_runner.testcase_register_fn(root, key, status)
+            shoop_test_runner.testcase_register_fn(root, key)
         }
 
         for (var key in test_fns) {        
@@ -343,6 +330,15 @@ PythonTestCase {
             }
             shoop_test_runner.testcase_ran_fn(root, key, status)
             current_testcase = null
+        }
+
+        logger.debug(() => "running testcase_deinit_fn")
+        testcase_deinit_fn()
+        var casename = name
+        if (status == 'fail') {
+            logger.error(() => (`----------     ${filename}::${casename}: FAIL`))
+        } else {
+            logger.info(() => (`----------     ${filename}::${casename}: ${status.toUpperCase()}`))
         }
     }
     onRun_signal: run()

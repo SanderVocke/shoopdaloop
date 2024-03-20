@@ -43,7 +43,18 @@ private:
         TrackedState(bool notes=false, bool controls=false, bool programs=false);
         TrackedState& operator= (TrackedState const& other);
 
-        void set_from(std::shared_ptr<MidiStateTracker> &t);
+        // Take the given state tracker's current state as a starting point.
+        // Store a reference to it in "state" and start tracking differences to
+        // the current state.
+        void start_tracking_from(std::shared_ptr<MidiStateTracker> &t);
+
+        // Start tracking from the given state, but don't take the current state
+        // as a starting point. Rather use another state as the point to later
+        // resolve back to.
+        // Note that this requires scanning the states for differences.
+        void start_tracking_from_with_state(std::shared_ptr<MidiStateTracker> &to_track,
+                                            std::shared_ptr<MidiStateTracker> const&starting_state);
+
         void reset();
         bool valid() const;
         void set_valid(bool v);
@@ -62,21 +73,33 @@ private:
     std::shared_ptr<StorageCursor> mp_playback_cursor = nullptr;
     std::shared_ptr<profiling::ProfilingItem> mp_profiling_item = nullptr;
 
-    // Track the MIDI state on the channel's output.
+    // Holds and updates the current MIDI state on the channel output.
     std::shared_ptr<MidiStateTracker> mp_output_midi_state = nullptr;
 
-    // Track the MIDI state on the channel's input.
+    // Holds and updates the current MIDI state on the channel input.
     std::shared_ptr<MidiStateTracker> mp_input_midi_state = nullptr;
 
-    // We need to track what the MIDI state was at multiple interesting points
-    // in order to restore that state quickly.
-    TrackedState mp_track_start_state;
-    TrackedState mp_track_prerecord_start_state;
+    // Hold the state that the MIDI channel output had at the time of the recording
+    // start. Also keep track of the difference between this state and the current state.
+    std::shared_ptr<TrackedState> mp_recording_start_state_tracker;
+
+    // While pre-recording, we save our start state tracker separately because it might
+    // need to be discarded and the old one kept. Once pre-recording turns into actual
+    // recording, the start state tracker will be moved to mp_recording_start_state_tracker.
+    std::shared_ptr<TrackedState> mp_temp_prerecording_start_state_tracker;
+
     // We also have a state which represents what the current playback
     // state is **supposed** to be. For example, this tracks control messages
     // while the channel is muted or playing back before the first sample,
     // keeping track of the state.
-    TrackedState mp_pre_playback_state;
+
+    // When (pre-)playback starts, the channel may be muted or not at its start offset
+    // sample yet. Messages may be skipped and not played because of this. Once an actual
+    // note needs to be played, we still need to send any additional messages necessary
+    // to first achieve the state that was supposed to be at this point in playback.
+    // This tracker is used to track unplayed MIDI messages as if they were played, so
+    // that the correct state can be reached.
+    std::shared_ptr<TrackedState> mp_track_state_until_first_msg_playback;
 
     uint32_t mp_prev_pos_after = 0;
     unsigned mp_prev_process_flags = 0;
@@ -90,8 +113,6 @@ private:
     std::atomic<unsigned> ma_data_seq_nr = 0;
     std::atomic<uint32_t> ma_pre_play_samples = 0;
     std::atomic<int> ma_last_played_back_sample = 0;
-
-    const Message all_sound_off_message_channel_0 = Message(0, 3, {0xB0, 120, 0});
 
 public:
     MidiChannel(uint32_t data_size, shoop_channel_mode_t mode);
@@ -136,7 +157,7 @@ public:
                              uint32_t n_samples);
 
     void clear(bool thread_safe=true);
-    void PROC_send_all_sound_off();
+    void PROC_send_all_sound_off(unsigned frame=0);
 
     void PROC_send_message_ref(MidiWriteableBufferInterface &buf, MidiSortableMessageInterface const &event);
 
@@ -154,9 +175,17 @@ public:
 
     void PROC_set_recording_buffer(MidiReadableBufferInterface *buffer, uint32_t n_frames);
 
-    std::vector<Message> retrieve_contents(bool thread_safe = true);
+    struct Contents {
+        std::vector<Message> recorded_msgs;
+        std::vector<std::vector<uint8_t>> starting_state_msg_datas;
+    };
 
-    void set_contents(std::vector<Message> contents, uint32_t length_samples, bool thread_safe = true);
+    Contents retrieve_contents(bool thread_safe = true);
+
+    void set_contents(
+        Contents contents,
+        uint32_t length_samples,
+        bool thread_safe = true);
 
     void PROC_handle_poi(shoop_loop_mode_t mode,
                     uint32_t length,

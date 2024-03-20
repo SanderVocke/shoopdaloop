@@ -17,7 +17,7 @@ from PySide6.QtQml import QJSValue
 from .Task import Task
 from .Tasks import Tasks
 from .ShoopPyObject import *
-from ..directories import installation_dir
+from ..directories import installation_dir, scripts_dir
 
 from shoopdaloop.lib.logging import Logger
 from shoopdaloop.lib.smf import generate_smf, parse_smf
@@ -51,6 +51,10 @@ class FileIO(ShoopQObject):
     @ShoopSlot(result=str)
     def get_installation_directory(self):
         return installation_dir()
+
+    @ShoopSlot(result=str)
+    def get_scripts_directory(self):
+        return scripts_dir()
 
     @ShoopSlot(str, str)
     def write_file(self, filename, content):
@@ -123,17 +127,20 @@ class FileIO(ShoopQObject):
     def save_channel_to_midi_impl(self, filename, sample_rate, channel):
         self.startSavingFile.emit()
         try:
-            msgs = channel.get_data()
+            msgs = channel.get_all_midi_data()
+            recorded_msgs = [m for m in msgs if m['time'] >= 0]
+            state_msgs = [m for m in msgs if m['time'] < 0]
             if os.path.splitext(filename)[1] == '.smf':
                 with open(filename, 'w') as f:
                     f.write(json.dumps(generate_smf(msgs, channel._data_length, sample_rate), indent=2))
+                self.logger.info(lambda: "Saved MIDI channel to {} ({} messages, {} state messages)".format(filename, len(recorded_msgs), len(state_msgs)))
             else:
                 mido_track = mido.MidiTrack()
                 mido_file = mido.MidiFile()
                 mido_file.tracks.append(mido_track)
                 current_tick = 0
 
-                for msg in msgs:
+                for msg in recorded_msgs:
                     beat_length_s = mido.bpm2tempo(120) / 1000000.0
                     abstime_s = msg['time'] / float(sample_rate)
                     abstime_ticks = int(abstime_s / beat_length_s * mido_file.ticks_per_beat)
@@ -148,7 +155,7 @@ class FileIO(ShoopQObject):
                 # TODO: append an End-Of-Track message to determine the length
                 
                 mido_file.save(filename)
-            self.logger.info(lambda: "Saved MIDI channel to {} ({} messages)".format(filename, len(msgs)))
+                self.logger.info(lambda: "Saved MIDI channel to {} ({} messages, discarded {} state messages)".format(filename, len(recorded_msgs), len(state_msgs)))
         finally:
             self.doneSavingFile.emit()
     
@@ -207,8 +214,8 @@ class FileIO(ShoopQObject):
                 contents = None
                 with open(filename, 'r') as f:
                     contents = f.read()
-                (msgs, samples) = parse_smf(json.loads(contents), sample_rate)
-                backend_msgs = msgs
+                (recorded_msgs, state_msgs, samples) = parse_smf(json.loads(contents), sample_rate)
+                backend_msgs = [{'time': -1, 'data': m} for m in state_msgs] + recorded_msgs
                 total_sample_time = samples
             else:
                 mido_file = mido.MidiFile(filename)
@@ -233,7 +240,7 @@ class FileIO(ShoopQObject):
             if isinstance(channels, QJSValue):
                 channels = channels.toVariant()
             for channel in channels:
-                channel.load_data(backend_msgs)            
+                channel.load_all_midi_data(backend_msgs)        
                 if maybe_set_start_offset != None:
                     channel.set_start_offset(maybe_set_start_offset)
                 if maybe_set_n_preplay_samples != None:
@@ -242,7 +249,12 @@ class FileIO(ShoopQObject):
             if maybe_update_loop_to_datalength:
                 maybe_update_loop_to_datalength.set_length(total_sample_time)
             
-            self.logger.info(lambda: "Loaded MIDI from {} into channel ({} messages, {} samples)".format(filename, len(backend_msgs), total_sample_time))
+            self.logger.info(lambda: "Loaded MIDI from {} into channel ({} recorded messages, {} state messages, {} samples)".format(
+                filename,
+                len([m for m in backend_msgs if m['time'] >= 0]),
+                len([m for m in backend_msgs if m['time'] < 0]),
+                total_sample_time
+            ))
         finally:
             self.doneLoadingFile.emit()
     

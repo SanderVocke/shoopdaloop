@@ -1,5 +1,6 @@
 #include "MidiStateTracker.h"
 #include "midi_helpers.h"
+#include "types.h"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -8,11 +9,16 @@
 #include <memory>
 #include <optional>
 #include <vector>
+#include <fmt/format.h>
 
 using namespace logging;
 
 uint32_t MidiStateTracker::cc_index(uint8_t channel, uint8_t cc) {
-    return (uint32_t)channel * 128 + (uint32_t)cc;
+    return (uint32_t)(channel & 0x0F) * 128 + (uint32_t)cc;
+}
+
+uint32_t MidiStateTracker::note_index(uint8_t channel, uint8_t note) {
+    return (uint32_t)(channel & 0x0F) * 128 + (uint32_t)note;
 }
 
 void MidiStateTracker::process_noteOn(uint8_t channel, uint8_t note,
@@ -24,17 +30,17 @@ void MidiStateTracker::process_noteOn(uint8_t channel, uint8_t note,
     
     log<log_level_debug_trace>("Process note on: {}, {}, {}", channel, note, velocity);
 
-    if (!m_notes_active_velocities.at(channel).at(note).has_value()) {
+    if (m_notes_active_velocities.at(note_index(channel, note)) == NoteInactive) {
         m_n_notes_active++;
     }
-    if (m_notes_active_velocities.at(channel).at(note).value_or(255) != velocity) {
+    if (m_notes_active_velocities.at(note_index(channel, note)) != velocity) {
         for (auto const &s : m_subscribers) {
             if (auto ss = s.lock()) {
                 ss->note_changed(this, channel, note, velocity);
             }
         }
     }
-    m_notes_active_velocities.at(channel).at(note) = velocity;
+    m_notes_active_velocities.at(note_index(channel, note)) = velocity;
 }
 
 void MidiStateTracker::process_allNotesOff(uint8_t channel) {
@@ -46,7 +52,7 @@ void MidiStateTracker::process_allNotesOff(uint8_t channel) {
     log<log_level_debug_trace>("Process all notes off: {}", channel);
 
     for (size_t note=0; note < 128; note++) {
-        if (m_notes_active_velocities.at(channel).at(note).has_value()) {
+        if (m_notes_active_velocities.at(note_index(channel, note)) != NoteInactive) {
             m_n_notes_active = std::max(0, m_n_notes_active - 1);
             for (auto const &s : m_subscribers) {
                 if (auto ss = s.lock()) {
@@ -54,7 +60,7 @@ void MidiStateTracker::process_allNotesOff(uint8_t channel) {
                 }
             }
         }
-        m_notes_active_velocities.at(channel).at(note).reset();
+        m_notes_active_velocities.at(note_index(channel, note)) = NoteInactive;
     }
 }
 
@@ -66,7 +72,7 @@ void MidiStateTracker::process_noteOff(uint8_t channel, uint8_t note) {
 
     log<log_level_debug_trace>("Process note off: {}, {}", channel, note);
 
-    if (m_notes_active_velocities.at(channel).at(note).has_value()) {
+    if (m_notes_active_velocities.at(note_index(channel, note)) != NoteInactive) {
         m_n_notes_active = std::max(0, m_n_notes_active - 1);
         for (auto const &s : m_subscribers) {
             if (auto ss = s.lock()) {
@@ -74,7 +80,7 @@ void MidiStateTracker::process_noteOff(uint8_t channel, uint8_t note) {
             }
         }
     }
-    m_notes_active_velocities.at(channel).at(note).reset();
+    m_notes_active_velocities.at(note_index(channel, note)) = NoteInactive;
 }
 
 void MidiStateTracker::process_cc(uint8_t channel, uint8_t controller,
@@ -84,10 +90,12 @@ void MidiStateTracker::process_cc(uint8_t channel, uint8_t controller,
         return;
     }
 
-    log<log_level_debug_trace>("Process cc: {}, {}, {}", channel, controller, value);
-
     auto idx = cc_index(channel & 0x0F, controller);
-    if (m_controls.at(idx) != value) {
+    auto current = m_controls.at(idx);
+
+    log<log_level_debug_trace>("Process cc: {}, {}, {} -> {}", channel, controller, current, value);
+
+    if (current != value) {
         for (auto const &s : m_subscribers) {
             if (auto ss = s.lock()) {
                 ss->cc_changed(this, channel, controller, value);
@@ -153,7 +161,7 @@ MidiStateTracker::MidiStateTracker(bool track_notes, bool track_controls,
                                    bool track_programs)
     : m_n_notes_active(0),
       m_notes_active_velocities(track_notes ? 16 * 128 : 0),
-      m_controls(track_controls ? 128 * 128 : 0),
+      m_controls(track_controls ? 16 * 128 : 0),
       m_programs(track_programs ? 16 : 0),
       m_pitch_wheel(track_controls ? 16 : 0),
       m_channel_pressure(track_controls ? 16 : 0) {
@@ -174,7 +182,7 @@ MidiStateTracker &MidiStateTracker::operator=(MidiStateTracker const &other) {
 }
 
 void MidiStateTracker::copy_relevant_state(MidiStateTracker const &other) {
-    log<log_level_debug>("Copy state from other");
+    log<log_level_debug>("Copy state from {}", fmt::ptr(&other));
 
     if (tracking_notes()) {
         m_n_notes_active = other.m_n_notes_active.load();
@@ -190,29 +198,83 @@ void MidiStateTracker::copy_relevant_state(MidiStateTracker const &other) {
     }
 }
 
+std::vector<std::vector<uint8_t>> MidiStateTracker::state_as_messages() {
+    std::vector<std::vector<uint8_t>> rval;
+
+    if (tracking_programs()) {
+        for (uint8_t channel; channel < (uint8_t) m_programs.size(); channel++) {
+            auto v = m_programs[channel];
+            if (v != ProgramUnknown) {
+                log<log_level_debug_trace>("state msg: program @ {} = {}", channel, v);
+                rval.push_back(programChange(channel, v));
+            }
+        }
+    }
+    if (tracking_controls()) {
+        for (uint8_t channel; channel < 16; channel++) {
+            auto pw = m_pitch_wheel[channel];
+            auto cp = m_channel_pressure[channel];
+            if (pw != PitchWheelUnknown && pw != PitchWheelDefault) {
+                log<log_level_debug_trace>("state msg: pitch wheel @ {} = {}", channel, pw);
+                rval.push_back(pitchWheelChange(channel, pw));
+            }
+            if (cp != ChannelPressureUnknown) {
+                log<log_level_debug_trace>("state msg: channel pressure @ {} = {}", channel, cp);
+                rval.push_back(channelPressure(channel, cp));
+            }
+
+            for (uint8_t controller; controller < 128; controller++) {
+                auto v = m_controls[channel * 128 + controller];
+                if (v != default_cc(channel, controller)) {
+                    log<log_level_debug_trace>("state msg: CC @ {}.{} = {}", channel, controller, v);
+                    rval.push_back(cc(channel, controller, v));
+                }
+            }
+        }
+    }
+    if (tracking_notes()) {
+        for (uint8_t chan=0; chan < 16; chan++) {
+            for (uint8_t note=0; note < 128; note++) {
+                auto v = m_notes_active_velocities[note_index(chan, note)];
+                if (v != NoteInactive) {
+                    log<log_level_debug_trace>("state msg: note on @ {}.{} = {}", chan, note, v);
+                    rval.push_back(noteOn(chan, note, v));
+                }
+            }
+        }
+    }
+
+    log<log_level_debug>("represented as {} state messages", rval.size());
+    return rval;    
+}
+
+uint8_t MidiStateTracker::default_cc (uint8_t channel, uint8_t controller) {
+    if (controller == 64 || controller == 69) {
+        // Special case: hold pedal assumed off
+        return 0;
+    } else {
+        return CCValueUnknown;
+    }
+}
+
 void MidiStateTracker::clear() {
     log<log_level_debug>("Clear");
 
-    for (uint32_t i = 0; i < m_notes_active_velocities.size(); i++) {
-        if (m_notes_active_velocities[i].size() == 0) {
-            m_notes_active_velocities[i].resize(128);
-        }
-        for (uint32_t j = 0; j < m_notes_active_velocities[i].size(); j++) {
-            m_notes_active_velocities[i][j].reset();
-        }
+    for (size_t n=0; n < m_notes_active_velocities.size(); n++) {
+        m_notes_active_velocities[n] = NoteInactive;
     }
     m_n_notes_active = 0;
     for (auto &p : m_pitch_wheel) {
-        p = 0x2000;
+        p = PitchWheelDefault;
     }
     for (auto &p : m_programs) {
-        p = 0;
+        p = ProgramUnknown;
     }
     for (auto &p : m_channel_pressure) {
-        p = 0;
+        p = ChannelPressureUnknown;
     }
-    for (auto &p : m_controls) {
-        p = 0;
+    for (size_t cc=0; cc < m_controls.size(); cc++) {
+        m_controls[cc] = default_cc(cc / 128, cc % 128);
     }
 }
 
@@ -251,31 +313,42 @@ uint32_t MidiStateTracker::n_notes_active() const { return m_n_notes_active; }
 std::optional<uint8_t>
 MidiStateTracker::maybe_current_note_velocity(uint8_t channel,
                                               uint8_t note) const {
-    return m_notes_active_velocities.at(channel & 0x0F).at(note);
+    if (m_notes_active_velocities.size() < (note_index(channel, note))) { return std::nullopt; }
+    auto v =  m_notes_active_velocities[note_index(channel, note)];
+    if (v == NoteInactive) { return std::nullopt; }
+    return v;
 }
 
 bool MidiStateTracker::tracking_controls() const {
     return m_controls.size() > 0;
 }
 
-uint8_t MidiStateTracker::cc_value(uint8_t channel, uint8_t controller) {
-    return m_controls.at(cc_index(channel & 0x0F, controller));
+std::optional<uint8_t> MidiStateTracker::maybe_cc_value(uint8_t channel, uint8_t controller) {
+    auto v =  m_controls.at(cc_index(channel & 0x0F, controller));
+    if (v == CCValueUnknown) { return std::nullopt; }
+    return v;
 }
 
-uint16_t MidiStateTracker::pitch_wheel_value(uint8_t channel) {
-    return m_pitch_wheel.at(channel & 0x0F);
+std::optional<uint16_t> MidiStateTracker::maybe_pitch_wheel_value(uint8_t channel) {
+    auto v = m_pitch_wheel.at(channel & 0x0F);
+    if (v == PitchWheelUnknown) { return std::nullopt; }
+    return v;
 }
 
-uint8_t MidiStateTracker::channel_pressure_value(uint8_t channel) {
-    return m_channel_pressure.at(channel & 0x0F);
+std::optional<uint8_t> MidiStateTracker::maybe_channel_pressure_value(uint8_t channel) {
+    auto v = m_channel_pressure.at(channel & 0x0F);
+    if (v == ChannelPressureUnknown) { return std::nullopt; }
+    return v;
 }
 
 bool MidiStateTracker::tracking_programs() const {
     return m_programs.size() > 0;
 }
 
-uint8_t MidiStateTracker::program_value(uint8_t channel) {
-    return m_programs.at(channel & 0x0F);
+std::optional<uint8_t> MidiStateTracker::maybe_program_value(uint8_t channel) {
+    auto v = m_programs.at(channel & 0x0F);
+    if (v == ProgramUnknown) { return std::nullopt; }
+    return v;
 }
 
 bool MidiStateTracker::tracking_anything() const {

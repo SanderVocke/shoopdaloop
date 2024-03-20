@@ -62,7 +62,9 @@ class TestRunner(ShoopQObject):
     @ShoopSlot(TestCase)
     def run(self, testcase):
         self.running = testcase
-        self.logger.info('---- testcase {} ----'.format(testcase.name))
+        self.logger.info('-------------------------------------------------')
+        self.logger.info('-- testcase {}'.format(testcase.name))
+        self.logger.info('-------------------------------------------------')
         self.running.run()
         self.running = None
 

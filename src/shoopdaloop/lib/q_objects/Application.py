@@ -10,6 +10,7 @@ from PySide6.QtQml import QQmlDebuggingEnabler
 from PySide6.QtQuick import QQuickWindow
 
 from .ShoopPyObject import *
+from .Backend import close_all_backends
 import shoopdaloop.lib.crash_handling as crash_handling
 
 have_nsm = os.name == 'posix'
@@ -265,6 +266,8 @@ class Application(ShoopQApplication):
             if self.engine:
                 self.unload_qml()
             else:
+                self.logger.debug("Terminating back-ends")
+                close_all_backends()
                 terminate_all_backends()
                 QTimer.singleShot(1, lambda: self.quit())
                 self.exec()

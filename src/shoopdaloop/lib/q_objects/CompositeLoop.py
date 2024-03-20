@@ -4,6 +4,7 @@ from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QMetaObject,
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtQml import QJSValue
 
+from .FindParentBackend import FindParentBackend
 from .ShoopPyObject import *
 
 from ..backend_wrappers import *
@@ -19,7 +20,7 @@ from collections.abc import Mapping, Sequence
 import traceback
 
 # Manage a back-end composite loop, keeps running if GUI thread stalls
-class CompositeLoop(ShoopQQuickItem):
+class CompositeLoop(FindParentBackend):
     def __init__(self, parent=None):
         super(CompositeLoop, self).__init__(parent)
         self._schedule = {}
@@ -62,11 +63,8 @@ class CompositeLoop(ShoopQQuickItem):
         self.iterationChangedUnsafe.connect(self.update_position, Qt.DirectConnection)
         self.modeChangedUnsafe.connect(self.update_position, Qt.DirectConnection)
 
-        def rescan_on_parent_changed():
-            if not self._backend:
-                self.rescan_parents()
-        self.parentChanged.connect(lambda: rescan_on_parent_changed())
-        self.rescan_parents()
+        self.backendChanged.connect(lambda: self.maybe_initialize())
+        self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
     
     cycled = ShoopSignal()
     cycledUnsafe = ShoopSignal()
@@ -101,20 +99,6 @@ class CompositeLoop(ShoopQQuickItem):
     @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
-
-    # backend
-    backendChanged = ShoopSignal(Backend)
-    @ShoopProperty(Backend, notify=backendChanged)
-    def backend(self):
-        return self._backend
-    @backend.setter
-    def backend(self, l):
-        if l and l != self._backend:
-            if self._backend or self._initialized:
-                self.logger.throw_error('May not change backend of existing composite loop')
-            self._backend = l
-            self.logger.trace(lambda: 'Set backend -> {}'.format(l))
-            self.maybe_initialize()
     
     # sync_loop
     syncLoopChanged = ShoopSignal('QVariant')
@@ -448,26 +432,20 @@ class CompositeLoop(ShoopQQuickItem):
                     loop.transition(loop_mode, 0, True)
                     self._running_loops.add(loop)
                     self.runningLoopsChangedUnsafe.emit(self._running_loops)
-
-    @ShoopSlot()
-    def rescan_parents(self):
-        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
-        if maybe_backend:
-            self.backend = maybe_backend
     
     def maybe_initialize(self):
         if self._backend and self._backend.initialized and not self._initialized:
             self.logger.debug(lambda: 'Found backend, initializing')
-            self._backend.registerBackendObject(self)
             self.initializedChanged.emit(True)
     
     # Update from the back-end.
     @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
-        for _ in range(self._pending_cycles):
-            self.handle_sync_loop_trigger_impl()
-        for transition in self._pending_transitions:
-            self.transition_impl(*transition)
-        self._pending_transitions = []
-        self._pending_cycles = 0
+        if self._backend:
+            for _ in range(self._pending_cycles):
+                self.handle_sync_loop_trigger_impl()
+            for transition in self._pending_transitions:
+                self.transition_impl(*transition)
+            self._pending_transitions = []
+            self._pending_cycles = 0
     

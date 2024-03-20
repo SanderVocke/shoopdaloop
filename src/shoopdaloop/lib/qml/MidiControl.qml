@@ -69,11 +69,13 @@ shoop_format = require('shoop_format')
                 return null
             }
 
+            root.logger.trace(() => ('Generating script for: ' + JSON.stringify(configuration)))
+
             let base_script = (typeof action_or_script === 'string') ? action_or_script : action_or_script.script
             let inputs = (typeof action_or_script === 'string') ? {} : action_or_script.inputs
 
             var script = `return function(msg, port) `
-            let do_if =  ('condition' in configuration && configuration.condition !== null)
+            let do_if =  ('condition' in configuration && configuration.condition)
             if (do_if) {
                 script += `if (${configuration.condition}) then `
             }

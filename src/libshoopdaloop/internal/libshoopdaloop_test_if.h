@@ -9,6 +9,7 @@
 #include "GraphFXChain.h"
 #include "types.h"
 #include "shoop_globals.h"
+#include "MidiChannel.h"
 
 class BackendSession;
 
@@ -44,11 +45,11 @@ shoopdaloop_fx_chain_t* external_fx_chain(std::shared_ptr<GraphFXChain> chain);
 
 shoop_audio_channel_data_t *external_audio_data(std::vector<audio_sample_t> f);
 
-shoop_midi_sequence_t *external_midi_data(std::vector<_MidiMessage> m);
+shoop_midi_sequence_t *external_midi_data(shoop_types::LoopMidiChannel::Contents const& m);
 
 std::vector<float> internal_audio_data(shoop_audio_channel_data_t const& d);
 
-std::vector<_MidiMessage> internal_midi_data(shoop_midi_sequence_t const& d);
+shoop_types::LoopMidiChannel::Contents internal_midi_data(shoop_midi_sequence_t const& d);
 
 shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<_DecoupledMidiPort> port);
 

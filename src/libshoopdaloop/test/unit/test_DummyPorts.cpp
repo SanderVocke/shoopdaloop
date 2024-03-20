@@ -3,7 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("Ports - Dummy Audio In - Properties", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Input);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Input);
 
     CHECK(port.has_internal_read_access());
     CHECK(!port.has_internal_write_access());
@@ -12,7 +12,7 @@ TEST_CASE("Ports - Dummy Audio In - Properties", "[DummyPorts][ports][audio]") {
 }
 
 TEST_CASE("Ports - Dummy Audio In - Buffers", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Input);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Input);
 
     port.PROC_prepare(10);
     port.PROC_process(10);
@@ -24,7 +24,7 @@ TEST_CASE("Ports - Dummy Audio In - Buffers", "[DummyPorts][ports][audio]") {
 }
 
 TEST_CASE("Ports - Dummy Audio In - Queue", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Input);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Input);
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
     };
@@ -58,7 +58,7 @@ TEST_CASE("Ports - Dummy Audio In - Queue", "[DummyPorts][ports][audio]") {
 }
 
 TEST_CASE("Ports - Dummy Audio In - Gain", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Input);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Input);
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
     };
@@ -76,7 +76,7 @@ TEST_CASE("Ports - Dummy Audio In - Gain", "[DummyPorts][ports][audio]") {
 }
 
 TEST_CASE("Ports - Dummy Audio In - Mute", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Input);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Input);
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
     };
@@ -94,7 +94,7 @@ TEST_CASE("Ports - Dummy Audio In - Mute", "[DummyPorts][ports][audio]") {
 }
 
 TEST_CASE("Ports - Dummy Audio In - Peak", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Input);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Input);
     audio_sample_t samples[6] = {
         5.0f, 4.0f, 3.0f, 2.0f, 1.0f, 0.0f
     };
@@ -124,7 +124,7 @@ TEST_CASE("Ports - Dummy Audio In - Peak", "[DummyPorts][ports][audio]") {
 }
 
 TEST_CASE("Ports - Dummy Audio Out - Properties", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Output);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Output);
 
     CHECK(!port.has_internal_read_access());
     CHECK(port.has_internal_write_access());
@@ -133,7 +133,7 @@ TEST_CASE("Ports - Dummy Audio Out - Properties", "[DummyPorts][ports][audio]") 
 }
 
 TEST_CASE("Ports - Dummy Audio Out - Buffers", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Output);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Output);
 
     port.PROC_prepare(10);
     port.PROC_process(10);
@@ -145,7 +145,7 @@ TEST_CASE("Ports - Dummy Audio Out - Buffers", "[DummyPorts][ports][audio]") {
 }
 
 TEST_CASE("Ports - Dummy Audio Out - Queue", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Output);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Output);
     std::vector<audio_sample_t> samples = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
     };
@@ -162,7 +162,7 @@ TEST_CASE("Ports - Dummy Audio Out - Queue", "[DummyPorts][ports][audio]") {
 }
 
 TEST_CASE("Ports - Dummy Audio Out - Gain", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Output);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Output);
     std::vector<audio_sample_t> samples = {
         0.0f, 1.0f, 2.0f
     };
@@ -182,7 +182,7 @@ TEST_CASE("Ports - Dummy Audio Out - Gain", "[DummyPorts][ports][audio]") {
 }
 
 TEST_CASE("Ports - Dummy Audio Out - Mute", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Output);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Output);
     std::vector<audio_sample_t> samples = {
         0.0f, 1.0f, 2.0f
     };
@@ -202,7 +202,7 @@ TEST_CASE("Ports - Dummy Audio Out - Mute", "[DummyPorts][ports][audio]") {
 }
 
 TEST_CASE("Ports - Dummy Audio Out - Peak", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Output);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Output);
     std::vector<audio_sample_t> samples = {
         0.0f, 1.0f, 2.0f
     };
@@ -229,7 +229,7 @@ TEST_CASE("Ports - Dummy Audio Out - Peak", "[DummyPorts][ports][audio]") {
 }
 
 TEST_CASE("Ports - Dummy Audio Out - Noop Zero", "[DummyPorts][ports][audio]") {
-    DummyAudioPort port ("dummy", Output);
+    DummyAudioPort port ("dummy", ShoopPortDirection_Output);
     std::vector<audio_sample_t> samples = {
         0.0f, 1.0f, 2.0f
     };

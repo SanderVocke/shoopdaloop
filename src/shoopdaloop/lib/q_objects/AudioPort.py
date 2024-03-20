@@ -12,7 +12,7 @@ from PySide6.QtQuick import QQuickItem
 from .ShoopPyObject import *
 from .Port import Port
 
-from ..backend_wrappers import PortDirection
+from ..backend_wrappers import PortDirection, PortDataType
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from ..logging import Logger
@@ -123,7 +123,11 @@ class AudioPort(Port):
 
     ##########
     ## INTERNAL MEMBERS
-    ##########    
+    ##########
+    
+    def get_data_type(self):
+        return PortDataType.Audio.value
+    
     def maybe_initialize_internal(self, name_hint, direction):
         # Internal ports are owned by FX chains.
         maybe_fx_chain = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('FXChain'))

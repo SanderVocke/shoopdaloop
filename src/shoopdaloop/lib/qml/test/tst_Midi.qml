@@ -36,7 +36,7 @@ ShoopTestFile {
 
         ShoopSessionTestCase {
             id: testcase
-            name: 'TrackControlAndLoop_direct'
+            name: 'Midi'
             filename : TestFilename.test_filename()
             session: session
 
@@ -93,7 +93,7 @@ ShoopTestFile {
             }
 
             test_fns: ({
-                'test_midi_direct_record_then_play': () => {
+                'midi_record_then_play': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -102,9 +102,9 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     let input = [
-                        { 'time': 0, 'data': [0x90, 100, 100] },
-                        { 'time': 3, 'data': [0x90, 50,  50]  },
-                        { 'time': 4, 'data': [0x90, 10,  10]  }
+                        { 'time': 0, 'data': [0x80, 100, 100] },
+                        { 'time': 3, 'data': [0x80, 50,  50]  },
+                        { 'time': 4, 'data': [0x80, 10,  10]  }
                     ]
                     let chan = lut.get_midi_output_channels()[0]
 
@@ -139,7 +139,7 @@ ShoopTestFile {
                     verify_eq(out, input, null, true)
                 },
 
-                'test_midi_direct_prerecord_then_play': () => {
+                'midi_prerecord_then_play': () => {
                     check_backend()
                     reset()
                     tut_control().monitor = false
@@ -157,9 +157,9 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     let input = [
-                        { 'time': 0, 'data': [0x90, 100, 100] }, // during pre-reord
-                        { 'time': 3, 'data': [0x90, 50,  50]  }, // during record
-                        { 'time': 4, 'data': [0x90, 10,  10]  }  // during record
+                        { 'time': 0, 'data': [0x80, 100, 100] }, // during pre-reord
+                        { 'time': 3, 'data': [0x80, 50,  50]  }, // during record
+                        { 'time': 4, 'data': [0x80, 10,  10]  }  // during record
                     ]
                     let chan = lut.get_midi_output_channels()[0]
 
@@ -188,13 +188,195 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     let expect_output = [
-                        { 'time': 1, 'data': [0x90, 50,  50]  }, // from input[1]
-                        { 'time': 2, 'data': [0x90, 10,  10]  }  // from input[2]
+                        { 'time': 1, 'data': [0x80, 50,  50]  }, // from input[1]
+                        { 'time': 2, 'data': [0x80, 10,  10]  }  // from input[2]
                     ]
 
-                    verify_eq(chan.get_data(), input, null, true)
+                    verify_eq(chan.get_recorded_midi_msgs(), input, null, true)
                     verify_eq(out, expect_output, null, true)
-                }
+                },
+
+                'midi_prerecord_then_play_stateful': () => {
+                    check_backend()
+                    reset()
+                    tut_control().monitor = false
+                    tut_control().mute = false
+
+                    // Set sync loop so that it will trigger in 20 frames from now
+                    syncloop.set_length(20)
+                    syncloop.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(20)
+                    session.backend.wait_process()
+
+                    // Set main loop to record (will pre-record, then transition @ sync)
+                    lut.transition(ShoopConstants.LoopMode.Recording, 0, true)
+                    testcase.wait_updated(session.backend)
+
+                    let input = [
+                        { 'time': 10, 'data': Midi.create_noteOn(0, 100, 100) }, // during pre-reord
+                        { 'time': 26, 'data': Midi.create_noteOff(0, 100, 90) }, // during record
+                        { 'time': 28,'data': Midi.create_noteOn(0, 120, 80) },
+                        { 'time': 32,'data': Midi.create_noteOff(0, 120, 70) }
+                    ]
+                    let chan = lut.get_midi_output_channels()[0]
+
+                    midi_input_port.dummy_clear_queues()
+                    midi_output_port.dummy_clear_queues()
+
+                    midi_input_port.dummy_queue_msgs(input)
+
+                    // Process 40 frames (prerecord then record)
+                    session.backend.dummy_request_controlled_frames(40)
+                    session.backend.wait_process()
+
+                    // Data should now be in channel. Switch to playback.
+                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+
+                    midi_output_port.dummy_request_data(40)
+
+                    // Process 40 frames (play back twice)
+                    session.backend.dummy_request_controlled_frames(40)
+                    session.backend.wait_process()
+                    let out = midi_output_port.dummy_dequeue_data()
+
+                    midi_input_port.dummy_clear_queues()
+                    midi_output_port.dummy_clear_queues()
+
+                    let expect_output = [
+                        { 'time': 0, 'data':  input[0]['data']  }, // from state (no pre-play was done)
+                        { 'time': 6, 'data':  input[1]['data']  },
+                        { 'time': 8, 'data':  input[2]['data']  },
+                        { 'time': 12, 'data': input[3]['data']  },
+                        { 'time': 20, 'data':  Midi.create_all_sound_off(0) }, // end-of-loop
+                        { 'time': 20, 'data':  input[0]['data']  }, // from state (no pre-play was done)
+                        { 'time': 26, 'data':  input[1]['data']  },
+                        { 'time': 28, 'data':  input[2]['data']  },
+                        { 'time': 32, 'data': input[3]['data']  },
+                    ]
+
+                    verify_eq(chan.get_recorded_midi_msgs(), input, null, true)
+                    verify_eq(out, expect_output, null, true)
+
+                    lut.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(20)
+                    session.backend.wait_process()
+                    midi_input_port.dummy_clear_queues()
+                    midi_output_port.dummy_clear_queues()
+
+                    // When saving this to disk and re-loading, the state stuff should still work
+                    // and play back in the exact same way. That means the state itself should be
+                    // somehow saved. Test here that it works.
+                    var filename = file_io.generate_temporary_filename() + '.smf'
+                    file_io.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
+                    chan.clear()
+                    testcase.wait_updated(session.backend)
+                    testcase.wait_updated(session.backend)
+                    verify_eq(chan.get_all_midi_data(), [], null, true)
+                    file_io.load_midi_to_channels(
+                                filename,
+                                session.backend.get_sample_rate(),
+                                [chan],
+                                0,
+                                20,
+                                false)
+
+                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    midi_output_port.dummy_request_data(40)
+                    session.backend.dummy_request_controlled_frames(40)
+                    session.backend.wait_process()
+                    out = midi_output_port.dummy_dequeue_data()
+
+                    // Verify same as before
+                    verify_eq(chan.get_recorded_midi_msgs(), input, null, true)
+                    verify_eq(out, expect_output, null, true)
+                },
+
+                'midi_record_then_play_stateful': () => {
+                    check_backend()
+                    reset()
+                    tut_control().monitor = false
+                    tut_control().mute = false
+
+                    let input = [
+                        { 'time': 1, 'data': [0x90, 100, 100] }, // before record
+                        { 'time': 4, 'data': [0x80, 100,  50] }, // during record
+                    ]
+                    let chan = lut.get_midi_output_channels()[0]
+
+                    midi_input_port.dummy_clear_queues()
+                    midi_output_port.dummy_clear_queues()
+
+                    midi_input_port.dummy_queue_msgs(input)
+
+                    // Process 6 frames (nothing, then record)
+                    session.backend.dummy_request_controlled_frames(2)
+                    session.backend.wait_process()
+                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(4)
+                    session.backend.wait_process()
+
+                    // NoteOn should now be in state, NoteOff should be in the
+                    // recording. Start playback.
+                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+
+                    midi_output_port.dummy_request_data(4)
+
+                    // Process 4 frames (play back)
+                    session.backend.dummy_request_controlled_frames(4)
+                    session.backend.wait_process()
+                    let out = midi_output_port.dummy_dequeue_data()
+
+                    midi_input_port.dummy_clear_queues()
+                    midi_output_port.dummy_clear_queues()
+
+                    let expect = [
+                        { 'time': 0, 'data': [0x90, 100, 100] },
+                        { 'time': 2, 'data': [0x80, 100,  50] },
+                    ]
+                    verify_eq(out, expect, null, true)
+
+                    // Now, save the channel to disk, load it in again and verify that
+                    // playback behavior is still the same.
+
+                    // First stop for a while
+                    lut.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(20)
+                    session.backend.wait_process()
+                    midi_input_port.dummy_clear_queues()
+                    midi_output_port.dummy_clear_queues()
+
+                    // Save and re-load
+                    var filename = file_io.generate_temporary_filename() + '.smf'
+                    file_io.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
+                    chan.clear()
+                    testcase.wait_updated(session.backend)
+                    testcase.wait_updated(session.backend)
+                    verify_eq(chan.get_all_midi_data(), [], null, true)
+                    file_io.load_midi_to_channels(
+                                filename,
+                                session.backend.get_sample_rate(),
+                                [chan],
+                                0,
+                                0,
+                                false)
+
+                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    midi_output_port.dummy_request_data(4)
+                    session.backend.dummy_request_controlled_frames(4)
+                    session.backend.wait_process()
+                    out = midi_output_port.dummy_dequeue_data()
+
+                    // Verify same as before
+                    verify_eq(out, expect, null, true)
+                },
             })
         }
     }

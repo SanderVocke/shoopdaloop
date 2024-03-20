@@ -38,8 +38,14 @@ def to_int(val):
     return max(min(v, intmax), intmin)
 
 class PortDirection(Enum):
-    Input = bindings.Input
-    Output = bindings.Output
+    Input = bindings.ShoopPortDirection_Input
+    Output = bindings.ShoopPortDirection_Output
+    Any = bindings.ShoopPortDirection_Any
+
+class PortDataType(Enum):
+    Audio = bindings.ShoopPortDataType_Audio
+    Midi = bindings.ShoopPortDataType_Midi
+    Any = bindings.ShoopPortDataType_Any
 
 class BackendResult(Enum):
     Success = bindings.Success
@@ -334,6 +340,22 @@ class DummyAudioDriverSettings:
         rval.sample_rate = self.sample_rate
         rval.buffer_size = self.buffer_size
         return rval
+    
+@dataclass
+class ExternalPortDescriptor:
+    name : str
+    direction : PortDirection
+    data_type : PortDataType
+
+    def __init__(self, backend_obj : 'bindings.shoop_external_port_descriptor_t'):
+        if backend_obj:
+            self.name = str(backend_obj.name)
+            self.direction = backend_obj.direction
+            self.data_type = backend_obj.data_type
+        else:
+            self.name = None
+            self.direction = None
+            self.data_type = None
 
 def deref_ptr(backend_ptr):
     if not backend_ptr:
@@ -460,7 +482,7 @@ class BackendLoopMidiChannel:
     def available(self):
         return self.shoop_c_handle and self.loop_shoop_c_handle and self._backend and self._backend.active()
     
-    def get_data(self):
+    def get_all_midi_data(self):
         if self.available():
             r = bindings.get_midi_channel_data(self.shoop_c_handle)
             if r:
@@ -468,8 +490,14 @@ class BackendLoopMidiChannel:
                 bindings.destroy_midi_sequence(r)
                 return msgs
         return []
+
+    def get_recorded_midi_msgs(self):
+        return [m for m in self.get_all_midi_data() if m['time'] >= 0.0]
+
+    def get_state_midi_msgs(self):
+        return [m for m in self.get_all_midi_data() if m['time'] < 0.0]
     
-    def load_data(self, msgs):
+    def load_all_midi_data(self, msgs):
         if self.available():
             d = bindings.alloc_midi_sequence(len(msgs))
             if d:
@@ -749,6 +777,23 @@ class BackendDecoupledMidiPort:
             for i in range(len(msg)):
                 arr[i] = msg[i]
                 bindings.send_decoupled_midi(self._c_handle, len(msg), arr)
+    
+    def get_connections_state(self):
+        if self.available():
+            state = bindings.get_decoupled_midi_port_connections_state(self._c_handle)
+            rval = parse_connections_state(deref_ptr(state))
+            if state:
+                bindings.destroy_port_connections_state(state)
+            return rval
+        return dict()
+
+    def connect_external_port(self, name):
+        if self.available():
+            bindings.connect_external_decoupled_midi_port(self._c_handle, name.encode('ascii'))
+    
+    def disconnect_external_port(self, name):
+        if self.available():
+            bindings.disconnect_external_decoupled_midi_port(self._c_handle, name.encode('ascii'))
     
     def __del__(self):
         if self.available():
@@ -1045,6 +1090,18 @@ class AudioDriver:
             return int(bindings.dummy_audio_n_requested_frames(self._c_handle))
         return 0
     
+    def dummy_add_external_mock_port(self, name, direction, data_type):
+        if self.active():
+            bindings.dummy_driver_add_external_mock_port(self._c_handle, name.encode('ascii'), direction, data_type)
+    
+    def dummy_remove_external_mock_port(self, name):
+        if self.active():
+            bindings.dummy_driver_remove_external_mock_port(self._c_handle, name.encode('ascii'))
+    
+    def dummy_remove_all_external_mock_ports(self):
+        if self.active():
+            bindings.dummy_driver_remove_all_external_mock_ports(self._c_handle)
+    
     def get_sample_rate(self):
         if self.active():
             return int(bindings.get_sample_rate(self._c_handle))
@@ -1067,6 +1124,14 @@ class AudioDriver:
     
     def wait_process(self):
         bindings.wait_process(self._c_handle)
+    
+    def find_external_ports(self, maybe_name_regex, port_direction, data_type):
+        result = bindings.find_external_ports(self._c_handle, maybe_name_regex, port_direction, data_type)
+        rval = []
+        for i in range(result[0].n_ports):
+            rval.append(ExternalPortDescriptor(result[0].ports[i]))
+        bindings.destroy_external_port_descriptors(result)
+        return rval
     
     def destroy(self):
         global all_active_drivers
