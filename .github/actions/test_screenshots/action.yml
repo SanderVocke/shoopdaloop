@@ -21,6 +21,8 @@ inputs:
   python:
     type: string
     default: python
+  run_cmd_prefix:
+    type: strint
 
 runs:
   using: "composite"
@@ -28,7 +30,7 @@ runs:
   - name: Save screenshots
     shell: bash
     run: |
-        LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }} SHOOP_LOG=Frontend.TestScreenGrabber=debug ${{ inputs.shoopdaloop_command }} -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
+        LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }} SHOOP_LOG=Frontend.TestScreenGrabber=debug ${{ inputs.run_cmd_prefix }} ${{ inputs.shoopdaloop_command }} -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
   
   - name: Upload screenshots
     uses: actions/upload-artifact@v4
