@@ -2,7 +2,9 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "ShoopDaLoop"
-#define MyAppVersion "set-on-cmdline"
+#ifndef MyAppVersion
+    #error No version passed.
+#endif
 #define MyAppPublisher "ShoopDaLoop"
 #define MyAppURL "https://sandervocke.github.io/shoopdaloop"
 #define MyAppExeName "shoopdaloop.exe"
