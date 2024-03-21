@@ -33,3 +33,8 @@ include_patterns = ['index.rst','developers.rst','usage.rst','concept.rst']
 
 html_theme = 'sphinx_material'
 html_static_path = ['_static']
+html_theme_options = {
+    'color_primary': 'grey',
+    'color_accent': 'grey',
+}
+
