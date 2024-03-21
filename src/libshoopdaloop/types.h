@@ -91,8 +91,8 @@ typedef enum {
 
 // Can be ORed
 typedef enum {
-    Internal = 1, // Can connect to internal ports
-    External = 2, // Can connect to external ports
+    ShoopPortConnectability_Internal = 1, // Can connect to internal ports
+    ShoopPortConnectability_External = 2, // Can connect to external ports
 } shoop_port_connectability_t;
 
 typedef struct _shoopdaloop_loop                shoopdaloop_loop_t;

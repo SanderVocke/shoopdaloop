@@ -1,32 +1,33 @@
-function generate_audio_port(id, name_parts, type, driver_direction, gain, muted, passthrough_muted, internal_port_connection_ids, external_port_connections) {
+function generate_audio_port(id, name_parts, type, input_connectability, output_connectability, gain, muted, passthrough_muted, internal_port_connection_ids, external_port_connections) {
     var rval = {
         'id': id,
         'internal_port_connections': internal_port_connection_ids,
         'schema': 'audioport.1',
         'name_parts': name_parts,
         'type': type,
+        'input_connectability': input_connectability,
+        'output_connectability': output_connectability,
         'gain': gain,
         'muted': muted,
         'passthrough_muted': passthrough_muted,
         'external_port_connections': external_port_connections
     }
-    if (driver_direction) { rval['driver_direction'] = driver_direction }
     return rval
 }
 
-function generate_midi_port(id, name_parts, type, driver_direction, muted, passthrough_muted, internal_port_connection_ids, external_port_connections) {
+function generate_midi_port(id, name_parts, type, input_connectability, output_connectability, muted, passthrough_muted, internal_port_connection_ids, external_port_connections) {
     var rval = {
         'id': id,
         'internal_port_connections': internal_port_connection_ids,
         'schema': 'midiport.1',
         'name_parts': name_parts,
         'type': type,
-        'driver_direction': driver_direction,
+        'input_connectability': input_connectability,
+        'output_connectability': output_connectability,
         'muted': muted,
         'passthrough_muted': passthrough_muted,
         'external_port_connections': external_port_connections
     }
-    if (driver_direction) { rval['driver_direction'] = driver_direction }
     return rval
 }
 
@@ -165,7 +166,8 @@ function generate_default_track(
                 id + id_post,
                 [port_name_base, id_post],
                 'driver',
-                'input',
+                ['internal'], // input
+                [], // output
                 1.0,
                 false,
                 false,
@@ -179,7 +181,8 @@ function generate_default_track(
                 id + id_post,
                 [port_name_base, id_post],
                 'driver',
-                'output',
+                [], // input
+                ['internal'], // output
                 1.0,
                 false,
                 false,
@@ -193,7 +196,8 @@ function generate_default_track(
                 id + id_post,
                 [port_name_base, id_post],
                 'driver',
-                'input',
+                ['internal'], // input
+                [], // output
                 false,
                 false,
                 [], // internal connections
@@ -221,7 +225,8 @@ function generate_default_track(
                 in_id,
                 [port_name_base, in_id_post],
                 'driver',
-                'input',
+                ['external'], // input
+                ['internal'], // output
                 1.0,
                 false,
                 true,
@@ -233,7 +238,8 @@ function generate_default_track(
                 send_id,
                 [port_name_base, send_id_post],
                 'driver',
-                'output',
+                ['internal'], // input
+                ['external'], // output
                 1.0,
                 false,
                 false,
@@ -256,7 +262,8 @@ function generate_default_track(
                 return_id,
                 [port_name_base, return_id_post],
                 'driver',
-                'input',
+                ['external'], // input
+                ['internal'], // output
                 1.0,
                 false,
                 false,
@@ -268,7 +275,8 @@ function generate_default_track(
             out_id,
             [port_name_base, out_id_post],
             'driver',
-            'output',
+            ['internal'], // input
+            ['external'], // output
             1.0,
             false,
             false,
@@ -289,7 +297,8 @@ function generate_default_track(
                 in_id,
                 [port_name_base, in_id_post],
                 'driver',
-                'input',
+                ['external'], // input
+                ['internal'], // output
                 1.0,
                 false,
                 true,
@@ -300,7 +309,8 @@ function generate_default_track(
                 out_id,
                 [port_name_base, out_id_post],
                 'driver',
-                'output',
+                ['internal'], // input
+                ['external'], // output
                 1.0,
                 false,
                 false,
@@ -319,7 +329,8 @@ function generate_default_track(
                 in_id,
                 [port_name_base, in_id_post],
                 'driver',
-                'input',
+                ['external'], // input
+                ['internal'], // output
                 false,
                 true,
                 [out_id], // internal connections
@@ -329,7 +340,8 @@ function generate_default_track(
                 out_id,
                 [port_name_base, out_id_post],
                 'driver',
-                'output',
+                ['internal'], // input
+                ['external'], // output
                 false,
                 false,
                 [], // internal connections
@@ -349,7 +361,8 @@ function generate_default_track(
                 in_id,
                 [port_name_base, in_id_post],
                 'driver',
-                'input',
+                ['external'], // input
+                ['internal'], // output
                 false,
                 true,
                 have_drywet_explicit_ports ? [send_id] : [fx_in_id], // internal connections
@@ -361,7 +374,8 @@ function generate_default_track(
                 send_id,
                 [port_name_base, send_id_post],
                 'driver',
-                'output',
+                ['internal'], // input
+                ['external'], // output
                 false,
                 false,
                 [], // internal connections

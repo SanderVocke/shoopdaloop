@@ -5,12 +5,13 @@
         "id":                { "type": "string"  },
         "name_parts":        { "type": "array", "items": { "type": "string" } },
         "type":              { "enum": ["driver", "internal"] },
-        "driver_direction":  { "enum": ["input", "output"] },
+        "input_connectability":   { "type": "array", "items": { "enum": ["internal", "external"] }},
+        "output_connectability":  { "type": "array", "items": { "enum": ["internal", "external"] }},
         "gain":              { "type": "number" },
         "muted":             { "type": "boolean" },
         "passthrough_muted": { "type": "boolean" },
         "internal_port_connections": { "type": "array", "items": { "type": "string" } },
         "external_port_connections": { "type": "array", "items": { "type": "string" } }
     },
-    "required": ["schema", "id", "name_parts", "type", "gain", "muted", "internal_port_connections", "external_port_connections"]
+    "required": ["schema", "id", "name_parts", "type", "gain", "muted", "input_connectability", "output_connectability", "internal_port_connections", "external_port_connections"]
 }

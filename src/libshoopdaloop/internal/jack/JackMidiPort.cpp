@@ -41,22 +41,22 @@ void GenericJackMidiInputPort<API>::JackMidiReadBuffer::PROC_get_event_value(uin
 
 template<typename API>
 unsigned GenericJackMidiInputPort<API>::input_connectability() const {
-    return External;
+    return ShoopPortConnectability_External;
 }
 
 template<typename API>
 unsigned GenericJackMidiInputPort<API>::output_connectability() const {
-    return Internal;
+    return ShoopPortConnectability_Internal;
 }
 
 template<typename API>
 unsigned GenericJackMidiOutputPort<API>::input_connectability() const {
-    return Internal;
+    return ShoopPortConnectability_Internal;
 }
 
 template<typename API>
 unsigned GenericJackMidiOutputPort<API>::output_connectability() const {
-    return External;
+    return ShoopPortConnectability_External;
 }
 
 template<typename API>

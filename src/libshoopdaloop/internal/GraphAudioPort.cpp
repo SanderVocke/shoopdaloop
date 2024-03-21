@@ -16,8 +16,8 @@ shoop_types::_AudioPort *GraphAudioPort::maybe_audio_port() const {
 }
 
 void GraphAudioPort::PROC_internal_connections(uint32_t n_frames) {
-    
-    auto get_buf = [&](auto &maybe_to) -> audio_sample_t* {
+
+        auto get_buf = [&](auto &maybe_to) -> audio_sample_t* {
         if(auto _to = maybe_to.lock()) {
             if(auto port = _to->maybe_audio_port()) {
                 return port->PROC_get_buffer(n_frames);

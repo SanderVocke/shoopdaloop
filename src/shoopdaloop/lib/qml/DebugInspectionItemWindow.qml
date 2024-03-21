@@ -82,8 +82,18 @@ ApplicationWindow {
                 }
 
                 ItemRow {
-                    label: "direction:"
-                    Label { text: object.direction }
+                    label: "type:"
+                    Label { text: object.type }
+                }
+
+                ItemRow {
+                    label: "input connectability:"
+                    Label { text: JSON.stringify(object.input_connectability) }
+                }
+
+                ItemRow {
+                    label: "output connectability:"
+                    Label { text: JSON.stringify(object.output_connectability) }
                 }
 
                 ItemRow {

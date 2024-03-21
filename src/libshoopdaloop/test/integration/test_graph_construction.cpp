@@ -54,8 +54,8 @@ class TestPort : public AudioPort<float> {
         return m_buffer.data();
     }
 
-    unsigned input_connectability() const override { return Internal | External; }
-    unsigned output_connectability() const override { return Internal | External; }
+    unsigned input_connectability() const override { return ShoopPortConnectability_Internal | ShoopPortConnectability_External; }
+    unsigned output_connectability() const override { return ShoopPortConnectability_Internal | ShoopPortConnectability_External; }
 
     TestPort(std::string name) : PortInterface(), m_name(name) {}
     ~TestPort(){};

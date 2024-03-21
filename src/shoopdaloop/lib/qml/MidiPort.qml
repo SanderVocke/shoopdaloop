@@ -7,13 +7,20 @@ PythonMidiPort {
     id: root
     property var descriptor : null
     property bool loaded : initialized
-    direction: {
-        switch(descriptor.driver_direction) {
-            case 'input': return ShoopConstants.PortDirection.Input;
-            case 'output': return ShoopConstants.PortDirection.Output;
+
+    function parse_connectability(conn) {
+        var rval = 0
+        if (conn.includes('internal')) {
+            rval |= ShoopConstants.PortConnectability.Internal
         }
-        throw new Error("No direction for midi port: " + JSON.stringify(descriptor, null, 2))
+        if (conn.includes('external')) {
+            rval |= ShoopConstants.PortConnectability.External
+        }
+        return rval
     }
+
+    input_connectability : parse_connectability(descriptor.input_connectability)
+    output_connectability : parse_connectability(descriptor.output_connectability)
 
     readonly property string obj_id : descriptor.id
 
@@ -25,7 +32,8 @@ PythonMidiPort {
             'id': descriptor.id,
             'name_parts': descriptor.name_parts,
             'type': descriptor.type,
-            'driver_direction': descriptor.driver_direction,
+            'input_connectability': descriptor.input_connectability,
+            'output_connectability': descriptor.output_connectability,
             'muted': descriptor.muted,
             'passthrough_muted': descriptor.muted,
             'internal_port_connections': descriptor.internal_port_connections,

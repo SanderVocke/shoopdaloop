@@ -24,7 +24,8 @@ class Port(FindParentBackend):
         super(Port, self).__init__(parent)
         self._name_hint = None
         self._backend_obj = None
-        self._direction = None
+        self._input_connectability = None
+        self._output_connectability = None
         self._initialized = False
         self._internal_port_connections = []
         self._internally_connected_to = []
@@ -62,17 +63,30 @@ class Port(FindParentBackend):
             self._name_hint = n
             self.maybe_initialize()
     
-    # direction
-    directionChanged = ShoopSignal(int)
-    @ShoopProperty(int, notify=directionChanged)
-    def direction(self):
-        return self._direction
-    @direction.setter
-    def direction(self, d):
-        if d != self._direction:
-            if self._direction != None:
-                raise Exception('Port direction may only be set once.')
-            self._direction = d
+    # input connectability
+    inputConnectabilityChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=inputConnectabilityChanged)
+    def input_connectability(self):
+        return self._input_connectability
+    @input_connectability.setter
+    def input_connectability(self, d):
+        if d != self._input_connectability:
+            if self._input_connectability != None:
+                raise Exception('Port input connectability may only be set once.')
+            self._input_connectability = d
+            self.maybe_initialize()
+    
+    # output connectability
+    outputConnectabilityChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=outputConnectabilityChanged)
+    def output_connectability(self):
+        return self._output_connectability
+    @output_connectability.setter
+    def output_connectability(self, d):
+        if d != self._output_connectability:
+            if self._output_connectability != None:
+                raise Exception('Port output connectability may only be set once.')
+            self._output_connectability = d
             self.maybe_initialize()
     
     # is_internal
@@ -187,7 +201,8 @@ class Port(FindParentBackend):
         if (not self._backend_obj) and \
             (not self._ever_initialized) and \
             self._name_hint != None and \
-            self._direction != None and \
+            self._input_connectability != None and \
+            self._output_connectability != None and \
             self._is_internal != None and \
             self._muted != None and \
             self._passthrough_muted != None and \
@@ -195,7 +210,7 @@ class Port(FindParentBackend):
             self._backend.initialized:
             
             self.logger.debug(lambda: "{}: Initializing port {}".format(self, self._name_hint))
-            self.maybe_initialize_impl(self._name_hint, self._direction, self._is_internal)
+            self.maybe_initialize_impl(self._name_hint, self._input_connectability, self._output_connectability, self._is_internal)
             if self._backend_obj:
                 self._initialized = True
                 self.initializedChanged.emit(True)
@@ -242,7 +257,7 @@ class Port(FindParentBackend):
     ##########
     ## INTERNAL MEMBERS
     ##########
-    def maybe_initialize_impl(self, name_hint, direction, is_internal):
+    def maybe_initialize_impl(self, name_hint, input_connectability, output_connectability, is_internal):
         raise Exception('Unimplemented in base class')
     
     def update_internal_connections(self):

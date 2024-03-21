@@ -46,12 +46,12 @@ void GenericJackAudioPort<API>::PROC_process(uint32_t nframes) {
 
 template<typename API>
 unsigned GenericJackAudioPort<API>::input_connectability() const {
-    return (m_direction == ShoopPortDirection_Input) ? External : Internal;
+    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
 }
 
 template<typename API>
 unsigned GenericJackAudioPort<API>::output_connectability() const {
-    return (m_direction == ShoopPortDirection_Output) ? External : Internal;
+    return (m_direction == ShoopPortDirection_Output) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
 }
 
 template class GenericJackAudioPort<JackApi>;

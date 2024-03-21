@@ -64,12 +64,12 @@ void InternalAudioPort<SampleT>::PROC_process(uint32_t nframes) {
 
 template <typename SampleT>
 unsigned InternalAudioPort<SampleT>::input_connectability() const {
-    return Internal;
+    return ShoopPortConnectability_Internal;
 }
 
 template <typename SampleT>
 unsigned InternalAudioPort<SampleT>::output_connectability() const {
-    return Internal;
+    return ShoopPortConnectability_Internal;
 }
 
 template class InternalAudioPort<float>;

@@ -144,11 +144,11 @@ std::vector<audio_sample_t> DummyAudioPort::dequeue_data(uint32_t n) {
 }
 
 unsigned DummyAudioPort::input_connectability() const {
-    return (m_direction == ShoopPortDirection_Input) ? External : Internal;
+    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
 }
 
 unsigned DummyAudioPort::output_connectability() const {
-    return (m_direction == ShoopPortDirection_Input) ? Internal : External;
+    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
 }
 
 MidiSortableMessageInterface &
@@ -194,11 +194,11 @@ DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction,
 }
 
 unsigned DummyMidiPort::input_connectability() const {
-    return (m_direction == ShoopPortDirection_Input) ? External : Internal;
+    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
 }
 
 unsigned DummyMidiPort::output_connectability() const {
-    return (m_direction == ShoopPortDirection_Input) ? Internal : External;
+    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
 }
 
 void DummyMidiPort::clear_queues() {
