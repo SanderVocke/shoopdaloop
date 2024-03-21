@@ -172,6 +172,7 @@ runs:
     uses: ./.github/actions/test_screenshots
     with:
       root_path: ${{ steps.install_package.outputs.install_dir }}
+      run_cmd_prefix: SHOOP_CRASH_DIR=crashdumps ${{ inputs.run_cmd_prefix }}
       screenshots_path: _grabbed_screenshots
       artifact_name: screenshots_${{ inputs.name }}
       qt_qpa_platform: ${{ inputs.qpa_platform }}

@@ -104,7 +104,7 @@ runs:
     if: ${{ inputs.package_kind == 'innosetup' }}  
     with:
       path: distribution/innosetup/shoopdaloop.iss
-      options: /O+ /DMyAppVersion="${{ env.version }}"
+      options: /O+ /DMyAppVersion="${{ env.version }}.${{ env.gitversion }}"
   - name: Move .EXE installer
     if: ${{ inputs.package_kind == 'innosetup' }}   
     shell: bash

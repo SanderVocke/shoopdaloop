@@ -248,7 +248,7 @@ Item {
             transition_loops([root], mode, delay, wait_for_sync)
         }        
     }
-    function play_solo_in_track() {
+    function play_solo_in_track(delay, sync) {
         // Gather all selected loops
         var selected_all = selected_loops
         selected_all.add(root)
@@ -261,8 +261,8 @@ Item {
         })
         var _other_loops = _all_track_loops.filter(l => !selected_all.has(l))
         // Do the transitions
-        transition_loops(_other_loops, ShoopConstants.LoopMode.Stopped, use_delay, root.sync_active)
-        transition_loops(Array.from(selected_all), ShoopConstants.LoopMode.Playing, use_delay, root.sync_active)
+        transition_loops(_other_loops, ShoopConstants.LoopMode.Stopped, delay, sync)
+        transition_loops(Array.from(selected_all), ShoopConstants.LoopMode.Playing, delay, sync)
     }
     function clear(length=0, emit=true) {
         if(maybe_loop) {
@@ -927,7 +927,7 @@ Item {
                                         text: root.delay_for_targeted != undefined ? ">S" : "S"
                                     }
                                     onClicked: { if(statusrect.loop) {
-                                        root.play_solo_in_track()
+                                        root.play_solo_in_track(root.use_delay, root.sync_active)
                                         }}
 
                                     ToolTip.delay: 1000

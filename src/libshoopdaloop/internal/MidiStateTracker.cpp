@@ -202,16 +202,16 @@ std::vector<std::vector<uint8_t>> MidiStateTracker::state_as_messages() {
     std::vector<std::vector<uint8_t>> rval;
 
     if (tracking_programs()) {
-        for (uint8_t channel; channel < (uint8_t) m_programs.size(); channel++) {
+        for (uint8_t channel=0; channel < (uint8_t) m_programs.size(); channel++) {
             auto v = m_programs[channel];
-            if (v != ProgramUnknown) {
+                        if (v != ProgramUnknown) {
                 log<log_level_debug_trace>("state msg: program @ {} = {}", channel, v);
                 rval.push_back(programChange(channel, v));
             }
         }
     }
     if (tracking_controls()) {
-        for (uint8_t channel; channel < 16; channel++) {
+        for (uint8_t channel=0; channel < 16; channel++) {
             auto pw = m_pitch_wheel[channel];
             auto cp = m_channel_pressure[channel];
             if (pw != PitchWheelUnknown && pw != PitchWheelDefault) {
@@ -223,7 +223,7 @@ std::vector<std::vector<uint8_t>> MidiStateTracker::state_as_messages() {
                 rval.push_back(channelPressure(channel, cp));
             }
 
-            for (uint8_t controller; controller < 128; controller++) {
+            for (uint8_t controller=0; controller < 128; controller++) {
                 auto v = m_controls[channel * 128 + controller];
                 if (v != default_cc(channel, controller)) {
                     log<log_level_debug_trace>("state msg: CC @ {}.{} = {}", channel, controller, v);
