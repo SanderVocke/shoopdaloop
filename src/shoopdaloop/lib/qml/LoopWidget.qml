@@ -1497,7 +1497,10 @@ Item {
             MenuSeparator {}
             ShoopMenuItem {
                text: "Details"
-               onClicked: () => { if(root.main_details_pane) { root.main_details_pane.add_user_item(root.name, root) } }
+               onClicked: () => {
+                  if(root.main_details_pane) { root.main_details_pane.add_user_item(root.name, root) }
+                  registries.state_registry.set_details_open(true)
+               }
             }
             ShoopMenuItem {
                text: "Click loop..."
