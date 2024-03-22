@@ -116,7 +116,7 @@ AudioChannel<SampleT>::Buffers::buf_space_for_sample(uint32_t offset) const {
 }
 
 template <typename SampleT>
-AudioChannel<SampleT>::Buffers&
+typename AudioChannel<SampleT>::Buffers&
 AudioChannel<SampleT>::Buffers::operator=(AudioChannel<SampleT>::Buffers const& other) {
     *buffers = *other.buffers;
     pool = other.pool;
