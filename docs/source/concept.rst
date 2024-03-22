@@ -17,7 +17,7 @@ The sync loop may itself hold audio and/or MIDI data. A typical use is a click t
    :width: 200px
    :alt: Synchronization to the sync loop.
 
-   Synchronization to the sync loop.
+   Synchronization to the sync loop (note the picture needs updating, as at the time it was called "master loop").
 
 
 
@@ -36,12 +36,13 @@ Tracks
 Composition and Sequencing
 --------------------------
 
-Any loop slot in **ShoopDaLoop** can be used as a **composite loop**. That means the loop wraps a combination of other loops. Use-cases:
+Any loop slot in **ShoopDaLoop** can be used as a **composite loop**. This is **ShoopDaLoop**'s way of providing concepts that may be familiar from other software, including:
 
-* As a **scene**: trigger multiple loops to play together.
-* As a **sequence**: trigger multiple loops to play one after the other (e.g. to represent a verse / chorus).
-* Combine them hierarchically to create entire **songs**.
-* **Planned recording**: recording into a composite loop automatically records into all its children - e.g. to record an entire track while each part of what you play gets stored in the correct sub-loop.
+* **scenes**;
+* **sequences** and **songs**;
+* **pre-scripted** recording and looping.
+
+For more information, see :ref:`Composite Loops <composite_loops>`.
 
 Effects / Synthesis
 ---------------------
