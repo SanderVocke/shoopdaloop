@@ -476,7 +476,7 @@ void BackendSession::recalculate_processing_schedule(unsigned req_id) {
 
     if(logging::should_log("Backend.ProcessGraph", log_level_debug_trace)) {
         auto dot = graph_dot(raw_nodes);
-        logging::log<"Backend.ProcessGraph", log_level_debug_trace>(std::nullopt, std::nullopt, "DOT graph:\n{}", dot);
+        logging::log<"Backend.ProcessGraph", log_level_debug>(std::nullopt, std::nullopt, "DOT graph:\n{}", dot);
         if(logging::should_log("Backend.ProcessGraph", log_level_debug)) {
             std::vector<std::string> schedule_names;
             for(auto &step: schedule) {

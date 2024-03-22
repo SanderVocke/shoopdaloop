@@ -83,7 +83,7 @@ ApplicationWindow {
 
                 ItemRow {
                     label: "type:"
-                    Label { text: object.type }
+                    Label { text: object.descriptor.type }
                 }
 
                 ItemRow {

@@ -149,12 +149,12 @@ class AudioPort(Port):
                     self.logger.throw_error('Could not find self in FX chain')
                 # Now request our backend object.
                 if not (self.output_connectability & PortConnectability.Internal.value):
-                    self._backend_obj = self.backend.get_backend_session_obj().get_fx_chain_audio_output_port(
+                    self._backend_obj = self.backend.get_backend_session_obj().get_fx_chain_audio_input_port(
                         maybe_fx_chain.get_backend_obj(),
                         idx
                     )
                 else:
-                    self._backend_obj = self.backend.get_backend_session_obj().get_fx_chain_audio_input_port(
+                    self._backend_obj = self.backend.get_backend_session_obj().get_fx_chain_audio_output_port(
                         maybe_fx_chain.get_backend_obj(),
                         idx
                     )

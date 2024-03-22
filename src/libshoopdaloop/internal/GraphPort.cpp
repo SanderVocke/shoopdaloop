@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include "BackendSession.h"
+#include <fmt/format.h>
 
 using namespace shoop_types;
 using namespace shoop_constants;
@@ -25,6 +26,7 @@ void GraphPort::connect_internal(const std::shared_ptr<GraphPort> &other) {
             if (__other.get() == other.get()) { return; } // already connected
         }
     }
+    log<log_level_debug>("connect internally: {} -> {}", get_port().name(), other->get_port().name());
     mp_internal_port_connections.push_back(other);
     get_backend().set_graph_node_changes_pending();
 }

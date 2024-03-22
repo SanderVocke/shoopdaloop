@@ -655,8 +655,8 @@ class BackendAudioPort:
                  input_connectability : int,
                  output_connectability : int,
                  backend : 'BackendSession'):
-        self._input_connectability = PortConnectability(input_connectability)
-        self._output_connectability = PortConnectability(output_connectability)
+        self._input_connectability = input_connectability
+        self._output_connectability = output_connectability
         self._c_handle = c_handle
         self._backend = backend
         self._name = '(unknown)'
@@ -811,8 +811,8 @@ class BackendMidiPort:
                  input_connectability : int,
                  output_connectability : int,
                  backend : 'BackendSession'):
-        self._input_connectability = PortConnectability(input_connectability)
-        self._output_connectability = PortConnectability(output_connectability)
+        self._input_connectability = input_connectability
+        self._output_connectability = output_connectability
         self._c_handle = c_handle
         self._backend = backend
         self._name = '(unknown)'
