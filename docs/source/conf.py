@@ -37,4 +37,5 @@ html_theme_options = {
     'color_primary': 'grey',
     'color_accent': 'grey',
 }
+html_baseurl = '/docs/'
 
