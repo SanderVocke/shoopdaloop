@@ -47,6 +47,9 @@ class PortDataType(Enum):
     Midi = bindings.ShoopPortDataType_Midi
     Any = bindings.ShoopPortDataType_Any
 
+class PortConnectability(Enum):
+    Internal = bindings.ShoopPortConnectability_Internal
+    External = bindings.ShoopPortConnectability_External
 class BackendResult(Enum):
     Success = bindings.Success
     Failure = bindings.Failure
@@ -397,11 +400,12 @@ class BackendLoopAudioChannel:
     def available(self):
         return self.shoop_c_handle and self.loop_shoop_c_handle and self._backend and self._backend.active()
     
-    def connect(self, port : 'BackendAudioPort'):
+    def connect_input(self, port : 'BackendAudioPort'):
         if self.available():
-            if port.direction() == PortDirection.Input:
                 bindings.connect_audio_input(self.shoop_c_handle, port.c_handle())
-            else:
+    
+    def connect_output(self, port: 'BackendAudioPort'):
+        if self.available():
                 bindings.connect_audio_output(self.shoop_c_handle, port.c_handle())
     
     def disconnect(self, port : 'BackendAudioPort'):
@@ -507,11 +511,12 @@ class BackendLoopMidiChannel:
                 bindings.load_midi_channel_data(self.shoop_c_handle, d)
                 bindings.destroy_midi_sequence(d)
     
-    def connect(self, port : 'BackendMidiPort'):
+    def connect_input(self, port : 'BackendMidiPort'):
         if self.available():
-            if port.direction() == PortDirection.Input:
                 bindings.connect_midi_input(self.shoop_c_handle, port.c_handle())
-            else:
+    
+    def connect_output(self, port: 'BackendMidiPort'):
+        if self.available():
                 bindings.connect_midi_output(self.shoop_c_handle, port.c_handle())
         
     def disconnect(self, port : 'BackendMidiPort'):
@@ -647,9 +652,11 @@ class BackendLoop:
 
 class BackendAudioPort:
     def __init__(self, c_handle : 'POINTER(bindings.shoopdaloop_audio_port_t)',
-                 direction : int,
+                 input_connectability : int,
+                 output_connectability : int,
                  backend : 'BackendSession'):
-        self._direction = PortDirection(direction)
+        self._input_connectability = input_connectability
+        self._output_connectability = output_connectability
         self._c_handle = c_handle
         self._backend = backend
         self._name = '(unknown)'
@@ -657,8 +664,11 @@ class BackendAudioPort:
     def available(self):
         return self._c_handle and self._backend and self._backend.active()
     
-    def direction(self) -> Type['PortDirection']:
-        return self._direction
+    def input_connectability(self) -> Type['PortConnectability']:
+        return self._input_connectability
+
+    def output_connectability(self) -> Type['PortConnectability']:
+        return self._output_connectability
     
     def c_handle(self):
         return self._c_handle
@@ -694,9 +704,9 @@ class BackendAudioPort:
         if self.available():
             bindings.set_audio_port_passthroughMuted(self._c_handle, (1 if muted else 0))
     
-    def connect_passthrough(self, other):
+    def connect_internal(self, other):
             if self.available():
-                bindings.add_audio_port_passthrough(self._c_handle, other.c_handle())
+                bindings.connect_audio_port_internal(self._c_handle, other.c_handle())
     
     def dummy_queue_data(self, data):
         if self.available():
@@ -730,22 +740,19 @@ class BackendAudioPort:
 
     def connect_external_port(self, name):
         if self.available():
-            bindings.connect_external_audio_port(self._c_handle, name.encode('ascii'))
+            bindings.connect_audio_port_external(self._c_handle, name.encode('ascii'))
     
     def disconnect_external_port(self, name):
         if self.available():
-            bindings.disconnect_external_audio_port(self._c_handle, name.encode('ascii'))
+            bindings.disconnect_audio_port_external(self._c_handle, name.encode('ascii'))
 
     def __del__(self):
         if self.available():
             self.destroy()
 
-
 class BackendDecoupledMidiPort:
     def __init__(self, c_handle : 'POINTER(bindings.shoopdaloop_decoupled_midi_port_t)',
-                 direction : int,
                  backend : 'BackendSession'):
-        self._direction = PortDirection(direction)
         self._c_handle = c_handle
         self._backend = backend
         
@@ -801,9 +808,11 @@ class BackendDecoupledMidiPort:
             
 class BackendMidiPort:
     def __init__(self, c_handle : 'POINTER(bindings.shoopdaloop_midi_port_t)',
-                 direction : int,
+                 input_connectability : int,
+                 output_connectability : int,
                  backend : 'BackendSession'):
-        self._direction = PortDirection(direction)
+        self._input_connectability = input_connectability
+        self._output_connectability = output_connectability
         self._c_handle = c_handle
         self._backend = backend
         self._name = '(unknown)'
@@ -811,8 +820,11 @@ class BackendMidiPort:
     def available(self):
         return self._c_handle and self._backend and self._backend.active()
     
-    def direction(self) -> Type['PortDirection']:
-        return self._direction
+    def input_connectability(self) -> Type['PortConnectability']:
+        return self._input_connectability
+
+    def output_connectability(self) -> Type['PortConnectability']:
+        return self._output_connectability
     
     def c_handle(self):
         return self._c_handle
@@ -843,9 +855,9 @@ class BackendMidiPort:
         if self.available():
             bindings.set_midi_port_passthroughMuted(self._c_handle, (1 if muted else 0))
     
-    def connect_passthrough(self, other):
+    def connect_internal(self, other):
         if self.available():
-            bindings.add_midi_port_passthrough(self._c_handle, other.c_handle())
+            bindings.connect_midi_port_internal(self._c_handle, other.c_handle())
 
     def dummy_clear_queues(self):
         if self.available():
@@ -890,11 +902,11 @@ class BackendMidiPort:
 
     def connect_external_port(self, name):
         if self.available():
-            bindings.connect_external_midi_port(self._c_handle, name.encode('ascii'))
+            bindings.connect_midi_port_external(self._c_handle, name.encode('ascii'))
     
     def disconnect_external_port(self, name):
         if self.available():
-            bindings.disconnect_external_midi_port(self._c_handle, name.encode('ascii'))
+            bindings.disconnect_midi_port_external(self._c_handle, name.encode('ascii'))
 
     def __del__(self):
         if self.available():
@@ -982,17 +994,17 @@ class BackendSession:
     
     def get_fx_chain_audio_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
         if self.active():
-            return BackendAudioPort(bindings.fx_chain_audio_input_port(fx_chain.c_handle(), idx), PortDirection.Output, self)
+            return BackendAudioPort(bindings.fx_chain_audio_input_port(fx_chain.c_handle(), idx), PortConnectability.Internal, 0, self)
         return None
     
     def get_fx_chain_audio_output_port(self, fx_chain : Type['BackendFXChain'], idx : int):
         if self.active():
-            return BackendAudioPort(bindings.fx_chain_audio_output_port(fx_chain.c_handle(), idx), PortDirection.Input, self)
+            return BackendAudioPort(bindings.fx_chain_audio_output_port(fx_chain.c_handle(), idx), 0, PortConnectability.Internal, self)
         return None
     
     def get_fx_chain_midi_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
         if self.active():
-            return BackendMidiPort(bindings.fx_chain_midi_input_port(fx_chain.c_handle(), idx), PortDirection.Output, self)
+            return BackendMidiPort(bindings.fx_chain_midi_input_port(fx_chain.c_handle(), idx), PortConnectability.Internal, 0, self)
         return None
     
     def get_profiling_report(self):
@@ -1064,7 +1076,7 @@ class AudioDriver:
     def open_decoupled_midi_port(self, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
         if self.active():
             handle = bindings.open_decoupled_midi_port(self._c_handle, name_hint.encode('ascii'), direction)
-            port = BackendDecoupledMidiPort(handle, direction, self)
+            port = BackendDecoupledMidiPort(handle, self)
             return port
         raise Exception("Trying to open a MIDI port before audio driver is started.")
 
@@ -1156,17 +1168,23 @@ def terminate_all_backends():
 def audio_driver_type_supported(t : Type[AudioDriverType]):
     return bool(bindings.driver_type_supported(t.value))
 
-def open_audio_port(backend_session, audio_driver, name_hint : str, direction : int) -> 'BackendAudioPort':
+def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direction : int) -> 'BackendAudioPort':
     if backend_session.active() and audio_driver.active():
-        handle = bindings.open_audio_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), direction)
-        port = BackendAudioPort(handle, direction, backend_session)
+        handle = bindings.open_driver_audio_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), direction)
+        port = BackendAudioPort(handle,
+                                bindings.get_audio_port_input_connectability(handle),
+                                bindings.get_audio_port_output_connectability(handle),
+                                backend_session)
         return port
     raise Exception("Failed to open audio port: backend session or audio driver not active")
 
-def open_midi_port(backend_session, audio_driver, name_hint : str, direction : int) -> 'BackendMidiPort':
+def open_driver_midi_port(backend_session, audio_driver, name_hint : str, direction : int) -> 'BackendMidiPort':
     if backend_session.active() and audio_driver.active():
-        handle = bindings.open_midi_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), direction)
-        port = BackendMidiPort(handle, direction, backend_session)
+        handle = bindings.open_driver_midi_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), direction)
+        port = BackendMidiPort(handle,
+                               bindings.get_midi_port_input_connectability(handle),
+                               bindings.get_midi_port_output_connectability(handle),
+                               backend_session)
         return port
     raise Exception("Failed to open MIDI port: backend session or audio driver not active")
 

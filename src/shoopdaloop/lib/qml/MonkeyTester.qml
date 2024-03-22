@@ -163,7 +163,7 @@ Item {
                 2, //n_audio_direct
                 false, //have_midi_dry
                 true, //have_midi_direct
-                false, //have_drywet_jack_ports
+                false, //have_drywet_explicit_ports
                 undefined, //drywet_carla_type
             );
         } else if (track_type == 'drywet') {

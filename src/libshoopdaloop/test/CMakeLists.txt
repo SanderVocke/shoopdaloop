@@ -9,7 +9,10 @@ set(TEST_RUNNER_SOURCES
     unit/test_InternalAudioPort.cpp
     integration/test_libshoopdaloop_if.cpp
     integration/test_synced_BasicLoops.cpp
-    integration/test_chains.cpp
+    integration/test_chain_single_direct_loop.cpp
+    integration/test_chain_single_drywet_loop.cpp
+    integration/test_chain_single_midi_passthrough.cpp
+    integration/test_chain_internal_passthrough_mix.cpp
     integration/test_graph_construction.cpp
 )
 

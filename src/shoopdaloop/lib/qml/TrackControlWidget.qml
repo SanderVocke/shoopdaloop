@@ -207,8 +207,8 @@ Item {
     // Methods
     function is_audio(p)  { return p && p.schema.match(/audioport\.[0-9]+/) }
     function is_midi(p)   { return p && p.schema.match(/midiport\.[0-9]+/)  }
-    function is_in(p)     { return p && p.direction == "input"  && p.id.match(/.*_in(?:_[0-9]*)?$/); }
-    function is_out(p)    { return p && p.direction == "output" && p.id.match(/.*_out(?:_[0-9]*)?$/); }
+    function is_in(p)     { return p && p.id.match(/.*_in(?:_[0-9]*)?$/); }
+    function is_out(p)    { return p && p.id.match(/.*_out(?:_[0-9]*)?$/); }
     function is_dry(p)    { return p && p.id.match(/.*_dry_.*/); }
     function is_wet(p)    { return p && p.id.match(/.*_wet_.*/); }
     function is_direct(p) { return p && p.id.match(/.*_direct_.*/); }

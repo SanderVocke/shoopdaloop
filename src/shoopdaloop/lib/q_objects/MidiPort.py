@@ -12,7 +12,7 @@ from PySide6.QtQuick import QQuickItem
 from .Port import Port
 from .ShoopPyObject import *
 
-from ..backend_wrappers import PortDirection, PortDataType
+from ..backend_wrappers import PortConnectability, PortDirection, PortDataType
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from ..logging import Logger
@@ -140,7 +140,7 @@ class MidiPort(Port):
     def get_data_type(self):
         return PortDataType.Midi.value
     
-    def maybe_initialize_internal(self, name_hint, direction):
+    def maybe_initialize_internal(self, name_hint, input_connectability, output_connectability):
         # Internal ports are owned by FX chains.
         maybe_fx_chain = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('FXChain'))
         if maybe_fx_chain and not self._backend_obj:
@@ -153,14 +153,14 @@ class MidiPort(Port):
                     for port in findChildItems(maybe_fx_chain, lambda i: i.inherits('MidiPort')):
                         if port == self:
                             return idx
-                        elif port.direction == self.direction:
+                        elif port.input_connectability == self.input_connectability and port.output_connectability == self.output_connectability:
                             idx += 1
                     return None
                 idx = find_index()
                 if idx == None:
                     raise Exception('Could not find self in FX chain')
                 # Now request our backend object.
-                if self.direction == PortDirection.Output.value:
+                if not (self.output_connectability & PortConnectability.Internal.value):
                     self._backend_obj = self.backend.get_backend_session_obj().get_fx_chain_midi_input_port(
                         maybe_fx_chain.get_backend_obj(),
                         idx
@@ -169,17 +169,18 @@ class MidiPort(Port):
                 else:
                     raise Exception('Input ports (FX outputs) of MIDI type not supported')
 
-    def maybe_initialize_external(self, name_hint, direction):
+    def maybe_initialize_external(self, name_hint, input_connectability, output_connectability):
         if self._backend_obj:
             return # never initialize more than once
-        self._backend_obj = self.backend.open_midi_port(name_hint, direction)
+        direction = PortDirection.Input.value if not (input_connectability & PortConnectability.Internal.value) else PortDirection.Output.value
+        self._backend_obj = self.backend.open_driver_midi_port(name_hint, direction)
         self.push_state()
 
-    def maybe_initialize_impl(self, name_hint, direction, is_internal):
+    def maybe_initialize_impl(self, name_hint, input_connectability, output_connectability, is_internal):
         if is_internal:
-            self.maybe_initialize_internal(name_hint, direction)
+            self.maybe_initialize_internal(name_hint, input_connectability, output_connectability)
         else:
-            self.maybe_initialize_external(name_hint, direction)
+            self.maybe_initialize_external(name_hint, input_connectability, output_connectability)
     
     def push_state(self):
         self.set_muted(self.muted)

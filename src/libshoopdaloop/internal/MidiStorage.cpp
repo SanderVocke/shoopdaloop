@@ -193,7 +193,7 @@ void MidiStorageBase<TimeType, SizeType>::copy(
         uint32_t second_copy = m_head;
         memcpy((void *)(to.m_data.data()), (void *)&(m_data.at(m_tail)),
                first_copy);
-        memcpy((void *)(to.m_data.at(first_copy)), (void *)m_data.data(),
+        memcpy((void *)&(to.m_data.at(first_copy)), (void *)m_data.data(),
                second_copy);
     }
     to.m_tail = 0;

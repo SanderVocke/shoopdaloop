@@ -112,6 +112,7 @@ Rectangle {
             track_groups,
             [],
             [],
+            [],
             registries.fx_chain_states_registry.all_values()
         );
     }
@@ -504,7 +505,7 @@ Rectangle {
             anchors {
                 top: app_controls.bottom
                 left: parent.left
-                bottom: details_area.visible ? details_area.top : bottom_bar.top
+                bottom: pane_area.visible ? pane_area.top : bottom_bar.top
                 right: logo_menu_area.left
                 bottomMargin: 4
                 leftMargin: 4
@@ -514,21 +515,21 @@ Rectangle {
         }
 
         ResizeableItem {
-            id: details_area
+            id: pane_area
 
-            visible: bottom_bar.details_active
+            visible: bottom_bar.pane_active
 
             property real active_height: 200
-            height: bottom_bar.details_active ? active_height : 0 // Initial value
+            height: bottom_bar.pane_active ? active_height : 0 // Initial value
 
             Connections {
                 target: bottom_bar
-                function onDetails_activeChanged() {
-                    if (bottom_bar.details_active) {
-                        height = details_area.active_height
+                function onPane_activeChanged() {
+                    if (bottom_bar.pane_active) {
+                        height = pane_area.active_height
                     } else {
                         if (height > 0) {
-                            details_area.active_height = height
+                            pane_area.active_height = height
                         }
                         height = 0
                     }
@@ -537,7 +538,7 @@ Rectangle {
             max_height: root.height - 50
 
             top_drag_enabled: true
-            top_drag_area_y_offset: detailspane.pane_y_offset
+            top_drag_area_y_offset: pane.pane_y_offset
 
             anchors {
                 bottom: bottom_bar.top
@@ -546,17 +547,17 @@ Rectangle {
             }
 
             DetailsPane {
-                id: detailspane
+                id: pane
                 temporary_items : Array.from(root.selected_loops).map(l => ({
-                    'title': l.name + ' (selected)',
-                    'item': l,
-                    'autoselect': true
-                }))
+                        'title': l.name + ' (selected)',
+                        'item': l,
+                        'autoselect': true
+                    }))
 
                 RegisterInRegistry {
                     registry: registries.state_registry
                     key: 'main_details_pane'
-                    object: detailspane
+                    object: pane
                 }
 
                 anchors.fill: parent
@@ -569,7 +570,7 @@ Rectangle {
         Item {
             id: bottom_bar
 
-            property alias details_active: details_toggle.checked
+            property alias pane_active: details_toggle.checked
             height: details_toggle.height
 
             anchors {

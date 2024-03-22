@@ -54,6 +54,9 @@ class TestPort : public AudioPort<float> {
         return m_buffer.data();
     }
 
+    unsigned input_connectability() const override { return ShoopPortConnectability_Internal | ShoopPortConnectability_External; }
+    unsigned output_connectability() const override { return ShoopPortConnectability_Internal | ShoopPortConnectability_External; }
+
     TestPort(std::string name) : PortInterface(), m_name(name) {}
     ~TestPort(){};
 };
@@ -78,7 +81,7 @@ TEST_CASE("Graph Construction - Two Ports", "[GraphConstruct]") {
     auto _p2 = std::make_shared<TestPort>("p2");
     auto port1 = std::make_shared<GraphAudioPort>(_p1, backend);
     auto port2 = std::make_shared<GraphAudioPort>(_p2, backend);
-    port1->connect_passthrough(port2);
+    port1->connect_internal(port2);
 
     std::set<GraphNode *> nodes;
     insert_all(*port1, nodes);
@@ -89,8 +92,8 @@ TEST_CASE("Graph Construction - Two Ports", "[GraphConstruct]") {
     std::vector<std::vector<std::string>> expected = {
         {"p1::prepare"},
         {"p2::prepare"},
-        {"p1::process_and_passthrough"},
-        {"p2::process_and_passthrough"}};
+        {"p1::process_and_internal_connections"},
+        {"p2::process_and_internal_connections"}};
 
     CHECK(get_names(schedule) == expected);
 };
@@ -101,7 +104,7 @@ TEST_CASE("Graph Construction - Direct Loop", "[GraphConstruct]") {
     auto _p2 = std::make_shared<TestPort>("p2");
     auto port1 = std::make_shared<GraphAudioPort>(_p1, backend);
     auto port2 = std::make_shared<GraphAudioPort>(_p2, backend);
-    port1->connect_passthrough(port2);
+    port1->connect_internal(port2);
     auto loop = backend->create_loop();
     auto chan = std::make_shared<GraphLoopChannel>(nullptr, loop, backend);
     chan->connect_input_port(port1, false);
@@ -119,10 +122,10 @@ TEST_CASE("Graph Construction - Direct Loop", "[GraphConstruct]") {
         {"p1::prepare"},
         {"p2::prepare"},
         {"channel::prepare_buffers"},
-        {"p1::process_and_passthrough"},
+        {"p1::process_and_internal_connections"},
         {"loop::process"},
         {"channel::process"},
-        {"p2::process_and_passthrough"}};
+        {"p2::process_and_internal_connections"}};
 
     CHECK(get_names(schedule) == expected);
 };
@@ -133,7 +136,7 @@ TEST_CASE("Graph Construction - Two Direct Loops", "[GraphConstruct]") {
     auto _p2 = std::make_shared<TestPort>("p2");
     auto port1 = std::make_shared<GraphAudioPort>(_p1, backend);
     auto port2 = std::make_shared<GraphAudioPort>(_p2, backend);
-    port1->connect_passthrough(port2);
+    port1->connect_internal(port2);
     auto loop1 = backend->create_loop();
     auto chan1 = std::make_shared<GraphLoopChannel>(nullptr, loop1, backend);
     auto loop2 = backend->create_loop();
@@ -161,11 +164,11 @@ TEST_CASE("Graph Construction - Two Direct Loops", "[GraphConstruct]") {
         {"p2::prepare"},
         {"channel::prepare_buffers"},
         {"channel::prepare_buffers"},
-        {"p1::process_and_passthrough"},
+        {"p1::process_and_internal_connections"},
         {"loop::process", "loop::process"},
         {"channel::process"},
         {"channel::process"},
-        {"p2::process_and_passthrough"}};
+        {"p2::process_and_internal_connections"}};
 
     CHECK(get_names(schedule) == expected);
 };

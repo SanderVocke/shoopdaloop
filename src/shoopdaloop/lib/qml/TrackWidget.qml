@@ -361,10 +361,10 @@ Item {
     property alias ports : lookup_ports.objects
     function is_audio(p) { return p.schema.match(/audioport\.[0-9]+/) }
     function is_midi(p)  { return p.schema.match(/midiport\.[0-9]+/)  }
-    function is_in(p)    { return p.direction == "input" && p.id.match(/.*_(?:in|direct)(?:_[0-9]*)?$/); }
-    function is_out(p)   { return p.direction == "output" && p.id.match(/.*_(?:out|direct)(?:_[0-9]*)?$/); }
-    function is_send(p)  { return p.direction == "output" && p.id.match(/.*_(?:send)(?:_[0-9]*)?$/); }
-    function is_return(p)  { return p.direction == "input" && p.id.match(/.*_(?:return)(?:_[0-9]*)?$/); }
+    function is_in(p)    { return p.id.match(/.*_(?:in|direct)(?:_[0-9]*)?$/); }
+    function is_out(p)   { return p.id.match(/.*_(?:out|direct)(?:_[0-9]*)?$/); }
+    function is_send(p)  { return p.id.match(/.*_(?:send)(?:_[0-9]*)?$/); }
+    function is_return(p)  { return p.id.match(/.*_(?:return)(?:_[0-9]*)?$/); }
     readonly property var audio_ports : ports.filter(p => p && is_audio(p.descriptor))
     readonly property var midi_ports : ports.filter(p => p && is_midi(p.descriptor))
     readonly property var input_ports : ports.filter(p => p && is_in(p.descriptor))

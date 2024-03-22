@@ -44,8 +44,8 @@ struct SingleMidiPortPassthroughTestChain : public ModuleLoggingEnabled<"Test.Si
         int_driver->start(settings);
         set_audio_driver(api_backend_session, api_driver);
 
-        api_input_port = open_midi_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input);
-        api_output_port = open_midi_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output);
+        api_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input);
+        api_output_port = open_driver_midi_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output);
         int_input_port = internal_midi_port(api_input_port);
         int_output_port = internal_midi_port(api_output_port);
         int_dummy_input_port = dynamic_cast<DummyMidiPort*>(&int_input_port->get_port());
@@ -55,7 +55,7 @@ struct SingleMidiPortPassthroughTestChain : public ModuleLoggingEnabled<"Test.Si
         int_driver->wait_process();
         int_driver->enter_mode(DummyAudioMidiDriverMode::Controlled);
 
-        add_midi_port_passthrough(api_input_port, api_output_port);
+        connect_midi_port_internal(api_input_port, api_output_port);
 
         set_midi_port_passthroughMuted(api_input_port, 0);
         set_midi_port_muted(api_input_port, 0);
@@ -114,15 +114,15 @@ struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirec
         int_driver->start(settings);
         set_audio_driver(api_backend_session, api_driver);
 
-        api_input_port = open_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input);
-        api_output_port = open_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output);
+        api_input_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input);
+        api_output_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output);
         int_input_port = internal_audio_port(api_input_port);
         int_output_port = internal_audio_port(api_output_port);
         int_dummy_input_port = dynamic_cast<DummyAudioPort*>(&int_input_port->get_port());
         int_dummy_output_port = dynamic_cast<DummyAudioPort*>(&int_output_port->get_port());
 
-        api_midi_input_port = open_midi_port(api_backend_session, api_driver, "sys_midi_in", ShoopPortDirection_Input);
-        api_midi_output_port = open_midi_port(api_backend_session, api_driver, "sys_midi_out", ShoopPortDirection_Output);
+        api_midi_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_in", ShoopPortDirection_Input);
+        api_midi_output_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_out", ShoopPortDirection_Output);
         int_midi_input_port = internal_midi_port(api_midi_input_port);
         int_midi_output_port = internal_midi_port(api_midi_output_port);
         int_dummy_midi_input_port = dynamic_cast<DummyMidiPort*>(&int_midi_input_port->get_port());
@@ -152,8 +152,8 @@ struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirec
         connect_midi_input(api_midi_chan, api_midi_input_port);
         connect_midi_output(api_midi_chan, api_midi_output_port);
 
-        add_audio_port_passthrough(api_input_port, api_output_port);
-        add_midi_port_passthrough(api_midi_input_port, api_midi_output_port);
+        connect_audio_port_internal(api_input_port, api_output_port);
+        connect_midi_port_internal(api_midi_input_port, api_midi_output_port);
 
         set_audio_port_passthroughMuted(api_input_port, 0);
         set_audio_port_muted(api_input_port, 0);
@@ -229,14 +229,14 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         int_driver->start(settings);
         set_audio_driver(api_backend_session, api_driver);
 
-        api_input_port = open_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input);
-        api_output_port = open_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output);
+        api_input_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input);
+        api_output_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output);
         int_input_port = internal_audio_port(api_input_port);
         int_output_port = internal_audio_port(api_output_port);
         int_dummy_input_port = dynamic_cast<DummyAudioPort*>(&int_input_port->get_port());
         int_dummy_output_port = dynamic_cast<DummyAudioPort*>(&int_output_port->get_port());
 
-        api_midi_input_port = open_midi_port(api_backend_session, api_driver, "sys_midi_in", ShoopPortDirection_Input);
+        api_midi_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_in", ShoopPortDirection_Input);
         int_midi_input_port = internal_midi_port(api_midi_input_port);
         int_dummy_midi_input_port = dynamic_cast<DummyMidiPort*>(&int_midi_input_port->get_port());
 
@@ -282,9 +282,9 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         connect_midi_input(api_dry_midi_chan, api_midi_input_port);
         connect_midi_output(api_dry_midi_chan, api_fx_midi_in);
 
-        add_audio_port_passthrough(api_input_port, api_fx_in);
-        add_audio_port_passthrough(api_fx_out, api_output_port);
-        add_midi_port_passthrough(api_midi_input_port, api_fx_midi_in);
+        connect_audio_port_internal(api_input_port, api_fx_in);
+        connect_audio_port_internal(api_fx_out, api_output_port);
+        connect_midi_port_internal(api_midi_input_port, api_fx_midi_in);
 
         set_audio_port_passthroughMuted(api_input_port, 0);
         set_audio_port_muted(api_input_port, 0);
@@ -307,16 +307,16 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
     }
 };
 
-std::vector<float> zeroes(uint32_t n) { return std::vector<float>(n, 0); }
+inline std::vector<float> zeroes(uint32_t n) { return std::vector<float>(n, 0); }
 
-shoop_audio_channel_data_t to_api_data(std::vector<float> &vec) {
+inline shoop_audio_channel_data_t to_api_data(std::vector<float> &vec) {
     shoop_audio_channel_data_t rval;
     rval.data = vec.data();
     rval.n_samples = vec.size();
     return rval;
 }
 
-TEST_CASE("Chains - DryWet Basic", "[Chains][audio]") {
+TEST_CASE("Chain - DryWet Basic", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
@@ -357,7 +357,7 @@ TEST_CASE("Chains - DryWet Basic", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet record basic", "[Chains][audio]") {
+TEST_CASE("Chain - DryWet record basic", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
     loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
@@ -381,7 +381,7 @@ TEST_CASE("Chains - DryWet record basic", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet record passthrough muted", "[Chains][audio]") {
+TEST_CASE("Chain - DryWet record passthrough muted", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
     loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
@@ -401,7 +401,7 @@ TEST_CASE("Chains - DryWet record passthrough muted", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet record muted", "[Chains][audio]") {
+TEST_CASE("Chain - DryWet record muted", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
     loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
@@ -419,7 +419,7 @@ TEST_CASE("Chains - DryWet record muted", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet record gain", "[Chains][audio]") {
+TEST_CASE("Chain - DryWet record gain", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
     loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
@@ -447,7 +447,7 @@ TEST_CASE("Chains - DryWet record gain", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet playback basic", "[Chains][audio]") {
+TEST_CASE("Chain - DryWet playback basic", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
@@ -469,7 +469,7 @@ TEST_CASE("Chains - DryWet playback basic", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet playback gain", "[Chains][audio]") {
+TEST_CASE("Chain - DryWet playback gain", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4}), half_wet({0.5, 1, 1.5, 2});
@@ -492,7 +492,7 @@ TEST_CASE("Chains - DryWet playback gain", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet dry playback basic", "[Chains][audio]") {
+TEST_CASE("Chain - DryWet dry playback basic", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
@@ -516,7 +516,7 @@ TEST_CASE("Chains - DryWet dry playback basic", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet dry playback gain", "[Chains][audio]") {
+TEST_CASE("Chain - DryWet dry playback gain", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4}), half_dry({2, 1.5, 1, 0.5});
@@ -541,7 +541,7 @@ TEST_CASE("Chains - DryWet dry playback gain", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet dry playback input passthrough muted", "[Chains][audio]") {
+TEST_CASE("Chain - DryWet dry playback input passthrough muted", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
@@ -566,7 +566,7 @@ TEST_CASE("Chains - DryWet dry playback input passthrough muted", "[Chains][audi
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - DryWet dry playback input muted", "[Chains][audio]") {
+TEST_CASE("Chain - DryWet dry playback input muted", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
     std::vector<float> dry_data({4, 3, 2, 1}), wet_data({1, 2, 3, 4});
@@ -591,75 +591,7 @@ TEST_CASE("Chains - DryWet dry playback input muted", "[Chains][audio]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - Midi port passthrough", "[Chains][midi]") {
-    SingleMidiPortPassthroughTestChain tst;
-
-    std::vector<Msg> msgs = {
-        create_noteOn<Msg>(0, 1, 10, 10),
-        create_noteOff<Msg>(0, 10, 10, 20),
-        create_noteOn<Msg>(20, 2, 1, 1)
-    };
-
-    queue_midi_msgs(tst.api_input_port, msgs);
-
-    tst.int_dummy_output_port->request_data(50);
-    tst.int_driver->controlled_mode_request_samples(50);
-    tst.int_driver->controlled_mode_run_request();
-
-    auto result_data = tst.int_dummy_output_port->get_written_requested_msgs();
-    REQUIRE(result_data.size() == 3);
-    CHECK_MSGS_EQUAL(result_data[0], msgs[0]);
-    CHECK_MSGS_EQUAL(result_data[1], msgs[1]);
-    CHECK_MSGS_EQUAL(result_data[2], msgs[2]);
-
-    tst.int_driver->close();
-};
-
-TEST_CASE("Chains - Midi port passthrough - passthrough muted", "[Chains][midi]") {
-    SingleMidiPortPassthroughTestChain tst;
-
-    std::vector<Msg> msgs = {
-        create_noteOn<Msg>(0, 1, 10, 10),
-        create_noteOff<Msg>(0, 10, 10, 20),
-        create_noteOn<Msg>(20, 2, 1, 1)
-    };
-
-    set_midi_port_passthroughMuted(tst.api_input_port, 1);
-    queue_midi_msgs(tst.api_input_port, msgs);
-
-    tst.int_dummy_output_port->request_data(50);
-    tst.int_driver->controlled_mode_request_samples(50);
-    tst.int_driver->controlled_mode_run_request();
-
-    auto result_data = tst.int_dummy_output_port->get_written_requested_msgs();
-    CHECK(result_data.size() == 0);
-
-    tst.int_driver->close();
-};
-
-TEST_CASE("Chains - Midi port passthrough - output muted", "[Chains][midi]") {
-    SingleMidiPortPassthroughTestChain tst;
-
-    std::vector<Msg> msgs = {
-        create_noteOn<Msg>(0, 1, 10, 10),
-        create_noteOff<Msg>(0, 10, 10, 20),
-        create_noteOn<Msg>(20, 2, 1, 1)
-    };
-
-    set_midi_port_muted(tst.api_output_port, 1);
-    queue_midi_msgs(tst.api_input_port, msgs);
-
-    tst.int_dummy_output_port->request_data(50);
-    tst.int_driver->controlled_mode_request_samples(50);
-    tst.int_driver->controlled_mode_run_request();
-
-    auto result_data = tst.int_dummy_output_port->get_written_requested_msgs();
-    CHECK(result_data.size() == 0);
-
-    tst.int_driver->close();
-};
-
-TEST_CASE("Chains - DryWet record MIDI basic", "[Chains][midi]") {
+TEST_CASE("Chain - DryWet record MIDI basic", "[chain][midi]") {
     SingleDryWetLoopTestChain tst;
 
     loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
@@ -684,36 +616,7 @@ TEST_CASE("Chains - DryWet record MIDI basic", "[Chains][midi]") {
     tst.int_driver->close();
 };
 
-TEST_CASE("Chains - Direct playback MIDI basic", "[Chains][midi]") {
-    SingleDirectLoopTestChain tst;
-    
-    std::vector<shoop_types::_MidiMessage> msgs = {
-        create_noteOn<shoop_types::_MidiMessage>(0, 1, 10, 10),
-        create_noteOff<shoop_types::_MidiMessage>(0, 10, 10, 20),
-        create_noteOn<shoop_types::_MidiMessage>(20, 2, 1, 1)
-    };
-
-    auto sequence = convert_midi_msgs_to_api(msgs);
-    load_midi_channel_data(tst.api_midi_chan, sequence);
-    destroy_midi_sequence(sequence);
-    set_loop_length(tst.api_loop, 30);
-    loop_transition(tst.api_loop, LoopMode_Playing, 0, false);
-
-    tst.int_dummy_midi_output_port->request_data(50);
-    tst.int_driver->controlled_mode_request_samples(30);
-    tst.int_dummy_output_port->request_data(30);
-    tst.int_driver->controlled_mode_run_request();
-
-    auto result_data = tst.int_dummy_midi_output_port->get_written_requested_msgs();
-    REQUIRE(result_data.size() == 3);
-    CHECK_MSGS_EQUAL(result_data[0], msgs[0]);
-    CHECK_MSGS_EQUAL(result_data[1], msgs[1]);
-    CHECK_MSGS_EQUAL(result_data[2], msgs[2]);
-
-    tst.int_driver->close();
-};
-
-TEST_CASE("Chains - DryWet live playback MIDI basic", "[Chains][midi]") {
+TEST_CASE("Chain - DryWet live playback MIDI basic", "[chain][midi]") {
     SingleDryWetLoopTestChain tst;
     
     std::vector<shoop_types::_MidiMessage> msgs = {

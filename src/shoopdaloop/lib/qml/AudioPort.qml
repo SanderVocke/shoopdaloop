@@ -7,28 +7,37 @@ PythonAudioPort {
     id: root
     property var descriptor : null
     property bool loaded : initialized
-    direction: {
-        switch(descriptor.direction) {
-            case 'input': return ShoopConstants.PortDirection.Input;
-            case 'output': return ShoopConstants.PortDirection.Output;
+
+    function parse_connectability(conn) {
+        var rval = 0
+        if (conn.includes('internal')) {
+            rval |= ShoopConstants.PortConnectability.Internal
         }
-        throw new Error("No direction for audio port")
+        if (conn.includes('external')) {
+            rval |= ShoopConstants.PortConnectability.External
+        }
+        return rval
     }
+
+    input_connectability : parse_connectability(descriptor.input_connectability)
+    output_connectability : parse_connectability(descriptor.output_connectability)
 
     readonly property string obj_id : descriptor.id
 
-    passthrough_to : lookup_passthrough_to.objects
+    internal_port_connections : lookup_internal_port_connections.objects
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         return {
             'schema': 'audioport.1',
             'id': descriptor.id,
             'name_parts': descriptor.name_parts,
-            'direction': descriptor.direction,
+            'type': descriptor.type,
+            'input_connectability': descriptor.input_connectability,
+            'output_connectability': descriptor.output_connectability,
             'gain': gain,
             'muted': muted,
             'passthrough_muted': passthrough_muted,
-            'passthrough_to': descriptor.passthrough_to,
+            'internal_port_connections': descriptor.internal_port_connections,
             'external_port_connections': get_connected_external_ports()
         }
     }
@@ -38,9 +47,9 @@ PythonAudioPort {
     onInitializedChanged: try_make_connections(descriptor.external_port_connections)
 
     RegistryLookups {
-        id: lookup_passthrough_to
+        id: lookup_internal_port_connections
         registry: registries.objects_registry
-        keys: descriptor.passthrough_to
+        keys: descriptor.internal_port_connections
     }
 
     readonly property string object_schema : 'audioport.1'

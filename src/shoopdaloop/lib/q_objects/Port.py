@@ -24,10 +24,11 @@ class Port(FindParentBackend):
         super(Port, self).__init__(parent)
         self._name_hint = None
         self._backend_obj = None
-        self._direction = None
+        self._input_connectability = None
+        self._output_connectability = None
         self._initialized = False
-        self._passthrough_to = []
-        self._passthrough_connected_to = []
+        self._internal_port_connections = []
+        self._internally_connected_to = []
         self._name = self._new_name = ''
         self._muted = self._new_muted = None
         self._passthrough_muted = self._new_passthrough_muted = None
@@ -37,7 +38,7 @@ class Port(FindParentBackend):
         
         self.backendChanged.connect(lambda: self.maybe_initialize())
         self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
-        self.initializedChanged.connect(lambda: self.update_passthrough_connections())
+        self.initializedChanged.connect(lambda: self.update_internal_connections())
 
     ######################
     # PROPERTIES
@@ -62,17 +63,30 @@ class Port(FindParentBackend):
             self._name_hint = n
             self.maybe_initialize()
     
-    # direction
-    directionChanged = ShoopSignal(int)
-    @ShoopProperty(int, notify=directionChanged)
-    def direction(self):
-        return self._direction
-    @direction.setter
-    def direction(self, d):
-        if d != self._direction:
-            if self._direction != None:
-                raise Exception('Port direction may only be set once.')
-            self._direction = d
+    # input connectability
+    inputConnectabilityChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=inputConnectabilityChanged)
+    def input_connectability(self):
+        return self._input_connectability
+    @input_connectability.setter
+    def input_connectability(self, d):
+        if d != self._input_connectability:
+            if self._input_connectability != None:
+                raise Exception('Port input connectability may only be set once.')
+            self._input_connectability = d
+            self.maybe_initialize()
+    
+    # output connectability
+    outputConnectabilityChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=outputConnectabilityChanged)
+    def output_connectability(self):
+        return self._output_connectability
+    @output_connectability.setter
+    def output_connectability(self, d):
+        if d != self._output_connectability:
+            if self._output_connectability != None:
+                raise Exception('Port output connectability may only be set once.')
+            self._output_connectability = d
             self.maybe_initialize()
     
     # is_internal
@@ -123,18 +137,18 @@ class Port(FindParentBackend):
             self.maybe_initialize()
             self.passthroughMutedChanged.emit(s)
     
-    # passthrough_to : ports to which to passthrough
-    passthroughToChanged = ShoopSignal(list)
-    @ShoopProperty(list, notify=passthroughToChanged)
-    def passthrough_to(self):
-        return self._passthrough_to
-    @passthrough_to.setter
-    def passthrough_to(self, s):
-        if self._passthrough_to != s:
-            self._passthrough_to = s
-            self.update_passthrough_connections()
+    # internal_port_connections : ports to which to connect internally
+    internalPortConnectionsChanged = ShoopSignal(list)
+    @ShoopProperty(list, notify=internalPortConnectionsChanged)
+    def internal_port_connections(self):
+        return self._internal_port_connections
+    @internal_port_connections.setter
+    def internal_port_connections(self, s):
+        if self._internal_port_connections != s:
+            self._internal_port_connections = s
+            self.update_internal_connections()
             self.maybe_initialize()
-            self.passthroughToChanged.emit(s)
+            self.internalPortConnectionsChanged.emit(s)
     
     ###########
     ## SLOTS
@@ -187,7 +201,8 @@ class Port(FindParentBackend):
         if (not self._backend_obj) and \
             (not self._ever_initialized) and \
             self._name_hint != None and \
-            self._direction != None and \
+            self._input_connectability != None and \
+            self._output_connectability != None and \
             self._is_internal != None and \
             self._muted != None and \
             self._passthrough_muted != None and \
@@ -195,7 +210,7 @@ class Port(FindParentBackend):
             self._backend.initialized:
             
             self.logger.debug(lambda: "{}: Initializing port {}".format(self, self._name_hint))
-            self.maybe_initialize_impl(self._name_hint, self._direction, self._is_internal)
+            self.maybe_initialize_impl(self._name_hint, self._input_connectability, self._output_connectability, self._is_internal)
             if self._backend_obj:
                 self._initialized = True
                 self.initializedChanged.emit(True)
@@ -242,12 +257,12 @@ class Port(FindParentBackend):
     ##########
     ## INTERNAL MEMBERS
     ##########
-    def maybe_initialize_impl(self, name_hint, direction, is_internal):
+    def maybe_initialize_impl(self, name_hint, input_connectability, output_connectability, is_internal):
         raise Exception('Unimplemented in base class')
     
-    def update_passthrough_connections(self):
-        for other in self._passthrough_to:
-            if other and other.initialized and self.initialized and other not in self._passthrough_connected_to:
-                self._backend_obj.connect_passthrough(other.get_backend_obj())
+    def update_internal_connections(self):
+        for other in self._internal_port_connections:
+            if other and other.initialized and self.initialized and other not in self._internally_connected_to:
+                self._backend_obj.connect_internal(other.get_backend_obj())
             elif other and not other.initialized:
-                other.initializedChanged.connect(lambda: self.update_passthrough_connections())
+                other.initializedChanged.connect(lambda: self.update_internal_connections())

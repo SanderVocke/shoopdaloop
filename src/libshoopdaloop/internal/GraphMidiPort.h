@@ -9,7 +9,7 @@ public:
 
     PortInterface &get_port() const override;
     MidiPort *maybe_midi_port() const override;
-    void PROC_passthrough(uint32_t n_frames) override;
+    void PROC_internal_connections(uint32_t n_frames) override;
     void PROC_prepare(uint32_t n_frames) override;
     void PROC_process(uint32_t n_frames) override;
 };

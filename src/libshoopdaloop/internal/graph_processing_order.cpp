@@ -2,6 +2,7 @@
 #include <map>
 #include <stdexcept>
 #include <algorithm>
+#include "LoggingBackend.h"
 
 // Represents one or more nodes (more means they should be co-processed together).
 // Annotated redundantly with both incoming and outgoing edges.
@@ -31,6 +32,10 @@ std::vector<std::set<GraphNode*>> graph_processing_order(std::set<GraphNode *> n
                 }
             }
             node_to_annotated_node.insert(std::make_pair(n, annotated.get()));
+            logging::log<"Backend.ProcessGraph", log_level_debug_trace>(
+                std::nullopt, std::nullopt, "created annotated node for {} with {} other co-processed nodes",
+                n->graph_node_name(), annotated->m_nodes.size() - 1
+            );
             all_ns.insert(std::move(annotated));
         }
     }
@@ -46,6 +51,11 @@ std::vector<std::set<GraphNode*>> graph_processing_order(std::set<GraphNode *> n
                         auto p_other = maybe_p_other->second;
                         p_n->out.insert(p_other);
                         p_other->in.insert(p_n);
+                        logging::log<"Backend.ProcessGraph", log_level_debug_trace>(
+                            std::nullopt, std::nullopt, "add edge {} -> {}",
+                            (*p_n->m_nodes.begin())->graph_node_name(),
+                            (*p_other->m_nodes.begin())->graph_node_name()
+                        );
                     }
                 }
             }
@@ -56,6 +66,11 @@ std::vector<std::set<GraphNode*>> graph_processing_order(std::set<GraphNode *> n
                         auto p_other = maybe_p_other->second;
                         p_n->in.insert(p_other);
                         p_other->out.insert(p_n);
+                        logging::log<"Backend.ProcessGraph", log_level_debug_trace>(
+                            std::nullopt, std::nullopt, "add edge {} -> {}",
+                            (*p_other->m_nodes.begin())->graph_node_name(),
+                            (*p_n->m_nodes.begin())->graph_node_name()
+                        );
                     }
                 }
             }

@@ -103,27 +103,51 @@ SHOOP_EXPORT shoopdaloop_audio_port_t *fx_chain_audio_output_port(shoopdaloop_fx
 SHOOP_EXPORT shoopdaloop_midi_port_t *fx_chain_midi_input_port(shoopdaloop_fx_chain_t *chain, unsigned int idx);
 
 // Audio ports
+SHOOP_EXPORT void connect_audio_port_internal(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to);
+SHOOP_EXPORT void connect_audio_port_external(shoopdaloop_audio_port_t *ours, const char* external_port_name);
+SHOOP_EXPORT void disconnect_audio_port_external(shoopdaloop_audio_port_t *ours, const char* external_port_name);
+SHOOP_EXPORT void disconnect_audio_port_internal(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to);
 SHOOP_EXPORT void set_audio_port_gain(shoopdaloop_audio_port_t *port, float gain);
 SHOOP_EXPORT void set_audio_port_muted(shoopdaloop_audio_port_t *port, unsigned muted);
 SHOOP_EXPORT void set_audio_port_passthroughMuted(shoopdaloop_audio_port_t *port, unsigned muted);
-SHOOP_EXPORT void add_audio_port_passthrough(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to);
 SHOOP_EXPORT shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port);
 SHOOP_EXPORT shoop_port_connections_state_t *get_audio_port_connections_state(shoopdaloop_audio_port_t *port);
-SHOOP_EXPORT void connect_external_audio_port(shoopdaloop_audio_port_t *ours, const char* external_port_name);
-SHOOP_EXPORT void disconnect_external_audio_port(shoopdaloop_audio_port_t *ours, const char* external_port_name);
 SHOOP_EXPORT void* get_audio_port_driver_handle(shoopdaloop_audio_port_t *port);
-SHOOP_EXPORT shoopdaloop_audio_port_t *open_audio_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction);
+SHOOP_EXPORT shoopdaloop_audio_port_t *open_driver_audio_port (
+    shoop_backend_session_t *backend,
+    shoop_audio_driver_t *driver,
+    const char* name_hint,
+    shoop_port_direction_t direction
+);
+SHOOP_EXPORT shoopdaloop_audio_port_t *open_internal_audio_port (
+    shoop_backend_session_t *backend,
+    const char* name_hint
+);
+SHOOP_EXPORT unsigned get_audio_port_input_connectability(shoopdaloop_audio_port_t* port);
+SHOOP_EXPORT unsigned get_audio_port_output_connectability(shoopdaloop_audio_port_t* port);
 
 // Midi ports
+SHOOP_EXPORT void connect_midi_port_internal(shoopdaloop_midi_port_t *from, shoopdaloop_midi_port_t *to);
+SHOOP_EXPORT void connect_midi_port_external(shoopdaloop_midi_port_t *ours, const char* external_port_name);
+SHOOP_EXPORT void disconnect_midi_port_external(shoopdaloop_midi_port_t *ours, const char* external_port_name);
+SHOOP_EXPORT void disconnect_midi_port_internal(shoopdaloop_midi_port_t *ours, shoopdaloop_midi_port_t *to);
 SHOOP_EXPORT shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port);
 SHOOP_EXPORT void set_midi_port_muted(shoopdaloop_midi_port_t *port, unsigned muted);
 SHOOP_EXPORT void set_midi_port_passthroughMuted(shoopdaloop_midi_port_t *port, unsigned muted);
-SHOOP_EXPORT void add_midi_port_passthrough(shoopdaloop_midi_port_t *from, shoopdaloop_midi_port_t *to);
 SHOOP_EXPORT shoop_port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi_port_t *port);
-SHOOP_EXPORT void connect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name);
-SHOOP_EXPORT void disconnect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name);
-SHOOP_EXPORT shoopdaloop_midi_port_t *open_midi_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction);
 SHOOP_EXPORT void* get_midi_port_driver_handle(shoopdaloop_midi_port_t *port);
+SHOOP_EXPORT shoopdaloop_midi_port_t *open_driver_midi_port (
+    shoop_backend_session_t *backend,
+    shoop_audio_driver_t *driver,
+    const char* name_hint,
+    shoop_port_direction_t direction
+);
+SHOOP_EXPORT shoopdaloop_midi_port_t *open_internal_midi_port (
+    shoop_backend_session_t *backend,
+    const char* name_hint
+);
+SHOOP_EXPORT unsigned get_midi_port_input_connectability(shoopdaloop_midi_port_t* port);
+SHOOP_EXPORT unsigned get_midi_port_output_connectability(shoopdaloop_midi_port_t* port);
 
 // Decoupled midi ports
 SHOOP_EXPORT shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction);

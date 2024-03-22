@@ -82,8 +82,18 @@ ApplicationWindow {
                 }
 
                 ItemRow {
-                    label: "direction:"
-                    Label { text: object.direction }
+                    label: "type:"
+                    Label { text: object.descriptor.type }
+                }
+
+                ItemRow {
+                    label: "input connectability:"
+                    Label { text: JSON.stringify(object.input_connectability) }
+                }
+
+                ItemRow {
+                    label: "output connectability:"
+                    Label { text: JSON.stringify(object.output_connectability) }
                 }
 
                 ItemRow {
@@ -92,11 +102,11 @@ ApplicationWindow {
                 }
 
                 ItemRow {
-                    label: "passthrough to:"
+                    label: "internal port connections:"
                     Row {
                         spacing: 3
                         Mapper {
-                            model: object.passthrough_to
+                            model: object.internal_port_connections
                             Text {
                                 property var mapped_item
                                 property int index

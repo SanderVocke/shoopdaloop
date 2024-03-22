@@ -11,6 +11,7 @@ template<typename API>
 class GenericJackAudioPort : public virtual AudioPort<jack_default_audio_sample_t>, public virtual GenericJackPort<API> {
     using GenericJackPort<API>::m_port;
     using GenericJackPort<API>::m_buffer;
+    using GenericJackPort<API>::m_direction;
 
     std::vector<jack_default_audio_sample_t> m_fallback_buffer;
 public:
@@ -27,6 +28,9 @@ public:
 
     // Access the cached buffer.
     float *PROC_get_buffer(uint32_t n_frames) override;
+
+    unsigned input_connectability() const override;
+    unsigned output_connectability() const override;
 };
 
 using JackAudioPort = GenericJackAudioPort<JackApi>;

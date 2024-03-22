@@ -89,6 +89,12 @@ typedef enum {
     Test2x2x1, // Custom processing chain with 2 audio in- and outputs and 1 MIDI input for testing.
 } shoop_fx_chain_type_t;
 
+// Can be ORed
+typedef enum {
+    ShoopPortConnectability_Internal = 1, // Can connect to internal ports
+    ShoopPortConnectability_External = 2, // Can connect to external ports
+} shoop_port_connectability_t;
+
 typedef struct _shoopdaloop_loop                shoopdaloop_loop_t;
 typedef struct _shoopdaloop_loop_audio_channel  shoopdaloop_loop_audio_channel_t;
 typedef struct _shoopdaloop_loop_midi_channel   shoopdaloop_loop_midi_channel_t;

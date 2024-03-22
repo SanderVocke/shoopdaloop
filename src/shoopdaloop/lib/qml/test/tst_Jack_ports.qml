@@ -20,11 +20,13 @@ ShoopTestFile {
             'schema': 'audioport.1',
             'id': 'audio_in',
             'name_parts': ['audio', '_in'],
-            'direction': 'input',
+            'type': 'driver',
+            'input_connectability': ['external'],
+            'output_connectability': ['internal'],
             'gain': 1.0,
             'muted': false,
             'passthrough_muted': false,
-            'passthrough_to': [],
+            'internal_port_connections': [],
             'external_port_connections': []
         })
 
@@ -36,11 +38,13 @@ ShoopTestFile {
             'schema': 'audioport.1',
             'id': 'audio_out',
             'name_parts': ['audio', '_out'],
-            'direction': 'output',
+            'type': 'driver',
+            'input_connectability': ['internal'],
+            'output_connectability': ['external'],
             'gain': 1.0,
             'muted': false,
             'passthrough_muted': false,
-            'passthrough_to': [],
+            'internal_port_connections': [],
             'external_port_connections': []
         })
 
@@ -52,10 +56,12 @@ ShoopTestFile {
                 'schema': 'midiport.1',
                 'id': 'midi_in',
                 'name_parts': ['midi', '_in'],
-                'direction': 'input',
+                'type': 'driver',
+                'input_connectability': ['external'],
+                'output_connectability': ['internal'],
                 'muted': false,
                 'passthrough_muted': false,
-                'passthrough_to': [],
+                'internal_port_connections': [],
                 'external_port_connections': []
             })
 
@@ -67,10 +73,12 @@ ShoopTestFile {
                 'schema': 'midiport.1',
                 'id': 'midi_out',
                 'name_parts': ['midi', '_out'],
-                'direction': 'output',
+                'type': 'driver',
+                'input_connectability': ['internal'],
+                'output_connectability': ['external'],
                 'muted': false,
                 'passthrough_muted': false,
-                'passthrough_to': [],
+                'internal_port_connections': [],
                 'external_port_connections': []
             })
 
