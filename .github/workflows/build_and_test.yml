@@ -508,7 +508,7 @@ jobs:
           echo "================================================="
           echo "Processing $dump..."
           echo "================================================="
-          minidump-stackwalk $dump debuginfo/breakpad_symbols | tee $dump.stackwalk
+          minidump-stackwalk $dump debuginfo/breakpad_symbols || true | tee $dump.stackwalk
         done
     - name: Upload crash dumps to Bugsplat
       if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
@@ -522,6 +522,7 @@ jobs:
           bash ./scripts/upload_crash_info.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" ${dump}.moreinfo
         done
     - uses: actions/setup-node@v4
+      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
       with:
         node-version: 19
     - name: Upload BugSplat debug symbols
