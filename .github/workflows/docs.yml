@@ -27,7 +27,7 @@ jobs:
 
       - name: Sphinx build
         run: |
-          sphinx-build docs/source _build
+          sphinx-build -D "html_baseurl=/assets/docs/" docs/source _build
       
       - name: Store HTML as artifact
         uses: actions/upload-artifact@v4
