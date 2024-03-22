@@ -303,6 +303,34 @@ Item {
                 }
             }
         }
+
+        Label {
+            text: '#'
+            font.pixelSize: 30
+            anchors.verticalCenter: parent.verticalCenter
+        }
+        SpinBox {
+            id: apply_n_cycles_spinbox
+            height: 30
+            width: 80
+            anchors.verticalCenter: parent.verticalCenter
+
+            value: registries.state_registry.apply_n_cycles
+            from: -1
+
+            onValueModified: {
+                if (value != registries.state_registry.apply_n_cycles) {
+                    registries.state_registry.set_apply_n_cycles(value)
+                    value = Qt.binding(() => registries.state_registry.apply_n_cycles)
+                }
+            }
+            
+            textFromValue: (value) => (value == 0) ? '∞' : value.toString()
+
+            ControlTooltip {
+                text: "If set, recording actions will run for the specified fixed amount of cycles."
+            }
+        }
     }
 
     RegistryLookup {

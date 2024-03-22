@@ -51,6 +51,10 @@ class FileIO(ShoopQObject):
     @ShoopSlot(result=str)
     def get_installation_directory(self):
         return installation_dir()
+    
+    @ShoopSlot(result=str)
+    def get_scripts_directory(self):
+        return scripts_dir()
 
     @ShoopSlot(result=str)
     def get_scripts_directory(self):

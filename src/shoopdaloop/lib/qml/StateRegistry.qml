@@ -56,6 +56,16 @@ Registry {
     readonly property bool sync_active : lookup_sync_active.object != null ? lookup_sync_active.object : false
 
     RegistryLookup {
+        id: lookup_apply_n_cycles
+        registry: root
+        key: 'apply_n_cycles'
+    }
+    readonly property int apply_n_cycles : lookup_apply_n_cycles.object != null ? lookup_apply_n_cycles.object : 0
+    function set_apply_n_cycles(val) {
+        replace('apply_n_cycles', Math.max(val, 0))
+    }
+
+    RegistryLookup {
         id: lookup_details_open
         registry: root
         key: 'details_open'
