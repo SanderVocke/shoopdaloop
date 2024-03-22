@@ -524,15 +524,14 @@ Rectangle {
             
             onOpenChanged: {
                 if (open) {
-                    height = details_area.active_height
+                    height = pane_area.active_height
                 } else {
                     if (height > 0) {
-                        details_area.active_height = height
+                        pane_area.active_height = height
                     }
                 }
             }
 
-            property real active_height: 200
             height: open ? active_height : 0 // Initial value
             max_height: root.height - 50
 
