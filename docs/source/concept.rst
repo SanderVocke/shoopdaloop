@@ -42,7 +42,7 @@ Any loop slot in **ShoopDaLoop** can be used as a **composite loop**. This is **
 * **sequences** and **songs**;
 * **pre-scripted** recording and looping.
 
-For more information, see :ref:`_composite_loops`.
+For more information, see :ref:`Composite Loops <composite_loops>`.
 
 Effects / Synthesis
 ---------------------
