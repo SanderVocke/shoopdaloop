@@ -55,6 +55,16 @@ Registry {
     }
     readonly property bool sync_active : lookup_sync_active.object != null ? lookup_sync_active.object : false
 
+    RegistryLookup {
+        id: lookup_details_open
+        registry: root
+        key: 'details_open'
+    }
+    readonly property int details_open : lookup_details_open.object != null ? lookup_details_open.object : false
+    function set_details_open(val) {
+        replace('details_open', val)
+    }
+
     onN_saving_actions_activeChanged: my_logger.debug(() => ('N saving actions active: ' + n_saving_actions_active))
     onN_loading_actions_activeChanged: my_logger.debug(() => ('N loading actions active: ' + n_loading_actions_active))
 

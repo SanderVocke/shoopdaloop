@@ -517,24 +517,22 @@ Rectangle {
         ResizeableItem {
             id: pane_area
 
-            visible: bottom_bar.pane_active
+            readonly property bool open : registries.state_registry.details_open
+            visible: open
 
             property real active_height: 200
-            height: bottom_bar.pane_active ? active_height : 0 // Initial value
-
-            Connections {
-                target: bottom_bar
-                function onPane_activeChanged() {
-                    if (bottom_bar.pane_active) {
-                        height = pane_area.active_height
-                    } else {
-                        if (height > 0) {
-                            pane_area.active_height = height
-                        }
-                        height = 0
+            
+            onOpenChanged: {
+                if (open) {
+                    height = pane_area.active_height
+                } else {
+                    if (height > 0) {
+                        pane_area.active_height = height
                     }
                 }
             }
+
+            height: open ? active_height : 0 // Initial value
             max_height: root.height - 50
 
             top_drag_enabled: true
@@ -569,8 +567,6 @@ Rectangle {
 
         Item {
             id: bottom_bar
-
-            property alias pane_active: details_toggle.checked
             height: details_toggle.height
 
             anchors {
@@ -584,6 +580,13 @@ Rectangle {
                 text: 'details'
                 togglable: true
                 height: 26
+
+                Component.onCompleted: registries.state_registry.set_details_open(checked)
+                onCheckedChanged: registries.state_registry.set_details_open(checked)
+                Connections {
+                    target: registries.state_registry
+                    function onDetails_openChanged() { details_toggle.checked = registries.state_registry.details_open }
+                }
             }
         }
 
