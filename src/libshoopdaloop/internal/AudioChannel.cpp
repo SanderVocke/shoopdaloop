@@ -12,34 +12,54 @@
 #include <iostream>
 #include <chrono>
 #include <boost/lockfree/spsc_queue.hpp>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
 
 using namespace std::chrono_literals;
 using namespace logging;
 
 template <typename SampleT>
+template <size_t N>
+inline void AudioChannel<SampleT>::trace_print_data(std::string msg, SampleT *data, size_t len) {
+    if (should_log<log_level_debug_trace>()) {
+        auto _N = N;
+        std::array<SampleT, N> arr;
+        std::copy(data, data+std::min(len, N), arr.begin());
+        log<log_level_debug_trace>(msg);
+        log<log_level_debug_trace>("--> first {} samples: {}", _N, arr);
+    }
+}
+
+template <typename SampleT>
 AudioChannel<SampleT>::Buffers::Buffers(std::shared_ptr<BufferPool> pool,
                                         uint32_t initial_max_buffers)
     : pool(pool), buffers_size(pool->object_size()) {
-    buffers.reserve(initial_max_buffers);
+    buffers = std::make_shared<std::vector<Buffer>>();
+    buffers->reserve(initial_max_buffers);
     reset();
 }
 
 template <typename SampleT> void AudioChannel<SampleT>::Buffers::reset() {
-    buffers.clear();
-    buffers.push_back(get_new_buffer());
+    buffers->clear();
+    buffers->push_back(get_new_buffer());
+}
+
+template <typename SampleT> void AudioChannel<SampleT>::Buffers::set_contents(std::shared_ptr<std::vector<Buffer>> contents) {
+    buffers = contents;
 }
 
 template <typename SampleT> AudioChannel<SampleT>::Buffers::Buffers() {
+    buffers = std::make_shared<std::vector<Buffer>>();
 }
 
 template <typename SampleT>
 SampleT &AudioChannel<SampleT>::Buffers::at(uint32_t offset) const {
     uint32_t idx = offset / buffers_size;
-    if (idx >= buffers.size()) {
+    if (idx >= buffers->size()) {
         throw_error<std::runtime_error>("OOB buffers access");
     }
     uint32_t head = offset % buffers_size;
-    return buffers.at(idx)->at(head);
+    return buffers->at(idx)->at(head);
 }
 
 template <typename SampleT>
@@ -47,11 +67,11 @@ bool AudioChannel<SampleT>::Buffers::ensure_available(uint32_t offset,
                                                       bool use_pool) {
     uint32_t idx = offset / buffers_size;
     bool changed = false;
-    while (buffers.size() <= idx) {
+    while (buffers->size() <= idx) {
         if (use_pool) {
-            buffers.push_back(get_new_buffer());
+            buffers->push_back(get_new_buffer());
         } else {
-            buffers.push_back(create_new_buffer());
+            buffers->push_back(create_new_buffer());
         }
         changed = true;
     }
@@ -80,7 +100,7 @@ AudioChannel<SampleT>::Buffers::get_new_buffer() const {
 
 template <typename SampleT>
 uint32_t AudioChannel<SampleT>::Buffers::n_buffers() const {
-    return buffers.size();
+    return buffers->size();
 }
 
 template <typename SampleT>
@@ -93,6 +113,15 @@ uint32_t
 AudioChannel<SampleT>::Buffers::buf_space_for_sample(uint32_t offset) const {
     uint32_t off = offset % buffers_size;
     return buffers_size - off;
+}
+
+template <typename SampleT>
+AudioChannel<SampleT>::Buffers&
+AudioChannel<SampleT>::Buffers::operator=(AudioChannel<SampleT>::Buffers const& other) {
+    *buffers = *other.buffers;
+    pool = other.pool;
+    buffers_size = other.buffers_size;
+    return *this;
 }
 
 template <typename SampleT>
@@ -116,7 +145,8 @@ AudioChannel<SampleT>::AudioChannel(
       ma_data_seq_nr(0), ma_pre_play_samples(0),
       mp_buffers(buffer_pool, initial_max_buffers),
       mp_prerecord_buffers(buffer_pool, initial_max_buffers),
-      mp_prev_process_flags(0), ma_last_played_back_sample(-1) {
+      mp_prev_process_flags(0), ma_last_played_back_sample(-1),
+      mp_always_record_ringbuffer(buffer_pool, 1) {
 }
 
 template <typename SampleT>
@@ -157,7 +187,7 @@ AudioChannel<SampleT>::operator=(AudioChannel<SampleT> const &other) {
 }
 
 template <typename SampleT>
-AudioChannel<SampleT>::AudioChannel() : ma_buffer_size(1) {}
+AudioChannel<SampleT>::AudioChannel() : ma_buffer_size(1), mp_always_record_ringbuffer(nullptr, 0) {}
 
 template <typename SampleT> AudioChannel<SampleT>::~AudioChannel() {}
 
@@ -194,6 +224,9 @@ void AudioChannel<SampleT>::PROC_process(
             mp_buffers = mp_prerecord_buffers;
             ma_buffers_data_length = ma_start_offset =
                 mp_prerecord_buffers_data_length.load();
+            if (mp_buffers.n_buffers() > 0) {
+                trace_print_data<16>("Pre-recorded samples carried over:", mp_buffers.buffers->at(0)->data(), mp_buffers.buffers_size);
+            }
         } else {
             log<log_level_debug>("Pre-record end -> discard");
         }
@@ -234,8 +267,9 @@ void AudioChannel<SampleT>::PROC_process(
 
     mp_prev_process_flags = process_flags;
 
-    // Update recording/playback buffers.
+    // Update recording/playback buffers and ringbuffer.
     if (mp_recording_source_buffer) {
+        mp_always_record_ringbuffer.PROC_put(mp_recording_source_buffer, n_samples);
         mp_recording_source_buffer += n_samples;
         mp_recording_source_buffer_size -= n_samples;
     }
@@ -313,6 +347,27 @@ void AudioChannel<SampleT>::PROC_finalize_process() {
     }
 }
 
+
+template <typename SampleT>
+void AudioChannel<SampleT>::adopt_ringbuffer_contents(unsigned reverse_start_offset, bool thread_safe) {
+    log<log_level_debug_trace>("queue adopt ringbuffer @ reverse offset {}", reverse_start_offset);
+
+    auto fn = [=, this]() {
+        log<log_level_debug_trace>("adopting ringbuffer @ reverse offset {}", reverse_start_offset);
+        auto data = mp_always_record_ringbuffer.PROC_get();
+        mp_buffers.set_contents(data.data);
+        set_start_offset(data.n_samples - reverse_start_offset);
+        PROC_set_length(data.n_samples);
+        data_changed();
+    };
+
+    if (thread_safe) {
+        queue_process_thread_command(fn);
+    } else {
+        fn();
+    }
+}
+
 template <typename SampleT>
 void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
                                       bool thread_safe) {
@@ -324,7 +379,7 @@ void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
     buffers.ensure_available(len, false);
 
     for (uint32_t idx = 0; idx < buffers.n_buffers(); idx++) {
-        auto &buf = buffers.buffers.at(idx);
+        auto &buf = buffers.buffers->at(idx);
         buf = std::make_shared<AudioBuffer<SampleT>>(ma_buffer_size);
         uint32_t already_copied = idx * ma_buffer_size;
         uint32_t n_elems = std::min(ma_buffer_size, len - already_copied);
@@ -378,7 +433,7 @@ void AudioChannel<SampleT>::PROC_process_record(
     &buffers_data_length,
     SampleT *record_buffer,
     uint32_t record_buffer_size) {
-    log<log_level_debug_trace>("process record");
+    log<log_level_debug_trace>("process record: {} samples @ {}", n_samples, record_from);
 
     if (record_buffer_size < n_samples) {
         throw_error<std::runtime_error>(
@@ -638,6 +693,18 @@ int AudioChannel<SampleT>::get_start_offset() const {
 template <typename SampleT>
 unsigned AudioChannel<SampleT>::get_data_seq_nr() const {
     return ma_data_seq_nr;
+}
+
+template <typename SampleT>
+void AudioChannel<SampleT>::set_ringbuffer_n_samples(unsigned n) {
+    auto sz = mp_always_record_ringbuffer.single_buffer_size();
+    auto n_buffers = (n + sz - 1) / sz;
+    mp_always_record_ringbuffer.set_max_buffers(n_buffers);
+}
+
+template <typename SampleT>
+unsigned AudioChannel<SampleT>::get_ringbuffer_n_samples() const {
+    return mp_always_record_ringbuffer.get_max_buffers();
 }
 
 template <typename SampleT>

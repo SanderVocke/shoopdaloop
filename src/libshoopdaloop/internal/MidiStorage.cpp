@@ -135,9 +135,9 @@ uint32_t MidiStorageBase<TimeType, SizeType>::n_events() const {
 
 template <typename TimeType, typename SizeType>
 bool MidiStorageBase<TimeType, SizeType>::append(TimeType time, SizeType size,
-                                                 const uint8_t *data) {
+                                                 const uint8_t *data, bool allow_replace) {
     uint32_t sz = Elem::total_size_of(size);
-    if (sz > bytes_free()) {
+    if (sz > bytes_free() && !allow_replace) {
         log<log_level_warning>("Ignoring store of MIDI message: buffer full.");
         return false;
     }
@@ -147,9 +147,26 @@ bool MidiStorageBase<TimeType, SizeType>::append(TimeType time, SizeType size,
         return false;
     }
 
+    int new_head_nowrap = (int)(m_head + sz);
+    int m_tail_nowrap = (m_tail < m_head) ? (int)(m_tail + bytes_capacity()) : (int)m_tail;
+    auto new_n_events = m_n_events + 1;
+
+    // if we are crossing our own tail, remove message(s) from the tail side
+    while(new_head_nowrap > m_tail_nowrap) {
+        auto n = maybe_next_elem_offset(unsafe_at(m_tail));
+        if (n.has_value()) {
+            auto shift_amount = (n.value() > m_tail) ? n.value() - m_tail : (n.value() + m_data.size()) - m_tail;
+            m_tail = (m_tail + shift_amount) % m_data.size();
+            m_tail_nowrap += shift_amount;
+            new_n_events -= 1;
+        } else {
+            break;
+        }
+    }
+
     m_head_start = m_head;
-    m_head = (m_head + sz) % m_data.size();
-    m_n_events++;
+    m_head = new_head_nowrap % m_data.size();
+    m_n_events = new_n_events;
 
     store_unsafe(m_head_start, time, size, data);
 
@@ -157,9 +174,25 @@ bool MidiStorageBase<TimeType, SizeType>::append(TimeType time, SizeType size,
 }
 
 template <typename TimeType, typename SizeType>
+bool MidiStorage<TimeType, SizeType>::append(TimeType time, SizeType size,
+                                                 const uint8_t *data, bool allow_replace)
+{
+    auto tail = MidiStorageBase<TimeType, SizeType>::m_tail;
+    auto rval = MidiStorageBase<TimeType, SizeType>::append(time, size, data, allow_replace);
+    if (rval && MidiStorageBase<TimeType, SizeType>::m_tail != tail) {
+        for (auto &c: m_cursors) {
+            if(auto cc = c.lock()) {
+                if (cc->offset() == tail) { cc->reset(); }
+            }
+        }
+    }
+    return rval;
+}
+
+template <typename TimeType, typename SizeType>
 bool MidiStorageBase<TimeType, SizeType>::prepend(TimeType time, SizeType size,
                                                   const uint8_t *data) {
-    uint32_t sz = sizeof(time) + sizeof(sz) + size;
+    uint32_t sz = Elem::total_size_of(size);
     if (sz > bytes_free()) {
         return false;
     }
@@ -231,7 +264,7 @@ void MidiStorageCursor<TimeType, SizeType>::invalidate() {
 
 template <typename TimeType, typename SizeType>
 bool MidiStorageCursor<TimeType, SizeType>::is_at_start() const {
-    return !m_prev_offset.has_value();
+    return offset() == m_storage->m_tail;
 }
 
 template <typename TimeType, typename SizeType>
@@ -281,6 +314,10 @@ void MidiStorageCursor<TimeType, SizeType>::next() {
     } else {
         invalidate();
     }
+}
+
+template <typename TimeType, typename SizeType>
+bool MidiStorageCursor<TimeType, SizeType>::wrapped() const {
 }
 
 template <typename TimeType, typename SizeType>

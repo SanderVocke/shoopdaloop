@@ -400,6 +400,15 @@ Item {
         root.record_n(n_cycles_delay, n_cycles_record)
     }
 
+    function adopt_ringbuffers(reverse_start_cycle, cycles_length) {
+        if (!root.maybe_loop) {
+            create_backend_loop()
+        }
+        if (root.maybe_backend_loop) {
+            root.maybe_backend_loop.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length)
+        }
+    }
+
     anchors {
         left: parent ? parent.left : undefined
         right: parent ? parent.right : undefined

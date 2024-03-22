@@ -105,6 +105,7 @@ class LoopAudioChannelState:
     data_dirty : bool
     played_back_sample : Any
     n_preplay_samples : int
+    ringbuffer_n_samples : int
 
     def __init__(self, backend_state : 'bindings.loop_audio_channel_state_t' = None):
         if backend_state:
@@ -116,6 +117,7 @@ class LoopAudioChannelState:
             self.data_dirty = bool(backend_state.data_dirty)
             self.played_back_sample = (to_int(backend_state.played_back_sample) if backend_state.played_back_sample >= 0 else None)
             self.n_preplay_samples = to_int(backend_state.n_preplay_samples)
+            self.ringbuffer_n_samples = to_int(backend_state.ringbuffer_n_samples)
         else:
             self.output_peak = 0.0
             self.gain = 0.0
@@ -125,6 +127,7 @@ class LoopAudioChannelState:
             self.data_dirty = False
             self.played_back_sample = None
             self.n_preplay_samples = 0
+            self.ringbuffer_n_samples = 0
 
 @dataclass
 class LoopMidiChannelState:
@@ -136,6 +139,7 @@ class LoopMidiChannelState:
     data_dirty : bool
     played_back_sample : Any
     n_preplay_samples : int
+    ringbuffer_n_samples : int
 
     def __init__(self, backend_state : 'bindings.loop_midi_channel_state_t' = None):
         if backend_state:
@@ -147,6 +151,7 @@ class LoopMidiChannelState:
             self.data_dirty = bool(backend_state.data_dirty)
             self.played_back_sample = (to_int(backend_state.played_back_sample) if backend_state.played_back_sample >= 0 else None)
             self.n_preplay_samples = to_int(backend_state.n_preplay_samples)
+            self.ringbuffer_n_samples = to_int(backend_state.ringbuffer_n_samples)
         else:
             self.n_events_triggered = 0
             self.n_notes_active = 0
@@ -156,6 +161,7 @@ class LoopMidiChannelState:
             self.data_dirty = False
             self.played_back_sample = None
             self.n_preplay_samples = 0
+            self.ringbuffer_n_samples = 0
 
 @dataclass
 class LoopState:
@@ -471,6 +477,10 @@ class BackendLoopAudioChannel:
     def clear(self, length=0):
         if self.available():
             bindings.clear_audio_channel(self.shoop_c_handle, length)
+    
+    def set_ringbuffer_n_samples(self, n):
+        if self.available():
+            bindings.set_audio_channel_ringbuffer_n_samples(self.shoop_c_handle, n)
 
     def __del__(self):
         if self.available():
@@ -559,6 +569,10 @@ class BackendLoopMidiChannel:
     def clear(self):
         if self.available():
             bindings.clear_midi_channel(self.shoop_c_handle)
+            
+    def set_ringbuffer_n_samples(self, n):
+        if self.available():
+            bindings.set_midi_channel_ringbuffer_n_samples(self.shoop_c_handle, n)
 
     def __del__(self):
         if self.available():
@@ -645,6 +659,10 @@ class BackendLoop:
         if self.available():
             bindings.destroy_loop(self.shoop_c_handle)
             self.shoop_c_handle = None
+            
+    def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length):
+        if self.available():
+            bindings.adopt_ringbuffer_contents(self.shoop_c_handle, reverse_start_cycle, cycles_length)
         
     def __del__(self):
         if self.available():

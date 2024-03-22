@@ -2,9 +2,12 @@
 #include "ChannelInterface.h"
 #include "ObjectPool.h"
 #include "AudioBuffer.h"
+#include "BufferQueue.h"
 #include "WithCommandQueue.h"
 #include "LoggingEnabled.h"
 #include <stdint.h>
+#include <vector>
+#include <deque>
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
@@ -31,10 +34,20 @@ private:
     std::atomic<int> ma_last_played_back_sample = -1; // -1 is none
 
     // Members which may be accessed from the process thread only (mp prefix)
-    Buffers mp_buffers; // Buffers holding main audio data
+
+    // Regular buffer set holding main audio data
+    Buffers mp_buffers;
     std::atomic<uint32_t> ma_buffers_data_length = 0;
-    Buffers mp_prerecord_buffers; // For temporarily holding pre-recorded data before fully entering record mode
+
+    // Regular buffer set for temporarily holding pre-recorded data before
+    // fully entering record mode
+    Buffers mp_prerecord_buffers; 
     std::atomic<uint32_t> mp_prerecord_buffers_data_length = 0;
+
+    // Always-active FIFO queue acting as a ring buffer of sorts: data coming
+    // in is always recorded until dropped from the queue.
+    // Can be used for retroactive recording.
+    BufferQueue<SampleT> mp_always_record_ringbuffer;
 
     SampleT *mp_playback_target_buffer = nullptr;
     uint32_t   mp_playback_target_buffer_size = 0;
@@ -65,11 +78,13 @@ private:
     struct Buffers : private ModuleLoggingEnabled<"Backend.AudioChannel.Buffers"> {
 
         uint32_t buffers_size = 0;
-        std::vector<Buffer> buffers;
+        std::shared_ptr<std::vector<Buffer>> buffers;
         std::shared_ptr<BufferPool> pool = nullptr;
 
         Buffers();
         Buffers(std::shared_ptr<BufferPool> pool, uint32_t initial_max_buffers);
+
+        Buffers& operator= (Buffers const& other);
         
         void reset();
         SampleT &at(uint32_t offset) const;
@@ -79,6 +94,7 @@ private:
         uint32_t n_buffers() const;
         uint32_t n_samples() const;
         uint32_t buf_space_for_sample(uint32_t offset) const;
+        void set_contents(std::shared_ptr<std::vector<Buffer>> buffers);
     };
 
     union ProcessingCommandDetails {
@@ -96,6 +112,26 @@ private:
 
     void throw_if_commands_queued() const;
 
+    void PROC_process_record(
+        uint32_t n_samples,
+        uint32_t record_from,
+        Buffers &buffers,
+        std::atomic<uint32_t> &buffers_data_length,
+        SampleT *record_buffer,
+        uint32_t record_buffer_size
+    );
+
+    void PROC_process_replace(uint32_t data_position, uint32_t length, uint32_t n_samples,
+                              SampleT *record_buffer, uint32_t record_buffer_size);
+    
+    void PROC_process_playback(int data_position, uint32_t length, uint32_t n_samples, bool muted, SampleT *playback_buffer, uint32_t playback_buffer_size);
+
+    void PROC_exec_cmd(ProcessingCommand cmd);
+    void PROC_queue_memcpy(void* dst, void* src, uint32_t sz);
+    void PROC_queue_additivecpy(SampleT* dst, SampleT* src, uint32_t n_elems, float mult, bool update_absmax);
+
+    template<size_t N> inline void trace_print_data(std::string msg, SampleT *data, size_t len);
+    
 public:
 
     AudioChannel(
@@ -126,9 +162,6 @@ public:
         uint32_t length_after
     ) override;
 
-    void PROC_exec_cmd(ProcessingCommand cmd);
-    void PROC_queue_memcpy(void* dst, void* src, uint32_t sz);
-    void PROC_queue_additivecpy(SampleT* dst, SampleT* src, uint32_t n_elems, float mult, bool update_absmax);
     void PROC_finalize_process() override;
 
     // Load data into the loop. Should always be called outside
@@ -139,25 +172,10 @@ public:
     // the processing thread.
     std::vector<SampleT> get_data(bool thread_safe = true);
 
-    void PROC_process_record(
-        uint32_t n_samples,
-        uint32_t record_from,
-        Buffers &buffers,
-        std::atomic<uint32_t> &buffers_data_length,
-        SampleT *record_buffer,
-        uint32_t record_buffer_size
-    );
-
-    void PROC_process_replace(uint32_t data_position, uint32_t length, uint32_t n_samples,
-                              SampleT *record_buffer, uint32_t record_buffer_size);
-
     uint32_t get_length() const override;
-
     void PROC_set_length(uint32_t length) override;
 
     SampleT const& PROC_at(uint32_t position) const;
-
-    void PROC_process_playback(int data_position, uint32_t length, uint32_t n_samples, bool muted, SampleT *playback_buffer, uint32_t playback_buffer_size);
 
     std::optional<uint32_t> PROC_get_next_poi(shoop_loop_mode_t mode,
                                        std::optional<shoop_loop_mode_t> maybe_next_mode,
@@ -194,6 +212,11 @@ public:
     unsigned get_data_seq_nr() const override;
 
     std::optional<uint32_t> get_played_back_sample() const override;
+
+    void set_ringbuffer_n_samples(unsigned n) override;
+    unsigned get_ringbuffer_n_samples() const override;
+
+    void adopt_ringbuffer_contents(unsigned reverse_start_offset, bool thread_safe=true) override;
 
 protected:
     Buffer get_new_buffer() const;

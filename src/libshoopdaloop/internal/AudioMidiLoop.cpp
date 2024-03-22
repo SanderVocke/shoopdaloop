@@ -1,6 +1,8 @@
 #include "AudioMidiLoop.h"
 #include "WithCommandQueue.h"
 #include "ObjectPool.h"
+#include "shoop_globals.h"
+#include "types.h"
 #include <memory>
 #include <vector>
 
@@ -180,6 +182,44 @@ void AudioMidiLoop::PROC_handle_poi() {
     }
     for (auto &channel : mp_midi_channels) {
         channel->PROC_handle_poi(get_mode(), get_length(), get_position());
+    }
+}
+
+void AudioMidiLoop::adopt_ringbuffer_contents(
+    std::optional<uint32_t> reverse_start_offset_cycle,
+    std::optional<uint32_t> n_cycles_length,
+    bool thread_safe) {
+    auto fn = [this, reverse_start_offset_cycle, n_cycles_length]() {
+        auto reverse_start_offset = 0;
+        if (reverse_start_offset_cycle.has_value() && mp_sync_source) {
+            auto len = mp_sync_source->get_length();
+            auto cur_cycle_reverse_start = mp_sync_source->get_position();
+            auto cycle = reverse_start_offset_cycle.value();
+            reverse_start_offset = cur_cycle_reverse_start + len * cycle;
+            log<log_level_debug_trace>("adopting channel ringbuffers with {} cycles reverse offset ({} samples)",
+                                       cycle, reverse_start_offset);
+        } else {
+            log<log_level_debug_trace>("adopting channel ringbuffers with no reverse start offset");
+        }
+
+        for (auto &channel : mp_audio_channels) {
+            channel->adopt_ringbuffer_contents(reverse_start_offset, false);
+        }
+        for (auto &channel : mp_midi_channels) {
+            channel->adopt_ringbuffer_contents(reverse_start_offset, false);
+        }
+
+        if (n_cycles_length.has_value() && mp_sync_source) {
+            set_length(mp_sync_source->get_length() * n_cycles_length.value(), false);
+        } else {
+            set_length(0, false);
+        }
+    };
+
+    if (thread_safe) {
+        queue_process_thread_command(fn);
+    } else {
+        fn();
     }
 }
 

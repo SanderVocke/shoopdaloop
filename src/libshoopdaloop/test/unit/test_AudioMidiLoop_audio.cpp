@@ -715,6 +715,9 @@ TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
     loop.PROC_trigger();
     loop.PROC_update_poi();
     loop.PROC_update_trigger_eta();
+
+    // Now, we should have moved to Recording, also meaning that the pre-recorded data should
+    // now be stored into the channel and the recording appended.
     loop.PROC_process(20);
     for (auto &c: channels) { c->PROC_finalize_process(); }
 
@@ -725,11 +728,12 @@ TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999)== 80);
 
     for (auto &channel : channels) {
-        REQUIRE(channel->get_start_offset()== 20);
+        CHECK(channel->get_start_offset()== 20);
+        CHECK(channel->get_length() == 40);
         for_channel_elems<AudioChannel<int>, int>(
             *channel, 
             [](uint32_t position, int const& val) {
-                REQUIRE(val== position);
+                CHECK(val == position);
             },
             0,
             40 // Note: all 40 elements checked
@@ -822,5 +826,232 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
                 REQUIRE(buf[p]== 0); // Dry won't play back at all
             }
         }
+    }
+};
+
+TEST_CASE("AudioMidiLoop - Audio - adopt ringbuffer - no offset", "[AudioMidiLoop][audio]") {
+    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 20);
+    AudioMidiLoop loop;
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+        {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
+
+    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
+    for (auto &c: channels) {
+        c->PROC_set_recording_buffer(source_buf.data(), source_buf.size());
+        c->set_start_offset(20); // just to make sure this is overwritten later
+        c->set_ringbuffer_n_samples(40);
+    }
+    loop.PROC_trigger();
+    loop.PROC_update_poi();
+
+    REQUIRE(loop.get_mode()== LoopMode_Stopped);
+    REQUIRE(loop.get_length()== 0);
+    REQUIRE(loop.get_position()== 0);
+
+    // Processing 60 samples should ensure that the first 20 are passed through
+    // and dropped from the ringbuffers, the last 40 should remain.
+    loop.PROC_process(60);
+    for (auto &c: channels) { c->PROC_finalize_process(); }
+
+    REQUIRE(loop.get_mode() == LoopMode_Stopped);
+    loop.adopt_ringbuffer_contents(std::nullopt, std::nullopt, false);
+
+    REQUIRE(loop.get_position()== 0);
+    for (auto &channel : channels) {
+        REQUIRE(channel->get_length() == 40);
+        REQUIRE(channel->get_start_offset() == 40);
+        for_channel_elems<AudioChannel<int>, int>(
+            *channel, 
+            [](uint32_t position, int const& val) {
+                CHECK(val== position + 20);
+            },
+            0,
+            40
+        );
+    }
+};
+
+TEST_CASE("AudioMidiLoop - Audio - adopt ringbuffer - current cycle", "[AudioMidiLoop][audio]") {
+    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 20);
+
+    auto loop_ptr = std::make_shared<AudioMidiLoop>();
+    auto sync_source = std::make_shared<AudioMidiLoop>();
+
+    auto &loop = *loop_ptr;
+    loop.set_sync_source(sync_source);
+
+    // start playing sync loop immediately
+    sync_source->set_length(100);
+    sync_source->plan_transition(LoopMode_Playing, 0, false, false);
+
+    auto process = [&](uint32_t n_samples) {
+        std::set<std::shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
+        process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
+    };
+
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+        {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
+
+    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
+    for (auto &c: channels) {
+        c->PROC_set_recording_buffer(source_buf.data(), source_buf.size());
+        c->set_start_offset(20); // just to make sure this is overwritten later
+        c->set_ringbuffer_n_samples(40);
+    }
+    loop.PROC_trigger();
+    loop.PROC_update_poi();
+
+    REQUIRE(loop.get_mode()== LoopMode_Stopped);
+    REQUIRE(loop.get_length()== 0);
+    REQUIRE(loop.get_position()== 0);
+
+    // Processing 60 samples should ensure that the first 20 are passed through
+    // and dropped from the ringbuffers, the last 40 should remain.
+    process(40);
+    for (auto &c: channels) { c->PROC_finalize_process(); }
+
+    REQUIRE(loop.get_mode() == LoopMode_Stopped);
+    loop.adopt_ringbuffer_contents(0, std::nullopt, false);
+
+    REQUIRE(loop.get_position()== 0);
+    for (auto &channel : channels) {
+        REQUIRE(channel->get_length() == 40);
+        REQUIRE(channel->get_start_offset() == 0);
+        for_channel_elems<AudioChannel<int>, int>(
+            *channel, 
+            [](uint32_t position, int const& val) {
+                CHECK(val== position);
+            },
+            0,
+            40
+        );
+    }
+};
+
+TEST_CASE("AudioMidiLoop - Audio - adopt ringbuffer - current cycle negative", "[AudioMidiLoop][audio]") {
+    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 20);
+
+    auto loop_ptr = std::make_shared<AudioMidiLoop>();
+    auto sync_source = std::make_shared<AudioMidiLoop>();
+
+    auto &loop = *loop_ptr;
+    loop.set_sync_source(sync_source);
+
+    // start playing sync loop immediately
+    sync_source->set_length(100);
+    sync_source->plan_transition(LoopMode_Playing, 0, false, false);
+
+    auto process = [&](uint32_t n_samples) {
+        std::set<std::shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
+        process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
+    };
+
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+        {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
+
+    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
+    for (auto &c: channels) {
+        c->PROC_set_recording_buffer(source_buf.data(), source_buf.size());
+        c->set_start_offset(20); // just to make sure this is overwritten later
+        c->set_ringbuffer_n_samples(40);
+    }
+    loop.PROC_trigger();
+    loop.PROC_update_poi();
+
+    REQUIRE(loop.get_mode()== LoopMode_Stopped);
+    REQUIRE(loop.get_length()== 0);
+    REQUIRE(loop.get_position()== 0);
+
+    // Processing 60 samples should ensure that the first 20 are passed through
+    // and dropped from the ringbuffers, the last 40 should remain.
+    process(60);
+    for (auto &c: channels) { c->PROC_finalize_process(); }
+
+    REQUIRE(loop.get_mode() == LoopMode_Stopped);
+    loop.adopt_ringbuffer_contents(0, 2, false);
+
+    REQUIRE(loop.get_position()== 0);
+    CHECK(loop.get_length() == 200);
+    for (auto &channel : channels) {
+        REQUIRE(channel->get_length() == 40);
+        REQUIRE(channel->get_start_offset() == -20);
+        for_channel_elems<AudioChannel<int>, int>(
+            *channel, 
+            [](uint32_t position, int const& val) {
+                CHECK(val== position + 20);
+            },
+            0,
+            40
+        );
+    }
+};
+
+TEST_CASE("AudioMidiLoop - Audio - adopt ringbuffer - prev cycle", "[AudioMidiLoop][audio]") {
+    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 20);
+
+    auto loop_ptr = std::make_shared<AudioMidiLoop>();
+    auto sync_source = std::make_shared<AudioMidiLoop>();
+
+    auto &loop = *loop_ptr;
+    loop.set_sync_source(sync_source);
+
+    // start playing sync loop immediately
+    sync_source->set_length(40);
+    sync_source->plan_transition(LoopMode_Playing, 0, false, false);
+
+    auto process = [&](uint32_t n_samples) {
+        std::set<std::shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
+        process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
+    };
+
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+        {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
+
+    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
+    for (auto &c: channels) {
+        c->PROC_set_recording_buffer(source_buf.data(), source_buf.size());
+        c->set_start_offset(20); // just to make sure this is overwritten later
+        c->set_ringbuffer_n_samples(100);
+    }
+    loop.PROC_trigger();
+    loop.PROC_update_poi();
+
+    REQUIRE(loop.get_mode()== LoopMode_Stopped);
+    REQUIRE(loop.get_length()== 0);
+    REQUIRE(loop.get_position()== 0);
+
+    // Processing 60 samples should ensure that the first 20 are passed through
+    // and dropped from the ringbuffers, the last 40 should remain.
+    process(60);
+    for (auto &c: channels) { c->PROC_finalize_process(); }
+
+    REQUIRE(loop.get_mode() == LoopMode_Stopped);
+    loop.adopt_ringbuffer_contents(1, 1, false);
+
+    REQUIRE(loop.get_position()== 0);
+    CHECK(loop.get_length()== 40);
+    for (auto &channel : channels) {
+        REQUIRE(channel->get_length() == 60);
+        REQUIRE(channel->get_start_offset() == 0);
+        for_channel_elems<AudioChannel<int>, int>(
+            *channel, 
+            [](uint32_t position, int const& val) {
+                CHECK(val== position);
+            },
+            0,
+            60
+        );
     }
 };
