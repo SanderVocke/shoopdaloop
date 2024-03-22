@@ -47,6 +47,7 @@ SHOOP_EXPORT shoop_loop_state_info_t *get_loop_state          (shoopdaloop_loop_
 SHOOP_EXPORT void              set_loop_length          (shoopdaloop_loop_t *loop, unsigned length);
 SHOOP_EXPORT void              set_loop_position        (shoopdaloop_loop_t *loop, unsigned position);
 SHOOP_EXPORT void              set_loop_sync_source     (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_source);
+SHOOP_EXPORT void              adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, unsigned reverse_cycles_start, unsigned cycles_length);
 SHOOP_EXPORT void loop_transition(shoopdaloop_loop_t *loop,
                       shoop_loop_mode_t mode,
                       unsigned delay, // In # of triggers
@@ -87,6 +88,8 @@ SHOOP_EXPORT void                   set_audio_channel_n_preplay_samples (shoopda
 SHOOP_EXPORT void                   set_midi_channel_n_preplay_samples  (shoopdaloop_loop_midi_channel_t *channel, unsigned n);
 SHOOP_EXPORT void                   clear_audio_channel_data_dirty (shoopdaloop_loop_audio_channel_t * channel);
 SHOOP_EXPORT void                   clear_midi_channel_data_dirty (shoopdaloop_loop_midi_channel_t * channel);
+SHOOP_EXPORT void                   set_audio_ringbuffer_n_samples (shoopdaloop_loop_audio_channel_t* channel, unsigned n);
+SHOOP_EXPORT void                   set_midi_ringbuffer_n_samples (shoopdaloop_loop_midi_channel_t* channel, unsigned n);
 
 // FX chains
 SHOOP_EXPORT shoopdaloop_fx_chain_t *create_fx_chain(shoop_backend_session_t *backend, shoop_fx_chain_type_t type, const char* title);

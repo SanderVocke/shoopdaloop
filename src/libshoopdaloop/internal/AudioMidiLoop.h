@@ -4,6 +4,7 @@
 #include "LoggingEnabled.h"
 #include "MidiChannel.h"
 #include "ProcessProfiling.h"
+#include <optional>
 
 // Extend a BasicLoop with a set of audio and midi channels.
 class AudioMidiLoop : public BasicLoop {
@@ -53,6 +54,18 @@ class AudioMidiLoop : public BasicLoop {
     void PROC_update_poi() override;
 
     void PROC_handle_poi() override;
+
+    // Channels may support constanly running ringbuffers. This function
+    // tells them to take their ringbuffer contents and set them as the
+    // channel data.
+    // @param reverse_start_offset_cycle: Where to set the playback start point in terms
+    //  of sync source cycles. 0 means to use the data since the current cycle
+    //  started, 1 means the start of the last completed cycle, etc.
+    //  nullopt will just use start offset 0.
+    void adopt_ringbuffer_contents(
+        std::optional<uint32_t> reverse_start_offset_cycle = std::nullopt,
+        std::optional<uint32_t> n_cycles_length = std::nullopt,
+        bool thread_safe=true);
 };
 
 extern template std::shared_ptr<AudioChannel<float>> AudioMidiLoop::add_audio_channel(

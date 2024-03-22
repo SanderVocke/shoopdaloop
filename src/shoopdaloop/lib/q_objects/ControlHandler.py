@@ -151,6 +151,7 @@ class ControlHandler(ShoopQQuickItem):
         [ 'loop_toggle_selected', lua_loop_selector ],
         [ 'loop_toggle_targeted', lua_loop_selector ],
         [ 'loop_clear', lua_loop_selector ],
+        [ 'loop_adopt_ringbuffers', lua_loop_selector, lua_int, lua_int ],
         [ 'track_get_gain', lua_track_selector ],
         [ 'track_set_gain', lua_track_selector, lua_float ],
         [ 'track_get_gain_fader', lua_track_selector ],
@@ -165,6 +166,8 @@ class ControlHandler(ShoopQQuickItem):
         [ 'track_get_input_muted', lua_track_selector ],
         [ 'track_set_muted', lua_track_selector, lua_bool ],
         [ 'track_set_input_muted', lua_track_selector, lua_bool ],
+        [ 'set_apply_n_cycles', lua_int ],
+        [ 'get_apply_n_cycles' ]
     ]
 
     def generate_loop_mode_constants():
@@ -506,6 +509,21 @@ class ControlHandler(ShoopQQuickItem):
         """
         pass
 
+    @ShoopSlot(list, 'QVariant')
+    @allow_qml_override
+    def loop_adopt_ringbuffers(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_adopt_ringbuffers(loop_selector, reverse_cycle_start, cycles_length)
+        For all channels in the given loops, grab the data currently in the ringbuffer and
+        set it as the content (i.e. after-the-fact-recording or "grab").
+        reverse_cycle_start sets the start offset for playback. 0 means to play what was being
+        recorded in the current sync loop cycle, 1 means start from the previous cycle, etc.
+        cycles_length sets the loop length.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
     # track getter interfaces
     @ShoopSlot(list, 'QVariant', result=list)
     @allow_qml_override
@@ -635,6 +653,30 @@ class ControlHandler(ShoopQQuickItem):
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_input_gain_fader(track_selector, vol)
         Set the given track's input gain as a fraction of its total range (0-1).
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @ShoopSlot(list, 'QVariant')
+    @allow_qml_override
+    def set_apply_n_cycles(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.set_apply_n_cycles(n)
+        Set the amount of sync loop cycles future actions will be executed for.
+        Setting to 0 will disable this - actions will be open-ended.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @ShoopSlot(list, 'QVariant', result=int)
+    @allow_qml_override
+    def get_apply_n_cycles(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.get_apply_n_cycles(n)
+        Get the amount of sync loop cycles future actions will be executed for.
+        0 means disabled.
         @shoop_lua_fn_docstring.end
         """
         pass

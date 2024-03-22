@@ -306,6 +306,12 @@ class Loop(FindParentBackend):
         if self._initialized:
             backend_loops = [l._backend_loop for l in loops]
             BackendLoop.transition_multiple(backend_loops, LoopMode(mode), delay, wait_for_sync)
+    
+    @ShoopSlot(int, int)
+    def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length):
+        if self._initialized:
+            self.logger.debug(lambda: f'adopt ringbuffer contents @ {reverse_start_cycle}, len {cycles_length}')
+            self._backend_loop.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length)
 
     @ShoopSlot(int)
     def clear(self, length):

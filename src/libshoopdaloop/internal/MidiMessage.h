@@ -23,6 +23,13 @@ struct MidiMessage : public MidiSortableMessageInterface {
                  const uint8_t* &data_out) const override;
 };
 
+template<typename TimeType, typename SizeType>
+inline bool operator==(const MidiMessage<TimeType, SizeType>& lhs, const MidiMessage<TimeType, SizeType>& rhs) {
+    return lhs.time == rhs.time &&
+           lhs.size == rhs.size &&
+           lhs.data == rhs.data;
+}
+
 template<typename TimeType, typename SizeType, unsigned MaxDataSize>
 struct MaxSizeMidiMessage : public MidiSortableMessageInterface {
     TimeType time = 0;

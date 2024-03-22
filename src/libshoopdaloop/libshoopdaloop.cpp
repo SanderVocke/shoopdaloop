@@ -803,6 +803,22 @@ void clear_midi_channel_data_dirty (shoopdaloop_loop_midi_channel_t * channel) {
   });
 }
 
+void set_audio_ringbuffer_n_samples (shoopdaloop_loop_audio_channel_t* channel, unsigned n) {
+  return api_impl<void>("set_audio_ringbuffer_n_samples", [&]() {
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    _chan->channel->set_ringbuffer_n_samples(n);
+  });
+}
+
+void set_midi_ringbuffer_n_samples (shoopdaloop_loop_midi_channel_t* channel, unsigned n) {
+  return api_impl<void>("set_midi_ringbuffer_n_samples", [&]() {
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    _chan->channel->set_ringbuffer_n_samples(n);
+  });
+}
+
 void loop_transition(shoopdaloop_loop_t *loop,
                       shoop_loop_mode_t mode,
                       unsigned delay, // In # of triggers
@@ -1370,6 +1386,7 @@ shoop_audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audi
     r->start_offset = audio->get_start_offset();
     r->data_dirty = chan->get_data_dirty();
     r->n_preplay_samples = chan->channel->get_pre_play_samples();
+    r->ringbuffer_n_samples = chan->channel->get_ringbuffer_n_samples();
     auto p = chan->channel->get_played_back_sample();
     if (p.has_value()) { r->played_back_sample = p.value(); } else { r->played_back_sample = -1; }
     audio->reset_output_peak();
@@ -1395,6 +1412,7 @@ shoop_midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi
     r->start_offset = midi->get_start_offset();
     r->data_dirty = chan->get_data_dirty();
     r->n_preplay_samples = chan->channel->get_pre_play_samples();
+    r->ringbuffer_n_samples = chan->channel->get_ringbuffer_n_samples();
     auto p = chan->channel->get_played_back_sample();
     if (p.has_value()) { r->played_back_sample = p.value(); } else { r->played_back_sample = -1; }
     return r;
@@ -1564,6 +1582,14 @@ void set_loop_sync_source (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_so
             _loop->loop->set_sync_source(nullptr, false);
         }
     });
+  });
+}
+
+void adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, unsigned reverse_cycles_start, unsigned cycles_length) {
+  return api_impl<void>("adopt_ringbuffer_contents", [&]() {
+    auto _loop = internal_loop(loop);
+    if (!_loop) { return; }
+    _loop->loop->adopt_ringbuffer_contents(reverse_cycles_start, cycles_length, true);
   });
 }
 

@@ -474,10 +474,11 @@ void BackendSession::recalculate_processing_schedule(unsigned req_id) {
     float us = duration_cast<microseconds>(end - start).count();
     logging::log<"Backend.ProcessGraph", log_level_debug>(std::nullopt, std::nullopt, "Calculation took {} us", us);
 
-    if(logging::should_log("Backend.ProcessGraph", log_level_debug_trace)) {
+    if (logging::should_log<"Backend.ProcessGraph", log_level_debug_trace>()) {
         auto dot = graph_dot(raw_nodes);
-        logging::log<"Backend.ProcessGraph", log_level_debug>(std::nullopt, std::nullopt, "DOT graph:\n{}", dot);
+        logging::log<"Backend.ProcessGraph", log_level_debug_trace>(std::nullopt, std::nullopt, "DOT graph:\n{}", dot);
         if(logging::should_log("Backend.ProcessGraph", log_level_debug)) {
+            // Print the processing order
             std::vector<std::string> schedule_names;
             for(auto &step: schedule) {
                 std::string step_name;

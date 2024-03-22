@@ -179,6 +179,7 @@ typedef struct {
     int start_offset;
     int played_back_sample; // -1 is none
     unsigned n_preplay_samples;
+    unsigned ringbuffer_n_samples;
     unsigned data_dirty;
 } shoop_audio_channel_state_info_t;
 
@@ -190,6 +191,7 @@ typedef struct {
     int start_offset;
     int played_back_sample; // -1 is none
     unsigned n_preplay_samples;
+    unsigned ringbuffer_n_samples;
     unsigned data_dirty;
 } shoop_midi_channel_state_info_t;
 

@@ -740,6 +740,27 @@ MidiChannel<TimeType, SizeType>::get_played_back_sample() const {
     return std::nullopt;
 }
 
+template <typename TimeType, typename SizeType>
+void
+MidiChannel<TimeType, SizeType>::set_ringbuffer_n_samples(unsigned n) {
+    // TODO
+    return;
+}
+
+template <typename TimeType, typename SizeType>
+unsigned
+MidiChannel<TimeType, SizeType>::get_ringbuffer_n_samples() const {
+    // TODO
+    return 0;
+}
+
+template <typename TimeType, typename SizeType>
+void
+MidiChannel<TimeType, SizeType>::adopt_ringbuffer_contents(unsigned reverse_start_offset, bool thread_safe) {
+    // TODO
+    return;
+}
+
 template class MidiChannel<uint32_t, uint16_t>;
 template class MidiChannel<uint32_t, uint32_t>;
 template class MidiChannel<uint16_t, uint16_t>;

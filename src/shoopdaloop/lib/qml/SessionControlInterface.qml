@@ -208,6 +208,9 @@ LuaControlInterface {
     function loop_toggle_targeted_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.toggle_targeted() } )
     }
+    function loop_adopt_ringbuffers_override(loop_selector, reverse_start_cycle, cycles_length) {
+        select_loops(loop_selector).forEach((h) => { h.adopt_ringbuffers(reverse_start_cycle, cycles_length) } )
+    }
 
     // Track interface overrides
     function track_set_gain_override(track_selector, vol) {
@@ -245,6 +248,12 @@ LuaControlInterface {
     }
     function track_set_input_muted_override(track_selector, muted) {
         return select_tracks(track_selector).forEach(t => {t.control_widget.monitor = !muted})
+    }
+    function set_apply_n_cycles_override(n) {
+        registries.state_registry.set_apply_n_cycles(n)
+    }
+    function get_apply_n_cycles_override() {
+        return registries.state_registry.apply_n_cycles
     }
 
     // Handle creation and deletion of dynamic MIDI control ports based on registered connection rules.
