@@ -4,17 +4,15 @@
 ![build](https://github.com/sandervocke/shoopdaloop/actions/workflows/build_and_test.yml/badge.svg)
 [![Docs](https://github.com/SanderVocke/shoopdaloop/actions/workflows/docs.yml/badge.svg)](https://github.com/SanderVocke/shoopdaloop/actions/workflows/docs.yml)
 
-# ShoopDaLoop
+# ShoopDaLoop - Limitless Live Looping
 
-ShoopDaLoop is a live looping application with a few DAW-like features. It offers clips/loops in a grid-style layout, aimed at free-form "jamming" and pre-scripted looping sessions.
+ShoopDaLoop is an cross-platform advanced live looping application. It offers intuitive looping of audio+MIDI clips in a grid-style layout and some DAW-like features for sequencing.
+
+It is designed for both free-form jamming (solo or together) and pre-scripted looping sessions. In principle, live performance is a good use-case, although it is not battle-tested and stable enough yet to recommend that at this point.
 
 [Documentation](https://sandervocke.github.io/shoopdaloop/) lives here.
 
 > :warning: **There is no release yet. This is in pre-alpha. All there is to see on this repo is a preview of things to come.**
-
-The main intended use is for quickly expressing musical ideas without needing to record full end-to-end tracks for a whole song. It makes for a fun way to jam by oneself.
-
-Live performance could also be a good use-case, although it is not battle-tested and stable enough yet to recommend that.
 
 For currently open known issues, check the GitHub Issues page.
 
@@ -30,7 +28,7 @@ For currently open known issues, check the GitHub Issues page.
 - **FX/synthesis**: can be inserted into a loop via external JACK connections or by using plugins. The same loop can simultaneously record "dry" and "wet", akin to [Luppp](http://openavproductions.com/luppp/), to save precious CPU during playback.
 - **Synchronization**: every loop is synced to the "sync loop", which typically holds a beat, click-track or just fixed-length silence. Loops may also be a multiple of the sync loop length.
 - **Click tracks**: can be generated via a dialog in the app.
-- **NSM**: Non/New Session Manager support (experimental).
+- **NSM**: Non/New Session Manager support on Linux (experimental).
 - **Hackable**: Users can run their own Lua scripts to control the application in new ways.
 
 These features are explained in detail in the [docs](https://sandervocke.github.io/shoopdaloop/).
