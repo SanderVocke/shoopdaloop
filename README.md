@@ -85,7 +85,7 @@ All the basic features needed for a 1.0 release are there. The following items a
 
 # Installation
 
-See [INSTALL](INSTALL.md).
+There is no official release. To test-drive ShoopDaLoop, you can choose between building from source or grabbing an (unsupported) pre-release build for your platform. See [INSTALL](INSTALL.md) for details.
 
 # License / Copyright
 
