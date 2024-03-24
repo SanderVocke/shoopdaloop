@@ -101,9 +101,9 @@ end
 local handle_loop_action = function(mode)
     local selected = shoop_control.loop_get_which_selected()
     if (#selected > 0) then
-        shoop_control.loop_transition(selected, mode, 0)
+        shoop_helpers.loop_command(selected, mode)
     elseif (mode == shoop_control.constants.LoopMode_Stopped) then
-        shoop_control.loop_transition(shoop_control.loop_get_all(), mode, 0)
+        shoop_helpers.loop_command(shoop_control.loop_get_all(), mode)
     else
         shoop_control.loop_select(shoop_control.loop_get_by_mode(mode), true)
     end
