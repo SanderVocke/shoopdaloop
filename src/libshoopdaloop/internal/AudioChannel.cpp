@@ -146,7 +146,7 @@ AudioChannel<SampleT>::AudioChannel(
       mp_buffers(buffer_pool, initial_max_buffers),
       mp_prerecord_buffers(buffer_pool, initial_max_buffers),
       mp_prev_process_flags(0), ma_last_played_back_sample(-1),
-      mp_always_record_ringbuffer(buffer_pool, 1) {
+      mp_always_record_ringbuffer(buffer_pool, 32) {
 }
 
 template <typename SampleT>
@@ -704,7 +704,7 @@ void AudioChannel<SampleT>::set_ringbuffer_n_samples(unsigned n) {
 
 template <typename SampleT>
 unsigned AudioChannel<SampleT>::get_ringbuffer_n_samples() const {
-    return mp_always_record_ringbuffer.get_max_buffers();
+    return mp_always_record_ringbuffer.n_samples();
 }
 
 template <typename SampleT>
