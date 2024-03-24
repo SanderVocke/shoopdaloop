@@ -14,12 +14,21 @@ Actions on **loops** are synchronized to **triggers** of the **sync loop**. A **
 The sync loop may itself hold audio and/or MIDI data. A typical use is a click track. However, it is also perfectly fine to leave it empty and use it for synchronization only.
 
 .. figure:: resources/syncloop.gif
-   :width: 200px
+   :width: 400px
    :alt: Synchronization to the sync loop.
 
    Synchronization to the sync loop (note the picture needs updating, as at the time it was called "master loop").
 
+The global **n cycles** control determines how many sync loop cycles recording will be executed for.
+For example, with **n cycles** set to 4, if the sync loop represents one bar, recording on a loop will automatically progress to playback after recording 4 bars.
+The default setting for **n cycles** is 0 (infinite), meaning the loop will be recorded until manually stopped.
+If recording using the **always-on recording** feature, grabbing the always-on recording will also grab the specified amount of sync loop cycles.
 
+.. figure:: resources/n_cycles_control.png
+   :width: 150px
+   :alt: N cycles control
+
+   The N cycles control.
 
 Tracks
 -------

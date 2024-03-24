@@ -10,7 +10,7 @@ ApplicationWindow {
     visible: true
     width: 1050
     height: 550
-    minimumWidth: 500
+    minimumWidth: 350
     minimumHeight: 350
     title: "ShoopDaLoop"
 

@@ -304,11 +304,6 @@ Item {
             }
         }
 
-        Label {
-            text: '#'
-            font.pixelSize: 30
-            anchors.verticalCenter: parent.verticalCenter
-        }
         SpinBox {
             id: apply_n_cycles_spinbox
             height: 30
