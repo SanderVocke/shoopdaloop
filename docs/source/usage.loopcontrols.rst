@@ -25,7 +25,12 @@ The feature doesn't need to be manually enabled. All you need to do is press the
 Note that "grabbing" will grab a fixed amount of data, and then use the global **n cycles** control to set the playback range.
 That is to say: you seemingly grab **n cycles** sync cycles of data, but can still expand the selection later from the details view.
 
-TODO: grab button
+.. image:: resources/grab_button.png
+   :width: 300px
+   :align: center
+   :alt: Grab button
+
+   The "grab" button.
 
 
 Loop Modes and Transitions
