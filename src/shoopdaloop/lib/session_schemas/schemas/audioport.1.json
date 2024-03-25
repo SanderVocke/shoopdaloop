@@ -12,7 +12,7 @@
         "passthrough_muted": { "type": "boolean" },
         "internal_port_connections": { "type": "array", "items": { "type": "string" } },
         "external_port_connections": { "type": "array", "items": { "type": "string" } },
-        "always_on_ringbuffer": { "type": "boolean" }
+        "min_n_ringbuffer_samples": { "type": "integer" }
     },
-    "required": ["schema", "id", "name_parts", "type", "gain", "muted", "input_connectability", "output_connectability", "internal_port_connections", "external_port_connections", "always_on_ringbuffer"]
+    "required": ["schema", "id", "name_parts", "type", "gain", "muted", "input_connectability", "output_connectability", "internal_port_connections", "external_port_connections", "min_n_ringbuffer_samples"]
 }

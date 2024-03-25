@@ -27,7 +27,8 @@ ShoopTestFile {
             'muted': false,
             'passthrough_muted': false,
             'internal_port_connections': [],
-            'external_port_connections': []
+            'external_port_connections': [],
+            'min_n_ringbuffer_samples': 0
         })
 
         is_internal: false
@@ -45,7 +46,8 @@ ShoopTestFile {
             'muted': false,
             'passthrough_muted': false,
             'internal_port_connections': [],
-            'external_port_connections': []
+            'external_port_connections': [],
+            'min_n_ringbuffer_samples': 0
         })
 
             is_internal: false
@@ -62,7 +64,8 @@ ShoopTestFile {
                 'muted': false,
                 'passthrough_muted': false,
                 'internal_port_connections': [],
-                'external_port_connections': []
+                'external_port_connections': [],
+                'min_n_ringbuffer_samples': 0
             })
 
             is_internal: false
@@ -79,7 +82,8 @@ ShoopTestFile {
                 'muted': false,
                 'passthrough_muted': false,
                 'internal_port_connections': [],
-                'external_port_connections': []
+                'external_port_connections': [],
+                'min_n_ringbuffer_samples': 0
             })
 
             is_internal: false

@@ -84,6 +84,7 @@ class AudioPort(Port):
         self._new_gain = state.gain
         self._new_muted = state.muted
         self._new_passthrough_muted = state.passthrough_muted
+        self._n_ringbuffer_samples = state.ringbuffer_n_samples
         self._n_updates_pending += 1
 
         self._signal_sender.do_emit()
@@ -102,6 +103,7 @@ class AudioPort(Port):
         self.gain = self._new_gain
         self.muted = self._new_muted
         self.passthrough_muted = self._new_passthrough_muted
+        self.n_ringbuffer_samples = self._n_ringbuffer_samples
         self._n_updates_pending = 0
     
     @ShoopSlot(float)
@@ -164,7 +166,7 @@ class AudioPort(Port):
         if self._backend_obj:
             return # never create_backend more than once
         direction = PortDirection.Input.value if not (input_connectability & PortConnectability.Internal.value) else PortDirection.Output.value
-        self._backend_obj = self.backend.open_driver_audio_port(name_hint, direction)
+        self._backend_obj = self.backend.open_driver_audio_port(name_hint, direction, self.n_ringbuffer_samples)
         self.push_state()
 
     def push_state(self):

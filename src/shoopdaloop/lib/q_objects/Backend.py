@@ -344,12 +344,12 @@ class Backend(ShoopQQuickItem):
         return audio_driver_type_supported(AudioDriverType(type))
     
     @ShoopSlot(str, int, result='QVariant')
-    def open_driver_audio_port(self, name_hint, direction):
-        return backend_open_driver_audio_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction)
+    def open_driver_audio_port(self, name_hint, direction, min_n_ringbuffer_samples):
+        return backend_open_driver_audio_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction, min_n_ringbuffer_samples)
     
     @ShoopSlot(str, int, result='QVariant')
-    def open_driver_midi_port(self, name_hint, direction):
-        return backend_open_driver_midi_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction)
+    def open_driver_midi_port(self, name_hint, direction, min_n_ringbuffer_samples):
+        return backend_open_driver_midi_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction, min_n_ringbuffer_samples)
 
     @ShoopSlot()
     def segfault_on_process_thread(self):
