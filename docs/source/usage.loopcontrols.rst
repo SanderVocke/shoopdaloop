@@ -17,12 +17,13 @@ There are two ways to control this:
 Always-on Recording
 ^^^^^^^^^^^^^^^^^^^
 
-Having to manually trigger recordings ahead of time can cost focus and break the flow.
-For that reason, **ShoopDaLoop** to record a loop in hindsight. You can just play, and when something nice happens, capture it afterward.
+Having to manually trigger recordings ahead of time can cost focus and break your flow.
+For that reason, **ShoopDaLoop** allows you to record a loop in hindsight. You can just play, and when something nice happens, capture it afterward.
 
 The feature doesn't need to be manually enabled. All you need to do is press the "grab" button or respective keyboard/MIDI control.
 
-Note that "grabbing" will grab **n cycles** amount of sync loop cycles, up to and including the last finished cycle. In most cases you will want to grab just after the sync loop has finished of the portion you want to grab.
+Note that "grabbing" will grab a fixed amount of data, and then use the global **n cycles** control to set the playback range.
+That is to say: you seemingly grab **n cycles** sync cycles of data, but can still expand the selection later from the details view.
 
 TODO: grab button
 
