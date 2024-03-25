@@ -22,7 +22,7 @@ public:
     using RingbufferSnapshot = BufferQueue<SampleT>::Snapshot;
     using BufferPool = ObjectPool<AudioBuffer<SampleT>>;
 
-    AudioPort(std::shared_ptr<BufferPool> buffer_pool);
+    AudioPort(std::shared_ptr<BufferPool> maybe_ringbuffer_buffer_pool);
     virtual ~AudioPort();
 
     virtual SampleT *PROC_get_buffer(uint32_t n_frames) = 0;

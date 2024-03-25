@@ -44,8 +44,8 @@ struct SingleMidiPortPassthroughTestChain : public ModuleLoggingEnabled<"Test.Si
         int_driver->start(settings);
         set_audio_driver(api_backend_session, api_driver);
 
-        api_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input);
-        api_output_port = open_driver_midi_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output);
+        api_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input, 0);
+        api_output_port = open_driver_midi_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output, 0);
         int_input_port = internal_midi_port(api_input_port);
         int_output_port = internal_midi_port(api_output_port);
         int_dummy_input_port = dynamic_cast<DummyMidiPort*>(&int_input_port->get_port());
@@ -114,15 +114,15 @@ struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirec
         int_driver->start(settings);
         set_audio_driver(api_backend_session, api_driver);
 
-        api_input_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input);
-        api_output_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output);
+        api_input_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input, 0);
+        api_output_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output, 0);
         int_input_port = internal_audio_port(api_input_port);
         int_output_port = internal_audio_port(api_output_port);
         int_dummy_input_port = dynamic_cast<DummyAudioPort*>(&int_input_port->get_port());
         int_dummy_output_port = dynamic_cast<DummyAudioPort*>(&int_output_port->get_port());
 
-        api_midi_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_in", ShoopPortDirection_Input);
-        api_midi_output_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_out", ShoopPortDirection_Output);
+        api_midi_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_in", ShoopPortDirection_Input, 0);
+        api_midi_output_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_out", ShoopPortDirection_Output, 0);
         int_midi_input_port = internal_midi_port(api_midi_input_port);
         int_midi_output_port = internal_midi_port(api_midi_output_port);
         int_dummy_midi_input_port = dynamic_cast<DummyMidiPort*>(&int_midi_input_port->get_port());
@@ -229,14 +229,14 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         int_driver->start(settings);
         set_audio_driver(api_backend_session, api_driver);
 
-        api_input_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input);
-        api_output_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output);
+        api_input_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input, 0);
+        api_output_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output, 0);
         int_input_port = internal_audio_port(api_input_port);
         int_output_port = internal_audio_port(api_output_port);
         int_dummy_input_port = dynamic_cast<DummyAudioPort*>(&int_input_port->get_port());
         int_dummy_output_port = dynamic_cast<DummyAudioPort*>(&int_output_port->get_port());
 
-        api_midi_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_in", ShoopPortDirection_Input);
+        api_midi_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_in", ShoopPortDirection_Input, 0);
         int_midi_input_port = internal_midi_port(api_midi_input_port);
         int_dummy_midi_input_port = dynamic_cast<DummyMidiPort*>(&int_midi_input_port->get_port());
 

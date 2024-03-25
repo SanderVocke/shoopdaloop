@@ -957,23 +957,28 @@ void do_abort_on_process_thread(shoop_backend_session_t *backend) {
   });
 }
 
-shoopdaloop_audio_port_t *open_driver_audio_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction) {
+shoopdaloop_audio_port_t *open_driver_audio_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction, unsigned has_always_on_ringbuffer) {
   return api_impl<shoopdaloop_audio_port_t*>("open_driver_audio_port", [&]() -> shoopdaloop_audio_port_t* {
     auto _backend = internal_backend_session(backend);
     auto _driver = internal_audio_driver(driver);
     if (!_backend || !_driver) { return nullptr; }
     auto port = _driver->open_audio_port
-        (name_hint, direction, _backend->audio_buffer_pool);
+        (name_hint, direction,
+         has_always_on_ringbuffer ? _backend->audio_buffer_pool : nullptr);
     auto pi = _backend->add_audio_port(port);
     return external_audio_port(pi);
   }, (shoopdaloop_audio_port_t*) nullptr);
 }
 
-shoopdaloop_audio_port_t *open_internal_audio_port (shoop_backend_session_t *backend, const char* name_hint) {
+shoopdaloop_audio_port_t *open_internal_audio_port (shoop_backend_session_t *backend, const char* name_hint, unsigned has_always_on_ringbuffer) {
   return api_impl<shoopdaloop_audio_port_t*>("open_internal_audio_port", [&]() -> shoopdaloop_audio_port_t* {
     auto _backend = internal_backend_session(backend);
     if (!_backend) { return nullptr; }
-    auto port = std::make_shared<InternalAudioPort<audio_sample_t>>(std::string(name_hint), _backend->m_buffer_size, _backend->audio_buffer_pool);
+    auto port = std::make_shared<InternalAudioPort<audio_sample_t>>(
+      std::string(name_hint),
+      _backend->m_buffer_size,
+      has_always_on_ringbuffer ? _backend->audio_buffer_pool : nullptr
+    );
     auto pi = _backend->add_audio_port(port);
     return external_audio_port(pi);
   }, (shoopdaloop_audio_port_t*) nullptr);
@@ -1158,11 +1163,12 @@ unsigned get_midi_port_output_connectability(shoopdaloop_midi_port_t *port) {
   }, 0);
 }
 
-shoopdaloop_midi_port_t *open_driver_midi_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction) {
+shoopdaloop_midi_port_t *open_driver_midi_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction, unsigned has_always_on_ringbuffer) {
   return api_impl<shoopdaloop_midi_port_t*>("open_driver_midi_port", [&]() -> shoopdaloop_midi_port_t* {
     auto _backend = internal_backend_session(backend);
     auto _driver = internal_audio_driver(driver);
     if (!_backend || !_driver) { return nullptr; }
+    logging::log<"Backend.API", log_level_warning>(std::nullopt, std::nullopt, "implement opening midi ringbuffer");
     auto port = _driver->open_midi_port(name_hint, direction);
     auto pi = _backend->add_midi_port(port);
     return external_midi_port(pi);
@@ -1173,6 +1179,7 @@ shoopdaloop_midi_port_t *open_internal_midi_port (shoop_backend_session_t *backe
   return api_impl<shoopdaloop_midi_port_t*>("open_internal_midi_port", [&]() -> shoopdaloop_midi_port_t* {
     auto _backend = internal_backend_session(backend);
     if (!_backend) { return nullptr; }
+    logging::log<"Backend.API", log_level_warning>(std::nullopt, std::nullopt, "implement opening midi ringbuffer");
     auto port = nullptr;
     throw std::runtime_error("Creating internal MIDI ports not yet supported");
     auto pi = _backend->add_audio_port(port);

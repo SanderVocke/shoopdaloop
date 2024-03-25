@@ -118,11 +118,13 @@ SHOOP_EXPORT shoopdaloop_audio_port_t *open_driver_audio_port (
     shoop_backend_session_t *backend,
     shoop_audio_driver_t *driver,
     const char* name_hint,
-    shoop_port_direction_t direction
+    shoop_port_direction_t direction,
+    unsigned has_always_on_ringbuffer
 );
 SHOOP_EXPORT shoopdaloop_audio_port_t *open_internal_audio_port (
     shoop_backend_session_t *backend,
-    const char* name_hint
+    const char* name_hint,
+    unsigned has_always_on_ringbuffer
 );
 SHOOP_EXPORT unsigned get_audio_port_input_connectability(shoopdaloop_audio_port_t* port);
 SHOOP_EXPORT unsigned get_audio_port_output_connectability(shoopdaloop_audio_port_t* port);
@@ -142,11 +144,13 @@ SHOOP_EXPORT shoopdaloop_midi_port_t *open_driver_midi_port (
     shoop_backend_session_t *backend,
     shoop_audio_driver_t *driver,
     const char* name_hint,
-    shoop_port_direction_t direction
+    shoop_port_direction_t direction,
+    unsigned has_always_on_ringbuffer
 );
 SHOOP_EXPORT shoopdaloop_midi_port_t *open_internal_midi_port (
     shoop_backend_session_t *backend,
-    const char* name_hint
+    const char* name_hint,
+    unsigned has_always_on_ringbuffer
 );
 SHOOP_EXPORT unsigned get_midi_port_input_connectability(shoopdaloop_midi_port_t* port);
 SHOOP_EXPORT unsigned get_midi_port_output_connectability(shoopdaloop_midi_port_t* port);

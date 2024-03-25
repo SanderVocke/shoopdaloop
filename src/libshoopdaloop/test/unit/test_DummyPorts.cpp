@@ -123,7 +123,7 @@ TEST_CASE("Ports - Dummy Audio In - Peak", "[DummyPorts][ports][audio]") {
     CHECK(port.get_output_peak() == Catch::Approx(2.0f));
 }
 
-TEST_CASE("Ports - Dummy Audio In - get ringbuffer data", "[AudioChannel][audio]") {
+TEST_CASE("Ports - Dummy Audio In - get ringbuffer data", "[DummyPorts][ports][audio]") {
     auto pool = std::make_shared<BufferQueue<float>::BufferPool>("Test", 10, 4);
     auto port = DummyAudioPort("test", ShoopPortDirection_Input, pool);
 
