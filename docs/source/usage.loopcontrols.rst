@@ -92,7 +92,7 @@ A **composite loop** can be created by selecting an empty slot, then holding **A
 * Normally at the end of the current sequence. Note that the same loop may also be clicked multiple times to add it repeatedly.
 * If **Ctrl** is also held, it is added in parallel of the current sequence.
 
-Note that **Alt**+click will append to the first "timeline". So for example, if a short loop is composed in parallel with a long one, **Alt**-click will add an additional loop to play right after the short one.
+Note that **Alt** + click will append to the first "timeline". So for example, if a short loop is composed in parallel with a long one, **Alt** - click will add an additional loop to play right after the short one.
 
 For advanced editing of the sequence, the loop details window should be used (note that at the time of writing this, that is unimplemented).
 
