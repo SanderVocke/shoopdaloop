@@ -40,7 +40,7 @@ pyramid_data_t * create_audio_power_pyramid(unsigned int n_samples, float *input
             if (current_size > 0) {
                 power_data = allocate(current_size);
                 for(size_t i=0; i<current_size; i++) {
-                    power_data[i] = (prev_power_data[2*i] + prev_power_data[2*i+1]) / 2.0f;
+                    power_data[i] = std::max(prev_power_data[2*i], prev_power_data[2*i+1]);
                 }
             }
         }

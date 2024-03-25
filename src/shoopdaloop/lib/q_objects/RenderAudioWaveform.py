@@ -136,8 +136,11 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
 
         for i in range(0, min(math.ceil(self.width()), len(self._lines))):
             sample_idx = (float(i) + float(self._samples_offset) / self._samples_per_bin) * self._samples_per_bin / float(subsampling_factor)
-            nearest_idx = min(max(-1, int(round(sample_idx))), data.n_samples)
-            sample = (data.data[nearest_idx] if (nearest_idx >= 0 and nearest_idx < data.n_samples) else 0.0)
+            under_idx = min(max(-1, int(math.floor(sample_idx))), data.n_samples)
+            over_idx = min(max(-1, int(math.ceil(sample_idx))), data.n_samples)
+            under_sample = (data.data[under_idx] if (under_idx >= 0 and under_idx < data.n_samples) else 0.0)
+            over_sample = (data.data[over_idx] if (over_idx >= 0 and over_idx < data.n_samples) else under_sample)
+            sample = max(under_sample, over_sample)
             if sample < 0.0:
                 self._lines[i].setLine(
                     i, int(0.5*self.height()),
