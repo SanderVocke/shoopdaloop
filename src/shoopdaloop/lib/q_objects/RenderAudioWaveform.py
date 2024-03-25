@@ -1,6 +1,6 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QLine
 from PySide6.QtQuick import QQuickItem, QQuickPaintedItem
-from PySide6.QtGui import QPen, QPainter
+from PySide6.QtGui import QPen, QPainter, QColor
 from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
@@ -152,7 +152,7 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
                     i, int((0.5 + 0.5*sample) * self.height())
                 )
 
-        painter.setPen(QPen("red"))
+        painter.setPen(QPen(QColor(0.7 * 255.0, 0.0, 0.0)))
         painter.drawLines(self._lines)
         painter.drawLine(0, 0.5*self.height(), self.width(), 0.5*self.height())
         
