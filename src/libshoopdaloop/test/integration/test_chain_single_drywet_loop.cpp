@@ -18,158 +18,6 @@
 #include <thread>
 #include "LoggingEnabled.h"
 
-struct SingleMidiPortPassthroughTestChain : public ModuleLoggingEnabled<"Test.SingleMidiPortPassthroughTestChain"> {
-    shoop_backend_session_t *api_backend_session;
-    std::shared_ptr<BackendSession> int_backend_session;
-
-    shoop_audio_driver_t *api_driver;
-    std::shared_ptr<shoop_types::_DummyAudioMidiDriver> int_driver;
-
-    shoopdaloop_midi_port_t *api_input_port;
-    std::shared_ptr<GraphPort> int_input_port;
-    DummyMidiPort* int_dummy_input_port;
-
-    shoopdaloop_midi_port_t *api_output_port;
-    std::shared_ptr<GraphPort> int_output_port;
-    DummyMidiPort* int_dummy_output_port;
-
-    SingleMidiPortPassthroughTestChain() {
-        api_backend_session = create_backend_session();
-        int_backend_session = internal_backend_session(api_backend_session);
-
-        api_driver = create_audio_driver(Dummy);
-        int_driver = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(internal_audio_driver(api_driver));
-
-        auto settings = DummyAudioMidiDriverSettings{};
-        int_driver->start(settings);
-        set_audio_driver(api_backend_session, api_driver);
-
-        api_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input, 0);
-        api_output_port = open_driver_midi_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output, 0);
-        int_input_port = internal_midi_port(api_input_port);
-        int_output_port = internal_midi_port(api_output_port);
-        int_dummy_input_port = dynamic_cast<DummyMidiPort*>(&int_input_port->get_port());
-        int_dummy_output_port = dynamic_cast<DummyMidiPort*>(&int_output_port->get_port());
-
-        // Note: need to wait for channels to really appear
-        int_driver->wait_process();
-        int_driver->enter_mode(DummyAudioMidiDriverMode::Controlled);
-
-        connect_midi_port_internal(api_input_port, api_output_port);
-
-        set_midi_port_passthroughMuted(api_input_port, 0);
-        set_midi_port_muted(api_input_port, 0);
-        set_midi_port_passthroughMuted(api_output_port, 0);
-        set_midi_port_muted(api_output_port, 0);
-
-        int_backend_session->wait_graph_up_to_date(); 
-    }
-};
-
-struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirectLoopTestChain"> {
-
-    shoop_backend_session_t *api_backend_session;
-    std::shared_ptr<BackendSession> int_backend_session;
-
-    shoop_audio_driver_t *api_driver;
-    std::shared_ptr<shoop_types::_DummyAudioMidiDriver> int_driver;
-
-    shoopdaloop_audio_port_t *api_input_port;
-    std::shared_ptr<GraphPort> int_input_port;
-    DummyAudioPort* int_dummy_input_port;
-
-    shoopdaloop_audio_port_t *api_output_port;
-    std::shared_ptr<GraphPort> int_output_port;
-    DummyAudioPort* int_dummy_output_port;
-
-    shoopdaloop_midi_port_t *api_midi_input_port;
-    std::shared_ptr<GraphPort> int_midi_input_port;
-    DummyMidiPort* int_dummy_midi_input_port;
-
-    shoopdaloop_midi_port_t *api_midi_output_port;
-    std::shared_ptr<GraphPort> int_midi_output_port;
-    DummyMidiPort* int_dummy_midi_output_port;
-
-    shoopdaloop_loop_t *api_loop;
-    std::shared_ptr<GraphLoop> int_loop;
-    std::shared_ptr<AudioMidiLoop> int_audiomidi_loop;
-
-    std::shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
-
-    shoopdaloop_loop_audio_channel_t *api_audio_chan;
-    shoopdaloop_loop_midi_channel_t *api_midi_chan;
-    std::shared_ptr<GraphLoopChannel> int_audio_chan_node;
-    std::shared_ptr<GraphLoopChannel> int_midi_chan_node;
-    std::shared_ptr<shoop_types::LoopAudioChannel> int_audio_chan;
-    std::shared_ptr<shoop_types::LoopMidiChannel> int_midi_chan;
-
-    SingleDirectLoopTestChain() {
-        api_backend_session = create_backend_session();
-        int_backend_session = internal_backend_session(api_backend_session);
-
-        api_driver = create_audio_driver(Dummy);
-        int_driver = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(internal_audio_driver(api_driver));
-
-        auto settings = DummyAudioMidiDriverSettings{};
-        int_driver->start(settings);
-        set_audio_driver(api_backend_session, api_driver);
-
-        api_input_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input, 0);
-        api_output_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output, 0);
-        int_input_port = internal_audio_port(api_input_port);
-        int_output_port = internal_audio_port(api_output_port);
-        int_dummy_input_port = dynamic_cast<DummyAudioPort*>(&int_input_port->get_port());
-        int_dummy_output_port = dynamic_cast<DummyAudioPort*>(&int_output_port->get_port());
-
-        api_midi_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_in", ShoopPortDirection_Input, 0);
-        api_midi_output_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_out", ShoopPortDirection_Output, 0);
-        int_midi_input_port = internal_midi_port(api_midi_input_port);
-        int_midi_output_port = internal_midi_port(api_midi_output_port);
-        int_dummy_midi_input_port = dynamic_cast<DummyMidiPort*>(&int_midi_input_port->get_port());
-        int_dummy_midi_output_port = dynamic_cast<DummyMidiPort*>(&int_midi_output_port->get_port());
-
-        api_loop = create_loop(api_backend_session);
-        int_loop = internal_loop(api_loop);
-
-        api_audio_chan = add_audio_channel(api_loop, ChannelMode_Direct);
-        api_midi_chan = add_midi_channel(api_loop, ChannelMode_Direct);
-        int_audio_chan_node = internal_audio_channel(api_audio_chan);
-        int_midi_chan_node = internal_midi_channel(api_midi_chan);
-
-        // Note: need to wait for channels to really appear
-        int_driver->wait_process();
-
-        int_audio_chan = std::dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_audio_chan_node->channel);
-        int_midi_chan = std::dynamic_pointer_cast<shoop_types::LoopMidiChannel>(int_midi_chan_node->channel);
-        
-        if(!int_audio_chan) { throw std::runtime_error("audio channel is null"); }
-        if(!int_midi_chan) { throw std::runtime_error("midi channel is null"); }
-
-        int_driver->enter_mode(DummyAudioMidiDriverMode::Controlled);
-
-        connect_audio_input(api_audio_chan, api_input_port);
-        connect_audio_output(api_audio_chan, api_output_port);
-        connect_midi_input(api_midi_chan, api_midi_input_port);
-        connect_midi_output(api_midi_chan, api_midi_output_port);
-
-        connect_audio_port_internal(api_input_port, api_output_port);
-        connect_midi_port_internal(api_midi_input_port, api_midi_output_port);
-
-        set_audio_port_passthroughMuted(api_input_port, 0);
-        set_audio_port_muted(api_input_port, 0);
-        set_audio_port_gain(api_input_port, 1.0f);
-        set_midi_port_passthroughMuted(api_midi_input_port, 0);
-        set_midi_port_muted(api_midi_input_port, 0);
-        set_audio_port_passthroughMuted(api_output_port, 0);
-        set_audio_port_muted(api_output_port, 0);
-        set_audio_port_gain(api_output_port, 1.0f);
-        set_midi_port_passthroughMuted(api_midi_output_port, 0);
-        set_midi_port_muted(api_midi_output_port, 0);
-
-        int_backend_session->wait_graph_up_to_date(); 
-    }
-};
-
 struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWetLoopTestChain"> {
 
     shoop_backend_session_t *api_backend_session;
@@ -205,6 +53,9 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
     std::shared_ptr<GraphLoop> int_loop;
     std::shared_ptr<AudioMidiLoop> int_audiomidi_loop;
 
+    shoopdaloop_loop_t *api_sync_loop;
+    std::shared_ptr<GraphLoop> int_sync_loop;
+
     std::shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
 
     shoopdaloop_loop_audio_channel_t *api_dry_chan;
@@ -229,7 +80,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         int_driver->start(settings);
         set_audio_driver(api_backend_session, api_driver);
 
-        api_input_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input, 0);
+        api_input_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input, 1);
         api_output_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output, 0);
         int_input_port = internal_audio_port(api_input_port);
         int_output_port = internal_audio_port(api_output_port);
@@ -254,6 +105,9 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         api_loop = create_loop(api_backend_session);
         int_loop = internal_loop(api_loop);
 
+        api_sync_loop = create_loop(api_backend_session);
+        int_sync_loop = internal_loop(api_sync_loop);
+
         api_dry_chan = add_audio_channel(api_loop, ChannelMode_Dry);
         api_wet_chan = add_audio_channel(api_loop, ChannelMode_Wet);
         int_dry_chan_node = internal_audio_channel(api_dry_chan);
@@ -274,6 +128,8 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         if(!int_dry_midi_chan) { throw std::runtime_error("Dry MIDI channel is null"); }
 
         int_driver->enter_mode(DummyAudioMidiDriverMode::Controlled);
+
+        set_loop_sync_source(api_loop, api_sync_loop);
 
         connect_audio_input(api_dry_chan, api_input_port);
         connect_audio_output(api_dry_chan, api_fx_in);
@@ -644,4 +500,69 @@ TEST_CASE("Chain - DryWet live playback MIDI basic", "[chain][midi]") {
     CHECK(result_data[3] == Catch::Approx(step));
 
     tst.int_driver->close();
+};
+
+TEST_CASE("Chain - DryWet adopt audio ringbuffer - no sync loop", "[chain][audio]") {
+    SingleDryWetLoopTestChain tst;
+
+    // Process 8 samples in stopped mode
+    std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+    tst.int_dummy_input_port->queue_data(8, input_data.data());
+    tst.int_driver->controlled_mode_request_samples(8);
+    tst.int_driver->controlled_mode_run_request();
+
+    // Grab the ringbuffer
+    adopt_ringbuffer_contents(tst.api_loop, 0, 1);
+    tst.int_driver->controlled_mode_run_request();
+
+    // Since the sync loop is empty, the fallback behavior here should be that the
+    // whole ringbuffer is adopted and start offset is 0.
+    auto n_ringbuffer_samples = tst.int_dummy_input_port->get_ringbuffer_n_samples();
+    auto dry_data = tst.int_dry_audio_chan->get_data(true);
+    auto wet_data = tst.int_wet_audio_chan->get_data(true);
+    
+    CHECK(tst.int_dry_audio_chan->get_start_offset() == 0);
+    CHECK(tst.int_wet_audio_chan->get_start_offset() == 0);
+    CHECK(tst.int_loop->loop->get_length() == n_ringbuffer_samples);
+
+    REQUIRE(dry_data.size() == n_ringbuffer_samples);
+    REQUIRE(wet_data.size() == n_ringbuffer_samples);
+    auto last_eight_dry = std::vector<float>(dry_data.end() - 8, dry_data.end());
+    auto last_eight_wet = std::vector<float>(wet_data.end() - 8, wet_data.end());
+    CHECK(last_eight_dry == input_data);
+    CHECK(last_eight_wet == std::vector<float>({0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4}));
+};
+
+TEST_CASE("Chain - DryWet adopt audio ringbuffer - one cycle", "[chain][audio]") {
+    SingleDryWetLoopTestChain tst;
+
+    // Process 8 samples in stopped mode
+    std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+    tst.int_dummy_input_port->queue_data(8, input_data.data());
+    tst.int_sync_loop->loop->set_length(3, true);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+
+    tst.int_driver->controlled_mode_request_samples(7); // Two cycles and 1 sample
+    tst.int_driver->controlled_mode_run_request();
+
+    // Grab the ringbuffer. Offset 1 means last completed cycle.
+    adopt_ringbuffer_contents(tst.api_loop, 1, 1);
+    tst.int_driver->controlled_mode_run_request();
+
+    // We should have grabbed the full last completed cycle, which is samples [4, 5, 6].
+    auto n_ringbuffer_samples = tst.int_dummy_input_port->get_ringbuffer_n_samples();
+    auto dry_data = tst.int_dry_audio_chan->get_data(true);
+    auto wet_data = tst.int_wet_audio_chan->get_data(true);
+
+    CHECK(tst.int_loop->loop->get_length() == 3);
+    auto dry_so = tst.int_dry_audio_chan->get_start_offset();
+    auto wet_so = tst.int_dry_audio_chan->get_start_offset();
+    CHECK(dry_data.size() >= 3);
+    CHECK(wet_data.size() >= 3);
+    REQUIRE((int)dry_data.size() - (int)dry_so >= 3); // 3 samples available
+    REQUIRE((int)wet_data.size() - (int)wet_so >= 3); // 3 samples available
+    auto dry_samples_of_interest = std::vector<float>(dry_data.begin() + dry_so, dry_data.begin() + dry_so + 3);
+    auto wet_samples_of_interest = std::vector<float>(wet_data.begin() + wet_so, wet_data.begin() + wet_so + 3);
+    CHECK(dry_samples_of_interest == std::vector<float>({4, 5, 6}));
+    CHECK(wet_samples_of_interest == std::vector<float>({2, 2.5, 3}));
 };

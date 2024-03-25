@@ -143,7 +143,8 @@ public:
         shoop_fx_chain_type_t type,
         uint32_t sample_rate,
         uint32_t buffer_size,
-        std::string human_name
+        std::string human_name,
+        std::shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool
     );
 
     void instantiate(uint32_t sample_rate, uint32_t buffer_size);

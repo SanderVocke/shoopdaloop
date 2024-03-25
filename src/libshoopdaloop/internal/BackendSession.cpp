@@ -211,7 +211,7 @@ std::shared_ptr<GraphFXChain> BackendSession::create_fx_chain(shoop_fx_chain_typ
         case Carla_Patchbay_16x:
             try {
                 chain = lv2.create_carla_chain<Time, Size>(
-                    type, m_sample_rate, m_buffer_size, std::string(title)
+                    type, m_sample_rate, m_buffer_size, std::string(title), audio_buffer_pool
                 );
             } catch (const std::exception &exp) {
                 throw_error<std::runtime_error>("Failed to create a Carla LV2 instance: " + std::string(exp.what()));
@@ -264,7 +264,7 @@ std::shared_ptr<GraphFXChain> BackendSession::create_fx_chain(shoop_fx_chain_typ
                     }
                     memcpy((void*)outs[0]->PROC_get_buffer(n), (void*)out_buf_1.data(), n*sizeof(float));
                     memcpy((void*)outs[1]->PROC_get_buffer(n), (void*)out_buf_2.data(), n*sizeof(float));
-                }
+                }, audio_buffer_pool
             );
         break;
     };
