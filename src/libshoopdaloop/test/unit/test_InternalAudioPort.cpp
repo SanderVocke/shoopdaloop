@@ -103,3 +103,25 @@ TEST_CASE("Ports - Internal Audio - Noop Zero", "[InternalAudioPort][ports][audi
     CHECK(second_round_output[3] == Catch::Approx(0.0f));
     CHECK(second_round_output[4] == Catch::Approx(0.0f));
 }
+
+TEST_CASE("Ports - Internal Audio - get ringbuffer data", "[AudioChannel][audio]") {
+    auto pool = std::make_shared<BufferQueue<float>::BufferPool>("Test", 10, 4);
+    InternalAudioPort<float> port ("dummy", 10, pool);
+
+    // Process 4 samples
+    port.PROC_prepare(4);
+    auto buf = port.PROC_get_buffer(4);
+    buf[0] = 0.0f;
+    buf[1] = 0.1f;
+    buf[2] = 0.2f;
+    buf[3] = 0.3f;
+    port.PROC_process(4);
+
+    // Get the ringbuffer content
+    auto s = port.PROC_get_ringbuffer_contents();
+    CHECK(s.n_samples >= 4);
+    CHECK(s.data->back()->at(0) == 0.0f);
+    CHECK(s.data->back()->at(1) == 0.1f);
+    CHECK(s.data->back()->at(2) == 0.2f);
+    CHECK(s.data->back()->at(3) == 0.3f);
+};

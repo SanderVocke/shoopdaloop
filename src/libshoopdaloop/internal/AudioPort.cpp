@@ -16,7 +16,9 @@ AudioPort<SampleT>::AudioPort(std::shared_ptr<BufferPool> buffer_pool)
       ma_gain(1.0f),
       ma_input_peak(0.0f),
       ma_output_peak(0.0f),
-      mp_always_record_ringbuffer(buffer_pool, buffer_pool ? 32 : 0) {}
+      mp_always_record_ringbuffer(buffer_pool, buffer_pool ? 32 : 0)
+{
+}
 
 template<typename SampleT>
 AudioPort<SampleT>::~AudioPort() {}
@@ -52,7 +54,7 @@ void AudioPort<SampleT>::PROC_process(uint32_t nframes) {
     );
 
     // Process ringbuffer
-    if (mp_always_record_ringbuffer.n_samples() > 0) {
+    if (mp_always_record_ringbuffer.single_buffer_size() > 0) {
         mp_always_record_ringbuffer.PROC_put(buf, nframes);
     }
 }

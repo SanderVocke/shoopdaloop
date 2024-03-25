@@ -4,7 +4,8 @@
 #include <iostream>
 
 template<typename SampleT>
-BufferQueue<SampleT>::BufferQueue(std::shared_ptr<BufferPool> pool, uint32_t max_buffers) : pool(pool) {
+BufferQueue<SampleT>::BufferQueue(std::shared_ptr<BufferPool> pool, uint32_t max_buffers) : pool(pool)
+{
     buffers = std::make_shared<std::deque<Buffer>>();
     ma_active_buffer_pos.store(pool ? pool->object_size() : 0); // put at end of a virtual buffer, ensures new buffer will be created immediately
     ma_max_buffers.store(max_buffers);
