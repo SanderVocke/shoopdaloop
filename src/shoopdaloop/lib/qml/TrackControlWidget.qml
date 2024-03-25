@@ -35,7 +35,7 @@ Item {
         }
         return false
     }
-    
+        
     property bool mute : {
         // Initial setting
         var ports = initial_track_descriptor.ports
@@ -104,7 +104,7 @@ Item {
         let modes = root.loops.map(l => l.mode)
         return Array.from(new Set(modes))
     }
-    readonly property var unique_next_cycle_loop_modes : {
+        readonly property var unique_next_cycle_loop_modes : {
         let modes = root.loops.map(l => {
             if (l.next_transition_delay == 1) { return l.next_mode; }
             else { return undefined }
@@ -190,12 +190,12 @@ Item {
     RegistryLookups {
         id: lookup_fx_ports
         registry: registries.objects_registry
-        keys: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.ports.map((p) => p.id) : []
+        keys: (initial_track_descriptor && initial_track_descriptor.fx_chain) ? initial_track_descriptor.fx_chain.ports.map((p) => p.id) : []
     }
     RegistryLookup {
         id: lookup_fx_chain
         registry: registries.objects_registry
-        key: initial_track_descriptor && 'fx_chain' in initial_track_descriptor ? initial_track_descriptor.fx_chain.id : null
+        key: (initial_track_descriptor && initial_track_descriptor.fx_chain) ? initial_track_descriptor.fx_chain.id : null
     }
     LinearDbConversion {
         id: convert_gain
@@ -207,8 +207,8 @@ Item {
     // Methods
     function is_audio(p)  { return p && p.schema.match(/audioport\.[0-9]+/) }
     function is_midi(p)   { return p && p.schema.match(/midiport\.[0-9]+/)  }
-    function is_in(p)     { return p && p.direction == "input"  && p.id.match(/.*_in(?:_[0-9]*)?$/); }
-    function is_out(p)    { return p && p.direction == "output" && p.id.match(/.*_out(?:_[0-9]*)?$/); }
+    function is_in(p)     { return p && p.id.match(/.*_in(?:_[0-9]*)?$/); }
+    function is_out(p)    { return p && p.id.match(/.*_out(?:_[0-9]*)?$/); }
     function is_dry(p)    { return p && p.id.match(/.*_dry_.*/); }
     function is_wet(p)    { return p && p.id.match(/.*_wet_.*/); }
     function is_direct(p) { return p && p.id.match(/.*_direct_.*/); }
@@ -334,7 +334,9 @@ Item {
             })
     }
     function push_fx_active() {
-        if (root.maybe_fx_chain) root.maybe_fx_chain.set_active(logic.enable_fx)
+        if (root.maybe_fx_chain) {
+            root.maybe_fx_chain.set_active(logic.enable_fx)
+        }
     }
     Component.onCompleted: {
         push_monitor()
@@ -780,20 +782,8 @@ Item {
                 }
                 width: 8
                 radius: 2
-                color: '#00BBFF'
-                visible: root.n_midi_notes_active_in > 0
-            }
-            Rectangle {
-                id: input_midi_evts_indicator
-                anchors {
-                    right: input_peak_r_bar.right
-                    top: input_peak_r_bar.top
-                    bottom: input_peak_r_bar.bottom
-                }
-                width: 8
-                radius: 2
                 color: '#00FFFF'
-                visible: root.n_midi_events_in > 0
+                visible: root.n_midi_notes_active_in > 0 || root.n_midi_events_in > 0
             }
             Item {
                 id: monitor_row

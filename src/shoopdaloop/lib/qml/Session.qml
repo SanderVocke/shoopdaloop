@@ -112,6 +112,7 @@ Rectangle {
             track_groups,
             [],
             [],
+            [],
             registries.fx_chain_states_registry.all_values()
         );
     }
@@ -213,6 +214,7 @@ Rectangle {
     }
 
     function reload() {
+        root.logger.debug(() => ("Reloading session"))
         registries.state_registry.clear([
             'sync_active'
         ])
@@ -223,6 +225,10 @@ Rectangle {
 
     function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
         tracks_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
+        if (sync_loop_loader.track_widget) {
+            root.logger.debug(() => (`Queue load tasks for sync track`))
+            sync_loop_loader.track_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
+        }
     }
 
     Dialog {
@@ -287,7 +293,6 @@ Rectangle {
             }
 
             root.initial_descriptor = descriptor
-            root.logger.debug(() => ("Reloading session"))
             reload()
             registries.state_registry.load_action_started()
 
@@ -342,6 +347,7 @@ Rectangle {
     }
 
     LuaScriptManager {
+        // Only connect to the control interface when it is ready
         control_interface: control_interface
 
         RegisterInRegistry {
@@ -370,8 +376,7 @@ Rectangle {
 
         sourceComponent: MonkeyTester {
             session: root
-            Component.onCompleted: { 
-                console.log("starting");
+            Component.onCompleted: {
                 start()
             }
         }
@@ -389,8 +394,8 @@ Rectangle {
         focus: true
         id: session_focus_item
 
-        Keys.onPressed: (event) => control_interface.key_pressed(event.key, event.modifiers)
-        Keys.onReleased: (event) => control_interface.key_released(event.key, event.modifiers)
+        Keys.onPressed: (event) => control_interface && control_interface.key_pressed(event.key, event.modifiers)
+        Keys.onReleased: (event) => control_interface && control_interface.key_released(event.key, event.modifiers)
 
         property var focusItem : Window.activeFocusItem
         onFocusItemChanged: {
@@ -469,6 +474,8 @@ Rectangle {
 
             onLoadSession: (filename) => root.load_session(filename)
             onSaveSession: (filename) => root.save_session(filename)
+            onProcessThreadSegfault: session_backend.segfault_on_process_thread()
+            onProcessThreadAbort: session_backend.abort_on_process_thread()
         }
 
         Item {
@@ -498,7 +505,7 @@ Rectangle {
             anchors {
                 top: app_controls.bottom
                 left: parent.left
-                bottom: details_area.top
+                bottom: pane_area.visible ? pane_area.top : bottom_bar.top
                 right: logo_menu_area.left
                 bottomMargin: 4
                 leftMargin: 4
@@ -508,30 +515,28 @@ Rectangle {
         }
 
         ResizeableItem {
-            id: details_area
+            id: pane_area
 
-            visible: bottom_bar.details_active
+            readonly property bool open : registries.state_registry.details_open
+            visible: open
 
             property real active_height: 200
-            height: bottom_bar.details_active ? active_height : 0 // Initial value
-
-            Connections {
-                target: bottom_bar
-                function onDetails_activeChanged() {
-                    if (bottom_bar.details_active) {
-                        height = details_area.active_height
-                    } else {
-                        if (height > 0) {
-                            active_height = height
-                        }
-                        height = 0
+            
+            onOpenChanged: {
+                if (open) {
+                    height = pane_area.active_height
+                } else {
+                    if (height > 0) {
+                        pane_area.active_height = height
                     }
                 }
             }
+
+            height: open ? active_height : 0 // Initial value
             max_height: root.height - 50
 
             top_drag_enabled: true
-            top_drag_area_y_offset: detailspane.pane_y_offset
+            top_drag_area_y_offset: pane.pane_y_offset
 
             anchors {
                 bottom: bottom_bar.top
@@ -540,27 +545,28 @@ Rectangle {
             }
 
             DetailsPane {
-                id: detailspane
+                id: pane
                 temporary_items : Array.from(root.selected_loops).map(l => ({
-                    'title': l.name + ' (selected)',
-                    'item': l,
-                    'autoselect': true
-                }))
+                        'title': l.name + ' (selected)',
+                        'item': l,
+                        'autoselect': true
+                    }))
 
                 RegisterInRegistry {
                     registry: registries.state_registry
                     key: 'main_details_pane'
-                    object: detailspane
+                    object: pane
                 }
 
                 anchors.fill: parent
+
+                sync_track: root.sync_track
+                main_tracks: root.main_tracks
             }
         }
 
         Item {
             id: bottom_bar
-
-            property alias details_active: details_toggle.checked
             height: details_toggle.height
 
             anchors {
@@ -574,6 +580,13 @@ Rectangle {
                 text: 'details'
                 togglable: true
                 height: 26
+
+                Component.onCompleted: registries.state_registry.set_details_open(checked)
+                onCheckedChanged: registries.state_registry.set_details_open(checked)
+                Connections {
+                    target: registries.state_registry
+                    function onDetails_openChanged() { details_toggle.checked = registries.state_registry.details_open }
+                }
             }
         }
 
@@ -601,6 +614,7 @@ Rectangle {
                 }
 
                 property bool loaded: false
+                property var initial_descriptor : null
 
                 function initialize() {
                     if (track_widget) {
@@ -608,7 +622,8 @@ Rectangle {
                     }
                     active = false
                     loaded = false
-                    active = Qt.binding(() => root.sync_loop_track_descriptor != null)
+                    initial_descriptor = root.sync_loop_track_descriptor
+                    active = Qt.binding(() => initial_descriptor != null)
                 }
 
                 Component.onCompleted: { initialize() }
@@ -636,11 +651,13 @@ Rectangle {
                             right: parent.right
                             top: parent.top
                         }
+
+                        initial_descriptor: sync_loop_loader.initial_descriptor
                         
-                        initial_descriptor: root.sync_loop_track_descriptor
                         onLoadedChanged: sync_loop_loader.loaded = loaded
                         name_editable: false
                         sync_loop_layout: true
+                        track_idx : -1
                     }
 
                     TrackControlWidget {

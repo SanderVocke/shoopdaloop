@@ -21,48 +21,50 @@ class TestRunner(ShoopQObject):
         return len(self.registered_testcases) > 0 and len(self.ran) == len(self.registered_testcases)
     
     # done
-    doneChanged = Signal()
-    @Property(bool, notify=doneChanged)
+    doneChanged = ShoopSignal()
+    @ShoopProperty(bool, notify=doneChanged)
     def done(self):
         return self.is_done()
     
     # results
-    @Property('QVariant')
+    @ShoopProperty('QVariant')
     def results(self):
         return self._results
         
-    @Slot(TestCase)
+    @ShoopSlot(TestCase)
     def register_testcase(self, testcase):
         self.logger.info('Registering testcase {}'.format(testcase))
         self.registered_testcases.add(testcase)
     
-    @Slot(TestCase)
+    @ShoopSlot(TestCase)
     def testcase_ready_to_start(self, testcase):
         self.logger.info('Testcase {} ready to start'.format(testcase))
         self.run(testcase)
     
-    @Slot(TestCase, str, str)
+    @ShoopSlot(TestCase, str, str)
     def testcase_ran_fn(self, testcase, fn_name, status):
         name = testcase.name        
         if not name in self._results:
             self._results[name] = dict()
         self._results[testcase.name][fn_name] = status
     
-    @Slot(TestCase, str)
+    @ShoopSlot(TestCase, str)
     def testcase_register_fn(self, testcase, fn_name):
         name = testcase.name        
         if not name in self._results:
             self._results[name] = dict()
         self._results[testcase.name][fn_name] = 'fail'
 
-    @Slot(str, result=bool)
+    @ShoopSlot(str, result=bool)
     def should_skip(self, fn):
         return self.skip_fn(fn)
 
-    @Slot(TestCase)
+    @ShoopSlot(TestCase)
     def run(self, testcase):
         self.running = testcase
-        self.logger.info('---- testcase {} ----'.format(testcase.name))
+        self.logger.info('-------------------------------------------------')
+        self.logger.info('-- testcase {}'.format(testcase.name))
+        self.logger.info('-------------------------------------------------')
         self.running.run()
         self.running = None
 

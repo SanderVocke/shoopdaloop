@@ -29,8 +29,8 @@ class DummyProcessHelper(ShoopQQuickItem):
     ##############
         
     # wait_start
-    waitStartChanged = Signal(float)
-    @Property(float, notify=waitStartChanged)
+    waitStartChanged = ShoopSignal(float)
+    @ShoopProperty(float, notify=waitStartChanged)
     def wait_start(self):
         return self._wait_start
     @wait_start.setter
@@ -39,8 +39,8 @@ class DummyProcessHelper(ShoopQQuickItem):
         self.waitStartChanged.emit(self._wait_start)
     
     # wait_interval
-    waitIntervalChanged = Signal(float)
-    @Property(float, notify=waitIntervalChanged)
+    waitIntervalChanged = ShoopSignal(float)
+    @ShoopProperty(float, notify=waitIntervalChanged)
     def wait_interval(self):
         return self._wait_interval
     @wait_interval.setter
@@ -49,8 +49,8 @@ class DummyProcessHelper(ShoopQQuickItem):
         self.waitIntervalChanged.emit(self._wait_interval)
     
     # n_iters
-    nItersChanged = Signal(int)
-    @Property(int, notify=nItersChanged)
+    nItersChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=nItersChanged)
     def n_iters(self):
         return self._n_iters
     @n_iters.setter
@@ -59,8 +59,8 @@ class DummyProcessHelper(ShoopQQuickItem):
         self.nItersChanged.emit(self._n_iters)
     
     # samples_per_iter
-    samplesPerIterChanged = Signal(int)
-    @Property(int, notify=samplesPerIterChanged)
+    samplesPerIterChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=samplesPerIterChanged)
     def samples_per_iter(self):
         return self._samples_per_iter
     @samples_per_iter.setter
@@ -69,8 +69,8 @@ class DummyProcessHelper(ShoopQQuickItem):
         self.samplesPerIterChanged.emit(self._samples_per_iter)
     
     # backend
-    backendChanged = Signal('QVariant')
-    @Property('QVariant', notify=backendChanged)
+    backendChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=backendChanged)
     def backend(self):
         return self._backend
     @backend.setter
@@ -79,8 +79,8 @@ class DummyProcessHelper(ShoopQQuickItem):
         self.backendChanged.emit(self._backend)
     
     # active
-    activeChanged = Signal(bool)
-    @Property(bool, notify=activeChanged)
+    activeChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=activeChanged)
     def active(self):
         return self._active
     @active.setter
@@ -93,7 +93,7 @@ class DummyProcessHelper(ShoopQQuickItem):
     ## SLOTS
     #################
         
-    @Slot()
+    @ShoopSlot()
     def start(self):
         if self.active:
             raise Exception('Cannot start dummy process helper: still running')

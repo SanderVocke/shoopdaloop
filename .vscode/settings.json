@@ -113,4 +113,5 @@
         "xutility": "cpp",
         "*.ipp": "cpp"
     },
+    "esbonio.sphinx.confDir": "",
 }

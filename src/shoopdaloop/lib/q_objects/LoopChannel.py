@@ -8,7 +8,7 @@ import json
 from typing import *
 import sys
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
 from .ShoopPyObject import *
@@ -28,18 +28,23 @@ class LoopChannel(ShoopQQuickItem):
         super(LoopChannel, self).__init__(parent)
         self._backend_obj = None
         self._loop = None
-        self._mode = ChannelMode.Disabled
+        self._mode = self._mode = ChannelMode.Disabled
         self._connected_ports = []
         self._ports = []
-        self._data_length = 0
-        self._start_offset = 0
+        self._data_length = self._new_data_length = 0
+        self._start_offset = self._new_start_offset = 0
         self._recording_started_at = None
-        self._data_dirty = True
-        self._n_preplay_samples = 0
-        self._played_back_sample = None
+        self._data_dirty = self._new_data_dirty = True
+        self._n_preplay_samples = self._new_n_preplay_samples = 0
+        self._played_back_sample = self._new_played_back_sample = None
+        self._n_pending_updates = 0
         self.__logger = Logger('Frontend.LoopChannel')
+
+        self._signal_sender = ThreadUnsafeSignalEmitter()
+        self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
     
-    requestBackendInit = Signal() # This signal requests the loop to be instantiated in the backend
+    requestBackendInit = ShoopSignal() # This signal requests the loop to be instantiated in the backend
+    update = ShoopSignal()
 
     def maybe_initialize(self):
         self.__logger.throw_error("Unimplemented for base class")
@@ -49,14 +54,14 @@ class LoopChannel(ShoopQQuickItem):
     ######################
 
     # initialized
-    initializedChanged = Signal(bool)
-    @Property(bool, notify=initializedChanged)
+    initializedChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return bool(self._backend_obj)
 
     # loop
-    loopChanged = Signal('QVariant')
-    @Property('QVariant', notify=loopChanged)
+    loopChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=loopChanged)
     def loop(self):
         return self._loop
     @loop.setter
@@ -71,14 +76,14 @@ class LoopChannel(ShoopQQuickItem):
             self.maybe_initialize()
     
     # loop_mode
-    loopModeChanged = Signal(int)
-    @Property(int, notify=loopModeChanged)
+    loopModeChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=loopModeChanged)
     def loop_mode(self):
         return (self._loop.mode if self._loop else 0)
 
     # recording_started_at
-    recordingStartedAtChanged = Signal('QVariant')
-    @Property('QVariant', notify=recordingStartedAtChanged)
+    recordingStartedAtChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=recordingStartedAtChanged)
     def recording_started_at(self):
         return self._recording_started_at
     @recording_started_at.setter
@@ -88,12 +93,12 @@ class LoopChannel(ShoopQQuickItem):
             self.recordingStartedAtChanged.emit(l)
 
     # mode
-    modeChanged = Signal(int)
-    @Property(int, notify=modeChanged)
+    modeChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=modeChanged)
     def mode(self):
         return self._mode.value
     # indirect setter via back-end
-    @Slot(int)
+    @ShoopSlot(int)
     def set_mode(self, mode):
         _mode = ChannelMode(mode)
         if _mode != self._mode:
@@ -104,24 +109,24 @@ class LoopChannel(ShoopQQuickItem):
                 self.initializedChanged.connect(lambda: self.set_mode(_mode))
     
     # data length
-    dataLengthChanged = Signal(int)
-    @Property(int, notify=dataLengthChanged)
+    dataLengthChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=dataLengthChanged)
     def data_length(self):
         return self._data_length
     
     # last played sample
-    playedBackSampleChanged = Signal('QVariant')
-    @Property('QVariant', notify=playedBackSampleChanged)
+    playedBackSampleChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=playedBackSampleChanged)
     def played_back_sample(self):
         return self._played_back_sample
     
     # start offset
-    startOffsetChanged = Signal(int)
-    @Property(int, notify=startOffsetChanged)
+    startOffsetChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=startOffsetChanged)
     def start_offset(self):
         return self._start_offset
     # indirect setter via back-end
-    @Slot(int)
+    @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
     def set_start_offset(self, offset):
         if offset != self._start_offset:
             if self._backend_obj:
@@ -131,12 +136,12 @@ class LoopChannel(ShoopQQuickItem):
                 self.initializedChanged.connect(lambda: self.set_start_offset(offset))
     
     # n preplay samples
-    nPreplaySamplesChanged = Signal(int)
-    @Property(int, notify=nPreplaySamplesChanged)
+    nPreplaySamplesChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=nPreplaySamplesChanged)
     def n_preplay_samples(self):
         return self._n_preplay_samples
     # indirect setter via back-end
-    @Slot(int)
+    @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
     def set_n_preplay_samples(self, n):
         if n != self._n_preplay_samples:
             if self._backend_obj:
@@ -146,12 +151,12 @@ class LoopChannel(ShoopQQuickItem):
                 self.initializedChanged.connect(lambda: self.set_n_preplay_samples(n))
 
     # data dirty
-    dataDirtyChanged = Signal(bool)
-    @Property(int, notify=dataDirtyChanged)
+    dataDirtyChanged = ShoopSignal(bool)
+    @ShoopProperty(int, notify=dataDirtyChanged)
     def data_dirty(self):
         return self._data_dirty
     # indirect clear via back-end
-    @Slot()
+    @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def clear_data_dirty(self):
         if self._backend_obj:
             self.__logger.debug(lambda: 'Set data dirty -> False')
@@ -160,14 +165,14 @@ class LoopChannel(ShoopQQuickItem):
             self.initializedChanged.connect(lambda: self.clear_data_dirty())
 
     # connected ports
-    connectedPortsChanged = Signal(list)
-    @Property(list, notify=connectedPortsChanged)
+    connectedPortsChanged = ShoopSignal(list)
+    @ShoopProperty(list, notify=connectedPortsChanged)
     def connected_ports(self):
         return [p for p in self._connected_ports if p and p.isValid()]
     
     # ports to connect
-    portsChanged = Signal(list)
-    @Property(list, notify=portsChanged)
+    portsChanged = ShoopSignal(list)
+    @ShoopProperty(list, notify=portsChanged)
     def ports(self):
         return [p for p in self._ports if p and p.isValid()]
     @ports.setter
@@ -184,7 +189,7 @@ class LoopChannel(ShoopQQuickItem):
     # SLOTS
     ######################
 
-    @Slot()
+    @ShoopSlot()
     def clear(self):
         if self._backend_obj:
             self.__logger.debug(lambda: 'Clear')
@@ -192,11 +197,11 @@ class LoopChannel(ShoopQQuickItem):
         else:
             self.initializedChanged.connect(lambda: self.clear())
 
-    @Slot()
+    @ShoopSlot()
     def initialize(self):
         self.maybe_initialize()
 
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def connect_port(self, port):
         if not port.isValid():
             return
@@ -210,18 +215,21 @@ class LoopChannel(ShoopQQuickItem):
             self.__logger.debug(lambda: 'Connect to port')
             backend_channel = self._backend_obj
             backend_port = port.get_backend_obj()
-            backend_channel.connect(backend_port)
+            if not (port.input_connectability & PortConnectability.Internal.value):
+                backend_channel.connect_input(backend_port)
+            else:
+                backend_channel.connect_output(backend_port)
             self._connected_ports.append(port)
             self.connectedPortsChanged.emit(self._connected_ports)
     
-    @Slot(result='QVariant')
+    @ShoopSlot(result='QVariant')
     def get_backend(self):
         maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend'))
         if maybe_backend:
             return maybe_backend
         self.__logger.throw_error("Could not find backend")
     
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def disconnect(self, port):
         if not port.isValid():
             return
@@ -239,45 +247,70 @@ class LoopChannel(ShoopQQuickItem):
             self._connected_ports.remove(port)
             self.connectedPortsChanged.emit(self._connected_ports)
 
-    @Slot()
-    def update_impl(self, state):
+    def updateOnOtherThreadSubclassImpl(self, state):
         self.__logger.throw_error("Not implemented in base class")
     
-    @Slot()
-    def update(self):
+    def updateOnGuiThreadSubclassImpl(self):
+        self.__logger.throw_error("Not implemented in base class")
+    
+    @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
+    def updateOnOtherThread(self):
         if not self._backend_obj:
             return
         state = self._backend_obj.get_state()
 
-        if state.length != self._data_length:
-            self._data_length = state.length
+        self._new_data_length = state.length
+        self._new_start_offset = state.start_offset
+        self._new_mode = state.mode
+        self._new_data_dirty = state.data_dirty
+        self._new_n_preplay_samples = state.n_preplay_samples
+        self._new_played_back_sample = state.played_back_sample
+        self._n_pending_updates += 1
+        
+        self.updateOnOtherThreadSubclassImpl(state)
+        
+        self._signal_sender.do_emit()
+    
+    @ShoopSlot()
+    def updateOnGuiThread(self):
+        if not self._backend_obj or not self.isValid():
+            return
+        if self._n_pending_updates == 0:
+            return
+
+        if self._new_data_length != self._data_length:
+            self._data_length = self._new_data_length
             self.dataLengthChanged.emit(self._data_length)
-        if state.start_offset != self._start_offset:
-            self.__logger.debug(lambda: 'start_offset -> {}'.format(state.start_offset))
-            self._start_offset = state.start_offset
+        if self._new_start_offset != self._start_offset:
+            self.__logger.debug(lambda: 'start_offset -> {}'.format(self._new_start_offset))
+            self._start_offset = self._new_start_offset
             self.startOffsetChanged.emit(self._start_offset)
-        if state.mode != self._mode:
-            self.__logger.debug(lambda: 'mode -> {}'.format(ChannelMode(state.mode)))
-            self._mode = state.mode
+        if self._new_mode != self._mode:
+            self.__logger.debug(lambda: 'mode -> {}'.format(ChannelMode(self._new_mode)))
+            self._mode = self._new_mode
             self.modeChanged.emit(self._mode.value)
-        if state.data_dirty != self._data_dirty:
-            self.__logger.debug(lambda: 'data dirty -> {}'.format(state.data_dirty))
-            self._data_dirty = state.data_dirty
+        if self._new_data_dirty != self._data_dirty:
+            self.__logger.debug(lambda: 'data dirty -> {}'.format(self._new_data_dirty))
+            self._data_dirty = self._new_data_dirty
             self.dataDirtyChanged.emit(self._data_dirty)
-        if state.n_preplay_samples != self._n_preplay_samples:
-            self.__logger.debug(lambda: '# preplay samples -> {}'.format(state.n_preplay_samples))
-            self._n_preplay_samples = state.n_preplay_samples
+        if self._new_n_preplay_samples != self._n_preplay_samples:
+            self.__logger.debug(lambda: '# preplay samples -> {}'.format(self._new_n_preplay_samples))
+            self._n_preplay_samples = self._new_n_preplay_samples
             self.nPreplaySamplesChanged.emit(self._n_preplay_samples)
-        if state.played_back_sample != self._played_back_sample:
-            self._played_back_sample = state.played_back_sample
+        if self._new_played_back_sample != self._played_back_sample:
+            self._played_back_sample = self._new_played_back_sample
             self.playedBackSampleChanged.emit(self._played_back_sample)
         
-        # Dispatch specialized update from subclasses
-        self.update_impl(state)
+        self.updateOnGuiThreadSubclassImpl()
+        self._n_pending_updates = 0
     
-    @Slot()
+    @ShoopSlot()
     def close(self):
         if self._backend_obj:
             self.__logger.debug(lambda: 'destroy')
             self._backend_obj.destroy()
             self._backend_obj = None
+    
+    @ShoopSlot(result='QVariant')
+    def get_display_data(self):
+        raise NotImplementedError()

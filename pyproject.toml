@@ -1,7 +1,7 @@
 [project]
 name = "shoopdaloop"
 version = "0.1.0"
-description = "An audio + MIDI live looping application with some DAW-like features."
+description = "Live looping application with DAW elements."
 readme = "README.md"
 license = { "file" = "LICENSE" }
 authors = [

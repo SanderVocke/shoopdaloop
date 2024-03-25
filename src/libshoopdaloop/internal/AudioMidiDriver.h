@@ -1,14 +1,13 @@
 #pragma once
 #include <memory>
-#include "PortInterface.h"
-#include "MidiPort.h"
 #include <string>
-#include "AudioPort.h"
 #include <stdint.h>
 #include "WithCommandQueue.h"
 #include "types.h"
 #include <set>
-#include "shoop_globals.h"
+#include <atomic>
+#include "LoggingEnabled.h"
+#include "AudioPort.h"
 
 enum class ProcessFunctionResult {
     Continue,  // Continue processing next cycle
@@ -20,6 +19,12 @@ struct AudioMidiDriverSettingsInterface {
     virtual ~AudioMidiDriverSettingsInterface() {}
 };
 
+struct ExternalPortDescriptor {
+    std::string name;
+    shoop_port_direction_t direction;
+    shoop_port_data_type_t data_type;
+};
+
 class HasAudioProcessingFunction {
 public:
     HasAudioProcessingFunction() {}
@@ -29,14 +34,15 @@ public:
 };
 
 class AudioMidiDriver : public WithCommandQueue,
+                        private ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
                         private std::enable_shared_from_this<AudioMidiDriver> {
     std::shared_ptr<std::set<HasAudioProcessingFunction*>> m_processors;
     std::atomic<uint32_t> m_xruns = 0;
     std::atomic<uint32_t> m_sample_rate = 0;
     std::atomic<uint32_t> m_buffer_size = 0;
-    std::atomic<float> m_dsp_load;
-    std::atomic<void*> m_maybe_client_handle;
-    std::atomic<const char*> m_client_name;
+    std::atomic<float> m_dsp_load = 0.0f;
+    std::atomic<void*> m_maybe_client_handle = nullptr;
+    std::atomic<const char*> m_client_name = nullptr;
     std::atomic<bool> m_active = false;
     std::atomic<uint32_t> m_last_processed = 1;
     std::set<std::shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
@@ -68,7 +74,8 @@ public:
     virtual
     std::shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
         std::string name,
-        shoop_port_direction_t direction
+        shoop_port_direction_t direction,
+        std::shared_ptr<typename AudioPort<audio_sample_t>::BufferPool> buffer_pool
     ) = 0;
 
     virtual
@@ -98,6 +105,12 @@ public:
     uint32_t get_last_processed() const;
 
     void wait_process();
+
+    virtual std::vector<ExternalPortDescriptor> find_external_ports(
+        const char* maybe_name_regex,
+        shoop_port_direction_t maybe_direction_filter,
+        shoop_port_data_type_t maybe_data_type_filter
+    ) = 0;
 
     AudioMidiDriver();
     virtual ~AudioMidiDriver() {}

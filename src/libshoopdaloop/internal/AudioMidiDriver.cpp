@@ -33,6 +33,7 @@ std::set<HasAudioProcessingFunction*> AudioMidiDriver::processors() const {
 }
 
 void AudioMidiDriver::PROC_process(uint32_t nframes) {
+    log<log_level_debug_trace>("AudioMidiDriver::process {}", nframes);
     PROC_handle_command_queue();
     PROC_process_decoupled_midi_ports(nframes);
     auto lock = m_processors;
@@ -130,9 +131,11 @@ void AudioMidiDriver::wait_process() {
     // To ensure a complete process cycle was done, execute two commands with
     // a small delay in-between. Each command will end up in a separate process
     // iteration.
+    log<log_level_debug_trace>("AudioMidiDriver::wait_process");
     exec_process_thread_command([]() { ; });
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
     exec_process_thread_command([]() { ; });
+    log<log_level_debug_trace>("AudioMidiDriver::wait_process done");
 }
 
 std::shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {

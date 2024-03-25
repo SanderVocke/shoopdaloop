@@ -2,69 +2,61 @@ from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
 from PySide6.QtQuick import QQuickItem
 
 from .ShoopPyObject import *
+from .FindParentBackend import FindParentBackend
+from shoopdaloop.lib.backend_wrappers import *
 
 from ..logging import Logger as BaseLogger
 
-JackControlClient = None
-jack = None
-
-try:
-    from .JackControlClient import JackControlClient as client
-    import jacklib as _jack
-    jack = _jack
-    JackControlClient = client
-except:
-    pass
-
-class AutoConnect(ShoopQQuickItem):
+class AutoConnect(FindParentBackend):
     def __init__(self, parent=None):
         super(AutoConnect, self).__init__(parent)
         self.logger = BaseLogger("Frontend.AutoConnect")
-        self._from_regex = None
+        self._internal_port = None
         self._to_regex = None
-        
-        if jack:
-            self._jack = JackControlClient.get_instance()
-            self._jack.portRegistered.connect(self.update)
-            self._jack.portRenamed.connect(self.update)
-        
-            self._timer = QTimer()
-            self._timer.setSingleShot(False)
-            self._timer.setInterval(1000)
-            self._timer.timeout.connect(self.update)
-            self._timer.start()
+        self._closed = False
+
+        self.backendChanged.connect(self.update)
+        self.backendInitializedChanged.connect(self.update)
+
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(False)
+        self._timer.setInterval(1000)
+        self._timer.timeout.connect(self.update)
+        self._timer.start()
     
     ######################
     ## SIGNALS
     ######################
-    onlyExternalFound = Signal()
-    connected = Signal()
+    onlyExternalFound = ShoopSignal()
+    connected = ShoopSignal()
 
     ######################
     # PROPERTIES
     ######################
     
-    # from_regex
-    fromRegexChanged = Signal('QVariant')
-    @Property(str, notify=fromRegexChanged)
-    def from_regex(self):
-        return self._from_regex
-    @from_regex.setter
-    def from_regex(self, l):
-        if l and l != self._from_regex:
-            self._from_regex = l
-            self.fromRegexChanged.emit(l)
+    # internal_port
+    internalPortChanged = ShoopSignal('QVariant')
+    @ShoopProperty(str, notify=internalPortChanged)
+    def internal_port(self):
+        return self._internal_port
+    @internal_port.setter
+    def internal_port(self, l):
+        if l and l != self._internal_port:
+            self._internal_port = l
+            self.logger.trace(lambda: f"internal_port -> {l}")
+            self.internalPortChanged.emit(l)
             self.update()
     
     # to_regex
-    toRegexChanged = Signal('QVariant')
-    @Property(str, notify=toRegexChanged)
+    toRegexChanged = ShoopSignal('QVariant')
+    @ShoopProperty(str, notify=toRegexChanged)
     def to_regex(self):
         return self._to_regex
     @to_regex.setter
     def to_regex(self, l):
         if l and l != self._to_regex:
             self._to_regex = l
+            self.logger.trace(lambda: f"to_regex -> {l}")
             self.toRegexChanged.emit(l)
             self.update()
     
@@ -72,51 +64,33 @@ class AutoConnect(ShoopQQuickItem):
     ## SLOTS
     ######################
     
-    @Slot()
+    @ShoopSlot()
     def destroy(self):
-        self._from_regex = None
+        self._timer.stop()
         self._to_regex = None
-        self.update()
-        self._jack = None
+        self._internal_port = None
+        self._backend = None
+        self._closed = True
     
-    @Slot()
+    @ShoopSlot()
     def update(self):
-        if not self._jack:
-            return
-        
-        from_candidates = None
-        to_candidates = None
-        any_external = False
-        any_internal = False
-        
-        if self._from_regex is not None:
-            from_candidates = self._jack.find_ports(self._from_regex, None, jack.JackPortIsOutput)
-            any_external = any_external or (from_candidates and len(from_candidates) > 0 and (True not in [self._jack.port_is_mine(p) for p in from_candidates]))
-            any_internal = any_internal or (from_candidates and len(from_candidates) > 0 and (True in [self._jack.port_is_mine(p) for p in from_candidates]))
-        
-        if self._to_regex is not None:
-            to_candidates = self._jack.find_ports(self._to_regex, None, jack.JackPortIsInput)
-            any_external = any_external or (to_candidates and len(to_candidates) > 0 and (True not in [self._jack.port_is_mine(p) for p in to_candidates]))
-            any_internal = any_internal or (to_candidates and len(to_candidates) > 0 and (True in [self._jack.port_is_mine(p) for p in to_candidates]))
-        
-        self.logger.trace(lambda: "AutoConnect update: from_candidates={}, to_candidates={}, any_external={}, any_internal={}".format(from_candidates, to_candidates, any_external, any_internal))
-        
-        if any_external and not any_internal:
-            self.onlyExternalFound.emit()
-        
-        if (from_candidates is None) or (to_candidates is None):
-            return
-        
-        if len(from_candidates) == 0 and len(to_candidates) == 0:
-            return
-        
-        if len(from_candidates) > 1 and len(to_candidates) > 1:
-            self.logger.warning(lambda: "Multiple ports match both regexes, not autoconnecting")
-            return
+        if self._backend and self._internal_port and self._backend.initialized and not self._closed:
+            external_candidates = []
+            my_connections = self._internal_port.get_connections_state() if self._internal_port else {}
+            data_type = self._internal_port.get_data_type()
 
-        for _from in from_candidates:
-            for _to in to_candidates:
-                if _to not in self._jack.all_port_connections(_from):
-                    self.logger.info(lambda: "Autoconnecting {} to {}".format(_from, _to))
-                    self._jack.connect_ports(_from, _to)
-                    self.connected.emit()
+            if self._to_regex is not None:
+                external_candidates = self._backend.find_external_ports(self._to_regex, PortDirection.Any.value, data_type)
+            
+            for c in external_candidates:
+                connected = c.name in my_connections.keys() and my_connections[c.name] == True
+                if connected:
+                    self.logger.trace(lambda: f"{self._internal_port.name} already connected to {c.name}")
+                elif c.direction != self._internal_port.direction:
+                    if self._internal_port.initialized:
+                        self.logger.info(lambda: f"Autoconnecting {self._internal_port.name} to {c.name}")
+                        self._internal_port.connect_external_port(c.name)
+                        self.connected.emit()
+                    else:
+                        self.logger.debug(lambda: f"Found external autoconnect port {c.name}, internal port not yet opened")
+                        self.onlyExternalFound.emit()

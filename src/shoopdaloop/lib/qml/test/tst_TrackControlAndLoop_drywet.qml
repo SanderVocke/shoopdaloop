@@ -131,12 +131,13 @@ ShoopTestFile {
                 c.input_gain_dB = 0.0
                 c.monitor = false
                 c.mute = false
+                testcase.wait_updated(session.backend)
             }
 
             function reset_loop(loopwidget) {
                 loopwidget.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                testcase.wait_updated(session.backend)
                 loopwidget.clear(0)
-                session.backend.wait_process()
             }
 
             function reset() {
@@ -144,6 +145,7 @@ ShoopTestFile {
                 reset_track(session.main_tracks[0])
                 reset_loop(lut)
                 session.backend.wait_process()
+                testcase.wait_updated(session.backend)
             }
 
             function synthed_value_for(midi_msg) {
@@ -168,7 +170,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    
+                    session.backend.wait_process()
                     testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
@@ -230,10 +232,11 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
+                    testcase.wait_updated(session.backend)
                     verify_true(fx.active)
                     verify_approx(dry1, expect_dry)
                     verify_approx(dry2, expect_dry)
@@ -241,7 +244,7 @@ ShoopTestFile {
                     verify_approx(wet2, expect_wet)
                     verify_approx(out1, expect_out)
                     verify_approx(out2, expect_out)
-                    verify_eq(midi, expect_loop, true)
+                    verify_eq(midi, expect_loop, null, true)
                 },
 
                 'test_drywet_audio_record_monitor': () => {
@@ -318,7 +321,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -329,7 +332,7 @@ ShoopTestFile {
                     verify_approx(wet2, expect_wet)
                     verify_approx(out1, expect_out)
                     verify_approx(out2, expect_out)
-                    verify_eq(midi, expect_loop, true)
+                    verify_eq(midi, expect_loop, null, true)
                 },
 
                 'test_drywet_audio_play_no_monitor': () => {
@@ -381,7 +384,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_data(midichan)
+                    midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
@@ -409,7 +412,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -420,7 +423,7 @@ ShoopTestFile {
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
-                    verify_eq(midi, midichan, true)
+                    verify_eq(midi, midichan, null, true)
                 },
 
                 'test_drywet_audio_play_monitor': () => {
@@ -473,7 +476,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_data(midichan)
+                    midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
@@ -506,7 +509,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -517,7 +520,7 @@ ShoopTestFile {
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
-                    verify_eq(midi, midichan, true)
+                    verify_eq(midi, midichan, null, true)
                 },
 
                 'test_drywet_audio_playdry_no_monitor': () => {
@@ -570,7 +573,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_data(midichan)
+                    midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, false)
                     testcase.wait_updated(session.backend)
@@ -610,7 +613,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -673,7 +676,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_data(midichan)
+                    midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, false)
                     testcase.wait_updated(session.backend)
@@ -714,7 +717,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -725,7 +728,7 @@ ShoopTestFile {
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_eq(wet1, [5, 6, 7, 8])
                     verify_eq(wet2, [8, 7, 6, 5])
-                    verify_eq(midi, midichan, true)
+                    verify_eq(midi, midichan, null, true)
                 },
 
                 'test_drywet_audio_rerecord_no_monitor': () => {
@@ -778,7 +781,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_data(midichan)
+                    midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, 0, false)
                     testcase.wait_updated(session.backend)
@@ -818,7 +821,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -829,7 +832,7 @@ ShoopTestFile {
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_approx(wet1, elems_add(synthed_chan, [50, 60, 70, 80]))
                     verify_approx(wet2, elems_add(synthed_chan, [80, 70, 60, 50]))
-                    verify_eq(midi, midichan, true)
+                    verify_eq(midi, midichan, null, true)
                 },
 
                 'test_drywet_audio_rerecord_monitor': () => {
@@ -882,7 +885,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_data(midichan)
+                    midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
                     lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, 0, false)
                     testcase.wait_updated(session.backend)
@@ -923,7 +926,7 @@ ShoopTestFile {
                     let dry2 = dry_channels()[1].get_data()
                     let wet1 = wet_channels()[0].get_data()
                     let wet2 = wet_channels()[1].get_data()
-                    let midi = midi_channel().get_data()
+                    let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
 
@@ -934,7 +937,7 @@ ShoopTestFile {
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_approx(wet1, elems_add(synthed_both, [50, 60, 70, 80]))
                     verify_approx(wet2, elems_add(synthed_both, [80, 70, 60, 50]))
-                    verify_eq(midi, midichan, true)
+                    verify_eq(midi, midichan, null, true)
                 },
             })
         }

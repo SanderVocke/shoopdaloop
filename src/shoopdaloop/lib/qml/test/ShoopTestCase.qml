@@ -5,6 +5,7 @@ import ShoopDaLoop.PythonTestCase
 
 import ShoopConstants
 import './testDeepEqual.js' as TestDeepEqual
+import '..'
 
 PythonTestCase {
     id: root
@@ -20,7 +21,7 @@ PythonTestCase {
 
     property bool when: true
     property bool _internal_triggered: false
-    onWhenChanged: update_trigger()
+    onWhenChanged: update_next_cycle.trigger()
 
     function update_trigger() {
         if (when && !_internal_triggered) {
@@ -41,7 +42,13 @@ PythonTestCase {
     }
 
     property var test_fns: ({})
-    property var testcase_init_fn: () => {}
+    property var testcase_init_fn: () => { root.wait(50) }
+    property var testcase_deinit_fn: () => {}
+
+    ExecuteNextCycle {
+        id: update_next_cycle
+        onExecute: { root.update_trigger() }
+    }
 
     Component.onCompleted: {
         logger.info(() => ("Testcase " + name + ` created (${Object.keys(test_fns).length} tests).`))
@@ -52,27 +59,13 @@ PythonTestCase {
         }
 
         shoop_test_runner.register_testcase(root)
-        update_trigger()
+        update_next_cycle.trigger()
     }
     Component.onDestruction: logger.info(() => ("Testcase " + name + " destroyed."))
 
     function verify_loop_cleared(loop) {
         verify_eq(loop.mode, ShoopConstants.LoopMode.Stopped)
         verify_eq(loop.length, 0)
-    }
-
-    function cleanup() {
-        logger.debug(() => ("cleanup " + root.name))
-        // Note: the fact that this works is due to the internal TestCase.qml implementation of Qt Quick Test.
-        // Tested on Qt 6.3
-        var failed = qtest_results.failed || qtest_results.dataFailed
-        var skipped = qtest_results.skipped
-        var statusdesc = failed ? 'fail' :
-                         skipped ? 'skip' :
-                         'pass'
-        var casename = name
-        var func = qtest_results.functionName
-        logger.info(() => (`${filename}::${casename}::${func}: ${statusdesc}`))
     }
 
     function format_error(failstring, stack=null) {
@@ -117,7 +110,7 @@ PythonTestCase {
         verify(result, failstring)
     }
 
-    function verify_eq(a, b, stringify=null) {
+    function verify_eq(a, b, msg=null, stringify=null) {
         var result;
 
         if (stringify === null) {
@@ -129,6 +122,9 @@ PythonTestCase {
             failstring = `verify_eq failed (a = ${JSON.stringify(a, null, 2)}, b = ${JSON.stringify(b, null, 2)})`
         } else {
             failstring = `verify_eq failed (a = ${a}, b = ${b})`
+        }
+        if(msg) {
+            failstring = failstring + " - " + msg
         }
 
         function compare(a, b) {
@@ -240,6 +236,9 @@ PythonTestCase {
         }
         wait_once()
         wait_once()
+        wait_once()
+        wait_once()
+        wait_once()
     }
 
     function wait_controlled_mode(backend) {
@@ -291,7 +290,7 @@ PythonTestCase {
         testcase_init_fn()
 
         for (var key in test_fns) {
-            shoop_test_runner.testcase_register_fn(root, key, status)
+            shoop_test_runner.testcase_register_fn(root, key)
         }
 
         for (var key in test_fns) {        
@@ -331,6 +330,15 @@ PythonTestCase {
             }
             shoop_test_runner.testcase_ran_fn(root, key, status)
             current_testcase = null
+        }
+
+        logger.debug(() => "running testcase_deinit_fn")
+        testcase_deinit_fn()
+        var casename = name
+        if (status == 'fail') {
+            logger.error(() => (`----------     ${filename}::${casename}: FAIL`))
+        } else {
+            logger.info(() => (`----------     ${filename}::${casename}: ${status.toUpperCase()}`))
         }
     }
     onRun_signal: run()

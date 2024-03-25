@@ -45,6 +45,14 @@ if(ENABLE_PROCESS_PROFILING)
 endif()
 set(OVERRIDE_COMPILE_LOG_LEVEL "" CACHE STRING "If set, overrides the compile-time log level filter. Valid options are LOG_LEVEL_[TRACE, DEBUG, INFO, WARNING, ERROR].")
 
+# Needed for windows to get backtraces from Boost
+if (WIN32)
+add_compile_definitions(BOOST_STACKTRACE_USE_WINDBG)
+link_libraries(dbgeng.lib)
+elseif (APPLE)
+add_compile_definitions(_GNU_SOURCE)
+endif ()
+
 # Find pkgs
 find_package(Boost REQUIRED)
 
@@ -149,14 +157,14 @@ install(TARGETS shoopdaloop
 
 if (OVERRIDE_COMPILE_LOG_LEVEL STREQUAL "")
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message("Building in debug mode. Using compile time log level: LOG_LEVEL_TRACE")
-    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_TRACE)
+    message("Building in debug mode. Using compile time log level for back-end: LOG_LEVEL_DEBUG_TRACE")
+    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG_TRACE)
   else()
-    message("Building in non-debug mode. Disabling trace messages. Using compile time log level: LOG_LEVEL_DEBUG")
-    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG)
+    message("Building in non-debug mode. Disabling trace messages. Using compile time log level for back-end: LOG_LEVEL_ALWAYS_TRACE")
+    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_ALWAYS_TRACE)
   endif()
 else()
-  message(WARNING "Using overridden compile time log level: ${OVERRIDE_COMPILE_LOG_LEVEL}")
+  message(WARNING "Using overridden compile time log level for back-end: ${OVERRIDE_COMPILE_LOG_LEVEL}")
   target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=${OVERRIDE_COMPILE_LOG_LEVEL})
 endif()
 

@@ -15,7 +15,7 @@ class SettingsIO(ShoopQObject):
         self.filename = self.dir + '/settings.json'
         self.logger = Logger('Frontend.SettingsIO')
         
-    @Slot('QVariant', 'QVariant')
+    @ShoopSlot('QVariant', 'QVariant')
     def save_settings(self, settings, override_filename=None):
         if isinstance(settings, QJSValue):
             settings = settings.toVariant()
@@ -26,7 +26,7 @@ class SettingsIO(ShoopQObject):
         with open(file, 'w') as f:
             f.write(json.dumps(settings, indent=2))
     
-    @Slot('QVariant', result='QVariant')
+    @ShoopSlot('QVariant', result='QVariant')
     def load_settings(self, override_filename=None):
         file = self.filename if override_filename is None else override_filename
         if os.path.exists(file):

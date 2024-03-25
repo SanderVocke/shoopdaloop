@@ -35,7 +35,7 @@ runs:
     shell: bash
     run: |
       mkdir -p reports
-      ${{ steps.runcmdprefix.outputs.run_cmd_prefix }} ${{ inputs.test_runner }} -r JUnit | tee ${{ env.results_xml }}
+      ${{ steps.runcmdprefix.outputs.run_cmd_prefix }} ${{ inputs.test_runner }} -r JUnit -o ${{ env.results_xml }}
       echo "Back-end test results file: $(ls -la ${{ env.results_xml }})"
   
   - name: Publish Back-end Test Report
@@ -43,7 +43,6 @@ runs:
     uses: mikepenz/action-junit-report@v3
     with:
       report_paths: ${{ env.results_xml }}
-      detailed_summary: true
-      include_passed: true
+      include_passed: false
       check_name: 'backend test (${{ inputs.variant_name }})'
 

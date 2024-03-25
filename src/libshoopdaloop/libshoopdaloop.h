@@ -23,6 +23,11 @@ SHOOP_EXPORT unsigned get_driver_active (shoop_audio_driver_t *driver);
 SHOOP_EXPORT void start_dummy_driver(shoop_audio_driver_t *driver, shoop_dummy_audio_driver_settings_t settings);
 SHOOP_EXPORT void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_settings_t settings);
 SHOOP_EXPORT void wait_process(shoop_audio_driver_t *driver);
+SHOOP_EXPORT shoop_external_port_descriptors_t *find_external_ports(shoop_audio_driver_t *driver, const char* maybe_name_regex, shoop_port_direction_t maybe_port_direction_filter, shoop_port_data_type_t maybe_data_type_filter);
+
+// Test functions
+SHOOP_EXPORT void do_segfault_on_process_thread(shoop_backend_session_t *backend);
+SHOOP_EXPORT void do_abort_on_process_thread(shoop_backend_session_t *backend);
 
 // Session
 SHOOP_EXPORT shoop_backend_session_t *create_backend_session ();
@@ -42,6 +47,16 @@ SHOOP_EXPORT shoop_loop_state_info_t *get_loop_state          (shoopdaloop_loop_
 SHOOP_EXPORT void              set_loop_length          (shoopdaloop_loop_t *loop, unsigned length);
 SHOOP_EXPORT void              set_loop_position        (shoopdaloop_loop_t *loop, unsigned position);
 SHOOP_EXPORT void              set_loop_sync_source     (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_source);
+SHOOP_EXPORT void              adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, unsigned reverse_cycles_start, unsigned cycles_length);
+SHOOP_EXPORT void loop_transition(shoopdaloop_loop_t *loop,
+                      shoop_loop_mode_t mode,
+                      unsigned delay, // In # of triggers
+                      unsigned wait_for_sync);
+SHOOP_EXPORT void loops_transition(unsigned int n_loops,
+                      shoopdaloop_loop_t **loops,
+                      shoop_loop_mode_t mode,
+                      unsigned delay, // In # of triggers
+                      unsigned wait_for_sync);
 
 // Loop channels
 SHOOP_EXPORT void                   clear_audio_channel      (shoopdaloop_loop_audio_channel_t *channel, unsigned length);
@@ -74,16 +89,6 @@ SHOOP_EXPORT void                   set_midi_channel_n_preplay_samples  (shoopda
 SHOOP_EXPORT void                   clear_audio_channel_data_dirty (shoopdaloop_loop_audio_channel_t * channel);
 SHOOP_EXPORT void                   clear_midi_channel_data_dirty (shoopdaloop_loop_midi_channel_t * channel);
 
-SHOOP_EXPORT void loop_transition(shoopdaloop_loop_t *loop,
-                      shoop_loop_mode_t mode,
-                      unsigned delay, // In # of triggers
-                      unsigned wait_for_sync);
-SHOOP_EXPORT void loops_transition(unsigned int n_loops,
-                      shoopdaloop_loop_t **loops,
-                      shoop_loop_mode_t mode,
-                      unsigned delay, // In # of triggers
-                      unsigned wait_for_sync);
-
 // FX chains
 SHOOP_EXPORT shoopdaloop_fx_chain_t *create_fx_chain(shoop_backend_session_t *backend, shoop_fx_chain_type_t type, const char* title);
 SHOOP_EXPORT void fx_chain_set_ui_visible(shoopdaloop_fx_chain_t *chain, unsigned visible);
@@ -99,27 +104,57 @@ SHOOP_EXPORT shoopdaloop_audio_port_t *fx_chain_audio_output_port(shoopdaloop_fx
 SHOOP_EXPORT shoopdaloop_midi_port_t *fx_chain_midi_input_port(shoopdaloop_fx_chain_t *chain, unsigned int idx);
 
 // Audio ports
+SHOOP_EXPORT void connect_audio_port_internal(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to);
+SHOOP_EXPORT void connect_audio_port_external(shoopdaloop_audio_port_t *ours, const char* external_port_name);
+SHOOP_EXPORT void disconnect_audio_port_external(shoopdaloop_audio_port_t *ours, const char* external_port_name);
+SHOOP_EXPORT void disconnect_audio_port_internal(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to);
 SHOOP_EXPORT void set_audio_port_gain(shoopdaloop_audio_port_t *port, float gain);
 SHOOP_EXPORT void set_audio_port_muted(shoopdaloop_audio_port_t *port, unsigned muted);
 SHOOP_EXPORT void set_audio_port_passthroughMuted(shoopdaloop_audio_port_t *port, unsigned muted);
-SHOOP_EXPORT void add_audio_port_passthrough(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to);
 SHOOP_EXPORT shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port);
 SHOOP_EXPORT shoop_port_connections_state_t *get_audio_port_connections_state(shoopdaloop_audio_port_t *port);
-SHOOP_EXPORT void connect_external_audio_port(shoopdaloop_audio_port_t *ours, const char* external_port_name);
-SHOOP_EXPORT void disconnect_external_audio_port(shoopdaloop_audio_port_t *ours, const char* external_port_name);
 SHOOP_EXPORT void* get_audio_port_driver_handle(shoopdaloop_audio_port_t *port);
-SHOOP_EXPORT shoopdaloop_audio_port_t *open_audio_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction);
+SHOOP_EXPORT shoopdaloop_audio_port_t *open_driver_audio_port (
+    shoop_backend_session_t *backend,
+    shoop_audio_driver_t *driver,
+    const char* name_hint,
+    shoop_port_direction_t direction,
+    unsigned min_always_on_ringbuffer_samples
+);
+SHOOP_EXPORT shoopdaloop_audio_port_t *open_internal_audio_port (
+    shoop_backend_session_t *backend,
+    const char* name_hint,
+    unsigned min_always_on_ringbuffer_samples
+);
+SHOOP_EXPORT unsigned get_audio_port_input_connectability(shoopdaloop_audio_port_t* port);
+SHOOP_EXPORT unsigned get_audio_port_output_connectability(shoopdaloop_audio_port_t* port);
+SHOOP_EXPORT void     set_audio_port_ringbuffer_n_samples (shoopdaloop_audio_port_t* port, unsigned n);
 
 // Midi ports
+SHOOP_EXPORT void connect_midi_port_internal(shoopdaloop_midi_port_t *from, shoopdaloop_midi_port_t *to);
+SHOOP_EXPORT void connect_midi_port_external(shoopdaloop_midi_port_t *ours, const char* external_port_name);
+SHOOP_EXPORT void disconnect_midi_port_external(shoopdaloop_midi_port_t *ours, const char* external_port_name);
+SHOOP_EXPORT void disconnect_midi_port_internal(shoopdaloop_midi_port_t *ours, shoopdaloop_midi_port_t *to);
 SHOOP_EXPORT shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port);
 SHOOP_EXPORT void set_midi_port_muted(shoopdaloop_midi_port_t *port, unsigned muted);
 SHOOP_EXPORT void set_midi_port_passthroughMuted(shoopdaloop_midi_port_t *port, unsigned muted);
-SHOOP_EXPORT void add_midi_port_passthrough(shoopdaloop_midi_port_t *from, shoopdaloop_midi_port_t *to);
 SHOOP_EXPORT shoop_port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi_port_t *port);
-SHOOP_EXPORT void connect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name);
-SHOOP_EXPORT void disconnect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name);
-SHOOP_EXPORT shoopdaloop_midi_port_t *open_midi_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction);
 SHOOP_EXPORT void* get_midi_port_driver_handle(shoopdaloop_midi_port_t *port);
+SHOOP_EXPORT shoopdaloop_midi_port_t *open_driver_midi_port (
+    shoop_backend_session_t *backend,
+    shoop_audio_driver_t *driver,
+    const char* name_hint,
+    shoop_port_direction_t direction,
+    unsigned min_always_on_ringbuffer_samples
+);
+SHOOP_EXPORT shoopdaloop_midi_port_t *open_internal_midi_port (
+    shoop_backend_session_t *backend,
+    const char* name_hint,
+    unsigned min_always_on_ringbuffer_samples
+);
+SHOOP_EXPORT unsigned get_midi_port_input_connectability(shoopdaloop_midi_port_t* port);
+SHOOP_EXPORT unsigned get_midi_port_output_connectability(shoopdaloop_midi_port_t* port);
+SHOOP_EXPORT void     set_midi_port_ringbuffer_n_samples (shoopdaloop_midi_port_t* port, unsigned n);
 
 // Decoupled midi ports
 SHOOP_EXPORT shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction);
@@ -127,6 +162,9 @@ SHOOP_EXPORT shoop_midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_p
 SHOOP_EXPORT void send_decoupled_midi(shoopdaloop_decoupled_midi_port_t *port, unsigned length, unsigned char *data);
 SHOOP_EXPORT const char* get_decoupled_midi_port_name(shoopdaloop_decoupled_midi_port_t *port);
 SHOOP_EXPORT void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port);
+SHOOP_EXPORT shoop_port_connections_state_t *get_decoupled_midi_port_connections_state(shoopdaloop_decoupled_midi_port_t *port);
+SHOOP_EXPORT void connect_external_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *ours, const char* external_port_name);
+SHOOP_EXPORT void disconnect_external_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *ours, const char* external_port_name);
 
 // Helpers for freeing any objects/handles obtained from this API.
 // This will always safely destroy, including breaking any made connections to other objects, etc.
@@ -153,6 +191,7 @@ SHOOP_EXPORT void destroy_port_connections_state(shoop_port_connections_state_t 
 SHOOP_EXPORT void destroy_logger(shoopdaloop_logger_t *logger);
 SHOOP_EXPORT void destroy_audio_driver_state(shoop_audio_driver_state_t *state);
 SHOOP_EXPORT void destroy_multichannel_audio(shoop_multichannel_audio_t *audio);
+SHOOP_EXPORT void destroy_external_port_descriptors(shoop_external_port_descriptors_t *desc);
 
 // Helpers for allocating data objects
 SHOOP_EXPORT shoop_midi_event_t *alloc_midi_event(unsigned data_bytes);
@@ -182,6 +221,9 @@ SHOOP_EXPORT void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, shoo
 SHOOP_EXPORT shoop_midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port);
 SHOOP_EXPORT void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, unsigned n_frames);
 SHOOP_EXPORT void dummy_midi_port_clear_queues(shoopdaloop_midi_port_t* port);
+SHOOP_EXPORT void dummy_driver_add_external_mock_port(shoop_audio_driver_t* driver, const char* name, shoop_port_direction_t direction, shoop_port_data_type_t data_type);
+SHOOP_EXPORT void dummy_driver_remove_external_mock_port(shoop_audio_driver_t* driver, const char* name);
+SHOOP_EXPORT void dummy_driver_remove_all_external_mock_ports(shoop_audio_driver_t* driver);
 
 // Resampling
 SHOOP_EXPORT shoop_multichannel_audio_t *resample_audio(shoop_multichannel_audio_t *in, unsigned new_n_frames);

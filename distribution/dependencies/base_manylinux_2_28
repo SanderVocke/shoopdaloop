@@ -1,0 +1,28 @@
+# Dependencies needed in order to build a .whl.
+# Assumption is that PyPi packages are used wherever possible.
+
+ninja-build
+libsndfile
+libasan8
+gcc-toolset-12-libasan-devel.x86_64
+perl-Time-HiRes
+perl-Capture-Tiny
+perl-Module-Load-Conditional
+perl-DateTime perl-JSON
+perl-JSON-XS alsa-lib-devel
+zlib-devel
+zlib-static
+
+# needed to run
+libxkbcommon
+portaudio
+
+# Install an additional Python from the official repos, which
+# has the shared libraries as well, needed for PyInstaller
+python38
+
+# Packaging
+rpm-build
+bsdtar
+
+# Note: additional dependencies in Dockerfile

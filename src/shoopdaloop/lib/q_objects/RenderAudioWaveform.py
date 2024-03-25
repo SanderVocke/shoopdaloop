@@ -1,6 +1,6 @@
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QLine
 from PySide6.QtQuick import QQuickItem, QQuickPaintedItem
-from PySide6.QtGui import QPen, QPainter
+from PySide6.QtGui import QPen, QPainter, QColor
 from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
@@ -42,6 +42,7 @@ class Pyramid:
             for i in range(len(audio_data)):
                 array[i] = audio_data[i]
             self.pyramid = self.backend_create_pyramid(len(audio_data), array, 2048)
+            logger.trace(lambda: 'done creating pyramid')
     
     def destroy(self):
         if self.pyramid:
@@ -65,8 +66,8 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
         self.samplesOffsetChanged.connect(self.update)
         self.samplesPerBinChanged.connect(self.update)
     
-    inputDataChanged = Signal('QVariant')
-    @Property('QVariant', notify=inputDataChanged)
+    inputDataChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=inputDataChanged)
     def input_data(self):
         return self._input_data
     @input_data.setter
@@ -76,8 +77,8 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
         self._input_data = v
         self.inputDataChanged.emit(self._input_data)
 
-    samplesPerBinChanged = Signal(float)
-    @Property(float, notify=samplesPerBinChanged)
+    samplesPerBinChanged = ShoopSignal(float)
+    @ShoopProperty(float, notify=samplesPerBinChanged)
     def samples_per_bin(self):
         return self._samples_per_bin
     @samples_per_bin.setter
@@ -86,8 +87,8 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
             self._samples_per_bin = v
             self.samplesPerBinChanged.emit(v)
     
-    samplesOffsetChanged = Signal(int)
-    @Property(int, notify=samplesOffsetChanged)
+    samplesOffsetChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=samplesOffsetChanged)
     def samples_offset(self):
         return self._samples_offset
     @samples_offset.setter
@@ -96,13 +97,13 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
             self._samples_offset = v
             self.samplesOffsetChanged.emit(v)
     
-    @Slot()
-    def preprocess(self):
+    @ShoopSlot()
+    def preprocess(self, *args):
         logger.trace(lambda: 'preprocess')
         self._pyramid.create(self._input_data)
         self.update()
     
-    @Slot()
+    @ShoopSlot()
     def update_lines(self):
         logger.trace(lambda: 'update_lines')
         self.pad_lines_to(math.ceil(self.width()))
@@ -135,12 +136,15 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
 
         for i in range(0, min(math.ceil(self.width()), len(self._lines))):
             sample_idx = (float(i) + float(self._samples_offset) / self._samples_per_bin) * self._samples_per_bin / float(subsampling_factor)
-            nearest_idx = min(max(-1, int(round(sample_idx))), data.n_samples)
-            sample = (data.data[nearest_idx] if (nearest_idx >= 0 and nearest_idx < data.n_samples) else 0.0)
+            under_idx = min(max(-1, int(math.floor(sample_idx))), data.n_samples)
+            over_idx = min(max(-1, int(math.ceil(sample_idx))), data.n_samples)
+            under_sample = (data.data[under_idx] if (under_idx >= 0 and under_idx < data.n_samples) else 0.0)
+            over_sample = (data.data[over_idx] if (over_idx >= 0 and over_idx < data.n_samples) else under_sample)
+            sample = max(under_sample, over_sample)
             if sample < 0.0:
                 self._lines[i].setLine(
                     i, int(0.5*self.height()),
-                    i, int(0.5*self.height())
+                    i, int(0.5*self.height()) + 1
                 )
             else:
                 self._lines[i].setLine(
@@ -148,6 +152,7 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
                     i, int((0.5 + 0.5*sample) * self.height())
                 )
 
-        painter.setPen(QPen("red"))
+        painter.setPen(QPen(QColor(0.7 * 255.0, 0.0, 0.0)))
         painter.drawLines(self._lines)
+        painter.drawLine(0, 0.5*self.height(), self.width(), 0.5*self.height())
         

@@ -12,16 +12,16 @@
 // access to the data "member".
 template<typename TimeType, typename SizeType>
 struct MidiStorageElem : public MidiSortableMessageInterface {
-    TimeType storage_time; // Overall time in the loop storage
-    TimeType proc_time;    // time w.r.t. some reference point (position in this process iteration)
-    SizeType size;
+    uint8_t is_filler = 0; // If nonzero, this byte in the buffer is filler and should be skipped.
+                           // This can happen e.g. around the buffer boundaries when used as a ringbuffer.
+                           // Messages are always kept contiguous.
+    TimeType storage_time = 0; // Overall time in the loop storage
+    TimeType proc_time = 0;    // time w.r.t. some reference point (position in this process iteration)
+    SizeType size = 0;
 
     static uint32_t total_size_of(uint32_t size);
-
     uint8_t* data() const;
-
     const uint8_t* get_data() const override;
-
     uint32_t get_time() const override;
     uint32_t get_size() const override;
     void get(uint32_t &size_out,
@@ -42,10 +42,10 @@ public:
 
 protected:
     std::vector<uint8_t> m_data;
-    uint32_t m_tail;
-    uint32_t m_head;
-    uint32_t m_head_start;
-    uint32_t m_n_events;
+    uint32_t m_tail = 0;
+    uint32_t m_head = 0;
+    uint32_t m_head_start = 0;
+    uint32_t m_n_events = 0;
     static constexpr uint32_t n_starting_cursors = 10;
 
     bool valid_elem_at(uint32_t offset) const;
@@ -65,7 +65,7 @@ public:
     uint32_t bytes_free() const;
     uint32_t n_events() const;
 
-    bool append(TimeType time, SizeType size,  const uint8_t* data);
+    virtual bool append(TimeType time, SizeType size,  const uint8_t* data, bool allow_replace=false);
     bool prepend(TimeType time, SizeType size, const uint8_t* data);
     void copy(MidiStorageBase<TimeType, SizeType> &to) const;
 };
@@ -78,9 +78,9 @@ public:
     Elem dummy_elem; // Prevents incomplete template type in log_level_debug build
 
 private:
-    std::optional<uint32_t> m_offset;
-    std::optional<uint32_t> m_prev_offset;
-    std::shared_ptr<const Storage> m_storage;
+    std::optional<uint32_t> m_offset = std::nullopt;
+    std::optional<uint32_t> m_prev_offset = std::nullopt;
+    std::shared_ptr<const Storage> m_storage = nullptr;
 
 public:
     MidiStorageCursor(std::shared_ptr<const Storage> _storage);
@@ -100,6 +100,11 @@ public:
     Elem *get() const;
     Elem *get_prev() const;
     void next();
+
+    // True if previous elem is valid, current elem is valid,
+    // but stepping between them steps over the ringbuffer
+    // boundary
+    bool wrapped() const;
 
     uint32_t find_time_forward(uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback = nullptr);
 };
@@ -123,6 +128,8 @@ public:
     void clear();
     void truncate(TimeType time);
     void for_each_msg(std::function<void(TimeType t, SizeType s, uint8_t* data)> cb);
+
+    bool append(TimeType time, SizeType size,  const uint8_t* data, bool allow_replace=false) override;
 };
 
 extern template class MidiStorageElem<uint32_t, uint16_t>;

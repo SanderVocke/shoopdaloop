@@ -1,6 +1,7 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
+import Qt.labs.platform as LabsPlatform
 
 import ShoopConstants
 
@@ -12,6 +13,8 @@ Item {
 
     signal saveSession(string filename)
     signal loadSession(string filename)
+    signal processThreadSegfault()
+    signal processThreadAbort()
 
     property bool loading_session : false
     property bool saving_session : false
@@ -85,23 +88,37 @@ Item {
                         }
 
                         ShoopMenuItem {
-                            text: "Test throw back-end exception"
+                            text: "Test throw exception (UI thread)"
                             onClicked: {
                                 os_utils.test_exception()
                             }
                         }
 
                         ShoopMenuItem {
-                            text: "Test back-end segfault"
+                            text: "Test segfault (UI thread)"
                             onClicked: {
                                 os_utils.test_segfault()
                             }
                         }
 
                         ShoopMenuItem {
-                            text: "Test back-end abort"
+                            text: "Test abort (UI thread)"
                             onClicked: {
                                 os_utils.test_abort()
+                            }
+                        }
+
+                        ShoopMenuItem {
+                            text: "Test segfault (process thread)"
+                            onClicked: {
+                                root.processThreadSegfault()
+                            }
+                        }
+
+                        ShoopMenuItem {
+                            text: "Test abort (process thread)"
+                            onClicked: {
+                                root.processThreadAbort()
                             }
                         }
                     }
@@ -112,7 +129,7 @@ Item {
 
             ShoopFileDialog {
                 id: savesessiondialog
-                fileMode: FileDialog.SaveFile
+                fileMode: LabsPlatform.FileDialog.SaveFile
                 acceptLabel: 'Save'
                 nameFilters: ["ShoopDaLoop session files (*.shl)", "All files (*)"]
                 defaultSuffix: 'shl'
@@ -125,7 +142,7 @@ Item {
 
             ShoopFileDialog {
                 id: loadsessiondialog
-                fileMode: FileDialog.OpenFile
+                fileMode: LabsPlatform.FileDialog.OpenFile
                 acceptLabel: 'Load'
                 nameFilters: ["ShoopDaLoop session files (*.shl)", "All files (*)"]
                 onAccepted: {
@@ -151,7 +168,7 @@ Item {
             height: 40
             width: 30
             onClicked: {
-                var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget)
+                var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget && o.mode !== ShoopConstants.LoopMode.Stopped)
                 loops[0].transition_loops(loops, ShoopConstants.LoopMode.Stopped, 0, root.sync_active)
             }
 
@@ -192,6 +209,121 @@ Item {
                 anchors.centerIn: parent
                 name: 'border-none-variant'
                 color: Material.foreground
+            }
+        }
+
+        ExtendedButton {
+            tooltip: "Clear multiple loops (opens a menu)."
+            id: clear_multiple_button
+            height: 40
+            width: 30
+
+            onClicked: {
+                clear_multiple_menu.open()
+            }
+
+            MaterialDesignIcon {
+                size: Math.min(parent.width, parent.height) - 10
+                anchors.centerIn: parent
+                name: 'delete'
+                color: Material.foreground
+            }
+
+            Menu {
+                id: clear_multiple_menu
+
+                ShoopMenuItem {
+                    text: "Clear recordings"
+                    onClicked: {
+                        confirm_clear_dialog.text = 'Clear ALL loop recordings?'
+                        confirm_clear_dialog.action = () => {
+                            var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget && o.maybe_backend_loop)
+                            loops.forEach(l => l.clear())
+                        }
+                        confirm_clear_dialog.open()
+                    }
+                }
+                ShoopMenuItem {
+                    text: "Clear recordings except sync"
+                    onClicked: {
+                        confirm_clear_dialog.text = 'Clear ALL loop recordings except sync?'
+                        confirm_clear_dialog.action = () => {
+                            var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget && o.maybe_backend_loop && !o.is_sync)
+                            loops.forEach(l => l.clear())
+                        }
+                        confirm_clear_dialog.open()
+                    }
+                }
+                ShoopMenuItem {
+                    text: "Clear all"
+                    onClicked: {
+                        confirm_clear_dialog.text = 'Clear ALL loops?'
+                        confirm_clear_dialog.action = () => {
+                            var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget)
+                            loops.forEach(l => l.clear())
+                        }
+                        confirm_clear_dialog.open()
+                    }
+                }
+                ShoopMenuItem {
+                    text: "Clear all except sync"
+                    onClicked: {
+                        confirm_clear_dialog.text = 'Clear ALL loops except sync?'
+                        confirm_clear_dialog.action = () => {
+                            var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget && !o.is_sync)
+                            loops.forEach(l => l.clear())
+                        }
+                        confirm_clear_dialog.open()
+                    }
+                }
+            }
+
+            Dialog {
+                id: confirm_clear_dialog
+                standardButtons: Dialog.Yes | Dialog.Cancel
+
+                implicitWidth: 300
+
+                property var action: () => {}
+                property alias text: clear_label.text
+
+                parent: Overlay.overlay
+                modal: true
+                x: (parent.width - width) / 2
+                y: (parent.height - height) / 2
+
+                onAccepted: action()
+
+                title: "Confirm clear"
+
+                Label {
+                    id: clear_label
+                    anchors.centerIn: parent
+                    text: 'hello world'
+                }
+            }
+        }
+
+        SpinBox {
+            id: apply_n_cycles_spinbox
+            height: 30
+            width: 80
+            anchors.verticalCenter: parent.verticalCenter
+
+            value: registries.state_registry.apply_n_cycles
+            from: -1
+
+            onValueModified: {
+                if (value != registries.state_registry.apply_n_cycles) {
+                    registries.state_registry.set_apply_n_cycles(value)
+                    value = Qt.binding(() => registries.state_registry.apply_n_cycles)
+                }
+            }
+            
+            textFromValue: (value) => (value == 0) ? '∞' : value.toString()
+
+            ControlTooltip {
+                text: "If set, recording actions will run for the specified fixed amount of cycles."
             }
         }
     }

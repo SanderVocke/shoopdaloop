@@ -10,6 +10,7 @@ ShoopTestFile {
     Item {
         // A dummy control interface which logs calls for testing
         component Interface: LuaControlInterface {
+            qml_instance: this
             property var logged_calls: []
             function clear() { logged_calls = [] }
 

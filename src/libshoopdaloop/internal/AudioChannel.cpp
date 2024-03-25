@@ -12,34 +12,55 @@
 #include <iostream>
 #include <chrono>
 #include <boost/lockfree/spsc_queue.hpp>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
+#include "AudioPort.h"
 
 using namespace std::chrono_literals;
 using namespace logging;
 
 template <typename SampleT>
+template <size_t N>
+inline void AudioChannel<SampleT>::trace_print_data(std::string msg, SampleT *data, size_t len) {
+    if (should_log<log_level_debug_trace>()) {
+        auto _N = N;
+        std::array<SampleT, N> arr;
+        std::copy(data, data+std::min(len, N), arr.begin());
+        log<log_level_debug_trace>(msg);
+        log<log_level_debug_trace>("--> first {} samples: {}", _N, arr);
+    }
+}
+
+template <typename SampleT>
 AudioChannel<SampleT>::Buffers::Buffers(std::shared_ptr<BufferPool> pool,
                                         uint32_t initial_max_buffers)
     : pool(pool), buffers_size(pool->object_size()) {
-    buffers.reserve(initial_max_buffers);
+    buffers = std::make_shared<std::vector<Buffer>>();
+    buffers->reserve(initial_max_buffers);
     reset();
 }
 
 template <typename SampleT> void AudioChannel<SampleT>::Buffers::reset() {
-    buffers.clear();
-    buffers.push_back(get_new_buffer());
+    buffers->clear();
+    buffers->push_back(get_new_buffer());
+}
+
+template <typename SampleT> void AudioChannel<SampleT>::Buffers::set_contents(std::shared_ptr<std::vector<Buffer>> contents) {
+    buffers = contents;
 }
 
 template <typename SampleT> AudioChannel<SampleT>::Buffers::Buffers() {
+    buffers = std::make_shared<std::vector<Buffer>>();
 }
 
 template <typename SampleT>
 SampleT &AudioChannel<SampleT>::Buffers::at(uint32_t offset) const {
     uint32_t idx = offset / buffers_size;
-    if (idx >= buffers.size()) {
+    if (idx >= buffers->size()) {
         throw_error<std::runtime_error>("OOB buffers access");
     }
     uint32_t head = offset % buffers_size;
-    return buffers.at(idx)->at(head);
+    return buffers->at(idx)->at(head);
 }
 
 template <typename SampleT>
@@ -47,11 +68,11 @@ bool AudioChannel<SampleT>::Buffers::ensure_available(uint32_t offset,
                                                       bool use_pool) {
     uint32_t idx = offset / buffers_size;
     bool changed = false;
-    while (buffers.size() <= idx) {
+    while (buffers->size() <= idx) {
         if (use_pool) {
-            buffers.push_back(get_new_buffer());
+            buffers->push_back(get_new_buffer());
         } else {
-            buffers.push_back(create_new_buffer());
+            buffers->push_back(create_new_buffer());
         }
         changed = true;
     }
@@ -80,7 +101,7 @@ AudioChannel<SampleT>::Buffers::get_new_buffer() const {
 
 template <typename SampleT>
 uint32_t AudioChannel<SampleT>::Buffers::n_buffers() const {
-    return buffers.size();
+    return buffers->size();
 }
 
 template <typename SampleT>
@@ -93,6 +114,15 @@ uint32_t
 AudioChannel<SampleT>::Buffers::buf_space_for_sample(uint32_t offset) const {
     uint32_t off = offset % buffers_size;
     return buffers_size - off;
+}
+
+template <typename SampleT>
+typename AudioChannel<SampleT>::Buffers&
+AudioChannel<SampleT>::Buffers::operator=(AudioChannel<SampleT>::Buffers const& other) {
+    *buffers = *other.buffers;
+    pool = other.pool;
+    buffers_size = other.buffers_size;
+    return *this;
 }
 
 template <typename SampleT>
@@ -173,7 +203,7 @@ void AudioChannel<SampleT>::PROC_process(
     uint32_t pos_before, uint32_t pos_after, uint32_t length_before,
     uint32_t length_after)
 {
-    log<log_level_trace>("process");
+    log<log_level_debug_trace>("process");
 
     // Execute any commands queued from other threads.
     PROC_handle_command_queue();
@@ -194,6 +224,9 @@ void AudioChannel<SampleT>::PROC_process(
             mp_buffers = mp_prerecord_buffers;
             ma_buffers_data_length = ma_start_offset =
                 mp_prerecord_buffers_data_length.load();
+            if (mp_buffers.n_buffers() > 0) {
+                trace_print_data<16>("Pre-recorded samples carried over:", mp_buffers.buffers->at(0)->data(), mp_buffers.buffers_size);
+            }
         } else {
             log<log_level_debug>("Pre-record end -> discard");
         }
@@ -234,7 +267,7 @@ void AudioChannel<SampleT>::PROC_process(
 
     mp_prev_process_flags = process_flags;
 
-    // Update recording/playback buffers.
+    // Update recording/playback buffers and ringbuffer.
     if (mp_recording_source_buffer) {
         mp_recording_source_buffer += n_samples;
         mp_recording_source_buffer_size -= n_samples;
@@ -248,7 +281,7 @@ void AudioChannel<SampleT>::PROC_process(
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_exec_cmd(ProcessingCommand cmd) {
     unsigned ctype = (unsigned)cmd.cmd_type;
-    log<log_level_trace>("exec cmd: {}", ctype);
+    log<log_level_debug_trace>("exec cmd: {}", ctype);
     auto const &rc = cmd.details.raw_copy_details;
     auto const &ac = cmd.details.additive_copy_details;
 
@@ -281,7 +314,7 @@ void AudioChannel<SampleT>::PROC_exec_cmd(ProcessingCommand cmd) {
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_queue_memcpy(void *dst, void *src, uint32_t sz) {
-    log<log_level_trace>("queue memcpy");
+    log<log_level_debug_trace>("queue memcpy");
     ProcessingCommand cmd;
     cmd.cmd_type = ProcessingCommandType::RawCopy;
     cmd.details.raw_copy_details = {.src = src, .dst = dst, .sz = sz};
@@ -292,7 +325,7 @@ template <typename SampleT>
 void AudioChannel<SampleT>::PROC_queue_additivecpy(SampleT *dst, SampleT *src,
                                                    uint32_t n_elems, float mult,
                                                    bool update_absmax) {
-    log<log_level_trace>("queue addcpy");
+    log<log_level_debug_trace>("queue addcpy");
     ProcessingCommand cmd;
     cmd.cmd_type = ProcessingCommandType::AdditiveCopy;
     cmd.details.additive_copy_details = {.src = src,
@@ -305,7 +338,7 @@ void AudioChannel<SampleT>::PROC_queue_additivecpy(SampleT *dst, SampleT *src,
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_finalize_process() {
-    log<log_level_trace>("finalize");
+    log<log_level_debug_trace>("finalize");
 
     ProcessingCommand cmd;
     while (mp_proc_queue.pop(cmd)) {
@@ -313,10 +346,41 @@ void AudioChannel<SampleT>::PROC_finalize_process() {
     }
 }
 
+
+template <typename SampleT>
+void AudioChannel<SampleT>::adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port, std::optional<unsigned> reverse_start_offset, bool thread_safe) {
+    if (reverse_start_offset.has_value()) {
+        log<log_level_debug_trace>("queue adopt ringbuffer @ reverse offset {}", reverse_start_offset.value());
+    } else {
+        log<log_level_debug_trace>("queue adopt ringbuffer @ begin");
+    }
+    auto audioport = std::dynamic_pointer_cast<AudioPort<SampleT>>(from_port);
+    if (!audioport) {
+        log<log_level_error>("Cannot adopt ringbuffer from non-audio port");
+        return;
+    }
+
+    auto fn = [audioport, reverse_start_offset, this]() {
+        auto data = audioport->PROC_get_ringbuffer_contents();
+        mp_buffers.set_contents(data.data);
+        unsigned so = reverse_start_offset.has_value() ? data.n_samples - reverse_start_offset.value() : 0;
+        log<log_level_debug_trace>("adopting ringbuffer @ reverse offset {}", so);
+        set_start_offset(so);
+        PROC_set_length(data.n_samples);
+        data_changed();
+    };
+
+    if (thread_safe) {
+        queue_process_thread_command(fn);
+    } else {
+        fn();
+    }
+}
+
 template <typename SampleT>
 void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
                                       bool thread_safe) {
-    log<log_level_trace>("load data ({} samples)", len);
+    log<log_level_debug_trace>("load data ({} samples)", len);
 
     // Convert to internal storage layout
     auto buffers =
@@ -324,7 +388,7 @@ void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
     buffers.ensure_available(len, false);
 
     for (uint32_t idx = 0; idx < buffers.n_buffers(); idx++) {
-        auto &buf = buffers.buffers.at(idx);
+        auto &buf = buffers.buffers->at(idx);
         buf = std::make_shared<AudioBuffer<SampleT>>(ma_buffer_size);
         uint32_t already_copied = idx * ma_buffer_size;
         uint32_t n_elems = std::min(ma_buffer_size, len - already_copied);
@@ -378,7 +442,7 @@ void AudioChannel<SampleT>::PROC_process_record(
     &buffers_data_length,
     SampleT *record_buffer,
     uint32_t record_buffer_size) {
-    log<log_level_trace>("process record");
+    log<log_level_debug_trace>("process record: {} samples @ {}", n_samples, record_from);
 
     if (record_buffer_size < n_samples) {
         throw_error<std::runtime_error>(
@@ -422,7 +486,7 @@ void AudioChannel<SampleT>::PROC_process_replace(uint32_t data_position, uint32_
                                                  uint32_t n_samples,
                                                  SampleT *record_buffer,
                                                  uint32_t record_buffer_size) {
-    log<log_level_trace>("process replace");
+    log<log_level_debug_trace>("process replace");
 
     if (record_buffer_size < n_samples) {
         throw_error<std::runtime_error>(
@@ -479,7 +543,7 @@ template <typename SampleT> uint32_t AudioChannel<SampleT>::get_length() const {
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_set_length(uint32_t length) {
-    log<log_level_trace>("set length -> {}", length);
+    log<log_level_debug_trace>("set length -> {}", length);
     ma_buffers_data_length = length;
     data_changed();
 }
@@ -495,7 +559,7 @@ void AudioChannel<SampleT>::PROC_process_playback(int data_position,
                                                   uint32_t n_samples, bool muted,
                                                   SampleT *playback_buffer,
                                                   uint32_t playback_buffer_size) {
-    log<log_level_trace>("process playback");
+    log<log_level_debug_trace>("process playback");
 
     if (playback_buffer_size < n_samples) {
         throw_error<std::runtime_error>(
@@ -569,7 +633,7 @@ void AudioChannel<SampleT>::PROC_handle_poi(shoop_loop_mode_t mode, uint32_t len
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_set_playback_buffer(SampleT *buffer,
                                                      uint32_t size) {
-    log<log_level_trace>("set playback buf ({} samples)", size);
+    log<log_level_debug_trace>("set playback buf ({} samples)", size);
 
     throw_if_commands_queued();
     mp_playback_target_buffer = buffer;
@@ -579,7 +643,7 @@ void AudioChannel<SampleT>::PROC_set_playback_buffer(SampleT *buffer,
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_set_recording_buffer(SampleT *buffer,
                                                       uint32_t size) {
-    log<log_level_trace>("set rec buf ({} samples)", size);
+    log<log_level_debug_trace>("set rec buf ({} samples)", size);
 
     throw_if_commands_queued();
     mp_recording_source_buffer = buffer;
@@ -588,7 +652,7 @@ void AudioChannel<SampleT>::PROC_set_recording_buffer(SampleT *buffer,
 
 template <typename SampleT>
 void AudioChannel<SampleT>::PROC_clear(uint32_t length) {
-    log<log_level_trace>("clear");
+    log<log_level_debug_trace>("clear");
 
     throw_if_commands_queued();
     mp_buffers.ensure_available(length);

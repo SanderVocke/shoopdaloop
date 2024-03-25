@@ -12,6 +12,12 @@ typedef enum {
     Dummy     // Internal test backend aimed at controlled processing
 } shoop_audio_driver_type_t;
 
+typedef enum {
+    ShoopPortDataType_Audio,
+    ShoopPortDataType_Midi,
+    ShoopPortDataType_Any
+} shoop_port_data_type_t;
+
 // Modes a loop can be in.
 typedef enum {
     LoopMode_Unknown,
@@ -25,7 +31,8 @@ typedef enum {
 } shoop_loop_mode_t;
 
 typedef enum {
-    log_level_trace,
+    log_level_debug_trace,  // Will not be printed in release build
+    log_level_always_trace, // Same look as trace, but will be printed in release build
     log_level_debug,
     log_level_info,
     log_level_warning,
@@ -82,6 +89,12 @@ typedef enum {
     Test2x2x1, // Custom processing chain with 2 audio in- and outputs and 1 MIDI input for testing.
 } shoop_fx_chain_type_t;
 
+// Can be ORed
+typedef enum {
+    ShoopPortConnectability_Internal = 1, // Can connect to internal ports
+    ShoopPortConnectability_External = 2, // Can connect to external ports
+} shoop_port_connectability_t;
+
 typedef struct _shoopdaloop_loop                shoopdaloop_loop_t;
 typedef struct _shoopdaloop_loop_audio_channel  shoopdaloop_loop_audio_channel_t;
 typedef struct _shoopdaloop_loop_midi_channel   shoopdaloop_loop_midi_channel_t;
@@ -107,6 +120,7 @@ typedef struct {
     float gain;
     unsigned muted;
     unsigned passthrough_muted;
+    unsigned ringbuffer_n_samples;
     const char* name;
 } shoop_audio_port_state_info_t;
 
@@ -117,6 +131,7 @@ typedef struct {
     unsigned n_output_notes_active;
     unsigned muted;
     unsigned passthrough_muted;
+    unsigned ringbuffer_n_samples;
     const char* name;
 } shoop_midi_port_state_info_t;
 
@@ -152,7 +167,11 @@ typedef struct {
     unsigned buffer_size;
 } shoop_dummy_audio_driver_settings_t;
 
-typedef enum { Input, Output } shoop_port_direction_t;
+typedef enum {
+    ShoopPortDirection_Input,
+    ShoopPortDirection_Output,
+    ShoopPortDirection_Any
+} shoop_port_direction_t;
 
 typedef struct {
     shoop_channel_mode_t mode;
@@ -182,7 +201,10 @@ typedef struct {
 } shoop_audio_channel_data_t;
 
 typedef struct {
-    unsigned int time;
+    // Regular messages have time >= 0. However, a midi sequence can also be used to store
+    // the state of a MIDI port at the time of recording start. Such state should be saved
+    // as MIDI messages with time = -1.
+    int time;
     unsigned int size;
     unsigned char *data;
 } shoop_midi_event_t;
@@ -221,6 +243,17 @@ typedef struct {
     unsigned n_frames;
     audio_sample_t *data; // Channels are not interleaved
 } shoop_multichannel_audio_t;
+
+typedef struct {
+    shoop_port_data_type_t data_type;
+    shoop_port_direction_t direction;
+    const char* name;
+} shoop_external_port_descriptor_t;
+
+typedef struct {
+    unsigned n_ports;
+    shoop_external_port_descriptor_t *ports;
+} shoop_external_port_descriptors_t;
 
 #ifdef __cplusplus
 }

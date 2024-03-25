@@ -93,7 +93,9 @@ ShoopTestFile {
                     other_loop().set_length(100)
 
                     other_loop().transition(ShoopConstants.LoopMode.Playing, 2, true)
+                    testcase.wait_updated(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
 
                     testcase.wait_updated(session.backend)

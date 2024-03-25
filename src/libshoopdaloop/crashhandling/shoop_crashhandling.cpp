@@ -6,37 +6,71 @@
 #include <stdexcept>
 #include <locale>
 #include <codecvt>
+#include <thread>
 
 std::unique_ptr<google_breakpad::ExceptionHandler> g_exception_handler;
 CrashedCallback g_crashed_callback = nullptr;
 
+#if defined(_WIN32)
+#include <windows.h>
+void hard_kill_self() {
+    std::cout << "Timeout, terminating." << std::endl;
+    TerminateProcess(GetCurrentProcess(), 1);
+}
+#else
+#include <signal.h>
+void hard_kill_self() {
+    std::cout << "Timeout, terminating with SIGKILL." << std::endl;
+    raise(SIGKILL);
+}
+#endif
+
+void call_crashed_callback_with_timeout(const char* filename) {
+    std::atomic<bool> done = false;
+    std::thread timeout_handler([&done]() {
+        float waited = 0.0;
+        while (waited < 10.0 && !done.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            waited += 0.01;
+        }
+        if (!done) {
+            hard_kill_self();
+        }
+    });
+
+    // Call the crashed callback, but use a timeout thread to ensure we will exit eventually.
+    g_crashed_callback(filename);
+    done = true;
+    timeout_handler.join();
+}
+
 #if __APPLE__
 static bool dumpCallback(const char* dump_dir, const char* minidump_id, void* context, bool succeeded) {
-    std::cout << "ShoopDaLoop crashed. Breakpad crash minidump saved @ " << dump_dir << "/" << minidump_id << ".dmp." << std::endl;
+    std::cout << "\n\nShoopDaLoop crashed.\n  - Breakpad crash minidump saved @ " << dump_dir << "/" << minidump_id << ".dmp." << std::endl;
     std::string _dd(dump_dir), _did(minidump_id);
     std::string filename = _dd + "/" + _did + ".dmp";
     if (g_crashed_callback) {
-        g_crashed_callback(filename.c_str());
+        call_crashed_callback_with_timeout(filename.c_str());
     }
     return succeeded;
 }
 #elif defined(_WIN32)
 static bool dumpCallback(const wchar_t* dump_dir, const wchar_t* minidump_id, void* context, EXCEPTION_POINTERS* exinfo, MDRawAssertionInfo *assertion, bool succeeded) {
-    std::wcout << "ShoopDaLoop crashed. Breakpad crash minidump saved @ " << dump_dir << "/" << minidump_id << ".dmp." << std::endl;
+    std::wcout << "\n\nShoopDaLoop crashed.\n  - Breakpad crash minidump saved @ " << dump_dir << "/" << minidump_id << ".dmp." << std::endl;
     std::wstring _dd(dump_dir), _did(minidump_id);
     std::wstring wfilename = _dd + L"/" + _did + L".dmp";
     std::string filename = std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(wfilename);
     if (g_crashed_callback) {
-        g_crashed_callback(filename.c_str());
+        call_crashed_callback_with_timeout(filename.c_str());
     }
     return succeeded;
 }
 #else
 static bool dumpCallback(const google_breakpad::MinidumpDescriptor& descriptor,
 void* context, bool succeeded) {
-    std::cout << "ShoopDaLoop crashed. Breakpad crash minidump saved @ " << descriptor.path() << "." << std::endl;
+    std::cout << "\n\nShoopDaLoop crashed.\n  - Breakpad crash minidump saved @ " << descriptor.path() << "." << std::endl;
     if (g_crashed_callback) {
-        g_crashed_callback(descriptor.path());
+        call_crashed_callback_with_timeout(descriptor.path());
     }
     return succeeded;
 }

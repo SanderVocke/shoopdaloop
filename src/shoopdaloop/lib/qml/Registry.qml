@@ -16,15 +16,15 @@ Item {
 
     function register(id, object, overwrite=false) {
         if(id in registry_data && !overwrite) {
-            logger.throw_error("attempting to re-register existing key: " + id)
+            logger && logger.throw_error("attempting to re-register existing key: " + id)
         }
         if(!(id in registry_data)) {
-            logger.debug(() => (`Registered: ${id} => ${object}`))
+            logger && logger.debug(() => (`Registered: ${id} => ${object}`))
             registry_data[id] = object
             itemAdded(id, object)
             contentsChanged()
         } else if(overwrite && (id in registry_data)) {
-            logger.debug(() => (`Overwrite: ${id}: ${registry_data[id]}  => ${object}`))
+            logger &&logger.debug(() => (`Overwrite: ${id}: ${registry_data[id]}  => ${object}`))
             registry_data[id] = object
             itemModified(id, object)
             contentsChanged()
@@ -35,7 +35,7 @@ Item {
         if(!(id in registry_data)) {
             return;
         }
-        logger.debug(() => ("Unregistered:" + id))
+        logger && logger.debug(() => ("Unregistered:" + id))
         delete registry_data[id]
         itemRemoved(id)
         contentsChanged()

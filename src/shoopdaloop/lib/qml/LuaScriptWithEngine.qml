@@ -20,7 +20,7 @@ Item {
 
         LuaScript {
             id: script
-            when: engine && engine.ready
+            when: engine && engine.ready && control_interface && control_interface.ready
             lua_engine: engine
 
             onRanScript: {
@@ -30,7 +30,7 @@ Item {
         }
 
         function update() {
-            if (root.control_interface) {
+            if (root.control_interface && root.control_interface.ready) {
                 create_lua_qobject_interface_as_global('__shoop_control_interface', root.control_interface)
             }
             ready = true

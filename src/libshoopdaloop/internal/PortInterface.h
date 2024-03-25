@@ -25,6 +25,8 @@ using PortExternalConnectionStatus = std::map<std::string, bool>;
 // 4. Read out of the port if applicable.
 class PortInterface {
 public:
+    class RingbufferSnapshot;
+
     virtual void close() = 0;
     virtual const char* name() const = 0;
     virtual PortDataType type() const = 0;
@@ -55,8 +57,18 @@ public:
     virtual void connect_external(std::string name) = 0;
     virtual void disconnect_external(std::string name) = 0;
 
+    // Connectability (see shoop_port_connectability_t flags)
+    virtual unsigned input_connectability() const = 0;
+    virtual unsigned output_connectability() const = 0;
+
     virtual bool get_muted() const = 0;
     virtual void set_muted(bool muted) = 0;
+
+    // Ports may implement a ringbuffer which keeps track of (at least) N
+    // samples of the most recent data that flowed through. This is for retroactive recording.
+    // Get/set N with this interface.
+    virtual void set_ringbuffer_n_samples(unsigned n) = 0;
+    virtual unsigned get_ringbuffer_n_samples() const = 0;
 
     PortInterface() {}
     virtual ~PortInterface() {};

@@ -15,6 +15,7 @@ PythonLoop {
     onObj_idChanged: set_logging_instance_identifier(obj_id)
 
     property var maybe_fx_chain: null
+    property var loop_widget : null
 
     // Gives a nice full progress bar when recording
     readonly property int display_position: mode == ShoopConstants.LoopMode.Recording ? length : position

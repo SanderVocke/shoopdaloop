@@ -20,9 +20,6 @@ except:
         installed_dir = try_dir
 
 if not installed_dir:
-    from shoopdaloop.lib.logging import Logger
-    logger = Logger("Frontend.DetectInstallation")
-    logger.error("Unable to find version.txt in source or installation dir.")
     raise Exception("Unable to find version.txt in source or installation dir.")
 
 # Installation dir is where ShoopDaLoop is installed. In the case of
@@ -41,3 +38,7 @@ def scripts_dir():
 # Dynlibs_dir is the path where we can find dynamic back-end libraries.
 def dynlibs_dir():
     return installation_dir()
+
+# Resources directory.
+def resource_dir():
+    return os.path.join(installation_dir(), 'resources')

@@ -3,7 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("Ports - Internal Audio - Properties", "[InternalAudioPort][ports][audio]") {
-    InternalAudioPort<float> port ("dummy", 10);
+    InternalAudioPort<float> port ("dummy", 10, nullptr);
 
     CHECK(port.has_internal_read_access());
     CHECK(port.has_internal_write_access());
@@ -12,7 +12,7 @@ TEST_CASE("Ports - Internal Audio - Properties", "[InternalAudioPort][ports][aud
 }
 
 TEST_CASE("Ports - Internal Audio - Gain", "[InternalAudioPort][ports][audio]") {
-    InternalAudioPort<float> port ("dummy", 10);
+    InternalAudioPort<float> port ("dummy", 10, nullptr);
 
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -32,7 +32,7 @@ TEST_CASE("Ports - Internal Audio - Gain", "[InternalAudioPort][ports][audio]") 
 }
 
 TEST_CASE("Ports - Internal Audio - Mute", "[InternalAudioPort][ports][audio]") {
-    InternalAudioPort<float> port ("dummy", 10);
+    InternalAudioPort<float> port ("dummy", 10, nullptr);
 
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -52,7 +52,7 @@ TEST_CASE("Ports - Internal Audio - Mute", "[InternalAudioPort][ports][audio]") 
 }
 
 TEST_CASE("Ports - Internal Audio - Peak", "[InternalAudioPort][ports][audio]") {
-    InternalAudioPort<float> port ("dummy", 10);
+    InternalAudioPort<float> port ("dummy", 10, nullptr);
     std::vector<audio_sample_t> samples = {
         0.0f, 0.5f, 0.9f, 0.5f, 0.0f
     };
@@ -78,7 +78,7 @@ TEST_CASE("Ports - Internal Audio - Peak", "[InternalAudioPort][ports][audio]") 
 }
 
 TEST_CASE("Ports - Internal Audio - Noop Zero", "[InternalAudioPort][ports][audio]") {
-    InternalAudioPort<float> port ("dummy", 10);
+    InternalAudioPort<float> port ("dummy", 10, nullptr);
     std::vector<audio_sample_t> samples = {
         0.0f, 0.5f, 0.9f, 0.5f, 0.0f
     };
@@ -103,3 +103,25 @@ TEST_CASE("Ports - Internal Audio - Noop Zero", "[InternalAudioPort][ports][audi
     CHECK(second_round_output[3] == Catch::Approx(0.0f));
     CHECK(second_round_output[4] == Catch::Approx(0.0f));
 }
+
+TEST_CASE("Ports - Internal Audio - get ringbuffer data", "[InternalAudioPort][ports][audio]") {
+    auto pool = std::make_shared<BufferQueue<float>::BufferPool>("Test", 10, 4);
+    InternalAudioPort<float> port ("dummy", 10, pool);
+
+    // Process 4 samples
+    port.PROC_prepare(4);
+    auto buf = port.PROC_get_buffer(4);
+    buf[0] = 0.0f;
+    buf[1] = 0.1f;
+    buf[2] = 0.2f;
+    buf[3] = 0.3f;
+    port.PROC_process(4);
+
+    // Get the ringbuffer content
+    auto s = port.PROC_get_ringbuffer_contents();
+    CHECK(s.n_samples >= 4);
+    CHECK(s.data->back()->at(0) == 0.0f);
+    CHECK(s.data->back()->at(1) == 0.1f);
+    CHECK(s.data->back()->at(2) == 0.2f);
+    CHECK(s.data->back()->at(3) == 0.3f);
+};

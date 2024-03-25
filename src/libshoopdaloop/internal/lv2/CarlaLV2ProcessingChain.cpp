@@ -12,6 +12,7 @@
 #include <nlohmann/json.hpp>
 #include <base64.hpp>
 #include "LoadDynamicLibrary.h"
+#include "types.h"
 namespace carla_constants {
     constexpr uint32_t max_buffer_size = 8192;
     constexpr uint32_t min_buffer_size = 1;
@@ -217,7 +218,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::maybe_cleanup_ui() {
 template <typename TimeType, typename SizeType>
 CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     LilvWorld *lilv_world, shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size,
-    std::string human_name)
+    std::string human_name, std::shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool)
     : m_internal_buffers_size(carla_constants::max_buffer_size), m_human_name(human_name),
       m_unique_name(human_name + "_" + random_string(6)) {
 
@@ -278,7 +279,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             m_audio_in_lilv_ports.push_back(p);
             m_audio_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
             auto internal = std::make_shared<_InternalAudioPort>(
-                sym, m_internal_buffers_size);
+                sym, m_internal_buffers_size, nullptr);
             m_input_audio_ports.push_back(internal);
         }
         for (auto const &sym : audio_out_port_symbols) {
@@ -291,8 +292,10 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             m_audio_out_lilv_ports.push_back(p);
             m_audio_out_port_indices.push_back(
                 lilv_port_get_index(m_plugin, p));
+            // This port gets a buffer pool to create a ringbuffer, because other downstream
+            // channels may want to grab it
             auto internal = std::make_shared<_InternalAudioPort>(
-                sym, m_internal_buffers_size);
+                sym, m_internal_buffers_size, maybe_buffer_pool);
             m_output_audio_ports.push_back(internal);
         }
         for (auto const &sym : midi_in_port_symbols) {
@@ -305,7 +308,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             m_midi_in_lilv_ports.push_back(p);
             m_midi_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
             auto internal = std::make_shared<InternalLV2MidiOutputPort>(
-                sym, shoop_port_direction_t::Output, mc_midi_buf_capacities,
+                sym, shoop_port_direction_t::ShoopPortDirection_Output, mc_midi_buf_capacities,
                 m_atom_chunk_type, m_atom_sequence_type, m_midi_event_type);
             m_input_midi_ports.push_back(internal);
             m_generic_input_midi_ports.push_back(
@@ -425,39 +428,48 @@ bool CarlaLV2ProcessingChain<TimeType, SizeType>::visible() const {
 
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::show() {
-    if (!is_ready()) {
+    if (!is_ready() || m_busy_making_visible) {
+        log<log_level_debug>("Not ready or already starting to show.");
         return;
     }
 
-    if (!m_ui_widget) {
-        maybe_cleanup_ui();
-        LV2_Feature instance_access_feature{
-            .URI = LV2_INSTANCE_ACCESS_URI,
-            .data = (void *)lilv_instance_get_handle(m_instance)};
-        LV2_Feature external_ui_host_feature{.URI = LV2_EXTERNAL_UI__Host,
-                                             .data = (void *)&m_ui_host};
-        LV2UI_Widget ui_widget;
-        const char *ui_bundle_path =
-            lilv_node_get_path(lilv_ui_get_bundle_uri(m_ui), nullptr);
-        const LV2_Feature *const ui_features[] = {
-            &instance_access_feature, &external_ui_host_feature, nullptr};
-        m_ui_handle = m_ui_descriptor->instantiate(
-            m_ui_descriptor, m_plugin_uri.c_str(), ui_bundle_path,
-            (LV2UI_Write_Function)static_ui_write_fn, (LV2UI_Controller)this,
-            &ui_widget, ui_features);
-        m_ui_widget = (LV2_External_UI_Widget *)ui_widget;
-        if (!m_ui_widget) {
-            throw std::runtime_error("Could not instantiate Carla UI.");
-        }
+    log<log_level_debug>("Showing Carla UI.");
 
+    m_busy_making_visible = true;
+    if (!m_ui_widget) {
         // Create and start UI thread
         // (also join the old UI thread if still alive)
         if (m_ui_thread.joinable()) {
-            std::cout << "join!\n";
+            log<log_level_debug>("Waiting for UI thread to join.");
             m_ui_thread.join();
+            log<log_level_debug>("Joined UI thread.");
         }
         m_ui_thread = std::thread([this]() {
             static bool shown = false;
+            log<log_level_debug>("UI thread started.");
+            maybe_cleanup_ui();
+            LV2_Feature instance_access_feature{
+                .URI = LV2_INSTANCE_ACCESS_URI,
+                .data = (void *)lilv_instance_get_handle(m_instance)};
+            LV2_Feature external_ui_host_feature{.URI = LV2_EXTERNAL_UI__Host,
+                                                .data = (void *)&m_ui_host};
+            LV2UI_Widget ui_widget;
+            const char *ui_bundle_path =
+                lilv_node_get_path(lilv_ui_get_bundle_uri(m_ui), nullptr);
+            const LV2_Feature *const ui_features[] = {
+                &instance_access_feature, &external_ui_host_feature, nullptr};
+            m_ui_handle = m_ui_descriptor->instantiate(
+                m_ui_descriptor, m_plugin_uri.c_str(), ui_bundle_path,
+                (LV2UI_Write_Function)static_ui_write_fn, (LV2UI_Controller)this,
+                &ui_widget, ui_features);
+            m_ui_widget = (LV2_External_UI_Widget *)ui_widget;
+            if (!m_ui_widget) {
+                throw std::runtime_error("Could not instantiate Carla UI.");
+            }
+            m_ui_widget->show(m_ui_widget);
+            m_visible = true;
+            m_busy_making_visible = false;
+            log<log_level_debug>("UI thread reached update loop.");
             while (true) {
                 auto t = std::chrono::high_resolution_clock::now();
                 {
@@ -492,13 +504,23 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::show() {
 
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::hide() {
-    log<log_level_debug>("Queue hide Carla UI");
+    log<log_level_debug>("Hiding Carla UI.");
+    if (m_ui_widget) {
+        m_ui_widget->hide(m_ui_widget);
+    }
+    maybe_cleanup_ui();
+    if (m_ui_thread.joinable()) {
+        log<log_level_debug>("Waiting for UI thread to join.");
+        m_ui_thread.join();
+        log<log_level_debug>("Joined UI thread.");
+    }
+    m_busy_making_visible = false;
     m_visible = false;
 }
 
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::stop() {
-    std::cout << "Carla instance stopping." << std::endl;
+    log<log_level_debug>("Stopping Carla.");
     maybe_cleanup_ui();
     if (m_ui_thread.joinable()) {
         m_ui_thread.join();

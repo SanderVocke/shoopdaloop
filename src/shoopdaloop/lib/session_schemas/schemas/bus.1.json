@@ -1,0 +1,29 @@
+{
+    "type": "object",
+    "properties": {
+        "schema":       { "const": "bus.1" },
+        "id":           { "type": "string"  },
+        "name":         { "type": "string" },
+        "ports": {
+            "$comment": "ports associated with this bus",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "schema": { "enum": ["audioport.1", "midiport.1"],
+                                "$comment": "See audioport.1, midiport.1 schemas" }
+                },
+                "required": ["schema"]
+            }
+        },
+        "fx_chain": {
+            "$comment": "FX chain associated with this bus",
+            "type": "object",
+            "properties": {
+                "schema": { "const": "fx_chain.1", "$comment": "See fx_chain.1 schema" }
+            },
+            "required": ["schema"]
+        }
+    },
+    "required": ["schema", "id", "name", "ports"]
+}

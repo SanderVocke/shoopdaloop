@@ -5,6 +5,7 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
+  workflow_dispatch:
 
 env:
   BUILD_TYPE: Release
@@ -16,54 +17,298 @@ permissions:
 
 jobs:
 
-  build:
+
+  ##############################################################
+  ## Linux
+  ##############################################################
+
+  build_linux:
     strategy:
       fail-fast: false
       matrix:
         kind:
           - name: linux_release
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
-            prepare: 'manylinux_2_28'
             build_type: 'Release'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+            pyinstaller: true
+            package_kind: linuxes
           - name: linux_debug
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
-            prepare: 'manylinux_2_28'
             build_type: 'Debug'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_barebones
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
-            prepare: 'manylinux_2_28'
             build_type: 'Release'
             cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_asan
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
-            prepare: 'manylinux_2_28'
+            # Note: ASAN build does not have a test because it is not trivial to deploy
+            # an asan-built program on another system. The build is here to ensure the
+            # build process still works. To use ASAN, compile like this natively.
             build_type: 'Debug'
             cmake_opts: '"ENABLE_ASAN" = "On"'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: linux_coverage
-            os: ubuntu-latest
-            python: python3.8
-            pip: python3 -m pip
-            container_image: quay.io/pypa/manylinux_2_28_x86_64:latest
-            prepare: 'manylinux_2_28'
             build_type: 'Debug'
             cmake_opts: '"ENABLE_COVERAGE" = "On"'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+            coverage: true
+    runs-on: ubuntu-latest
+    container:
+      image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
+      options: --user root --workdir /
+    #if: false
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Build
+      uses: ./.github/actions/build_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: 'manylinux_2_28'
+        python: python3.8
+        rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        pyinstaller_python: /usr/bin/python3.8 # pyinstaller uses the official AlmaLinux Python because it has shared libs
+        package_kind: ${{ matrix.kind.package_kind }}
+        coverage: ${{ matrix.kind.coverage }}
+        
+  test_linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          - name: release_wheel_debian_stable
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_debian_stable:latest
+            package: wheel_linux_release
+          - name: barebones_debian_stable
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_debian_stable:latest
+            package: wheel_linux_barebones
+          - name: release_deb_ubuntu_latest
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+            package: package_linux_release_deb
+          - name: release_pyinst_ubuntu_latest
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
+            package: pyinstaller_linux_release
+          - name: release_pacman_arch
+            python: python
+            pip: python -m pip
+            pytest: python -m pytest
+            container: sandervocke/shoopdaloop_run_base_arch:latest
+            package: package_linux_release_pacman
+          - name: release_rpm_manylinux
+            python: python3.8
+            pip: python3.8 -m pip
+            pytest: python3.8 -m pytest
+            container: sandervocke/shoopdaloop_base_manylinux_2_28:latest
+            package: package_linux_release_rpm
+          - name: coverage_manylinux_2_28
+            python: python3.8 -m coverage run --source=shoopdaloop
+            pip: python3.8 -m pip
+            pytest: python3.8 -m coverage run --source=shoopdaloop -m pytest
+            container: sandervocke/shoopdaloop_base_manylinux_2_28:latest
+            package: wheel_linux_coverage
+            coverage: true
+            run_cmd_prefix: >-
+              BASEDIR=$(pwd)
+              EXCLUDE='/*/third_party/* /*/catch2/*'
+              REPORTDIR=coverage_reports
+              BUILDDIR=$(realpath build/cp*/)
+              ORI_BUILD_DIR=$(cat ori_build_dir.txt)
+              DO_GENHTML=0
+              SHOOP_LOG=QoverageCollectorFactory=debug
+              QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
+              scripts/run_and_generate_coverage.sh
+    runs-on: ubuntu-latest
+    needs: build_linux
+    #if: false
+    container:
+      image: ${{ matrix.kind.container }}
+      options: --user root --workdir / # Note: this gets disregarded if container is null
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Test
+      uses: ./.github/actions/test_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        package: ${{ matrix.kind.package }}
+        asan: ${{ matrix.kind.asan }}
+        coverage: ${{ matrix.kind.coverage }}
+        pip: ${{ matrix.kind.pip }}
+        python: ${{ matrix.kind.python }}
+        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
+        pytest: ${{ matrix.kind.pytest }}
+        qpa_platform: vnc
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ##############################################################
+  ## MacOS
+  ##############################################################
+
+  build_macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          - name: macos_release
+            build_type: 'Release'
+            appbundle: true
+            package_kind: dmg
+          - name: macos_debug
+            build_type: 'Debug'
+          - name: macos_barebones
+            build_type: 'Debug'
+            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
+    runs-on: macos-11
+    #if: false
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Build
+      uses: ./.github/actions/build_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: 'macos'
+        python: python3.8
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        appbundle: ${{ matrix.kind.appbundle }}
+        pyinstaller_python: ${{ matrix.kind.pyinstaller_python }}
+        package_kind: ${{ matrix.kind.package_kind }}
+        coverage: ${{ matrix.kind.coverage }}
+        # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+        # Also remove the double dot if any.
+        rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+
+  test_macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          - name: release_whl_macos11
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: null
+            os: macos-11
+            package: wheel_macos_release
+            qpa_platform: offscreen
+          - name: release_whl_macos12
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: null
+            os: macos-12
+            package: wheel_macos_release
+            qpa_platform: offscreen
+          - name: release_whl_macos13
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: null
+            os: macos-13
+            package: wheel_macos_release
+            qpa_platform: offscreen
+          - name: debug_whl_macos13
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: null
+            os: macos-13
+            package: wheel_macos_debug
+            qpa_platform: offscreen
+          - name: release_dmg_macos13
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: null
+            os: macos-13
+            package: package_macos_release
+            qpa_platform: offscreen
+    runs-on: ${{ matrix.kind.os }}
+    needs: build_macos
+    #if: false
+    container:
+      image: ${{ matrix.kind.container }}
+      options: --user root --workdir / # Note: this gets disregarded if container is null
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Test
+      uses: ./.github/actions/test_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        package: ${{ matrix.kind.package }}
+        asan: ${{ matrix.kind.asan }}
+        coverage: ${{ matrix.kind.coverage }}
+        pip: ${{ matrix.kind.pip }}
+        python: ${{ matrix.kind.python }}
+        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
+        pytest: ${{ matrix.kind.pytest }}
+        qpa_platform: ${{ matrix.kind.qpa_platform }}
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ##############################################################
+  ## Windows
+  ##############################################################
+
+  build_windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
           - name: windows_release
             os: windows-2022
             python: python.exe
@@ -71,6 +316,8 @@ jobs:
             container_image: null
             prepare: 'windows'
             build_type: 'Release'
+            pyinstaller: true
+            package_kind: innosetup
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: windows_barebones
             os: windows-2022
@@ -89,300 +336,117 @@ jobs:
             prepare: 'windows'
             build_type: 'Debug'
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          - name: macos_release
-            os: macos-11
-            python: python3.8
-            pip: python3.8 -m pip
-            container_image: null
-            prepare: 'macos'
-            build_type: 'Release'
-            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
-            # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
-            # Also remove the double dot if any.
-            rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
-          - name: macos_debug
-            os: macos-11
-            python: python3.8
-            pip: python3.8 -m pip
-            container_image: null
-            prepare: 'macos'
-            build_type: 'Debug'
-            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
-            # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
-            # Also remove the double dot if any.
-            rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
     runs-on: ${{ matrix.kind.os}}
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
+    #if: false
     steps:
     - name: Checkout
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Prepare
-      id: prepare
-      uses: ./.github/actions/prepare_build
+    - name: Build
+      uses: ./.github/actions/build_toplevel
       with:
-        variant: ${{ matrix.kind.prepare }}
-    - name: Set overrides
-      shell: bash
-      run: |
-        echo 'cmake.build_type = "${{ matrix.kind.build_type }}"' > py-build-cmake.local.toml
-        echo 'cmake.options = { ${{ matrix.kind.cmake_opts }} }' >> py-build-cmake.local.toml
-    - name: Build wheel
-      id: buildwheel
-      uses: ./.github/actions/build_wheel
-      with:
-        variant_name: ${{ matrix.kind.name }}
-        python: ${{ matrix.kind.python}}
-        prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
-        windows: ${{ matrix.kind.prepare == 'windows' && 'true' || 'false' }}
+        name: ${{ matrix.kind.name }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: ${{ matrix.kind.prepare }}
+        python: ${{ matrix.kind.python }}
         rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
-    - name: Post-build steps
-      id: postbuild
-      uses: ./.github/actions/post_build
-      with:
-        variant: ${{ matrix.kind.prepare }}
-        wheel: ${{ steps.buildwheel.outputs.wheel_filename }}
-        build_dir: ${{ steps.buildwheel.outputs.build_dir }}
-    - name: Find wheel
-      shell: bash
-      id: find
-      run: |
-        echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
-    - name: Upload wheel (${{ inputs.variant_name }})
-      if: ${{ !env.ACT }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheel_${{ matrix.kind.name }}
-        path: ${{ steps.find.outputs.name }}
-    - name: Upload debug info (${{ inputs.variant_name }})
-      if: ${{ !env.ACT }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: debuginfo_${{ matrix.kind.name }}
-        path: debuginfo
-    # - name: TMate failure session
-    #   if: ${{ failure() }}
-    #   uses: SanderVocke/action-tmate@master
-  
-  test:
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        pyinstaller_python: ${{ matrix.kind.pyinstaller_python }}
+        package_kind: ${{ matrix.kind.package_kind }}
+        coverage: ${{ matrix.kind.coverage }}
+
+  test_windows:
     strategy:
       fail-fast: false
       matrix:
         kind:
-          - name: release_debian_stable
-            python: python3
-            pip: python3 -m pip
-            container: sandervocke/shoopdaloop_run_base_debian_stable:latest
-            os: ubuntu-latest
-            wheel: wheel_linux_release
-            testrunner: test_runner
-            qpa_platform: vnc
-          - name: barebones_debian_stable
-            python: python3
-            pip: python3 -m pip
-            container: sandervocke/shoopdaloop_run_base_debian_stable:latest
-            os: ubuntu-latest
-            wheel: wheel_linux_barebones
-            testrunner: test_runner
-            qpa_platform: vnc
-          - name: release_ubuntu_latest
-            python: python3
-            pip: python3 -m pip
-            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
-            os: ubuntu-latest
-            wheel: wheel_linux_release
-            testrunner: test_runner
-            qpa_platform: vnc
-          - name: release_arch
-            python: python
-            pip: python -m pip
-            container: sandervocke/shoopdaloop_run_base_arch:latest
-            os: ubuntu-latest
-            wheel: wheel_linux_release
-            testrunner: test_runner
-            qpa_platform: vnc
-          - name: asan_ubuntu_latest
-            python: python3
-            pip: python3 -m pip
-            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
-            os: ubuntu-latest
-            wheel: wheel_linux_asan
-            testrunner: test_runner
-            qpa_platform: vnc
-            run_cmd_prefix: "LD_PRELOAD=libasan_shoop.so ASAN_OPTIONS=detect_leaks=0"
-            asan: true
-          - name: coverage_ubuntu_latest
-            python: python3
-            pip: python3 -m pip
-            container: sandervocke/shoopdaloop_run_base_ubuntu_latest:latest
-            os: ubuntu-latest
-            wheel: wheel_linux_coverage
-            testrunner: test_runner
-            qpa_platform: vnc
-            coverage: true
-          - name: release_macos11
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-11
-            wheel: wheel_macos_release
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: release_macos12
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-12
-            wheel: wheel_macos_release
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: release_macos13
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-13
-            wheel: wheel_macos_release
-            testrunner: test_runner
-            qpa_platform: offscreen
-          - name: debug_macos13
-            python: python3
-            pip: python3 -m pip
-            container: null
-            os: macos-13
-            wheel: wheel_macos_debug
-            testrunner: test_runner
-            qpa_platform: offscreen
           - name: release_windows
             python: python.exe
             pip: python.exe -m pip
+            pytest: python.exe -m pytest
             container: null
             os: windows-2022
-            wheel: wheel_windows_release
-            testrunner: test_runner.exe
+            package: wheel_windows_release
+            qpa_platform: offscreen
+            pathconvert: "| cygpath -u -f -"
+          - name: release_windows_innosetup
+            python: python.exe
+            pip: python.exe -m pip
+            pytest: python.exe -m pytest
+            container: null
+            os: windows-2022
+            package: package_windows_release
             qpa_platform: offscreen
             pathconvert: "| cygpath -u -f -"
           - name: debug_windows
             python: python.exe
             pip: python.exe -m pip
+            pytest: python.exe -m pytest
             container: null
             os: windows-2022
-            wheel: wheel_windows_debug
-            testrunner: test_runner.exe
+            package: wheel_windows_debug
             qpa_platform: offscreen
             pathconvert: "| cygpath -u -f -"
     runs-on: ${{ matrix.kind.os }}
-    needs: build
-    if: ${{ always() }}
+    needs: build_windows
+    #if: false
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
     steps:
     - name: Checkout
       uses: actions/checkout@v3
-    - name: Retrieve wheel
-      uses: actions/download-artifact@v4
       with:
-        name: ${{ matrix.kind.wheel }}
-        path: ~/wheel
-    - name: Pre-install ASAN shared lib
-      if: ${{ matrix.kind.asan }}
-      shell: bash
-      run: |
-        ${{ matrix.kind.pip }} install wheel
-        mkdir unzip_whl
-        ${{ matrix.kind.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
-        cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
-    - name: Install wheel
-      id: install
-      shell: bash
-      run: |
-        SHOOP_LOG=debug ${{ matrix.kind.run_cmd_prefix }} ${{ matrix.kind.pip }} install --force-reinstall ~/wheel/*.whl
-        ${{ matrix.kind.run_cmd_prefix }} shoopdaloop --info
-        mkdir -p crashdumps
-        echo "install_dir=$(shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})" | tee -a $GITHUB_OUTPUT
-    - name: Install Python modules
-      shell: bash
-      run: |
-        ${{ matrix.kind.pip }} install pytest pipx
-    - name: Install Qoverage
-      if: ${{ matrix.kind.coverage }}
-      uses: ./.github/actions/install_qoverage
+        submodules: recursive
+    - name: Test
+      uses: ./.github/actions/test_toplevel
       with:
+        name: ${{ matrix.kind.name }}
+        package: ${{ matrix.kind.package }}
+        asan: ${{ matrix.kind.asan }}
+        coverage: ${{ matrix.kind.coverage }}
+        pip: ${{ matrix.kind.pip }}
         python: ${{ matrix.kind.python }}
-    - name: Qoverage - Instrument QML files
-      if: ${{ matrix.kind.coverage }}
-      uses: ./.github/actions/qoverage_instrument
-      with:
-        package_path: ${{ steps.install.outputs.install_dir }}
-    - name: Test back-end
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/test_backend
-      timeout-minutes: 5
-      with:
-        variant_name: release
-        # note: build step generates run_cmd_prefix output
-        # for usage with shared ASAN library.
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
-        test_runner: ${{ steps.install.outputs.install_dir }}/${{ matrix.kind.testrunner }}
-    - name: Test Python
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/test_python
-      timeout-minutes: 5
-      with:
-        variant_name: release
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
-        root_path: ${{ steps.install.outputs.install_dir }}
-        pytest_command: ${{ matrix.kind.python }} -m pytest
-    - name: Test QML
-      if: ${{ (success() || failure()) && !matrix.kind.skip_qml }}
-      uses: ./.github/actions/test_qml
-      timeout-minutes: 20
-      with:
-        variant_name: release
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
-        root_path: ${{ steps.install.outputs.install_dir }}
-        python_command: ${{ matrix.kind.python }}
-        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-        macos_rpath_patch: ${{ contains(matrix.kind.name, 'macos') }}
-    - name: Screenshots
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/test_screenshots
-      timeout-minutes: 5
-      with:
-        root_path: ${{ steps.install.outputs.install_dir }}
-        screenshots_path: _grabbed_screenshots
-        artifact_name: screenshots_${{ matrix.kind.name }}
-        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-        python: ${{ matrix.kind.python }}
-    - name: Test Run App
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/test_run_app
-      timeout-minutes: 15
-      with:
-        variant_name: release
-        run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ matrix.kind.run_cmd_prefix }}
-        root_path: ${{ steps.install.outputs.install_dir }}
-        python: ${{ matrix.kind.python }}
-        qt_qpa_platform: ${{ matrix.kind.qpa_platform }}
-    - name: Process Crash Dumps
-      if: ${{ success() || failure() }}
-      uses: ./.github/actions/process_crashdumps
-      with:
-        dumps_dir: crashdumps
-        python: ${{ matrix.kind.python }}
-        variant: ${{ matrix.kind.name }}
-    # - name: TMate failure session
-    #   if: ${{ failure() && matrix.kind.asan }}
-    #   uses: SanderVocke/action-tmate@master
+        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
+        pytest: ${{ matrix.kind.pytest }}
+        qpa_platform: ${{ matrix.kind.qpa_platform }}
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ##############################################################
+  ## Crash collection
+  ##############################################################
 
   collect_crashes:
     runs-on: ubuntu-latest
     needs:
-      - build
-      - test
+      - build_linux
+      - test_linux
+      - build_macos
+      - test_macos
+      - build_windows
+      - test_windows
     if: ${{ always() }}
     container:
       image: archlinux:latest
@@ -393,7 +457,7 @@ jobs:
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
-        pattern: crashdumps_*
+        pattern: crashdumps_*_${{ github.run_number }}
         path: crashdumps
     - name: Count crash dumps
       id: count
@@ -401,6 +465,8 @@ jobs:
       run: |
         mkdir -p crashdumps
         echo "crashdumps=$(ls crashdumps/crashdumps_* | wc -l)" | tee -a $GITHUB_OUTPUT
+        pacman --noconfirm -Syy
+        pacman --noconfirm -S --needed tree git
     - name: Download debug information
       uses: actions/download-artifact@v4
       if: ${{ steps.count.outputs.crashdumps != 0 }}
@@ -408,156 +474,71 @@ jobs:
         path: debuginfo
         pattern: debuginfo_*
         merge-multiple: true
-    - name: Install tools part 1
-      if: ${{ steps.count.outputs.crashdumps != 0 }}
+    - name: Cache minidump-stackwalk
+      id: cache-minidump
+      uses: actions/cache@v4
+      with:
+        path: minidump-stackwalk
+        key: minidump-stackwalk-1
+    - name: Get minidump package sources
+      if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true' }}
       shell: bash
       run: |
         pacman --noconfirm -Syy
-        pacman --noconfirm -S --needed git base-devel tree && git clone https://aur.archlinux.org/minidump-stackwalk.git
+        pacman --noconfirm -S --needed git base-devel && git clone https://aur.archlinux.org/minidump-stackwalk.git
     - name: Makepkg Build
       id: makepkg
-      if: ${{ steps.count.outputs.crashdumps != 0 }}
+      if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true' }}
       uses: edlanglois/pkgbuild-action@v1
       with:
         pkgdir: minidump-stackwalk
-    - name: Install tools part 2
+    - name: Install minidump package
       if: ${{ steps.count.outputs.crashdumps != 0 }}
       shell: bash
       run: |
-        pacman --noconfirm -U ${{ steps.makepkg.outputs.pkgfile0 }}
+        pacman --noconfirm -U minidump-stackwalk/minidump-stackwalk*.pkg*
     - name: Process dumps
       if: ${{ steps.count.outputs.crashdumps != 0 }}
       shell: bash
       run: |
-        mkdir results
-        tree debuginfo
         tree crashdumps
+        cp -r debuginfo crashdumps/debuginfo
         for dump in $(find crashdumps -name "*.dmp"); do
           echo ""
           echo "================================================="
           echo "Processing $dump..."
           echo "================================================="
-          filename=$(basename $dump)
-          cp $dump results/$filename
-          minidump-stackwalk $dump debuginfo/breakpad_symbols | tee results/$filename.stackwalk
+          minidump-stackwalk $dump debuginfo/breakpad_symbols || true | tee $dump.stackwalk
         done
-
-  # coverage:
-  #   runs-on: ubuntu-latest
-  #   container:
-  #     image: quay.io/pypa/manylinux_2_28_x86_64:latest
-  #     options: --user root --workdir /
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v3
-  #     with:
-  #       submodules: recursive
-  #   - name: Prepare manylinux environment
-  #     uses: ./.github/actions/prepare_build_manylinux_2_28
-  #   - name: Build, install and upload
-  #     id: build
-  #     uses: ./.github/actions/build_wheel
-  #     with:
-  #       variant_name: coverage
-  #       wheel_artifact_name: coverage_wheel
-  #       pypa_build_extra_args: --skip-dependency-check -C--local=pyproject.toml.coverage_overrides
-  #       pip_install_extra_args: --break-system-packages
-  #       whl_suffix: coverage
-  #       install: true
-  #   - name: Install Qoverage
-  #     uses: ./.github/actions/install_qoverage
-  #   - name: Qoverage - Instrument QML files
-  #     uses: ./.github/actions/qoverage_instrument
-  #     with:
-  #       package_path: ${{ steps.build.outputs.install_dir }}
-  #   - name: Back-end tests with coverage
-  #     uses: ./.github/actions/test_backend
-  #     with:
-  #       variant_name: coverage
-  #       test_runner_dir: ${{ steps.build.outputs.install_dir }}
-  #       run_cmd_prefix: >-
-  #         PYTHONPATH="$PYTHONPATH:$(pwd)/${{ steps.build.outputs.install_dir}}/.."
-  #         BASEDIR=${{ steps.build.outputs.source_dir }}
-  #         EXCLUDE=third_party,qt6,boost,c++
-  #         REPORTDIR=coverage_reports
-  #         REPORTNAME=test_runner
-  #         BUILDDIR=${{ steps.build.outputs.build_dir }}
-  #         DO_GENHTML=0
-  #         ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
-  #   - name: Test Python with coverage
-  #     uses: ./.github/actions/test_python
-  #     with:
-  #       variant_name: coverage
-  #       root_path: ${{ steps.build.outputs.install_dir }}
-  #       pytest_command: python3 -m coverage run --source=shoopdaloop -m pytest
-  #       run_cmd_prefix: >-
-  #         PYTHONPATH="$PYTHONPATH:$(pwd)/${{ steps.build.outputs.install_dir}}/.."
-  #         BASEDIR=${{ steps.build.outputs.source_dir }}
-  #         EXCLUDE=third_party,qt6,boost,c++
-  #         REPORTDIR=coverage_reports
-  #         REPORTNAME=pytest
-  #         BUILDDIR=${{ steps.build.outputs.build_dir }}
-  #         DO_GENHTML=0
-  #         ${{ steps.build.outputs.install_dir}}/scripts/run_and_generate_coverage.sh
-  #   - name: Generate Pytest coverage report
-  #     run: |
-  #       python3 -m coverage xml -i -o coverage_reports/pytest.xml
-  #       sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest.xml
-  #   - name: Test QML with coverage
-  #     uses: ./.github/actions/test_qml
-  #     with:
-  #       variant_name: coverage
-  #       root_path: ${{ steps.build.outputs.install_dir }}
-  #       tee_all_output_to: qoverage-console-output.log
-  #       python_command: python3 -m coverage run --source=shoopdaloop
-  #       run_cmd_prefix: >-
-  #         PYTHONPATH="$PYTHONPATH:$(pwd)/${{ steps.build.outputs.install_dir}}/.."
-  #         BASEDIR=${{ steps.build.outputs.source_dir }}
-  #         EXCLUDE=third_party,qt6,boost,c++
-  #         REPORTDIR=coverage_reports
-  #         REPORTNAME=qmltest
-  #         BUILDDIR=${{ steps.build.outputs.build_dir }}
-  #         DO_GENHTML=0
-  #         ${{ steps.build.outputs.install_dir }}/scripts/run_and_generate_coverage.sh
-  #   - name: Generate QML Python coverage report
-  #     run: |
-  #       python3 -m coverage xml -i -o coverage_reports/qml.xml
-  #       sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml.xml
-
-  #   - name: Qoverage - Generate report
-  #     uses: ./.github/actions/qoverage_generate_report
-  #     with:
-  #       strip: ".*/pip/shoopdaloop"
-  #       package_path: ${{ steps.build.outputs.install_dir }}
-  #   - name: Upload back-end coverage to CodeCov
-  #     if: ${{ !env.ACT }}
-  #     uses: codecov/codecov-action@v3
-  #     with:
-  #       token: ${{ secrets.CODECOV_TOKEN }}
-  #       flags: back-end
-  #       files: coverage_reports/test_runner.info
-  #       verbose: true
-  #   - name: Upload Pytest coverage to CodeCov
-  #     if: ${{ !env.ACT }}
-  #     uses: codecov/codecov-action@v3
-  #     with:
-  #       token: ${{ secrets.CODECOV_TOKEN }}
-  #       flags: pytest
-  #       files: coverage_reports/pytest.info,coverage_reports/pytest.xml
-  #       verbose: true
-  #   - name: Upload QML test coverage to CodeCov
-  #     if: ${{ !env.ACT }}
-  #     uses: codecov/codecov-action@v3
-  #     with:
-  #       token: ${{ secrets.CODECOV_TOKEN }}
-  #       flags: qml
-  #       files: coverage_reports/qmltest.info,coverage_reports/qml.xml
-  #       verbose: true
-  #   - name: Upload QML coverage to CodeCov
-  #     if: ${{ !env.ACT }}
-  #     uses: codecov/codecov-action@v3
-  #     with:
-  #       token: ${{ secrets.CODECOV_TOKEN }}
-  #       flags: qml
-  #       files: qoverage-report.xml
-  #       verbose: true
+    - name: Upload crash dumps to Bugsplat
+      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
+      shell: bash
+      run: |
+        for dump in $(find crashdumps -name "*.dmp"); do
+          echo ""
+          echo "================================================="
+          echo "Uploading $dump..."
+          echo "================================================="
+          bash ./scripts/upload_crash_info.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" ${dump}.moreinfo
+        done
+    - uses: actions/setup-node@v4
+      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
+      with:
+        node-version: 19
+    - name: Upload BugSplat debug symbols
+      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
+      uses: SanderVocke/symbol-upload@test_action
+      with:
+        clientId: "${{ secrets.BUGSPLAT_CLIENT_ID }}"
+        clientSecret: "${{ secrets.BUGSPLAT_CLIENT_SECRET }}"
+        database: shoopdaloop
+        application: shoopdaloop
+        version: git-${{ github.sha }}
+        files: "**/*.sym"
+        directory: crashdumps/debuginfo
+    - name: Upload crash dumps as artifact
+      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: crashdumps_summary
+        path: crashdumps

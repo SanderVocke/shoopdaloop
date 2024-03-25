@@ -6,7 +6,8 @@ import '../midi.js' as Midi
 
 LuaControlInterface {
     id: root
-    qml_instance: this
+    qml_instance: root
+
     property var session: null
 
     property PythonLogger logger : PythonLogger { name: "Frontend.Qml.SessionControlInterface" }
@@ -73,26 +74,25 @@ LuaControlInterface {
 
     function select_tracks(track_selector) {
         var rval = []
+        function select_track(integer_selector) {
+            if(integer_selector >= 0) {
+                return session.main_tracks[integer_selector]
+            } else if (integer_selector == -1) {
+                return session.sync_track
+            } else {
+                return null
+            }
+        }
         if (Array.isArray(track_selector)) {
             if (track_selector.length == 0) { rval = [] }
             else {
                 // Form [track_idx1, track_idx2, ...]
                 rval = track_selector.map(
-                    (idx) => {
-                        if(idx >= 0) {
-                            return session.main_tracks[idx]
-                        } else if (idx == -1) {
-                            return session.sync_track
-                        } else {
-                            return null
-                        }
-                    }
+                    (idx) => select_track(idx)
                 ).filter(t => t != null && t != undefined)
             }
         } else if (Number.isInteger(track_selector)) {
-            if (session.main_tracks.length > track_selector) {
-                return [session.main_tracks[track_selector]]
-            } else { return [] }
+            return select_track(track_selector)
         } else {
             // Form [track_select_fn]
             rval = session.main_tracks.filter((t) => track_selector(t))
@@ -151,7 +151,7 @@ LuaControlInterface {
         return select_loops((l) => l.track_idx == track_idx).map(((l) => [l.track_idx, l.idx_in_track]))
     }
     function loop_transition_override(loop_selector, mode, cycles_delay) {
-        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, registries.state_registry.get('sync_active'), false) } )
+        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, registries.state_registry.sync_active) } )
     }
     function loop_get_gain_override(loop_selector) {
         return select_loops(loop_selector).map(l => l.last_pushed_gain)
@@ -203,10 +203,13 @@ LuaControlInterface {
         registries.state_registry.replace('targeted_loop', null)
     }
     function loop_toggle_selected_override(loop_selector) {
-        select_loops(loop_selector).forEach((h) => { h.loop_toggle_selected(loop_selector) } )
+        select_loops(loop_selector).forEach((h) => { h.toggle_selected() } )
     }
     function loop_toggle_targeted_override(loop_selector) {
-        select_loops(loop_selector).forEach((h) => { h.loop_toggle_targeted(loop_selector) } )
+        select_loops(loop_selector).forEach((h) => { h.toggle_targeted() } )
+    }
+    function loop_adopt_ringbuffers_override(loop_selector, reverse_start_cycle, cycles_length) {
+        select_loops(loop_selector).forEach((h) => { h.adopt_ringbuffers(reverse_start_cycle, cycles_length) } )
     }
 
     // Track interface overrides
@@ -245,6 +248,14 @@ LuaControlInterface {
     }
     function track_set_input_muted_override(track_selector, muted) {
         return select_tracks(track_selector).forEach(t => {t.control_widget.monitor = !muted})
+    }
+
+    // Global state overrides
+    function set_apply_n_cycles_override(n) {
+        registries.state_registry.set_apply_n_cycles(n)
+    }
+    function get_apply_n_cycles_override() {
+        return registries.state_registry.apply_n_cycles
     }
 
     // Handle creation and deletion of dynamic MIDI control ports based on registered connection rules.

@@ -410,7 +410,7 @@ Dialog {
         }
 
         Component.onCompleted: {
-            let builtins_dir = file_io.get_installation_directory() + '/lib/lua/builtins'
+            let builtins_dir = file_io.get_scripts_directory() + '/lib/lua/builtins'
             let builtins = file_io.glob(builtins_dir + '/**/*.lua', true)
             let default_run = ['keyboard.lua']
             for (let builtin of builtins) {
@@ -452,7 +452,7 @@ Dialog {
         property alias script_manager: lookup_script_manager.object
 
         function builtins_path() {
-            return file_io.realpath(file_io.get_installation_directory() + '/lib/lua/builtins')
+            return file_io.realpath(file_io.get_scripts_directory() + '/lib/lua/builtins')
         }
 
         function full_path(script_name) {

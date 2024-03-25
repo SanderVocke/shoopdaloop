@@ -40,6 +40,8 @@ public:
     static auto midi_clear_buffer(auto ...args) { return jack_midi_clear_buffer(args...); }
     static auto midi_event_write(auto ...args) { return jack_midi_event_write(args...); }
     static auto cpu_load(auto ...args) { return jack_cpu_load(args...); }
+    static auto port_is_mine(auto ...args) { return jack_port_is_mine(args...); }
+    static auto free(auto ...args) { return jack_free(args...); }
 
     static jack_client_t* client_open(const char* name, jack_options_t options, jack_status_t* status, ...) {
         va_list args;

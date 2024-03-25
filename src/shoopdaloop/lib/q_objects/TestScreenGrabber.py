@@ -14,7 +14,7 @@ class TestScreenGrabber(ShoopQObject):
         self.weak_engine = weak_engine
         self.logger = Logger('Frontend.TestScreenGrabber')
     
-    @Slot(str)
+    @ShoopSlot(str)
     def grab_all(self, output_folder):
         os.makedirs(output_folder, exist_ok=True)
 

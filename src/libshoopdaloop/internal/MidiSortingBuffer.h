@@ -12,7 +12,7 @@ class MidiSortingBuffer : public MidiReadWriteBufferInterface {
 
     std::vector<const MidiSortableMessageInterface*> references;
     std::vector<Message> stored_messages;
-    bool dirty;
+    bool dirty = false;
 
 public:
     MidiSortingBuffer();

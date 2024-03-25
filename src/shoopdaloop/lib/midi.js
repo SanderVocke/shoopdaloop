@@ -7,8 +7,22 @@ const Aftertouch = 0xA0
 const PolyAftertouch = 0xD0
 const SysEx = 0xF0
 
+const AllSoundOff = 120
+
 function create_noteOn(channel, note, velocity) {
   return [NoteOn + channel, note, velocity]
+}
+
+function create_noteOff(channel, note, velocity) {
+  return [NoteOff + channel, note, velocity]
+}
+
+function create_cc(channel, cc, value) {
+  return [ControlChange + channel, cc, value]
+}
+
+function create_all_sound_off(channel) {
+  return create_cc(channel, AllSoundOff, 0)
 }
 
 function maybe_note(msg) {

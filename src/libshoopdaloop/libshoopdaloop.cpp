@@ -64,68 +64,36 @@ std::set<std::shared_ptr<BackendSession>> &get_active_backends() {
 
 // HELPER FUNCTIONS
 std::shared_ptr<BackendSession> internal_backend_session(shoop_backend_session_t *backend) {
-    auto rval = ((std::weak_ptr<BackendSession> *)backend)->lock();
-    if (!rval) {
-        throw std::runtime_error("Attempt to access an invalid/expired backend.");
-    }
-    return rval;
+    return ((std::weak_ptr<BackendSession> *)backend)->lock();
 }
 
 std::shared_ptr<AudioMidiDriver> internal_audio_driver(shoop_audio_driver_t *driver) {
-    auto rval = ((std::weak_ptr<AudioMidiDriver> *)driver)->lock();
-    if (!rval) {
-      throw std::runtime_error("Attempt to access an invalid/expired audio driver.");
-    }
-    return rval;
+    return ((std::weak_ptr<AudioMidiDriver> *)driver)->lock();
 }
 
 std::shared_ptr<GraphPort> internal_audio_port(shoopdaloop_audio_port_t *port) {
-    auto rval = ((std::weak_ptr<GraphPort> *)port)->lock();
-    if (!rval) {
-        throw std::runtime_error("Attempt to access an invalid/expired audio port.");
-    }
-    return rval;
+    return ((std::weak_ptr<GraphPort> *)port)->lock();
 }
 
 std::shared_ptr<GraphPort> internal_midi_port(shoopdaloop_midi_port_t *port) {
-    auto rval = ((std::weak_ptr<GraphPort> *)port)->lock();
-    if (!rval) {
-        throw std::runtime_error("Attempt to access an invalid/expired midi port.");
-    }
-    return rval;
+    return ((std::weak_ptr<GraphPort> *)port)->lock();
 }
 
 std::shared_ptr<GraphLoopChannel> internal_audio_channel(shoopdaloop_loop_audio_channel_t *chan) {
-    auto rval = ((std::weak_ptr<GraphLoopChannel> *)chan)->lock();
-    if (!rval) {
-        throw std::runtime_error("Attempt to access an invalid/expired audio channel.");
-    }
-    return rval;
+    return ((std::weak_ptr<GraphLoopChannel> *)chan)->lock();
 }
 
 std::shared_ptr<GraphLoopChannel> internal_midi_channel(shoopdaloop_loop_midi_channel_t *chan) {
-    auto rval = ((std::weak_ptr<GraphLoopChannel> *)chan)->lock();
-    if (!rval) {
-        throw std::runtime_error("Attempt to access an invalid/expired midi channel.");
-    }
-    return rval;
+    return ((std::weak_ptr<GraphLoopChannel> *)chan)->lock();
 }
 
 //TODO: make the handles point to globally stored weak pointers to avoid trying to access deleted shared object
 std::shared_ptr<GraphLoop> internal_loop(shoopdaloop_loop_t *loop) {
-    auto rval = ((std::weak_ptr<GraphLoop> *)loop)->lock();
-    if (!rval) {
-        throw std::runtime_error("Attempt to access an invalid/expired loop.");
-    }
-    return rval;
+    return ((std::weak_ptr<GraphLoop> *)loop)->lock();
 }
 
 std::shared_ptr<GraphFXChain> internal_fx_chain(shoopdaloop_fx_chain_t *chain) {
-    auto rval = ((std::weak_ptr<GraphFXChain> *)chain)->lock();
-    if (!rval) {
-        throw std::runtime_error("Attempt to access an invalid/expired FX chain.");
-    }
-    return rval;
+    return ((std::weak_ptr<GraphFXChain> *)chain)->lock();
 }
 
 shoop_backend_session_t *external_backend_session(std::shared_ptr<BackendSession> backend) {
@@ -176,17 +144,30 @@ shoop_audio_channel_data_t *external_audio_data(std::vector<audio_sample_t> f) {
     return d;
 }
 
-shoop_midi_sequence_t *external_midi_data(std::vector<_MidiMessage> m) {
+shoop_midi_sequence_t *external_midi_data(shoop_types::LoopMidiChannel::Contents const& m) {
     auto d = new shoop_midi_sequence_t;
-    d->n_events = m.size();
-    d->events = (shoop_midi_event_t**) malloc(sizeof(shoop_midi_event_t*) * m.size());
-    for (uint32_t idx=0; idx < m.size(); idx++) {
-        auto e = alloc_midi_event(m[idx].size);
-        e->size = m[idx].size;
-        e->time = m[idx].time;
-        memcpy((void*)e->data, (void*)m[idx].data.data(), m[idx].size);
+
+    // The sequence will include state-defining messages and recorded messages.
+    d->n_events = m.starting_state_msg_datas.size() + m.recorded_msgs.size();
+    d->events = (shoop_midi_event_t**) malloc(sizeof(shoop_midi_event_t*) * d->n_events);
+
+    // State-defining messages stored first at time=-1
+    for (uint32_t idx=0; idx < m.starting_state_msg_datas.size(); idx++) {
+        auto e = alloc_midi_event(m.starting_state_msg_datas[idx].size());
+        e->size = m.starting_state_msg_datas[idx].size();
+        e->time = -1;
+        memcpy((void*)e->data, (void*)m.starting_state_msg_datas[idx].data(), m.starting_state_msg_datas[idx].size());
         d->events[idx] = e;
     }
+    // Rest is recorded messages
+    for (uint32_t idx=0; idx < m.recorded_msgs.size(); idx++) {
+        auto e = alloc_midi_event(m.recorded_msgs[idx].size);
+        e->size = m.recorded_msgs[idx].size;
+        e->time = m.recorded_msgs[idx].time;
+        memcpy((void*)e->data, (void*)m.recorded_msgs[idx].data.data(), m.recorded_msgs[idx].size);
+        d->events[idx + m.starting_state_msg_datas.size()] = e;
+    }
+
     return d;
 }
 
@@ -196,18 +177,24 @@ std::vector<float> internal_audio_data(shoop_audio_channel_data_t const& d) {
     return r;
 }
 
-std::vector<_MidiMessage> internal_midi_data(shoop_midi_sequence_t const& d) {
-    auto r = std::vector<_MidiMessage>(d.n_events);
+shoop_types::LoopMidiChannel::Contents internal_midi_data(shoop_midi_sequence_t const& d) {
+    shoop_types::LoopMidiChannel::Contents rval;
     for (uint32_t idx=0; idx < d.n_events; idx++) {
         auto &from = *d.events[idx];
-        _MidiMessage m(
+        if (from.time < 0) {
+          std::vector<uint8_t> data(from.size);
+          memcpy((void*)data.data(), (void*)from.data, from.size);
+          rval.starting_state_msg_datas.push_back(data);
+        } else {
+          _MidiMessage m(
             from.time,
             from.size,
             std::vector<uint8_t>(from.size));
-        memcpy((void*)m.data.data(), (void*)from.data, from.size);
-        r[idx] = m;
+          memcpy((void*)m.data.data(), (void*)from.data, from.size);
+          rval.recorded_msgs.push_back(m);
+        }
     }
-    return r;
+    return rval;
 }
 
 shoopdaloop_decoupled_midi_port_t *external_decoupled_midi_port(std::shared_ptr<_DecoupledMidiPort> port) {
@@ -315,9 +302,12 @@ shoop_audio_driver_t *create_audio_driver (
 }
 
 shoop_audio_driver_state_t *get_audio_driver_state(shoop_audio_driver_t *driver) {
-  return api_impl<shoop_audio_driver_state_t*, log_level_trace>("get_audio_driver_state", [&]() -> shoop_audio_driver_state_t* {
+  return api_impl<shoop_audio_driver_state_t*, log_level_debug_trace>("get_audio_driver_state", [&]() -> shoop_audio_driver_state_t* {
     auto rval = new shoop_audio_driver_state_t;
     auto d = internal_audio_driver(driver);
+    if (!d) {
+      return nullptr;
+    }
     rval->maybe_driver_handle = d->get_maybe_client_handle();
     rval->maybe_instance_name = d->get_client_name() ? strdup(d->get_client_name()) : "(unknown)";
     rval->buffer_size = d->get_buffer_size();
@@ -334,6 +324,7 @@ shoop_audio_driver_state_t *get_audio_driver_state(shoop_audio_driver_t *driver)
 void destroy_backend_session(shoop_backend_session_t *backend) {
     return api_impl<void>("destroy_backend_session", [&]() {
         auto _backend = internal_backend_session(backend);
+        if (!_backend) { return; }
         for (auto &driver : g_active_drivers) {
           driver->remove_processor(*_backend);
         }
@@ -343,14 +334,18 @@ void destroy_backend_session(shoop_backend_session_t *backend) {
 }
 
 void* maybe_driver_handle(shoop_audio_driver_t* driver) {
-  return api_impl<void*>("maybe_driver_handle", [&]() {
-    return internal_audio_driver(driver)->get_maybe_client_handle();
+  return api_impl<void*>("maybe_driver_handle", [&]() -> void* {
+    auto internal = internal_audio_driver(driver);
+    if (!internal) { return nullptr; }
+    return internal->get_maybe_client_handle();
   }, (void*) nullptr);
 }
 
 const char* maybe_driver_instance_name(shoop_audio_driver_t* driver) {
   return api_impl<const char*>("maybe_driver_instance_name", [&]() {
-    return internal_audio_driver(driver)->get_client_name();
+    auto internal = internal_audio_driver(driver);
+    if (!internal) { return "unknown"; }
+    return internal->get_client_name();
   }, (const char*) nullptr);
 }
 
@@ -360,10 +355,37 @@ unsigned driver_type_supported(shoop_audio_driver_type_t type) {
   }, 0);
 }
 
+shoop_external_port_descriptors_t *find_external_ports(
+  shoop_audio_driver_t *driver,
+  const char* maybe_name_regex,
+  shoop_port_direction_t maybe_port_direction_filter,
+  shoop_port_data_type_t maybe_data_type_filter)
+{
+  return api_impl<shoop_external_port_descriptors_t*>("find_external_ports", [&]() -> shoop_external_port_descriptors_t* {
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return nullptr; }
+    auto ports = _driver->find_external_ports(
+      maybe_name_regex,
+      maybe_port_direction_filter,
+      maybe_data_type_filter
+    );
+    auto rval = new shoop_external_port_descriptors_t;
+    rval->n_ports = ports.size();
+    rval->ports = (shoop_external_port_descriptor_t*) malloc(sizeof(shoop_external_port_descriptor_t) * ports.size());
+    for(size_t i=0; i<ports.size(); i++) {
+      rval->ports[i].name = strdup(ports[i].name.c_str());
+      rval->ports[i].direction = ports[i].direction;
+      rval->ports[i].data_type = ports[i].data_type;
+    }
+    return rval;
+  }, (shoop_external_port_descriptors_t*) nullptr);
+}
+
 shoop_result_t set_audio_driver(shoop_backend_session_t *backend, shoop_audio_driver_t *driver) {
-  return api_impl<shoop_result_t>("set_audio_driver", [&]() {
+  return api_impl<shoop_result_t>("set_audio_driver", [&]() -> shoop_result_t {
     auto _backend = internal_backend_session(backend);
     auto _driver = internal_audio_driver(driver);
+    if (!_backend || !_driver) { return Failure; }
     _driver->queue_process_thread_command([_backend, _driver]() {
         _backend->set_buffer_size(_driver->get_buffer_size());
         _backend->set_sample_rate(_driver->get_sample_rate());
@@ -374,17 +396,24 @@ shoop_result_t set_audio_driver(shoop_backend_session_t *backend, shoop_audio_dr
 }
 
 shoop_backend_session_state_info_t *get_backend_state(shoop_backend_session_t *backend) {
-  return api_impl<shoop_backend_session_state_info_t*, log_level_trace, log_level_warning>("get_backend_state", [&]() {
-    auto val = internal_backend_session(backend)->get_state();
-    auto rval = new shoop_backend_session_state_info_t;
-    *rval = val;
-    return rval;
+  return api_impl<shoop_backend_session_state_info_t*, log_level_debug_trace, log_level_warning>("get_backend_state", [&]() -> shoop_backend_session_state_info_t* {
+    auto _backend = internal_backend_session(backend);
+    if (_backend) {
+      auto rval = new shoop_backend_session_state_info_t;
+      *rval = _backend->get_state();
+      return rval;
+    }
+    return nullptr;
   }, new shoop_backend_session_state_info_t);
 }
 
 shoop_profiling_report_t *get_profiling_report(shoop_backend_session_t *backend) {
-  return api_impl<shoop_profiling_report_t*>("get_profiling_report", [&]() {
+  return api_impl<shoop_profiling_report_t*>("get_profiling_report", [&]() -> shoop_profiling_report_t* {
+    auto rval = new shoop_profiling_report_t;
     auto internal = internal_backend_session(backend);
+    if (!internal) {
+      return nullptr;
+    }
 
     if (!profiling::g_ProfilingEnabled) {
         internal->log<log_level_error>("Profiling support was disabled at compile-time.");
@@ -392,7 +421,6 @@ shoop_profiling_report_t *get_profiling_report(shoop_backend_session_t *backend)
 
     auto r = internal->profiler->report();    
 
-    auto rval = new shoop_profiling_report_t;
     auto items = new shoop_profiling_report_item_t[r.size()];
     for (uint32_t idx=0; idx<r.size(); idx++) {
         auto name_str = (char*) malloc(r[idx].key.size() + 1);
@@ -411,23 +439,28 @@ shoop_profiling_report_t *get_profiling_report(shoop_backend_session_t *backend)
 }
 
 shoopdaloop_loop_t *create_loop(shoop_backend_session_t *backend) {
-  return api_impl<shoopdaloop_loop_t*>("create_loop", [&]() {
-    auto rval = external_loop(internal_backend_session(backend)->create_loop());
+  return api_impl<shoopdaloop_loop_t*>("create_loop", [&]() -> shoopdaloop_loop_t* {
+    auto _backend = internal_backend_session(backend);
+    if (!_backend) { return nullptr; }
+    auto rval = external_loop(_backend->create_loop());
     return rval;
   }, nullptr);
 }
 
 shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode) {
-  return api_impl<shoopdaloop_loop_audio_channel_t*>("add_audio_channel", [&]() {
+  return api_impl<shoopdaloop_loop_audio_channel_t*>("add_audio_channel", [&]() -> shoopdaloop_loop_audio_channel_t* {
     // Note: we jump through hoops here to pre-create a shared ptr and then
     // queue a copy-assignment of its value. This allows us to return before
     // the channel has really been created, without altering the pointed-to
     // address later.
     std::shared_ptr<GraphLoop> loop_info = internal_loop(loop);
+    if (!loop_info) { return nullptr; }
     auto &backend = loop_info->get_backend();
     auto r = backend.add_loop_channel(loop_info, nullptr);
     backend.queue_process_thread_command([r, loop_info, mode]() {
-        auto chan = loop_info->loop->add_audio_channel<audio_sample_t>(loop_info->backend.lock()->audio_buffer_pool,
+        auto _backend = loop_info->backend.lock();
+        if (!_backend) { return; }
+        auto chan = loop_info->loop->add_audio_channel<audio_sample_t>(_backend->audio_buffer_pool,
                                                         audio_channel_initial_buffers,
                                                         mode,
                                                         false);
@@ -440,12 +473,13 @@ shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, s
 }
 
 shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, shoop_channel_mode_t mode) {
-  return api_impl<shoopdaloop_loop_midi_channel_t*>("add_midi_channel", [&]() {
+  return api_impl<shoopdaloop_loop_midi_channel_t*>("add_midi_channel", [&]() -> shoopdaloop_loop_midi_channel_t* {
     // Note: we jump through hoops here to pre-create a shared ptr and then
     // queue a copy-assignment of its value. This allows us to return before
     // the channel has really been created, without altering the pointed-to
     // address later.
     std::shared_ptr<GraphLoop> loop_info = internal_loop(loop);
+    if (!loop_info) { return nullptr; }
     auto &backend = loop_info->get_backend();
     auto r = backend.add_loop_channel(loop_info, nullptr);
     backend.queue_process_thread_command([loop_info, mode, r]() {
@@ -459,53 +493,68 @@ shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, sho
 }
 
 unsigned get_n_audio_channels (shoopdaloop_loop_t *loop) {
-  return api_impl<unsigned>("get_n_audio_channels", [&]() {
-    return internal_loop(loop)->loop->n_audio_channels();
+  return api_impl<unsigned>("get_n_audio_channels", [&]() -> unsigned {
+    auto _loop = internal_loop(loop);
+    if (!_loop) { return 0; }
+    return _loop->loop->n_audio_channels();
   }, 0);
 }
 
 unsigned get_n_midi_channels (shoopdaloop_loop_t *loop) {
-  return api_impl<unsigned>("get_n_midi_channels", [&]() {
-    return internal_loop(loop)->loop->n_midi_channels();
+  return api_impl<unsigned>("get_n_midi_channels", [&]() -> unsigned {
+    auto _loop = internal_loop(loop);
+    if (!_loop) { return 0; }
+    return _loop->loop->n_midi_channels();
   }, 0);
 }
 
 void delete_audio_channel(shoopdaloop_loop_t *loop, shoopdaloop_loop_audio_channel_t *channel) {    
   return api_impl<void>("delete_audio_channel", [&]() {
-    auto &loop_info = *internal_loop(loop);
-    uint32_t idx;
-    loop_info.delete_audio_channel(internal_audio_channel(channel));
+    auto loop_info = internal_loop(loop);
+    if (!loop_info) { return; }
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    loop_info->delete_audio_channel(_chan);
   });
 }
 
 void delete_midi_channel(shoopdaloop_loop_t *loop, shoopdaloop_loop_midi_channel_t *channel) {
   return api_impl<void>("delete_midi_channel", [&]() {
-    auto &loop_info = *internal_loop(loop);
-    loop_info.delete_midi_channel(internal_midi_channel(channel));
+    auto loop_info = internal_loop(loop);
+    if (!loop_info) { return; }
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    loop_info->delete_midi_channel(_chan);
   });
 }
 
 void delete_audio_channel_idx(shoopdaloop_loop_t *loop, unsigned idx) {
   return api_impl<void>("delete_audio_channel_idx", [&]() {
-    auto &loop_info = *internal_loop(loop);
-    loop_info.delete_audio_channel_idx(idx);
+    auto loop_info = internal_loop(loop);
+    if (!loop_info) { return; }
+    loop_info->delete_audio_channel_idx(idx);
   });
 }
 
 void delete_midi_channel_idx(shoopdaloop_loop_t *loop, unsigned idx) {
   return api_impl<void>("delete_midi_channel_idx", [&]() {
-    auto &loop_info = *internal_loop(loop);
-    loop_info.delete_midi_channel_idx(idx);
+    auto loop_info = internal_loop(loop);
+    if (!loop_info) { return; }
+    loop_info->delete_midi_channel_idx(idx);
   });
 }
 
 void connect_audio_output(shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t *port) {
   return api_impl<void>("connect_audio_output", [&]() {
-    auto &backend = internal_audio_channel(channel)->get_backend();
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    auto &backend = _chan->get_backend();
     backend.queue_process_thread_command([=]() {
         auto _port = internal_audio_port(port);
         auto _channel = internal_audio_channel(channel);
-        _channel->connect_output_port(_port, false);
+        if (_port && _channel) {
+          _channel->connect_output_port(_port, false);
+        }
     });
     backend.set_graph_node_changes_pending();
   });
@@ -513,11 +562,15 @@ void connect_audio_output(shoopdaloop_loop_audio_channel_t *channel, shoopdaloop
 
 void connect_midi_output(shoopdaloop_loop_midi_channel_t *channel, shoopdaloop_midi_port_t *port) {
   return api_impl<void>("connect_midi_output", [&]() {
-    auto &backend = internal_midi_channel(channel)->get_backend();
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    auto &backend = _chan->get_backend();
     backend.queue_process_thread_command([=]() {
         auto _port = internal_midi_port(port);
         auto _channel = internal_midi_channel(channel);
-        _channel->connect_output_port(_port, false);
+        if (_port && _channel) {
+          _channel->connect_output_port(_port, false);
+        }
     });
     backend.set_graph_node_changes_pending();
   });
@@ -525,11 +578,15 @@ void connect_midi_output(shoopdaloop_loop_midi_channel_t *channel, shoopdaloop_m
 
 void connect_audio_input(shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t *port) {
   return api_impl<void>("connect_audio_input", [&]() {
-    auto &backend = internal_audio_channel(channel)->get_backend();
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    auto &backend = _chan->get_backend();
     backend.queue_process_thread_command([=]() {
         auto _port = internal_audio_port(port);
         auto _channel = internal_audio_channel(channel);
-        _channel->connect_input_port(_port, false);
+        if (_port && _channel) {
+          _channel->connect_input_port(_port, false);
+        }
     });
     backend.set_graph_node_changes_pending();
   });
@@ -537,11 +594,15 @@ void connect_audio_input(shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_
 
 void connect_midi_input(shoopdaloop_loop_midi_channel_t *channel, shoopdaloop_midi_port_t *port) {
   return api_impl<void>("connect_midi_input", [&]() {
-    auto &backend = internal_midi_channel(channel)->get_backend();
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    auto &backend = _chan->get_backend();
     backend.queue_process_thread_command([=]() {
         auto _port = internal_midi_port(port);
         auto _channel = internal_midi_channel(channel);
-        _channel->connect_input_port(_port, false);
+        if (_port && _channel) {
+          _channel->connect_input_port(_port, false);
+        }
     });
     backend.set_graph_node_changes_pending();
   });
@@ -549,134 +610,212 @@ void connect_midi_input(shoopdaloop_loop_midi_channel_t *channel, shoopdaloop_mi
 
 void disconnect_audio_output (shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t* port) {
   return api_impl<void>("disconnect_audio_output", [&]() {
-    internal_audio_channel(channel)->get_backend().queue_process_thread_command([=]() {
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
         auto _port = internal_audio_port(port);
         auto _channel = internal_audio_channel(channel);
-        _channel->disconnect_output_port(_port, false);
+        if (_port && _channel) {
+          _channel->disconnect_output_port(_port, false);
+        }
     });
   });
 }
 
 void disconnect_midi_output (shoopdaloop_loop_midi_channel_t  *channel, shoopdaloop_midi_port_t* port) {
   return api_impl<void>("disconnect_midi_output", [&]() {
-    internal_midi_channel(channel)->get_backend().queue_process_thread_command([=]() {
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
         auto _port = internal_midi_port(port);
         auto _channel = internal_midi_channel(channel);
-        _channel->disconnect_output_port(_port, false);
+        if (_port && _channel) {
+          _channel->disconnect_output_port(_port, false);
+        }
     });
   });
 }
 
 void disconnect_audio_outputs (shoopdaloop_loop_audio_channel_t *channel) {
   return api_impl<void>("disconnect_audio_outputs", [&]() {
-    internal_audio_channel(channel)->get_backend().queue_process_thread_command([=]() {
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
         auto _channel = internal_audio_channel(channel);
-        _channel->disconnect_output_ports(false);
+        if (_channel) {
+          _channel->disconnect_output_ports(false);
+        }
     });
   });
 }
 
 void disconnect_midi_outputs (shoopdaloop_loop_midi_channel_t  *channel) {
   return api_impl<void>("disconnect_midi_outputs", [&]() {
-    internal_midi_channel(channel)->get_backend().queue_process_thread_command([=]() {
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
         auto _channel = internal_midi_channel(channel);
-        _channel->disconnect_output_ports(false);
+        if (_channel) {
+          _channel->disconnect_output_ports(false);
+        }
     });
   });
 }
 
 void disconnect_audio_input (shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t* port) {
   return api_impl<void>("disconnect_audio_input", [&]() {
-    internal_audio_channel(channel)->get_backend().queue_process_thread_command([=]() {
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
         auto _port = internal_audio_port(port);
         auto _channel = internal_audio_channel(channel);
-        _channel->disconnect_input_port(_port, false);
+        if (_port && _channel) {
+          _channel->disconnect_input_port(_port, false);
+        }
     });
   });
 }
 
 void disconnect_midi_input (shoopdaloop_loop_midi_channel_t  *channel, shoopdaloop_midi_port_t* port) {
   return api_impl<void>("disconnect_midi_input", [&]() {
-    internal_midi_channel(channel)->get_backend().queue_process_thread_command([=]() {
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
         auto _port = internal_midi_port(port);
         auto _channel = internal_midi_channel(channel);
-        _channel->disconnect_input_port(_port, false);
+        if (_port && _channel) {
+          _channel->disconnect_input_port(_port, false);
+        }
     });
   });
 }
 
 void disconnect_audio_inputs (shoopdaloop_loop_audio_channel_t *channel) {
   return api_impl<void>("disconnect_audio_inputs", [&]() {
-    internal_audio_channel(channel)->get_backend().queue_process_thread_command([=]() {
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
         auto _channel = internal_audio_channel(channel);
-        _channel->disconnect_input_ports(false);
+        if (_channel) {
+          _channel->disconnect_input_ports(false);
+        }
     });
   });
 }
 
 void disconnect_midi_inputs  (shoopdaloop_loop_midi_channel_t  *channel) {
   return api_impl<void>("disconnect_midi_inputs", [&]() {
-    internal_midi_channel(channel)->get_backend().queue_process_thread_command([=]() {
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
         auto _channel = internal_midi_channel(channel);
-        _channel->disconnect_input_ports(false);
+        if (_channel) {
+          _channel->disconnect_input_ports(false);
+        }
     });
   });
 }
 
 shoop_audio_channel_data_t *get_audio_channel_data (shoopdaloop_loop_audio_channel_t *channel) {
-  return api_impl<shoop_audio_channel_data_t*>("get_audio_channel_data", [&]() {
-    auto &chan = *internal_audio_channel(channel);
+  return api_impl<shoop_audio_channel_data_t*>("get_audio_channel_data", [&]() -> shoop_audio_channel_data_t* {
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return nullptr; }
+    auto _backend = _chan->backend.lock();
+    if (!_backend) { return nullptr; }
     return evaluate_before_or_after_process<shoop_audio_channel_data_t*>(
-        [&chan]() { return external_audio_data(chan.maybe_audio()->get_data()); },
-        chan.maybe_audio(),
-        *chan.backend.lock());
+        [=]() -> shoop_audio_channel_data_t* {
+          auto _channel = internal_audio_channel(channel);
+          if (!_channel) { return nullptr; }
+          return external_audio_data(_channel->maybe_audio()->get_data());
+        },
+        _chan->maybe_audio(),
+        *_backend);
   }, nullptr);
 }
 
 shoop_midi_sequence_t *get_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel) {
-  return api_impl<shoop_midi_sequence_t*>("get_midi_channel_data", [&]() {
-    auto &chan = *internal_midi_channel(channel);
-    auto data = evaluate_before_or_after_process<std::vector<_MidiMessage>>(
-        [&chan]() { return chan.maybe_midi()->retrieve_contents(); },
-        chan.maybe_midi(),
-        *chan.backend.lock());
+  return api_impl<shoop_midi_sequence_t*>("get_midi_channel_data", [&]() -> shoop_midi_sequence_t* {
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return nullptr; }
+    auto _backend = _chan->backend.lock();
+    if (!_backend) { return nullptr; }
+    auto contents = evaluate_before_or_after_process<shoop_types::LoopMidiChannel::Contents>(
+        [=]() -> shoop_types::LoopMidiChannel::Contents {
+          auto _channel = internal_midi_channel(channel);
+          if (!_channel) { return {}; }
+          return _channel->maybe_midi()->retrieve_contents();
+        },
+        _chan->maybe_midi(),
+        *_backend);
 
-    return external_midi_data(data);
+    return external_midi_data(contents);
   }, nullptr);
 }
 
 void load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, shoop_audio_channel_data_t *data) {
   return api_impl<void>("load_audio_channel_data", [&]() {
-    auto &chan = *internal_audio_channel(channel);
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    auto _backend = _chan->backend.lock();
+    if (!_backend) { return; }
     evaluate_before_or_after_process<void>(
-        [&chan, &data]() { chan.maybe_audio()->load_data(data->data, data->n_samples); },
-        chan.maybe_audio(),
-        *chan.backend.lock());
+        [=, &data]() {
+          auto _channel = internal_audio_channel(channel);
+          if (!_channel) { return; }
+          _channel->maybe_audio()->load_data(data->data, data->n_samples);
+        },
+        _chan->maybe_audio(),
+        *_backend);
   });
 }
 
 void load_midi_channel_data (shoopdaloop_loop_midi_channel_t  *channel, shoop_midi_sequence_t  *data) {
   return api_impl<void>("load_midi_channel_data", [&]() {
-    auto &chan = *internal_midi_channel(channel);
-    auto _data = internal_midi_data(*data);
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    auto _backend = _chan->backend.lock();
+    if (!_backend) { return; }
+    auto contents = internal_midi_data(*data);
     evaluate_before_or_after_process<void>(
-        [&]() { chan.maybe_midi()->set_contents(_data, data->length_samples); },
-        chan.maybe_midi(),
-        *chan.backend.lock());
+        [&]() {
+          auto _channel = internal_midi_channel(channel);
+          if (!_channel) { return; }
+          _channel->maybe_midi()->set_contents(contents, data->length_samples);
+        },
+        _chan->maybe_midi(),
+        *_backend);
   });
 }
 
 void clear_audio_channel_data_dirty (shoopdaloop_loop_audio_channel_t * channel) {
   return api_impl<void>("clear_audio_channel_data_dirty", [&]() {
-    auto &chan = *internal_audio_channel(channel);
-    chan.clear_data_dirty();
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    _chan->clear_data_dirty();
   });
 }
 
 void clear_midi_channel_data_dirty (shoopdaloop_loop_midi_channel_t * channel) {
   return api_impl<void>("clear_midi_channel_data_dirty", [&]() {
-    auto &chan = *internal_midi_channel(channel);
-    chan.clear_data_dirty();
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    _chan->clear_data_dirty();
+  });
+}
+
+void set_audio_port_ringbuffer_n_samples (shoopdaloop_audio_port_t* port, unsigned n) {
+  return api_impl<void>("set_audio_port_ringbuffer_n_samples", [&]() {
+    auto _port = internal_audio_port(port);
+    if (!_port) { return; }
+    _port->get_port().set_ringbuffer_n_samples(n);
+  });
+}
+
+void set_midi_port_ringbuffer_n_samples (shoopdaloop_midi_port_t* port, unsigned n) {
+  return api_impl<void>("set_midi_port_ringbuffer_n_samples", [&]() {
+    auto _port = internal_midi_port(port);
+    if (!_port) { return; }
+    _port->get_port().set_ringbuffer_n_samples(n);
   });
 }
 
@@ -686,9 +825,12 @@ void loop_transition(shoopdaloop_loop_t *loop,
                       unsigned wait_for_sync)
 {
   return api_impl<void>("loop_transition", [&]() {
-    internal_loop(loop)->get_backend().queue_process_thread_command([=]() {
-        auto &loop_info = *internal_loop(loop);
-        loop_info.loop->plan_transition(mode, delay, wait_for_sync, false);
+    auto _loop = internal_loop(loop);
+    if (!_loop) { return; }
+    _loop->get_backend().queue_process_thread_command([=]() {
+        auto loop_info = internal_loop(loop);
+        if (!loop_info) { return; }
+        loop_info->loop->plan_transition(mode, delay, wait_for_sync, false);
     });
   });
 }
@@ -702,17 +844,26 @@ void loops_transition(unsigned int n_loops,
   return api_impl<void>("loops_transition", [&]() {
     auto internal_loops = std::make_shared<std::vector<std::shared_ptr<GraphLoop>>>(n_loops);
     for(uint32_t idx=0; idx<n_loops; idx++) {
-        (*internal_loops)[idx] = internal_loop(loops[idx]);
+        auto _loop = internal_loop(loops[idx]);
+        if (_loop) {
+          (*internal_loops)[idx] = _loop;
+        }
     }
-    internal_loop(loops[0])->get_backend().queue_process_thread_command([=]() {
+    auto _loop = internal_loop(loops[0]);
+    if (!_loop) { return; }
+    _loop->get_backend().queue_process_thread_command([=]() {
         for (uint32_t idx=0; idx<n_loops; idx++) {
-            auto &loop_info = *(*internal_loops)[idx];
-            loop_info.loop->plan_transition(mode, delay, wait_for_sync, false);
+            auto loop_info = (*internal_loops)[idx];
+            if (loop_info) {
+              loop_info->loop->plan_transition(mode, delay, wait_for_sync, false);
+            }
         }
         // Ensure that sync is fully propagated
         for (uint32_t idx=0; idx<n_loops; idx++) {
-            auto &loop_info = *(*internal_loops)[idx];
-            loop_info.loop->PROC_handle_sync();
+            auto loop_info = (*internal_loops)[idx];
+            if (loop_info) {
+              loop_info->loop->PROC_handle_sync();
+            }
         }
     });
   });
@@ -720,61 +871,120 @@ void loops_transition(unsigned int n_loops,
 
 void clear_loop (shoopdaloop_loop_t *loop, unsigned length) {
   return api_impl<void>("clear_loop", [&]() {
-    internal_loop(loop)->get_backend().queue_process_thread_command([=]() {
-        auto &_loop = *internal_loop(loop);
-        _loop.loop->clear_planned_transitions(false);
-        _loop.loop->plan_transition(LoopMode_Stopped, 0, false, false);
-        for (auto &chan : _loop.mp_audio_channels) {
+    auto _loop = internal_loop(loop);
+    if (!_loop) { return; }
+    _loop->get_backend().queue_process_thread_command([=]() {
+        auto __loop = internal_loop(loop);
+        if (!__loop) { return; }
+        __loop->loop->clear_planned_transitions(false);
+        __loop->loop->plan_transition(LoopMode_Stopped, 0, false, false);
+        for (auto &chan : __loop->mp_audio_channels) {
             chan->maybe_audio()->PROC_clear(length);
         }
-        for (auto &chan : _loop.mp_midi_channels) {
+        for (auto &chan : __loop->mp_midi_channels) {
             chan->maybe_midi()->clear(false);
         }
-        _loop.loop->set_length(length, false);
+        __loop->loop->set_length(length, false);
     });
   });
 }
 
 void set_loop_length (shoopdaloop_loop_t *loop, unsigned length) {
   return api_impl<void>("set_loop_length", [&]() {
-    internal_loop(loop)->get_backend().queue_process_thread_command([=]() {
-        auto &_loop = *internal_loop(loop);
-        _loop.loop->set_length(length, false);
+    auto _loop = internal_loop(loop);
+    if (!_loop) { return; }
+    _loop->get_backend().queue_process_thread_command([=]() {
+        auto __loop = internal_loop(loop);
+        if (!__loop) { return; }
+        __loop->loop->set_length(length, false);
     });
   });
 }
 
 void set_loop_position (shoopdaloop_loop_t *loop, unsigned position) {
   return api_impl<void>("set_loop_position", [&]() {
-    internal_loop(loop)->get_backend().queue_process_thread_command([=]() {
-        auto &_loop = *internal_loop(loop);
-        _loop.loop->set_position(position, false);
+    auto _loop = internal_loop(loop);
+    if (!_loop) { return; }
+    _loop->get_backend().queue_process_thread_command([=]() {
+        auto __loop = internal_loop(loop);
+        if (!__loop) { return; }
+        __loop->loop->set_position(position, false);
     });
   });
 }
 
 void clear_audio_channel (shoopdaloop_loop_audio_channel_t *channel, unsigned length) {
   return api_impl<void>("clear_audio_channel", [&]() {
-    internal_audio_channel(channel)->get_backend().queue_process_thread_command([=]() {
-        internal_audio_channel(channel)->maybe_audio()->PROC_clear(length);
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
+        auto _channel = internal_audio_channel(channel);
+        if (!_channel) { return; }
+        _channel->maybe_audio()->PROC_clear(length);
     });
   });
 }
 
 void clear_midi_channel (shoopdaloop_loop_midi_channel_t *channel) {
   return api_impl<void>("clear_midi_channel", [&]() {
-    internal_midi_channel(channel)->get_backend().queue_process_thread_command([=]() {
-        internal_midi_channel(channel)->maybe_midi()->clear(false);
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
+        auto _channel = internal_midi_channel(channel);
+        if (!_channel) { return; }
+        _channel->maybe_midi()->clear(false);
     });
   });
 }
 
-shoopdaloop_audio_port_t *open_audio_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction) {
-  return api_impl<shoopdaloop_audio_port_t*>("open_audio_port", [&]() -> shoopdaloop_audio_port_t* {
+void do_segfault_on_process_thread(shoop_backend_session_t *backend) {
+  return api_impl<void>("do_segfault_on_process_thread", [&]() {
+    auto _backend = internal_backend_session(backend);
+    if (!_backend) { return; }
+    _backend->queue_process_thread_command([=]() {
+      volatile int* a = (int*)(NULL); *a = 1;
+    });
+  });
+}
+
+void do_abort_on_process_thread(shoop_backend_session_t *backend) {
+  return api_impl<void>("do_abort_on_process_thread", [&]() {
+    auto _backend = internal_backend_session(backend);
+    if (!_backend) { return; }
+    _backend->queue_process_thread_command([=]() {
+      abort();
+    });
+  });
+}
+
+shoopdaloop_audio_port_t *open_driver_audio_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction, unsigned min_always_on_ringbuffer_samples) {
+  return api_impl<shoopdaloop_audio_port_t*>("open_driver_audio_port", [&]() -> shoopdaloop_audio_port_t* {
     auto _backend = internal_backend_session(backend);
     auto _driver = internal_audio_driver(driver);
+    if (!_backend || !_driver) { return nullptr; }
     auto port = _driver->open_audio_port
-        (name_hint, direction);
+        (name_hint, direction,
+         min_always_on_ringbuffer_samples > 0 ? _backend->audio_buffer_pool : nullptr);
+    if (min_always_on_ringbuffer_samples > 0) {
+      port->set_ringbuffer_n_samples(min_always_on_ringbuffer_samples);
+    }
+    auto pi = _backend->add_audio_port(port);
+    return external_audio_port(pi);
+  }, (shoopdaloop_audio_port_t*) nullptr);
+}
+
+shoopdaloop_audio_port_t *open_internal_audio_port (shoop_backend_session_t *backend, const char* name_hint, unsigned min_always_on_ringbuffer_samples) {
+  return api_impl<shoopdaloop_audio_port_t*>("open_internal_audio_port", [&]() -> shoopdaloop_audio_port_t* {
+    auto _backend = internal_backend_session(backend);
+    if (!_backend) { return nullptr; }
+    auto port = std::make_shared<InternalAudioPort<audio_sample_t>>(
+      std::string(name_hint),
+      _backend->m_buffer_size,
+      min_always_on_ringbuffer_samples > 0 ? _backend->audio_buffer_pool : nullptr
+    );
+    if (min_always_on_ringbuffer_samples > 0) {
+      port->set_ringbuffer_n_samples(min_always_on_ringbuffer_samples);
+    }
     auto pi = _backend->add_audio_port(port);
     return external_audio_port(pi);
   }, (shoopdaloop_audio_port_t*) nullptr);
@@ -783,7 +993,9 @@ shoopdaloop_audio_port_t *open_audio_port (shoop_backend_session_t *backend, sho
 void close_audio_port (shoop_backend_session_t *backend, shoopdaloop_audio_port_t *port) {
   return api_impl<void>("close_audio_port", [&]() {
     auto _backend = internal_backend_session(backend);
+    if (!_backend) { return; }
     auto pi = internal_audio_port(port);
+    if (!pi) { return; }
     // Removing from the list should be enough, as there
     // are only weak pointers elsewhere.
     _backend->queue_process_thread_command([=]() {
@@ -797,10 +1009,15 @@ void close_audio_port (shoop_backend_session_t *backend, shoopdaloop_audio_port_
 }
 
 shoop_port_connections_state_t *get_audio_port_connections_state(shoopdaloop_audio_port_t *port) {
-  return api_impl<shoop_port_connections_state_t*, log_level_trace, log_level_warning>("get_audio_port_connections_state", [&]() {
-    auto connections = internal_audio_port(port)->get_port().get_external_connection_status();
-
+  return api_impl<shoop_port_connections_state_t*, log_level_debug_trace, log_level_warning>("get_audio_port_connections_state", [&]() {
+    auto _port = internal_audio_port(port);
     auto rval = new shoop_port_connections_state_t;
+    rval->n_ports = 0;
+    if (!_port) {
+      return rval;
+    }
+
+    auto connections = _port->get_port().get_external_connection_status();
     rval->n_ports = connections.size();
     rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
     uint32_t idx = 0;
@@ -809,28 +1026,53 @@ shoop_port_connections_state_t *get_audio_port_connections_state(shoopdaloop_aud
         auto connected = pair.second;
         rval->ports[idx].name = name;
         rval->ports[idx].connected = connected;
-        logging::log<"Backend.API", log_level_trace>(std::nullopt, std::nullopt, "--> {} connected: {}", name, connected);
+        logging::log<"Backend.API", log_level_debug_trace>(std::nullopt, std::nullopt, "--> {} connected: {}", name, connected);
         idx++;
     }
     return rval;
   }, new shoop_port_connections_state_t);
 }
 
-void connect_external_audio_port(shoopdaloop_audio_port_t *ours, const char* external_port_name) {
-  return api_impl<void>("connect_external_audio_port", [&]() {
-    internal_audio_port(ours)->get_port().connect_external(std::string(external_port_name));
+void connect_audio_port_external(shoopdaloop_audio_port_t *ours, const char* external_port_name) {
+  return api_impl<void>("connect_audio_port_external", [&]() {
+    auto _port = internal_audio_port(ours);
+    if (!_port) { return; }
+    _port->get_port().connect_external(std::string(external_port_name));
   });
 }
 
-void disconnect_external_audio_port(shoopdaloop_audio_port_t *ours, const char* external_port_name) {
-  return api_impl<void>("disconnect_external_audio_port", [&]() {
-    internal_audio_port(ours)->get_port().disconnect_external(std::string(external_port_name));
+void disconnect_audio_port_external(shoopdaloop_audio_port_t *ours, const char* external_port_name) {
+  return api_impl<void>("disconnect_audio_port_external", [&]() {
+    auto _port = internal_audio_port(ours);
+    if (!_port) { return; }
+    _port->get_port().disconnect_external(std::string(external_port_name));
   });
 }
 
 shoop_port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi_port_t *port) {
-  return api_impl<shoop_port_connections_state_t*, log_level_trace, log_level_warning>("get_midi_port_connections_state", [&]() {
-    auto connections = internal_midi_port(port)->get_port().get_external_connection_status();
+  return api_impl<shoop_port_connections_state_t*, log_level_debug_trace, log_level_warning>("get_midi_port_connections_state", [&]() -> shoop_port_connections_state_t* {
+    auto _port = internal_midi_port(port);
+    if (!port) { return nullptr; }
+    auto connections = _port->get_port().get_external_connection_status();
+
+    auto rval = new shoop_port_connections_state_t;
+    rval->n_ports = connections.size();
+    rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
+    uint32_t idx = 0;
+    for (auto &pair : connections) {
+        rval->ports[idx].name = strdup(pair.first.c_str());
+        rval->ports[idx].connected = pair.second;
+        idx++;
+    }
+    return rval;
+  }, new shoop_port_connections_state_t);
+}
+
+shoop_port_connections_state_t *get_decoupled_midi_port_connections_state(shoopdaloop_decoupled_midi_port_t *port) {
+  return api_impl<shoop_port_connections_state_t*, log_level_debug_trace, log_level_warning>("get_decoupled_midi_port_connections_state", [&]() -> shoop_port_connections_state_t* {
+    auto _port = internal_decoupled_midi_port(port);
+    if (!port) { return nullptr; }
+    auto connections = _port->get_port()->get_external_connection_status();
 
     auto rval = new shoop_port_connections_state_t;
     rval->n_ports = connections.size();
@@ -846,7 +1088,7 @@ shoop_port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi
 }
 
 void destroy_port_connections_state(shoop_port_connections_state_t *d) {
-  return api_impl<void, log_level_trace>("destroy_port_connections_state", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_port_connections_state", [&]() {
     for (uint32_t idx=0; idx<d->n_ports; idx++) {
         free((void*)d->ports[idx].name);
     }
@@ -855,32 +1097,100 @@ void destroy_port_connections_state(shoop_port_connections_state_t *d) {
   });
 }
 
-void connect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name) {
-  return api_impl<void>("connect_external_midi_port", [&]() {
-    internal_midi_port(ours)->get_port().connect_external(std::string(external_port_name));
+void connect_midi_port_external(shoopdaloop_midi_port_t *ours, const char* external_port_name) {
+  return api_impl<void>("connect_midi_port_external", [&]() {
+    auto _port = internal_midi_port(ours);
+    if (!_port) { return; }
+    _port->get_port().connect_external(std::string(external_port_name));
   });
 }
 
-void disconnect_external_midi_port(shoopdaloop_midi_port_t *ours, const char* external_port_name) {
-  return api_impl<void>("disconnect_external_midi_port", [&]() {
-    internal_midi_port(ours)->get_port().disconnect_external(std::string(external_port_name));
+void disconnect_midi_port_external(shoopdaloop_midi_port_t *ours, const char* external_port_name) {
+  return api_impl<void>("disconnect_midi_port_external", [&]() {
+    auto _port = internal_midi_port(ours);
+    if (!_port) { return; }
+    _port->get_port().disconnect_external(std::string(external_port_name));
+  });
+}
+
+void connect_external_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *ours, const char* external_port_name) {
+  return api_impl<void>("connect_external_decoupled_midi_port", [&]() {
+    auto _port = internal_decoupled_midi_port(ours);
+    if (!_port) { return; }
+    _port->get_port()->connect_external(std::string(external_port_name));
+  });
+}
+
+void disconnect_external_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *ours, const char* external_port_name) {
+  return api_impl<void>("disconnect_external_decoupled_midi_port", [&]() {
+    auto _port = internal_decoupled_midi_port(ours);
+    if (!_port) { return; }
+    _port->get_port()->disconnect_external(std::string(external_port_name));
   });
 }
 
 void *get_audio_port_driver_handle(shoopdaloop_audio_port_t *port) {
   return api_impl<void*>("get_audio_port_driver_handle", [&]() -> void* {
-    return internal_audio_port(port)->get_port().maybe_driver_handle();
+    auto _port = internal_audio_port(port);
+    if (!_port) { return nullptr; }
+    return _port->get_port().maybe_driver_handle();
   }, (void*)nullptr);
 }
 
-shoopdaloop_midi_port_t *open_midi_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction) {
-  return api_impl<shoopdaloop_midi_port_t*>("open_midi_port", [&]() {
+unsigned get_audio_port_input_connectability(shoopdaloop_audio_port_t *port) {
+  return api_impl<unsigned>("get_audio_port_input_connectability", [&]() -> unsigned {
+    auto _port = internal_audio_port(port);
+    if (!_port) { return 0; }
+    return _port->get_port().input_connectability();
+  }, 0);
+}
+
+unsigned get_audio_port_output_connectability(shoopdaloop_audio_port_t *port) {
+  return api_impl<unsigned>("get_audio_port_input_connectability", [&]() -> unsigned {
+    auto _port = internal_audio_port(port);
+    if (!_port) { return 0; }
+    return _port->get_port().output_connectability();
+  }, 0);
+}
+
+unsigned get_midi_port_input_connectability(shoopdaloop_midi_port_t *port) {
+  return api_impl<unsigned>("get_midi_port_input_connectability", [&]() -> unsigned {
+    auto _port = internal_midi_port(port);
+    if (!_port) { return 0; }
+    return _port->get_port().input_connectability();
+  }, 0);
+}
+
+unsigned get_midi_port_output_connectability(shoopdaloop_midi_port_t *port) {
+  return api_impl<unsigned>("get_midi_port_input_connectability", [&]() -> unsigned {
+    auto _port = internal_midi_port(port);
+    if (!_port) { return 0; }
+    return _port->get_port().output_connectability();
+  }, 0);
+}
+
+shoopdaloop_midi_port_t *open_driver_midi_port (shoop_backend_session_t *backend, shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction, unsigned min_always_on_ringbuffer_samples) {
+  return api_impl<shoopdaloop_midi_port_t*>("open_driver_midi_port", [&]() -> shoopdaloop_midi_port_t* {
     auto _backend = internal_backend_session(backend);
     auto _driver = internal_audio_driver(driver);
+    if (!_backend || !_driver) { return nullptr; }
+    logging::log<"Backend.API", log_level_warning>(std::nullopt, std::nullopt, "implement opening midi ringbuffer");
     auto port = _driver->open_midi_port(name_hint, direction);
     auto pi = _backend->add_midi_port(port);
     return external_midi_port(pi);
   }, nullptr);
+}
+
+shoopdaloop_midi_port_t *open_internal_midi_port (shoop_backend_session_t *backend, const char* name_hint, unsigned min_always_on_ringbuffer_samples) {
+  return api_impl<shoopdaloop_midi_port_t*>("open_internal_midi_port", [&]() -> shoopdaloop_midi_port_t* {
+    auto _backend = internal_backend_session(backend);
+    if (!_backend) { return nullptr; }
+    logging::log<"Backend.API", log_level_warning>(std::nullopt, std::nullopt, "implement opening midi ringbuffer");
+    auto port = nullptr;
+    throw std::runtime_error("Creating internal MIDI ports not yet supported");
+    auto pi = _backend->add_audio_port(port);
+    return external_midi_port(pi);
+  }, (shoopdaloop_midi_port_t*) nullptr);
 }
 
 void close_midi_port (shoopdaloop_midi_port_t *port) {
@@ -888,6 +1198,7 @@ void close_midi_port (shoopdaloop_midi_port_t *port) {
     // Removing from the list should be enough, as there
     // are only weak pointers elsewhere.
     auto _port = internal_midi_port(port);
+    if (!_port) { return; }
     _port->get_backend().queue_process_thread_command([=]() {
         auto &backend = _port->get_backend();
         backend.ports.erase(
@@ -901,66 +1212,83 @@ void close_midi_port (shoopdaloop_midi_port_t *port) {
 
 void *get_midi_port_driver_handle(shoopdaloop_midi_port_t *port) {
   return api_impl<void*>("get_midi_port_driver_handle", [&]() -> void* {
-    return internal_midi_port(port)->get_port().maybe_driver_handle();
+    auto _port = internal_midi_port(port);
+    if (!_port) { return nullptr; }
+    return _port->get_port().maybe_driver_handle();
   }, (void*)nullptr);
 }
 
-void add_audio_port_passthrough(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to) {
-  return api_impl<void>("add_audio_port_passthrough", [&]() {
+void connect_audio_port_internal(shoopdaloop_audio_port_t *from, shoopdaloop_audio_port_t *to) {
+  return api_impl<void>("connect_audio_port_internal", [&]() {
     auto _from = internal_audio_port(from);
     auto _to = internal_audio_port(to);
-    _from->connect_passthrough(_to);
+    if (_from && _to) {
+      _from->connect_internal(_to);
+    }
   });
 }
 
-void add_midi_port_passthrough(shoopdaloop_midi_port_t *from, shoopdaloop_midi_port_t *to) {
-  return api_impl<void>("add_midi_port_passthrough", [&]() {
+void connect_midi_port_internal(shoopdaloop_midi_port_t *from, shoopdaloop_midi_port_t *to) {
+  return api_impl<void>("connect_midi_port_internal", [&]() {
     auto _from = internal_midi_port(from);
     auto _to = internal_midi_port(to);
-    _from->connect_passthrough(_to);
+    if (_from && _to) {
+      _from->connect_internal(_to);
+    }
   });
 }
 
 void set_audio_port_muted(shoopdaloop_audio_port_t *port, unsigned int muted) {
   return api_impl<void>("set_audio_port_muted", [&]() {
-    internal_audio_port(port)->get_port().set_muted((bool)muted);
+    auto _port = internal_audio_port(port);
+    if (!_port) { return; }
+    _port->get_port().set_muted((bool)muted);
   });
 }
 
 void set_audio_port_passthroughMuted(shoopdaloop_audio_port_t *port, unsigned int muted) {
   return api_impl<void>("set_audio_port_passthroughMuted", [&]() {
-    internal_audio_port(port)->set_passthrough_enabled(!((bool)muted));
+    auto _port = internal_audio_port(port);
+    if (!_port) { return; }
+    _port->set_passthrough_enabled(!((bool)muted));
   });
 }
 
 void set_audio_port_gain(shoopdaloop_audio_port_t *port, float gain) {
   return api_impl<void>("set_audio_port_gain", [&]() {
-    internal_audio_port(port)->maybe_audio_port()->set_gain(gain);
+    auto _port = internal_audio_port(port);
+    if (!_port) { return; }
+    _port->maybe_audio_port()->set_gain(gain);
   });
 }
 
 void set_midi_port_muted(shoopdaloop_midi_port_t *port, unsigned int muted) {
   return api_impl<void>("set_midi_port_muted", [&]() {
-    internal_midi_port(port)->get_port().set_muted((bool)muted);
+    auto _port = internal_midi_port(port);
+    if (!_port) { return; }
+    _port->get_port().set_muted((bool)muted);
   });
 }
 
 void set_midi_port_passthroughMuted(shoopdaloop_midi_port_t *port, unsigned int muted) {
   return api_impl<void>("set_midi_port_passthroughMuted", [&]() {
-    internal_midi_port(port)->set_passthrough_enabled(!((bool)muted));
+    auto _port = internal_midi_port(port);
+    if (!_port) { return; }
+    _port->set_passthrough_enabled(!((bool)muted));
   });
 }
 
 shoopdaloop_decoupled_midi_port_t *open_decoupled_midi_port(shoop_audio_driver_t *driver, const char* name_hint, shoop_port_direction_t direction) {
-  return api_impl<shoopdaloop_decoupled_midi_port_t*>("open_decoupled_midi_port", [&]() {
+  return api_impl<shoopdaloop_decoupled_midi_port_t*>("open_decoupled_midi_port", [&]() -> shoopdaloop_decoupled_midi_port_t* {
     auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return nullptr; }
     auto port = _driver->open_decoupled_midi_port(name_hint, direction);
     return external_decoupled_midi_port(port);
   }, nullptr);
 }
 
 shoop_midi_event_t *maybe_next_message(shoopdaloop_decoupled_midi_port_t *port) {
-  return api_impl<shoop_midi_event_t*, log_level_trace, log_level_warning>("maybe_next_message", [&]() -> shoop_midi_event_t * {
+  return api_impl<shoop_midi_event_t*, log_level_debug_trace, log_level_warning>("maybe_next_message", [&]() -> shoop_midi_event_t * {
     auto &_port = *internal_decoupled_midi_port(port);
     auto m = _port.pop_incoming();
     if (m.has_value()) {
@@ -1039,12 +1367,14 @@ shoop_audio_channel_data_t *alloc_audio_channel_data(unsigned n_samples) {
 void set_audio_channel_gain (shoopdaloop_loop_audio_channel_t *channel, float gain) {
   return api_impl<void>("set_audio_channel_gain", [&]() {
     auto internal = internal_audio_channel(channel);
+    if (!internal) { return; }
     // Perform atomically if possible, or queue if channel not yet initialized.
     if (internal->channel) {
         dynamic_cast<LoopAudioChannel*>(internal->channel.get())->set_gain(gain);
     } else {
-        internal_audio_channel(channel)->backend.lock()->queue_process_thread_command([=]() {
-            auto _channel = internal_audio_channel(channel);
+        auto _backend = internal->backend.lock();
+        if (!_backend) { return; }
+        _backend->queue_process_thread_command([=]() {
             dynamic_cast<LoopAudioChannel*>(internal->channel.get())->set_gain(gain);
         });
     }
@@ -1052,13 +1382,16 @@ void set_audio_channel_gain (shoopdaloop_loop_audio_channel_t *channel, float ga
 }
 
 shoop_audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audio_channel_t *channel) {
-  return api_impl<shoop_audio_channel_state_info_t*, log_level_trace, log_level_warning>("get_audio_channel_state", [&]() {
+  return api_impl<shoop_audio_channel_state_info_t*, log_level_debug_trace, log_level_warning>("get_audio_channel_state", [&]() -> shoop_audio_channel_state_info_t* {
     auto r = new shoop_audio_channel_state_info_t;
     auto chan = internal_audio_channel(channel);
+    if (!chan) { return nullptr; }
+    auto _backend = chan->backend.lock();
+    if (!_backend) { return nullptr; }
     auto audio = evaluate_before_or_after_process<LoopAudioChannel*>(
         [&]() { return chan->maybe_audio(); },
         chan->maybe_audio(),
-        *chan->backend.lock());
+        *_backend);
     r->output_peak = audio->get_output_peak();
     r->gain = audio->get_gain();
     r->mode = audio->get_mode();
@@ -1074,13 +1407,16 @@ shoop_audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audi
 }
 
 shoop_midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi_channel_t  *channel) {
-  return api_impl<shoop_midi_channel_state_info_t *, log_level_trace, log_level_warning>("get_midi_channel_state", [&]() {
+  return api_impl<shoop_midi_channel_state_info_t *, log_level_debug_trace, log_level_warning>("get_midi_channel_state", [&]() -> shoop_midi_channel_state_info_t* {
     auto r = new shoop_midi_channel_state_info_t;
     auto chan = internal_midi_channel(channel);
+    if (!chan) { return nullptr; }
+    auto _backend = chan->backend.lock();
+    if (!_backend) { return nullptr; }
     auto midi = evaluate_before_or_after_process<LoopMidiChannel*>(
         [&]() { return chan->maybe_midi(); },
         chan->maybe_midi(),
-        *chan->backend.lock());
+        *_backend);
     r->n_events_triggered = midi->get_n_events_triggered();
     r->n_notes_active = midi->get_n_notes_active();
     r->mode = midi->get_mode();
@@ -1096,8 +1432,13 @@ shoop_midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi
 
 void set_audio_channel_mode (shoopdaloop_loop_audio_channel_t * channel, shoop_channel_mode_t mode) {
   return api_impl<void>("set_audio_channel_mode", [&]() {
-    internal_audio_channel(channel)->backend.lock()->queue_process_thread_command([=]() {
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    auto _backend = _chan->backend.lock();
+    if (!_backend) { return; }
+    _backend->queue_process_thread_command([=]() {
         auto _channel = internal_audio_channel(channel);
+        if (!_channel) { return; }
         _channel->channel->set_mode(mode);
     });
   });
@@ -1105,8 +1446,13 @@ void set_audio_channel_mode (shoopdaloop_loop_audio_channel_t * channel, shoop_c
 
 void set_midi_channel_mode (shoopdaloop_loop_midi_channel_t * channel, shoop_channel_mode_t mode) {
   return api_impl<void>("set_midi_channel_mode", [&]() {
-    internal_midi_channel(channel)->backend.lock()->queue_process_thread_command([=]() {
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    auto _backend = _chan->backend.lock();
+    if (!_backend) { return; }
+    _backend->queue_process_thread_command([=]() {
         auto _channel = internal_midi_channel(channel);
+        if (!_channel) { return; }
         _channel->channel->set_mode(mode);
     });
   });
@@ -1114,8 +1460,13 @@ void set_midi_channel_mode (shoopdaloop_loop_midi_channel_t * channel, shoop_cha
 
 void set_audio_channel_start_offset (shoopdaloop_loop_audio_channel_t * channel, int start_offset) {
   return api_impl<void>("set_audio_channel_start_offset", [&]() {
-    internal_audio_channel(channel)->backend.lock()->queue_process_thread_command([=]() {
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    auto _backend = _chan->backend.lock();
+    if (!_backend) { return; }
+    _backend->queue_process_thread_command([=]() {
         auto _channel = internal_audio_channel(channel);
+        if (!_channel) { return; }
         _channel->channel->set_start_offset(start_offset);
     });
   });
@@ -1123,8 +1474,13 @@ void set_audio_channel_start_offset (shoopdaloop_loop_audio_channel_t * channel,
 
 void set_midi_channel_start_offset (shoopdaloop_loop_midi_channel_t * channel, int start_offset) {
   return api_impl<void>("set_midi_channel_start_offset", [&]() {
-    internal_midi_channel(channel)->backend.lock()->queue_process_thread_command([=]() {
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    auto _backend = _chan->backend.lock();
+    if (!_backend) { return; }
+    _backend->queue_process_thread_command([=]() {
         auto _channel = internal_midi_channel(channel);
+        if (!_channel) { return; }
         _channel->channel->set_start_offset(start_offset);
     });
   });
@@ -1132,8 +1488,13 @@ void set_midi_channel_start_offset (shoopdaloop_loop_midi_channel_t * channel, i
 
 void set_audio_channel_n_preplay_samples (shoopdaloop_loop_audio_channel_t *channel, unsigned n) {
   return api_impl<void>("set_audio_channel_n_preplay_samples", [&]() {
-    internal_audio_channel(channel)->backend.lock()->queue_process_thread_command([=]() {
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    auto _backend = _chan->backend.lock();
+    if (!_backend) { return; }
+    _backend->queue_process_thread_command([=]() {
         auto _channel = internal_audio_channel(channel);
+        if (!_channel) { return; }
         _channel->channel->set_pre_play_samples(n);
     });
   });
@@ -1141,17 +1502,23 @@ void set_audio_channel_n_preplay_samples (shoopdaloop_loop_audio_channel_t *chan
 
 void set_midi_channel_n_preplay_samples  (shoopdaloop_loop_midi_channel_t *channel, unsigned n) {
   return api_impl<void>("set_midi_channel_n_preplay_samples", [&]() {
-    internal_midi_channel(channel)->backend.lock()->queue_process_thread_command([=]() {
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    auto _backend = _chan->backend.lock();
+    if (!_backend) { return; }
+    _backend->queue_process_thread_command([=]() {
         auto _channel = internal_midi_channel(channel);
+        if (!_channel) { return; }
         _channel->channel->set_pre_play_samples(n);
     });
   });
 }
 
 shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *port) {
-  return api_impl<shoop_audio_port_state_info_t*, log_level_trace, log_level_warning>("get_audio_port_state", [&]() {
+  return api_impl<shoop_audio_port_state_info_t*, log_level_debug_trace, log_level_warning>("get_audio_port_state", [&]() -> shoop_audio_port_state_info_t* {
     auto r = new shoop_audio_port_state_info_t;
     auto pp = internal_audio_port(port);
+    if (!pp) { return nullptr; }
     auto p = pp->maybe_audio_port();
   
     if (p) {
@@ -1161,6 +1528,7 @@ shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *po
       r->muted = p->get_muted();
       r->passthrough_muted = !pp->get_passthrough_enabled();
       r->name = strdup(p->name());
+      r->ringbuffer_n_samples = pp->get_port().get_ringbuffer_n_samples();
       p->reset_input_peak();
       p->reset_output_peak();
     }
@@ -1169,9 +1537,12 @@ shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *po
 }
 
 shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port) {
-  return api_impl<shoop_midi_port_state_info_t*, log_level_trace, log_level_warning>("get_midi_port_state", [&]() {
+  return api_impl<shoop_midi_port_state_info_t*, log_level_debug_trace, log_level_warning>("get_midi_port_state", [&]() -> shoop_midi_port_state_info_t* {
     auto r = new shoop_midi_port_state_info_t;
     auto pp = internal_midi_port(port);
+    if (!pp) {
+      return nullptr;
+    }
     auto p = pp->maybe_midi_port();
 
     if(p) {
@@ -1182,6 +1553,7 @@ shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port)
       r->muted = p->get_muted();
       r->passthrough_muted = !pp->get_passthrough_enabled();
       r->name = strdup(p->name());
+      r->ringbuffer_n_samples = pp->get_port().get_ringbuffer_n_samples();
       p->reset_n_input_events();
       p->reset_n_output_events();
     }
@@ -1190,9 +1562,10 @@ shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port)
 }
 
 shoop_loop_state_info_t *get_loop_state(shoopdaloop_loop_t *loop) {
-  return api_impl<shoop_loop_state_info_t*, log_level_trace, log_level_warning>("get_loop_state", [&]() {
+  return api_impl<shoop_loop_state_info_t*, log_level_debug_trace, log_level_warning>("get_loop_state", [&]() -> shoop_loop_state_info_t* {
     auto r = new shoop_loop_state_info_t;
     auto _loop = internal_loop(loop);
+    if (!_loop) { return nullptr; }
     r->mode = _loop->loop->get_mode();
     r->position = _loop->loop->get_position();
     r->length = _loop->loop->get_length();
@@ -1207,27 +1580,49 @@ shoop_loop_state_info_t *get_loop_state(shoopdaloop_loop_t *loop) {
 
 void set_loop_sync_source (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_source) {
   return api_impl<void>("set_loop_sync_source", [&]() {
-    internal_loop(loop)->backend.lock()->queue_process_thread_command([=]() {
-        auto &_loop = *internal_loop(loop);
+    auto _loop = internal_loop(loop);
+    if (!_loop) { return; }
+    auto _backend = _loop->backend.lock();
+    if (!_backend) { return; }
+    _backend->queue_process_thread_command([=]() {
+        auto _loop = internal_loop(loop);
+        if (!_loop) { return; }
         if (sync_source) {
-            auto &src = *internal_loop(sync_source);
-            _loop.loop->set_sync_source(src.loop, false);
+            auto _src = internal_loop(sync_source);
+            if (!_src) { return ;}
+            _loop->loop->set_sync_source(_src->loop, false);
         } else {
-            _loop.loop->set_sync_source(nullptr, false);
+            _loop->loop->set_sync_source(nullptr, false);
         }
     });
   });
 }
 
+void adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, unsigned reverse_cycles_start, unsigned cycles_length) {
+  return api_impl<void>("adopt_ringbuffer_contents", [&]() {
+    auto _loop = internal_loop(loop);
+    if (!_loop) { return; }
+    auto backend = _loop->backend.lock();
+    if (!backend) { return; }
+    backend->queue_process_thread_command([=]() {
+      _loop->PROC_adopt_ringbuffer_contents(reverse_cycles_start, cycles_length);
+    });
+  });
+}
+
 shoopdaloop_fx_chain_t *create_fx_chain(shoop_backend_session_t *backend, shoop_fx_chain_type_t type, const char* title) {
-  return api_impl<shoopdaloop_fx_chain_t*>("create_fx_chain", [&]() {
+  return api_impl<shoopdaloop_fx_chain_t*>("create_fx_chain", [&]() -> shoopdaloop_fx_chain_t* {
+    auto _backend = internal_backend_session(backend);
+    if (!_backend) { return nullptr; }
     return external_fx_chain(internal_backend_session(backend)->create_fx_chain(type, title));
   }, nullptr);
 }
 
 void fx_chain_set_ui_visible(shoopdaloop_fx_chain_t *chain, unsigned visible) {
   return api_impl<void>("fx_chain_set_ui_visible", [&]() {
-    auto maybe_ui = dynamic_cast<ExternalUIInterface*>(internal_fx_chain(chain)->chain.get());
+    auto _chain = internal_fx_chain(chain);
+    if (!_chain) { return; }
+    auto maybe_ui = dynamic_cast<ExternalUIInterface*>(_chain->chain.get());
     if(maybe_ui) {
         if (visible) {
             maybe_ui->show();
@@ -1241,12 +1636,13 @@ void fx_chain_set_ui_visible(shoopdaloop_fx_chain_t *chain, unsigned visible) {
 }
 
 shoop_fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain) {
-  return api_impl<shoop_fx_chain_state_info_t*, log_level_trace, log_level_warning>("get_fx_chain_state", [&]() {
+  return api_impl<shoop_fx_chain_state_info_t*, log_level_debug_trace, log_level_warning>("get_fx_chain_state", [&]() -> shoop_fx_chain_state_info_t* {
     auto r = new shoop_fx_chain_state_info_t;
     auto c = internal_fx_chain(chain);
+    if (!c) { return nullptr; }
     r->ready = (unsigned) c->chain->is_ready();
     r->active = (unsigned) c->chain->is_active();
-    auto maybe_ui = dynamic_cast<ExternalUIInterface*>(internal_fx_chain(chain)->chain.get());
+    auto maybe_ui = dynamic_cast<ExternalUIInterface*>(c->chain.get());
     if(maybe_ui) {
         r->visible = (unsigned) maybe_ui->visible();
     } else {
@@ -1258,13 +1654,16 @@ shoop_fx_chain_state_info_t *get_fx_chain_state(shoopdaloop_fx_chain_t *chain) {
 
 void set_fx_chain_active(shoopdaloop_fx_chain_t *chain, unsigned active) {
   return api_impl<void>("set_fx_chain_active", [&]() {
-    internal_fx_chain(chain)->chain->set_active(active);
+    auto _chain = internal_fx_chain(chain);
+    if (!_chain) { return; }
+    _chain->chain->set_active(active);
   });
 }
 
 const char* get_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain) {
-  return api_impl<const char*, log_level_trace, log_level_warning>("get_fx_chain_internal_state", [&]() {
+  return api_impl<const char*, log_level_debug_trace, log_level_warning>("get_fx_chain_internal_state", [&]() -> const char* {
     auto c = internal_fx_chain(chain);
+    if (!c) { return nullptr; }
     auto maybe_serializeable = dynamic_cast<SerializeableStateInterface*>(c->chain.get());
     if(maybe_serializeable) {
         auto str = maybe_serializeable->serialize_state();
@@ -1281,6 +1680,7 @@ const char* get_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain) {
 void restore_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain, const char* state) {
   return api_impl<void>("restore_fx_chain_internal_state", [&]() {
     auto c = internal_fx_chain(chain);
+    if (!c) { return; }
     auto maybe_serializeable = dynamic_cast<SerializeableStateInterface*>(c->chain.get());
     if (maybe_serializeable) {
         maybe_serializeable->deserialize_state(std::string(state));
@@ -1289,62 +1689,68 @@ void restore_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain, const char* 
 }
 
 unsigned n_fx_chain_audio_input_ports(shoopdaloop_fx_chain_t *chain) {
-  return api_impl<unsigned>("n_fx_chain_audio_input_ports", [&]() {
+  return api_impl<unsigned>("n_fx_chain_audio_input_ports", [&]() -> unsigned {
     auto _chain = internal_fx_chain(chain);
+    if (!_chain) { return 0; }
     auto const& ports = _chain->audio_input_ports();
     return ports.size();
   }, 0);
 }
 
 shoopdaloop_audio_port_t *fx_chain_audio_input_port(shoopdaloop_fx_chain_t *chain, unsigned int idx) {
-  return api_impl<shoopdaloop_audio_port_t*>("fx_chain_audio_input_port", [&]() {
+  return api_impl<shoopdaloop_audio_port_t*>("fx_chain_audio_input_port", [&]() -> shoopdaloop_audio_port_t* {
     auto _chain = internal_fx_chain(chain);
+    if (!_chain) { return nullptr; }
     auto port = _chain->audio_input_ports()[idx];
     return external_audio_port(port);
   }, nullptr);
 }
 
 unsigned n_fx_chain_audio_output_ports(shoopdaloop_fx_chain_t *chain) {
-  return api_impl<unsigned>("n_fx_chain_audio_output_ports", [&]() {
+  return api_impl<unsigned>("n_fx_chain_audio_output_ports", [&]() -> unsigned {
     auto _chain = internal_fx_chain(chain);
+    if (!_chain) { return 0; }
     auto const& ports = _chain->audio_output_ports();
     return ports.size();
   }, 0);
 }
 
 unsigned n_fx_chain_midi_input_ports(shoopdaloop_fx_chain_t *chain) {
-  return api_impl<unsigned>("n_fx_chain_midi_input_ports", [&]() {
+  return api_impl<unsigned>("n_fx_chain_midi_input_ports", [&]() -> unsigned {
     auto _chain = internal_fx_chain(chain);
+    if (!_chain) { return 0; }
     auto const& ports = _chain->midi_input_ports();
     return ports.size();
   }, 0);
 }
 ;
 shoopdaloop_audio_port_t *fx_chain_audio_output_port(shoopdaloop_fx_chain_t *chain, unsigned int idx) {
-  return api_impl<shoopdaloop_audio_port_t*>("fx_chain_audio_output_port", [&]() {
+  return api_impl<shoopdaloop_audio_port_t*>("fx_chain_audio_output_port", [&]() -> shoopdaloop_audio_port_t* {
     auto _chain = internal_fx_chain(chain);
+    if (!_chain) { return nullptr; }
     auto port = _chain->audio_output_ports()[idx];
     return external_audio_port(port);
   }, nullptr);
 }
 
 shoopdaloop_midi_port_t *fx_chain_midi_input_port(shoopdaloop_fx_chain_t *chain, unsigned int idx) {
-  return api_impl<shoopdaloop_midi_port_t*>("fx_chain_midi_input_port", [&]() {
+  return api_impl<shoopdaloop_midi_port_t*>("fx_chain_midi_input_port", [&]() -> shoopdaloop_midi_port_t* {
     auto _chain = internal_fx_chain(chain);
+    if (!_chain) { return nullptr; }
     auto port = _chain->midi_input_ports()[idx];
     return external_midi_port(port);
   }, nullptr);
 }
 
 void destroy_midi_event(shoop_midi_event_t *e) {
-  return api_impl<void, log_level_trace, log_level_warning>("destroy_midi_event", [&]() {
+  return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_midi_event", [&]() {
     free(e->data);
     delete e;
   });
 }
 
 void destroy_midi_sequence(shoop_midi_sequence_t *d) {
-  return api_impl<void, log_level_trace>("destroy_midi_sequence", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_midi_sequence", [&]() {
     for(uint32_t idx=0; idx<d->n_events; idx++) {
         destroy_midi_event(d->events[idx]);
     }
@@ -1354,28 +1760,30 @@ void destroy_midi_sequence(shoop_midi_sequence_t *d) {
 }
 
 void destroy_audio_channel_data(shoop_audio_channel_data_t *d) {
-  return api_impl<void, log_level_trace>("destroy_audio_channel_data", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_audio_channel_data", [&]() {
     free(d->data);
     delete d;
   });
 }
 
 void destroy_audio_channel_state_info(shoop_audio_channel_state_info_t *d) {
-  return api_impl<void, log_level_trace>("destroy_audio_channel_state_info", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_audio_channel_state_info", [&]() {
     delete d;
   });
 }
 
 void destroy_midi_channel_state_info(shoop_midi_channel_state_info_t *d) {
-  return api_impl<void, log_level_trace>("destroy_midi_channel_state_info", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_midi_channel_state_info", [&]() {
     delete d;
   });
 }
 
 void destroy_loop(shoopdaloop_loop_t *d) {
-  return api_impl<void, log_level_trace, log_level_warning>("destroy_loop", [&]() {
+  return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_loop", [&]() {
     auto loop = internal_loop(d);
+    if (!loop) { return; }
     auto backend = loop->backend.lock();
+    if (!backend) { return; }
     backend->exec_process_thread_command([loop, backend]() {
         loop->delete_all_channels(false);
 
@@ -1391,9 +1799,11 @@ void destroy_loop(shoopdaloop_loop_t *d) {
 }
 
 void destroy_audio_port(shoopdaloop_audio_port_t *d) {
-  return api_impl<void, log_level_trace, log_level_warning>("destroy_audio_port", [&]() {
+  return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_audio_port", [&]() {
     auto port = internal_audio_port(d);
+    if (!port) { return; }
     auto backend = port->backend.lock();
+    if (!backend) { return; }
     backend->exec_process_thread_command([port, backend]() {
         // Remove port, which should stop anything from accessing it
         bool found = false;
@@ -1410,9 +1820,11 @@ void destroy_audio_port(shoopdaloop_audio_port_t *d) {
 }
 
 void destroy_midi_port(shoopdaloop_midi_port_t *d) {
-  return api_impl<void, log_level_trace, log_level_warning>("destroy_midi_port", [&]() {
+  return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_midi_port", [&]() {
     auto port = internal_midi_port(d);
+    if (!port) { return; }
     auto backend = port->backend.lock();
+    if (!backend) { return; }
     backend->exec_process_thread_command([port, backend]() {
         // Remove port, which should stop anything from accessing it
         bool found = false;
@@ -1429,20 +1841,21 @@ void destroy_midi_port(shoopdaloop_midi_port_t *d) {
 }
 
 void destroy_midi_port_state_info(shoop_midi_port_state_info_t *d) {
-  return api_impl<void, log_level_trace>("destroy_midi_port_state_info", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_midi_port_state_info", [&]() {
     delete d;
   });
 }
 
 void destroy_audio_port_state_info(shoop_audio_port_state_info_t *d) {
-  return api_impl<void, log_level_trace>("destroy_audio_port_state_info", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_audio_port_state_info", [&]() {
     delete d;
   });
 }
 
 void destroy_audio_channel(shoopdaloop_loop_audio_channel_t *d) {
-  return api_impl<void, log_level_trace, log_level_warning>("destroy_audio_channel", [&]() {
+  return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_audio_channel", [&]() {
     auto chan = internal_audio_channel(d);
+    if (!chan) { return; }
     if(auto l = chan->loop.lock()) {
         l->delete_audio_channel(chan, true);
     }
@@ -1450,8 +1863,9 @@ void destroy_audio_channel(shoopdaloop_loop_audio_channel_t *d) {
 }
 
 void destroy_midi_channel(shoopdaloop_loop_midi_channel_t *d) {
-  return api_impl<void, log_level_trace, log_level_warning>("destroy_midi_channel", [&]() {
+  return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_midi_channel", [&]() {
     auto chan = internal_midi_channel(d);
+    if (!chan) { return; }
     if(auto l = chan->loop.lock()) {
         l->delete_midi_channel(chan, true);
     }
@@ -1459,45 +1873,47 @@ void destroy_midi_channel(shoopdaloop_loop_midi_channel_t *d) {
 }
 
 void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *d) {
-  return api_impl<void, log_level_trace, log_level_warning>("destroy_shoopdaloop_decoupled_midi_port", [&]() {
+  return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_shoopdaloop_decoupled_midi_port", [&]() {
     logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "destroy_shoopdaloop_decoupled_midi_port");
     throw std::runtime_error("unimplemented");
   });
 }
 
 void destroy_loop_state_info(shoop_loop_state_info_t *state) {
-  return api_impl<void, log_level_trace>("destroy_loop_state_info", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_loop_state_info", [&]() {
     delete state;
   });
 }
 
 void destroy_fx_chain(shoopdaloop_fx_chain_t *chain) {
-  return api_impl<void, log_level_trace, log_level_warning>("destroy_fx_chain", [&]() {
-    std::cerr << "Warning: destroying FX chains is unimplemented. Stopping only." << std::endl;
-    internal_fx_chain(chain)->chain->stop();
+  return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_fx_chain", [&]() {
+    auto _chain = internal_fx_chain(chain);
+    if (!_chain) { return; }
+    logging::log<"Backend.API", log_level_warning>(std::nullopt, std::nullopt, "Warning: destroying FX chains is unimplemented. Stopping only.");
+    _chain->chain->stop();
   });
 }
 
 void destroy_fx_chain_state(shoop_fx_chain_state_info_t *d) {
-  return api_impl<void, log_level_trace>("destroy_fx_chain_state", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_fx_chain_state", [&]() {
     delete d;
   });
 }
 
 void destroy_string(const char* s) {
-  return api_impl<void, log_level_trace>("destroy_string", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_string", [&]() {
     free((void*)s);
   });
 }
 
 void destroy_backend_state_info(shoop_backend_session_state_info_t *d) {
-  return api_impl<void, log_level_trace>("destroy_backend_state_info", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_backend_state_info", [&]() {
     delete d;
   });
 }
 
 void destroy_profiling_report(shoop_profiling_report_t *d) {
-  return api_impl<void, log_level_trace>("destroy_profiling_report", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_profiling_report", [&]() {
     for(uint32_t idx=0; idx < d->n_items; idx++) {
         free ((void*)d->items[idx].key);
     }
@@ -1506,8 +1922,18 @@ void destroy_profiling_report(shoop_profiling_report_t *d) {
   });
 }
 
+void destroy_external_port_descriptors(shoop_external_port_descriptors_t *d) {
+  return api_impl<void, log_level_debug_trace>("destroy_profiling_report", [&]() {
+    for(int i=0; i<d->n_ports; i++) {
+      free((void*)d->ports[i].name);
+    }
+    free(d->ports);
+    free(d);
+  });
+}
+
 shoopdaloop_logger_t *get_logger(const char* name) {
-  return api_impl<shoopdaloop_logger_t*, log_level_trace>("get_logger", [&]() {
+  return api_impl<shoopdaloop_logger_t*, log_level_debug_trace>("get_logger", [&]() {
     return (shoopdaloop_logger_t*) strdup(name);
   }, nullptr);
 }
@@ -1533,7 +1959,7 @@ void set_logger_level_override(shoopdaloop_logger_t *logger, shoop_log_level_t l
 }
 
 void shoopdaloop_log(shoopdaloop_logger_t *logger, shoop_log_level_t level, const char *msg) {
-  return api_impl<void, log_level_trace>("shoopdaloop_log", [&]() {
+  return api_impl<void, log_level_debug_trace>("shoopdaloop_log", [&]() {
     std::string name((const char*)logger);
     std::string _msg(msg);
     logging::log(level, name, _msg);
@@ -1541,7 +1967,7 @@ void shoopdaloop_log(shoopdaloop_logger_t *logger, shoop_log_level_t level, cons
 }
 
 unsigned shoopdaloop_should_log(shoopdaloop_logger_t *logger, shoop_log_level_t level) {
-  return api_impl<unsigned, log_level_trace>("shoopdaloop_should_log", [&]() -> unsigned {
+  return api_impl<unsigned, log_level_debug_trace>("shoopdaloop_should_log", [&]() -> unsigned {
     auto name = (const char*)logger;
     return logging::should_log(
         name, level
@@ -1552,7 +1978,9 @@ unsigned shoopdaloop_should_log(shoopdaloop_logger_t *logger, shoop_log_level_t 
 
 void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, unsigned n_frames, audio_sample_t const* data) {
   return api_impl<void>("dummy_audio_port_queue_data", [&]() {
-    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(&internal_audio_port(port)->get_port());
+    auto _port = internal_audio_port(port);
+    if (!_port) { return; }
+    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(&_port->get_port());
     if (maybe_dummy) {
         maybe_dummy->queue_data(n_frames, data);
     } else {
@@ -1563,7 +1991,9 @@ void dummy_audio_port_queue_data(shoopdaloop_audio_port_t *port, unsigned n_fram
 
 void dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, unsigned n_frames, audio_sample_t *store_in) {
   return api_impl<void>("dummy_audio_port_dequeue_data", [&]() {
-    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(&internal_audio_port(port)->get_port());
+    auto _port = internal_audio_port(port);
+    if (!_port) { return; }
+    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(&_port->get_port());
     if (maybe_dummy) {
         auto data = maybe_dummy->dequeue_data(n_frames);
         memcpy((void*)store_in, (void*)data.data(), sizeof(audio_sample_t) * n_frames);
@@ -1574,7 +2004,9 @@ void dummy_audio_port_dequeue_data(shoopdaloop_audio_port_t *port, unsigned n_fr
 }
 void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, shoop_midi_sequence_t* events) {
   return api_impl<void>("dummy_midi_port_queue_data", [&]() {
-    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(&internal_midi_port(port)->get_port());
+    auto _port = internal_midi_port(port);
+    if (!_port) { return; }
+    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(&_port->get_port());
     if (maybe_dummy) {
         for(uint32_t i=0; i<events->n_events; i++) {
             auto &e = events->events[i];
@@ -1590,7 +2022,9 @@ void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, shoop_midi_sequen
 
 shoop_midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port) {
   return api_impl<shoop_midi_sequence_t*>("dummy_midi_port_dequeue_data", [&]() -> shoop_midi_sequence_t*{
-    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(&internal_midi_port(port)->get_port());
+    auto _port = internal_midi_port(port);
+    if (!_port) { return nullptr; }
+    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(&_port->get_port());
     if (maybe_dummy) {
         auto msgs = maybe_dummy->get_written_requested_msgs();
         shoop_midi_sequence_t *rval = alloc_midi_sequence(msgs.size());
@@ -1612,7 +2046,9 @@ shoop_midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *por
 }
 void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, unsigned n_frames) {
   return api_impl<void>("dummy_midi_port_request_data", [&]() {
-    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(&internal_midi_port(port)->get_port());
+    auto _port = internal_midi_port(port);
+    if (!_port) { return; }
+    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(&_port->get_port());
     if (maybe_dummy) {
         maybe_dummy->request_data(n_frames);
     }
@@ -1621,7 +2057,9 @@ void dummy_midi_port_request_data(shoopdaloop_midi_port_t* port, unsigned n_fram
 
 void dummy_midi_port_clear_queues(shoopdaloop_midi_port_t* port) {
   return api_impl<void>("dummy_midi_port_clear_queues", [&]() {
-    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(&internal_midi_port(port)->get_port());
+    auto _port = internal_midi_port(port);
+    if (!_port) { return; }
+    auto maybe_dummy = dynamic_cast<DummyMidiPort*>(&_port->get_port());
     if (maybe_dummy) {
         maybe_dummy->clear_queues();
     }
@@ -1630,7 +2068,9 @@ void dummy_midi_port_clear_queues(shoopdaloop_midi_port_t* port) {
 
 void dummy_audio_port_request_data(shoopdaloop_audio_port_t* port, unsigned n_frames) {
   return api_impl<void>("dummy_audio_port_request_data", [&]() {
-    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(&internal_audio_port(port)->get_port());
+    auto _port = internal_audio_port(port);
+    if (!_port) { return; }
+    auto maybe_dummy = dynamic_cast<DummyAudioPort*>(&_port->get_port());
     if (maybe_dummy) {
         maybe_dummy->request_data(n_frames);
     } else {
@@ -1642,6 +2082,7 @@ void dummy_audio_port_request_data(shoopdaloop_audio_port_t* port, unsigned n_fr
 void dummy_audio_enter_controlled_mode(shoop_audio_driver_t *driver) {
   return api_impl<void>("dummy_audio_enter_controlled_mode", [&]() {
     auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
     if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
         maybe_dummy->enter_mode(DummyAudioMidiDriverMode::Controlled);
     } else {
@@ -1653,6 +2094,7 @@ void dummy_audio_enter_controlled_mode(shoop_audio_driver_t *driver) {
 void dummy_audio_enter_automatic_mode(shoop_audio_driver_t *driver) {
   return api_impl<void>("dummy_audio_enter_automatic_mode", [&]() {
     auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
     if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
         maybe_dummy->enter_mode(DummyAudioMidiDriverMode::Automatic);
     } else {
@@ -1664,6 +2106,7 @@ void dummy_audio_enter_automatic_mode(shoop_audio_driver_t *driver) {
 unsigned dummy_audio_is_in_controlled_mode(shoop_audio_driver_t *driver) {
   return api_impl<unsigned>("dummy_audio_is_in_controlled_mode", [&]() -> unsigned {
     auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return 0; }
     if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
         return (unsigned) (maybe_dummy->get_mode() == DummyAudioMidiDriverMode::Controlled);
     } else {
@@ -1676,6 +2119,7 @@ unsigned dummy_audio_is_in_controlled_mode(shoop_audio_driver_t *driver) {
 void dummy_audio_request_controlled_frames(shoop_audio_driver_t *driver, unsigned n_frames) {
   return api_impl<void>("dummy_audio_request_controlled_frames", [&]() {
     auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
     if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
         maybe_dummy->controlled_mode_request_samples(n_frames);
     } else {
@@ -1687,6 +2131,7 @@ void dummy_audio_request_controlled_frames(shoop_audio_driver_t *driver, unsigne
 unsigned dummy_audio_n_requested_frames(shoop_audio_driver_t *driver) {
   return api_impl<unsigned>("dummy_audio_n_requested_frames", [&]() -> unsigned  {
     auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return 0; }
     if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
         return maybe_dummy->get_controlled_mode_samples_to_process();
     } else {
@@ -1696,15 +2141,52 @@ unsigned dummy_audio_n_requested_frames(shoop_audio_driver_t *driver) {
   }, (unsigned)0);
 }
 
+void dummy_driver_add_external_mock_port(shoop_audio_driver_t* driver, const char* name, shoop_port_direction_t direction, shoop_port_data_type_t data_type) {
+  return api_impl<void>("dummy_driver_add_external_mock_port", [&]()  {
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
+        maybe_dummy->add_external_mock_port(std::string(name), direction, data_type);
+    } else {
+        logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_driver_add_external_mock_port called on non-dummy backend");
+    }
+  });
+}
+
+void dummy_driver_remove_external_mock_port(shoop_audio_driver_t* driver, const char* name) {
+  return api_impl<void>("dummy_driver_remove_external_mock_port", [&]()  {
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
+        maybe_dummy->remove_external_mock_port(std::string(name));
+    } else {
+        logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_driver_remove_external_mock_port called on non-dummy backend");
+    }
+  });
+}
+
+void dummy_driver_remove_all_external_mock_ports(shoop_audio_driver_t* driver) {
+  return api_impl<void>("dummy_driver_remove_all_external_mock_ports", [&]()  {
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
+        maybe_dummy->remove_all_external_mock_ports();
+    } else {
+        logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_driver_remove_all_external_mock_ports called on non-dummy backend");
+    }
+  });
+}
+
 void wait_process(shoop_audio_driver_t *driver) {
   return api_impl<void>("wait_process", [&]() {
     auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
     _driver->wait_process();
   });
 }
 
 void destroy_logger(shoopdaloop_logger_t* logger) {
-  return api_impl<void, log_level_trace>("destroy_logger", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_logger", [&]() {
 #ifndef _WIN32
     // free ((void*)logger);
 #else
@@ -1714,19 +2196,23 @@ void destroy_logger(shoopdaloop_logger_t* logger) {
 }
 
 unsigned get_sample_rate (shoop_audio_driver_t *driver) {
-  return api_impl<unsigned>("get_sample_rate", [&]() {
-    return internal_audio_driver(driver)->get_sample_rate();
+  return api_impl<unsigned>("get_sample_rate", [&]() -> unsigned {
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return 48000; }
+    return _driver->get_sample_rate();
   }, 0);
 }
 
 unsigned get_buffer_size (shoop_audio_driver_t *driver) {
-  return api_impl<unsigned>("get_buffer_size", [&]() {
-    return internal_audio_driver(driver)->get_buffer_size();
+  return api_impl<unsigned>("get_buffer_size", [&]() -> unsigned {
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return 1024; }
+    return _driver->get_buffer_size();
   }, 0);
 }
 
 void destroy_audio_driver_state(shoop_audio_driver_state_t *state) {
-  return api_impl<void, log_level_trace>("destroy_audio_driver_state", [&]() {
+  return api_impl<void, log_level_debug_trace>("destroy_audio_driver_state", [&]() {
     if (state->maybe_instance_name) {
       free((void*)state->maybe_instance_name);
     }
@@ -1736,13 +2222,16 @@ void destroy_audio_driver_state(shoop_audio_driver_state_t *state) {
 
 unsigned get_driver_active(shoop_audio_driver_t *driver) {
   return api_impl<unsigned>("get_driver_active", [&]() {
-    return internal_audio_driver(driver)->get_active();
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return false; }
+    return _driver->get_active();
   }, 0);
 }
 
 void start_dummy_driver(shoop_audio_driver_t *driver, shoop_dummy_audio_driver_settings_t settings) {
   return api_impl<void>("start_dummy_driver", [&]() {
     auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
     auto dummy = std::dynamic_pointer_cast<shoop_types::_DummyAudioMidiDriver>(_driver);
     if (!dummy) {
       throw std::runtime_error("Given driver is invalid or not of the correct type (Dummy).");
@@ -1762,6 +2251,7 @@ void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_set
   return api_impl<void>("start_jack_driver", [&]() {
 #ifdef SHOOP_HAVE_BACKEND_JACK
     auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
     auto jack = std::dynamic_pointer_cast<JackAudioMidiDriver>(_driver);
     auto jacktest = std::dynamic_pointer_cast<JackTestAudioMidiDriver>(_driver);
     if (!jack && !jacktest) {

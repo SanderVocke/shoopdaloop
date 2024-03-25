@@ -20,6 +20,7 @@ Item {
 
     property int track_idx : -1
     property int idx_in_track : -1
+    property string track_obj_id : ''
 
     onTrack_idxChanged: print_coords()
     onIdx_in_trackChanged: print_coords()
@@ -56,9 +57,9 @@ Item {
         if (channels.length != 2) { throw new Error("Could not find stereo channels") }
         return Stereo.balance(channels[0].gain, channels[1].gain)
     }
-    readonly property bool has_audio: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
+    readonly property bool descriptor_has_audio: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
         (initial_descriptor.channels.filter(c => c.type == "audio").length > 0) : false
-    readonly property bool has_midi: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
+    readonly property bool descriptor_has_midi: (initial_descriptor && !initial_descriptor.composition && initial_descriptor.channels) ?
         (initial_descriptor.channels.filter(c => c.type == "midi").length > 0) : false
 
     readonly property string object_schema : 'loop.1'
@@ -86,6 +87,7 @@ Item {
         }
         return rval
     }
+
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         var have_data_files = initial_descriptor.channels ? initial_descriptor.channels.map(c => {
             let r = ('data_file' in c)
@@ -109,12 +111,7 @@ Item {
 
     property bool loaded : false
 
-    RegistryLookup {
-        id: sync_loop_lookup
-        registry: registries.state_registry
-        key: 'sync_loop'
-    }
-    property alias sync_loop : sync_loop_lookup.object
+    property var sync_loop : registries.state_registry.sync_loop
 
     readonly property int cycle_length: sync_loop ? sync_loop.length : 0
     readonly property int n_cycles: cycle_length ? Math.ceil(length / cycle_length) : 0
@@ -192,6 +189,7 @@ Item {
     readonly property var maybe_composite_loop : (maybe_loop && maybe_loop instanceof CompositeLoop) ? maybe_loop : null
     readonly property bool is_loaded : maybe_loop
     readonly property bool is_sync: sync_loop && sync_loop == this
+    readonly property bool is_script: maybe_composite_loop && maybe_composite_loop.kind == 'script'
     readonly property var delay_for_targeted : {
         // This property is used for synchronizing to the targeted loop.
         // If:
@@ -250,9 +248,9 @@ Item {
             transition_loops([root], mode, delay, wait_for_sync)
         }        
     }
-    function play_solo_in_track() {
+    function play_solo_in_track(delay, sync) {
         // Gather all selected loops
-        var selected_all = include_selected ? selected_loops : new Set()
+        var selected_all = selected_loops
         selected_all.add(root)
         // Gather all other loops that are in the same track(s)
         var _all_track_loops = []
@@ -263,8 +261,8 @@ Item {
         })
         var _other_loops = _all_track_loops.filter(l => !selected_all.has(l))
         // Do the transitions
-        transition_loops(_other_loops, ShoopConstants.LoopMode.Stopped, use_delay, root.sync_active)
-        transition_loops(selected_all, ShoopConstants.LoopMode.Playing, use_delay, root.sync_active)
+        transition_loops(_other_loops, ShoopConstants.LoopMode.Stopped, delay, sync)
+        transition_loops(Array.from(selected_all), ShoopConstants.LoopMode.Playing, delay, sync)
     }
     function clear(length=0, emit=true) {
         if(maybe_loop) {
@@ -402,9 +400,18 @@ Item {
         root.record_n(n_cycles_delay, n_cycles_record)
     }
 
+    function adopt_ringbuffers(reverse_start_cycle, cycles_length) {
+        if (!root.maybe_loop) {
+            create_backend_loop()
+        }
+        if (root.maybe_backend_loop) {
+            root.maybe_backend_loop.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length)
+        }
+    }
+
     anchors {
-        left: parent.left
-        right: parent.right
+        left: parent ? parent.left : undefined
+        right: parent ? parent.right : undefined
         leftMargin: 2
         rightMargin: 2
     }
@@ -421,6 +428,7 @@ Item {
         id: backend_loop_factory
         BackendLoopWithChannels {
             maybe_fx_chain: root.maybe_fx_chain
+            loop_widget: root
         }
     }
 
@@ -433,7 +441,7 @@ Item {
             } else {
                 maybe_loop = backend_loop_factory.createObject(root, {
                     'initial_descriptor': root.initial_descriptor,
-                    'sync_source': (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null,
+                    'sync_source': Qt.binding(() => (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null),
                 })
                 maybe_loop.onCycled.connect(root.cycled)
             }
@@ -442,7 +450,9 @@ Item {
 
     Component {
         id: composite_loop_factory
-        CompositeLoop {}
+        CompositeLoop {
+            loop_widget: root
+        }
     }
     function create_composite_loop(composition={
         'playlists': []
@@ -469,8 +479,7 @@ Item {
         } else {
             maybe_loop = composite_loop_factory.createObject(root, {
                 initial_composition_descriptor: composition,
-                obj_id: root.obj_id,
-                widget: root
+                obj_id: root.obj_id
             })
             maybe_loop.onCycled.connect(root.cycled)
         }
@@ -480,12 +489,7 @@ Item {
     property var audio_channels : (maybe_loop && maybe_loop.audio_channels) ? maybe_loop.audio_channels : []
     property var midi_channels : (maybe_loop && maybe_loop.midi_channels) ? maybe_loop.midi_channels : []
    
-    RegistryLookup {
-        id: lookup_sync_active
-        registry: registries.state_registry
-        key: 'sync_active'
-    }
-    property alias sync_active: lookup_sync_active.object
+    property bool sync_active : registries.state_registry.sync_active
 
     // UI
     StatusRect {
@@ -520,8 +524,10 @@ Item {
         height: 26
 
         color: {
-            if (loop && root.maybe_composite_loop) {
+            if (loop && root.maybe_composite_loop && root.maybe_composite_loop.kind == 'regular') {
                 return 'pink'
+            } else if (loop && root.maybe_composite_loop && root.maybe_composite_loop.kind == 'script') {
+                return '#77AA77'
             } else if (loop && loop.length > 0) {
                 return '#000044'
             }
@@ -535,8 +541,10 @@ Item {
                 return "orange";
             } else if (root.selected) {
                 return 'yellow';
-            } else if (root.is_in_selected_composite_loop) {
+            } else if (root.is_in_selected_composite_loop && root.single_selected_composite_loop.maybe_composite_loop.kind == 'regular') {
                 return 'pink';
+            } else if (root.is_in_selected_composite_loop && root.single_selected_composite_loop.maybe_composite_loop.kind == 'script') {
+                return '#77AA77'
             }
 
             if (!statusrect.loop || statusrect.loop.length == 0) {
@@ -660,17 +668,6 @@ Item {
             }
         }
 
-        MouseArea {
-            id: area
-            x: 0
-            y: 0
-            anchors.fill: parent
-            hoverEnabled: true
-            propagateComposedEvents: true
-            onPositionChanged: (mouse) => { statusrect.propagateMousePosition(mapToGlobal(mouse.x, mouse.y)) }
-            onExited: statusrect.propagateMouseExited()
-        }
-
         MaterialDesignIcon {
             size: 10
             name: 'star'
@@ -710,6 +707,8 @@ Item {
                     show_timer_instead: parent.show_next_mode
                     visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.loop.next_transition_delay == 0)
                     connected: true
+                    is_regular_composite: root.maybe_composite_loop ? root.maybe_composite_loop.kind == 'regular' : false
+                    is_script_composite: root.maybe_composite_loop ? root.maybe_composite_loop.kind == 'script' : false
                     size: iconitem.height
                     y: 0
                     anchors.horizontalCenter: iconitem.horizontalCenter
@@ -729,9 +728,9 @@ Item {
                                             // Add the selected loop to the currently selected composite loop.
                                             // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
                                             if (key_modifiers.control_pressed) {
-                                                selected.maybe_composite_loop.add_loop(root, 0, selected.maybe_composite_loop.playlists.length)
+                                                selected.maybe_composite_loop.add_loop(root, 0, undefined, selected.maybe_composite_loop.playlists.length)
                                             } else {
-                                                selected.maybe_composite_loop.add_loop(root, 0)
+                                                selected.maybe_composite_loop.add_loop(root, 0, undefined)
                                             }
                                         }
                                     }
@@ -747,6 +746,8 @@ Item {
                     mode: parent.show_next_mode ?
                         statusrect.loop.next_mode : ShoopConstants.LoopMode.Unknown
                     show_timer_instead: false
+                    is_regular_composite: false
+                    is_script_composite: false
                     connected: true
                     size: iconitem.height * 0.65
                     y: 0
@@ -780,8 +781,78 @@ Item {
                 visible: !buttongrid.visible
             }
 
+            // Draggy rect for moving the track
+            Rectangle {
+                id: mover
+                anchors.fill: parent
+
+                // for debugging
+                // color: 'yellow'
+                color: 'transparent'
+
+                Item {
+                    id: movable
+                    width: mover.width
+                    height: mover.height
+                    parent: Overlay.overlay
+                    visible: area.drag.active
+                    z: 3
+
+                    Drag.active: area.drag.active
+                    Drag.hotSpot.x : width/2
+                    Drag.hotSpot.y : height/2
+                    Drag.source: root
+                    Drag.keys: ['LoopWidget', 'LoopWidget_track_' + root.track_obj_id]
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: 'white'
+                        opacity: 0.5
+
+                        Image {
+                            id: movable_image
+                            source: ''
+                        }
+                    }
+
+                    function resetCoords() {
+                        x = mover.mapToItem(Overlay.overlay, 0, 0).x
+                        y = mover.mapToItem(Overlay.overlay, 0, 0).y
+                    }
+                    Component.onCompleted: resetCoords()
+                    onVisibleChanged: resetCoords()
+                }
+            }
+
+            MouseArea {
+                id: area
+                x: 0
+                y: 0
+                anchors.fill: parent
+                hoverEnabled: true
+                propagateComposedEvents: true
+                onPositionChanged: (mouse) => { statusrect.propagateMousePosition(mapToGlobal(mouse.x, mouse.y)) }
+                onExited: statusrect.propagateMouseExited()
+
+                cursorShape: Qt.PointingHandCursor
+
+                drag {
+                    target: movable
+                    onActiveChanged: {
+                        if (active) {
+                            root.grabToImage((result) => {
+                                movable_image.source = result.url
+                            })
+                        }
+                    }
+                }
+
+                onReleased: movable.Drag.drop()
+                onPressed: movable.resetCoords()
+            }
+
             Grid {
-                visible: statusrect.hovered || playlivefx.hovered || playsolointrack.hovered || recordN.hovered || recordfx.hovered || recordn_menu.visible
+                visible: statusrect.hovered || playlivefx.hovered || playsolointrack.hovered || record_grab.hovered || recordfx.hovered
                 x: 20
                 y: 2
                 columns: 4
@@ -798,9 +869,10 @@ Item {
                         size: parent.width
                         anchors.centerIn: parent
                         name: 'play'
-                        color: 'green'
+                        color: root.is_script ? 'white' : 'green'
                         text_color: Material.foreground
                         text: root.delay_for_targeted != undefined ? ">" : ""
+                        font.pixelSize: size / 2.0
                     }
 
                     onClicked: root.transition(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
@@ -818,7 +890,7 @@ Item {
 
                     Popup {
                         background: Item{}
-                        visible: play.hovered || ma.containsMouse
+                        visible: !root.is_script && (play.hovered || ma.containsMouse)
                         leftInset: 0
                         rightInset: 0
                         topInset: 0
@@ -833,6 +905,7 @@ Item {
                             width: playlivefx.width
                             height: playsolointrack.height + playlivefx.height
                             color: statusrect.color
+                            clip: true
 
                             MouseArea {
                                 id: ma
@@ -862,9 +935,10 @@ Item {
                                         color: 'green'
                                         text_color: Material.foreground
                                         text: root.delay_for_targeted != undefined ? ">S" : "S"
+                                        font.pixelSize: size / 2.0
                                     }
                                     onClicked: { if(statusrect.loop) {
-                                        root.play_solo_in_track()
+                                        root.play_solo_in_track(root.use_delay, root.sync_active)
                                         }}
 
                                     ToolTip.delay: 1000
@@ -883,6 +957,7 @@ Item {
                                         color: 'orange'
                                         text_color: Material.foreground
                                         text: root.delay_for_targeted != undefined ? ">" : ""
+                                        font.pixelSize: size / 2.0
                                     }
                                     onClicked: root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
 
@@ -900,21 +975,44 @@ Item {
                     id : record
                     width: buttongrid.button_width
                     height: buttongrid.button_height
+
+                    visible: !root.is_script
+
+                    // possible values: "with_targeted", "infinite", or int > 0
+                    property var record_kind : {
+                        if (root.is_sync) { return "infinite" }
+                        if (root.delay_for_targeted != undefined) { return "with_targeted" }
+                        let apply_n_cycles = registries.state_registry.apply_n_cycles
+                        if (apply_n_cycles <= 0) { return "infinite" }
+                        return apply_n_cycles
+                    }
+
                     IconWithText {
                         size: parent.width
                         anchors.centerIn: parent
                         name: 'record'
                         color: 'red'
                         text_color: Material.foreground
-                        text: root.delay_for_targeted != undefined ? ">" : ""
+                        text: record.record_kind == 'with_targeted' ? '><' :
+                              record.record_kind == 'infinite' ? '' :
+                              record.record_kind.toString() // integer
+                        font.pixelSize: size / 2.0
                     }
 
-                    onClicked: root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
+                    onClicked: {
+                        if (record.record_kind == 'with_targeted') {
+                            root.record_with_targeted();
+                        } else if (record.record_kind == 'infinite') {
+                            root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
+                        } else {
+                            root.record_n(0, record.record_kind)
+                        }                        
+                    }
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
-                    ToolTip.text: "Trigger/stop recording. For sync loop, starts immediately. For others, start/stop synced to next sync loop cycle."
+                    ToolTip.text: "Record. If a number is displayed, will record for N cycles (global control). If a '><' is displayed, will record in unison with the targeted loop. Otherwise, start recording indefinitely."
 
                     Connections {
                         target: statusrect
@@ -924,7 +1022,7 @@ Item {
 
                     Popup {
                         background: Item{}
-                        visible: record.hovered || ma_.containsMouse
+                        visible: !root.is_script && (record.hovered || ma_.containsMouse)
                         leftInset: 0
                         rightInset: 0
                         topInset: 0
@@ -936,8 +1034,8 @@ Item {
                         y: play.height
 
                         Rectangle {
-                            width: recordN.width
-                            height: recordN.height + recordfx.height
+                            width: record_grab.width
+                            height: (record_grab.visible ? record_grab.height : 0) + recordfx.height
                             color: statusrect.color
 
                             MouseArea {
@@ -950,75 +1048,47 @@ Item {
 
                                 onPositionChanged: (mouse) => { 
                                     var p = mapToGlobal(mouse.x, mouse.y)
-                                    recordN.onMousePosition(p)
+                                    record_grab.onMousePosition(p)
                                     recordfx.onMousePosition(p)
                                 }
-                                onExited: { recordN.onMouseExited(); recordfx.onMouseExited() }
+                                onExited: { record_grab.onMouseExited(); recordfx.onMouseExited() }
                             }
 
                             Column {
                                 SmallButtonWithCustomHover {
-                                    id : recordN
-                                    property int n: 1
+                                    id : record_grab
+                                    
+                                    // This feature makes no sense for composite loops
+                                    visible: !root.maybe_composite_loop
+
+                                    property int n_cycles : {
+                                        var rval = registries.state_registry.apply_n_cycles
+                                        if (rval <= 0) { rval = 1; }
+                                        return rval
+                                    }
+
                                     width: buttongrid.button_width
                                     height: buttongrid.button_height
+
                                     IconWithText {
                                         size: parent.width
                                         anchors.centerIn: parent
-                                        name: 'record'
+                                        name: 'arrow-collapse-down'
                                         color: 'red'
                                         text_color: Material.foreground
-                                        text: (root.targeted_loop !== undefined && root.targeted_loop !== null) ? "><" : recordN.n.toString()
+                                        text: record_grab.n_cycles.toString()
                                         font.pixelSize: size / 2.0
                                     }
 
                                     onClicked: {
-                                        if (root.targeted_loop === undefined || root.targeted_loop === null) {
-                                            root.record_n(0, recordN.n)
-                                        } else {
-                                            root.record_with_targeted()
-                                        }
+                                        root.create_backend_loop()
+                                        root.adopt_ringbuffers(0, record_grab.n_cycles)
                                     }
-                                    onPressAndHold: { recordn_menu.popup() }
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "Trigger fixed-length recording (usual) or 'record with' (if a target loop is set). 'Record with' will record for one full iteration synced with the target loop. Otherwise, fixed length (number shown) is the amount of sync loop cycles to record. Press and hold this button to change this number."
-
-                                    // TODO: editable text box instead of fixed options
-                                    Menu {
-                                        id: recordn_menu
-                                        title: 'Select # of cycles'
-                                        ShoopMenuItem {
-                                            text: "1 cycle"
-                                            onClicked: () => { root.record_n(0, 1) }
-                                        }
-                                        ShoopMenuItem {
-                                            text: "2 cycles"
-                                            onClicked: () => { root.record_n(0, 2) }
-                                        }
-                                        ShoopMenuItem {
-                                            text: "3 cycles"
-                                            onClicked: () => { root.record_n(0, 3) }
-                                        }
-                                        ShoopMenuItem {
-                                            text: "4 cycles"
-                                            onClicked: () => { root.record_n(0, 4) }
-                                        }
-                                        ShoopMenuItem {
-                                            text: "6 cycles"
-                                            onClicked: () => { root.record_n(0, 6) }
-                                        }
-                                        ShoopMenuItem {
-                                            text: "8 cycles"
-                                            onClicked: () => { root.record_n(0, 8) }
-                                        }
-                                        ShoopMenuItem {
-                                            text: "16 cycles"
-                                            onClicked: () => { root.record_n(0, 16) }
-                                        }
-                                    }
+                                    ToolTip.text: "Grab always-on recording. The number displayed is the amount of sync loop cycles to grab. The grab will be synced such that the grabbed clip lines up with the most recently finished sync loop cycle."
                                 }
                             
                                 SmallButtonWithCustomHover {
@@ -1032,6 +1102,7 @@ Item {
                                         color: 'orange'
                                         text_color: Material.foreground
                                         text: root.delay_for_targeted != undefined ? ">" : ""
+                                        font.pixelSize: size / 2.0
                                     }
                                     onClicked: {
                                         var n = root.n_multiples_of_sync_length
@@ -1065,6 +1136,7 @@ Item {
                         color: Material.foreground
                         text_color: Material.foreground
                         text: root.delay_for_targeted != undefined ? ">" : ""
+                        font.pixelSize: size / 2.0
                     }
 
                     onClicked: root.transition(ShoopConstants.LoopMode.Stopped, root.use_delay, root.sync_active)
@@ -1092,7 +1164,7 @@ Item {
                 // Display the gain dial always
                 AudioDial {
                     id: gain_dial
-                    visible: root.has_audio
+                    visible: root.descriptor_has_audio && !root.maybe_composite_loop
                     anchors.fill: parent
                     from: -30.0
                     to:   20.0
@@ -1164,7 +1236,7 @@ Item {
                     y: 0
 
                     AudioDial {
-                        visible: root.has_audio
+                        visible: root.descriptor_has_audio && !root.maybe_composite_loop
                         id: balance_dial
                         from: -1.0
                         to:   1.0
@@ -1228,11 +1300,11 @@ Item {
                 switch(loopprogressrect.loop.mode) {
                 case ShoopConstants.LoopMode.Playing:
                     return '#004400';
-                case ShoopConstants.LoopMode.PlayingLiveFX:
+                case ShoopConstants.LoopMode.PlayingDryThroughWet:
                     return '#333300';
                 case ShoopConstants.LoopMode.Recording:
                     return '#660000';
-                case ShoopConstants.LoopMode.RecordingFX:
+                case ShoopConstants.LoopMode.RecordingDryIntoWet:
                     return '#663300';
                 default:
                     return default_color;
@@ -1241,19 +1313,9 @@ Item {
         }
 
         Rectangle {
-            visible: root.maybe_loop ? root.maybe_loop.display_midi_notes_active > 0 : false
-            anchors {
-                right: parent.right
-                top: parent.top
-                bottom: parent.bottom
-            }
-            width: 8
-
-            color: '#00BBFF'
-        }
-
-        Rectangle {
-            visible: root.maybe_loop ? root.maybe_loop.display_midi_events_triggered > 0 : false
+            visible: root.maybe_loop ?
+                (root.maybe_loop.display_midi_events_triggered > 0 || root.maybe_loop.display_midi_notes_active > 0) :
+                false
             anchors {
                 right: parent.right
                 top: parent.top
@@ -1270,6 +1332,8 @@ Item {
         property int mode
         property bool connected
         property bool show_timer_instead
+        property bool is_regular_composite
+        property bool is_script_composite
         property bool empty
         property bool muted
         property int size
@@ -1304,6 +1368,12 @@ Item {
                 case ShoopConstants.LoopMode.RecordingDryIntoWet:
                     return 'record-rec'
                 case ShoopConstants.LoopMode.Stopped:
+                    if(lsicon.is_regular_composite) {
+                        return 'view-list'
+                    }
+                    if(lsicon.is_script_composite) {
+                        return 'playlist-edit'
+                    }
                     return 'stop'
                 default:
                     return 'help-circle'
@@ -1319,6 +1389,9 @@ Item {
                 }
                 switch(lsicon.mode) {
                 case ShoopConstants.LoopMode.Playing:
+                    if (lsicon.is_script_composite) {
+                        return Material.foreground
+                    }
                     return '#00AA00'
                 case ShoopConstants.LoopMode.Recording:
                     return 'red'
@@ -1326,6 +1399,9 @@ Item {
                 case ShoopConstants.LoopMode.PlayingDryThroughWet:
                     return 'orange'
                 default:
+                    if(lsicon.is_regular_composite || lsicon.is_script_composite) {
+                        return Material.background
+                    }
                     return 'grey'
                 }
             }
@@ -1375,8 +1451,8 @@ Item {
             x: (parent.width-width) / 2
             y: (parent.height-height) / 2
 
-            audio_enabled: root.has_audio
-            midi_enabled: root.has_midi
+            audio_enabled: root.descriptor_has_audio
+            midi_enabled: root.descriptor_has_midi
 
             onAcceptedClickTrack: (kind, filename) => {
                 if (kind == 'audio') {
@@ -1424,36 +1500,45 @@ Item {
             MenuSeparator {}
             ShoopMenuItem {
                text: "Details"
-               onClicked: () => { if(root.main_details_pane) { root.main_details_pane.add_user_item(root.name, root) } }
+               onClicked: () => {
+                  if(root.main_details_pane) { root.main_details_pane.add_user_item(root.name, root) }
+                  registries.state_registry.set_details_open(true)
+               }
             }
             ShoopMenuItem {
                text: "Click loop..."
                onClicked: () => clicktrackdialog.open()
             }
             ShoopMenuItem {
+                text: "Create Composite"
+                shown: !root.maybe_composite_loop && !root.is_sync
+                onClicked: root.create_composite_loop()
+            }
+            ShoopMenuItem {
                 text: "Save audio..."
-                onClicked: presavedialog.open()
-                shown: root.has_audio
+                onClicked: { presavedialog.update(); presavedialog.open() }
+                shown: root.descriptor_has_audio && root.maybe_backend_loop
             }
             ShoopMenuItem {
                 text: "Load audio..."
                 onClicked: loaddialog.open()
-                shown: root.has_audio
+                shown: root.descriptor_has_audio
             }
             ShoopMenuItem {
                 text: "Load MIDI..."
-                shown: root.has_midi
+                shown: root.descriptor_has_midi
                 onClicked: {
+                    create_backend_loop()
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to load"); }
                     if (chans.length > 1) { throw new Error("Cannot load into more than 1 MIDI channel"); }
-                    midiloadoptionsdialog.channel = chans[0]
+                    midiloadoptionsdialog.channels = [chans[0]]
                     midiloaddialog.open()
                 }
             }
             ShoopMenuItem {
                 text: "Save MIDI..."
-                shown: root.has_midi
+                shown: root.descriptor_has_midi && root.maybe_backend_loop
                 onClicked: {
                     var chans = root.midi_channels
                     if (chans.length == 0) { throw new Error("No MIDI channels to save"); }
@@ -1637,7 +1722,7 @@ Item {
             readonly property int n_channels : channels_to_load.length
             property int n_file_channels : 0
             property int file_sample_rate : 0
-            property int backend_sample_rate : root.maybe_backend_loop ? root.maybe_backend_loop.backend.get_sample_rate() : 0
+            property int backend_sample_rate : root.maybe_backend_loop && root.maybe_backend_loop.backend ? root.maybe_backend_loop.backend.get_sample_rate() : 0
             property bool will_resample : file_sample_rate != backend_sample_rate
 
             width: 300
@@ -1648,6 +1733,7 @@ Item {
                 n_file_channels = props['channels']
                 file_sample_rate = props['samplerate']
             }
+            onStandardButtonsChanged: update()
 
             function update() {
                 var chans = root.audio_channels
@@ -1659,7 +1745,9 @@ Item {
                 if (dry_load_checkbox.checked) { to_load = to_load.concat(dry_audio_channels) }
                 if (wet_load_checkbox.checked) { to_load = to_load.concat(wet_audio_channels) }
                 channels_to_load = to_load
-                footer.standardButton(Dialog.Open).enabled = channels_to_load.length > 0;
+                if(footer.standardButton(Dialog.Open)) {
+                    footer.standardButton(Dialog.Open).enabled = channels_to_load.length > 0;
+                }
             }
 
             // TODO: there has to be a better way

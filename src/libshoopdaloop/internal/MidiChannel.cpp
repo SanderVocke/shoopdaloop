@@ -1,7 +1,11 @@
 #include <utility>
+#include "LoggingBackend.h"
 #include "MidiChannel.h"
 #include "MidiPort.h"
+#include "MidiStateDiffTracker.h"
+#include "MidiStateTracker.h"
 #include "channel_mode_helpers.h"
+#include "types.h"
 #include <memory>
 #include <optional>
 #include <functional>
@@ -50,7 +54,7 @@ MidiChannel<TimeType, SizeType>::TrackedState::operator=(
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::TrackedState::set_from(std::shared_ptr<MidiStateTracker> &t) {
+MidiChannel<TimeType, SizeType>::TrackedState::start_tracking_from(std::shared_ptr<MidiStateTracker> &t) {
     state->copy_relevant_state(*t);
     diff->reset(t, state, StateDiffTrackerAction::ClearDiff);
     m_valid = true;
@@ -58,7 +62,31 @@ MidiChannel<TimeType, SizeType>::TrackedState::set_from(std::shared_ptr<MidiStat
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::TrackedState::reset() { m_valid = false; }
+MidiChannel<TimeType, SizeType>::TrackedState::start_tracking_from_with_state(std::shared_ptr<MidiStateTracker> &to_track,
+                                            std::shared_ptr<MidiStateTracker> const& starting_state)
+{
+    auto tmp_diff = std::make_shared<MidiStateDiffTracker>();
+    tmp_diff->reset(to_track, starting_state, StateDiffTrackerAction::ScanDiff);
+    
+    start_tracking_from(to_track);
+    diff->reset(to_track, state, StateDiffTrackerAction::ClearDiff);
+    diff->set_diff(tmp_diff->get_diff());
+    state->copy_relevant_state(*starting_state);
+
+    m_valid = true;
+}
+
+template <typename TimeType, typename SizeType>
+void
+MidiChannel<TimeType, SizeType>::TrackedState::reset() {
+    if (state) {
+        state->clear();
+    }
+    if (diff) {
+        diff->reset();
+    }
+    m_valid = false;
+}
 
 template <typename TimeType, typename SizeType>
 bool
@@ -71,9 +99,9 @@ MidiChannel<TimeType, SizeType>::TrackedState::set_valid(bool v) { m_valid = v; 
 template <typename TimeType, typename SizeType>
 void
 MidiChannel<TimeType, SizeType>::TrackedState::resolve_to_output(
-    std::function<void(uint32_t size, uint8_t *data)> send_cb) {
+    std::function<void(uint32_t size, uint8_t *data)> send_cb, bool ccs, bool notes, bool programs) {
     if (m_valid) {
-        diff->resolve_to_a(send_cb);
+        diff->resolve_to_a(send_cb, notes, ccs, programs);
     }
 }
 
@@ -88,10 +116,10 @@ MidiChannel<TimeType, SizeType>::MidiChannel(uint32_t data_size, shoop_channel_m
       mp_output_midi_state(
           std::make_shared<MidiStateTracker>(true, true, true)),
       mp_input_midi_state(
-          std::make_shared<MidiStateTracker>(false, true, true)),
-      mp_track_start_state(false, true, true),
-      mp_pre_playback_state(false, true, true),
-      mp_track_prerecord_start_state(false, true, true),
+          std::make_shared<MidiStateTracker>(true, true, true)),
+      mp_recording_start_state_tracker(std::make_shared<TrackedState>(true, true, true)),
+      mp_track_state_until_first_msg_playback(std::make_shared<TrackedState>(true, true, true)),
+      mp_temp_prerecording_start_state_tracker(std::make_shared<TrackedState>(true, true, true)),
       ma_n_events_triggered(0), ma_start_offset(0), ma_data_seq_nr(0),
       ma_pre_play_samples(0), mp_prev_pos_after(0), mp_prev_process_flags(0),
       ma_last_played_back_sample(0), ma_prerecord_data_length(0) {
@@ -112,15 +140,21 @@ MidiChannel<TimeType, SizeType> &MidiChannel<TimeType, SizeType>::operator=(Midi
     ma_mode = other.ma_mode.load();
     ma_n_events_triggered = other.ma_n_events_triggered.load();
     mp_output_midi_state = other.mp_output_midi_state;
-    mp_track_start_state = other.mp_track_start_state;
-    mp_track_prerecord_start_state = other.mp_track_prerecord_start_state;
+    if (mp_recording_start_state_tracker && other.mp_recording_start_state_tracker) {
+        *mp_recording_start_state_tracker = *other.mp_recording_start_state_tracker;
+    }
+    if (mp_temp_prerecording_start_state_tracker && other.mp_temp_prerecording_start_state_tracker) {
+        *mp_temp_prerecording_start_state_tracker = *other.mp_temp_prerecording_start_state_tracker;
+    }
+    if (mp_track_state_until_first_msg_playback && other.mp_track_state_until_first_msg_playback) {
+        *mp_track_state_until_first_msg_playback = *other.mp_track_state_until_first_msg_playback;
+    }
     ma_start_offset = other.ma_start_offset.load();
     ma_data_length = other.ma_data_length.load();
     mp_prev_process_flags = other.mp_prev_process_flags;
     *mp_prerecord_storage = *other.mp_prerecord_storage;
     ma_prerecord_data_length = other.ma_prerecord_data_length.load();
     *mp_input_midi_state = *other.mp_input_midi_state;
-    mp_pre_playback_state = other.mp_pre_playback_state;
     mp_profiling_item = other.mp_profiling_item;
     data_changed();
     return *this;
@@ -154,13 +188,16 @@ MidiChannel<TimeType, SizeType>::PROC_set_length_impl(Storage &storage, std::ato
 template <typename TimeType, typename SizeType>
 void
 MidiChannel<TimeType, SizeType>::PROC_set_length(uint32_t length) {
-    log<log_level_trace>("set length: {}", length);
+    log<log_level_debug_trace>("length -> {}", length);
     PROC_set_length_impl(*mp_storage, ma_data_length, length);
 }
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::set_pre_play_samples(uint32_t samples) { ma_pre_play_samples = samples; }
+MidiChannel<TimeType, SizeType>::set_pre_play_samples(uint32_t samples) {
+    log<log_level_debug>("n preplay -> {}", samples);
+    ma_pre_play_samples = samples;
+}
 
 template <typename TimeType, typename SizeType>
 uint32_t
@@ -173,7 +210,6 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
                   std::optional<uint32_t> maybe_next_mode_eta, uint32_t n_samples,
                   uint32_t pos_before, uint32_t pos_after, uint32_t length_before,
                   uint32_t length_after) {
-
     PROC_handle_command_queue();
 
     auto process_params = get_channel_process_params(
@@ -194,8 +230,9 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
         ((!(process_flags & ChannelPlayback)) ||
             pos_before != mp_prev_pos_after);
     if (playback_interrupted && n_samples > 0) {
-        log<log_level_debug>("Playback interrupted -> All Sound Off");
-        PROC_send_all_sound_off();
+        auto time = mp_playback_target_buffer->first.n_frames_processed;
+        log<log_level_debug>("Playback interrupted -> All Sound Off @ {}", time);
+        PROC_send_all_sound_off(time);
     }
 
     if (!(process_flags & ChannelPreRecord) &&
@@ -204,13 +241,15 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
         // make our pre-recorded buffers into our main buffers.
         // Otherwise, just discard them.
         if (process_flags & ChannelRecord) {
+            auto n_msgs = mp_prerecord_storage->n_events();
             log<log_level_debug>(
-                "Pre-record end -> carry over to record");
+                "Pre-record end -> carry over {} pre-recorded msgs to record", n_msgs);
             mp_storage = mp_prerecord_storage;
+            mp_playback_cursor = mp_storage->create_cursor();
             ma_data_length = ma_start_offset =
                 ma_prerecord_data_length.load();
-            mp_track_start_state = mp_track_prerecord_start_state;
-            mp_track_prerecord_start_state.reset();
+            *mp_recording_start_state_tracker = *mp_temp_prerecording_start_state_tracker;
+            mp_temp_prerecording_start_state_tracker->reset();
         } else {
             log<log_level_debug>("Pre-record end -> discard");
         }
@@ -220,7 +259,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
     }
 
     if (process_flags & ChannelPlayback) {
-        // If we are starting playback:
+        // If we are (re-)starting playback:
         //   - Reset the playback cursor
         //   - set up the state management.
         // By copying the state tracker, we now have a playback state
@@ -228,23 +267,29 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
         // state and the state that we should have at this point in
         // playback. That diff will be updated as we process messages,
         // while keeping the original start state intact.
-        // mp_played_anything_this_loop tracks whether we have played
-        // back anything yet. Upon the first message played back, we can
+        // Upon the first message played back, we can
         // restore the state to what it should be at that point.
-        if (!(mp_prev_process_flags & ChannelPlayback)) {
+        if (!(mp_prev_process_flags & ChannelPlayback) || (ma_last_played_back_sample > process_params.position)) {
+            log<log_level_debug_trace>("Playback start, reset cursor, prev flags {}, last {}, pos {}, start state {} (valid {})",
+                mp_prev_process_flags,
+                ma_last_played_back_sample.load(),
+                process_params.position,
+                fmt::ptr(mp_recording_start_state_tracker->state.get()),
+                mp_recording_start_state_tracker->valid()
+            );
             mp_playback_cursor->reset();
-            mp_pre_playback_state = mp_track_start_state;
+            *mp_track_state_until_first_msg_playback = *mp_recording_start_state_tracker;
         }
 
-        ma_last_played_back_sample = process_params.position;
         PROC_process_playback(process_params.position, length_before,
                                 n_samples, false);
-    } else {
+    } else if (ma_last_played_back_sample.load() >= 0) {
+        log<log_level_debug_trace>("Playback ended, clearing last played sample");
         ma_last_played_back_sample = -1;
     }
     if (process_flags & ChannelRecord) {
         PROC_process_record(*mp_storage, ma_data_length,
-                            mp_track_start_state,
+                            *mp_recording_start_state_tracker,
                             length_before + ma_start_offset, n_samples);
         processed_input_messages = true;
     } else if (process_flags & ChannelPreRecord) {
@@ -253,7 +298,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
         }
         PROC_process_record(*mp_prerecord_storage,
                             ma_prerecord_data_length,
-                            mp_track_prerecord_start_state,
+                            *mp_temp_prerecording_start_state_tracker,
                             ma_prerecord_data_length, n_samples);
         processed_input_messages = true;
     }
@@ -313,7 +358,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_record(Storage &storage,
                          std::atomic<uint32_t> &storage_data_length,
                          TrackedState &track_start_state, uint32_t record_from,
                          uint32_t n_samples) {
-    log<log_level_trace>("record {} frames", n_samples);
+    log<log_level_debug_trace>("record {} frames", n_samples);
 
     if (!mp_recording_source_buffer.has_value()) {
         throw_error<std::runtime_error>("Recording without source buffer");
@@ -347,10 +392,14 @@ MidiChannel<TimeType, SizeType>::PROC_process_record(Storage &storage,
                 // to cache the MIDI state on the input (such as hold pedal,
                 // other CCs, pitch wheel, etc.) so we can restore it later.
                 if (storage.n_events() == 0) {
-                    log<log_level_debug>("Caching port state for record");
-                    track_start_state.set_from(mp_input_midi_state);
+                    log<log_level_debug>("cache port state {} -> {} for record", fmt::ptr(mp_input_midi_state.get()), fmt::ptr(track_start_state.state.get()));
+                    track_start_state.start_tracking_from(mp_input_midi_state);
                 }
-
+                log<log_level_debug_trace>("record msg: {} {} {}",
+                    (s > 0) ? (int)d[0] : -1,
+                    (s > 1) ? (int)d[1] : -1,
+                    (s > 2) ? (int)d[2] : -1
+                );
                 storage.append(record_from + (TimeType)t -
                                    recbuf.first.n_frames_processed,
                                (SizeType)s, d);
@@ -375,13 +424,13 @@ MidiChannel<TimeType, SizeType>::PROC_process_record(Storage &storage,
 template <typename TimeType, typename SizeType>
 void
 MidiChannel<TimeType, SizeType>::clear(bool thread_safe) {
-
     auto fn = [this]() {
+        log<log_level_debug>("clear");
         mp_storage->clear();
         mp_playback_cursor->reset();
         mp_output_midi_state->clear();
-        mp_track_start_state.reset();
-        mp_track_prerecord_start_state.reset();
+        mp_recording_start_state_tracker->reset();
+        mp_temp_prerecording_start_state_tracker->reset();
         ma_n_events_triggered = 0;
         PROC_set_length(0);
         ma_start_offset = 0;
@@ -396,13 +445,15 @@ MidiChannel<TimeType, SizeType>::clear(bool thread_safe) {
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::PROC_send_all_sound_off() {
+MidiChannel<TimeType, SizeType>::PROC_send_all_sound_off(unsigned frame) {
     auto &buf = mp_playback_target_buffer.value();
+    static const uint8_t all_sound_off_data[] = {0xB0, 120, 0};
     if (buf.first.frames_left() < 1) {
         throw_error<std::runtime_error>(
             "Attempting to play back out of bounds");
     }
-    PROC_send_message_ref(*buf.second, all_sound_off_message_channel_0);
+    PROC_send_message_value(*buf.second,
+        frame, 3, (uint8_t*) all_sound_off_data);
 }
 
 template <typename TimeType, typename SizeType>
@@ -448,7 +499,8 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
     }
     auto _pos = (int)our_pos;
 
-    log<log_level_trace>("playback {} frames, start {}, {} msgs total", n_samples, buf.first.n_frames_processed, mp_storage->n_events());
+    log<log_level_debug_trace>("playback {} frames, start {}, buf {}, last {}, {} msgs total",
+        n_samples, our_pos, buf.first.n_frames_processed, ma_last_played_back_sample.load(), mp_storage->n_events());
 
     // Playback any events.
     uint32_t end = buf.first.n_frames_processed + n_samples;
@@ -457,60 +509,80 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
     // can restore correct control state when playing our first message.
     mp_playback_cursor->find_time_forward(
         std::max(0, _pos), [&](typename Storage::Elem *e) {
-            if (mp_pre_playback_state.valid()) {
-                mp_pre_playback_state.state->process_msg(e->data());
+            if (mp_track_state_until_first_msg_playback->valid()) {
+                log<log_level_debug_trace>("process pre-playback message");
+                mp_track_state_until_first_msg_playback->state->process_msg(e->data());
+            } else {
+                log<log_level_debug_trace>("ignore pre-playback message: tracker not enabled");
             }
+            ma_last_played_back_sample = e->storage_time;
         });
+
+    if (mp_playback_cursor->valid()) {
+        log<log_level_debug_trace>("playback: first upcoming msg is @ {}", mp_playback_cursor->get()->storage_time);
+    } else {
+        log<log_level_debug_trace>("playback: no upcoming msgs");
+    }
 
     int valid_from =
         std::max(_pos, (int)ma_start_offset - (int)ma_pre_play_samples);
     int valid_to = _pos + (int)n_samples;
     while (mp_playback_cursor->valid()) {
         auto *event = mp_playback_cursor->get();
+
+        // If there is an upcoming event to play back in the future, and we have a pending
+        // pre-playback state, we need to resolve it now.
+        if (mp_track_state_until_first_msg_playback->valid() &&    // <-- there is a state to restore
+            (int)event->storage_time >= valid_from &&              // <-- the upcoming recorded event will be "playable"
+            !muted &&                                              // <-- we are not muted
+            (our_pos + n_samples) > valid_from)                    // <-- we are in the playback window
+        {
+            log<log_level_debug_trace>("Resolve pre-playback state");
+            mp_track_state_until_first_msg_playback->resolve_to_output(
+                [this, &buf](uint32_t size, uint8_t *data) {
+                    // Play state resolving msgs ASAP (at current buffer pos)
+                    auto time = mp_playback_target_buffer->first.n_frames_processed;
+                    log<log_level_debug_trace>("  - Restore msg @ {}: {} {} {}",
+                                        time,
+                                        data[0], data[1], data[2]);
+                    PROC_send_message_value(*buf.second, time, size, data);
+                });
+            mp_track_state_until_first_msg_playback->set_valid(false);
+        }
+
+        // Now, we move on to playing back the recorded content.
         if ((int)event->storage_time >= valid_to) {
             // Future event
             break;
         }
         if ((int)event->storage_time >= valid_from) {
             if (muted) {
-                log<log_level_trace>("playback: skip msg @ {} (muted)", event->storage_time);
+                log<log_level_debug_trace>("playback: skip msg @ {} (muted)", event->storage_time);
             } else {
                 // See if we need to restore any cached MIDI channel state by
                 // sending additional messages.
                 auto proc_time =
                     (int)event->storage_time - _pos + buf.first.n_frames_processed;
 
-                if (mp_pre_playback_state.valid()) {
-                    log<log_level_debug>(
-                        "Restoring port state for playback @ sample {}",
-                        event->storage_time);
-                    mp_pre_playback_state.resolve_to_output(
-                        [this, &buf, &proc_time](uint32_t size, uint8_t *data) {
-                            log<log_level_debug>("  - Restore msg: {} {} {}",
-                                                data[0], data[1], data[2]);
-                            PROC_send_message_value(*buf.second, proc_time, size,
-                                                    data);
-                        });
-                    mp_pre_playback_state.set_valid(false);
-                }
-
-                log<log_level_trace>("playback: play msg @ {}", event->storage_time);
+                log<log_level_debug_trace>("playback: play msg @ {}", event->storage_time);
                 event->proc_time = proc_time;
                 PROC_send_message_ref(*buf.second, *event);
+                ma_last_played_back_sample = event->storage_time;
                 ma_n_events_triggered++;
             }
         }
-        if (mp_pre_playback_state.valid()) {
-            mp_pre_playback_state.state->process_msg(event->get_data());
+        if (mp_track_state_until_first_msg_playback->valid()) {
+            mp_track_state_until_first_msg_playback->state->process_msg(event->get_data());
         }
         buf.first.n_events_processed++;
         mp_playback_cursor->next();
     }
     if (mp_playback_cursor->valid()) {
-        log<log_level_trace>("playback: done. first upcoming msg is @ {}", mp_playback_cursor->get()->storage_time);
+        log<log_level_debug_trace>("playback: done. first upcoming msg is @ {}", mp_playback_cursor->get()->storage_time);
     } else {
-        log<log_level_trace>("playback: done, reached end.");
+        log<log_level_debug_trace>("playback: done, reached end.");
     }
+    ma_last_played_back_sample = (int)(our_pos + n_samples) - 1;
 }
 
 
@@ -564,40 +636,52 @@ MidiChannel<TimeType, SizeType>::PROC_set_recording_buffer(MidiReadableBufferInt
 }
 
 template <typename TimeType, typename SizeType>
-std::vector<typename MidiChannel<TimeType, SizeType>::Message> 
+typename MidiChannel<TimeType, SizeType>::Contents
 MidiChannel<TimeType, SizeType>::retrieve_contents(bool thread_safe) {
-
+    MidiStateTracker state(true, true, true);
     auto s = std::make_shared<Storage>(mp_storage->bytes_capacity());
-    auto fn = [this, &s]() { mp_storage->copy(*s); };
+    auto fn = [this, &s, &state]() {
+        log<log_level_debug_trace>("retrieving contents");
+        mp_storage->copy(*s);
+        state.copy_relevant_state(*mp_recording_start_state_tracker->state);
+    };
     if (thread_safe) {
         exec_process_thread_command(fn);
     } else {
         fn();
     }
 
-    std::vector<Message> r;
-    s->for_each_msg([&r](TimeType time, SizeType size, uint8_t *data) {
-        r.push_back(Message(time, size, std::vector<uint8_t>(size)));
-        memcpy((void *)r.back().data.data(), (void *)data, size);
+    Contents rval;
+    s->for_each_msg([&rval](TimeType time, SizeType size, uint8_t *data) {
+        rval.recorded_msgs.push_back(Message(time, size, std::vector<uint8_t>(size)));
+        memcpy((void *)rval.recorded_msgs.back().data.data(), (void *)data, size);
     });
-    return r;
+    rval.starting_state_msg_datas = state.state_as_messages();
+    return rval;
 }
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::set_contents(std::vector<Message> contents, uint32_t length_samples,
+MidiChannel<TimeType, SizeType>::set_contents(Contents contents, uint32_t length_samples,
                   bool thread_safe) {
-
     auto s = std::make_shared<Storage>(mp_storage->bytes_capacity());
-    for (auto const &elem : contents) {
+    size_t n_state_msgs = contents.starting_state_msg_datas.size();
+
+    std::shared_ptr<MidiStateTracker> new_start_state = std::make_shared<MidiStateTracker>(true, true, true);
+    for (auto const &data : contents.starting_state_msg_datas) {
+        new_start_state->process_msg(data.data());
+    }
+
+    for (auto const &elem : contents.recorded_msgs) {
         s->append(elem.time, elem.size, elem.data.data());
     }
-    log<log_level_debug>("Loading data ({} messages in storage {}).", s->n_events(), fmt::ptr(s.get()));
+    log<log_level_debug>("Loading data ({} messages + {} state messages in storage {}).", s->n_events(), n_state_msgs, fmt::ptr(s.get()));
 
-    auto fn = [this, s, length_samples]() {
-        log<log_level_trace>("Applying loaded data (storage @ {}).", fmt::ptr(s.get()));
+    auto fn = [this, s, length_samples, new_start_state]() {
+        log<log_level_debug_trace>("Applying loaded data (storage @ {}).", fmt::ptr(s.get()));
         mp_storage = s;
         mp_playback_cursor = mp_storage->create_cursor();
+        mp_recording_start_state_tracker->start_tracking_from_with_state(mp_input_midi_state, new_start_state);
         PROC_set_length(length_samples);
         data_changed();
     };
@@ -637,7 +721,10 @@ MidiChannel<TimeType, SizeType>::get_n_events_triggered() {
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::set_start_offset(int offset) { ma_start_offset = offset; }
+MidiChannel<TimeType, SizeType>::set_start_offset(int offset) {
+    log<log_level_debug>("start offset -> {}", offset);
+    ma_start_offset = offset;
+}
 
 template <typename TimeType, typename SizeType>
 int
@@ -651,6 +738,14 @@ MidiChannel<TimeType, SizeType>::get_played_back_sample() const {
         return v;
     }
     return std::nullopt;
+}
+
+template <typename TimeType, typename SizeType>
+void
+MidiChannel<TimeType, SizeType>::adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port, std::optional<unsigned> reverse_start_offset, bool thread_safe) {
+    // TODO
+    log<log_level_warning>("MIDI ringbuffer unimplemented");
+    return;
 }
 
 template class MidiChannel<uint32_t, uint16_t>;

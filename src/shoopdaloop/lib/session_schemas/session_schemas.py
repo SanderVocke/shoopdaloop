@@ -1,8 +1,8 @@
 from jsonschema import validate, ValidationError
 import json
 import os
-
-scriptdir = os.path.dirname(os.path.realpath(__file__))
+from ..directories import scripts_dir
+schemas_dir = scripts_dir() + '/lib/session_schemas/schemas'
 
 def validate_subtree(t):
     if type(t) is dict:
@@ -23,8 +23,8 @@ def validate_single_object(obj):
     schema_str = obj['schema']
     schema_name = schema_str.split('.')[0]
     schema_version = schema_str.split('.')[1]
-    schema_filename = '{}/schemas/{}.{}.json'.format(
-        scriptdir,
+    schema_filename = '{}/{}.{}.json'.format(
+        schemas_dir,
         schema_name,
         schema_version
     )

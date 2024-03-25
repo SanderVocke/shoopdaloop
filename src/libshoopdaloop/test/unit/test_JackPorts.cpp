@@ -1,9 +1,11 @@
 #include "JackAudioMidiDriver.h"
 #include "MidiMessage.h"
+#include "AudioPort.h"
 #include "catch2/catch_approx.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <jack/midiport.h>
 #include <memory>
+#include "helpers.h"
 
 std::unique_ptr<JackTestAudioMidiDriver> open_test_driver() {
     JackTestApi::internal_reset_api();
@@ -26,7 +28,7 @@ MidiMessage<uint32_t, uint32_t> to_msg(jack_midi_event_t &m) {
 
 TEST_CASE("Ports - Jack Audio In - Properties", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", Input);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Input, nullptr);
 
     CHECK(port->has_internal_read_access());
     CHECK(!port->has_internal_write_access());
@@ -36,7 +38,7 @@ TEST_CASE("Ports - Jack Audio In - Properties", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio In - Gain", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", Input);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Input, nullptr);
 
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -57,7 +59,7 @@ TEST_CASE("Ports - Jack Audio In - Gain", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio In - Mute", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", Input);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Input, nullptr);
 
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -78,7 +80,7 @@ TEST_CASE("Ports - Jack Audio In - Mute", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio In - Peak", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", Input);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Input, nullptr);
 
     std::vector<audio_sample_t> samples = {
         0.0f, 0.5f, 0.9f, 0.5f, 0.0f
@@ -104,9 +106,32 @@ TEST_CASE("Ports - Jack Audio In - Peak", "[JackPorts][ports][audio]") {
     CHECK(port->get_output_peak() == Catch::Approx(0.0f));
 }
 
+TEST_CASE("Ports - Jack Audio In - get ringbuffer data", "[JackPorts][ports][audio]") {
+    auto driver = open_test_driver();
+    auto pool = std::make_shared<BufferQueue<float>::BufferPool>("Test", 10, 4);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Input, pool);
+
+    // Process 4 samples
+    port->PROC_prepare(4);
+    auto buf = port->PROC_get_buffer(4);
+    buf[0] = 0.0f;
+    buf[1] = 0.1f;
+    buf[2] = 0.2f;
+    buf[3] = 0.3f;
+    port->PROC_process(4);
+
+    // Get the ringbuffer content
+    auto s = port->PROC_get_ringbuffer_contents();
+    CHECK(s.n_samples >= 4);
+    CHECK(s.data->back()->at(0) == 0.0f);
+    CHECK(s.data->back()->at(1) == 0.1f);
+    CHECK(s.data->back()->at(2) == 0.2f);
+    CHECK(s.data->back()->at(3) == 0.3f);
+};
+
 TEST_CASE("Ports - Jack Audio Out - Properties", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", Output);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Output, nullptr);
 
     CHECK(!port->has_internal_read_access());
     CHECK(port->has_internal_write_access());
@@ -116,7 +141,7 @@ TEST_CASE("Ports - Jack Audio Out - Properties", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio Out - Gain", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", Output);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Output, nullptr);
 
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -137,7 +162,7 @@ TEST_CASE("Ports - Jack Audio Out - Gain", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio Out - Mute", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", Output);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Output, nullptr);
 
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -158,7 +183,7 @@ TEST_CASE("Ports - Jack Audio Out - Mute", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio Out - Peak", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", Output);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Output, nullptr);
 
     std::vector<audio_sample_t> samples = {
         0.0f, 0.5f, 0.9f, 0.5f, 0.0f
@@ -187,7 +212,7 @@ TEST_CASE("Ports - Jack Audio Out - Peak", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio Out - Noop Zero", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", Output);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Output, nullptr);
 
     std::vector<audio_sample_t> samples = {
         0.0f, 0.5f, 0.9f, 0.5f, 0.0f
@@ -216,7 +241,7 @@ TEST_CASE("Ports - Jack Audio Out - Noop Zero", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Midi In - Properties", "[JackPorts][ports][midi]") {
     auto driver = open_test_driver();
-    auto port = driver->open_midi_port("test", Input);
+    auto port = driver->open_midi_port("test", ShoopPortDirection_Input);
 
     CHECK(port->has_internal_read_access());
     CHECK(!port->has_internal_write_access());
@@ -226,7 +251,7 @@ TEST_CASE("Ports - Jack Midi In - Properties", "[JackPorts][ports][midi]") {
 
 TEST_CASE("Ports - Jack Midi In - Receive", "[JackPorts][ports][midi]") {
     auto driver = open_test_driver();
-    auto port = driver->open_midi_port("test", Input);
+    auto port = driver->open_midi_port("test", ShoopPortDirection_Input);
     auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
 
     port->PROC_prepare(100);
@@ -254,7 +279,7 @@ TEST_CASE("Ports - Jack Midi In - Receive", "[JackPorts][ports][midi]") {
 
 TEST_CASE("Ports - Jack Midi In - Mute", "[JackPorts][ports][midi]") {
     auto driver = open_test_driver();
-    auto port = driver->open_midi_port("test", Input);
+    auto port = driver->open_midi_port("test", ShoopPortDirection_Input);
     auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
 
     port->set_muted(true);
@@ -273,7 +298,7 @@ TEST_CASE("Ports - Jack Midi In - Mute", "[JackPorts][ports][midi]") {
 
 TEST_CASE("Ports - Jack Midi In - Message Counter", "[JackPorts][ports][midi]") {
     auto driver = open_test_driver();
-    auto port = driver->open_midi_port("test", Input);
+    auto port = driver->open_midi_port("test", ShoopPortDirection_Input);
     auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
 
     MidiMessage<uint32_t, uint32_t> m1(0, 3, {0, 1, 2});
@@ -321,9 +346,53 @@ TEST_CASE("Ports - Jack Midi In - Message Counter", "[JackPorts][ports][midi]") 
     CHECK(port->get_n_output_events() == 0);
 }
 
+TEST_CASE("Ports - Jack Midi In - Note Tracker", "[JackPorts][ports][midi]") {
+    auto driver = open_test_driver();
+    auto port = driver->open_midi_port("test", ShoopPortDirection_Input);
+    auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
+    using Msg = MidiMessage<uint32_t, uint32_t>;
+
+    auto n1_on = create_noteOn<Msg>(0, 0, 100, 127);
+    auto n2_on = create_noteOn<Msg>(0, 0, 110, 127);
+    auto n1_off = create_noteOff<Msg>(0, 0, 100, 127);
+    auto n2_off = create_noteOff<Msg>(0, 0, 110, 127);
+
+    CHECK(port->get_n_input_notes_active() == 0);
+
+    internal_port.midi_buffer = {n1_on};
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+    CHECK(port->get_n_input_notes_active() == 1);
+
+    internal_port.midi_buffer = {n2_on};
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+    CHECK(port->get_n_input_notes_active() == 2);
+
+    internal_port.midi_buffer = {n1_on}; // duplicate
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+    CHECK(port->get_n_input_notes_active() == 2);
+
+    internal_port.midi_buffer = {n1_off};
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+    CHECK(port->get_n_input_notes_active() == 1);
+
+    internal_port.midi_buffer = {n1_off}; // duplicate
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+    CHECK(port->get_n_input_notes_active() == 1);
+
+    internal_port.midi_buffer = {n2_off};
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+    CHECK(port->get_n_input_notes_active() == 0);
+}
+
 TEST_CASE("Ports - Jack Midi Out - Properties", "[JackPorts][ports][midi]") {
     auto driver = open_test_driver();
-    auto port = driver->open_midi_port("test", Output);
+    auto port = driver->open_midi_port("test", ShoopPortDirection_Output);
 
     CHECK(!port->has_internal_read_access());
     CHECK(port->has_internal_write_access());
@@ -333,7 +402,7 @@ TEST_CASE("Ports - Jack Midi Out - Properties", "[JackPorts][ports][midi]") {
 
 TEST_CASE("Ports - Jack Midi Out - Send", "[JackPorts][ports][midi]") {
     auto driver = open_test_driver();
-    auto port = driver->open_midi_port("test", Output);
+    auto port = driver->open_midi_port("test", ShoopPortDirection_Output);
     auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
 
     port->PROC_prepare(100);
@@ -357,7 +426,7 @@ TEST_CASE("Ports - Jack Midi Out - Send", "[JackPorts][ports][midi]") {
 
 TEST_CASE("Ports - Jack Midi Out - Sort", "[JackPorts][ports][midi]") {
     auto driver = open_test_driver();
-    auto port = driver->open_midi_port("test", Output);
+    auto port = driver->open_midi_port("test", ShoopPortDirection_Output);
     auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
 
     port->PROC_prepare(100);
@@ -384,7 +453,7 @@ TEST_CASE("Ports - Jack Midi Out - Sort", "[JackPorts][ports][midi]") {
 
 TEST_CASE("Ports - Jack Midi Out - Message Counter", "[JackPorts][ports][midi]") {
     auto driver = open_test_driver();
-    auto port = driver->open_midi_port("test", Output);
+    auto port = driver->open_midi_port("test", ShoopPortDirection_Output);
     auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
 
     port->PROC_prepare(100);
@@ -433,9 +502,57 @@ TEST_CASE("Ports - Jack Midi Out - Message Counter", "[JackPorts][ports][midi]")
     CHECK(port->get_n_output_events() == 0);
 }
 
+TEST_CASE("Ports - Jack Midi Out - Note Tracker", "[JackPorts][ports][midi]") {
+    auto driver = open_test_driver();
+    auto port = driver->open_midi_port("test", ShoopPortDirection_Output);
+    auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
+
+    auto n1_on = create_noteOn<Msg>(0, 0, 100, 127);
+    auto n2_on = create_noteOn<Msg>(0, 0, 110, 127);
+    auto n1_off = create_noteOff<Msg>(0, 0, 100, 127);
+    auto n2_off = create_noteOff<Msg>(0, 0, 110, 127);
+
+    CHECK(port->get_n_output_notes_active() == 0);
+
+    port->PROC_prepare(1);
+    auto buf = port->PROC_get_write_data_into_port_buffer(1);
+    buf->PROC_write_event_reference(n1_on);
+    port->PROC_process(1);
+
+    CHECK(port->get_n_output_notes_active() == 1);
+
+    port->PROC_prepare(1);
+    buf = port->PROC_get_write_data_into_port_buffer(1);
+    buf->PROC_write_event_reference(n1_on); // duplicate
+    port->PROC_process(1);
+
+    CHECK(port->get_n_output_notes_active() == 1);
+
+    port->PROC_prepare(1);
+    buf = port->PROC_get_write_data_into_port_buffer(1);
+    buf->PROC_write_event_reference(n2_on);
+    port->PROC_process(1);
+
+    CHECK(port->get_n_output_notes_active() == 2);
+
+    port->PROC_prepare(1);
+    buf = port->PROC_get_write_data_into_port_buffer(1);
+    buf->PROC_write_event_reference(n1_off);
+    port->PROC_process(1);
+
+    CHECK(port->get_n_output_notes_active() == 1);
+
+    port->PROC_prepare(1);
+    buf = port->PROC_get_write_data_into_port_buffer(1);
+    buf->PROC_write_event_reference(n2_off);
+    port->PROC_process(1);
+
+    CHECK(port->get_n_output_notes_active() == 0);
+}
+
 TEST_CASE("Ports - Jack Midi Out - Mute", "[JackPorts][ports][midi]") {
     auto driver = open_test_driver();
-    auto port = driver->open_midi_port("test", Output);
+    auto port = driver->open_midi_port("test", ShoopPortDirection_Output);
     auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
 
     port->set_muted(true);

@@ -4,6 +4,7 @@
 #include "MidiSortingReadWritePort.h"
 #include <stdexcept>
 #include <iostream>
+#include "types.h"
 
 template<typename API>
 GenericJackMidiInputPort<API>::JackMidiReadBuffer::JackMidiReadBuffer() : m_jack_buffer(nullptr) {}
@@ -39,6 +40,26 @@ void GenericJackMidiInputPort<API>::JackMidiReadBuffer::PROC_get_event_value(uin
 }
 
 template<typename API>
+unsigned GenericJackMidiInputPort<API>::input_connectability() const {
+    return ShoopPortConnectability_External;
+}
+
+template<typename API>
+unsigned GenericJackMidiInputPort<API>::output_connectability() const {
+    return ShoopPortConnectability_Internal;
+}
+
+template<typename API>
+unsigned GenericJackMidiOutputPort<API>::input_connectability() const {
+    return ShoopPortConnectability_Internal;
+}
+
+template<typename API>
+unsigned GenericJackMidiOutputPort<API>::output_connectability() const {
+    return ShoopPortConnectability_External;
+}
+
+template<typename API>
 GenericJackMidiOutputPort<API>::JackMidiWriteBuffer::JackMidiWriteBuffer() : m_jack_buffer(nullptr) {}
 
 template<typename API>
@@ -69,7 +90,7 @@ GenericJackMidiInputPort<API>::GenericJackMidiInputPort(
         std::string name,
         jack_client_t *client,
         std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
-    ) : GenericJackMidiPort<API>(name, Input, client, all_ports_tracker),
+    ) : GenericJackMidiPort<API>(name, ShoopPortDirection_Input, client, all_ports_tracker),
         MidiBufferingInputPort()
 {}
 

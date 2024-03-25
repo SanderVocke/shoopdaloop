@@ -1,8 +1,12 @@
 #include "AudioMidiLoop.h"
 #include "WithCommandQueue.h"
 #include "ObjectPool.h"
+#include "shoop_globals.h"
+#include "types.h"
 #include <memory>
 #include <vector>
+#include <fmt/format.h>
+#include "AudioPort.h"
 
 AudioMidiLoop::AudioMidiLoop()
     : BasicLoop() {}
@@ -180,6 +184,56 @@ void AudioMidiLoop::PROC_handle_poi() {
     }
     for (auto &channel : mp_midi_channels) {
         channel->PROC_handle_poi(get_mode(), get_length(), get_position());
+    }
+}
+
+void AudioMidiLoop::adopt_ringbuffer_contents(
+    std::shared_ptr<shoop_types::_AudioPort> from_port,
+    std::optional<uint32_t> reverse_start_offset_cycle,
+    std::optional<uint32_t> n_cycles_length,
+    bool thread_safe) {
+    int _n = -1;
+    if (n_cycles_length.has_value()) { _n = (int) n_cycles_length.value(); }
+    auto fn = [this, reverse_start_offset_cycle, n_cycles_length, _n, from_port]() {
+        unsigned reverse_start_offset = 0;
+
+        if (reverse_start_offset_cycle.has_value() && mp_sync_source) {
+            auto len = mp_sync_source->get_length();
+            auto cur_cycle_reverse_start = mp_sync_source->get_position();
+            auto cycle = reverse_start_offset_cycle.value();
+            reverse_start_offset = cur_cycle_reverse_start + len * cycle;
+        } else {
+            // The start offset will just be the smallest ringbuffer size
+            reverse_start_offset = 0;
+            for (auto &channel : mp_audio_channels) {
+                reverse_start_offset = std::max(reverse_start_offset, from_port->get_ringbuffer_n_samples());
+            } 
+        }
+
+        unsigned n_samples = n_cycles_length.has_value() && mp_sync_source ?
+            mp_sync_source->get_length() * n_cycles_length.value() : reverse_start_offset;
+
+        for (auto &channel : mp_audio_channels) {
+            channel->adopt_ringbuffer_contents(from_port, reverse_start_offset, false);
+        }
+        for (auto &channel : mp_midi_channels) {
+            channel->adopt_ringbuffer_contents(from_port, reverse_start_offset, false);
+        }
+
+        log<log_level_debug>("Adopting {} ringbuffer samples (calculated from {} cycles) at start offset {}.",
+            n_samples, _n, reverse_start_offset);
+
+        if (n_cycles_length.has_value() && mp_sync_source) {
+            set_length(mp_sync_source->get_length() * n_cycles_length.value(), false);
+        } else {
+            set_length(reverse_start_offset, false);
+        }
+    };
+
+    if (thread_safe) {
+        queue_process_thread_command(fn);
+    } else {
+        fn();
     }
 }
 

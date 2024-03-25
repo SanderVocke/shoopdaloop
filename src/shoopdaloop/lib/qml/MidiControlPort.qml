@@ -3,14 +3,16 @@ import ShoopDaLoop.PythonMidiControlPort
 
 PythonMidiControlPort {
     property var lua_engine: null
-    property bool initialized: false
+    property bool all_initialized: false
 
-    function initialize() {
-        if (lua_engine && !initialized) {
+    function initialize_lua() {
+        if (lua_engine && !all_initialized) {
             register_lua_interface(lua_engine)
-            initialized = true
+            all_initialized = Qt.binding(() => initialized) // Back-end also needs to be ready
         }
     }
-    Component.onCompleted: initialize()
-    onLua_engineChanged: initialize()
+    Component.onCompleted: { initialize_lua(); rescan_parents() }
+    onLua_engineChanged: initialize_lua()
+
+    Component.onDestruction: { close() }
 }

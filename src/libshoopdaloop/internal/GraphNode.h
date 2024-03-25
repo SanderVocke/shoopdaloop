@@ -13,7 +13,7 @@ using SharedGraphNodeSet = std::set<std::shared_ptr<GraphNode>>;
 using WeakGraphNodeSet = std::set<std::weak_ptr<GraphNode>, std::owner_less<std::weak_ptr<GraphNode>>>;
 
 class GraphNode : public std::enable_shared_from_this<GraphNode> {
-    std::function<void(uint32_t)> m_processed_cb; // arg is process time in us
+    std::function<void(uint32_t)> m_processed_cb = nullptr; // arg is process time in us
 public:
     GraphNode() {};
 
@@ -68,17 +68,17 @@ public:
 template<typename Parent>
 class NodeWithParent : public GraphNode {
     protected:
-    Parent *m_parent;
-    NodeWithParent(Parent *parent) : m_parent(parent) {};
+    std::weak_ptr<Parent> m_parent = nullptr;
+    NodeWithParent(std::weak_ptr<Parent> parent) : m_parent(parent) {};
 
     public:
-    Parent &parent() { return *m_parent; }
+    std::weak_ptr<Parent> parent() { return m_parent; }
 };
 
 template<typename Target, typename Parent>
-Target &graph_node_parent_as(GraphNode &node) {
+std::shared_ptr<Target> graph_node_parent_as(GraphNode &node) {
     auto converted = static_cast<NodeWithParent<Parent>&>(node);
-    return static_cast<Target&>(converted.parent());
+    return std::dynamic_pointer_cast<Target>(converted.parent().lock());
 }
 
 class NotifyProcessParametersInterface {
@@ -93,32 +93,50 @@ public:
 
     virtual SharedGraphNodeSet all_graph_nodes() { return SharedGraphNodeSet(); }
 };
-class HasGraphNode : public HasGraphNodesInterface {
+class HasGraphNode : public HasGraphNodesInterface, public std::enable_shared_from_this<HasGraphNode> {
     class Node : public NodeWithParent<HasGraphNode> {
     public:
-        Node(HasGraphNode *parent) : NodeWithParent<HasGraphNode>(parent) {};
-        std::string graph_node_name() const override { return m_parent->graph_node_name(); }
+        Node(std::weak_ptr<HasGraphNode> parent) : NodeWithParent<HasGraphNode>(parent) {};
+        std::string graph_node_name() const override {
+            if (auto parent = m_parent.lock()) {
+                return parent->graph_node_name();
+            }
+            return "expired";
+        }
         WeakGraphNodeSet graph_node_outgoing_edges() override {
-            return m_parent->graph_node_outgoing_edges();
+            if (auto parent = m_parent.lock()) {
+                return parent->graph_node_outgoing_edges();
+            }
+            return WeakGraphNodeSet();
         }
         WeakGraphNodeSet graph_node_incoming_edges() override {
-            return m_parent->graph_node_incoming_edges();
+            if (auto parent = m_parent.lock()) {
+                return parent->graph_node_incoming_edges();
+            }
+            return WeakGraphNodeSet();
         }
         WeakGraphNodeSet graph_node_co_process_nodes() override {
-            return m_parent->graph_node_co_process_nodes();
+            if (auto parent = m_parent.lock()) {
+                return parent->graph_node_co_process_nodes();
+            }
+            return WeakGraphNodeSet();
         }
         void graph_node_process(uint32_t nframes) override {
-            m_parent->graph_node_process(nframes);
+            if (auto parent = m_parent.lock()) {
+                parent->graph_node_process(nframes);
+            }
         }
         void graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
             uint32_t nframes) override {
-            m_parent->graph_node_co_process(nodes, nframes);
+            if (auto parent = m_parent.lock()) {
+                parent->graph_node_co_process(nodes, nframes);
+            }
         }
     };
-    std::shared_ptr<Node> m_node;
+    std::shared_ptr<Node> m_node = nullptr;
 
     public:
-    HasGraphNode() : m_node(std::make_shared<Node>(this)) {};
+    HasGraphNode() {};
 
     // Has the same interface as an actual GraphNode
     virtual std::string graph_node_name() const { return "GraphNode"; }
@@ -129,60 +147,101 @@ class HasGraphNode : public HasGraphNodesInterface {
     virtual void graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
         uint32_t nframes) {}
 
-    SharedGraphNodeSet all_graph_nodes() override { return SharedGraphNodeSet({m_node}); }
-    std::shared_ptr<GraphNode> graph_node() const { return m_node; }
+    SharedGraphNodeSet all_graph_nodes() override {
+        if (!m_node) { m_node = std::make_shared<Node>(weak_from_this()); }
+        return SharedGraphNodeSet({m_node});
+    }
+    std::shared_ptr<GraphNode> graph_node() {
+        if (!m_node) { m_node = std::make_shared<Node>(weak_from_this()); }
+        return m_node;
+    }
 };
 
-class HasTwoGraphNodes : public HasGraphNodesInterface {
+class HasTwoGraphNodes : public HasGraphNodesInterface, public std::enable_shared_from_this<HasTwoGraphNodes> {
     class FirstNode : public NodeWithParent<HasTwoGraphNodes> {
     public:
-        FirstNode(HasTwoGraphNodes *parent) : NodeWithParent<HasTwoGraphNodes>(parent) {};
-        std::string graph_node_name() const override { return m_parent->graph_node_0_name(); }
+        FirstNode(std::weak_ptr<HasTwoGraphNodes> parent) : NodeWithParent<HasTwoGraphNodes>(parent) {};
+        std::string graph_node_name() const override {
+            if (auto parent = m_parent.lock()) {
+                return parent->graph_node_0_name();
+            }
+            return "expired";
+        }
         WeakGraphNodeSet graph_node_outgoing_edges() override {
-            return m_parent->graph_node_0_outgoing_edges();
+            if (auto parent = m_parent.lock()) {
+                return parent->graph_node_0_outgoing_edges();
+            }
+            return WeakGraphNodeSet();
         }
         WeakGraphNodeSet graph_node_incoming_edges() override {
-            return m_parent->graph_node_0_incoming_edges();
+            if (auto parent = m_parent.lock()) {
+                return parent->graph_node_0_incoming_edges();
+            }
+            return WeakGraphNodeSet();
         }
         WeakGraphNodeSet graph_node_co_process_nodes() override {
-            return m_parent->graph_node_0_co_process_nodes();
+            if (auto parent = m_parent.lock()) {
+                return parent->graph_node_0_co_process_nodes();
+            }
+            return WeakGraphNodeSet();
         }
         void graph_node_process(uint32_t nframes) override {
-            m_parent->graph_node_0_process(nframes);
+            if (auto parent = m_parent.lock()) {
+                parent->graph_node_0_process(nframes);
+            }
         }
         void graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
             uint32_t nframes) override {
-            m_parent->graph_node_0_co_process(nodes, nframes);
+            if (auto parent = m_parent.lock()) {
+                parent->graph_node_0_co_process(nodes, nframes);
+            }
         }
     };
+
     class SecondNode : public NodeWithParent<HasTwoGraphNodes> {
     public:
-        SecondNode(HasTwoGraphNodes *parent) : NodeWithParent<HasTwoGraphNodes>(parent) {};
-        std::string graph_node_name() const override { return m_parent->graph_node_1_name(); }
+        SecondNode(std::weak_ptr<HasTwoGraphNodes> parent) : NodeWithParent<HasTwoGraphNodes>(parent) {};
+        std::string graph_node_name() const override {
+            if (auto parent = m_parent.lock()) {
+                return parent->graph_node_1_name();
+            }
+            return "expired";
+        }
         WeakGraphNodeSet graph_node_outgoing_edges() override {
-            return m_parent->graph_node_1_outgoing_edges();
+            if (auto parent = m_parent.lock()) {
+                return parent->graph_node_1_outgoing_edges();
+            }
+            return WeakGraphNodeSet();
         }
         WeakGraphNodeSet graph_node_incoming_edges() override {
-            return m_parent->graph_node_1_incoming_edges();
+            if (auto parent = m_parent.lock()) {
+                return parent->graph_node_1_incoming_edges();
+            }
+            return WeakGraphNodeSet();
         }
         WeakGraphNodeSet graph_node_co_process_nodes() override {
-            return m_parent->graph_node_1_co_process_nodes();
+            if (auto parent = m_parent.lock()) {
+                return parent->graph_node_1_co_process_nodes();
+            }
+            return WeakGraphNodeSet();
         }
         void graph_node_process(uint32_t nframes) override {
-            m_parent->graph_node_1_process(nframes);
+            if (auto parent = m_parent.lock()) {
+                parent->graph_node_1_process(nframes);
+            }
         }
         void graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
             uint32_t nframes) override {
-            m_parent->graph_node_1_co_process(nodes, nframes);
+            if (auto parent = m_parent.lock()) {
+                parent->graph_node_1_co_process(nodes, nframes);
+            }
         }
     };
-    std::shared_ptr<FirstNode> m_firstnode;
-    std::shared_ptr<SecondNode> m_secondnode;
+    std::shared_ptr<FirstNode> m_firstnode = nullptr;
+    std::shared_ptr<SecondNode> m_secondnode = nullptr;
 
     public:
-    HasTwoGraphNodes() :
-        m_firstnode(std::make_shared<FirstNode>(this)),
-        m_secondnode(std::make_shared<SecondNode>(this)) {};
+    HasTwoGraphNodes() {}
 
     // Has the same interface as an actual GraphNode, but twice
     virtual std::string graph_node_0_name() const { return "GraphNode"; }
@@ -201,7 +260,21 @@ class HasTwoGraphNodes : public HasGraphNodesInterface {
     virtual void graph_node_1_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes,
         uint32_t nframes) {}
 
-    SharedGraphNodeSet all_graph_nodes() override { return SharedGraphNodeSet({m_firstnode, m_secondnode}); }
-    std::shared_ptr<GraphNode> first_graph_node() const { return m_firstnode; }
-    std::shared_ptr<GraphNode> second_graph_node() const { return m_secondnode; }
+    inline void ensure_nodes() {
+        if (!m_firstnode) { m_firstnode = std::make_shared<FirstNode>(weak_from_this()); }
+        if (!m_secondnode) { m_secondnode = std::make_shared<SecondNode>(weak_from_this()); }
+    }
+
+    SharedGraphNodeSet all_graph_nodes() override {
+        ensure_nodes();
+        return SharedGraphNodeSet({m_firstnode, m_secondnode});
+    }
+    std::shared_ptr<GraphNode> first_graph_node() {
+        ensure_nodes();
+        return m_firstnode;
+    }
+    std::shared_ptr<GraphNode> second_graph_node() {
+        ensure_nodes();
+        return m_secondnode;
+    }
 };

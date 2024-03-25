@@ -1,6 +1,7 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import ShoopDaLoop.PythonLogger
+import ShoopDaLoop.PythonLoop
 
 import ShoopConstants
 

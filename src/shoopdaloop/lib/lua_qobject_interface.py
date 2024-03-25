@@ -88,6 +88,7 @@ def create_lua_qobject_interface(lua_engine, qobject):
                         Q_ARG('QVariant', lua_engine)
                     )
                     return
+                logger.trace(lambda: "Calling QML method {} with args {}".format(interface[0], str(args)))
                 rval = qobject.metaObject().invokeMethod(
                     qobject,
                     interface[0],

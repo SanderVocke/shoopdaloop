@@ -26,6 +26,7 @@ import QtQuick 6.3
 import "../../third_party/QtMaterialDesignIcons/qml/MaterialDesignIconGlyphs.js" as MaterialGlyphs
 
 Item {
+    id: root
     property int size: 24
     property string name
     property color color
@@ -41,7 +42,11 @@ Item {
         font.family: materialFont.name
         font.pixelSize: parent.height
 
-        text: MaterialGlyphs.glyphs[parent.name]
+        text: {
+            let rval = MaterialGlyphs.glyphs[parent.name]
+            if (!rval) { throw new Error("No such Material design icon: " + parent.name) }
+            return rval
+        }
     }
 
     FontLoader {

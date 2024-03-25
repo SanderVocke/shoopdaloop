@@ -8,7 +8,7 @@
 #include <set>
 
 struct Tracker : public HasAudioProcessingFunction {
-    std::atomic<uint32_t> total_samples_processed;
+    std::atomic<uint32_t> total_samples_processed = 0;
     std::vector<uint32_t> each_n_samples_processed;
 
     Tracker() {
@@ -60,7 +60,7 @@ TEST_CASE("DummyAudioMidiDriver - Automatic", "[DummyAudioMidiDriver]") {
         256
     );
     
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    dut.wait_process();\
     dut.close();
 
     REQUIRE(dut.tracker.total_samples_processed.load() > 0);
@@ -77,7 +77,7 @@ TEST_CASE("DummyAudioMidiDriver - Controlled", "[DummyAudioMidiDriver]") {
         256
     );
     
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    dut.wait_process();
     dut.pause();
     
     REQUIRE(dut.tracker.total_samples_processed.load() == 0);
@@ -88,7 +88,7 @@ TEST_CASE("DummyAudioMidiDriver - Controlled", "[DummyAudioMidiDriver]") {
     REQUIRE(dut.get_controlled_mode_samples_to_process() == 64);
 
     dut.resume();
-    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    dut.wait_process();
     dut.pause();
 
     REQUIRE(dut.tracker.total_samples_processed.load() == 64);
@@ -99,7 +99,7 @@ TEST_CASE("DummyAudioMidiDriver - Controlled", "[DummyAudioMidiDriver]") {
 };
 
 TEST_CASE("DummyAudioMidiDriver - Input port default", "[DummyAudioMidiDriver][audio]") {
-    DummyAudioPort put("test_in", shoop_port_direction_t::Input);
+    DummyAudioPort put("test_in", shoop_port_direction_t::ShoopPortDirection_Input, nullptr);
 
     auto buf = put.PROC_get_buffer(8);
     auto bufvec = std::vector<float>(buf, buf+8);
@@ -107,7 +107,7 @@ TEST_CASE("DummyAudioMidiDriver - Input port default", "[DummyAudioMidiDriver][a
 };
 
 TEST_CASE("DummyAudioMidiDriver - Input port queue", "[DummyAudioMidiDriver][audio]") {
-    DummyAudioPort put("test_in", shoop_port_direction_t::Input);
+    DummyAudioPort put("test_in", shoop_port_direction_t::ShoopPortDirection_Input, nullptr);
     std::vector<float> data({1, 2, 3, 4, 5, 6, 7, 8});
     put.queue_data(8, data.data());
 
@@ -119,7 +119,7 @@ TEST_CASE("DummyAudioMidiDriver - Input port queue", "[DummyAudioMidiDriver][aud
 };
 
 TEST_CASE("DummyAudioMidiDriver - Input port queue consume multiple", "[DummyAudioMidiDriver][audio]") {
-    DummyAudioPort put("test_in", shoop_port_direction_t::Input);
+    DummyAudioPort put("test_in", shoop_port_direction_t::ShoopPortDirection_Input, nullptr);
     std::vector<float> data({1, 2, 3, 4, 5, 6, 7, 8});
     put.queue_data(8, data.data());
 
@@ -140,7 +140,7 @@ TEST_CASE("DummyAudioMidiDriver - Input port queue consume multiple", "[DummyAud
 };
 
 TEST_CASE("DummyAudioMidiDriver - Input port queue consume combine", "[DummyAudioMidiDriver][audio]") {
-    DummyAudioPort put("test_in", shoop_port_direction_t::Input);
+    DummyAudioPort put("test_in", shoop_port_direction_t::ShoopPortDirection_Input, nullptr);
     std::vector<float> data({1, 2, 3, 4});
     put.queue_data(4, data.data());
     put.queue_data(4, data.data());

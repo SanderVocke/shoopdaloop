@@ -1,0 +1,154 @@
+# Create a package/installer using fpm or InnoSetup
+
+inputs:
+  name:
+    description: "Name for the build"
+  cmake_build_type:
+    description: "CMake build type"
+  cmake_opts:
+    description: "CMake options"
+  prepare_kind:
+    description: "Which prepare function to call (see prepare action)"
+  python:
+    description: "Python command to use"
+  rename_wheel_sed:
+    description: "Sed command to use for renaming the built wheel"
+  pyinstaller:
+    description: "Whether to build pyinstaller folder"
+  appbundle:
+    description: "Whether to build app bundle using pyinstaller"
+  package_kind:
+    description: "Kind of package to build"
+  coverage:
+    description: "Whether to run coverage"
+  
+runs:
+  using: "composite"
+  steps:  
+  - name: Store cwd
+    shell: bash
+    id: cwd
+    run: |
+        echo "cwd=$(pwd)" | tee -a $GITHUB_OUTPUT
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Preparing environment"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
+  - name: Prepare
+    id: prepare
+    uses: ./.github/actions/prepare_build
+    with:
+      variant: ${{ inputs.prepare_kind }}
+  - name: Set overrides
+    shell: bash
+    run: |
+      echo 'cmake.build_type = "${{ inputs.cmake_build_type }}"' > py-build-cmake.local.toml
+      echo 'cmake.options = { ${{ inputs.cmake_opts }} }' >> py-build-cmake.local.toml
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Building wheel"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
+  - name: Build wheel
+    id: buildwheel
+    uses: ./.github/actions/build_wheel
+    with:
+      variant_name: ${{ inputs.name }}
+      python: ${{ inputs.python }}
+      prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
+      windows: ${{ inputs.prepare_kind == 'windows' && 'true' || 'false' }}
+      rename_wheel_sed: ${{ inputs.rename_wheel_sed }}
+  - name: Post-build steps
+    id: postbuild
+    uses: ./.github/actions/post_build
+    with:
+      variant: ${{ inputs.prepare_kind }}
+      wheel: ${{ steps.buildwheel.outputs.wheel_filename }}
+      build_dir: ${{ steps.buildwheel.outputs.build_dir }}
+  - name: Find wheel
+    shell: bash
+    id: find
+    run: |
+      echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "PyInstaller"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
+  - name: PyInstaller
+    id: pyinstaller
+    if: ${{ inputs.pyinstaller || inputs.appbundle }}
+    uses: ./.github/actions/build_pyinstaller
+    with:
+      python: ${{ inputs.pyinstaller_python && inputs.pyinstaller_python || inputs.python }}
+      wheel: ${{ steps.find.outputs.name }}
+      appbundle: ${{ inputs.appbundle }}
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Build package: ${{ inputs.package_kind }}"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
+  - name: Build package
+    id: package
+    if: ${{ inputs.package_kind }}
+    uses: ./.github/actions/build_package
+    with:
+      input_path: ${{ steps.cwd.outputs.cwd }}/distribution/pyinstaller/dist/shoopdaloop${{ inputs.appbundle && '.app' || '' }}
+      package_kind: ${{ inputs.package_kind }}
+      upload_name: package_${{ inputs.name }}
+  - shell: bash
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Upload artifacts"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
+  - name: Upload wheel (${{ inputs.variant_name }})
+    if: ${{ !env.ACT }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: wheel_${{ inputs.name }}
+      path: ${{ steps.find.outputs.name }}
+  - name: Upload debug info (${{ inputs.variant_name }})
+    if: ${{ !env.ACT }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: debuginfo_${{ inputs.name }}
+      path: debuginfo
+  - name: Upload PyInstaller (${{ inputs.variant_name }})
+    if: ${{ inputs.pyinstaller }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: pyinstaller_${{ inputs.name }}
+      path: ${{ steps.pyinstaller.outputs.distribution }}
+  - name: Upload MacOS app bundle
+    if: ${{ inputs.appbundle }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: appbundle_${{ inputs.name }}
+      path: ${{ steps.pyinstaller.outputs.distribution }}
+  - name: Save build infor for coverage analyis
+    shell: bash
+    if: ${{ inputs.coverage }}
+    run: |
+      echo "$(realpath build/cp*/)" | tee ori_build_dir.txt
+  - name: Upload info context for coverage analysis
+    if: ${{ inputs.coverage }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: coverage_context
+      path: |
+        ./**/*.gcno
+        ori_build_dir.txt
+  # - name: TMate failure session
+  #   if: ${{ failure() }}
+  #   uses: SanderVocke/action-tmate@master

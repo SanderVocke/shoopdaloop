@@ -20,10 +20,14 @@ ShoopTestCase {
 
     function check_backend() {
         verify(backend && backend.initialized, "backend not initialized")
-        backend.doUpdate()
+        wait_updated(backend)
     }
 
     testcase_init_fn: () =>  {
         check_backend()
+    }
+
+    testcase_deinit_fn: () => {
+        backend.close()
     }
 }

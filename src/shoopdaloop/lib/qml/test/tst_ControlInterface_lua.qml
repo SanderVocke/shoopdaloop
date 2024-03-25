@@ -27,7 +27,7 @@ ShoopTestFile {
             id: lua_engine
             ready: false
             function update() {
-                if (session.control_interface) {
+                if (session.control_interface && session.control_interface.ready) {
                     create_lua_qobject_interface_as_global('__shoop_control_interface', session.control_interface)
                     ready = true
                 }
@@ -45,7 +45,7 @@ ShoopTestFile {
             name: 'ControlInterface'
             filename : TestFilename.test_filename()
             session: session
-            when: lua_engine.ready && registries.state_registry && loop_at(0,0) && loop_at(0,1) && loop_at(1,0) && loop_at(1,1)
+            additional_when_condition: lua_engine.ready && registries.state_registry && loop_at(0,0) && loop_at(0,1) && loop_at(1,0) && loop_at(1,1)
 
             function loop_at(track, idx) {
                 if (track == -1) { return session.sync_track.loops[idx] }
@@ -69,14 +69,17 @@ ShoopTestFile {
             }
 
             function clear() {
+                testcase.wait_updated(session.backend)
                 loop_at(0,0).create_backend_loop()
                 loop_at(0,1).create_backend_loop()
                 loop_at(1,0).create_backend_loop()
                 loop_at(1,1).create_backend_loop()
+                testcase.wait_updated(session.backend)
                 loop_at(0,0).clear()
                 loop_at(0,1).clear()
                 loop_at(1,0).clear()
                 loop_at(1,1).clear()
+                testcase.wait_updated(session.backend)
                 registries.state_registry.replace('sync_active', false)
                 loop_at(0,0).deselect()
                 loop_at(0,1).deselect()
@@ -87,6 +90,7 @@ ShoopTestFile {
                 verify_loop_cleared(loop_at(0,1))
                 verify_loop_cleared(loop_at(1,0))
                 verify_loop_cleared(loop_at(1,1))
+                testcase.wait_updated(session.backend)
             }
 
             function do_eval(code) {
@@ -110,7 +114,7 @@ ShoopTestFile {
             }
 
             function verify_eq_lua(a, b) {
-                verify(do_eval(`
+                verify_true(do_eval(`
                     return (function()
                         local stringify
                         stringify = function(e)
@@ -133,6 +137,25 @@ ShoopTestFile {
                         return result
                     end)()
                 `))
+            }
+
+            testcase_init_fn: () => {
+                // Give the tracks time to initialize.
+                function done() {
+                    if (!session.main_tracks[0].control_widget) { return false; }
+                    if (!session.main_tracks[1].control_widget) { return false; }
+                    return true
+                }
+                let start = (new Date()).getTime()
+                let timeout = 5000
+                while(!done() && (new Date()).getTime() - start < timeout) {
+                    testcase.wait(100)
+                    check_backend()
+                    clear()
+                }
+                if (!done()) {
+                    throw new Error("Track control widgets did not initialize")
+                }
             }
 
             test_fns: ({
@@ -238,21 +261,11 @@ ShoopTestFile {
 
                 // TODO: harder to test because this requires loops to
                 // trigger each other
-                // 'test_loop_record_n': () => {
-                //         check_backend()
-                //         clear()
-                //         verify(false)
-                //     })
-                // }
+                // 'test_loop_record_n'
 
                 // TODO: harder to test because this requires loops to
                 // trigger each other
-                // 'test_loop_record_with_targeted': () => {
-                //         check_backend()
-                //         clear()
-                //         verify(false)
-                //     })
-                // }
+                // 'test_loop_record_with_targeted'
 
                 'test_loop_select': () => {
                     check_backend()
@@ -270,6 +283,16 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}, {0,1}}')
                 },
 
+                'test_loop_toggle_selected': () => {
+                    check_backend()
+                    clear()
+                    
+                    do_execute('shoop_control.loop_toggle_selected({0,0})')
+                    verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}}')
+                    do_execute('shoop_control.loop_toggle_selected({0,0})')
+                    verify_eq_lua('shoop_control.loop_get_which_selected()', '{}')
+                },
+
                 'test_loop_target': () => {
                     check_backend()
                     clear()
@@ -281,6 +304,18 @@ ShoopTestFile {
                     do_execute('shoop_control.loop_target({})')
                     verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
                     do_execute('shoop_control.loop_target(nil)')
+                    verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
+                },
+
+                'test_loop_toggle_targeted': () => {
+                    check_backend()
+                    clear()
+                    
+                    do_execute('shoop_control.loop_toggle_targeted({0,0})')
+                    verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0,0}')
+                    do_execute('shoop_control.loop_toggle_targeted({0,1})')
+                    verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0,1}')
+                    do_execute('shoop_control.loop_toggle_targeted({0,1})')
                     verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
                 },
 
@@ -317,6 +352,20 @@ ShoopTestFile {
                     verify_loop_cleared(loop_at(0,1))
                     verify_loop_cleared(loop_at(1,0))
                     verify_loop_cleared(loop_at(1,1))
+                },
+
+                'test_loop_adopt_ringbuffers': () => {
+                    check_backend()
+                    clear()
+
+                    loop_at(-1, 0).set_length(100) // Sync
+                    testcase.wait_updated(session.backend)
+
+                    do_execute('shoop_control.loop_adopt_ringbuffers({0, 0}, 2, 2)')
+                    testcase.wait_updated(session.backend)
+
+                    // Just a sanity check that the correct length was applied
+                    verify_eq(loop_at(0, 0).length, 200)
                 },
 
                 'test_loop_get_all': () => {
@@ -443,6 +492,7 @@ ShoopTestFile {
                         most_recent_event = nil
                         most_recent_loop = nil
                         local function callback(loop, event)
+                            print_error(event)
                             most_recent_loop = loop
                             most_recent_event = event
                         end
@@ -461,8 +511,21 @@ ShoopTestFile {
 
                     loop_at(-1,0).set_length(100)
                     testcase.wait_updated(session.backend)
+                    testcase.wait_updated(session.backend)
                     verify_eq_lua('most_recent_event.length', '100')
                     verify_eq_lua('most_recent_loop', '{-1,0}')
+                },
+
+                'test_apply_n_cycles': () => {
+                    check_backend()
+                    clear()
+
+                    registries.state_registry.set_apply_n_cycles(0)
+
+                    verify_eq_lua('shoop_control.get_apply_n_cycles()', '0')
+                    do_execute('shoop_control.set_apply_n_cycles(4)')
+                    verify_eq(registries.state_registry.apply_n_cycles, 4)
+                    verify_eq_lua('shoop_control.get_apply_n_cycles()', '4')
                 }
             })
         }

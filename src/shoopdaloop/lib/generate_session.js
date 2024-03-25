@@ -1,28 +1,36 @@
-function generate_audio_port(id, passthrough_to_ids, name_parts, direction, gain, muted, passthrough_muted, external_port_connections) {
-    return {
+function generate_audio_port(id, name_parts, type, input_connectability, output_connectability, gain, muted, passthrough_muted, internal_port_connection_ids, external_port_connections, min_n_ringbuffer_samples) {
+    var rval = {
         'id': id,
-        'passthrough_to': passthrough_to_ids,
+        'internal_port_connections': internal_port_connection_ids,
         'schema': 'audioport.1',
         'name_parts': name_parts,
-        'direction': direction,
+        'type': type,
+        'input_connectability': input_connectability,
+        'output_connectability': output_connectability,
         'gain': gain,
         'muted': muted,
         'passthrough_muted': passthrough_muted,
-        'external_port_connections': external_port_connections
-    };
+        'external_port_connections': external_port_connections,
+        'min_n_ringbuffer_samples': min_n_ringbuffer_samples
+    }
+    return rval
 }
 
-function generate_midi_port(id, passthrough_to_ids, name_parts, direction, muted, passthrough_muted, external_port_connections) {
-    return {
+function generate_midi_port(id, name_parts, type, input_connectability, output_connectability, muted, passthrough_muted, internal_port_connection_ids, external_port_connections, min_n_ringbuffer_samples) {
+    var rval = {
         'id': id,
-        'passthrough_to': passthrough_to_ids,
+        'internal_port_connections': internal_port_connection_ids,
         'schema': 'midiport.1',
         'name_parts': name_parts,
-        'direction': direction,
+        'type': type,
+        'input_connectability': input_connectability,
+        'output_connectability': output_connectability,
         'muted': muted,
         'passthrough_muted': passthrough_muted,
-        'external_port_connections': external_port_connections
-    };
+        'external_port_connections': external_port_connections,
+        'min_n_ringbuffer_samples': min_n_ringbuffer_samples
+    }
+    return rval
 }
 
 function generate_loop_channel(id, mode, type, data_length, start_offset, n_preplay_samples, gain, connected_port_ids) {
@@ -62,6 +70,17 @@ function generate_track(id, name, loops, ports, fx_chain) {
     return rval
 }
 
+function generate_bus(id, name, ports, fx_chain) {
+    var rval = {
+        'id': id,
+        'schema': 'bus.1',
+        'name': name,
+        'ports': ports
+    }
+    if (fx_chain) { rval.fx_chain = fx_chain }
+    return rval
+}
+
 function generate_fx_chain(id, title, type, ports) {
     return {
         'id': id,
@@ -80,11 +99,12 @@ function generate_scripts(scripts, active_script_id) {
     }
 }
 
-function generate_session(app_version, sample_rate, track_groups, ports, scripts, fx_chain_states) {
+function generate_session(app_version, sample_rate, track_groups, buses, ports, scripts, fx_chain_states) {
     var rval = {
         'schema': 'session.1',
         'app_version': app_version,
         'track_groups': track_groups,
+        'buses': buses,
         'ports': ports,
         'scripts': scripts,
         'fx_chain_states': fx_chain_states
@@ -103,44 +123,6 @@ function generate_script(id, name, length_cycles, elements) {
     }
 }
 
-function generate_script_element(name, duration, actions) {
-    return {
-        'schema': 'script_elem.1',
-        'name': name,
-        'duration': duration,
-        'actions': actions
-    }
-}
-
-function generate_script_loop_action(target_ids, action, delay_cycles, args) {
-    return {
-        'schema': 'script_loop_action.1',
-        'target_ids': target_ids,
-        'action': action,
-        'delay_cycles': delay_cycles,
-        'args': args
-    }
-}
-
-function generate_script_track_action(target_ids, action, delay_cycles, args) {
-    return {
-        'schema': 'script_track_action.1',
-        'target_ids': target_ids,
-        'action': action,
-        'delay_cycles': delay_cycles,
-        'args': args
-    }
-}
-
-function generate_script_global_action(action, delay_cycles, args) {
-    return {
-        'schema': 'script_global_action.1',
-        'action': action,
-        'delay_cycles': delay_cycles,
-        'args': args
-    }
-}
-
 function generate_default_track(
     name,
     n_loops,
@@ -152,9 +134,11 @@ function generate_default_track(
     n_audio_direct = 2,
     have_midi_dry = false,
     have_midi_direct = true,
-    have_drywet_jack_ports = false,
+    have_drywet_explicit_ports = false,
     drywet_carla_type = undefined
     ) {
+    let default_ringbuffer_size = 48000 * 5 // normally 5 seconds (TODO more flexible)
+
     function fx_chain_port_id_part(typestr, inoutstr, idx) {
         var r = "_fx_chain_" + typestr + "_" + inoutstr;
         if(idx != undefined) {
@@ -184,38 +168,47 @@ function generate_default_track(
             var id_post = fx_chain_port_id_part("audio", "in", i)
             ports.push(generate_audio_port(
                 id + id_post,
-                [],
                 [port_name_base, id_post],
-                'output',
+                'driver',
+                ['internal'], // input
+                [], // output
                 1.0,
                 false,
                 false,
-                []
+                [], // internal connections
+                [],
+                0 // no always on ringbuffer
             ))
         }
         for (var i=0; i<n_fx_audio_outputs; i++) {
             var id_post = fx_chain_port_id_part("audio", "out", i)
             ports.push(generate_audio_port(
                 id + id_post,
-                [id + external_port_id_part("audio", "out", "wet",  i)],
                 [port_name_base, id_post],
-                'input',
+                'driver',
+                [], // input
+                ['internal'], // output
                 1.0,
                 false,
                 false,
-                []
+                [id + external_port_id_part("audio", "out", "wet",  i)], // internal connections
+                [],
+                default_ringbuffer_size // always on ringbuffer on, because this port will be recorded by a channel
             ))
         }
         for (var i=0; i<n_fx_midi_inputs; i++) {
             var id_post = fx_chain_port_id_part("midi", "in", i)
             ports.push(generate_midi_port(
                 id + id_post,
-                [],
                 [port_name_base, id_post],
-                'output',
+                'driver',
+                ['internal'], // input
+                [], // output
                 false,
                 false,
-                []
+                [], // internal connections
+                [],
+                0 // no always on ringbuffer
             ))
         }
         
@@ -230,28 +223,77 @@ function generate_default_track(
     var audio_dry_port_pairs = Array.from(Array(n_audio_dry).keys()).map((idx) => {
         var in_id_post = external_port_id_part("audio", "in", "dry", idx);
         var in_id = id + in_id_post;
-        var out_id_post = external_port_id_part("audio", "send", "dry", idx);
-        var out_id = id + out_id_post;
+        var send_id_post = external_port_id_part("audio", "send", "dry", idx);
+        var send_id = id + send_id_post;
         var fx_in_id = id + fx_chain_port_id_part("audio", "in", idx);
 
-        var rval = [generate_audio_port(in_id, have_drywet_jack_ports ? [out_id] : [fx_in_id], [port_name_base, in_id_post], 'input', 1.0, false, true, [])]
-        if (have_drywet_jack_ports) {
-            rval.push(generate_audio_port(out_id, [], [port_name_base, out_id_post], 'output', 1.0, false, false, []))
+        var rval = [
+            generate_audio_port(
+                in_id,
+                [port_name_base, in_id_post],
+                'driver',
+                ['external'], // input
+                ['internal'], // output
+                1.0,
+                false,
+                true,
+                have_drywet_explicit_ports ? [send_id] : [fx_in_id], // internal connections
+                [],
+                default_ringbuffer_size // always on ringbuffer on, because this port will be recorded by a channel
+            )]
+        if (have_drywet_explicit_ports) {
+            rval.push(generate_audio_port(
+                send_id,
+                [port_name_base, send_id_post],
+                'driver',
+                ['internal'], // input
+                ['external'], // output
+                1.0,
+                false,
+                false,
+                [], // internal connections
+                [],
+                0 // no always on ringbuffer
+            ))
         }
         
         return rval
     })
     var audio_wet_port_pairs = Array.from(Array(n_audio_wet).keys()).map((idx) => {
-        var in_id_post = external_port_id_part("audio", "return", "wet", idx);
-        var in_id = id + in_id_post;
+        var return_id_post = external_port_id_part("audio", "return", "wet", idx);
+        var return_id = id + return_id_post;
         var out_id_post = external_port_id_part("audio", "out", "wet", idx);
         var out_id = id + out_id_post;
 
         var rval = []
-        if (have_drywet_jack_ports) {
-            rval.push(generate_audio_port(in_id, [out_id], [port_name_base, in_id_post], 'input', 1.0, false, false, []))
+        if (have_drywet_explicit_ports) {
+            rval.push(generate_audio_port(
+                return_id,
+                [port_name_base, return_id_post],
+                'driver',
+                ['external'], // input
+                ['internal'], // output
+                1.0,
+                false,
+                false,
+                [out_id], // internal connections
+                [],
+                default_ringbuffer_size // always on ringbuffer on, because this port will be recorded by a channel
+            ))
         }
-        rval.push(generate_audio_port(out_id, [], [port_name_base, out_id_post], 'output', 1.0, false, false, []))
+        rval.push(generate_audio_port(
+            out_id,
+            [port_name_base, out_id_post],
+            'driver',
+            ['internal'], // input
+            ['external'], // output
+            1.0,
+            false,
+            false,
+            [], // internal connections
+            [],
+            0 // no always on ringbuffer
+        ))
         
         return rval
     })
@@ -262,8 +304,32 @@ function generate_default_track(
         var in_id = id + in_id_post;
         var out_id = id + out_id_post;
         return [
-            generate_audio_port(in_id, [out_id], [port_name_base, in_id_post], 'input', 1.0, false, true, []),
-            generate_audio_port(out_id, [], [port_name_base, out_id_post], 'output', 1.0, false, false, []),
+            generate_audio_port(
+                in_id,
+                [port_name_base, in_id_post],
+                'driver',
+                ['external'], // input
+                ['internal'], // output
+                1.0,
+                false,
+                true,
+                [out_id], // internal connections
+                [],
+                default_ringbuffer_size // always on ringbuffer on, because this port will be recorded by a channel
+            ),
+            generate_audio_port(
+                out_id,
+                [port_name_base, out_id_post],
+                'driver',
+                ['internal'], // input
+                ['external'], // output
+                1.0,
+                false,
+                false,
+                [], // internal connections
+                [],
+                0 // no always on ringbuffer
+            ),
         ]
     })
     var midi_direct_port_pairs = have_midi_direct ? (() => {
@@ -272,20 +338,66 @@ function generate_default_track(
         var in_id = id + in_id_post;
         var out_id = id + out_id_post;
         return [[
-            generate_midi_port(in_id, [out_id], [port_name_base, in_id_post], 'input', false, true, []),
-            generate_midi_port(out_id, [], [port_name_base, out_id_post], 'output', false, false, []),
+            generate_midi_port(
+                in_id,
+                [port_name_base, in_id_post],
+                'driver',
+                ['external'], // input
+                ['internal'], // output
+                false,
+                true,
+                [out_id], // internal connections
+                [],
+                default_ringbuffer_size // always on ringbuffer on, because this port will be recorded by a channel
+            ),
+            generate_midi_port(
+                out_id,
+                [port_name_base, out_id_post],
+                'driver',
+                ['internal'], // input
+                ['external'], // output
+                false,
+                false,
+                [], // internal connections
+                [],
+                0 // no always on ringbuffer
+            ),
         ]]
     })() : [];
     var midi_dry_port_pairs = have_midi_dry ? (() => {
         var in_id_post = "_dry_midi_in";
         var in_id = id + in_id_post;
-        var out_id_post = "_dry_midi_send";
-        var out_id = id + out_id_post;
+        var send_id_post = "_dry_midi_send";
+        var send_id = id + send_id_post;
         var fx_in_id = id + fx_chain_port_id_part("midi", "in", 0);
 
-        var rval = [generate_midi_port(in_id, have_drywet_jack_ports ? [out_id] : [fx_in_id], [port_name_base, in_id_post], 'input', false, true, [])]
-        if (have_drywet_jack_ports) {
-            rval.push(generate_midi_port(out_id, [], [port_name_base, out_id_post], 'output', false, false, []))
+        var rval = [
+            generate_midi_port(
+                in_id,
+                [port_name_base, in_id_post],
+                'driver',
+                ['external'], // input
+                ['internal'], // output
+                false,
+                true,
+                have_drywet_explicit_ports ? [send_id] : [fx_in_id], // internal connections
+                [],
+                default_ringbuffer_size // always on ringbuffer on, because this port will be recorded by a channel
+            )
+        ]
+        if (have_drywet_explicit_ports) {
+            rval.push(generate_midi_port(
+                send_id,
+                [port_name_base, send_id_post],
+                'driver',
+                ['internal'], // input
+                ['external'], // output
+                false,
+                false,
+                [], // internal connections
+                [],
+                0 // no always on ringbuffer
+            ))
         }
 
         return [rval]
@@ -339,19 +451,22 @@ function generate_default_track(
 }
 
 function generate_default_session(app_version, sample_rate=null, add_sync_track=true, n_loops_in_sync_track=1, n_audio_channels_in_sync_track=1, initial_tracks=[]) {
-    var sync_tracks = {
-        'name': 'sync',
-        'tracks': []
-    }
+    // tracks
     var main_tracks = {
         'name': 'main',
         'tracks': initial_tracks
+    }
+    var sync_tracks = {
+        'name': 'sync',
+        'tracks': []
     }
     if (add_sync_track) {
         var sync_track = generate_default_track("Sync", n_loops_in_sync_track, 'sync', true, 'sync_loop', 0, 0, n_audio_channels_in_sync_track, false, false, false, undefined)
         sync_track.loops[0].name = "sync loop"
         sync_tracks.tracks.push(sync_track)
     }
+
+    // combine it all
     var session = generate_session(
         app_version,
         sample_rate,

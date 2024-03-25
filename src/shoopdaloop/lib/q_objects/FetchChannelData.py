@@ -26,20 +26,26 @@ class FetchChannelData(ShoopQQuickItem):
         self._dirty = True
         self._active = False
         self._fetching = False
-        self._request_queue = queue.Queue()
-        self._active_request_seq_nr = None
-        self._next_seq_nr = 0
+        self._requested_sequence_nr = 1
+        self._retrieved_sequence_nr = 0
         self._loop = None
-        self._data_as_qimage = None
+        self._data_as_qimage = None        
         self.logger = Logger('Frontend.FetchChannelData')
+        
+        self._fetch_timer = QTimer()
+        self._fetch_timer.interval = 100
+        self._fetch_timer.singleShot = True
+        self._fetch_timer.timeout.connect(self.tick)
+        self._fetch_timer.start()
+        self.tick()
     
     ######################
     # PROPERTIES
     ######################
 
     # channel
-    channelChanged = Signal('QVariant')
-    @Property('QVariant', notify=channelChanged)
+    channelChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=channelChanged)
     def channel(self):
         return self._channel
     @channel.setter
@@ -66,8 +72,8 @@ class FetchChannelData(ShoopQQuickItem):
     # channel_data
     # set automatically. Will hold the most recently
     # fetched data.
-    channelDataChanged = Signal('QVariant')
-    @Property('QVariant', notify=channelDataChanged)
+    channelDataChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=channelDataChanged)
     def channel_data(self):
         return self._data
     @channel_data.setter
@@ -81,8 +87,8 @@ class FetchChannelData(ShoopQQuickItem):
     # the incoming dirty status of the back-end.
     # if active == true, when the data turns dirty a
     # new fetch is started.
-    dirtyChanged = Signal(bool)
-    @Property(bool, notify=dirtyChanged)
+    dirtyChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=dirtyChanged)
     def dirty(self):
         return self._dirty
     @dirty.setter
@@ -90,12 +96,13 @@ class FetchChannelData(ShoopQQuickItem):
         if l != self._dirty:
             self._dirty = l
             self.dirtyChanged.emit(l)
-            self.maybe_start_fetch()
+            if l:
+                self.maybe_start_fetch()
     
     # active
     # if active is false, data will never be fetched.
-    activeChanged = Signal(bool)
-    @Property(bool, notify=activeChanged)
+    activeChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=activeChanged)
     def active(self):
         return self._active
     @active.setter
@@ -103,13 +110,14 @@ class FetchChannelData(ShoopQQuickItem):
         if l != self._active:
             self._active = l
             self.activeChanged.emit(l)
-            self.maybe_start_fetch()
+            if l:
+                self.maybe_start_fetch()
     
     # fetching
     # set automatically. Indicates whether data is
     # currently being fetched.
-    fetchingChanged = Signal(bool)
-    @Property(bool, notify=fetchingChanged)
+    fetchingChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=fetchingChanged)
     def fetching(self):
         return self._fetching
     @fetching.setter
@@ -122,8 +130,8 @@ class FetchChannelData(ShoopQQuickItem):
     # if the data was a list of floats, this provides
     # a QImage of 8192 elems wide, ARGB32 format,
     # where each pixel holds the float in 32-bit integer range.
-    dataAsQImageChanged = Signal('QVariant')
-    @Property('QVariant', notify=dataAsQImageChanged)
+    dataAsQImageChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=dataAsQImageChanged)
     def data_as_qimage(self):
         return self._data_as_qimage
     @data_as_qimage.setter
@@ -136,50 +144,64 @@ class FetchChannelData(ShoopQQuickItem):
     # INTERNAL FUNCTIONS
     ######################
 
-    @Slot(bool)
+    @ShoopSlot(bool)
     def set_dirty(self, dirty):
         self.dirty = dirty
         
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def set_loop(self, loop):
         self.loop = loop
 
-    @Slot('QVariant', int)
+    @ShoopSlot('QVariant', int)
     def fetch_finished(self, data, seq_nr):
-        if seq_nr == self._active_request_seq_nr:
+        if seq_nr >= self._requested_sequence_nr:
             self.channel_data = data
-            self._active_request_seq_nr = None
-            self.fetching = False
+            self._retrieved_sequence_nr = seq_nr
+        self.fetching = False
+        self._fetch_timer.start()        
 
-    @Slot()
-    def maybe_start_fetch(self):
-        if not self.channel or not self.channel.isValid() or not self.dirty or not self.active:
+    @ShoopSlot()
+    def maybe_start_fetch(self, *args):
+        # Queue a request by incrementing sequence number
+        self._requested_sequence_nr += 1
+        self.start_timer()
+        
+    @ShoopSlot()
+    def start_timer(self):
+        self._fetch_timer.start()
+        
+    @ShoopSlot()
+    def tick(self):
+        if not self.channel or not self.channel.isValid() or not self.dirty or not self.active or \
+           not self.channel.initialized or not self.channel.loop or not self.channel.loop.isValid() or \
+           not self.channel.loop.initialized or is_recording_mode(self.channel.loop_mode) or \
+           self._retrieved_sequence_nr >= self._requested_sequence_nr:
+            self._fetch_timer.start() # Try again soon
             return
-        if not self.channel.initialized:
-            return
-        if not self.channel.loop or not self.channel.loop.isValid():
-            return
-        if not self.channel.loop.initialized:
-            return
-        if is_recording_mode(self.channel.loop_mode):
-            return
-
-        # Queue a request and increment sequence number
-        self._active_request_seq_nr = self._next_seq_nr
-        self._next_seq_nr += 1
+        
+        self._fetch_timer.stop()        
         self.fetching = True
+        self.channel.clear_data_dirty()
 
-        def worker(channel=self.channel, seq_nr=self._active_request_seq_nr, cb_to=self, logger=self.logger):
-            logger.debug(lambda: "Fetching channel data to front-end.")
-            data = channel.get_data()
-            channel.clear_data_dirty()
-            QMetaObject.invokeMethod(
-                cb_to,
-                'fetch_finished',
-                Qt.QueuedConnection,
-                Q_ARG('QVariant', data),
-                Q_ARG(int, seq_nr)
-            )
+        def worker(channel=self.channel, seq_nr=self._requested_sequence_nr, cb_to=self, logger=self.logger):
+            try:
+                logger.debug(lambda: "Fetching channel data to front-end.")
+                data = channel.get_display_data()
+                logger.debug(lambda: "Fetched")
+                QMetaObject.invokeMethod(
+                    cb_to,
+                    'fetch_finished',
+                    Qt.QueuedConnection,
+                    Q_ARG('QVariant', data),
+                    Q_ARG(int, seq_nr)
+                )
+                logger.debug(lambda: "called back")
+            finally:
+                QMetaObject.invokeMethod(
+                    cb_to,
+                    'start_timer',
+                    Qt.QueuedConnection
+                )
         threading.Thread(target=worker).start()
 
 

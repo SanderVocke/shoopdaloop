@@ -8,8 +8,8 @@
 
 template<typename TimeType, typename SizeType>
 struct MidiMessage : public MidiSortableMessageInterface {
-    TimeType time;
-    SizeType size;
+    TimeType time = 0;
+    SizeType size = 0;
     std::vector<uint8_t> data;
 
     MidiMessage(decltype(time) time, decltype(size) size, decltype(data) data);
@@ -23,10 +23,17 @@ struct MidiMessage : public MidiSortableMessageInterface {
                  const uint8_t* &data_out) const override;
 };
 
+template<typename TimeType, typename SizeType>
+inline bool operator==(const MidiMessage<TimeType, SizeType>& lhs, const MidiMessage<TimeType, SizeType>& rhs) {
+    return lhs.time == rhs.time &&
+           lhs.size == rhs.size &&
+           lhs.data == rhs.data;
+}
+
 template<typename TimeType, typename SizeType, unsigned MaxDataSize>
 struct MaxSizeMidiMessage : public MidiSortableMessageInterface {
-    TimeType time;
-    SizeType size;
+    TimeType time = 0;
+    SizeType size = 0;
     uint8_t data[MaxDataSize];
 
     MaxSizeMidiMessage(decltype(time) time, decltype(size) size, const uint8_t *data) :

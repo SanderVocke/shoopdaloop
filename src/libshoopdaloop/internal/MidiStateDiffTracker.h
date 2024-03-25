@@ -13,7 +13,9 @@ enum class StateDiffTrackerAction {
 // in state between them. It provides quick access to a shortlist of any notes/controls/programs
 // that are not the same in both state trackers, so that it is not necessary to fully iterate
 // over all state in both trackers to get this information.
-class MidiStateDiffTracker : public MidiStateTracker::Subscriber, public std::enable_shared_from_this<MidiStateDiffTracker> {
+class MidiStateDiffTracker : public MidiStateTracker::Subscriber,
+                             public std::enable_shared_from_this<MidiStateDiffTracker>,
+                             public ModuleLoggingEnabled<"Backend.MidiStateDiffTracker"> {
     using SharedTracker = std::shared_ptr<MidiStateTracker>;
 
     // Two bytes identify the state, but don't hold its value. (example: two bytes of CC identify the channel and controller in question).
@@ -25,14 +27,14 @@ class MidiStateDiffTracker : public MidiStateTracker::Subscriber, public std::en
 
     static const uint32_t default_diffs_size = 256;
 
-    SharedTracker m_a, m_b;
+    SharedTracker m_a = nullptr, m_b = nullptr;
     DiffSet m_diffs;
 
     void note_changed(MidiStateTracker *tracker, uint8_t channel, uint8_t note, std::optional<uint8_t> maybe_velocity) override;
-    void cc_changed(MidiStateTracker *tracker, uint8_t channel, uint8_t cc, uint8_t value) override;
-    void program_changed(MidiStateTracker *tracker, uint8_t channel, uint8_t program) override;
-    void pitch_wheel_changed(MidiStateTracker *tracker, uint8_t channel, uint16_t pitch) override;
-    void channel_pressure_changed(MidiStateTracker *tracker, uint8_t channel, uint8_t pressure) override;
+    void cc_changed(MidiStateTracker *tracker, uint8_t channel, uint8_t cc, std::optional<uint8_t> value) override;
+    void program_changed(MidiStateTracker *tracker, uint8_t channel, std::optional<uint8_t> program) override;
+    void pitch_wheel_changed(MidiStateTracker *tracker, uint8_t channel, std::optional<uint16_t> pitch) override;
+    void channel_pressure_changed(MidiStateTracker *tracker, uint8_t channel, std::optional<uint8_t> pressure) override;
    
 public:
     MidiStateDiffTracker();

@@ -22,12 +22,17 @@
                     "items": {
                         "type": "array",
                         "items": {
-                            "type": "object",
-                            "properties": {
-                                "delay": { "type": "integer" },
-                                "loop_id": { "type": "string" }
-                            },
-                            "required": ["delay", "loop_id"]
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "delay": { "type": "integer" },
+                                    "loop_id": { "type": "string" },
+                                    "mode": { "type": "integer" },
+                                    "n_cycles": { "type": "integer" }
+                                },
+                                "required": ["delay", "loop_id"]
+                            }
                         }
                     }
                 }

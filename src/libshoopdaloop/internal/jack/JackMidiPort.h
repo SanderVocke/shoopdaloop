@@ -57,6 +57,9 @@ public:
 
     void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;
+
+    unsigned input_connectability() const override;
+    unsigned output_connectability() const override;
 };
 
 template<typename API>
@@ -69,7 +72,7 @@ class GenericJackMidiOutputPort :
 
     class JackMidiWriteBuffer : public MidiWriteableBufferInterface {
     public:
-        void* m_jack_buffer;
+        void* m_jack_buffer = nullptr;
 
         JackMidiWriteBuffer();
         
@@ -88,8 +91,8 @@ public:
         std::string name,
         jack_client_t *client,
         std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
-    ) : GenericJackMidiPort<API>(name, Output, client, all_ports_tracker),
-        MidiSortingReadWritePort(false, false, false),
+    ) : GenericJackMidiPort<API>(name, ShoopPortDirection_Output, client, all_ports_tracker),
+        MidiSortingReadWritePort(true, false, false),
         m_write_buffer(JackMidiWriteBuffer{}) {}
 
     MidiReadableBufferInterface *PROC_internal_read_input_data_buffer (uint32_t nframes) override { return nullptr; }
@@ -99,6 +102,9 @@ public:
 
     void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;
+
+    unsigned input_connectability() const override;
+    unsigned output_connectability() const override;
 };
 
 using JackMidiInputPort = GenericJackMidiInputPort<JackApi>;

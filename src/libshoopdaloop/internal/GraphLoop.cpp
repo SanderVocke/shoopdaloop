@@ -3,6 +3,7 @@
 #include "AudioMidiLoop.h"
 #include "BackendSession.h"
 #include "GraphNode.h"
+#include "LoopInterface.h"
 #include "process_loops.h"
 #include <memory>
 #include <fmt/format.h>
@@ -77,25 +78,51 @@ BackendSession &GraphLoop::get_backend() {
 }
 
 void GraphLoop::graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes, uint32_t nframes) {
-    process_loops<GraphNode>(
+    process_loops<std::set<std::shared_ptr<GraphNode>>::iterator>(
         nodes.begin(), nodes.end(), nframes,
-        [](GraphNode& node) {
-            auto rval = graph_node_parent_as<GraphLoop, HasGraphNode>(node).loop.get();
-            return rval;
+        [](std::set<std::shared_ptr<GraphNode>>::iterator &node_it) -> LoopInterface* {
+            std::shared_ptr<GraphLoop> l = graph_node_parent_as<GraphLoop, HasGraphNode>(**node_it);
+            if (l) {
+                return l->loop.get();
+            }
+            return nullptr;
         });
 }
 
 void GraphLoop::graph_node_process(uint32_t nframes) {
     std::array<std::shared_ptr<GraphLoop>, 1> loops;
-    loops[0] = shared_from_this();
-    process_loops<GraphLoop>(
+    loops[0] = static_pointer_cast<GraphLoop>(shared_from_this());
+    process_loops<decltype(loops)::iterator>(
         loops.begin(), loops.end(), nframes,
-        [](GraphLoop& node) {
-            return node.loop.get();
+        [](decltype(loops)::iterator &node) -> LoopInterface* {
+            return (*node)->loop.get();
         });
 }
 
 WeakGraphNodeSet GraphLoop::graph_node_co_process_nodes() {
     if (m_get_co_process_nodes) { return m_get_co_process_nodes(); }
     return WeakGraphNodeSet();
+}
+
+void GraphLoop::PROC_adopt_ringbuffer_contents(unsigned reverse_cycles_start, unsigned cycles_length) {
+    std::optional<unsigned> reverse_start_offset = std::nullopt;
+    std::optional<unsigned> samples_length = std::nullopt;
+
+    auto sync_source = loop->get_sync_source(false);
+    auto len = sync_source ? sync_source->get_length() : 0;
+    if (len > 0) {
+        auto cur_cycle_reverse_start = sync_source->get_position();
+        reverse_start_offset = cur_cycle_reverse_start + len * reverse_cycles_start;
+        samples_length = std::min(cycles_length * len, reverse_start_offset.value());
+    }
+
+    unsigned max_data_length = 0;
+    for (auto &c : mp_audio_channels) { c->adopt_ringbuffer_contents(reverse_start_offset, false); max_data_length = std::max(max_data_length, c->channel->get_length()); }
+    for (auto &c : mp_midi_channels)  { c->adopt_ringbuffer_contents(reverse_start_offset, false); /* max_data_length = std::max(max_data_length, c->channel->get_length()); */ }
+
+    if (!samples_length.has_value()) {
+        samples_length = max_data_length;
+    }
+
+    loop->set_length(samples_length.value(), false);
 }

@@ -4,21 +4,6 @@ description: Prepare manylinux for building Shoopdaloop wheels
 runs:
   using: "composite"
   steps:
-  - name: Basic prep steps
-    shell: bash
-    run: |
-      # Skip if already done (local act builds)
-      if [ -f /manylinux_prepared ]; then
-        exit 0
-      fi
-
-      # Python alias
-      ln -s /usr/local/bin/python3.8 /usr/local/bin/python
-      ln -s /usr/local/bin/python3.8 /usr/local/bin/python3
-      echo "export PATH=\"\$PATH:$(find /opt/_internal -name "cpython-3.8.*")/bin\"" >> $HOME/.bashrc
-
-      # Official packages needed
-      dnf -y install ninja-build libsndfile libasan8 gcc-toolset-12-libasan-devel.x86_64 perl-Time-HiRes perl-Capture-Tiny perl-Module-Load-Conditional perl-DateTime perl-JSON perl-JSON-XS alsa-lib-devel zlib-devel zlib-static
   - name: Install boost
     id: install_boost
     uses: ./.github/actions/install_boost_headers
@@ -27,22 +12,3 @@ runs:
   - name: Install JACK2
     id: install_jack2
     uses: ./.github/actions/install_jack2
-  - name: Other prep steps
-    shell: bash
-    run: |
-      # Skip if already done (local act builds)
-      if [ -f _manylinux_prepared ]; then
-        exit 0
-      fi
-
-      # Build and install lcov
-      curl -L https://github.com/linux-test-project/lcov/releases/download/v2.0/lcov-2.0.tar.gz --output lcov-2.0.tar.gz
-      tar -xzf lcov-2.0.tar.gz
-      pushd lcov-2.0
-      make install
-      popd
-
-      # Additional Python packages
-      python3 -m pip install coverage pytest
-
-      touch _manylinux_prepared

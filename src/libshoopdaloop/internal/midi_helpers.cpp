@@ -39,3 +39,29 @@ std::optional<uint32_t> is_all_sound_off_for_channel(const uint8_t *msg_data) {
     }
     return std::nullopt;
 }
+
+std::vector<uint8_t> noteOn(uint8_t channel, uint8_t note, uint8_t velocity) {
+     return { static_cast<unsigned char>(0x90 + channel), note, velocity };
+}
+
+std::vector<uint8_t> noteOff(uint8_t channel, uint8_t note, uint8_t velocity) {
+    return { static_cast<unsigned char>(0x80 + channel), note, velocity };
+}
+
+std::vector<uint8_t> cc(uint8_t channel, uint8_t controller, uint8_t value) {
+    return { static_cast<unsigned char>(0xB0 + channel), controller, value };
+}
+
+std::vector<uint8_t> programChange(uint8_t channel, uint8_t program) {
+    return { static_cast<unsigned char>(0xC0 + channel), program };
+}
+
+std::vector<uint8_t> pitchWheelChange(uint8_t channel, uint16_t value) {
+    uint8_t first = (uint8_t)(value & 0b1111111);
+    uint8_t second = (uint8_t)((value >> 8) & 0b1111111);
+    return { static_cast<unsigned char>(0xE0 + channel), first, second };
+}
+
+std::vector<uint8_t> channelPressure(uint8_t channel, uint8_t value) {
+    return { static_cast<unsigned char>(0xD0 + channel), value };
+}

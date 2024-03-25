@@ -1,14 +1,18 @@
 #include "AudioMidiDriver.h"
+#include "LoggingBackend.h"
 #include "PortInterface.h"
 #include "WithCommandQueue.h"
 #include "fmt/format.h"
+#include <fmt/ranges.h>
 #include "types.h"
 #include <chrono>
 #include <cstdint>
+#include <string>
 #include <thread>
 #include "DummyAudioMidiDriver.h"
 #include <map>
 #include <algorithm>
+#include <regex>
 
 const std::map<DummyAudioMidiDriverMode, const char*> mode_names = {
     {DummyAudioMidiDriverMode::Automatic, "Automatic"},
@@ -18,26 +22,40 @@ const std::map<DummyAudioMidiDriverMode, const char*> mode_names = {
 DummyPort::DummyPort(
     std::string name,
     shoop_port_direction_t direction,
-    PortDataType type
-) : m_name(name), m_direction(direction) {}
+    PortDataType type,
+    std::weak_ptr<DummyExternalConnections> external_connections
+) : m_name(name), m_direction(direction), m_external_connections(external_connections) {}
 
 const char* DummyPort::name() const { return m_name.c_str(); }
 
 void DummyPort::close() {}
 
-PortExternalConnectionStatus DummyPort::get_external_connection_status() const { return PortExternalConnectionStatus(); }
+PortExternalConnectionStatus DummyPort::get_external_connection_status() const {
+    if (auto e = m_external_connections.lock()) {
+        return e->connection_status_of(this);
+    }
+    return PortExternalConnectionStatus();
+}
 
-void DummyPort::connect_external(std::string name) {}
+void DummyPort::connect_external(std::string name) {
+    if (auto e = m_external_connections.lock()) {
+        e->connect(this, name);
+    }
+}
 
-void DummyPort::disconnect_external(std::string name) {}
+void DummyPort::disconnect_external(std::string name) {
+    if (auto e = m_external_connections.lock()) {
+        e->disconnect(this, name);
+    }
+}
 
 void *DummyPort::maybe_driver_handle() const {
     return (void*)this;
 }
 
-DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction)
-    : AudioPort<audio_sample_t>(), m_name(name),
-      DummyPort(name, direction, PortDataType::Audio),
+DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, std::shared_ptr<AudioPort<audio_sample_t>::BufferPool> buffer_pool, std::weak_ptr<DummyExternalConnections> external_connections)
+    : AudioPort<audio_sample_t>(buffer_pool), m_name(name),
+      DummyPort(name, direction, PortDataType::Audio, external_connections),
       m_direction(direction),
       m_queued_data(128) { }
 
@@ -51,10 +69,13 @@ float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
 }
 
 void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
-    log<log_level_debug>("Queueing {} samples", n_frames);
-    m_queued_data.push(
-        std::vector<audio_sample_t>(data, data + n_frames)
-    );
+    auto s = m_queued_data.read_available();
+    auto v = std::vector<audio_sample_t>(data, data + n_frames);
+    log<log_level_debug>("Queueing {} samples, {} sets queued total", n_frames, s);
+    if (should_log<log_level_debug_trace>()) {
+        log<log_level_debug_trace>("--> Queued samples: {}", v);
+    }
+    m_queued_data.push(v);
 }
 
 bool DummyAudioPort::get_queue_empty() {
@@ -70,6 +91,11 @@ void DummyAudioPort::PROC_process(uint32_t n_frames) {
     uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());
     if (to_store > 0) {
         log<log_level_debug>("Buffering {} samples ({} total)", to_store, m_retained_samples.size() + to_store);
+        if (should_log<log_level_debug_trace>()) {
+            std::array<audio_sample_t, 16> arr;
+            std::copy(buf, buf+std::min(to_store, (uint32_t)16), arr.begin());
+            log<log_level_debug_trace>("--> first 16 buffered samples: {}", arr);
+        }
         m_retained_samples.insert(m_retained_samples.end(), buf, buf+to_store);
         m_n_requested_samples -= to_store;
     }
@@ -82,7 +108,10 @@ void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
         auto &front = m_queued_data.front();
         uint32_t to_copy = std::min((size_t)(n_frames - filled), front.size());
         uint32_t total_copyable = m_queued_data.front().size();
-        log<log_level_debug>("Dequeueing {} of {} samples", to_copy, total_copyable);
+        log<log_level_debug>("Dequeueing {} of {} input samples", to_copy, total_copyable);
+        if (should_log<log_level_debug_trace>()) {
+            log<log_level_debug_trace>("--> Dequeued input samples: {}", front);
+        }
         memcpy((void *)(buf + filled), (void *)front.data(),
                sizeof(audio_sample_t) * to_copy);
         filled += to_copy;
@@ -101,12 +130,25 @@ void DummyAudioPort::request_data(uint32_t n_frames) {
 }
 
 std::vector<audio_sample_t> DummyAudioPort::dequeue_data(uint32_t n) {
-    if (n > m_retained_samples.size()) {
+    auto s = m_retained_samples.size();
+    if (n > s) {
         throw_error<std::runtime_error>("Not enough retained samples");
     }
+    log<log_level_debug>("Yielding {} of {} output samples", n, s);
     std::vector<audio_sample_t> rval(m_retained_samples.begin(), m_retained_samples.begin()+n);
     m_retained_samples.erase(m_retained_samples.begin(), m_retained_samples.begin()+n);
+    if (should_log<log_level_debug_trace>()) {
+        log<log_level_debug_trace>("--> Yielded samples: {}", rval);
+    }
     return rval;
+}
+
+unsigned DummyAudioPort::input_connectability() const {
+    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
+}
+
+unsigned DummyAudioPort::output_connectability() const {
+    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
 }
 
 MidiSortableMessageInterface &
@@ -147,8 +189,16 @@ bool DummyMidiPort::write_by_reference_supported() const { return true; }
 
 bool DummyMidiPort::write_by_value_supported() const { return true; }
 
-DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction)
-    : MidiPort(false, false, false), DummyPort(name, direction, PortDataType::Midi){
+DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction, std::weak_ptr<DummyExternalConnections> external_connections)
+    : MidiPort(true, false, false), DummyPort(name, direction, PortDataType::Midi, external_connections) {
+}
+
+unsigned DummyMidiPort::input_connectability() const {
+    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
+}
+
+unsigned DummyMidiPort::output_connectability() const {
+    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_Internal : ShoopPortConnectability_External;
 }
 
 void DummyMidiPort::clear_queues() {
@@ -174,7 +224,7 @@ void DummyMidiPort::request_data(uint32_t n_frames) {
     if (n_requested_frames > 0) {
         throw std::runtime_error("Previous request not yet completed");
     }
-    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("request {} frames", n_frames);
+    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("request {} frames", n_frames);
     n_requested_frames = n_frames;
     n_original_requested_frames = n_frames;
 }
@@ -184,18 +234,18 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
     auto progress_by = n_processed_last_round.load();
     progress_by -= std::min(n_requested_frames.load(), progress_by);
     if (progress_by > 0) {
-    // The queue was used last pass and needs to be truncated now for the current pass.
+        // The queue was used last pass and needs to be truncated now for the current pass.
         // (first erase msgs that will end up having a negative timestamp)
         std::erase_if(m_queued_msgs, [&, this](StoredMessage const& msg) {
             auto rval = msg.time < progress_by;
             if (rval) {
-                this->ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("msg dropped from MIDI dummy input queue");
+                this->ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("msg dropped from MIDI dummy input queue");
             }
             return rval;
         });
         std::for_each(m_queued_msgs.begin(), m_queued_msgs.end(), [&](StoredMessage &msg) {
             auto new_val = msg.time - progress_by;
-            ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_trace>("msg in queue: time {} -> {}", msg.time, new_val);
+            ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("msg in queue: time {} -> {}", msg.time, new_val);
             msg.time = new_val;
         });
     }
@@ -204,7 +254,7 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
 }
 
 void DummyMidiPort::PROC_process(uint32_t nframes) {
-    if (m_direction == shoop_port_direction_t::Output) {
+    if (m_direction == shoop_port_direction_t::ShoopPortDirection_Output) {
         std::stable_sort(m_buffer_data.begin(), m_buffer_data.end(), [](StoredMessage const& a, StoredMessage const& b) {
             return a.time < b.time;
         });
@@ -220,6 +270,7 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
     }
     n_processed_last_round = nframes;
     n_requested_frames -= std::min(nframes, n_requested_frames.load());
+    MidiPort::PROC_process(nframes);
 }
 
 MidiReadableBufferInterface *
@@ -272,7 +323,7 @@ DummyMidiPort::~DummyMidiPort() { DummyPort::close(); }
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::enter_mode(DummyAudioMidiDriverMode mode) {
     if (m_mode.load() != mode) {
-        log<log_level_debug>("DummyAudioMidiDriver: mode -> {}", mode_names.at(mode));
+        Log::log<log_level_debug>("DummyAudioMidiDriver: mode -> {}", mode_names.at(mode));
         m_mode = mode;
         m_controlled_mode_samples_to_process = 0;
 
@@ -290,7 +341,7 @@ template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::controlled_mode_request_samples(uint32_t samples) {
     m_controlled_mode_samples_to_process += samples;
     uint32_t requested = m_controlled_mode_samples_to_process.load();
-    log<log_level_debug>("DummyAudioMidiDriver: request {} samples ({} total)", samples, requested);
+    Log::log<log_level_debug>("DummyAudioMidiDriver: request {} samples ({} total)", samples, requested);
 }
 
 template <typename Time, typename Size>
@@ -307,12 +358,13 @@ DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver()
       m_mode(DummyAudioMidiDriverMode::Automatic),
       m_controlled_mode_samples_to_process(0),
       m_audio_port_closed_cb(nullptr), m_audio_port_opened_cb(nullptr),
-      m_midi_port_closed_cb(nullptr), m_midi_port_opened_cb(nullptr)
+      m_midi_port_closed_cb(nullptr), m_midi_port_opened_cb(nullptr),
+      m_external_connections(std::make_shared<DummyExternalConnections>())
 {
     m_audio_ports.clear();
     m_midi_ports.clear();
 
-    log<log_level_debug>("DummyAudioMidiDriver: constructed");
+    Log::log<log_level_debug>("DummyAudioMidiDriver: constructed");
 }
 
 template <typename Time, typename Size>
@@ -329,46 +381,52 @@ void DummyAudioMidiDriver<Time, Size>::start(
     AudioMidiDriver::set_dsp_load(0.0f);
     AudioMidiDriver::set_maybe_client_handle(nullptr);
 
-    log<log_level_debug>("Starting (sample rate {}, buf size {})", _settings.sample_rate, _settings.buffer_size);
+    Log::log<log_level_debug>("Starting (sample rate {}, buf size {})", _settings.sample_rate, _settings.buffer_size);
+
+    // Processing the command queue once will ensure that it knows processing is active.
+    // That way commands added from now on will be executed on the process thread.
+    ma_queue.PROC_exec_all();
 
     m_proc_thread = std::thread([this] {
-        log<log_level_debug>("Starting process thread - {}", mode_names.at(m_mode));
+        Log::log<log_level_debug>("Starting process thread - {}", mode_names.at(m_mode));
         auto bufs_per_second = AudioMidiDriver::get_sample_rate() / AudioMidiDriver::get_buffer_size();
         auto interval = 1.0f / ((float)bufs_per_second);
         auto micros = uint32_t(interval * 1000000.0f);
+        float time_taken = 0.0f;
         while (!this->m_finish) {
-            std::this_thread::sleep_for(std::chrono::microseconds(micros));
+            std::this_thread::sleep_for(std::chrono::microseconds((uint32_t)std::ceil(std::max(0.0f, micros - time_taken))));
             PROC_handle_command_queue();
             if (!m_paused) {
+                auto start = std::chrono::high_resolution_clock::now();
                 auto mode = m_mode.load();
                 auto samples_to_process = m_controlled_mode_samples_to_process.load();
                 uint32_t to_process = mode == DummyAudioMidiDriverMode::Controlled ?
                     std::min(samples_to_process, AudioMidiDriver::get_buffer_size()) :
                     AudioMidiDriver::get_buffer_size();
-                log<log_level_trace>("Process {}", to_process);
+                Log::log<log_level_debug_trace>("Process {}", to_process);
                 AudioMidiDriver::PROC_process(to_process);
                 if (mode == DummyAudioMidiDriverMode::Controlled) {
                     m_controlled_mode_samples_to_process -= to_process;
                 }
+                auto end = std::chrono::high_resolution_clock::now();
+                time_taken = duration_cast<std::chrono::microseconds>(end - start).count();
             }
         }
-        log<log_level_debug>(
-            "Ending process thread");
+        Log::log<log_level_debug>("Ending process thread");
     });
-
     AudioMidiDriver::set_active(true);
 }
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::pause() {
-    log<log_level_debug>("DummyAudioMidiDriver: pause");
+    Log::log<log_level_debug>("DummyAudioMidiDriver: pause");
     m_paused = true;
     wait_process();
 }
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::resume() {
-    log<log_level_debug>("DummyAudioMidiDriver: resume");
+    Log::log<log_level_debug>("DummyAudioMidiDriver: resume");
     m_paused = false;
 }
 
@@ -380,9 +438,10 @@ DummyAudioMidiDriver<Time, Size>::~DummyAudioMidiDriver() {
 template <typename Time, typename Size>
 std::shared_ptr<AudioPort<audio_sample_t>>
 DummyAudioMidiDriver<Time, Size>::open_audio_port(std::string name,
-                                              shoop_port_direction_t direction) {
-    log<log_level_debug>("DummyAudioMidiDriver : add audio port");
-    auto rval = std::make_shared<DummyAudioPort>(name, direction);
+                                              shoop_port_direction_t direction,
+                                              std::shared_ptr<typename AudioPort<audio_sample_t>::BufferPool> buffer_pool) {
+    Log::log<log_level_debug>("DummyAudioMidiDriver : add audio port");
+    auto rval = std::make_shared<DummyAudioPort>(name, direction, buffer_pool, m_external_connections);
     m_audio_ports.insert(rval);
     return rval;
 }
@@ -391,8 +450,8 @@ template <typename Time, typename Size>
 std::shared_ptr<MidiPort>
 DummyAudioMidiDriver<Time, Size>::open_midi_port(std::string name,
                                              shoop_port_direction_t direction) {
-    log<log_level_debug>("DummyAudioMidiDriver: add midi port");
-    auto rval = std::make_shared<DummyMidiPort>(name, direction);
+    Log::log<log_level_debug>("DummyAudioMidiDriver: add midi port");
+    auto rval = std::make_shared<DummyMidiPort>(name, direction, m_external_connections);
     m_midi_ports.insert(rval);
     return rval;
 }
@@ -411,7 +470,7 @@ void DummyAudioMidiDriver<Time, Size>::close() {
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::controlled_mode_run_request(uint32_t timeout) {
-    log<log_level_debug>("DummyAudioMidiDriver: run request");
+    Log::log<log_level_debug>("DummyAudioMidiDriver: run request");
     auto s = std::chrono::high_resolution_clock::now();
     auto timed_out = [this, &timeout, &s]() {
         return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -429,8 +488,119 @@ void DummyAudioMidiDriver<Time, Size>::controlled_mode_run_request(uint32_t time
     wait_process();
 
     if (m_controlled_mode_samples_to_process > 0) {
-        log<log_level_error>("DummyAudioMidiDriver: run request timed out");
+        Log::log<log_level_error>("DummyAudioMidiDriver: run request timed out");
     }
+}
+
+std::vector<ExternalPortDescriptor> DummyExternalConnections::find_external_ports(
+        const char* maybe_name_regex,
+        shoop_port_direction_t maybe_direction_filter,
+        shoop_port_data_type_t maybe_data_type_filter
+    )
+{
+    std::vector<ExternalPortDescriptor> rval;
+    for(auto &p : m_external_mock_ports) {
+        bool name_matched = (!maybe_name_regex || std::regex_match(p.name, std::regex(std::string(maybe_name_regex))));
+        bool direction_matched = (maybe_direction_filter == ShoopPortDirection_Any) || maybe_direction_filter == p.direction;
+        bool data_type_matched = (maybe_data_type_filter == ShoopPortDataType_Any) || maybe_data_type_filter == p.data_type;
+        if (name_matched && direction_matched && data_type_matched) {
+            rval.push_back(p);
+        }
+    }
+
+    return rval;
+}
+
+template<typename Time, typename Size>
+std::vector<ExternalPortDescriptor> DummyAudioMidiDriver<Time, Size>::find_external_ports(
+        const char* maybe_name_regex,
+        shoop_port_direction_t maybe_direction_filter,
+        shoop_port_data_type_t maybe_data_type_filter
+    )
+{
+    return m_external_connections->find_external_ports(maybe_name_regex, maybe_direction_filter, maybe_data_type_filter);
+}
+
+void DummyExternalConnections::add_external_mock_port(std::string name, shoop_port_direction_t direction, shoop_port_data_type_t data_type) {
+    if (std::find_if(m_external_mock_ports.begin(), m_external_mock_ports.end(), [name](auto &a) { return a.name == name; }) == m_external_mock_ports.end()) {
+        m_external_mock_ports.push_back(ExternalPortDescriptor {
+            .name = name,
+            .direction = direction,
+            .data_type = data_type
+        });
+    }
+}
+
+void DummyExternalConnections::remove_external_mock_port(std::string name) {
+    auto new_end = std::remove_if(m_external_mock_ports.begin(), m_external_mock_ports.end(), [name](auto &a) { return a.name == name; });
+    
+    if(!(new_end == m_external_mock_ports.end())) {
+        m_external_mock_ports.erase(new_end, m_external_mock_ports.end());
+        // Remove connections also
+        auto new_conns_end = std::remove_if(m_external_connections.begin(), m_external_connections.end(), [name](auto &a) { return a.second == name; });
+        m_external_connections.erase(
+            new_conns_end,
+            m_external_connections.end()
+        );
+    }
+}
+
+void DummyExternalConnections::remove_all_external_mock_ports() {
+    m_external_mock_ports.clear();
+    m_external_connections.clear();
+}
+
+ExternalPortDescriptor &DummyExternalConnections::get_port(std::string name) {
+    auto it = std::find_if(m_external_mock_ports.begin(), m_external_mock_ports.end(), [name](auto &a) { return a.name == name; });
+    if (it == m_external_mock_ports.end()) {
+        throw std::runtime_error("Port not found");
+    }
+    return *it;
+}
+
+void DummyExternalConnections::connect(DummyPort* port, std::string external_port_name) {
+    auto pname = port->name();
+    log<log_level_debug>("connect {} to {}", pname, external_port_name);
+    auto &desc = get_port(external_port_name);
+    auto conn = std::make_pair(port, desc.name);
+    if (std::find(m_external_connections.begin(), m_external_connections.end(), conn) == m_external_connections.end()) {
+        m_external_connections.push_back(conn);
+    }
+}
+
+void DummyExternalConnections::disconnect(DummyPort* port, std::string external_port_name) {
+    auto pname = port->name();
+    log<log_level_debug>("disconnect {} from {}", pname, external_port_name);
+    auto &desc = get_port(external_port_name);
+    auto conn = std::make_pair(port, desc.name);
+    auto new_end = std::remove(m_external_connections.begin(), m_external_connections.end(), conn);
+    m_external_connections.erase(new_end, m_external_connections.end());
+}
+
+PortExternalConnectionStatus DummyExternalConnections::connection_status_of(const DummyPort* port) {
+    PortExternalConnectionStatus rval;
+    for (auto &conn : m_external_connections) {
+        rval[conn.second] = conn.first == port;
+    }
+    return rval;
+}
+
+template <typename Time, typename Size>
+void DummyAudioMidiDriver<Time, Size>::add_external_mock_port(std::string name, shoop_port_direction_t direction, shoop_port_data_type_t data_type) {
+    Log::log<log_level_debug>("add external mock port {}", name);
+    m_external_connections->add_external_mock_port(name, direction, data_type);
+}
+
+template <typename Time, typename Size>
+void DummyAudioMidiDriver<Time, Size>::remove_external_mock_port(std::string name) {
+    Log::log<log_level_debug>("remove external mock port {}", name);
+    m_external_connections->remove_external_mock_port(name);
+}
+
+template <typename Time, typename Size>
+void DummyAudioMidiDriver<Time, Size>::remove_all_external_mock_ports() {
+    Log::log<log_level_debug>("remove all external mock ports");
+    m_external_connections->remove_all_external_mock_ports();
 }
 
 template class DummyAudioMidiDriver<uint32_t, uint16_t>;

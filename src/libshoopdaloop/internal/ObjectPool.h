@@ -14,22 +14,24 @@ template<typename Object>
 class ObjectPool : public ModuleLoggingEnabled<"Backend.ObjectPool"> {
     boost::lockfree::queue<Object*> m_queue;
     const unsigned m_target_n_objects;
-    unsigned m_objects_size;
-    std::atomic<unsigned> m_actual_n_objects;
-    std::atomic<bool> m_finish;
+    unsigned m_objects_size = 0;
+    std::atomic<unsigned> m_actual_n_objects = 0;
+    std::atomic<bool> m_finish = false;
     std::thread m_replenish_thread;
-    std::atomic<bool> m_replenish;
-    std::atomic<bool> m_none_available;
+    std::atomic<bool> m_replenish = false;
+    std::atomic<bool> m_none_available = false;
     std::mutex m_mutex;
     std::condition_variable m_cv;
+    std::string m_name;
 
 public:
-    ObjectPool(size_t target_n_objects, size_t objects_size) :
+    ObjectPool(std::string name, size_t target_n_objects, size_t objects_size) :
         m_target_n_objects(target_n_objects),
         m_objects_size(objects_size),
         m_actual_n_objects(0),
         m_finish(false),
-        m_queue(target_n_objects)
+        m_queue(target_n_objects),
+        m_name(name)
     {
         fill();
         m_replenish = false;
@@ -100,7 +102,7 @@ protected:
             m_replenish = false;
             if (m_none_available) {
                 m_none_available = false;
-                log<log_level_warning>("One or more audio objects were allocated on the processing thread because "
+                log<log_level_warning>(m_name + ": One or more objects were allocated on the processing thread because "
                              "no pre-allocated objects were available from the pool.");
             }
             this->fill();

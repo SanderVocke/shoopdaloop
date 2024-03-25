@@ -9,8 +9,9 @@
 
 template<typename API>
 GenericJackAudioPort<API>::GenericJackAudioPort(std::string name, shoop_port_direction_t direction,
-                             jack_client_t *client, std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
-    : AudioPort<float>(), GenericJackPort<API>(name, direction, PortDataType::Audio, client, all_ports_tracker) {}
+                             jack_client_t *client, std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker,
+                             std::shared_ptr<typename AudioPort<jack_default_audio_sample_t>::BufferPool> buffer_pool)
+    : AudioPort<float>(buffer_pool), GenericJackPort<API>(name, direction, PortDataType::Audio, client, all_ports_tracker) {}
 
 template<typename API>
 void GenericJackAudioPort<API>::PROC_prepare(uint32_t nframes) {
@@ -42,6 +43,16 @@ float *GenericJackAudioPort<API>::PROC_get_buffer(uint32_t n_frames) {
 template<typename API>
 void GenericJackAudioPort<API>::PROC_process(uint32_t nframes) {
     AudioPort<jack_default_audio_sample_t>::PROC_process(nframes);
+}
+
+template<typename API>
+unsigned GenericJackAudioPort<API>::input_connectability() const {
+    return (m_direction == ShoopPortDirection_Input) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
+}
+
+template<typename API>
+unsigned GenericJackAudioPort<API>::output_connectability() const {
+    return (m_direction == ShoopPortDirection_Output) ? ShoopPortConnectability_External : ShoopPortConnectability_Internal;
 }
 
 template class GenericJackAudioPort<JackApi>;

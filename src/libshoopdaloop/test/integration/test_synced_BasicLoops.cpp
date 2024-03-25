@@ -40,7 +40,7 @@ TEST_CASE("SyncedBasicLoops - Loop Restart", "[SyncedBasicLoops]") {
     loop2->PROC_update_poi();
 
     std::set<std::shared_ptr<BasicLoop>> loops ({loop1, loop2});
-    process_loops<BasicLoop>(loops.begin(), loops.end(), 20);
+    process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), 20);
 
     REQUIRE(loop2->get_position() == 10);
     REQUIRE(loop2->get_mode() == LoopMode_Playing);
@@ -66,7 +66,7 @@ TEST_CASE("SyncedBasicLoops - Loop Restart LoopMode_Playing", "[SyncedBasicLoops
     loop2->PROC_update_poi();
 
     std::set<std::shared_ptr<BasicLoop>> loops ({loop1, loop2});
-    process_loops<BasicLoop>(loops.begin(), loops.end(), 20);
+    process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), 20);
 
     REQUIRE(loop2->get_position() == 110);
     REQUIRE(loop2->get_mode() == LoopMode_Playing);
@@ -75,7 +75,7 @@ TEST_CASE("SyncedBasicLoops - Loop Restart LoopMode_Playing", "[SyncedBasicLoops
     REQUIRE(loop1->get_mode() == LoopMode_Playing);
     REQUIRE(loop1->get_position() == 100);
 
-    process_loops<BasicLoop>(loops.begin(), loops.end(), 50);
+    process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), 50);
 
     REQUIRE(loop2->get_position() == 10);
     REQUIRE(loop2->get_mode() == LoopMode_Playing);

@@ -25,8 +25,8 @@ public:
     };
 
     enum class Direction {
-        Input,
-        Output
+        ShoopPortDirection_Input,
+        ShoopPortDirection_Output
     };
 
     struct Port;
@@ -36,12 +36,12 @@ public:
         jack_port_t *as_ptr() { return reinterpret_cast<jack_port_t*>(this); }
         static Port &from_ptr(jack_port_t *ptr) { return *reinterpret_cast<Port*>(ptr); }
 
-        std::string name;
-        Type type;
-        Direction direction;
+        std::string name = "";
+        Type type = Type::Audio;
+        Direction direction = Direction::ShoopPortDirection_Input;
         std::set<std::string> connections;
         Client &client;
-        bool valid;
+        bool valid = false;
         std::vector<float> audio_buffer;
         std::vector<MidiMessage<uint32_t, uint32_t>> midi_buffer;
 
@@ -57,7 +57,7 @@ public:
             }
         }
         Client &get_client() { return client; }
-        unsigned long get_flags() { return direction == Direction::Input ? JackPortIsInput : JackPortIsOutput; }
+        unsigned long get_flags() { return direction == Direction::ShoopPortDirection_Input ? JackPortIsInput : JackPortIsOutput; }
         std::set<std::string> &get_connections() { return connections; }
     };
 
@@ -65,9 +65,9 @@ public:
         jack_client_t *as_ptr() { return reinterpret_cast<jack_client_t*>(this); }
         static Client &from_ptr(jack_client_t *ptr) { return *reinterpret_cast<Client*>(ptr); }
 
-        std::string name;
-        bool active;
-        bool valid;
+        std::string name = "";
+        bool active = false;
+        bool valid = false;
         std::map<std::string, Port> ports;
 
         Client(std::string name) : name(name), active(false), valid(true) {}
@@ -83,6 +83,12 @@ public:
             return ports.at(name);
         }
         void close_port(std::string name) {}
+        bool has_port(jack_port_t* p) {
+            for( auto &pp: ports ) {
+                if(pp.second.as_ptr() == p) { return true; }
+            }
+            return false;
+        }
     };
 
     static Port &internal_port_data(jack_port_t* port) {
@@ -92,39 +98,39 @@ public:
     static void internal_reset_api();
 
     static void* port_get_buffer(jack_port_t* port, jack_nframes_t nframes) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_buffer");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_buffer");
         auto rval = Port::from_ptr(port).get_buffer(nframes);
         jacktestapi_globals::buffers_to_ports[rval] = port;
         return rval;
     };
 
     static void port_get_latency_range(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_latency_range");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_latency_range");
         return;
     };
 
     static jack_nframes_t port_get_latency(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_latency");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL port_get_latency");
         return 0;
     };
 
     static int set_process_callback(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL set_process_callback");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL set_process_callback");
         return 0;
     };
 
     static int set_xrun_callback(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL set_xrun_callback");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL set_xrun_callback");
         return 0;
     };
     
     static int set_port_connect_callback(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL set_port_connect_callback");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL set_port_connect_callback");
         return 0;
     };
 
     static int set_port_rename_callback(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL set_port_rename_callback");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL set_port_rename_callback");
         return 0;
     };
 
@@ -161,24 +167,24 @@ public:
     static int port_unregister(auto ...args) { return 0; };
 
     static int activate(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL activate");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL activate");
         return 0;
     };
 
     static int client_close(auto ...args) { return 0; };
 
     static jack_nframes_t get_sample_rate(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL get_sample_rate");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL get_sample_rate");
         return 48000;
     }
 
     static jack_nframes_t get_buffer_size(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL get_buffer_size");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL get_buffer_size");
         return 2048;
     }
     
     static float cpu_load(auto ...args) {
-        logging::log<"Backend.JackTestApi", log_level_trace>(std::nullopt, std::nullopt, "UNIMPL cpu_load");
+        logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "UNIMPL cpu_load");
         return 0.0f;
     }
 
@@ -213,6 +219,10 @@ public:
 
     static int connect(jack_client_t* client, const char* src, const char* dst);
     static int disconnect(jack_client_t* client, const char* src, const char* dst);
+
+    static void free(void* ptr);
+
+    static bool port_is_mine(jack_client_t* client, jack_port_t* port);
 };
 
 namespace jacktestapi_globals {

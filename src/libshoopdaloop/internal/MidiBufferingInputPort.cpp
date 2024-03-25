@@ -10,7 +10,7 @@ MidiBufferingInputPort::PROC_get_event_reference(uint32_t idx) {
     return m_temp_midi_storage[idx];
 }
 
-MidiBufferingInputPort::MidiBufferingInputPort(uint32_t reserve_size) : MidiPort(false, false, false) {
+MidiBufferingInputPort::MidiBufferingInputPort(uint32_t reserve_size) : MidiPort(true, false, false) {
     m_temp_midi_storage.reserve(reserve_size);
 }
 

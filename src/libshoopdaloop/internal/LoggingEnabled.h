@@ -21,6 +21,14 @@ public:
         }
     }
 
+    template<shoop_log_level_t Level>
+    bool should_log() const {
+        if constexpr (Level>=LevelFilter) {
+            return logging::should_log<Name, Level>();
+        }
+        return false;
+    }
+
     template<typename Exception, typename First, typename... Args>
     void throw_error(fmt::format_string<First, Args...>&& fmt, First && first, Args &&... args) const
     {
@@ -38,8 +46,17 @@ public:
                    const char* fl = BOOST_CURRENT_LOCATION.file_name(),
                    uint32_t ln = BOOST_CURRENT_LOCATION.line()) const
     {
-        if (log_level_trace >= LevelFilter) {
-            log<log_level_trace>("{}:{} - {}", fl, ln, fn);
+        if (log_level_debug_trace >= LevelFilter) {
+            log<log_level_debug_trace>("{}:{} - {}", fl, ln, fn);
+        }
+    }
+
+    void log_always_trace(const char* fn = BOOST_CURRENT_LOCATION.function_name(),
+                   const char* fl = BOOST_CURRENT_LOCATION.file_name(),
+                   uint32_t ln = BOOST_CURRENT_LOCATION.line()) const
+    {
+        if (log_level_always_trace >= LevelFilter) {
+            log<log_level_always_trace>("{}:{} - {}", fl, ln, fn);
         }
     }
 

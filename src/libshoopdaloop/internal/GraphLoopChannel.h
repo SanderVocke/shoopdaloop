@@ -5,16 +5,15 @@
 #include "shoop_globals.h"
 #include "GraphNode.h"
 #include "LoggingEnabled.h"
-class GraphLoopChannel : public std::enable_shared_from_this<GraphLoopChannel>,
-                         public HasTwoGraphNodes,
+class GraphLoopChannel:  public HasTwoGraphNodes,
                          protected ModuleLoggingEnabled<"Backend.GraphLoopChannel"> {
 public:
-    std::shared_ptr<ChannelInterface> channel;
+    std::shared_ptr<ChannelInterface> channel = nullptr;
     std::weak_ptr<GraphLoop> loop;
     std::weak_ptr<GraphPort> mp_input_port_mapping;
     std::weak_ptr<BackendSession> backend;
     std::weak_ptr<GraphPort> mp_output_port_mapping;
-    std::atomic<unsigned> ma_data_sequence_nr;
+    std::atomic<unsigned> ma_data_sequence_nr = 0;
 
     GraphLoopChannel(std::shared_ptr<ChannelInterface> chan,
                 std::shared_ptr<GraphLoop> loop,
@@ -29,6 +28,11 @@ public:
     void disconnect_output_ports(bool thread_safe=true);
     void disconnect_input_port(std::shared_ptr<GraphPort> port, bool thread_safe=true);
     void disconnect_input_ports(bool thread_safe=true);
+
+    // Adopt the ringbuffer contents of any input port that has an active ringbuffer
+    // into the channel contents.
+    // If not offset is given, offset will be set to 0 to start playback from the beginning.
+    void adopt_ringbuffer_contents(std::optional<unsigned> reverse_start_offset, bool thread_safe=true);
 
     void PROC_prepare(uint32_t nframes);
     void PROC_process(uint32_t nframes);

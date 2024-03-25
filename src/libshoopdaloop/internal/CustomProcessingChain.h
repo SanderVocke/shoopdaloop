@@ -3,6 +3,9 @@
 #include <functional>
 #include <atomic>
 #include "LoggingEnabled.h"
+#include "shoop_globals.h"
+
+template<typename SampleT> class AudioPort;
 
 template<typename TimeType, typename SizeType>
 class CustomProcessingChain : public ProcessingChainInterface<TimeType, SizeType>,
@@ -17,8 +20,8 @@ public:
         std::vector<SharedMidiPort> &)>;
 
 private:
-    std::atomic<bool> m_active;
-    std::atomic<bool> m_freewheeling;
+    std::atomic<bool> m_active = false;
+    std::atomic<bool> m_freewheeling = false;
 
     std::vector<SharedInternalAudioPort> m_input_audio_ports;
     std::vector<SharedInternalAudioPort> m_output_audio_ports;
@@ -31,7 +34,8 @@ public:
     CustomProcessingChain(uint32_t n_audio_inputs,
                           uint32_t n_audio_outputs,
                           uint32_t n_midi_inputs,
-                          ProcessFunctor process_callback);
+                          ProcessFunctor process_callback,
+                          std::shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool);
     
     std::vector<SharedInternalAudioPort> const& input_audio_ports() const override;
     std::vector<SharedInternalAudioPort> const& output_audio_ports() const override;

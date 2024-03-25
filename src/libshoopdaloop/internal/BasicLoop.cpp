@@ -165,9 +165,6 @@ void BasicLoop::PROC_process(uint32_t n_samples) {
         case LoopMode_PlayingDryThroughWet:
         case LoopMode_RecordingDryIntoWet:
             pos_after = std::min(pos_after + n_samples, length_after);
-            if (pos_after == pos_before) {
-                process_channel_mode = LoopMode_Stopped;
-            }
             break;
         default:
             break;
@@ -409,8 +406,10 @@ void BasicLoop::get_first_planned_transition(shoop_loop_mode_t &maybe_mode_out, 
 }
 
 void BasicLoop::set_length(uint32_t len, bool thread_safe) {
+    log<log_level_debug>("set length: {}", len);
 
     auto fn = [this, len]() {
+        log<log_level_debug_trace>("apply set length: {}", len);
         if (len != ma_length) {
             ma_length = len;
             if (ma_position >= len) {
@@ -427,8 +426,10 @@ void BasicLoop::set_length(uint32_t len, bool thread_safe) {
 }
 
 void BasicLoop::set_mode(shoop_loop_mode_t mode, bool thread_safe) {
+    log<log_level_debug>("set mode: {}", (int)mode);
 
     auto fn = [this, mode]() {
+        log<log_level_debug_trace>("apply set mode: {}", (int)mode);
         PROC_handle_transition(mode);
     };
     if (thread_safe) { exec_process_thread_command(fn); }

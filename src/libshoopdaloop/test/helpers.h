@@ -9,6 +9,7 @@
 #include "MidiMessage.h"
 #include <cstring>
 #include "LoggingBackend.h"
+#include "midi_helpers.h"
 #include "types.h"
 #include "libshoopdaloop.h"
 #include <catch2/catch_test_macros.hpp>
@@ -89,7 +90,7 @@ template<typename Message>
 inline Message create_noteOn(uint32_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
     Message rval;
     rval.time = time;
-    rval.data = { static_cast<unsigned char>(0x90 + channel), note, velocity };
+    rval.data = noteOn(channel, note, velocity);
     rval.size = rval.data.size();
     return rval;
 }
@@ -98,7 +99,7 @@ template<typename Message>
 inline Message create_noteOff(uint32_t time, uint8_t channel, uint8_t note, uint8_t velocity) {
     Message rval;
     rval.time = time;
-    rval.data = { static_cast<unsigned char>(0x80 + channel), note, velocity };
+    rval.data = noteOff(channel, note, velocity);
     rval.size = rval.data.size();
     return rval;
 }

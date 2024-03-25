@@ -10,6 +10,8 @@ from PySide6.QtQml import QQmlDebuggingEnabler
 from PySide6.QtQuick import QQuickWindow
 
 from .ShoopPyObject import *
+from .Backend import close_all_backends
+import shoopdaloop.lib.crash_handling as crash_handling
 
 have_nsm = os.name == 'posix'
 if have_nsm:
@@ -22,7 +24,7 @@ from ..logging import *
 from ..directories import *
 
 class Application(ShoopQApplication):
-    exit_handler_called = Signal()
+    exit_handler_called = ShoopSignal()
 
     def __init__(self,
                  title,
@@ -45,7 +47,7 @@ class Application(ShoopQApplication):
         self.setApplicationVersion(pkg_version)
         self.setOrganizationName('ShoopDaLoop')
 
-        self.logger = Logger("Frontend.App")
+        self.logger = Logger("Frontend.Application")
 
         self.nsm_client = None
         self.title = title
@@ -94,7 +96,7 @@ class Application(ShoopQApplication):
                 if len(self.engine.rootObjects()) > 0:
                     self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
         
-        self.setWindowIcon(QIcon(os.path.join(installation_dir(), 'resources', 'icon', 'icon-128.png')))
+        self.setWindowIcon(QIcon(os.path.join(installation_dir(), 'resources', 'iconset', 'icon_128x128.png')))
     
     def unload_qml(self):
         if self.engine:
@@ -108,12 +110,11 @@ class Application(ShoopQApplication):
                     self.logger.debug(f"deleteLater on {obj}")
                     obj.deleteLater()
             self.engine.deleteLater()
-            self.wait(100)
             self.engine = None
-            self.wait(10)
     
     def load_qml(self, filename, quit_on_quit=True):
         self.engine = QQmlApplicationEngine(parent=self)
+        crash_handling.register_js_engine(self.engine)
         self.engine.destroyed.connect(lambda: self.logger.debug("QML engine being destroyed."))
         self.engine.addImportPath(os.path.join(scripts_dir(), 'lib', 'qml'))
         self.engine.addImportPath(os.path.join(installation_dir(), 'lib', 'qml', 'generated'))
@@ -134,16 +135,13 @@ class Application(ShoopQApplication):
         self.unload_qml()
         self.load_qml(filename, quit_on_quit)        
     
-    def exit(self, retcode):
+    def exit(self):
         if self.nsm_client:
             self.logger.debug(lambda: "Requesting exit from NSM.")
             self.nsm_client.serverSendExitToSelf()
         else:
             self.logger.debug(lambda: "Exiting.")
-            self.really_exit(retcode)
-
-    def really_exit(self, retcode):
-        super(Application, self).exit(retcode)
+            self.do_quit()
     
     # Ensure that we forward any terminating signals to our child
     # processes
@@ -232,14 +230,14 @@ class Application(ShoopQApplication):
             self.root_context_items['key_modifiers'].process(event)
         return False
     
-    @Slot('QVariant', 'QVariant')
+    @ShoopSlot('QVariant', 'QVariant')
     def onQmlObjectCreated(self, obj, url):
         if obj:
             self.logger.debug(lambda: "Created QML object: {}".format(url))
         else:
             self.logger.error(lambda: "Failed to create QML object: {}".format(url))
     
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def onQmlWarnings(self, warnings):            
         for warning in warnings:
             msgtype = warning.messageType()
@@ -253,23 +251,25 @@ class Application(ShoopQApplication):
             else:
                 self.logger.error(lambda: msg)
     
-    @Slot(int)
+    @ShoopSlot(int)
     def wait(self, ms):
         end = time.time() + ms * 0.001
         while time.time() < end:
             self.processEvents()
             self.sendPostedEvents()
 
-    @Slot()
+    @ShoopSlot()
     def do_quit(self):
         self.logger.debug("Quit requested")
         if not self._quitting:
             self._quitting = True
             if self.engine:
-                self.engine.destroyed.connect(self.quit)
                 self.unload_qml()
             else:
+                self.logger.debug("Terminating back-ends")
+                close_all_backends()
                 terminate_all_backends()
-                self.quit()
+                QTimer.singleShot(1, lambda: self.quit())
+                self.exec()
     
         

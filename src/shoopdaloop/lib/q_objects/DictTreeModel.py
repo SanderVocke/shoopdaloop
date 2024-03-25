@@ -98,7 +98,7 @@ class DictTreeModelFactory(ShoopQObject):
     def __init__(self, parent=None):
         super(DictTreeModelFactory, self).__init__(parent)
     
-    @Slot('QVariant', str, list, list, result='QVariant')
+    @ShoopSlot('QVariant', str, list, list, result='QVariant')
     def create(self, data, tree_separator, column_roles, column_headers):
         if isinstance(data, QJSValue):
             data = data.toVariant()

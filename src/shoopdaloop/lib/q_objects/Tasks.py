@@ -17,12 +17,12 @@ class Tasks(ShoopQObject):
         return self._n_done >= len(self._tasks)
 
     # anything_to_do
-    anythingToDoChanged = Signal(bool)
-    @Property(bool, notify=anythingToDoChanged)
+    anythingToDoChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=anythingToDoChanged)
     def anything_to_do(self):
         return not self.calc_all_done()
     
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def add_task(self, task):
         self.logger.debug(lambda: 'Adding task {}, anything to do: {}'.format(task, not self.calc_all_done()))
         prev_all_done = self.calc_all_done()
@@ -35,7 +35,7 @@ class Tasks(ShoopQObject):
         
         task.anythingToDoChanged.connect(self.task_changed)
     
-    @Slot(bool)
+    @ShoopSlot(bool)
     def task_changed(self, anything_to_do):
         self.logger.debug(lambda: 'Task changed, anything to do: {}'.format(not self.calc_all_done()))
         prev_all_done = self.calc_all_done()
@@ -47,7 +47,7 @@ class Tasks(ShoopQObject):
         if prev_all_done != cur_all_done:
             self.anythingToDoChanged.emit(not cur_all_done)
     
-    @Slot('QVariant')
+    @ShoopSlot('QVariant')
     def when_finished(self, fn):
         def exec_fn():
             self.logger.debug(lambda: 'All tasks finished, calling callback')

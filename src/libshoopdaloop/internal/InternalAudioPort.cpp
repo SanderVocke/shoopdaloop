@@ -4,11 +4,13 @@
 #include <stdexcept>
 #include <cstring>
 #include <iostream>
+#include "types.h"
 
 template <typename SampleT>
 InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
-                                              uint32_t n_frames)
-    : AudioPort<SampleT>(), m_name(name), m_buffer(n_frames) {}
+                                              uint32_t n_frames,
+                                              std::shared_ptr<typename AudioPort<SampleT>::BufferPool> buffer_pool)
+    : AudioPort<SampleT>(buffer_pool), m_name(name), m_buffer(n_frames) {}
 
 template <typename SampleT>
 SampleT *InternalAudioPort<SampleT>::PROC_get_buffer(uint32_t n_frames) {
@@ -59,6 +61,16 @@ void InternalAudioPort<SampleT>::PROC_prepare(uint32_t nframes) {
 template <typename SampleT>
 void InternalAudioPort<SampleT>::PROC_process(uint32_t nframes) {
     AudioPort<SampleT>::PROC_process(nframes);
+}
+
+template <typename SampleT>
+unsigned InternalAudioPort<SampleT>::input_connectability() const {
+    return ShoopPortConnectability_Internal;
+}
+
+template <typename SampleT>
+unsigned InternalAudioPort<SampleT>::output_connectability() const {
+    return ShoopPortConnectability_Internal;
 }
 
 template class InternalAudioPort<float>;

@@ -14,6 +14,24 @@ There are two ways to control this:
 * Synchronization is always off while a Ctrl key is held (usually easier).
 
 
+Always-on Recording
+^^^^^^^^^^^^^^^^^^^
+
+Having to manually trigger recordings ahead of time can cost focus and break your flow.
+For that reason, **ShoopDaLoop** allows you to record a loop in hindsight. You can just play, and when something nice happens, capture it afterward.
+
+The feature doesn't need to be manually enabled. All you need to do is press the "grab" button or respective keyboard/MIDI control.
+
+Note that "grabbing" will grab a fixed amount of data, and then use the global **n cycles** control to set the playback range.
+That is to say: you seemingly grab **n cycles** sync cycles of data, but can still expand the selection later from the details view.
+
+.. figure:: resources/grab_button.png
+   :width: 100px
+   :alt: Grab button
+
+   The "grab" button.
+
+
 Loop Modes and Transitions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -53,6 +71,19 @@ To hear the pre-recorded part back, you need to enable **pre-playback**. This is
 ..
   TODO: describe in detail with pictures
 
+MIDI looping
+^^^^^^^^^^^^
+
+In principle, MIDI loops work the same as audio loops. However, playing back a MIDI signal will not always result in the exact same sound as the first recording, because:
+
+* The audio synthesis (in plugin or external JACK application) may have internal state that is not directly controlled by MIDI;
+* MIDI has a state, which includes all CC values, pitch bend, notes already active at recording start, etc.
+
+The way ShoopDaLoop approaches MIDI playback is to approximate the state at the start of recording as closely as possible. That means:
+
+* ShoopDaLoop will restore states like CCs (including sustain pedal, mod wheel, pitch) to the state they were in when recording started, at the start of every playback loop.
+* If a note was already active when recording started, ShoopDaLoop will remember this and play the same note at the start of every playback loop. One advantage of this is if a note was played just slightly before recording start, it will sound indistinguishable in most cases. Note that this does not in include notes that are finished (on + off) just before recording start.
+
 Composite Loops
 ^^^^^^^^^^^^^^^
 
@@ -61,7 +92,7 @@ A **composite loop** can be created by selecting an empty slot, then holding **A
 * Normally at the end of the current sequence. Note that the same loop may also be clicked multiple times to add it repeatedly.
 * If **Ctrl** is also held, it is added in parallel of the current sequence.
 
-Note that **Alt**+click will append to the first "timeline". So for example, if a short loop is composed in parallel with a long one, **Alt**-click will add an additional loop to play right after the short one.
+Note that **Alt** + click will append to the first "timeline". So for example, if a short loop is composed in parallel with a long one, **Alt** - click will add an additional loop to play right after the short one.
 
 For advanced editing of the sequence, the loop details window should be used (note that at the time of writing this, that is unimplemented).
 

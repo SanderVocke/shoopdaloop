@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <utility>
 #include "types.h"
+#include "PortInterface.h"
 
 // A generic channel is a class which can run as a dependent on an actual loop. It does
 // not manage its own mode transitions, position or length, but instead is tightly
@@ -74,6 +75,12 @@ public:
     // Get a sequence number which increments whenever the content, of this channel changes.
     // Can be used for e.g. "dirty" detection.
     virtual unsigned get_data_seq_nr() const = 0;
+
+    virtual void adopt_ringbuffer_contents(
+        std::shared_ptr<PortInterface> from_port,
+        std::optional<unsigned> reverse_start_offset,
+        bool thread_safe
+    ) = 0;
 
     ChannelInterface() = default;
     virtual ~ChannelInterface() {}

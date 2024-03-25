@@ -12,16 +12,16 @@ from PySide6.QtQuick import QQuickItem
 
 from .AudioPort import AudioPort
 from .LoopChannel import LoopChannel
+from .ShoopPyObject import *
 
 from ..logging import *
 
 # Wraps a back-end loop audio channel.
 class LoopAudioChannel(LoopChannel):
-
     def __init__(self, parent=None):
         super(LoopAudioChannel, self).__init__(parent)
-        self._output_peak = 0.0
-        self._gain = 1.0
+        self._output_peak = self._new_output_peak = 0.0
+        self._gain = self._new_gain = 1.0
         self._initial_gain_pushed = False
         self.logger = Logger("Frontend.AudioChannel")
     
@@ -37,14 +37,14 @@ class LoopAudioChannel(LoopChannel):
     ######################
 
     # output peak
-    outputPeakChanged = Signal(float)
-    @Property(float, notify=outputPeakChanged)
+    outputPeakChanged = ShoopSignal(float)
+    @ShoopProperty(float, notify=outputPeakChanged)
     def output_peak(self):
         return self._output_peak
     
     # gain
-    gainChanged = Signal(float)
-    @Property(float, notify=gainChanged)
+    gainChanged = ShoopSignal(float)
+    @ShoopProperty(float, notify=gainChanged)
     def gain(self):
         return self._gain
     
@@ -52,7 +52,7 @@ class LoopAudioChannel(LoopChannel):
     # SLOTS
     ######################
     
-    @Slot(list)
+    @ShoopSlot(list, thread_protection=ThreadProtectionType.AnyThread)
     def load_data(self, data):
         self.requestBackendInit.emit()
         if self._backend_obj:
@@ -60,13 +60,13 @@ class LoopAudioChannel(LoopChannel):
         else:
             self.initializedChanged.connect(lambda: self._backend_obj.load_data(data))
     
-    @Slot(result=list)
+    @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
     def get_data(self):
         if not self._backend_obj:
             self.logger.throw_error("Attempting to get data of an invalid audio channel.")
         return self._backend_obj.get_data()
     
-    @Slot(float)
+    @ShoopSlot(float)
     def set_gain(self, gain):
         if self._backend_obj:
             self._backend_obj.set_gain(gain)
@@ -74,12 +74,23 @@ class LoopAudioChannel(LoopChannel):
             self._gain = gain
             self.gainChanged.emit(gain)
     
-    @Slot()
-    def update_impl(self, state):
-        if state.output_peak != self._output_peak:
-            self._output_peak = state.output_peak
+    def updateOnOtherThreadSubclassImpl(self, state):
+        if state.output_peak != self._new_output_peak:
+            self._new_output_peak = state.output_peak
+        else:
+            if state.gain != self._new_gain:
+                self._new_gain = state.gain
+    
+    def updateOnGuiThreadSubclassImpl(self):
+        if not self.isValid():
+            return
+        if self._output_peak != self._new_output_peak:
+            self._output_peak = self._new_output_peak
             self.outputPeakChanged.emit(self._output_peak)
         else:
-            if state.gain != self._gain:
-                self._gain = state.gain
+            if self._gain != self._new_gain:
+                self._gain = self._new_gain
                 self.gainChanged.emit(self._gain)
+    
+    def get_display_data(self):
+        return self.get_data()

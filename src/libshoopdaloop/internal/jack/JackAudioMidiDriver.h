@@ -1,5 +1,6 @@
 #pragma once
 #include "AudioMidiDriver.h"
+#include "AudioPort.h"
 #include "JackAllPorts.h"
 #include "JackApi.h"
 #include "JackTestApi.h"
@@ -12,8 +13,8 @@
 struct JackAudioMidiDriverSettings : public AudioMidiDriverSettingsInterface {
     JackAudioMidiDriverSettings() {}
 
-    std::string client_name_hint;
-    std::optional<std::string> maybe_server_name_hint;
+    std::string client_name_hint = "";
+    std::optional<std::string> maybe_server_name_hint = std::nullopt;
 };
 
 template<typename API>
@@ -21,9 +22,10 @@ class GenericJackAudioMidiDriver :
     public AudioMidiDriver,
     private ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">
 {
+    using Log = ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">;
 private:
     std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
-    std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
+    std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker = nullptr;
     std::atomic<bool> m_started = false;
 
     static int PROC_process_cb_static (uint32_t nframes,
@@ -52,7 +54,8 @@ public:
 
     std::shared_ptr<AudioPort<float>> open_audio_port(
         std::string name,
-        shoop_port_direction_t direction
+        shoop_port_direction_t direction,
+        std::shared_ptr<typename AudioPort<jack_default_audio_sample_t>::BufferPool>
     ) override;
 
     std::shared_ptr<MidiPort> open_midi_port(
@@ -61,6 +64,12 @@ public:
     ) override;
 
     void close() override;
+
+    std::vector<ExternalPortDescriptor> find_external_ports(
+        const char* maybe_name_regex,
+        shoop_port_direction_t maybe_direction_filter,
+        shoop_port_data_type_t maybe_data_type_filter
+    ) override;
 };
 
 using JackAudioMidiDriver = GenericJackAudioMidiDriver<JackApi>;

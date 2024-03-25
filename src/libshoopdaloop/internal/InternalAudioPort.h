@@ -4,7 +4,7 @@
 
 template<typename SampleT>
 class InternalAudioPort : public AudioPort<SampleT> {
-    std::string m_name;
+    std::string m_name = "";
     std::vector<SampleT> m_buffer;
 
 public:
@@ -13,7 +13,8 @@ public:
     // ShoopDaLoop.
     InternalAudioPort(
         std::string name,
-        uint32_t n_frames
+        uint32_t n_frames,
+        std::shared_ptr<typename AudioPort<SampleT>::BufferPool> maybe_ringbuffer_buffer_pool
     );
     
     SampleT *PROC_get_buffer(uint32_t n_frames) override;
@@ -34,6 +35,9 @@ public:
 
     void PROC_prepare(uint32_t nframes) override;
     void PROC_process(uint32_t nframes) override;
+
+    unsigned input_connectability() const override;
+    unsigned output_connectability() const override;
 };
 
 extern template class InternalAudioPort<float>;

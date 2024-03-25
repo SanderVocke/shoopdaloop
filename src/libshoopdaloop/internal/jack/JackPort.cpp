@@ -4,6 +4,8 @@
 #include "PortInterface.h"
 #include <algorithm>
 #include <stdexcept>
+#include <thread>
+#include <chrono>
 
 template<typename API>
 const char* GenericJackPort<API>::name() const { return m_name.c_str(); }
@@ -12,6 +14,7 @@ const char* GenericJackPort<API>::name() const { return m_name.c_str(); }
 template<typename API>
 void GenericJackPort<API>::close() {
     if (m_port) {
+        log<log_level_debug>("Closing JACK port: {}", m_name);
         API::port_unregister(m_client, m_port);
         m_port = nullptr;
     }
@@ -33,12 +36,20 @@ GenericJackPort<API>::GenericJackPort(std::string name,
 
     log<log_level_debug>("Opening JACK port: {}", name);
 
-    auto p = API::port_register(
-        m_client,
-        name.c_str(),
-        m_type == PortDataType::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE,
-        direction == shoop_port_direction_t::Input ? JackPortIsInput : JackPortIsOutput,
-        0);
+    jack_port_t* p = nullptr;
+    
+    // Try a few times, we may have race conditions with previously opened and now closing ports
+    for (size_t tries = 0; tries < 10; tries++) {
+        p = API::port_register(
+            m_client,
+            name.c_str(),
+            m_type == PortDataType::Audio ? JACK_DEFAULT_AUDIO_TYPE : JACK_DEFAULT_MIDI_TYPE,
+            direction == shoop_port_direction_t::ShoopPortDirection_Input ? JackPortIsInput : JackPortIsOutput,
+            0);
+        if (p != nullptr) { break; }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
 
     if (p == nullptr) {
         throw std::runtime_error("Unable to open port.");
@@ -86,7 +97,7 @@ void GenericJackPort<API>::connect_external(std::string name) {
         return;
     }
 
-    if (m_direction == shoop_port_direction_t::Input) {
+    if (m_direction == shoop_port_direction_t::ShoopPortDirection_Input) {
         API::connect(m_client, name.c_str(), API::port_name(m_port));
     } else {
         API::connect(m_client, API::port_name(m_port), name.c_str());
@@ -99,7 +110,7 @@ void GenericJackPort<API>::disconnect_external(std::string name) {
         return;
     }
 
-    if (m_direction == shoop_port_direction_t::Input) {
+    if (m_direction == shoop_port_direction_t::ShoopPortDirection_Input) {
         API::disconnect(m_client, name.c_str(), API::port_name(m_port));
     } else {
         API::disconnect(m_client, API::port_name(m_port), name.c_str());

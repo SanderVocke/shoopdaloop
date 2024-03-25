@@ -14,12 +14,21 @@ Actions on **loops** are synchronized to **triggers** of the **sync loop**. A **
 The sync loop may itself hold audio and/or MIDI data. A typical use is a click track. However, it is also perfectly fine to leave it empty and use it for synchronization only.
 
 .. figure:: resources/syncloop.gif
-   :width: 200px
+   :width: 400px
    :alt: Synchronization to the sync loop.
 
-   Synchronization to the sync loop.
+   Synchronization to the sync loop (note the picture needs updating, as at the time it was called "master loop").
 
+The global **n cycles** control determines how many sync loop cycles recording will be executed for.
+For example, with **n cycles** set to 4, if the sync loop represents one bar, recording on a loop will automatically progress to playback after recording 4 bars.
+The default setting for **n cycles** is 0 (infinite), meaning the loop will be recorded until manually stopped.
+If recording using the **always-on recording** feature, grabbing the always-on recording will also grab the specified amount of sync loop cycles.
 
+.. figure:: resources/n_cycles_control.png
+   :width: 150px
+   :alt: N cycles control
+
+   The N cycles control.
 
 Tracks
 -------
@@ -36,12 +45,13 @@ Tracks
 Composition and Sequencing
 --------------------------
 
-Any loop slot in **ShoopDaLoop** can be used as a **composite loop**. That means the loop wraps a combination of other loops. Use-cases:
+Any loop slot in **ShoopDaLoop** can be used as a **composite loop**. This is **ShoopDaLoop**'s way of providing concepts that may be familiar from other software, including:
 
-* As a **scene**: trigger multiple loops to play together.
-* As a **sequence**: trigger multiple loops to play one after the other (e.g. to represent a verse / chorus).
-* Combine them hierarchically to create entire **songs**.
-* **Planned recording**: recording into a composite loop automatically records into all its children - e.g. to record an entire track while each part of what you play gets stored in the correct sub-loop.
+* **scenes**;
+* **sequences** and **songs**;
+* **pre-scripted** recording and looping.
+
+For more information, see :ref:`Composite Loops <composite_loops>`.
 
 Effects / Synthesis
 ---------------------

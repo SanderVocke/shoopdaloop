@@ -16,3 +16,6 @@ portaudio
 
 # scripting stuff
 procps-ng
+
+#for checkout
+git

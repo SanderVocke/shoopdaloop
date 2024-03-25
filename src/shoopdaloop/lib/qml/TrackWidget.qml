@@ -29,8 +29,46 @@ Item {
 
     readonly property string obj_id : initial_descriptor.id
 
-    property bool loaded : audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops.loaded
-    property int n_loops_loaded : 0
+    property bool loaded : audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops_loaded
+
+    property var incubating_loops: []
+    property bool loops_loaded : false
+    property bool track_ready : loops_loaded
+    Item {
+        width: 0
+        height: 0
+        visible: false
+        id: incubating_loops_parent
+    }
+
+    function checkIncubatingLoops() {
+        if (incubating_loops.length == 0) {
+            return
+        }
+
+        function loop_loaded(incubator) {
+            if(incubator.status == Component.Loading) {
+                return false;
+            }
+            if(incubator.object && incubator.object.loaded == false) {
+                return false;
+            }
+            return true;
+        }
+
+        for(var i=0; i<incubating_loops.length; i++) {
+            if (!loop_loaded(incubating_loops[i])) {
+                return;
+            }
+        }
+
+        let new_loops = incubating_loops.filter((l) => l.status == Component.Ready).map((l) => l.object)
+        new_loops.forEach((l) => {
+            l.parent = loops_column
+        })
+        incubating_loops = []
+        root.loops_loaded = true
+    }
 
     // The sync loop has its own special track widget,
     // which is mostly the same but more limited.
@@ -68,6 +106,7 @@ Item {
     }
 
     function qml_close() {
+        root.logger.debug(`QML close ${root.name}`)
         reg_entry.close()
         ports.forEach(p => p.qml_close())
         for(var i=0; i<loops.length; i++) {
@@ -97,11 +136,17 @@ Item {
         } else if (loop_factory.status != Component.Ready) {
             throw new Error("TrackWidget: Loop factory not ready")
         } else {
-            var loop = loop_factory.createObject(loops_column, properties);
-            loop.onLoadedChanged.connect(() => {
-                loop_loaded_changed(loop)
-            })
-            return loop
+            var loop_incubator = loop_factory.incubateObject(incubating_loops_parent, properties);
+            incubating_loops.push(loop_incubator)
+            function on_status(status) {
+                if (status == Component.Ready) {
+                    let loop = loop_incubator.object
+                    loop.track_obj_id = Qt.binding(() => root.obj_id)
+                    checkIncubatingLoops()
+                }
+            }
+            loop_incubator.onStatusChanged = on_status
+            checkIncubatingLoops()
         }
     }
 
@@ -138,6 +183,7 @@ Item {
             Drag.hotSpot.x : width/2
             Drag.hotSpot.y : height/2
             Drag.source: root
+            Drag.keys: ['TrackWidget']
 
             Rectangle {
                 anchors {
@@ -192,8 +238,6 @@ Item {
     // Draggy rect for width ajustment
     Rectangle {
         id: width_adjuster
-        anchors {
-        }
         height: root.height
         width: 10
         x: 100
@@ -230,37 +274,28 @@ Item {
     property alias control_widget: lookup_control_widget.object
 
     Component.onCompleted: {
-        loaded = false
         if (initial_descriptor && initial_descriptor.width != undefined) {
             setWidth(initial_descriptor.width)
         }
-        var _n_loops_loaded = 0
         // Instantiate initial loops
         root.loop_descriptors.forEach((desc, idx) => {
-            var loop = root.add_loop({
+            root.add_loop({
                 initial_descriptor: desc,
                 track_idx: Qt.binding( () => root.track_idx ),
                 all_loops_in_track: Qt.binding( () => root.loops ),
                 maybe_fx_chain: Qt.binding( () => root.maybe_fx_chain )
             });
-            if (loop.loaded) { _n_loops_loaded += 1 }
         })
-        n_loops_loaded = _n_loops_loaded
-        loaded = Qt.binding(() => { return n_loops_loaded >= num_slots })
-    }
-
-    function loop_loaded_changed(loop) {
-        if(loop.loaded) {
-            n_loops_loaded = n_loops_loaded + 1;
-        } else {
-            n_loops_loaded = n_loops_loaded - 1;
-        }
     }
 
     function add_default_loop() {
         // Descriptor is automatically determined from the previous loop...
-        var prev_loop = root.loops[root.loops.length - 1]
-        var prev_desc = prev_loop.initial_descriptor
+        var prev_desc
+        for(var i=root.loops.length; i>=0; i--) {
+            let l = root.loops[i]
+            let desc = l && l.initial_descriptor ? l.initial_descriptor : undefined
+            if (desc) { prev_desc = desc; break; }
+        }
         // ...id
         var prev_id = prev_desc.id
         var id_parts = prev_id.split("_")
@@ -326,10 +361,10 @@ Item {
     property alias ports : lookup_ports.objects
     function is_audio(p) { return p.schema.match(/audioport\.[0-9]+/) }
     function is_midi(p)  { return p.schema.match(/midiport\.[0-9]+/)  }
-    function is_in(p)    { return p.direction == "input" && p.id.match(/.*_(?:in|direct)(?:_[0-9]*)?$/); }
-    function is_out(p)   { return p.direction == "output" && p.id.match(/.*_(?:out|direct)(?:_[0-9]*)?$/); }
-    function is_send(p)  { return p.direction == "output" && p.id.match(/.*_(?:send)(?:_[0-9]*)?$/); }
-    function is_return(p)  { return p.direction == "input" && p.id.match(/.*_(?:return)(?:_[0-9]*)?$/); }
+    function is_in(p)    { return p.id.match(/.*_(?:in|direct)(?:_[0-9]*)?$/); }
+    function is_out(p)   { return p.id.match(/.*_(?:out|direct)(?:_[0-9]*)?$/); }
+    function is_send(p)  { return p.id.match(/.*_(?:send)(?:_[0-9]*)?$/); }
+    function is_return(p)  { return p.id.match(/.*_(?:return)(?:_[0-9]*)?$/); }
     readonly property var audio_ports : ports.filter(p => p && is_audio(p.descriptor))
     readonly property var midi_ports : ports.filter(p => p && is_midi(p.descriptor))
     readonly property var input_ports : ports.filter(p => p && is_in(p.descriptor))
@@ -361,6 +396,17 @@ Item {
     }
 
     Item {
+        anchors.fill: parent
+
+        BusyIndicator {
+            anchors.centerIn: parent
+            running: true
+            visible: !root.track_ready
+        }
+    }
+
+    Item {
+        visible: root.track_ready
         property int x_spacing: 8
         property int y_spacing: 4
 
@@ -550,26 +596,88 @@ Item {
                     height: root.sync_loop_layout ? -24 : 0
                 }
 
-                Column {
-                    spacing: 2
-                    id: loops_column
-                    height: childrenRect.height
-                    
+                Item {
+                    height: loops_column.height
                     anchors {
                         left: parent.left
                         right: parent.right
                     }
 
-                    // Note: loops injected here
-                    onChildrenChanged: update_coords()
-                    function update_coords() {
-                        // Update loop indexes
-                        var idx=0
-                        for(var i=0; i<children.length; i++) {
-                            let c = children[i]
-                            if (c instanceof LoopWidget) {
-                                c.idx_in_track = idx;
-                                idx++;
+                    Column {
+                        spacing: 2
+                        id: loops_column
+                        height: childrenRect.height
+                        
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                        }
+
+                        // Note: loops injected here
+                        onChildrenChanged: update_coords()
+                        function update_coords() {
+                            // Update loop indexes
+                            var idx=0
+                            for(var i=0; i<children.length; i++) {
+                                let c = children[i]
+                                if (c instanceof LoopWidget) {
+                                    c.idx_in_track = idx;
+                                    idx++;
+                                }
+                            }
+                        }
+                    }
+
+                    // Repeater for the drag'n'drop drop areas to drop loops in.
+                    // These drop areas are in-between the loops and can be used to reorder them.
+                    Repeater {
+                        id: drop_areas_repeater
+                        anchors.fill: parent
+                        model: root.loops.length + 1
+
+                        DropArea {
+                            id: drop_area
+                            width: root.width
+                            height: 20
+                            keys: ['LoopWidget_track_' + root.obj_id]
+
+                            property var above_loop : index > 0 ? root.loops[index-1] : null
+                            property var below_loop : index < root.loops.length ? root.loops[index] : null
+
+                            onDropped: (event) => {
+                                let src_loop = drag.source
+                                let src_loop_idx = src_loop.idx_in_track
+                                let loops = root.loops
+                                var new_loops = []
+                                for (var i=0; i<loops.length+1; i++) {
+                                    if (i == index) {
+                                        new_loops.push(src_loop)
+                                    }
+                                    if (i != src_loop_idx && i < loops.length) {
+                                        new_loops.push(loops[i])
+                                    }
+                                }
+                                root.loops = new_loops
+                            }
+
+                            y : {
+                                if (above_loop) {
+                                    above_loop.y // dummy dependency
+                                    return above_loop.mapToItem(loops_column, 0, 0).y + above_loop.height + loops_column.spacing/2 - height/2
+                                }
+                                if (below_loop) {
+                                    below_loop.y // dummy dependency
+                                    return below_loop.mapToItem(loops_column, 0, 0).y - loops_column.spacing/2 - height/2
+                                }
+                                return 0
+                            }
+                            x : 0
+
+                            Rectangle {
+                                color: 'white'
+                                opacity: 0.7
+                                visible : (parent.above_loop || parent.below_loop) && drop_area.containsDrag
+                                anchors.fill: parent
                             }
                         }
                     }
