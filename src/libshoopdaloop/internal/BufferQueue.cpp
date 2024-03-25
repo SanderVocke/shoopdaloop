@@ -6,18 +6,19 @@
 template<typename SampleT>
 BufferQueue<SampleT>::BufferQueue(std::shared_ptr<BufferPool> pool, uint32_t max_buffers) : pool(pool) {
     buffers = std::make_shared<std::deque<Buffer>>();
-    ma_active_buffer_pos.store(pool->object_size()); // put at end of a virtual buffer, ensures new buffer will be created immediately
+    ma_active_buffer_pos.store(pool ? pool->object_size() : 0); // put at end of a virtual buffer, ensures new buffer will be created immediately
     ma_max_buffers.store(max_buffers);
 }
 
 template<typename SampleT>
 uint32_t BufferQueue<SampleT>::n_samples() const {
-    if (buffers->size() == 0) { return 0; }
+    if (buffers->size() == 0 || !pool) { return 0; }
     return (buffers->size() - 1) * pool->object_size() + ma_active_buffer_pos.load();
 }
 
 template<typename SampleT>
 void BufferQueue<SampleT>::PROC_put(const SampleT *data, uint32_t length) {
+    if (!pool) { return; }
     auto capacity = buffers->size() * pool->object_size();
     auto remaining = (size_t) length;
 
@@ -65,7 +66,7 @@ void BufferQueue<SampleT>::set_max_buffers(uint32_t max_buffers) {
         log<log_level_debug_trace>("set max buffers -> {}", max_buffers);
         buffers = new_buffers;
         ma_max_buffers.store(max_buffers);
-        ma_active_buffer_pos.store(pool->object_size());
+        ma_active_buffer_pos.store(pool ? pool->object_size() : 0);
     });
 }
 
@@ -82,6 +83,7 @@ unsigned BufferQueue<SampleT>::get_max_buffers() const {
 
 template<typename SampleT>
 uint32_t BufferQueue<SampleT>::single_buffer_size() const {
+    if (!pool) { return 0; }
     return pool->object_size();
 }
 
