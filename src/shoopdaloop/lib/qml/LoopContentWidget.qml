@@ -1,7 +1,6 @@
 import QtQuick 6.3
 import QtQuick.Controls 6.3
 import QtQuick.Controls.Material 6.3
-import ShoopDaLoop.PythonFetchChannelData
 import ShoopDaLoop.PythonLogger
 
 import '../mode_helpers.js' as ModeHelpers
@@ -91,7 +90,7 @@ Item {
                     to: 0.0
 
                     property real prev_samples_per_pixel: 0.0
-                    property real samples_per_pixel: Math.pow(2.0, value)
+                    readonly property real samples_per_pixel: slider_to_samples_per_pixel(value)
                     Component.onCompleted: prev_samples_per_pixel = samples_per_pixel
 
                     onSamples_per_pixelChanged: {
@@ -105,6 +104,16 @@ Item {
                     }
 
                     signal zoomed (real new_samples_per_pixel, real new_offset)
+
+                    function samples_per_pixel_to_slider(spp) {
+                        return Math.log2(spp)
+                    }
+                    function slider_to_samples_per_pixel(slider) {
+                        return Math.pow(2.0, slider)
+                    }
+                    function set_samples_per_pixel(spp) {
+                        value = samples_per_pixel_to_slider(spp)
+                    }
 
                     anchors {
                         verticalCenter: parent.verticalCenter
@@ -153,7 +162,7 @@ Item {
                 let show_n_samples = channels_combine_range.data_length
                 let margin_factor = 1.2
                 let margin_samples = show_n_samples * (margin_factor - 1.0)
-                zoom_slider.samples_per_pixel = show_n_samples * margin_factor / channels_column.width
+                zoom_slider.set_samples_per_pixel(show_n_samples * margin_factor / channels_column.width)
                 channels_column.samples_offset = -channels_combine_range.data_start - margin_samples / 2
             }
         }

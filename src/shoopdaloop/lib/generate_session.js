@@ -239,7 +239,6 @@ function generate_default_track(
                 true,
                 have_drywet_explicit_ports ? [send_id] : [fx_in_id], // internal connections
                 [],
-                true,
                 default_ringbuffer_size // always on ringbuffer on, because this port will be recorded by a channel
             )]
         if (have_drywet_explicit_ports) {

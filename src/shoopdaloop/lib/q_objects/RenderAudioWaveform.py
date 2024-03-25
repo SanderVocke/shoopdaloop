@@ -42,6 +42,7 @@ class Pyramid:
             for i in range(len(audio_data)):
                 array[i] = audio_data[i]
             self.pyramid = self.backend_create_pyramid(len(audio_data), array, 2048)
+            logger.trace(lambda: 'done creating pyramid')
     
     def destroy(self):
         if self.pyramid:
@@ -140,7 +141,7 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
             if sample < 0.0:
                 self._lines[i].setLine(
                     i, int(0.5*self.height()),
-                    i, int(0.5*self.height())
+                    i, int(0.5*self.height()) + 1
                 )
             else:
                 self._lines[i].setLine(
@@ -150,4 +151,5 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
 
         painter.setPen(QPen("red"))
         painter.drawLines(self._lines)
+        painter.drawLine(0, 0.5*self.height(), self.width(), 0.5*self.height())
         
