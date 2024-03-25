@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <utility>
 #include "types.h"
+#include "PortInterface.h"
 
 // A generic channel is a class which can run as a dependent on an actual loop. It does
 // not manage its own mode transitions, position or length, but instead is tightly
@@ -75,20 +76,11 @@ public:
     // Can be used for e.g. "dirty" detection.
     virtual unsigned get_data_seq_nr() const = 0;
 
-    // Channels should implement a ringbuffer which keeps track of (at least) N
-    // samples of the most recent data that flowed through. This is for retroactive recording.
-    // Get/set N with this interface.
-    virtual void set_ringbuffer_n_samples(unsigned n) = 0;
-    virtual unsigned get_ringbuffer_n_samples() const = 0;
-
-    // Tell the channel to take what is in the ringbuffer and adopt it as the current
-    // channel data.
-    // reverse_start_offset is the amount of samples back since the most recent one
-    // where playback should start.
-    // length will be stored in the length as expected.
-    // It is expected that the implementation will make this happen by queueing something
-    // to be done on the process thread.
-    virtual void adopt_ringbuffer_contents(unsigned reverse_start_offset, bool thread_safe=true) = 0;
+    virtual void adopt_ringbuffer_contents(
+        std::shared_ptr<PortInterface> from_port,
+        std::optional<unsigned> reverse_start_offset,
+        bool thread_safe
+    ) = 0;
 
     ChannelInterface() = default;
     virtual ~ChannelInterface() {}

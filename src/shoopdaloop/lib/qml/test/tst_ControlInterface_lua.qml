@@ -492,6 +492,7 @@ ShoopTestFile {
                         most_recent_event = nil
                         most_recent_loop = nil
                         local function callback(loop, event)
+                            print_error(event)
                             most_recent_loop = loop
                             most_recent_event = event
                         end
@@ -509,6 +510,7 @@ ShoopTestFile {
                     verify_eq_lua('most_recent_loop', '{0,0}')
 
                     loop_at(-1,0).set_length(100)
+                    testcase.wait_updated(session.backend)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('most_recent_event.length', '100')
                     verify_eq_lua('most_recent_loop', '{-1,0}')

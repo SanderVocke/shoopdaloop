@@ -70,6 +70,12 @@ void BufferQueue<SampleT>::set_max_buffers(uint32_t max_buffers) {
 }
 
 template<typename SampleT>
+void BufferQueue<SampleT>::set_min_n_samples(uint32_t n) {
+    unsigned bufs = (n + single_buffer_size() - 1) / single_buffer_size(); // Ceil
+    set_max_buffers(bufs);
+}
+
+template<typename SampleT>
 unsigned BufferQueue<SampleT>::get_max_buffers() const {
     return ma_max_buffers.load();
 }

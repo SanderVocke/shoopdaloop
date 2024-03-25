@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <BackendSession.h>
+#include <shoop_globals.h>
 
 using namespace shoop_types;
 using namespace shoop_constants;
@@ -220,4 +221,12 @@ WeakGraphNodeSet GraphLoopChannel::graph_node_1_outgoing_edges() {
         log<log_level_debug_trace>("found no outgoing edge to any port node");
     }
     return rval;
+}
+
+void GraphLoopChannel::adopt_ringbuffer_contents(std::optional<unsigned> reverse_start_offset, bool thread_safe) {
+    if (auto input = mp_input_port_mapping.lock()) {
+        if (channel) {
+            channel->adopt_ringbuffer_contents(input->maybe_shared_port(), reverse_start_offset, thread_safe);
+        }
+    }
 }

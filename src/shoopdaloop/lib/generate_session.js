@@ -1,4 +1,4 @@
-function generate_audio_port(id, name_parts, type, input_connectability, output_connectability, gain, muted, passthrough_muted, internal_port_connection_ids, external_port_connections) {
+function generate_audio_port(id, name_parts, type, input_connectability, output_connectability, gain, muted, passthrough_muted, internal_port_connection_ids, external_port_connections, always_on_ringbuffer) {
     var rval = {
         'id': id,
         'internal_port_connections': internal_port_connection_ids,
@@ -10,12 +10,13 @@ function generate_audio_port(id, name_parts, type, input_connectability, output_
         'gain': gain,
         'muted': muted,
         'passthrough_muted': passthrough_muted,
-        'external_port_connections': external_port_connections
+        'external_port_connections': external_port_connections,
+        'always_on_ringbuffer': always_on_ringbuffer
     }
     return rval
 }
 
-function generate_midi_port(id, name_parts, type, input_connectability, output_connectability, muted, passthrough_muted, internal_port_connection_ids, external_port_connections) {
+function generate_midi_port(id, name_parts, type, input_connectability, output_connectability, muted, passthrough_muted, internal_port_connection_ids, external_port_connections, always_on_ringbuffer) {
     var rval = {
         'id': id,
         'internal_port_connections': internal_port_connection_ids,
@@ -26,7 +27,8 @@ function generate_midi_port(id, name_parts, type, input_connectability, output_c
         'output_connectability': output_connectability,
         'muted': muted,
         'passthrough_muted': passthrough_muted,
-        'external_port_connections': external_port_connections
+        'external_port_connections': external_port_connections,
+        'always_on_ringbuffer': always_on_ringbuffer
     }
     return rval
 }
@@ -172,7 +174,8 @@ function generate_default_track(
                 false,
                 false,
                 [], // internal connections
-                []
+                [],
+                false // no always on ringbuffer
             ))
         }
         for (var i=0; i<n_fx_audio_outputs; i++) {
@@ -187,7 +190,8 @@ function generate_default_track(
                 false,
                 false,
                 [id + external_port_id_part("audio", "out", "wet",  i)], // internal connections
-                []
+                [],
+                true // always on ringbuffer on, because this port will be recorded by a channel
             ))
         }
         for (var i=0; i<n_fx_midi_inputs; i++) {
@@ -201,7 +205,8 @@ function generate_default_track(
                 false,
                 false,
                 [], // internal connections
-                []
+                [],
+                false // no always on ringbuffer
             ))
         }
         
@@ -231,8 +236,10 @@ function generate_default_track(
                 false,
                 true,
                 have_drywet_explicit_ports ? [send_id] : [fx_in_id], // internal connections
-                [])
-            ]
+                [],
+                true,
+                true // always on ringbuffer on, because this port will be recorded by a channel
+            )]
         if (have_drywet_explicit_ports) {
             rval.push(generate_audio_port(
                 send_id,
@@ -244,8 +251,9 @@ function generate_default_track(
                 false,
                 false,
                 [], // internal connections
-                [])
-            )
+                [],
+                false // no always on ringbuffer
+            ))
         }
         
         return rval
@@ -268,8 +276,9 @@ function generate_default_track(
                 false,
                 false,
                 [out_id], // internal connections
-                [])
-            )
+                [],
+                true // always on ringbuffer on, because this port will be recorded by a channel
+            ))
         }
         rval.push(generate_audio_port(
             out_id,
@@ -281,8 +290,9 @@ function generate_default_track(
             false,
             false,
             [], // internal connections
-            [])
-        )
+            [],
+            false // no always on ringbuffer
+        ))
         
         return rval
     })
@@ -303,7 +313,8 @@ function generate_default_track(
                 false,
                 true,
                 [out_id], // internal connections
-                []
+                [],
+                true // always on ringbuffer on, because this port will be recorded by a channel
             ),
             generate_audio_port(
                 out_id,
@@ -315,7 +326,8 @@ function generate_default_track(
                 false,
                 false,
                 [], // internal connections
-                []
+                [],
+                false // no always on ringbuffer
             ),
         ]
     })
@@ -334,7 +346,8 @@ function generate_default_track(
                 false,
                 true,
                 [out_id], // internal connections
-                []
+                [],
+                true // always on ringbuffer on, because this port will be recorded by a channel
             ),
             generate_midi_port(
                 out_id,
@@ -345,7 +358,8 @@ function generate_default_track(
                 false,
                 false,
                 [], // internal connections
-                []
+                [],
+                false // no always on ringbuffer
             ),
         ]]
     })() : [];
@@ -366,7 +380,8 @@ function generate_default_track(
                 false,
                 true,
                 have_drywet_explicit_ports ? [send_id] : [fx_in_id], // internal connections
-                []
+                [],
+                true // always on ringbuffer on, because this port will be recorded by a channel
             )
         ]
         if (have_drywet_explicit_ports) {
@@ -379,7 +394,8 @@ function generate_default_track(
                 false,
                 false,
                 [], // internal connections
-                []
+                [],
+                false // no always on ringbuffer
             ))
         }
 

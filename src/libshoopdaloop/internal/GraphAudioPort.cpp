@@ -1,5 +1,6 @@
 #include "GraphAudioPort.h"
 #include "AudioPort.h"
+#include "PortInterface.h"
 #include "types.h"
 #include <memory>
 
@@ -13,6 +14,14 @@ PortInterface &GraphAudioPort::get_port() const {
 
 shoop_types::_AudioPort *GraphAudioPort::maybe_audio_port() const {
     return port.get();
+}
+
+std::shared_ptr<shoop_types::_AudioPort> GraphAudioPort::maybe_shared_audio_port() const {
+    return port;
+}
+
+std::shared_ptr<PortInterface> GraphAudioPort::maybe_shared_port() const {
+    return port;
 }
 
 void GraphAudioPort::PROC_internal_connections(uint32_t n_frames) {

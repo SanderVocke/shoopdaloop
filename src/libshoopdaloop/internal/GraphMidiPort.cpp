@@ -2,6 +2,7 @@
 #include "LoggingEnabled.h"
 #include "MidiBufferInterfaces.h"
 #include "MidiPort.h"
+#include "PortInterface.h"
 #include "types.h"
 #include <memory>
 
@@ -15,6 +16,14 @@ PortInterface &GraphMidiPort::get_port() const {
 
 MidiPort *GraphMidiPort::maybe_midi_port() const {
     return port.get();
+}
+
+std::shared_ptr<MidiPort> GraphMidiPort::maybe_shared_midi_port() const {
+    return port;
+}
+
+std::shared_ptr<PortInterface> GraphMidiPort::maybe_shared_port() const {
+    return port;
 }
 
 void GraphMidiPort::PROC_internal_connections(uint32_t n_frames) {

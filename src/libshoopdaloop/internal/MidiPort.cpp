@@ -160,3 +160,11 @@ MidiPort::MidiPort(
 }
 
 MidiPort::~MidiPort() {};
+
+void MidiPort::set_ringbuffer_n_samples(unsigned n) {
+    log<log_level_warning>("Unimplemented");
+}
+
+unsigned MidiPort::get_ringbuffer_n_samples() const {
+    log<log_level_warning>("Unimplemented");
+}

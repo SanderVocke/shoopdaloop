@@ -103,3 +103,20 @@ WeakGraphNodeSet GraphLoop::graph_node_co_process_nodes() {
     if (m_get_co_process_nodes) { return m_get_co_process_nodes(); }
     return WeakGraphNodeSet();
 }
+
+void GraphLoop::PROC_adopt_ringbuffer_contents(unsigned reverse_cycles_start, unsigned cycles_length) {
+    //loop->adopt_ringbuffer_contents(std::shared_ptr<shoop_types::_AudioPort> from_port)
+
+    std::optional<unsigned> reverse_start_offset = std::nullopt;
+    unsigned samples_length = 0;
+    auto sync_source = loop->get_sync_source();
+    if (sync_source) {
+        auto len = sync_source->get_length();
+        auto cur_cycle_reverse_start = sync_source->get_position();
+        reverse_start_offset = cur_cycle_reverse_start + len * reverse_cycles_start;
+    }
+
+    for (auto &c : mp_audio_channels) { c->adopt_ringbuffer_contents(reverse_start_offset, false); }
+    for (auto &c : mp_midi_channels)  { c->adopt_ringbuffer_contents(reverse_start_offset, false); }
+
+}

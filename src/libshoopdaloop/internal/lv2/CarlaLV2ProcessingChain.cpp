@@ -279,7 +279,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             m_audio_in_lilv_ports.push_back(p);
             m_audio_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
             auto internal = std::make_shared<_InternalAudioPort>(
-                sym, m_internal_buffers_size);
+                sym, m_internal_buffers_size, nullptr);
             m_input_audio_ports.push_back(internal);
         }
         for (auto const &sym : audio_out_port_symbols) {
@@ -293,7 +293,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             m_audio_out_port_indices.push_back(
                 lilv_port_get_index(m_plugin, p));
             auto internal = std::make_shared<_InternalAudioPort>(
-                sym, m_internal_buffers_size);
+                sym, m_internal_buffers_size, nullptr);
             m_output_audio_ports.push_back(internal);
         }
         for (auto const &sym : midi_in_port_symbols) {

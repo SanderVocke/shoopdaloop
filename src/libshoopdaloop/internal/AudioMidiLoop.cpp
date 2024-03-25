@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <fmt/format.h>
+#include "AudioPort.h"
 
 AudioMidiLoop::AudioMidiLoop()
     : BasicLoop() {}
@@ -187,12 +188,13 @@ void AudioMidiLoop::PROC_handle_poi() {
 }
 
 void AudioMidiLoop::adopt_ringbuffer_contents(
+    std::shared_ptr<shoop_types::_AudioPort> from_port,
     std::optional<uint32_t> reverse_start_offset_cycle,
     std::optional<uint32_t> n_cycles_length,
     bool thread_safe) {
     int _n = -1;
     if (n_cycles_length.has_value()) { _n = (int) n_cycles_length.value(); }
-    auto fn = [this, reverse_start_offset_cycle, n_cycles_length, _n]() {
+    auto fn = [this, reverse_start_offset_cycle, n_cycles_length, _n, from_port]() {
         unsigned reverse_start_offset = 0;
 
         if (reverse_start_offset_cycle.has_value() && mp_sync_source) {
@@ -204,7 +206,7 @@ void AudioMidiLoop::adopt_ringbuffer_contents(
             // The start offset will just be the smallest ringbuffer size
             reverse_start_offset = 0;
             for (auto &channel : mp_audio_channels) {
-                reverse_start_offset = std::max(reverse_start_offset, channel->get_ringbuffer_n_samples());
+                reverse_start_offset = std::max(reverse_start_offset, from_port->get_ringbuffer_n_samples());
             } 
         }
 
@@ -212,10 +214,10 @@ void AudioMidiLoop::adopt_ringbuffer_contents(
             mp_sync_source->get_length() * n_cycles_length.value() : reverse_start_offset;
 
         for (auto &channel : mp_audio_channels) {
-            channel->adopt_ringbuffer_contents(reverse_start_offset, false);
+            channel->adopt_ringbuffer_contents(from_port, reverse_start_offset, false);
         }
         for (auto &channel : mp_midi_channels) {
-            channel->adopt_ringbuffer_contents(reverse_start_offset, false);
+            channel->adopt_ringbuffer_contents(from_port, reverse_start_offset, false);
         }
 
         log<log_level_debug>("Adopting {} ringbuffer samples (calculated from {} cycles) at start offset {}.",

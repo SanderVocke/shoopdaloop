@@ -28,7 +28,7 @@ MidiMessage<uint32_t, uint32_t> to_msg(jack_midi_event_t &m) {
 
 TEST_CASE("Ports - Jack Audio In - Properties", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", ShoopPortDirection_Input);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Input, nullptr);
 
     CHECK(port->has_internal_read_access());
     CHECK(!port->has_internal_write_access());
@@ -38,7 +38,7 @@ TEST_CASE("Ports - Jack Audio In - Properties", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio In - Gain", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", ShoopPortDirection_Input);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Input, nullptr);
 
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -59,7 +59,7 @@ TEST_CASE("Ports - Jack Audio In - Gain", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio In - Mute", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", ShoopPortDirection_Input);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Input, nullptr);
 
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -80,7 +80,7 @@ TEST_CASE("Ports - Jack Audio In - Mute", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio In - Peak", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", ShoopPortDirection_Input);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Input, nullptr);
 
     std::vector<audio_sample_t> samples = {
         0.0f, 0.5f, 0.9f, 0.5f, 0.0f
@@ -108,7 +108,7 @@ TEST_CASE("Ports - Jack Audio In - Peak", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio Out - Properties", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", ShoopPortDirection_Output);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Output, nullptr);
 
     CHECK(!port->has_internal_read_access());
     CHECK(port->has_internal_write_access());
@@ -118,7 +118,7 @@ TEST_CASE("Ports - Jack Audio Out - Properties", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio Out - Gain", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", ShoopPortDirection_Output);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Output, nullptr);
 
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -139,7 +139,7 @@ TEST_CASE("Ports - Jack Audio Out - Gain", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio Out - Mute", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", ShoopPortDirection_Output);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Output, nullptr);
 
     audio_sample_t samples[6] = {
         0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f
@@ -160,7 +160,7 @@ TEST_CASE("Ports - Jack Audio Out - Mute", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio Out - Peak", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", ShoopPortDirection_Output);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Output, nullptr);
 
     std::vector<audio_sample_t> samples = {
         0.0f, 0.5f, 0.9f, 0.5f, 0.0f
@@ -189,7 +189,7 @@ TEST_CASE("Ports - Jack Audio Out - Peak", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio Out - Noop Zero", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto port = driver->open_audio_port("test", ShoopPortDirection_Output);
+    auto port = driver->open_audio_port("test", ShoopPortDirection_Output, nullptr);
 
     std::vector<audio_sample_t> samples = {
         0.0f, 0.5f, 0.9f, 0.5f, 0.0f

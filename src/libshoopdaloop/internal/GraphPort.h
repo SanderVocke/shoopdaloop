@@ -23,6 +23,10 @@ public:
     virtual shoop_types::_AudioPort *maybe_audio_port() const { return nullptr; };
     virtual MidiPort *maybe_midi_port() const { return nullptr; }
 
+    virtual std::shared_ptr<PortInterface> maybe_shared_port() const { return nullptr; }
+    virtual std::shared_ptr<shoop_types::_AudioPort> maybe_shared_audio_port() const { return nullptr; }
+    virtual std::shared_ptr<MidiPort> maybe_shared_midi_port() const { return nullptr; }
+
     virtual void PROC_internal_connections(uint32_t n_frames) = 0;
     virtual void PROC_prepare(uint32_t n_frames) = 0;
     virtual void PROC_process(uint32_t n_frames) = 0;

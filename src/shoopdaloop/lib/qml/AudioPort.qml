@@ -38,7 +38,8 @@ PythonAudioPort {
             'muted': muted,
             'passthrough_muted': passthrough_muted,
             'internal_port_connections': descriptor.internal_port_connections,
-            'external_port_connections': get_connected_external_ports()
+            'external_port_connections': get_connected_external_ports(),
+            'always_on_ringbuffer': descriptor.always_on_ringbuffer
         }
     }
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {}

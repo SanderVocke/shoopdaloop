@@ -803,19 +803,19 @@ void clear_midi_channel_data_dirty (shoopdaloop_loop_midi_channel_t * channel) {
   });
 }
 
-void set_audio_ringbuffer_n_samples (shoopdaloop_loop_audio_channel_t* channel, unsigned n) {
-  return api_impl<void>("set_audio_ringbuffer_n_samples", [&]() {
-    auto _chan = internal_audio_channel(channel);
-    if (!_chan) { return; }
-    _chan->channel->set_ringbuffer_n_samples(n);
+void set_audio_port_ringbuffer_n_samples (shoopdaloop_audio_port_t* port, unsigned n) {
+  return api_impl<void>("set_audio_port_ringbuffer_n_samples", [&]() {
+    auto _port = internal_audio_port(port);
+    if (!_port) { return; }
+    _port->get_port().set_ringbuffer_n_samples(n);
   });
 }
 
-void set_midi_ringbuffer_n_samples (shoopdaloop_loop_midi_channel_t* channel, unsigned n) {
-  return api_impl<void>("set_midi_ringbuffer_n_samples", [&]() {
-    auto _chan = internal_midi_channel(channel);
-    if (!_chan) { return; }
-    _chan->channel->set_ringbuffer_n_samples(n);
+void set_midi_port_ringbuffer_n_samples (shoopdaloop_midi_port_t* port, unsigned n) {
+  return api_impl<void>("set_midi_port_ringbuffer_n_samples", [&]() {
+    auto _port = internal_midi_port(port);
+    if (!_port) { return; }
+    _port->get_port().set_ringbuffer_n_samples(n);
   });
 }
 
@@ -963,7 +963,7 @@ shoopdaloop_audio_port_t *open_driver_audio_port (shoop_backend_session_t *backe
     auto _driver = internal_audio_driver(driver);
     if (!_backend || !_driver) { return nullptr; }
     auto port = _driver->open_audio_port
-        (name_hint, direction);
+        (name_hint, direction, _backend->audio_buffer_pool);
     auto pi = _backend->add_audio_port(port);
     return external_audio_port(pi);
   }, (shoopdaloop_audio_port_t*) nullptr);
@@ -973,7 +973,7 @@ shoopdaloop_audio_port_t *open_internal_audio_port (shoop_backend_session_t *bac
   return api_impl<shoopdaloop_audio_port_t*>("open_internal_audio_port", [&]() -> shoopdaloop_audio_port_t* {
     auto _backend = internal_backend_session(backend);
     if (!_backend) { return nullptr; }
-    auto port = std::make_shared<InternalAudioPort<audio_sample_t>>(std::string(name_hint), _backend->m_buffer_size);
+    auto port = std::make_shared<InternalAudioPort<audio_sample_t>>(std::string(name_hint), _backend->m_buffer_size, _backend->audio_buffer_pool);
     auto pi = _backend->add_audio_port(port);
     return external_audio_port(pi);
   }, (shoopdaloop_audio_port_t*) nullptr);
@@ -1386,7 +1386,6 @@ shoop_audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audi
     r->start_offset = audio->get_start_offset();
     r->data_dirty = chan->get_data_dirty();
     r->n_preplay_samples = chan->channel->get_pre_play_samples();
-    r->ringbuffer_n_samples = chan->channel->get_ringbuffer_n_samples();
     auto p = chan->channel->get_played_back_sample();
     if (p.has_value()) { r->played_back_sample = p.value(); } else { r->played_back_sample = -1; }
     audio->reset_output_peak();
@@ -1412,7 +1411,6 @@ shoop_midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi
     r->start_offset = midi->get_start_offset();
     r->data_dirty = chan->get_data_dirty();
     r->n_preplay_samples = chan->channel->get_pre_play_samples();
-    r->ringbuffer_n_samples = chan->channel->get_ringbuffer_n_samples();
     auto p = chan->channel->get_played_back_sample();
     if (p.has_value()) { r->played_back_sample = p.value(); } else { r->played_back_sample = -1; }
     return r;
@@ -1517,6 +1515,7 @@ shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *po
       r->muted = p->get_muted();
       r->passthrough_muted = !pp->get_passthrough_enabled();
       r->name = strdup(p->name());
+      r->ringbuffer_n_samples = pp->get_port().get_ringbuffer_n_samples();
       p->reset_input_peak();
       p->reset_output_peak();
     }
@@ -1541,6 +1540,7 @@ shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port)
       r->muted = p->get_muted();
       r->passthrough_muted = !pp->get_passthrough_enabled();
       r->name = strdup(p->name());
+      r->ringbuffer_n_samples = pp->get_port().get_ringbuffer_n_samples();
       p->reset_n_input_events();
       p->reset_n_output_events();
     }
@@ -1589,7 +1589,11 @@ void adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, unsigned reverse_cycles
   return api_impl<void>("adopt_ringbuffer_contents", [&]() {
     auto _loop = internal_loop(loop);
     if (!_loop) { return; }
-    _loop->loop->adopt_ringbuffer_contents(reverse_cycles_start, cycles_length, true);
+    auto backend = _loop->backend.lock();
+    if (!backend) { return; }
+    backend->queue_process_thread_command([=]() {
+      _loop->PROC_adopt_ringbuffer_contents(reverse_cycles_start, cycles_length);
+    });
   });
 }
 
