@@ -226,8 +226,8 @@ Item {
                                     height: contentrect.height
                                     shellSurface: details_item.mapped_item.item
                                     onSurfaceDestroyed: {
+                                        //root.carla_wayland_wrapper.removeShellSurface(shellSurface)
                                         surface_loader.active = false
-                                        root.carla_wayland_wrapper.removeShellSurface(shellSurface)
                                     }
                                     autoCreatePopupItems: true
 

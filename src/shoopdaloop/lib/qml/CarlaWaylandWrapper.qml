@@ -27,8 +27,8 @@ Item {
     }
 
     function removeShellSurface(surface) {
+        root.logger.debug(`Removing shell surface ${surface}`)
         compositor.shellSurfaces = compositor.shellSurfaces.filter(s => s != surface)
-        root.logger.debug(`Surface destroyed for client ${surface.surface.client.processId}`)
         shellSurfacesChanged()
     }
 
