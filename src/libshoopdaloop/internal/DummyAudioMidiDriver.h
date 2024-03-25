@@ -78,6 +78,7 @@ public:
     DummyAudioPort(
         std::string name,
         shoop_port_direction_t direction,
+        std::shared_ptr<AudioPort<audio_sample_t>::BufferPool> maybe_ringbuffer_buffer_pool,
         std::weak_ptr<DummyExternalConnections> external_connections = std::weak_ptr<DummyExternalConnections>());
     
     audio_sample_t *PROC_get_buffer(uint32_t n_frames) override;
@@ -219,7 +220,8 @@ public:
 
     std::shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
         std::string name,
-        shoop_port_direction_t direction
+        shoop_port_direction_t direction,
+        std::shared_ptr<typename AudioPort<audio_sample_t>::BufferPool> buffer_pool
     ) override;
 
     std::shared_ptr<MidiPort> open_midi_port(

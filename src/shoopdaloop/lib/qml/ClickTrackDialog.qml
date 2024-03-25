@@ -120,7 +120,7 @@ Dialog {
             width: 150
             id: secondary_click_combo
             model: root.possible_secondary_clicks
-            currentIndex: 0
+            currentIndex: 2
             visible: kind_combo.currentValue == 'Audio'
         }
 

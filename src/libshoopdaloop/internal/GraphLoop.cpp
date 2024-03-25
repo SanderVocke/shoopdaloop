@@ -103,3 +103,26 @@ WeakGraphNodeSet GraphLoop::graph_node_co_process_nodes() {
     if (m_get_co_process_nodes) { return m_get_co_process_nodes(); }
     return WeakGraphNodeSet();
 }
+
+void GraphLoop::PROC_adopt_ringbuffer_contents(unsigned reverse_cycles_start, unsigned cycles_length) {
+    std::optional<unsigned> reverse_start_offset = std::nullopt;
+    std::optional<unsigned> samples_length = std::nullopt;
+
+    auto sync_source = loop->get_sync_source(false);
+    auto len = sync_source ? sync_source->get_length() : 0;
+    if (len > 0) {
+        auto cur_cycle_reverse_start = sync_source->get_position();
+        reverse_start_offset = cur_cycle_reverse_start + len * reverse_cycles_start;
+        samples_length = std::min(cycles_length * len, reverse_start_offset.value());
+    }
+
+    unsigned max_data_length = 0;
+    for (auto &c : mp_audio_channels) { c->adopt_ringbuffer_contents(reverse_start_offset, false); max_data_length = std::max(max_data_length, c->channel->get_length()); }
+    for (auto &c : mp_midi_channels)  { c->adopt_ringbuffer_contents(reverse_start_offset, false); /* max_data_length = std::max(max_data_length, c->channel->get_length()); */ }
+
+    if (!samples_length.has_value()) {
+        samples_length = max_data_length;
+    }
+
+    loop->set_length(samples_length.value(), false);
+}

@@ -354,6 +354,20 @@ ShoopTestFile {
                     verify_loop_cleared(loop_at(1,1))
                 },
 
+                'test_loop_adopt_ringbuffers': () => {
+                    check_backend()
+                    clear()
+
+                    loop_at(-1, 0).set_length(100) // Sync
+                    testcase.wait_updated(session.backend)
+
+                    do_execute('shoop_control.loop_adopt_ringbuffers({0, 0}, 2, 2)')
+                    testcase.wait_updated(session.backend)
+
+                    // Just a sanity check that the correct length was applied
+                    verify_eq(loop_at(0, 0).length, 200)
+                },
+
                 'test_loop_get_all': () => {
                     check_backend()
                     clear()
@@ -478,6 +492,7 @@ ShoopTestFile {
                         most_recent_event = nil
                         most_recent_loop = nil
                         local function callback(loop, event)
+                            print_error(event)
                             most_recent_loop = loop
                             most_recent_event = event
                         end
@@ -496,8 +511,21 @@ ShoopTestFile {
 
                     loop_at(-1,0).set_length(100)
                     testcase.wait_updated(session.backend)
+                    testcase.wait_updated(session.backend)
                     verify_eq_lua('most_recent_event.length', '100')
                     verify_eq_lua('most_recent_loop', '{-1,0}')
+                },
+
+                'test_apply_n_cycles': () => {
+                    check_backend()
+                    clear()
+
+                    registries.state_registry.set_apply_n_cycles(0)
+
+                    verify_eq_lua('shoop_control.get_apply_n_cycles()', '0')
+                    do_execute('shoop_control.set_apply_n_cycles(4)')
+                    verify_eq(registries.state_registry.apply_n_cycles, 4)
+                    verify_eq_lua('shoop_control.get_apply_n_cycles()', '4')
                 }
             })
         }

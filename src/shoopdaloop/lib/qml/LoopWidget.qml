@@ -852,7 +852,7 @@ Item {
             }
 
             Grid {
-                visible: statusrect.hovered || playlivefx.hovered || playsolointrack.hovered || recordN.hovered || recordfx.hovered || recordn_menu.visible
+                visible: statusrect.hovered || playlivefx.hovered || playsolointrack.hovered || record_grab.hovered || recordfx.hovered
                 x: 20
                 y: 2
                 columns: 4
@@ -872,6 +872,7 @@ Item {
                         color: root.is_script ? 'white' : 'green'
                         text_color: Material.foreground
                         text: root.delay_for_targeted != undefined ? ">" : ""
+                        font.pixelSize: size / 2.0
                     }
 
                     onClicked: root.transition(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
@@ -934,6 +935,7 @@ Item {
                                         color: 'green'
                                         text_color: Material.foreground
                                         text: root.delay_for_targeted != undefined ? ">S" : "S"
+                                        font.pixelSize: size / 2.0
                                     }
                                     onClicked: { if(statusrect.loop) {
                                         root.play_solo_in_track(root.use_delay, root.sync_active)
@@ -955,6 +957,7 @@ Item {
                                         color: 'orange'
                                         text_color: Material.foreground
                                         text: root.delay_for_targeted != undefined ? ">" : ""
+                                        font.pixelSize: size / 2.0
                                     }
                                     onClicked: root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
 
@@ -972,22 +975,44 @@ Item {
                     id : record
                     width: buttongrid.button_width
                     height: buttongrid.button_height
+
                     visible: !root.is_script
+
+                    // possible values: "with_targeted", "infinite", or int > 0
+                    property var record_kind : {
+                        if (root.is_sync) { return "infinite" }
+                        if (root.delay_for_targeted != undefined) { return "with_targeted" }
+                        let apply_n_cycles = registries.state_registry.apply_n_cycles
+                        if (apply_n_cycles <= 0) { return "infinite" }
+                        return apply_n_cycles
+                    }
+
                     IconWithText {
                         size: parent.width
                         anchors.centerIn: parent
                         name: 'record'
                         color: 'red'
                         text_color: Material.foreground
-                        text: root.delay_for_targeted != undefined ? ">" : ""
+                        text: record.record_kind == 'with_targeted' ? '><' :
+                              record.record_kind == 'infinite' ? '' :
+                              record.record_kind.toString() // integer
+                        font.pixelSize: size / 2.0
                     }
 
-                    onClicked: root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
+                    onClicked: {
+                        if (record.record_kind == 'with_targeted') {
+                            root.record_with_targeted();
+                        } else if (record.record_kind == 'infinite') {
+                            root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
+                        } else {
+                            root.record_n(0, record.record_kind)
+                        }                        
+                    }
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
-                    ToolTip.text: "Trigger/stop recording. For sync loop, starts immediately. For others, start/stop synced to next sync loop cycle."
+                    ToolTip.text: "Record. If a number is displayed, will record for N cycles (global control). If a '><' is displayed, will record in unison with the targeted loop. Otherwise, start recording indefinitely."
 
                     Connections {
                         target: statusrect
@@ -1009,8 +1034,8 @@ Item {
                         y: play.height
 
                         Rectangle {
-                            width: recordN.width
-                            height: (recordN.visible ? recordN.height : 0) + recordfx.height
+                            width: record_grab.width
+                            height: (record_grab.visible ? record_grab.height : 0) + recordfx.height
                             color: statusrect.color
 
                             MouseArea {
@@ -1023,19 +1048,24 @@ Item {
 
                                 onPositionChanged: (mouse) => { 
                                     var p = mapToGlobal(mouse.x, mouse.y)
-                                    recordN.onMousePosition(p)
+                                    record_grab.onMousePosition(p)
                                     recordfx.onMousePosition(p)
                                 }
-                                onExited: { recordN.onMouseExited(); recordfx.onMouseExited() }
+                                onExited: { record_grab.onMouseExited(); recordfx.onMouseExited() }
                             }
 
                             Column {
                                 SmallButtonWithCustomHover {
-                                    id : recordN
-                                    property int n: 1
+                                    id : record_grab
                                     
                                     // This feature makes no sense for composite loops
                                     visible: !root.maybe_composite_loop
+
+                                    property int n_cycles : {
+                                        var rval = registries.state_registry.apply_n_cycles
+                                        if (rval <= 0) { rval = 1; }
+                                        return rval
+                                    }
 
                                     width: buttongrid.button_width
                                     height: buttongrid.button_height
@@ -1043,60 +1073,22 @@ Item {
                                     IconWithText {
                                         size: parent.width
                                         anchors.centerIn: parent
-                                        name: 'record'
+                                        name: 'arrow-collapse-down'
                                         color: 'red'
                                         text_color: Material.foreground
-                                        text: (root.targeted_loop !== undefined && root.targeted_loop !== null) ? "><" : recordN.n.toString()
+                                        text: record_grab.n_cycles.toString()
                                         font.pixelSize: size / 2.0
                                     }
 
                                     onClicked: {
-                                        if (root.targeted_loop === undefined || root.targeted_loop === null) {
-                                            root.record_n(0, recordN.n)
-                                        } else {
-                                            root.record_with_targeted()
-                                        }
+                                        root.create_backend_loop()
+                                        root.adopt_ringbuffers(0, record_grab.n_cycles)
                                     }
-                                    onPressAndHold: { recordn_menu.popup() }
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "Trigger fixed-length recording (usual) or 'record with' (if a target loop is set). 'Record with' will record for one full iteration synced with the target loop. Otherwise, fixed length (number shown) is the amount of sync loop cycles to record. Press and hold this button to change this number."
-
-                                    // TODO: editable text box instead of fixed options
-                                    Menu {
-                                        id: recordn_menu
-                                        title: 'Select # of cycles'
-                                        ShoopMenuItem {
-                                            text: "1 cycle"
-                                            onClicked: () => { root.record_n(0, 1) }
-                                        }
-                                        ShoopMenuItem {
-                                            text: "2 cycles"
-                                            onClicked: () => { root.record_n(0, 2) }
-                                        }
-                                        ShoopMenuItem {
-                                            text: "3 cycles"
-                                            onClicked: () => { root.record_n(0, 3) }
-                                        }
-                                        ShoopMenuItem {
-                                            text: "4 cycles"
-                                            onClicked: () => { root.record_n(0, 4) }
-                                        }
-                                        ShoopMenuItem {
-                                            text: "6 cycles"
-                                            onClicked: () => { root.record_n(0, 6) }
-                                        }
-                                        ShoopMenuItem {
-                                            text: "8 cycles"
-                                            onClicked: () => { root.record_n(0, 8) }
-                                        }
-                                        ShoopMenuItem {
-                                            text: "16 cycles"
-                                            onClicked: () => { root.record_n(0, 16) }
-                                        }
-                                    }
+                                    ToolTip.text: "Grab always-on recording. The number displayed is the amount of sync loop cycles to grab. The grab will be synced such that the grabbed clip lines up with the most recently finished sync loop cycle."
                                 }
                             
                                 SmallButtonWithCustomHover {
@@ -1110,6 +1102,7 @@ Item {
                                         color: 'orange'
                                         text_color: Material.foreground
                                         text: root.delay_for_targeted != undefined ? ">" : ""
+                                        font.pixelSize: size / 2.0
                                     }
                                     onClicked: {
                                         var n = root.n_multiples_of_sync_length
@@ -1143,6 +1136,7 @@ Item {
                         color: Material.foreground
                         text_color: Material.foreground
                         text: root.delay_for_targeted != undefined ? ">" : ""
+                        font.pixelSize: size / 2.0
                     }
 
                     onClicked: root.transition(ShoopConstants.LoopMode.Stopped, root.use_delay, root.sync_active)

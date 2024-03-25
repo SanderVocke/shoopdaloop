@@ -120,6 +120,7 @@ typedef struct {
     float gain;
     unsigned muted;
     unsigned passthrough_muted;
+    unsigned ringbuffer_n_samples;
     const char* name;
 } shoop_audio_port_state_info_t;
 
@@ -130,6 +131,7 @@ typedef struct {
     unsigned n_output_notes_active;
     unsigned muted;
     unsigned passthrough_muted;
+    unsigned ringbuffer_n_samples;
     const char* name;
 } shoop_midi_port_state_info_t;
 
@@ -179,7 +181,6 @@ typedef struct {
     int start_offset;
     int played_back_sample; // -1 is none
     unsigned n_preplay_samples;
-    unsigned ringbuffer_n_samples;
     unsigned data_dirty;
 } shoop_audio_channel_state_info_t;
 
@@ -191,7 +192,6 @@ typedef struct {
     int start_offset;
     int played_back_sample; // -1 is none
     unsigned n_preplay_samples;
-    unsigned ringbuffer_n_samples;
     unsigned data_dirty;
 } shoop_midi_channel_state_info_t;
 

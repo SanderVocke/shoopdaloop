@@ -25,7 +25,7 @@ LV2::~LV2() {
 template <typename TimeType, typename SizeType>
 std::shared_ptr<CarlaLV2ProcessingChain<TimeType, SizeType>>
 LV2::create_carla_chain(shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size,
-                        std::string title) {
+                        std::string title, std::shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool) {
     if (!m_world) {
         if (!::g_initialized) {
         #ifdef _WIN32
@@ -49,18 +49,18 @@ LV2::create_carla_chain(shoop_fx_chain_type_t type, uint32_t sample_rate, uint32
 
     log<log_level_debug>("Create Carla chain.");
     return std::make_shared<CarlaLV2ProcessingChain<TimeType, SizeType>>(
-        m_world, type, sample_rate, buffer_size, title);
+        m_world, type, sample_rate, buffer_size, title, maybe_buffer_pool);
 }
 
 template std::shared_ptr<CarlaLV2ProcessingChain<uint32_t, uint16_t>>
 LV2::create_carla_chain(
-    shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size, std::string title);
+    shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size, std::string title, std::shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool);
 template std::shared_ptr<CarlaLV2ProcessingChain<uint32_t, uint32_t>>
 LV2::create_carla_chain(
-    shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size, std::string title);
+    shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size, std::string title, std::shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool);
 template std::shared_ptr<CarlaLV2ProcessingChain<uint16_t, uint16_t>>
 LV2::create_carla_chain(
-    shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size, std::string title);
+    shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size, std::string title, std::shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool);
 template std::shared_ptr<CarlaLV2ProcessingChain<uint16_t, uint32_t>>
 LV2::create_carla_chain(
-    shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size, std::string title);
+    shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size, std::string title, std::shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool);

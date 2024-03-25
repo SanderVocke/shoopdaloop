@@ -37,7 +37,6 @@ class LoopChannel(ShoopQQuickItem):
         self._data_dirty = self._new_data_dirty = True
         self._n_preplay_samples = self._new_n_preplay_samples = 0
         self._played_back_sample = self._new_played_back_sample = None
-        self._ringbuffer_n_samples = self._new_ringbuffer_n_samples = 0
         self._n_pending_updates = 0
         self.__logger = Logger('Frontend.LoopChannel')
 
@@ -150,21 +149,6 @@ class LoopChannel(ShoopQQuickItem):
                 self._backend_obj.set_n_preplay_samples(n)
             else:
                 self.initializedChanged.connect(lambda: self.set_n_preplay_samples(n))
-    
-    # ringbuffer n samples
-    ringbufferNSamplesChanged = ShoopSignal(int)
-    @ShoopProperty(int, notify=ringbufferNSamplesChanged)
-    def ringbuffer_n_samples(self):
-        return self._ringbuffer_n_samples
-    # indirect setter via back-end
-    @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
-    def set_ringbuffer_n_samples(self, n):
-        if n != self._ringbuffer_n_samples:
-            if self._backend_obj:
-                self.__logger.debug(lambda: 'Set # ringbuffer samples -> {}'.format(n))
-                self._backend_obj.set_ringbuffer_n_samples(n)
-            else:
-                self.initializedChanged.connect(lambda: self.set_ringbuffer_n_samples(n))
 
     # data dirty
     dataDirtyChanged = ShoopSignal(bool)
@@ -280,7 +264,6 @@ class LoopChannel(ShoopQQuickItem):
         self._new_mode = state.mode
         self._new_data_dirty = state.data_dirty
         self._new_n_preplay_samples = state.n_preplay_samples
-        self._new_ringbuffer_n_samples = state.ringbuffer_n_samples
         self._new_played_back_sample = state.played_back_sample
         self._n_pending_updates += 1
         
@@ -317,10 +300,6 @@ class LoopChannel(ShoopQQuickItem):
         if self._new_played_back_sample != self._played_back_sample:
             self._played_back_sample = self._new_played_back_sample
             self.playedBackSampleChanged.emit(self._played_back_sample)
-        if self._new_ringbuffer_n_samples != self._ringbuffer_n_samples:
-            self.__logger.debug(lambda: '# ringbuffer samples -> {}'.format(self._new_ringbuffer_n_samples))
-            self._ringbuffer_n_samples = self._new_ringbuffer_n_samples
-            self.ringbufferNSamplesChanged.emit(self._ringbuffer_n_samples)
         
         self.updateOnGuiThreadSubclassImpl()
         self._n_pending_updates = 0

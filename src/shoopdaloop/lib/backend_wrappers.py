@@ -105,7 +105,6 @@ class LoopAudioChannelState:
     data_dirty : bool
     played_back_sample : Any
     n_preplay_samples : int
-    ringbuffer_n_samples : int
 
     def __init__(self, backend_state : 'bindings.loop_audio_channel_state_t' = None):
         if backend_state:
@@ -117,7 +116,6 @@ class LoopAudioChannelState:
             self.data_dirty = bool(backend_state.data_dirty)
             self.played_back_sample = (to_int(backend_state.played_back_sample) if backend_state.played_back_sample >= 0 else None)
             self.n_preplay_samples = to_int(backend_state.n_preplay_samples)
-            self.ringbuffer_n_samples = to_int(backend_state.ringbuffer_n_samples)
         else:
             self.output_peak = 0.0
             self.gain = 0.0
@@ -127,7 +125,6 @@ class LoopAudioChannelState:
             self.data_dirty = False
             self.played_back_sample = None
             self.n_preplay_samples = 0
-            self.ringbuffer_n_samples = 0
 
 @dataclass
 class LoopMidiChannelState:
@@ -139,7 +136,6 @@ class LoopMidiChannelState:
     data_dirty : bool
     played_back_sample : Any
     n_preplay_samples : int
-    ringbuffer_n_samples : int
 
     def __init__(self, backend_state : 'bindings.loop_midi_channel_state_t' = None):
         if backend_state:
@@ -151,7 +147,6 @@ class LoopMidiChannelState:
             self.data_dirty = bool(backend_state.data_dirty)
             self.played_back_sample = (to_int(backend_state.played_back_sample) if backend_state.played_back_sample >= 0 else None)
             self.n_preplay_samples = to_int(backend_state.n_preplay_samples)
-            self.ringbuffer_n_samples = to_int(backend_state.ringbuffer_n_samples)
         else:
             self.n_events_triggered = 0
             self.n_notes_active = 0
@@ -161,7 +156,6 @@ class LoopMidiChannelState:
             self.data_dirty = False
             self.played_back_sample = None
             self.n_preplay_samples = 0
-            self.ringbuffer_n_samples = 0
 
 @dataclass
 class LoopState:
@@ -192,6 +186,7 @@ class AudioPortState:
     muted: bool
     passthrough_muted: bool
     name: str
+    ringbuffer_n_samples : int
 
     def __init__(self, backend_state : 'bindings.shoop_audio_port_state_info_t' = None):
         if backend_state:
@@ -201,6 +196,7 @@ class AudioPortState:
             self.muted = bool(backend_state.muted)
             self.passthrough_muted = bool(backend_state.passthrough_muted)
             self.name = str(backend_state.name)
+            self.ringbuffer_n_samples = int(backend_state.ringbuffer_n_samples)
         else:
             self.input_peak = 0.0
             self.output_peak = 0.0
@@ -208,6 +204,7 @@ class AudioPortState:
             self.muted = False
             self.passthrough_muted = False
             self.name = '(unknown)'
+            self.ringbuffer_n_samples = 0
 
 @dataclass
 class MidiPortState:
@@ -218,6 +215,7 @@ class MidiPortState:
     muted: bool
     passthrough_muted: bool
     name: str
+    ringbuffer_n_samples : int
 
     def __init__(self, backend_state : 'bindings.shoop_audio_port_state_info_t' = None):
         if backend_state:
@@ -228,6 +226,7 @@ class MidiPortState:
             self.muted = bool(backend_state.muted)
             self.passthrough_muted = bool(backend_state.passthrough_muted)
             self.name = str(backend_state.name)
+            self.ringbuffer_n_samples = int(backend_state.ringbuffer_n_samples)
         else:
             self.n_input_events = 0
             self.n_input_notes_active = 0
@@ -236,6 +235,7 @@ class MidiPortState:
             self.muted = False
             self.passthrough_muted = False
             self.name = '(unknown)'
+            self.ringbuffer_n_samples = 0
 
 @dataclass
 class MidiEvent:
@@ -477,10 +477,6 @@ class BackendLoopAudioChannel:
     def clear(self, length=0):
         if self.available():
             bindings.clear_audio_channel(self.shoop_c_handle, length)
-    
-    def set_ringbuffer_n_samples(self, n):
-        if self.available():
-            bindings.set_audio_channel_ringbuffer_n_samples(self.shoop_c_handle, n)
 
     def __del__(self):
         if self.available():
@@ -569,10 +565,6 @@ class BackendLoopMidiChannel:
     def clear(self):
         if self.available():
             bindings.clear_midi_channel(self.shoop_c_handle)
-            
-    def set_ringbuffer_n_samples(self, n):
-        if self.available():
-            bindings.set_midi_channel_ringbuffer_n_samples(self.shoop_c_handle, n)
 
     def __del__(self):
         if self.available():
@@ -763,6 +755,10 @@ class BackendAudioPort:
     def disconnect_external_port(self, name):
         if self.available():
             bindings.disconnect_audio_port_external(self._c_handle, name.encode('ascii'))
+    
+    def set_ringbuffer_n_samples(self, n):
+        if self.available():
+            bindings.set_audio_port_ringbuffer_n_samples(self._c_handle, n)
 
     def __del__(self):
         if self.available():
@@ -925,6 +921,10 @@ class BackendMidiPort:
     def disconnect_external_port(self, name):
         if self.available():
             bindings.disconnect_midi_port_external(self._c_handle, name.encode('ascii'))
+    
+    def set_ringbuffer_n_samples(self, n):
+        if self.available():
+            bindings.set_midi_port_ringbuffer_n_samples(self._c_handle, n)
 
     def __del__(self):
         if self.available():
@@ -1186,9 +1186,9 @@ def terminate_all_backends():
 def audio_driver_type_supported(t : Type[AudioDriverType]):
     return bool(bindings.driver_type_supported(t.value))
 
-def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direction : int) -> 'BackendAudioPort':
+def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendAudioPort':
     if backend_session.active() and audio_driver.active():
-        handle = bindings.open_driver_audio_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), direction)
+        handle = bindings.open_driver_audio_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), direction, min_n_ringbuffer_samples)
         port = BackendAudioPort(handle,
                                 bindings.get_audio_port_input_connectability(handle),
                                 bindings.get_audio_port_output_connectability(handle),
@@ -1196,9 +1196,9 @@ def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direc
         return port
     raise Exception("Failed to open audio port: backend session or audio driver not active")
 
-def open_driver_midi_port(backend_session, audio_driver, name_hint : str, direction : int) -> 'BackendMidiPort':
+def open_driver_midi_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendMidiPort':
     if backend_session.active() and audio_driver.active():
-        handle = bindings.open_driver_midi_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), direction)
+        handle = bindings.open_driver_midi_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), direction, min_n_ringbuffer_samples)
         port = BackendMidiPort(handle,
                                bindings.get_midi_port_input_connectability(handle),
                                bindings.get_midi_port_output_connectability(handle),

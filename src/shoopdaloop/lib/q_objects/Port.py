@@ -34,6 +34,7 @@ class Port(FindParentBackend):
         self._passthrough_muted = self._new_passthrough_muted = None
         self._is_internal = None
         self._ever_initialized = False
+        self._n_ringbuffer_samples = 0
         self.logger = Logger("Frontend.Port")
         
         self.backendChanged.connect(lambda: self.maybe_initialize())
@@ -149,6 +150,17 @@ class Port(FindParentBackend):
             self.update_internal_connections()
             self.maybe_initialize()
             self.internalPortConnectionsChanged.emit(s)
+
+    # n_ringbuffer_samples
+    nRingbufferSamplesChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=nRingbufferSamplesChanged)
+    def n_ringbuffer_samples(self):
+        return self._n_ringbuffer_samples
+    @n_ringbuffer_samples.setter
+    def n_ringbuffer_samples(self, n):
+        if self._n_ringbuffer_samples != n:
+            self._n_ringbuffer_samples = n
+            self.nRingbufferSamplesChanged.emit(n)
     
     ###########
     ## SLOTS
@@ -185,6 +197,14 @@ class Port(FindParentBackend):
             self._backend_obj.set_muted(muted)
         else:
             self.muted = muted
+            self.maybe_initialize()
+
+    @ShoopSlot(int)
+    def set_min_n_ringbuffer_samples(self, n):
+        if self._backend_obj:
+            self._backend_obj.set_n_ringbuffer_samples(n)
+        else:
+            self.n_ringbuffer_samples = n
             self.maybe_initialize()
     
     @ShoopSlot(bool)

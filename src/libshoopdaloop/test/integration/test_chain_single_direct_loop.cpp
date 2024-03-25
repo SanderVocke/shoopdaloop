@@ -44,7 +44,9 @@ struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirec
 
     shoopdaloop_loop_t *api_loop;
     std::shared_ptr<GraphLoop> int_loop;
-    std::shared_ptr<AudioMidiLoop> int_audiomidi_loop;
+
+    shoopdaloop_loop_t *api_sync_loop;
+    std::shared_ptr<GraphLoop> int_sync_loop;
 
     std::shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
 
@@ -66,15 +68,15 @@ struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirec
         int_driver->start(settings);
         set_audio_driver(api_backend_session, api_driver);
 
-        api_input_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input);
-        api_output_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output);
+        api_input_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_in", ShoopPortDirection_Input, 1);
+        api_output_port = open_driver_audio_port(api_backend_session, api_driver, "sys_audio_out", ShoopPortDirection_Output, 0);
         int_input_port = internal_audio_port(api_input_port);
         int_output_port = internal_audio_port(api_output_port);
         int_dummy_input_port = dynamic_cast<DummyAudioPort*>(&int_input_port->get_port());
         int_dummy_output_port = dynamic_cast<DummyAudioPort*>(&int_output_port->get_port());
 
-        api_midi_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_in", ShoopPortDirection_Input);
-        api_midi_output_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_out", ShoopPortDirection_Output);
+        api_midi_input_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_in", ShoopPortDirection_Input, 1);
+        api_midi_output_port = open_driver_midi_port(api_backend_session, api_driver, "sys_midi_out", ShoopPortDirection_Output, 0);
         int_midi_input_port = internal_midi_port(api_midi_input_port);
         int_midi_output_port = internal_midi_port(api_midi_output_port);
         int_dummy_midi_input_port = dynamic_cast<DummyMidiPort*>(&int_midi_input_port->get_port());
@@ -82,6 +84,9 @@ struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirec
 
         api_loop = create_loop(api_backend_session);
         int_loop = internal_loop(api_loop);
+
+        api_sync_loop = create_loop(api_backend_session);
+        int_sync_loop = internal_loop(api_sync_loop);
 
         api_audio_chan = add_audio_channel(api_loop, ChannelMode_Direct);
         api_midi_chan = add_midi_channel(api_loop, ChannelMode_Direct);
@@ -98,6 +103,8 @@ struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirec
         if(!int_midi_chan) { throw std::runtime_error("midi channel is null"); }
 
         int_driver->enter_mode(DummyAudioMidiDriverMode::Controlled);
+
+        set_loop_sync_source(api_loop, api_sync_loop);
 
         connect_audio_input(api_audio_chan, api_input_port);
         connect_audio_output(api_audio_chan, api_output_port);
@@ -158,4 +165,142 @@ TEST_CASE("Chain - Direct playback MIDI basic", "[chain][midi]") {
     CHECK_MSGS_EQUAL(result_data[2], msgs[2]);
 
     tst.int_driver->close();
+};
+
+TEST_CASE("Chain - Direct adopt audio ringbuffer - no sync loop", "[chain][audio]") {
+    SingleDirectLoopTestChain tst;
+
+    // Process 8 samples in stopped mode
+    std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+    tst.int_dummy_input_port->queue_data(8, input_data.data());
+    tst.int_driver->controlled_mode_request_samples(8);
+    tst.int_driver->controlled_mode_run_request();
+
+    // Grab the ringbuffer
+    adopt_ringbuffer_contents(tst.api_loop, 0, 1);
+    tst.int_driver->controlled_mode_run_request();
+
+    // Since the sync loop is empty, the fallback behavior here should be that the
+    // whole ringbuffer is adopted and start offset is 0.
+    auto n_ringbuffer_samples = tst.int_dummy_input_port->get_ringbuffer_n_samples();
+    auto data = tst.int_audio_chan->get_data(true);
+    
+    CHECK(tst.int_audio_chan->get_start_offset() == 0);
+    CHECK(tst.int_loop->loop->get_length() == n_ringbuffer_samples);
+
+    REQUIRE(data.size() == n_ringbuffer_samples);
+    auto last_eight = std::vector<float>(data.end() - 8, data.end());
+    CHECK(last_eight == input_data);
+};
+
+TEST_CASE("Chain - Direct adopt audio ringbuffer - one cycle", "[chain][audio]") {
+    SingleDirectLoopTestChain tst;
+
+    // Process 8 samples in stopped mode
+    std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+    tst.int_dummy_input_port->queue_data(8, input_data.data());
+    tst.int_sync_loop->loop->set_length(3, true);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+
+    tst.int_driver->controlled_mode_request_samples(7); // Two cycles and 1 sample
+    tst.int_driver->controlled_mode_run_request();
+
+    // Grab the ringbuffer. Offset 1 means last completed cycle.
+    adopt_ringbuffer_contents(tst.api_loop, 1, 1);
+    tst.int_driver->controlled_mode_run_request();
+
+    // We should have grabbed the full last completed cycle, which is samples [4, 5, 6].
+    auto n_ringbuffer_samples = tst.int_dummy_input_port->get_ringbuffer_n_samples();
+    auto data = tst.int_audio_chan->get_data(true);
+
+    CHECK(tst.int_loop->loop->get_length() == 3);
+    auto so = tst.int_audio_chan->get_start_offset();
+    CHECK(data.size() >= 3);
+    REQUIRE((int)data.size() - (int)so >= 3); // 3 samples available
+    auto samples_of_interest = std::vector<float>(data.begin() + so, data.begin() + so + 3);
+    CHECK(samples_of_interest == std::vector<float>({4, 5, 6}));
+};
+
+TEST_CASE("Chain - Direct adopt audio ringbuffer - current cycle", "[chain][audio]") {
+    SingleDirectLoopTestChain tst;
+
+    // Process 8 samples in stopped mode
+    std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+    tst.int_dummy_input_port->queue_data(8, input_data.data());
+    tst.int_sync_loop->loop->set_length(3, true);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+
+    tst.int_driver->controlled_mode_request_samples(8); // Two cycles and 2 samples
+    tst.int_driver->controlled_mode_run_request();
+
+    // Grab the ringbuffer. Offset 0 means currently running cycle (which has 2 samples so far)
+    adopt_ringbuffer_contents(tst.api_loop, 0, 1);
+    tst.int_driver->controlled_mode_run_request();
+
+    // We should have grabbed the partially completed current cycle.
+    auto n_ringbuffer_samples = tst.int_dummy_input_port->get_ringbuffer_n_samples();
+    auto data = tst.int_audio_chan->get_data(true);
+
+    CHECK(tst.int_loop->loop->get_length() == 2);
+    auto so = tst.int_audio_chan->get_start_offset();
+    CHECK(data.size() >= 2);
+    REQUIRE((int)data.size() - (int)so >= 2); // 2 samples available
+    auto samples_of_interest = std::vector<float>(data.begin() + so, data.begin() + so + 2);
+    CHECK(samples_of_interest == std::vector<float>({7, 8}));
+};
+
+TEST_CASE("Chain - Direct adopt audio ringbuffer - prev cycle", "[chain][audio]") {
+    SingleDirectLoopTestChain tst;
+
+    // Process 8 samples in stopped mode
+    std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+    tst.int_dummy_input_port->queue_data(8, input_data.data());
+    tst.int_sync_loop->loop->set_length(2, true);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+
+    tst.int_driver->controlled_mode_request_samples(7); // Three cycles and 1 sample
+    tst.int_driver->controlled_mode_run_request();
+
+    // Grab the ringbuffer.
+    adopt_ringbuffer_contents(tst.api_loop, 2, 1);
+    tst.int_driver->controlled_mode_run_request();
+
+    // We should have grabbed the cycle with samples [3,4].
+    auto n_ringbuffer_samples = tst.int_dummy_input_port->get_ringbuffer_n_samples();
+    auto data = tst.int_audio_chan->get_data(true);
+
+    CHECK(tst.int_loop->loop->get_length() == 2);
+    auto so = tst.int_audio_chan->get_start_offset();
+    CHECK(data.size() >= 2);
+    REQUIRE((int)data.size() - (int)so >= 2); // 2 samples available
+    auto samples_of_interest = std::vector<float>(data.begin() + so, data.begin() + so + 2);
+    CHECK(samples_of_interest == std::vector<float>({3, 4}));
+};
+
+TEST_CASE("Chain - Direct adopt audio ringbuffer - prev 2 cycles", "[chain][audio]") {
+    SingleDirectLoopTestChain tst;
+
+    // Process 8 samples in stopped mode
+    std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
+    tst.int_dummy_input_port->queue_data(8, input_data.data());
+    tst.int_sync_loop->loop->set_length(2, true);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+
+    tst.int_driver->controlled_mode_request_samples(7); // Three cycles and 1 sample
+    tst.int_driver->controlled_mode_run_request();
+
+    // Grab the ringbuffer.
+    adopt_ringbuffer_contents(tst.api_loop, 2, 2);
+    tst.int_driver->controlled_mode_run_request();
+
+    // We should have grabbed the cycles with samples [3,4], [5,6].
+    auto n_ringbuffer_samples = tst.int_dummy_input_port->get_ringbuffer_n_samples();
+    auto data = tst.int_audio_chan->get_data(true);
+
+    CHECK(tst.int_loop->loop->get_length() == 4);
+    auto so = tst.int_audio_chan->get_start_offset();
+    CHECK(data.size() >= 4);
+    REQUIRE((int)data.size() - (int)so >= 4); // 2 samples available
+    auto samples_of_interest = std::vector<float>(data.begin() + so, data.begin() + so + 4);
+    CHECK(samples_of_interest == std::vector<float>({3, 4, 5, 6}));
 };

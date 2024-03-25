@@ -7,6 +7,7 @@
 #include <set>
 #include <atomic>
 #include "LoggingEnabled.h"
+#include "AudioPort.h"
 
 enum class ProcessFunctionResult {
     Continue,  // Continue processing next cycle
@@ -73,7 +74,8 @@ public:
     virtual
     std::shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
         std::string name,
-        shoop_port_direction_t direction
+        shoop_port_direction_t direction,
+        std::shared_ptr<typename AudioPort<audio_sample_t>::BufferPool> buffer_pool
     ) = 0;
 
     virtual

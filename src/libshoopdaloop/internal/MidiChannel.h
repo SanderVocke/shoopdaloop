@@ -204,11 +204,8 @@ public:
     int get_start_offset() const override;
 
     std::optional<uint32_t> get_played_back_sample() const override;
-
-    void set_ringbuffer_n_samples(unsigned n) override;
-    unsigned get_ringbuffer_n_samples() const override;
-
-    void adopt_ringbuffer_contents(unsigned reverse_start_offset, bool thread_safe=true) override;
+    
+    void adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port, std::optional<unsigned> reverse_start_offset, bool thread_safe=true) override;
 };
 
 extern template class MidiChannel<uint32_t, uint16_t>;

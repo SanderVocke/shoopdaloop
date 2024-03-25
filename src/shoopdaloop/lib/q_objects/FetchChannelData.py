@@ -26,12 +26,18 @@ class FetchChannelData(ShoopQQuickItem):
         self._dirty = True
         self._active = False
         self._fetching = False
-        self._request_queue = queue.Queue()
-        self._active_request_seq_nr = None
-        self._next_seq_nr = 0
+        self._requested_sequence_nr = 1
+        self._retrieved_sequence_nr = 0
         self._loop = None
-        self._data_as_qimage = None
+        self._data_as_qimage = None        
         self.logger = Logger('Frontend.FetchChannelData')
+        
+        self._fetch_timer = QTimer()
+        self._fetch_timer.interval = 100
+        self._fetch_timer.singleShot = True
+        self._fetch_timer.timeout.connect(self.tick)
+        self._fetch_timer.start()
+        self.tick()
     
     ######################
     # PROPERTIES
@@ -90,7 +96,8 @@ class FetchChannelData(ShoopQQuickItem):
         if l != self._dirty:
             self._dirty = l
             self.dirtyChanged.emit(l)
-            self.maybe_start_fetch()
+            if l:
+                self.maybe_start_fetch()
     
     # active
     # if active is false, data will never be fetched.
@@ -103,7 +110,8 @@ class FetchChannelData(ShoopQQuickItem):
         if l != self._active:
             self._active = l
             self.activeChanged.emit(l)
-            self.maybe_start_fetch()
+            if l:
+                self.maybe_start_fetch()
     
     # fetching
     # set automatically. Indicates whether data is
@@ -146,40 +154,54 @@ class FetchChannelData(ShoopQQuickItem):
 
     @ShoopSlot('QVariant', int)
     def fetch_finished(self, data, seq_nr):
-        if seq_nr == self._active_request_seq_nr:
+        if seq_nr >= self._requested_sequence_nr:
             self.channel_data = data
-            self._active_request_seq_nr = None
-            self.fetching = False
+            self._retrieved_sequence_nr = seq_nr
+        self.fetching = False
+        self._fetch_timer.start()        
 
     @ShoopSlot()
     def maybe_start_fetch(self, *args):
-        if not self.channel or not self.channel.isValid() or not self.dirty or not self.active:
+        # Queue a request by incrementing sequence number
+        self._requested_sequence_nr += 1
+        self.start_timer()
+        
+    @ShoopSlot()
+    def start_timer(self):
+        self._fetch_timer.start()
+        
+    @ShoopSlot()
+    def tick(self):
+        if not self.channel or not self.channel.isValid() or not self.dirty or not self.active or \
+           not self.channel.initialized or not self.channel.loop or not self.channel.loop.isValid() or \
+           not self.channel.loop.initialized or is_recording_mode(self.channel.loop_mode) or \
+           self._retrieved_sequence_nr >= self._requested_sequence_nr:
+            self._fetch_timer.start() # Try again soon
             return
-        if not self.channel.initialized:
-            return
-        if not self.channel.loop or not self.channel.loop.isValid():
-            return
-        if not self.channel.loop.initialized:
-            return
-        if is_recording_mode(self.channel.loop_mode):
-            return
-
-        # Queue a request and increment sequence number
-        self._active_request_seq_nr = self._next_seq_nr
-        self._next_seq_nr += 1
+        
+        self._fetch_timer.stop()        
         self.fetching = True
+        self.channel.clear_data_dirty()
 
-        def worker(channel=self.channel, seq_nr=self._active_request_seq_nr, cb_to=self, logger=self.logger):
-            logger.debug(lambda: "Fetching channel data to front-end.")
-            data = channel.get_display_data()
-            channel.clear_data_dirty()
-            QMetaObject.invokeMethod(
-                cb_to,
-                'fetch_finished',
-                Qt.QueuedConnection,
-                Q_ARG('QVariant', data),
-                Q_ARG(int, seq_nr)
-            )
+        def worker(channel=self.channel, seq_nr=self._requested_sequence_nr, cb_to=self, logger=self.logger):
+            try:
+                logger.debug(lambda: "Fetching channel data to front-end.")
+                data = channel.get_display_data()
+                logger.debug(lambda: "Fetched")
+                QMetaObject.invokeMethod(
+                    cb_to,
+                    'fetch_finished',
+                    Qt.QueuedConnection,
+                    Q_ARG('QVariant', data),
+                    Q_ARG(int, seq_nr)
+                )
+                logger.debug(lambda: "called back")
+            finally:
+                QMetaObject.invokeMethod(
+                    cb_to,
+                    'start_timer',
+                    Qt.QueuedConnection
+                )
         threading.Thread(target=worker).start()
 
 

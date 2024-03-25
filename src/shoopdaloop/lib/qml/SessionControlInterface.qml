@@ -249,6 +249,8 @@ LuaControlInterface {
     function track_set_input_muted_override(track_selector, muted) {
         return select_tracks(track_selector).forEach(t => {t.control_widget.monitor = !muted})
     }
+
+    // Global state overrides
     function set_apply_n_cycles_override(n) {
         registries.state_registry.set_apply_n_cycles(n)
     }

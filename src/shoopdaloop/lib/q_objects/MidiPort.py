@@ -97,6 +97,7 @@ class MidiPort(Port):
         self._new_name = state.name
         self._new_muted = state.muted
         self._new_passthrough_muted = state.passthrough_muted
+        self._n_ringbuffer_samples = state.ringbuffer_n_samples
         self._n_updates_pending += 1
 
         self._signal_sender.do_emit()
@@ -115,6 +116,7 @@ class MidiPort(Port):
         self.name = self._new_name
         self.muted = self._new_muted
         self.passthrough_muted = self._new_passthrough_muted
+        self.n_ringbuffer_samples = self._n_ringbuffer_samples
         self._n_updates_pending = 0
     
     @ShoopSlot(list)
@@ -173,7 +175,7 @@ class MidiPort(Port):
         if self._backend_obj:
             return # never initialize more than once
         direction = PortDirection.Input.value if not (input_connectability & PortConnectability.Internal.value) else PortDirection.Output.value
-        self._backend_obj = self.backend.open_driver_midi_port(name_hint, direction)
+        self._backend_obj = self.backend.open_driver_midi_port(name_hint, direction, self.n_ringbuffer_samples)
         self.push_state()
 
     def maybe_initialize_impl(self, name_hint, input_connectability, output_connectability, is_internal):

@@ -14,6 +14,7 @@
 #include <boost/lockfree/spsc_queue.hpp>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
+#include "AudioPort.h"
 
 using namespace std::chrono_literals;
 using namespace logging;
@@ -145,8 +146,7 @@ AudioChannel<SampleT>::AudioChannel(
       ma_data_seq_nr(0), ma_pre_play_samples(0),
       mp_buffers(buffer_pool, initial_max_buffers),
       mp_prerecord_buffers(buffer_pool, initial_max_buffers),
-      mp_prev_process_flags(0), ma_last_played_back_sample(-1),
-      mp_always_record_ringbuffer(buffer_pool, 1) {
+      mp_prev_process_flags(0), ma_last_played_back_sample(-1) {
 }
 
 template <typename SampleT>
@@ -187,7 +187,7 @@ AudioChannel<SampleT>::operator=(AudioChannel<SampleT> const &other) {
 }
 
 template <typename SampleT>
-AudioChannel<SampleT>::AudioChannel() : ma_buffer_size(1), mp_always_record_ringbuffer(nullptr, 0) {}
+AudioChannel<SampleT>::AudioChannel() : ma_buffer_size(1) {}
 
 template <typename SampleT> AudioChannel<SampleT>::~AudioChannel() {}
 
@@ -269,7 +269,6 @@ void AudioChannel<SampleT>::PROC_process(
 
     // Update recording/playback buffers and ringbuffer.
     if (mp_recording_source_buffer) {
-        mp_always_record_ringbuffer.PROC_put(mp_recording_source_buffer, n_samples);
         mp_recording_source_buffer += n_samples;
         mp_recording_source_buffer_size -= n_samples;
     }
@@ -349,14 +348,24 @@ void AudioChannel<SampleT>::PROC_finalize_process() {
 
 
 template <typename SampleT>
-void AudioChannel<SampleT>::adopt_ringbuffer_contents(unsigned reverse_start_offset, bool thread_safe) {
-    log<log_level_debug_trace>("queue adopt ringbuffer @ reverse offset {}", reverse_start_offset);
+void AudioChannel<SampleT>::adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port, std::optional<unsigned> reverse_start_offset, bool thread_safe) {
+    if (reverse_start_offset.has_value()) {
+        log<log_level_debug_trace>("queue adopt ringbuffer @ reverse offset {}", reverse_start_offset.value());
+    } else {
+        log<log_level_debug_trace>("queue adopt ringbuffer @ begin");
+    }
+    auto audioport = std::dynamic_pointer_cast<AudioPort<SampleT>>(from_port);
+    if (!audioport) {
+        log<log_level_error>("Cannot adopt ringbuffer from non-audio port");
+        return;
+    }
 
-    auto fn = [=, this]() {
-        log<log_level_debug_trace>("adopting ringbuffer @ reverse offset {}", reverse_start_offset);
-        auto data = mp_always_record_ringbuffer.PROC_get();
+    auto fn = [audioport, reverse_start_offset, this]() {
+        auto data = audioport->PROC_get_ringbuffer_contents();
         mp_buffers.set_contents(data.data);
-        set_start_offset(data.n_samples - reverse_start_offset);
+        unsigned so = reverse_start_offset.has_value() ? data.n_samples - reverse_start_offset.value() : 0;
+        log<log_level_debug_trace>("adopting ringbuffer @ reverse offset {}", so);
+        set_start_offset(so);
         PROC_set_length(data.n_samples);
         data_changed();
     };
@@ -693,18 +702,6 @@ int AudioChannel<SampleT>::get_start_offset() const {
 template <typename SampleT>
 unsigned AudioChannel<SampleT>::get_data_seq_nr() const {
     return ma_data_seq_nr;
-}
-
-template <typename SampleT>
-void AudioChannel<SampleT>::set_ringbuffer_n_samples(unsigned n) {
-    auto sz = mp_always_record_ringbuffer.single_buffer_size();
-    auto n_buffers = (n + sz - 1) / sz;
-    mp_always_record_ringbuffer.set_max_buffers(n_buffers);
-}
-
-template <typename SampleT>
-unsigned AudioChannel<SampleT>::get_ringbuffer_n_samples() const {
-    return mp_always_record_ringbuffer.get_max_buffers();
 }
 
 template <typename SampleT>

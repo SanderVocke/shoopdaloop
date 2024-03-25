@@ -51,6 +51,10 @@ public:
     void set_max_buffers(uint32_t max_buffers);
     unsigned get_max_buffers() const;
 
+    // Helper to set the amount of samples this buffer queue should hold
+    // at a minimum.
+    void set_min_n_samples(uint32_t n);
+
     void PROC_process();
 };
 

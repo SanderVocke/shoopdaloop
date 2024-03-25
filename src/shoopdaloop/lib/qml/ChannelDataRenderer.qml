@@ -88,13 +88,26 @@ Item {
                     root.samples_offset;    // explicit dependency
                     root.samples_per_pixel; // explicit dependency
 
+                    let starting_points = major_grid_lines_repeater.at_samples
+
                     var rval = []
-                    var s = root.start_offset;
-                    while (map_sample_to_pixel(s) >= 0) { s -= root.minor_grid_lines_interval }
-                    s += root.minor_grid_lines_interval;
-                    for(; map_sample_to_pixel(s) < width; s += root.minor_grid_lines_interval) {
-                        rval.push(map_sample_to_pixel(s))
+                    // Threshold of 20 helps to hide lines when it gets too busy
+                    var interval = root.minor_grid_lines_interval
+                    while (interval < 20 * root.samples_per_pixel) {
+                        interval *= 2
                     }
+
+                    starting_points.forEach((s, idx) => {
+                        var sample = s + interval
+                        var pixel = map_sample_to_pixel(sample)
+                        while( (idx >= (starting_points.length - 1) || sample < starting_points[idx+1]) &&
+                               pixel < width )
+                        {
+                            rval.push(pixel)
+                            sample += interval
+                            pixel = map_sample_to_pixel(sample)
+                        }
+                    })
 
                     return rval
                 }
@@ -114,7 +127,7 @@ Item {
                 id: major_grid_lines_repeater
                 anchors.fill: parent
 
-                property var at_pixels: {
+                property var at_samples: {
                     if (!root.visible) { return [] }
                     if (root.major_grid_lines_interval <= 0) { return [] }
 
@@ -123,14 +136,19 @@ Item {
 
                     var rval = []
                     var s = root.start_offset;
-                    while (map_sample_to_pixel(s) >= 0) { s -= root.major_grid_lines_interval }
-                    s += root.major_grid_lines_interval;
-                    for(; map_sample_to_pixel(s) < width; s += root.major_grid_lines_interval) {
-                        rval.push(map_sample_to_pixel(s))
+                    // The threshold of 20 hides lines when it gets too busy
+                    var interval = root.major_grid_lines_interval
+                    while (interval < 20 * root.samples_per_pixel) {
+                        interval *= 2
+                    }
+                    while (map_sample_to_pixel(s) >= 0) { s -= interval }
+                    for(; map_sample_to_pixel(s) < width; s += interval) {
+                        rval.push(s)
                     }
 
                     return rval
                 }
+                property var at_pixels: at_samples.map((s) => map_sample_to_pixel(s))
 
                 model: at_pixels.length
 

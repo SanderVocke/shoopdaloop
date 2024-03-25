@@ -53,6 +53,9 @@ public:
     virtual void PROC_prepare(uint32_t nframes) override;
     virtual void PROC_process(uint32_t nframes) override;
 
+    void set_ringbuffer_n_samples(unsigned n) override;
+    unsigned get_ringbuffer_n_samples() const override;
+
     MidiPort(
         bool track_notes,
         bool track_controls,

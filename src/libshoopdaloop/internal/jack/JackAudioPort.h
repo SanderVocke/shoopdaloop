@@ -19,7 +19,8 @@ public:
         std::string name,
         shoop_port_direction_t direction,
         jack_client_t *client,
-        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker,
+        std::shared_ptr<typename AudioPort<jack_default_audio_sample_t>::BufferPool> maybe_ringbuffer_buffer_pool
     );
     
     // Prepare step is used to get the buffer from JACK

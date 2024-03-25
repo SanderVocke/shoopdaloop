@@ -44,11 +44,6 @@ private:
     Buffers mp_prerecord_buffers; 
     std::atomic<uint32_t> mp_prerecord_buffers_data_length = 0;
 
-    // Always-active FIFO queue acting as a ring buffer of sorts: data coming
-    // in is always recorded until dropped from the queue.
-    // Can be used for retroactive recording.
-    BufferQueue<SampleT> mp_always_record_ringbuffer;
-
     SampleT *mp_playback_target_buffer = nullptr;
     uint32_t   mp_playback_target_buffer_size = 0;
     SampleT *mp_recording_source_buffer = nullptr;
@@ -213,10 +208,7 @@ public:
 
     std::optional<uint32_t> get_played_back_sample() const override;
 
-    void set_ringbuffer_n_samples(unsigned n) override;
-    unsigned get_ringbuffer_n_samples() const override;
-
-    void adopt_ringbuffer_contents(unsigned reverse_start_offset, bool thread_safe=true) override;
+    void adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port, std::optional<unsigned> reverse_start_offset, bool thread_safe=true) override;
 
 protected:
     Buffer get_new_buffer() const;

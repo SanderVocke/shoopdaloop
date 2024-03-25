@@ -14,6 +14,24 @@ There are two ways to control this:
 * Synchronization is always off while a Ctrl key is held (usually easier).
 
 
+Always-on Recording
+^^^^^^^^^^^^^^^^^^^
+
+Having to manually trigger recordings ahead of time can cost focus and break your flow.
+For that reason, **ShoopDaLoop** allows you to record a loop in hindsight. You can just play, and when something nice happens, capture it afterward.
+
+The feature doesn't need to be manually enabled. All you need to do is press the "grab" button or respective keyboard/MIDI control.
+
+Note that "grabbing" will grab a fixed amount of data, and then use the global **n cycles** control to set the playback range.
+That is to say: you seemingly grab **n cycles** sync cycles of data, but can still expand the selection later from the details view.
+
+.. figure:: resources/grab_button.png
+   :width: 100px
+   :alt: Grab button
+
+   The "grab" button.
+
+
 Loop Modes and Transitions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -74,7 +92,7 @@ A **composite loop** can be created by selecting an empty slot, then holding **A
 * Normally at the end of the current sequence. Note that the same loop may also be clicked multiple times to add it repeatedly.
 * If **Ctrl** is also held, it is added in parallel of the current sequence.
 
-Note that **Alt**+click will append to the first "timeline". So for example, if a short loop is composed in parallel with a long one, **Alt**-click will add an additional loop to play right after the short one.
+Note that **Alt** + click will append to the first "timeline". So for example, if a short loop is composed in parallel with a long one, **Alt** - click will add an additional loop to play right after the short one.
 
 For advanced editing of the sequence, the loop details window should be used (note that at the time of writing this, that is unimplemented).
 

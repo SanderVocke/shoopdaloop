@@ -23,6 +23,8 @@
 --                If none selected, select all "recording dry into wet" loops.
 -- -  N key:      "Record next": Queue recording into the first empty loop of the
 --                currently selected/recording track.
+-- -  G key:      "Grab": grabs data from the running buffer to record it retro-
+--                actively.
 -- -  O key:      "Overdub": Queue recording into the first empty loop of the
 --                currently selected/recording track while playing back currently
 --                recording loops.
@@ -32,7 +34,8 @@
 -- -  U key:      Untarget all loops.
 -- -  W key:      Record the selected loop(s) in sync with the targeted loop(s).
 -- -  C key:      Clear the selected loop(s).
--- -  0-9 keys:   Record the selected loop(s) for N cycles.
+-- -  0-9 keys:   Set the amount of sync loop cycles to apply future actions for.
+--                0 disables this - all actions will be open-ended.
 --
 -- Note that for the loop-transitioning keys in the list above, whether the loop
 -- transitions instantly or in sync with the sync loop depends on the global
@@ -92,15 +95,15 @@ end
 
 --  Handle number keypress
 local handle_number_key = function(number, modifiers)
-    shoop_control.loop_record_n(shoop_control.loop_get_which_selected(), number, 0)
+    shoop_control.set_apply_n_cycles(number)
 end
 
 local handle_loop_action = function(mode)
     local selected = shoop_control.loop_get_which_selected()
     if (#selected > 0) then
-        shoop_control.loop_transition(selected, mode, 0)
+        shoop_helpers.loop_command(selected, mode)
     elseif (mode == shoop_control.constants.LoopMode_Stopped) then
-        shoop_control.loop_transition(shoop_control.loop_get_all(), mode, 0)
+        shoop_helpers.loop_command(shoop_control.loop_get_all(), mode)
     else
         shoop_control.loop_select(shoop_control.loop_get_by_mode(mode), true)
     end
@@ -136,6 +139,9 @@ local handle_keyboard = function(event_type, key, modifiers)
             shoop_control.loop_record_with_targeted(shoop_control.loop_get_which_selected())
         elseif key == shoop_control.constants.Key_C then
             shoop_control.loop_clear(shoop_control.loop_get_which_selected())
+        elseif key == shoop_control.constants.Key_G then
+            local n_cycles = shoop_control.get_apply_n_cycles()
+            shoop_control.loop_adopt_ringbuffers(shoop_control.loop_get_which_selected(), n_cycles, n_cycles)
         elseif key == shoop_control.constants.Key_Escape then
             shoop_control.loop_select({}, true)
         elseif as_number ~= nil then

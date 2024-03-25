@@ -6,6 +6,8 @@
 #include "ProcessProfiling.h"
 #include <optional>
 
+template<typename SampleT> class AudioPort;
+
 // Extend a BasicLoop with a set of audio and midi channels.
 class AudioMidiLoop : public BasicLoop {
     std::vector<std::shared_ptr<ChannelInterface>> mp_audio_channels;
@@ -63,6 +65,7 @@ class AudioMidiLoop : public BasicLoop {
     //  started, 1 means the start of the last completed cycle, etc.
     //  nullopt will just use start offset 0.
     void adopt_ringbuffer_contents(
+        std::shared_ptr<shoop_types::_AudioPort> from_port,
         std::optional<uint32_t> reverse_start_offset_cycle = std::nullopt,
         std::optional<uint32_t> n_cycles_length = std::nullopt,
         bool thread_safe=true);

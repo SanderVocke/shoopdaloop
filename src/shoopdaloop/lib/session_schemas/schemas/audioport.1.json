@@ -11,7 +11,8 @@
         "muted":             { "type": "boolean" },
         "passthrough_muted": { "type": "boolean" },
         "internal_port_connections": { "type": "array", "items": { "type": "string" } },
-        "external_port_connections": { "type": "array", "items": { "type": "string" } }
+        "external_port_connections": { "type": "array", "items": { "type": "string" } },
+        "min_n_ringbuffer_samples": { "type": "integer" }
     },
-    "required": ["schema", "id", "name_parts", "type", "gain", "muted", "input_connectability", "output_connectability", "internal_port_connections", "external_port_connections"]
+    "required": ["schema", "id", "name_parts", "type", "gain", "muted", "input_connectability", "output_connectability", "internal_port_connections", "external_port_connections", "min_n_ringbuffer_samples"]
 }
