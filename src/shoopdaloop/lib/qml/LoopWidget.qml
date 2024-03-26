@@ -505,6 +505,62 @@ Item {
             maybe_loop.onCycled.connect(root.cycled)
         }
     }
+
+    function on_play_clicked() {
+        if (registries.state_registry.solo_active) {
+            root.transition_solo_in_track(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
+        } else {
+            root.transition(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
+        }
+    }
+
+    function on_playdry_clicked() {
+        if (registries.state_registry.solo_active) {
+            root.transition_solo_in_track(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
+        } else {
+            root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
+        }
+    }
+
+    function on_record_clicked() {
+        if (record.record_kind == 'with_targeted') {
+            root.record_with_targeted();
+        } else if (record.record_kind == 'infinite') {
+            if (registries.state_registry.solo_active) {
+                root.transition_solo_in_track(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
+            } else {
+                root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
+            }
+        } else {
+            root.record_n(0, record.record_kind)
+        } 
+    }
+
+    function on_grab_clicked() {
+        root.create_backend_loop()
+        let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
+        root.adopt_ringbuffers(0, record_grab.n_cycles, go_to_mode)
+        if (registries.state_registry.solo_active) {
+            let r = selected_and_other_loops_in_track()
+            root.transition_loops(r[1], ShoopConstants.LoopMode.Stopped, 0, false)
+        }
+    }
+
+    function on_stop_clicked() {
+        root.transition(ShoopConstants.LoopMode.Stopped, root.use_delay, root.sync_active)
+    }
+
+    function on_recordfx_clicked() {
+        var n = root.n_multiples_of_sync_length
+        var delay = 
+            root.delay_for_targeted != undefined ? 
+                root.use_delay : // delay to other
+                root.n_multiples_of_sync_length - root.current_cycle - 1 // delay to self
+        var prev_mode = statusrect.loop.mode
+        root.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, delay, true)
+        statusrect.loop.transition(prev_mode, delay + n, true)
+    }
+
     property bool initialized : maybe_loop ? (maybe_loop.initialized ? true : false) : false
     property var channels: (maybe_loop && maybe_loop.channels) ? maybe_loop.channels : []
     property var audio_channels : (maybe_loop && maybe_loop.audio_channels) ? maybe_loop.audio_channels : []
@@ -902,13 +958,7 @@ Item {
                         font.pixelSize: size / 2.0
                     }
 
-                    onClicked: {
-                        if (registries.state_registry.solo_active) {
-                            root.transition_solo_in_track(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
-                        } else {
-                            root.transition(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
-                        }
-                    }
+                    onClicked: root.on_play_clicked()
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -978,13 +1028,8 @@ Item {
                                         }
                                         font.pixelSize: size / 2.0
                                     }
-                                    onClicked: {
-                                        if (registries.state_registry.solo_active) {
-                                            root.transition_solo_in_track(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
-                                        } else {
-                                            root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
-                                        }
-                                    }
+
+                                    onClicked: root.on_playdry_clicked()
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -1050,19 +1095,7 @@ Item {
                         }
                     }
 
-                    onClicked: {
-                        if (record.record_kind == 'with_targeted') {
-                            root.record_with_targeted();
-                        } else if (record.record_kind == 'infinite') {
-                            if (registries.state_registry.solo_active) {
-                                root.transition_solo_in_track(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
-                            } else {
-                                root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
-                            }
-                        } else {
-                            root.record_n(0, record.record_kind)
-                        }                        
-                    }
+                    onClicked: root.on_record_clicked()
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
@@ -1156,15 +1189,7 @@ Item {
                                         }
                                     }
 
-                                    onClicked: {
-                                        root.create_backend_loop()
-                                        let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
-                                        root.adopt_ringbuffers(0, record_grab.n_cycles, go_to_mode)
-                                        if (registries.state_registry.solo_active) {
-                                            let r = selected_and_other_loops_in_track()
-                                            root.transition_loops(r[1], ShoopConstants.LoopMode.Stopped, 0, false)
-                                        }
-                                    }
+                                    onClicked: root.on_grab_clicked()
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -1188,16 +1213,7 @@ Item {
                                         text: root.delay_for_targeted != undefined ? ">" : ""
                                         font.pixelSize: size / 2.0
                                     }
-                                    onClicked: {
-                                        var n = root.n_multiples_of_sync_length
-                                        var delay = 
-                                            root.delay_for_targeted != undefined ? 
-                                                root.use_delay : // delay to other
-                                                root.n_multiples_of_sync_length - root.current_cycle - 1 // delay to self
-                                        var prev_mode = statusrect.loop.mode
-                                        root.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, delay, true)
-                                        statusrect.loop.transition(prev_mode, delay + n, true)
-                                    }
+                                    onClicked: root.on_recordfx_clicked()
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -1223,7 +1239,7 @@ Item {
                         font.pixelSize: size / 2.0
                     }
 
-                    onClicked: root.transition(ShoopConstants.LoopMode.Stopped, root.use_delay, root.sync_active)
+                    onClicked: root.on_stop_clicked()
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000

@@ -148,6 +148,99 @@ ShoopTestFile {
                     verify_true('channels' in other_loop().actual_session_descriptor())
                     verify_true(other_loop().actual_session_descriptor().channels.every((channel) => channel.data_length == 0))
                 },
+
+                'test_playback_immediate': () => {
+                    clear()
+                    verify_true(false)
+                },
+
+                'test_playback_immediate_solo': () => {
+                    verify_true(false)
+                },
+
+                'test_playback_synced': () => {
+                    verify_true(false)
+                },
+
+                'test_playback_synced_solo': () => {
+                    verify_true(false)
+                },
+                
+                'test_playback_targeted': () => {
+                    verify_true(false)
+                },
+
+                'test_playback_targeted_solo': () => {
+                    verify_true(false)
+                },
+
+                'test_playdry_immediate': () => {
+                    verify_true(false)
+                },
+
+                'test_playdry_immediate_solo': () => {
+                    verify_true(false)
+                },
+
+                'test_playdry_synced': () => {
+                    verify_true(false)
+                },
+
+                'test_playdry_synced_solo': () => {
+                    verify_true(false)
+                },
+                
+                'test_playdry_targeted': () => {
+                    verify_true(false)
+                },
+
+                'test_playback_targeted_solo': () => {
+                    verify_true(false)
+                },
+
+                'test_record_infinite': () => {
+                    verify_true(false)
+                },
+
+                'test_record_2_then_play': () => {
+                    verify_true(false)
+                },
+
+                'test_record_2_then_stop': () => {
+                    verify_true(false)
+                },
+
+                'test_record_with_targeted': () => {
+                    verify_true(false)
+                },
+
+                'test_record_infinite_solo': () => {
+                    verify_true(false)
+                },
+
+                'test_grab_ringbuffer_no_play': () => {
+                    verify_true(false)
+                },
+
+                'test_grab_ringbuffer_play': () => {
+                    verify_true(false)
+                },
+
+                'test_grab_ringbuffer_play_solo': () => {
+                    verify_true(false)
+                },
+
+                'test_stop_immediate': () => {
+                    verify_true(false)
+                },
+
+                'test_stop_synced': () => {
+                    verify_true(false)
+                },
+
+                'test_stop_with_targeted': () => {
+                    verify_true(false)
+                }
             })
         }
     }
