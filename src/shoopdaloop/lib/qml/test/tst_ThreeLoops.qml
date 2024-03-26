@@ -107,11 +107,87 @@ ShoopTestFile {
                 },
 
                 'test_playback_synced': () => {
-                    verify_true(false)
+                    clear()
+
+                    // Set up so that sync loop is playing and will cycle 50 samples from now
+                    first_loop().create_backend_loop()
+                    first_loop().set_length(1000)
+                    sync_loop().create_backend_loop()
+                    sync_loop().set_length(100)
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(50)
+                    session.backend.wait_process()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().position, 50)
+
+                    registries.state_registry.set_sync_active(true)
+                    first_loop().on_play_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().next_transition_delay, 0) // planned transition
+                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
+
+                    // Now proceed to the trigger
+                    session.backend.dummy_request_controlled_frames(100)
+                    testcase.wait_controlled_mode(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().position, 50)
+                    verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
 
                 'test_playback_synced_solo': () => {
-                    verify_true(false)
+                    clear()
+
+                    // Set up so that sync loop is playing and will cycle 50 samples from now
+                    first_loop().create_backend_loop()
+                    first_loop().set_length(1000)
+                    sync_loop().create_backend_loop()
+                    sync_loop().set_length(100)
+                    second_loop().create_backend_loop()
+                    second_loop().set_length(1000)
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(50)
+                    session.backend.wait_process()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().position, 50)
+
+                    registries.state_registry.set_sync_active(true)
+                    registries.state_registry.set_solo_active(true)
+                    first_loop().on_play_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().next_transition_delay, 0) // planned transition
+                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(second_loop().next_transition_delay, 0)
+
+                    // Now proceed to the trigger
+                    session.backend.dummy_request_controlled_frames(100)
+                    testcase.wait_controlled_mode(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().position, 50)
+                    verify_eq(first_loop().next_transition_delay, -1) // nothing planned
+                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().next_transition_delay, -1)
                 },
                 
                 'test_playback_targeted': () => {
@@ -174,11 +250,87 @@ ShoopTestFile {
                 },
 
                 'test_playdry_synced': () => {
-                    verify_true(false)
+                    clear()
+
+                    // Set up so that sync loop is playing and will cycle 50 samples from now
+                    first_loop().create_backend_loop()
+                    first_loop().set_length(1000)
+                    sync_loop().create_backend_loop()
+                    sync_loop().set_length(100)
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(50)
+                    session.backend.wait_process()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().position, 50)
+
+                    registries.state_registry.set_sync_active(true)
+                    first_loop().on_playdry_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().next_transition_delay, 0) // planned transition
+                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
+
+                    // Now proceed to the trigger
+                    session.backend.dummy_request_controlled_frames(100)
+                    testcase.wait_controlled_mode(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(first_loop().position, 50)
+                    verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
 
                 'test_playdry_synced_solo': () => {
-                    verify_true(false)
+                    clear()
+
+                    // Set up so that sync loop is playing and will cycle 50 samples from now
+                    first_loop().create_backend_loop()
+                    first_loop().set_length(1000)
+                    sync_loop().create_backend_loop()
+                    sync_loop().set_length(100)
+                    second_loop().create_backend_loop()
+                    second_loop().set_length(1000)
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(50)
+                    session.backend.wait_process()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().position, 50)
+
+                    registries.state_registry.set_sync_active(true)
+                    registries.state_registry.set_solo_active(true)
+                    first_loop().on_playdry_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().next_transition_delay, 0) // planned transition
+                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(second_loop().next_transition_delay, 0)
+
+                    // Now proceed to the trigger
+                    session.backend.dummy_request_controlled_frames(100)
+                    testcase.wait_controlled_mode(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(first_loop().position, 50)
+                    verify_eq(first_loop().next_transition_delay, -1) // nothing planned
+                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().next_transition_delay, -1)
                 },
                 
                 'test_playdry_targeted': () => {
