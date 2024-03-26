@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <meta name="lang:clipboard.copy" content="Copy to clipboard">
+  <meta name="lang:clipboard.copied" content="Copied to clipboard">
+  <meta name="lang:search.language" content="en">
+  <meta name="lang:search.pipeline.stopwords" content="True">
+  <meta name="lang:search.pipeline.trimmer" content="True">
+  <meta name="lang:search.result.none" content="No matching documents">
+  <meta name="lang:search.result.one" content="1 matching document">
+  <meta name="lang:search.result.other" content="# matching documents">
+  <meta name="lang:search.tokenizer" content="[\s\-]+">
+
+  
+    <link href="https://fonts.gstatic.com/" rel="preconnect" crossorigin>
+    <link href="https://fonts.googleapis.com/css?family=Roboto+Mono:400,500,700|Roboto:300,400,400i,700&display=fallback" rel="stylesheet">
+
+    <style>
+      body,
+      input {
+        font-family: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif
+      }
+
+      code,
+      kbd,
+      pre {
+        font-family: "Roboto Mono", "Courier New", Courier, monospace
+      }
+    </style>
+  
+
+  <link rel="stylesheet" href="_static/stylesheets/application.css"/>
+  <link rel="stylesheet" href="_static/stylesheets/application-palette.css"/>
+  <link rel="stylesheet" href="_static/stylesheets/application-fixes.css"/>
+  
+  <link rel="stylesheet" href="_static/fonts/material-icons.css"/>
+  
+  <meta name="theme-color" content="#3f51b5">
+  <script src="_static/javascripts/modernizr.js"></script>
+  
+  
+  
+    <title>Usage &#8212; ShoopDaLoop  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=83e35b93" />
+    <link rel="stylesheet" type="text/css" href="_static/material.css?v=79c92029" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=888ff710"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="For Developers / Advanced Users" href="developers.html" />
+    <link rel="prev" title="Concept" href="concept.html" />
+  
+   
+
+  </head>
+  <body dir=ltr
+        data-md-color-primary=grey data-md-color-accent=grey>
+  
+  <svg class="md-svg">
+    <defs data-children-count="0">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" width="416" height="448" viewBox="0 0 416 448" id="__github"><path fill="currentColor" d="M160 304q0 10-3.125 20.5t-10.75 19T128 352t-18.125-8.5-10.75-19T96 304t3.125-20.5 10.75-19T128 256t18.125 8.5 10.75 19T160 304zm160 0q0 10-3.125 20.5t-10.75 19T288 352t-18.125-8.5-10.75-19T256 304t3.125-20.5 10.75-19T288 256t18.125 8.5 10.75 19T320 304zm40 0q0-30-17.25-51T296 232q-10.25 0-48.75 5.25Q229.5 240 208 240t-39.25-2.75Q130.75 232 120 232q-29.5 0-46.75 21T56 304q0 22 8 38.375t20.25 25.75 30.5 15 35 7.375 37.25 1.75h42q20.5 0 37.25-1.75t35-7.375 30.5-15 20.25-25.75T360 304zm56-44q0 51.75-15.25 82.75-9.5 19.25-26.375 33.25t-35.25 21.5-42.5 11.875-42.875 5.5T212 416q-19.5 0-35.5-.75t-36.875-3.125-38.125-7.5-34.25-12.875T37 371.5t-21.5-28.75Q0 312 0 260q0-59.25 34-99-6.75-20.5-6.75-42.5 0-29 12.75-54.5 27 0 47.5 9.875t47.25 30.875Q171.5 96 212 96q37 0 70 8 26.25-20.5 46.75-30.25T376 64q12.75 25.5 12.75 54.5 0 21.75-6.75 42 34 40 34 99.5z"/></svg>
+      
+    </defs>
+  </svg>
+  
+  <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer">
+  <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search">
+  <label class="md-overlay" data-md-component="overlay" for="__drawer"></label>
+  <a href="#usage" tabindex="1" class="md-skip"> Skip to content </a>
+  <header class="md-header" data-md-component="header">
+  <nav class="md-header-nav md-grid">
+    <div class="md-flex navheader">
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <a href="index.html" title="ShoopDaLoop  documentation"
+           class="md-header-nav__button md-logo">
+          
+            &nbsp;
+          
+        </a>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <label class="md-icon md-icon--menu md-header-nav__button" for="__drawer"></label>
+      </div>
+      <div class="md-flex__cell md-flex__cell--stretch">
+        <div class="md-flex__ellipsis md-header-nav__title" data-md-component="title">
+          <span class="md-header-nav__topic">ShoopDaLoop  documentation</span>
+          <span class="md-header-nav__topic"> Usage </span>
+        </div>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <label class="md-icon md-icon--search md-header-nav__button" for="__search"></label>
+        
+<div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" action="search.html" method="get" name="search">
+      <input type="text" class="md-search__input" name="q" placeholder=""Search""
+             autocapitalize="off" autocomplete="off" spellcheck="false"
+             data-md-component="query" data-md-state="active">
+      <label class="md-icon md-search__icon" for="__search"></label>
+      <button type="reset" class="md-icon md-search__icon" data-md-component="reset" tabindex="-1">
+        &#xE5CD;
+      </button>
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="result">
+          <div class="md-search-result__meta">
+            Type to start searching
+          </div>
+          <ol class="md-search-result__list"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+      </div>
+      
+      
+  
+  <script src="_static/javascripts/version_dropdown.js"></script>
+  <script>
+    var json_loc = ""versions.json"",
+        target_loc = "../",
+        text = "Versions";
+    $( document ).ready( add_version_dropdown(json_loc, target_loc, text));
+  </script>
+  
+
+    </div>
+  </nav>
+</header>
+
+  
+  <div class="md-container">
+    
+    
+    
+  <nav class="md-tabs" data-md-component="tabs">
+    <div class="md-tabs__inner md-grid">
+      <ul class="md-tabs__list">
+          <li class="md-tabs__item"><a href="index.html" class="md-tabs__link">ShoopDaLoop  documentation</a></li>
+      </ul>
+    </div>
+  </nav>
+    <main class="md-main">
+      <div class="md-main__inner md-grid" data-md-component="container">
+        
+          <div class="md-sidebar md-sidebar--primary" data-md-component="navigation">
+            <div class="md-sidebar__scrollwrap">
+              <div class="md-sidebar__inner">
+                <nav class="md-nav md-nav--primary" data-md-level="0">
+  <label class="md-nav__title md-nav__title--site" for="__drawer">
+    <a href="index.html" title="ShoopDaLoop documentation" class="md-nav__button md-logo">
+      
+        <img src="_static/" alt=" logo" width="48" height="48">
+      
+    </a>
+    <a href="index.html"
+       title="ShoopDaLoop documentation">ShoopDaLoop  documentation</a>
+  </label>
+  
+
+</nav>
+              </div>
+            </div>
+          </div>
+          <div class="md-sidebar md-sidebar--secondary" data-md-component="toc">
+            <div class="md-sidebar__scrollwrap">
+              <div class="md-sidebar__inner">
+                
+<nav class="md-nav md-nav--secondary">
+    <label class="md-nav__title" for="__toc">"Contents"</label>
+  <ul class="md-nav__list" data-md-scrollfix="">
+        <li class="md-nav__item"><a href="" class="md-nav__link"></a>
+        </li>
+        <li class="md-nav__item"><a href="concept.html" class="md-nav__link">Concept</a>
+        </li>
+        <li class="md-nav__item"><a href="#usage--page-root" class="md-nav__link">Usage</a><nav class="md-nav">
+              <ul class="md-nav__list">
+        <li class="md-nav__item"><a href="#general" class="md-nav__link">General</a>
+        </li>
+        <li class="md-nav__item"><a href="#controlling-loops" class="md-nav__link">Controlling Loops</a><nav class="md-nav">
+              <ul class="md-nav__list">
+        <li class="md-nav__item"><a href="#synchronization-on-off" class="md-nav__link">Synchronization On/Off</a>
+        </li>
+        <li class="md-nav__item"><a href="#always-on-recording" class="md-nav__link">Always-on Recording</a>
+        </li>
+        <li class="md-nav__item"><a href="#loop-modes-and-transitions" class="md-nav__link">Loop Modes and Transitions</a>
+        </li>
+        <li class="md-nav__item"><a href="#selecting-and-targeting" class="md-nav__link">Selecting and Targeting</a>
+        </li>
+        <li class="md-nav__item"><a href="#pre-recording" class="md-nav__link">Pre-recording</a>
+        </li>
+        <li class="md-nav__item"><a href="#midi-looping" class="md-nav__link">MIDI looping</a>
+        </li>
+        <li class="md-nav__item"><a href="#composite-loops" class="md-nav__link">Composite Loops</a><nav class="md-nav">
+              <ul class="md-nav__list">
+        <li class="md-nav__item"><a href="#playback" class="md-nav__link">Playback</a>
+        </li>
+        <li class="md-nav__item"><a href="#recording" class="md-nav__link">Recording</a>
+        </li></ul>
+            </nav>
+        </li></ul>
+            </nav>
+        </li>
+        <li class="md-nav__item"><a href="#controlling-tracks" class="md-nav__link">Controlling Tracks</a><nav class="md-nav">
+              <ul class="md-nav__list">
+        <li class="md-nav__item"><a href="#gain-controls" class="md-nav__link">Gain Controls</a>
+        </li>
+        <li class="md-nav__item"><a href="#track-configuration" class="md-nav__link">Track Configuration</a>
+        </li>
+        <li class="md-nav__item"><a href="#port-connections" class="md-nav__link">Port Connections</a>
+        </li></ul>
+            </nav>
+        </li>
+        <li class="md-nav__item"><a href="#id1" class="md-nav__link">Composite Loops</a><nav class="md-nav">
+              <ul class="md-nav__list">
+        <li class="md-nav__item"><a href="#creating-composite-loops" class="md-nav__link">Creating Composite Loops</a>
+        </li></ul>
+            </nav>
+        </li>
+        <li class="md-nav__item"><a href="#midi-controllers" class="md-nav__link">MIDI Controllers</a><nav class="md-nav">
+              <ul class="md-nav__list">
+        <li class="md-nav__item"><a href="#autoconnect" class="md-nav__link">Autoconnect</a>
+        </li>
+        <li class="md-nav__item"><a href="#midi-control-rules" class="md-nav__link">MIDI control rules</a><nav class="md-nav">
+              <ul class="md-nav__list">
+        <li class="md-nav__item"><a href="#example-1-simple-mapping-using-midi-learn" class="md-nav__link">Example 1: Simple mapping using MIDI Learn</a>
+        </li>
+        <li class="md-nav__item"><a href="#example-2-advanced-note-to-loop-mapping" class="md-nav__link">Example 2: Advanced note-to-loop mapping</a>
+        </li></ul>
+            </nav>
+        </li></ul>
+            </nav>
+        </li>
+        <li class="md-nav__item"><a href="#keyboard-control" class="md-nav__link">Keyboard control</a>
+        </li></ul>
+            </nav>
+        </li>
+        <li class="md-nav__item"><a href="developers.html" class="md-nav__link">For Developers / Advanced Users</a>
+        </li>
+    
+<li class="md-nav__item"><a class="md-nav__extra_link" href="_sources/usage.rst.txt">Show Source</a> </li>
+
+<li id="searchbox" class="md-nav__item"></li>
+
+  </ul>
+</nav>
+              </div>
+            </div>
+          </div>
+        
+        <div class="md-content">
+          <article class="md-content__inner md-typeset" role="main">
+            
+  <section id="usage">
+<h1 id="usage--page-root">Usage<a class="headerlink" href="#usage--page-root" title="Link to this heading">¶</a></h1>
+<section id="general">
+<h2 id="general">General<a class="headerlink" href="#general" title="Link to this heading">¶</a></h2>
+<p>Many buttons in <strong>ShoopDaLoop</strong> have tooltips on mouse hover to explain their functionality. Some buttons have special functionalities on “click and hold”.</p>
+</section>
+<section id="controlling-loops">
+<h2 id="controlling-loops">Controlling Loops<a class="headerlink" href="#controlling-loops" title="Link to this heading">¶</a></h2>
+<section id="synchronization-on-off">
+<h3 id="synchronization-on-off">Synchronization On/Off<a class="headerlink" href="#synchronization-on-off" title="Link to this heading">¶</a></h3>
+<p>Loop mode transitions in <strong>ShoopDaLoop</strong> happen synchronized to the sync loop. However, immediate actions can also be done if needed. To do so, turn <em>synchronization off</em> when performing the action. Note that this does not affect already queued actions or playing loops - only the actions done while turned off.</p>
+<p>The <em>synchronization active</em> button at the top of the screen shows the current state of synchronization. A timer symbol (SYMBOL) means synchroniation on, an exclamation point (SYMBOL) means synchronization off.</p>
+<p>There are two ways to control this:</p>
+<ul class="simple">
+<li><p>Click the button to toggle between the two modes;</p></li>
+<li><p>Synchronization is always off while a Ctrl key is held (usually easier).</p></li>
+</ul>
+</section>
+<section id="always-on-recording">
+<h3 id="always-on-recording">Always-on Recording<a class="headerlink" href="#always-on-recording" title="Link to this heading">¶</a></h3>
+<p>Having to manually trigger recordings ahead of time can cost focus and break your flow.
+For that reason, <strong>ShoopDaLoop</strong> allows you to record a loop in hindsight. You can just play, and when something nice happens, capture it afterward.</p>
+<p>The feature doesn’t need to be manually enabled. All you need to do is press the “grab” button or respective keyboard/MIDI control.</p>
+<p>Note that “grabbing” will grab a fixed amount of data, and then use the global <strong>n cycles</strong> control to set the playback range.
+That is to say: you seemingly grab <strong>n cycles</strong> sync cycles of data, but can still expand the selection later from the details view.</p>
+<figure class="align-default" id="id3">
+<a class="reference internal image-reference" href="_images/grab_button.png"><img alt="Grab button" src="_images/grab_button.png" style="width: 100px;"/></a>
+<figcaption>
+<p><span class="caption-text">The “grab” button.</span><a class="headerlink" href="#id3" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
+</section>
+<section id="loop-modes-and-transitions">
+<h3 id="loop-modes-and-transitions">Loop Modes and Transitions<a class="headerlink" href="#loop-modes-and-transitions" title="Link to this heading">¶</a></h3>
+<p>Loops can be in the following modes:</p>
+<ul class="simple">
+<li><p><strong>Stopped</strong>: The loop is not playing. This is the initial state of a loop.</p></li>
+<li><p><strong>Empty</strong>: Stopped and also no data stored in the loop.</p></li>
+<li><p><strong>Recording</strong>: The loop is recording. For dry+wet tracks, both dry and wet are recording at the same time.</p></li>
+<li><p><strong>Playing</strong>: The loop is playing. For dry+wet tracks, only the wet recording is being played back such that the FX/synth processing may be disabled.</p></li>
+<li><p><strong>Playing Dry Through Wet</strong>: Only available for dry+wet tracks. The loop plays back the dry recording through FX/synth being processed in real-time. This way, e.g. FX/synth settings can be changed and the result is immediatlely audible.</p></li>
+<li><p><strong>Recording Dry Into Wet</strong>: Only available for dry+wet tracks. The loop is playing the dry recording through the FX/synth into the wet, which is being recorded. This way, changed synth/FX settings can be baked into the wet recording such that normal (wet) playback can again be used.</p></li>
+</ul>
+<p>Using a long-press on the <strong>record one cycle</strong> button, you can also choose to <strong>record N cycles</strong> of the sync loop.</p>
+<p>Loops can be transitioned by hovering over them with the mouse. There are also keyboard controls (currently only documented in <strong>keyboard.lua</strong>). Hovering over certain buttons will open a dropdown with more options. For example, playing dry through wet appears when hovering the play button.</p>
+<p>Normally, a loop will keep recording until transitioned to another state. However, it is also possible to record for a fixed amount of sync loop cycles so that recording does not need to be manually stopped.</p>
+</section>
+<section id="selecting-and-targeting">
+<h3 id="selecting-and-targeting">Selecting and Targeting<a class="headerlink" href="#selecting-and-targeting" title="Link to this heading">¶</a></h3>
+<p>Loops can be <strong>selected</strong> (yellow border) by clicking their icon next to the buttons on the left-hand side. Selection is useful for transitioning multiple loops together. Performing a transition on any loop will also perform the same transition on all currently selected loops.</p>
+<p>A single loop can be <strong>targeted</strong> (orange border) by double-clicking it. The behavior of certain loop transitions is different if another loop is currently targeted. For example, the “record N / record 1” button is replaced by a <strong>record synced</strong> button. This button will ensure that recording starts when the targeted loop restarts, and that the recording duration will match the targeted loop.</p>
+</section>
+<section id="pre-recording">
+<h3 id="pre-recording">Pre-recording<a class="headerlink" href="#pre-recording" title="Link to this heading">¶</a></h3>
+<p>Oftentimes, a catchy hook or riff will start before the “1” of the music. Or, the loop starts on 1 but you want to start it will e.g. a small fill the first time. This makes it complicated to loop sometimes, because you would need to anticipate one sync loop cycle earlier than the actual looping part starts.</p>
+<p>For this reason, loops in <strong>ShoopDaLoop</strong> are already <strong>pre-recording</strong> in the cycle before their real recordings starts. You normally won’t notice this because the data for this part is stored but usually never played.</p>
+<p>To hear the pre-recorded part back, you need to enable <strong>pre-playback</strong>. This is done in the loop details window (opened from the loop context menu when right-clicking it).</p>
+</section>
+<section id="midi-looping">
+<h3 id="midi-looping">MIDI looping<a class="headerlink" href="#midi-looping" title="Link to this heading">¶</a></h3>
+<p>In principle, MIDI loops work the same as audio loops. However, playing back a MIDI signal will not always result in the exact same sound as the first recording, because:</p>
+<ul class="simple">
+<li><p>The audio synthesis (in plugin or external JACK application) may have internal state that is not directly controlled by MIDI;</p></li>
+<li><p>MIDI has a state, which includes all CC values, pitch bend, notes already active at recording start, etc.</p></li>
+</ul>
+<p>The way ShoopDaLoop approaches MIDI playback is to approximate the state at the start of recording as closely as possible. That means:</p>
+<ul class="simple">
+<li><p>ShoopDaLoop will restore states like CCs (including sustain pedal, mod wheel, pitch) to the state they were in when recording started, at the start of every playback loop.</p></li>
+<li><p>If a note was already active when recording started, ShoopDaLoop will remember this and play the same note at the start of every playback loop. One advantage of this is if a note was played just slightly before recording start, it will sound indistinguishable in most cases. Note that this does not in include notes that are finished (on + off) just before recording start.</p></li>
+</ul>
+</section>
+<section id="composite-loops">
+<h3 id="composite-loops">Composite Loops<a class="headerlink" href="#composite-loops" title="Link to this heading">¶</a></h3>
+<p>A <strong>composite loop</strong> can be created by selecting an empty slot, then holding <strong>Alt</strong> and clicking another loop. The other loop is added to the composite loop composition:</p>
+<ul class="simple">
+<li><p>Normally at the end of the current sequence. Note that the same loop may also be clicked multiple times to add it repeatedly.</p></li>
+<li><p>If <strong>Ctrl</strong> is also held, it is added in parallel of the current sequence.</p></li>
+</ul>
+<p>Note that <strong>Alt</strong> + click will append to the first “timeline”. So for example, if a short loop is composed in parallel with a long one, <strong>Alt</strong> - click will add an additional loop to play right after the short one.</p>
+<p>For advanced editing of the sequence, the loop details window should be used (note that at the time of writing this, that is unimplemented).</p>
+<p>Composite loops are shown in pink; if a composite loop is (solely) selected, all its sub-loops are highlighted with a pink border.</p>
+<section id="playback">
+<h4 id="playback">Playback<a class="headerlink" href="#playback" title="Link to this heading">¶</a></h4>
+<p>Playing back a composite loop will play the loops as sequenced. Empty sub-loops are skipped. The psrogress indicator on the composite loop shows the total progress. The playback will cycle back around to the start of the sequence.</p>
+</section>
+<section id="recording">
+<h4 id="recording">Recording<a class="headerlink" href="#recording" title="Link to this heading">¶</a></h4>
+<p>In order to record a composite loop, the sub-loops must already have contents so their lengths can be determined. That means you will first need to record the subloops separately or manually set their lenghts.</p>
+<p>When this is the case, pressing “record” on the composite loop will re-record the subloops in sequence.</p>
+<p>Note that there is a special case if the same subloop is sequenced multiple times. It will not re-record multiple times. Instead, after re-recording it the first time, additional occurrences in the sequence are skipped with the subloop idle.</p>
+</section>
+</section>
+</section>
+<section id="controlling-tracks">
+<h2 id="controlling-tracks">Controlling Tracks<a class="headerlink" href="#controlling-tracks" title="Link to this heading">¶</a></h2>
+<section id="gain-controls">
+<h3 id="gain-controls">Gain Controls<a class="headerlink" href="#gain-controls" title="Link to this heading">¶</a></h3>
+<p><strong>ShoopDaLoop</strong> tracks have two gain controls:</p>
+<ul class="simple">
+<li><p>The <strong>input gain</strong> governs gain of the track’s input ports. All incoming signals are attenuated by this gain. This means it affects both monitoring and recording.</p></li>
+<li><p>The <strong>output gain</strong> governs gain of the track’s output ports. All outgoing signals are attenuated by this gain. This means it affects both monitoring and playback.</p></li>
+</ul>
+<p>Both gain controls come with:</p>
+<ul class="simple">
+<li><p>A <strong>balance knob</strong> if the in-/outputs are stereo for this track.</p></li>
+<li><p>A <strong>mute button</strong> to mute the track’s in-/outputs. For the input this differs from the gain fader in that it only affects monitoring, not recording.</p></li>
+</ul>
+</section>
+<section id="track-configuration">
+<h3 id="track-configuration">Track Configuration<a class="headerlink" href="#track-configuration" title="Link to this heading">¶</a></h3>
+<p>When a new track is added using the <strong>add track button</strong>, you are presented with the <strong>Add Track Dialog</strong>:</p>
+<a class="reference internal image-reference" href="_images/add_track_dialog.png"><img alt="_images/add_track_dialog.png" class="align-center" src="_images/add_track_dialog.png" style="width: 300px;"/></a>
+<p>The available settings are:</p>
+<ul class="simple">
+<li><p><strong>Name</strong>: the display name of the track. Also determines the base name of the track’s ports, which won’t be renamed if the track is renamed.</p></li>
+<li><p><strong>Type</strong>: the type of track. Two options are available:</p>
+<ul>
+<li><p><strong>Direct</strong>: Direct looping. Audio/MIDI inputs are routed to the loops, and loops are routed to Audio/MIDI outputs.</p></li>
+<li><p><strong>Dry/Wet</strong>: Dry/Wet looping. Audio/MIDI inputs are routed to the dry loop, and the dry loop is routed to the wet loop. The wet loop is routed to the Audio/MIDI outputs.</p></li>
+</ul>
+</li>
+<li><p><strong>Processing Kind</strong>: Only applicable to dry/wet loops. Determines the signal path from dry to wet. There are several options:</p>
+<ul>
+<li><p><strong>External (JACK)</strong>: Create additional ports such that an external FX/synth chain can be connected. It is up to the user to connect an external application from the <strong>send</strong> to the <strong>return</strong> ports.</p></li>
+<li><p><strong>Carla (Rack)</strong>: Host FX/synth internally in <strong>Carla</strong> as a plugin. Carla is run in <strong>Rack</strong> mode (straightforward FX chain).</p></li>
+<li><p><strong>Carla (Patchbay)</strong>: Host FX/synth internally in <strong>Carla</strong> as a plugin. Carla is run in <strong>Patchbay</strong> mode (processing graph).</p></li>
+</ul>
+</li>
+<li><p><strong>(dry/wet/direct) Audio</strong>: Number of audio channels for the track’s loops.</p></li>
+<li><p><strong>(dry/direct) MIDI</strong>: Whether to enable a MIDI channel. For direct tracks, this will loop MIDI with a MIDI output. For Dry/Wet tracks, MIDI is only supported on the dry side (the expectation being that the FX to wet includes some kind of synthesis to audio).</p></li>
+</ul>
+</section>
+<section id="port-connections">
+<h3 id="port-connections">Port Connections<a class="headerlink" href="#port-connections" title="Link to this heading">¶</a></h3>
+<p>Connections to a track’s ports can be managed using the <strong>Connections Dialog</strong>. It can be found under the track settings menu dropdown (<strong>Connections…</strong>).</p>
+</section>
+</section>
+<section id="id1">
+<span id="id2"></span><h2 id="id1">Composite Loops<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
+<p>A <strong>composite loop</strong> is a virtual loop that doesn’t contain any audio or MIDI data directly. Instead, it controls other loops (which may themselves also be composite loops). There are two types of composite loops:</p>
+<p><strong>Regular composite loops</strong> behave like a normal loop, but contain a sequence of triggers inside. They can be used to combine multiple small loops into larger ones. They can be used as <strong>scenes</strong> (trigger multiple other loops in parallel) or <strong>sequences</strong> (trigger a sequence of other loops). They behave as follows:</p>
+<ul class="simple">
+<li><p>Triggering a <strong>regular composite loop</strong> will make it behave like a normal loop. For example, pressing <strong>record</strong> on one will record the planned loops as defined in the sequence. Likewise for playback, etc.</p></li>
+<li><p><strong>Regular composite loops</strong> loop around. That is to say, when they reach the end, they restart.</p></li>
+</ul>
+<p><strong>Script composite loops</strong> are slightly different. In a <strong>script composite loop</strong>, you specify the mode for each scheduled trigger. Thus, a <strong>script composite loop</strong> may first record a loop and then play it, while starting recording on another. This makes them suitable for pre-planning a scripted looping session. Details:</p>
+<ul class="simple">
+<li><p>A <strong>script composite loop</strong> has different buttons on it than a normal loop or regular composite. It can only be started or stopped.</p></li>
+<li><p>A <strong>script composite loop</strong> will not loop around, but rather just stop at the end.</p></li>
+</ul>
+<p>All kinds of <strong>composite loops</strong> can be hierarchically combined.</p>
+<section id="creating-composite-loops">
+<h3 id="creating-composite-loops">Creating Composite Loops<a class="headerlink" href="#creating-composite-loops" title="Link to this heading">¶</a></h3>
+<p>Right-click any loop slot and click <strong>Create composite</strong>. The loop changes color. Clearing the loop reverts it back to non-composite.</p>
+<p>To edit the contents of a <strong>composite loop</strong>, open the <strong>details</strong> pane at the bottom and select the loop by clicking on the empty state indicator on the loop. Loops can be dragged into the composite loop’s timeline.</p>
+<p>There is also a drop-down box in the details pane to toggle between <strong>regular</strong> and <strong>script</strong>.</p>
+<p>There is also a quicker way to create composites:</p>
+<ul class="simple">
+<li><p><em>Alt+Click</em> while a loop is selected will add the clicked loop to the end of the selected composite loop (or create one if empty).</p></li>
+<li><p><em>Alt+Ctrl+Click</em> while a loop is selected will add the clicked loop in parallel at the start of the selected composite loop (or create one if empty).</p></li>
+</ul>
+</section>
+</section>
+<section id="midi-controllers">
+<h2 id="midi-controllers">MIDI Controllers<a class="headerlink" href="#midi-controllers" title="Link to this heading">¶</a></h2>
+<p><strong>ShoopDaLoop</strong> can be controlled by MIDI signals. This can be done either through the user configuration or by writing advanced integration scripts in Lua. The former is described here - for the latter, see <a class="reference internal" href="developers.html#id1"><span class="std std-ref">Lua scripting</span></a>.</p>
+<p>To configure MIDI settings, open the Settings dialog and go to the <strong>MIDI Control</strong> tab:</p>
+<a class="reference internal image-reference" href="_images/midi_settings.png"><img alt="_images/midi_settings.png" class="align-center" src="_images/midi_settings.png" style="width: 500px;"/></a>
+<section id="autoconnect">
+<h3 id="autoconnect">Autoconnect<a class="headerlink" href="#autoconnect" title="Link to this heading">¶</a></h3>
+<p>In most cases, you will want <strong>ShoopDaLoop</strong> to connect automatically to your controller via the <strong>JACK</strong> patchbay. To do this, enter a regular expression for your device name into the respective autoconnect regex field:</p>
+<a class="reference internal image-reference" href="_images/autoconnect.png"><img alt="_images/autoconnect.png" class="align-center" src="_images/autoconnect.png" style="width: 300px;"/></a>
+<p>Save your configuration and try it out. When connecting your device, <strong>ShoopDaLoop</strong> should automatically connect to it.</p>
+</section>
+<section id="midi-control-rules">
+<h3 id="midi-control-rules">MIDI control rules<a class="headerlink" href="#midi-control-rules" title="Link to this heading">¶</a></h3>
+<p>MIDI controllers are set up as a list of <strong>rules</strong>. A rule defines a filter that selects incoming MIDI messages, possibly a condition, and an action to execute. Rules can be simple mappings of messages to actions, up to advanced rules where filters and actions may both incorporate snippets of Lua code.</p>
+<section id="example-1-simple-mapping-using-midi-learn">
+<h4 id="example-1-simple-mapping-using-midi-learn">Example 1: Simple mapping using MIDI Learn<a class="headerlink" href="#example-1-simple-mapping-using-midi-learn" title="Link to this heading">¶</a></h4>
+<p>In this example we want to map an incoming note to perform the default action on any selected loop(s).</p>
+<p>First, ensure your device is automatically or manually connected to <strong>ShoopDaLoop</strong>’s <strong>control</strong> MIDI port.</p>
+<p>Next, click the “+” to add a new MIDI trigger. A filter dialog greets you:</p>
+<a class="reference internal image-reference" href="_images/midi_filter.png"><img alt="_images/midi_filter.png" class="align-center" src="_images/midi_filter.png" style="width: 400px;"/></a>
+<p>Here we configure the filter selecting our incoming MIDI message which will trigger our action. Rather than choosing the filter manually, press a button on your MIDI controller. A notification should appear of what was just received:</p>
+<a class="reference internal image-reference" href="_images/midi_learn.png"><img alt="_images/midi_learn.png" class="align-center" src="_images/midi_learn.png" style="width: 300px;"/></a>
+<p>Click “Use” to use the received message as a filter. If you wish, you may modify the filter (such as making it independent of channel by setting the channel to Any). Press OK to accept the trigger.</p>
+<p>A new trigger has been added to the list. From the “Do:” dropdown, choose “Default Loop Action”. Leave the newly appeared “loops” input set to “selection”.</p>
+<p>Save your configuration and test it out: Close the settings window, use the mouse or keyboard to select a loop (it will light up yellow) and press the same button on your MIDI controller. It should now (try to) transition to Recording.</p>
+</section>
+<section id="example-2-advanced-note-to-loop-mapping">
+<h4 id="example-2-advanced-note-to-loop-mapping">Example 2: Advanced note-to-loop mapping<a class="headerlink" href="#example-2-advanced-note-to-loop-mapping" title="Link to this heading">¶</a></h4>
+<p>Some midi controllers have row(s) or grid(s) of buttons that can be used to trigger loops. In that case it is cumbersome to set up individual rules for every button.</p>
+<p>Instead, we can use a single rule that maps the incoming note to the loop number. This can be done by using a Lua expression in the filter.</p>
+<p>As in example 1, set up your device so it is connected and open the filter dialog for a new trigger rule. Try out a few buttons on your controller and note down the note number received. You will need to work out the formula that calculates the <strong>ShoopDaLoop</strong> loop coordinates (row, column) from the note number. In our example, let’s assume we
+worked out that the row will be the note divided by 8, and the column will be the remainder.</p>
+<p>Again, let’s choose the Default Loop Action, but now, for the “loops” input, choose “custom”.</p>
+<p>A box appears where a Lua expression can be entered. In Lua:</p>
+<ul class="simple">
+<li><p>Division is done with the “//” operator</p></li>
+<li><p>Remainder is done with the “%” operator</p></li>
+<li><p>An array is specified with curly braces “{}”.</p></li>
+</ul>
+<p>So our loop coordinates expression in this case is: “{note//8, note%8}”. Press OK to accept the trigger.</p>
+<p>Your loop buttons should now be mapped to ShoopDaLoop’s grid.</p>
+</section>
+</section>
+</section>
+<section id="keyboard-control">
+<h2 id="keyboard-control">Keyboard control<a class="headerlink" href="#keyboard-control" title="Link to this heading">¶</a></h2>
+<p>The computer keyboard can be used to control many aspects of <strong>ShoopDaLoop</strong>. Note that the keyboard control behavior is implemented as a custom <strong>Lua script</strong> (keyboard.lua),
+which means that if so desired, you can make your own keyboard control modifications by duplicating the script and modifying it.</p>
+<p>The help text of the default <strong>keyboard.lua</strong> is shown here for reference. Note that this help text can be opened any time from the Lua script settings menu as well.</p>
+<p><div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">keyboard</span><span class="o">.</span><span class="n">lua</span><span class="p">:</span> <span class="n">Handle</span> <span class="n">keyboard</span> <span class="n">events</span><span class="o">.</span>
+
+<span class="n">This</span> <span class="n">script</span> <span class="n">allows</span> <span class="n">controlling</span> <span class="n">ShoopDaLoop</span> <span class="n">through</span> <span class="n">keyboard</span> <span class="n">keys</span><span class="o">.</span>
+
+<span class="o">-</span>  <span class="n">Arrow</span> <span class="n">keys</span><span class="p">:</span> <span class="n">Move</span> <span class="n">the</span> <span class="n">selection</span> <span class="n">around</span><span class="o">.</span> <span class="n">If</span> <span class="n">the</span> <span class="n">selection</span> <span class="ow">is</span> <span class="n">empty</span><span class="p">,</span> <span class="n">select</span> <span class="n">the</span>
+<span class="n">loop</span> <span class="n">at</span> <span class="n">the</span> <span class="n">origin</span><span class="o">.</span> <span class="n">If</span> <span class="n">multiple</span> <span class="n">loops</span> <span class="n">are</span> <span class="n">selected</span><span class="p">,</span> <span class="n">move</span> <span class="nb">all</span> <span class="n">of</span>
+<span class="n">them</span> <span class="k">as</span> <span class="n">long</span> <span class="k">as</span> <span class="n">the</span> <span class="n">group</span> <span class="n">does</span> <span class="ow">not</span> <span class="n">go</span> <span class="n">out</span> <span class="n">of</span> <span class="n">bounds</span><span class="o">.</span>
+<span class="n">Holding</span> <span class="n">the</span> <span class="n">Ctrl</span> <span class="n">key</span> <span class="k">while</span> <span class="n">pressing</span> <span class="n">an</span> <span class="n">arrow</span> <span class="n">key</span> <span class="n">will</span> <span class="n">expand</span> <span class="n">the</span>
+<span class="n">selection</span> <span class="n">instead</span> <span class="n">of</span> <span class="n">moving</span> <span class="n">it</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">Escape</span> <span class="n">key</span><span class="p">:</span> <span class="n">Clear</span> <span class="n">the</span> <span class="n">selection</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">Space</span> <span class="n">key</span><span class="p">:</span>  <span class="n">Perform</span> <span class="n">the</span> <span class="n">default</span> <span class="n">action</span> <span class="n">on</span> <span class="n">the</span> <span class="n">selected</span> <span class="n">loop</span><span class="p">(</span><span class="n">s</span><span class="p">)</span><span class="o">.</span> <span class="n">The</span> <span class="n">default</span>
+<span class="n">action</span> <span class="ow">is</span> <span class="n">to</span> <span class="n">cycle</span> <span class="n">between</span> <span class="n">recording</span><span class="p">,</span> <span class="n">playing</span> <span class="ow">and</span> <span class="n">stopped</span> <span class="n">modes</span>
+<span class="n">respectively</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">R</span> <span class="n">key</span><span class="p">:</span>      <span class="n">Set</span> <span class="n">the</span> <span class="n">selected</span> <span class="n">loop</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="n">to</span> <span class="n">recording</span> <span class="n">mode</span><span class="o">.</span>
+<span class="n">If</span> <span class="n">none</span> <span class="n">selected</span><span class="p">,</span> <span class="n">select</span> <span class="nb">all</span> <span class="n">recording</span> <span class="n">loops</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">P</span> <span class="n">key</span><span class="p">:</span>      <span class="n">Set</span> <span class="n">the</span> <span class="n">selected</span> <span class="n">loop</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="n">to</span> <span class="n">playing</span> <span class="n">mode</span><span class="o">.</span>
+<span class="n">If</span> <span class="n">none</span> <span class="n">selected</span><span class="p">,</span> <span class="n">select</span> <span class="nb">all</span> <span class="n">playing</span> <span class="n">loops</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">S</span> <span class="n">key</span><span class="p">:</span>      <span class="n">Set</span> <span class="n">the</span> <span class="n">selected</span> <span class="n">loop</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="n">to</span> <span class="n">stopped</span> <span class="n">mode</span><span class="o">.</span>
+<span class="n">If</span> <span class="n">none</span> <span class="n">selected</span><span class="p">,</span> <span class="n">stop</span> <span class="nb">all</span> <span class="n">loops</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">L</span> <span class="n">key</span><span class="p">:</span>      <span class="n">Set</span> <span class="n">the</span> <span class="n">selected</span> <span class="n">loop</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="n">to</span> <span class="n">playing</span> <span class="n">dry</span> <span class="n">through</span> <span class="n">wet</span> <span class="n">mode</span><span class="o">.</span>
+<span class="n">If</span> <span class="n">none</span> <span class="n">selected</span><span class="p">,</span> <span class="n">select</span> <span class="nb">all</span> <span class="s2">"playing dry through wet"</span> <span class="n">loops</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">M</span> <span class="n">key</span><span class="p">:</span>      <span class="n">Set</span> <span class="n">the</span> <span class="n">selected</span> <span class="n">loop</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="n">to</span> <span class="n">recording</span> <span class="n">dry</span> <span class="n">into</span> <span class="n">wet</span> <span class="n">mode</span><span class="o">.</span>
+<span class="n">If</span> <span class="n">none</span> <span class="n">selected</span><span class="p">,</span> <span class="n">select</span> <span class="nb">all</span> <span class="s2">"recording dry into wet"</span> <span class="n">loops</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">N</span> <span class="n">key</span><span class="p">:</span>      <span class="s2">"Record next"</span><span class="p">:</span> <span class="n">Queue</span> <span class="n">recording</span> <span class="n">into</span> <span class="n">the</span> <span class="n">first</span> <span class="n">empty</span> <span class="n">loop</span> <span class="n">of</span> <span class="n">the</span>
+<span class="n">currently</span> <span class="n">selected</span><span class="o">/</span><span class="n">recording</span> <span class="n">track</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">G</span> <span class="n">key</span><span class="p">:</span>      <span class="s2">"Grab"</span><span class="p">:</span> <span class="n">grabs</span> <span class="n">data</span> <span class="kn">from</span> <span class="nn">the</span> <span class="n">running</span> <span class="n">buffer</span> <span class="n">to</span> <span class="n">record</span> <span class="n">it</span> <span class="n">retro</span><span class="o">-</span>
+<span class="n">actively</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">O</span> <span class="n">key</span><span class="p">:</span>      <span class="s2">"Overdub"</span><span class="p">:</span> <span class="n">Queue</span> <span class="n">recording</span> <span class="n">into</span> <span class="n">the</span> <span class="n">first</span> <span class="n">empty</span> <span class="n">loop</span> <span class="n">of</span> <span class="n">the</span>
+<span class="n">currently</span> <span class="n">selected</span><span class="o">/</span><span class="n">recording</span> <span class="n">track</span> <span class="k">while</span> <span class="n">playing</span> <span class="n">back</span> <span class="n">currently</span>
+<span class="n">recording</span> <span class="n">loops</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">T</span> <span class="n">key</span><span class="p">:</span>      <span class="n">Target</span> <span class="n">the</span> <span class="n">selected</span> <span class="n">loop</span><span class="o">.</span> <span class="n">If</span> <span class="n">more</span> <span class="n">than</span> <span class="n">one</span> <span class="n">loop</span> <span class="ow">is</span> <span class="n">selected</span><span class="p">,</span> <span class="n">one</span>
+<span class="n">of</span> <span class="n">the</span> <span class="n">selected</span> <span class="n">loops</span> <span class="ow">is</span> <span class="n">arbitrarily</span> <span class="n">chosen</span><span class="o">.</span> <span class="n">If</span> <span class="n">already</span> <span class="n">the</span> <span class="n">target</span><span class="p">,</span>
+<span class="n">loop</span> <span class="ow">is</span> <span class="n">untargeted</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">U</span> <span class="n">key</span><span class="p">:</span>      <span class="n">Untarget</span> <span class="nb">all</span> <span class="n">loops</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">W</span> <span class="n">key</span><span class="p">:</span>      <span class="n">Record</span> <span class="n">the</span> <span class="n">selected</span> <span class="n">loop</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="ow">in</span> <span class="n">sync</span> <span class="k">with</span> <span class="n">the</span> <span class="n">targeted</span> <span class="n">loop</span><span class="p">(</span><span class="n">s</span><span class="p">)</span><span class="o">.</span>
+<span class="o">-</span>  <span class="n">C</span> <span class="n">key</span><span class="p">:</span>      <span class="n">Clear</span> <span class="n">the</span> <span class="n">selected</span> <span class="n">loop</span><span class="p">(</span><span class="n">s</span><span class="p">)</span><span class="o">.</span>
+<span class="o">-</span>  <span class="mi">0</span><span class="o">-</span><span class="mi">9</span> <span class="n">keys</span><span class="p">:</span>   <span class="n">Set</span> <span class="n">the</span> <span class="n">amount</span> <span class="n">of</span> <span class="n">sync</span> <span class="n">loop</span> <span class="n">cycles</span> <span class="n">to</span> <span class="n">apply</span> <span class="n">future</span> <span class="n">actions</span> <span class="k">for</span><span class="o">.</span>
+<span class="mi">0</span> <span class="n">disables</span> <span class="n">this</span> <span class="o">-</span> <span class="nb">all</span> <span class="n">actions</span> <span class="n">will</span> <span class="n">be</span> <span class="nb">open</span><span class="o">-</span><span class="n">ended</span><span class="o">.</span>
+
+<span class="n">Note</span> <span class="n">that</span> <span class="k">for</span> <span class="n">the</span> <span class="n">loop</span><span class="o">-</span><span class="n">transitioning</span> <span class="n">keys</span> <span class="ow">in</span> <span class="n">the</span> <span class="nb">list</span> <span class="n">above</span><span class="p">,</span> <span class="n">whether</span> <span class="n">the</span> <span class="n">loop</span>
+<span class="n">transitions</span> <span class="n">instantly</span> <span class="ow">or</span> <span class="ow">in</span> <span class="n">sync</span> <span class="k">with</span> <span class="n">the</span> <span class="n">sync</span> <span class="n">loop</span> <span class="n">depends</span> <span class="n">on</span> <span class="n">the</span> <span class="k">global</span>
+<span class="s2">"synchronization active"</span> <span class="n">state</span><span class="o">.</span> <span class="n">This</span> <span class="n">can</span> <span class="n">be</span> <span class="n">toggled</span> <span class="ow">in</span> <span class="n">the</span> <span class="n">UI</span> <span class="ow">or</span> <span class="n">momentarily</span>
+<span class="n">toggled</span> <span class="n">by</span> <span class="n">holding</span> <span class="n">the</span> <span class="n">Ctrl</span> <span class="n">button</span><span class="o">.</span>
+</pre></div>
+</div>
+</p>
+</section>
+</section>
+
+
+          </article>
+        </div>
+      </div>
+    </main>
+  </div>
+  <footer class="md-footer">
+    <div class="md-footer-nav">
+      <nav class="md-footer-nav__inner md-grid">
+          
+            <a href="concept.html" title="Concept"
+               class="md-flex md-footer-nav__link md-footer-nav__link--prev"
+               rel="prev">
+              <div class="md-flex__cell md-flex__cell--shrink">
+                <i class="md-icon md-icon--arrow-back md-footer-nav__button"></i>
+              </div>
+              <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
+                <span class="md-flex__ellipsis">
+                  <span
+                      class="md-footer-nav__direction"> "Previous" </span> Concept </span>
+              </div>
+            </a>
+          
+          
+            <a href="developers.html" title="For Developers / Advanced Users"
+               class="md-flex md-footer-nav__link md-footer-nav__link--next"
+               rel="next">
+            <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title"><span
+                class="md-flex__ellipsis"> <span
+                class="md-footer-nav__direction"> "Next" </span> For Developers / Advanced Users </span>
+            </div>
+            <div class="md-flex__cell md-flex__cell--shrink"><i
+                class="md-icon md-icon--arrow-forward md-footer-nav__button"></i>
+            </div>
+          
+        </a>
+        
+      </nav>
+    </div>
+    <div class="md-footer-meta md-typeset">
+      <div class="md-footer-meta__inner md-grid">
+        <div class="md-footer-copyright">
+          <div class="md-footer-copyright__highlight">
+              &#169; Copyright 2023, Sander Vocke.
+              
+          </div>
+            Created using
+            <a href="http://www.sphinx-doc.org/">Sphinx</a> 7.2.6.
+             and
+            <a href="https://github.com/bashtage/sphinx-material/">Material for
+              Sphinx</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+  <script src="_static/javascripts/application.js"></script>
+  <script>app.initialize({version: "1.0.4", url: {base: ".."}})</script>
+  </body>
+</html>
