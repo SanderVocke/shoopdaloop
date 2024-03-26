@@ -536,10 +536,16 @@ Item {
         } 
     }
 
+    readonly property int n_cycles_to_grab : {
+        var rval = registries.state_registry.apply_n_cycles
+        if (rval <= 0) { rval = 1; }
+        return rval
+    }
+
     function on_grab_clicked() {
         root.create_backend_loop()
         let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
-        root.adopt_ringbuffers(0, record_grab.n_cycles, go_to_mode)
+        root.adopt_ringbuffers(0, root.n_cycles_to_grab, go_to_mode)
         if (registries.state_registry.solo_active) {
             let r = selected_and_other_loops_in_track()
             root.transition_loops(r[1], ShoopConstants.LoopMode.Stopped, 0, false)
@@ -1152,13 +1158,6 @@ Item {
                                     
                                     // This feature makes no sense for composite loops
                                     visible: !root.maybe_composite_loop
-
-                                    property int n_cycles : {
-                                        var rval = registries.state_registry.apply_n_cycles
-                                        if (rval <= 0) { rval = 1; }
-                                        return rval
-                                    }
-
                                     width: buttongrid.button_width
                                     height: buttongrid.button_height
 
@@ -1168,7 +1167,7 @@ Item {
                                         name: 'arrow-collapse-down'
                                         color: 'red'
                                         text_color: Material.foreground
-                                        text: record_grab.n_cycles.toString()
+                                        text: root.n_cycles_to_grab.toString()
                                         font.pixelSize: size / 2.0
 
                                         // If play-after-record is active, render a half-green icon

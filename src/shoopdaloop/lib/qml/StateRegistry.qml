@@ -54,6 +54,10 @@ Registry {
         key: 'sync_active'
     }
     readonly property bool sync_active : lookup_sync_active.object != null ? lookup_sync_active.object : false
+    function set_sync_active(val) {
+        replace('sync_active', val)
+    }
+
 
     RegistryLookup {
         id: lookup_solo_active
@@ -61,6 +65,9 @@ Registry {
         key: 'solo_active'
     }
     readonly property bool solo_active : lookup_solo_active.object != null ? lookup_solo_active.object : false
+    function set_solo_active(val) {
+        replace('solo_active', val)
+    }
 
     RegistryLookup {
         id: lookup_play_after_record_active
@@ -68,6 +75,9 @@ Registry {
         key: 'play_after_record_active'
     }
     readonly property bool play_after_record_active : lookup_play_after_record_active.object != null ? lookup_play_after_record_active.object : false
+    function set_play_after_record_active(val) {
+        replace('play_after_record_active', val)
+    }
 
     RegistryLookup {
         id: lookup_apply_n_cycles
@@ -92,11 +102,15 @@ Registry {
     onN_saving_actions_activeChanged: my_logger.debug(() => ('N saving actions active: ' + n_saving_actions_active))
     onN_loading_actions_activeChanged: my_logger.debug(() => ('N loading actions active: ' + n_loading_actions_active))
 
-    function init() {
-        register('n_loading_actions_active', 0)
-        register('n_saving_actions_active', 0)
+    function reset() {
+        reset_saving_loading()
+        set_details_open(false)
+        set_apply_n_cycles(0)
+        set_sync_active(true)
+        set_play_after_record_active(true)
+        set_solo_active(false)
     }
 
-    Component.onCompleted: init()
-    onCleared: init()
+    Component.onCompleted: reset()
+    onCleared: reset()
 }
