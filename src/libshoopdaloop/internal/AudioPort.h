@@ -19,7 +19,7 @@ class AudioPort : public virtual PortInterface {
     BufferQueue<SampleT> mp_always_record_ringbuffer;
 
 public:
-    using RingbufferSnapshot = BufferQueue<SampleT>::Snapshot;
+    using RingbufferSnapshot = typename BufferQueue<SampleT>::Snapshot;
     using BufferPool = ObjectPool<AudioBuffer<SampleT>>;
 
     AudioPort(std::shared_ptr<BufferPool> maybe_ringbuffer_buffer_pool);
