@@ -271,7 +271,7 @@ Item {
         let r = selected_and_other_loops_in_track()
         // Do the transitions
         transition_loops(r[1], ShoopConstants.LoopMode.Stopped, delay, sync)
-        transition_loops(r[0], ShoopConstants.LoopMode.Playing, delay, sync)
+        transition_loops(r[0], mode, delay, sync)
     }
 
     function clear(length=0, emit=true) {
@@ -1055,9 +1055,9 @@ Item {
                             root.record_with_targeted();
                         } else if (record.record_kind == 'infinite') {
                             if (registries.state_registry.solo_active) {
-                                root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
-                            } else {
                                 root.transition_solo_in_track(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
+                            } else {
+                                root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
                             }
                         } else {
                             root.record_n(0, record.record_kind)
