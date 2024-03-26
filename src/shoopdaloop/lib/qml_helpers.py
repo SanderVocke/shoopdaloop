@@ -42,6 +42,7 @@ from .q_objects.TestCase import TestCase
 from .q_objects.OSUtils import OSUtils
 from .q_objects.DummyProcessHelper import DummyProcessHelper
 from .q_objects.CompositeLoop import CompositeLoop
+from .q_objects.EnvHelper import EnvHelper
 
 from .logging import Logger as BareLogger
 from .js_constants import create_js_constants
@@ -69,12 +70,12 @@ import time
     
 #     #fn("%s: %s (%s:%d, %s)" % (mode, message, context.file, context.line, context.file))
             
-def install_qt_message_handler():
-    global qt_message_handler_installed
-    global qt_logger
-    if not qt_message_handler_installed:
-        QtCore.qInstallMessageHandler(qt_msg_handler)
-        qt_message_handler_installed = True
+# def install_qt_message_handler():
+#     global qt_message_handler_installed
+#     global qt_logger
+#     if not qt_message_handler_installed:
+#         QtCore.qInstallMessageHandler(qt_msg_handler)
+#         qt_message_handler_installed = True
 
 # Read version from the version.txt file (will be present when packaged)
 pkg_version = None
@@ -153,7 +154,8 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         'settings_io': SettingsIO(parent=engine),
         'registries': registries,
         'screen_grabber': TestScreenGrabber(weak_engine=weakref.ref(engine), parent=engine),
-        'os_utils': OSUtils(parent=engine)
+        'os_utils': OSUtils(parent=engine),
+        'env_helper': EnvHelper(parent=engine)
     }
 
     for key, item in additional_items.items():
