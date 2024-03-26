@@ -19,15 +19,21 @@ Item {
     property bool loading_session : false
     property bool saving_session : false
     property alias sync_active : sync_active_button.sync_active
+    property alias solo_active : solo_active_button.solo_active
+    property alias play_after_record_active : play_after_record_active_button.play_after_record_active
     property var backend : null
 
     property bool settings_io_enabled: false
 
     function update() {
         registries.state_registry.replace('sync_active', sync_active)
+        registries.state_registry.replace('solo_active', solo_active)
+        registries.state_registry.replace('play_after_record_active', play_after_record_active)
     }
 
     onSync_activeChanged: update()
+    onSolo_activeChanged: update()
+    onPlay_after_record_activeChanged: update()
     Component.onCompleted: update()
 
     Row {
@@ -187,13 +193,83 @@ Item {
             width: 30
             property bool sync_active_base: true
             onClicked: sync_active_base = !sync_active_base
-            property bool sync_active : sync_active_base && !key_modifiers.control_pressed
+            property bool sync_active : {
+                var rval = sync_active_base
+                if (key_modifiers.control_pressed) { rval = !rval }
+                return rval
+            }
+
+            highlighted : !sync_active
 
             MaterialDesignIcon {
                 size: Math.min(parent.width, parent.height) - 10
                 anchors.centerIn: parent
                 name: sync_active_button.sync_active ? 'timer-sand' : 'exclamation';
                 color: Material.foreground
+            }
+        }
+
+        ExtendedButton {
+            tooltip: "Solo active. If on (highlighted), requested transitions to loop(s) will stop other loop(s) in the same track(s)."
+            id: solo_active_button
+            height: 40
+            width: 30
+            property bool solo_active_base: false
+            onClicked: solo_active_base = !solo_active_base
+            property bool solo_active : {
+                var rval = solo_active_base
+                if (key_modifiers.shift_pressed) { rval = !rval }
+                return rval
+            }
+
+            highlighted : solo_active
+
+            Label {
+                text: 'S'
+                anchors.centerIn: parent
+                font.pixelSize: 18
+                font.weight: Font.Medium
+            }
+        }
+
+        ExtendedButton {
+            tooltip: "Play-after-record active. If on (highlighted), a fixed-length record or ringbuffer grab action will automatically transition to playback."
+            id: play_after_record_active_button
+            height: 40
+            width: 30
+            property bool play_after_record_active_base: true
+            onClicked: play_after_record_active_base = !play_after_record_active_base
+            property bool play_after_record_active : {
+                var rval = play_after_record_active_base
+                if (key_modifiers.alt_pressed) { rval = !rval }
+                return rval
+            }
+
+            highlighted : play_after_record_active
+
+            MaterialDesignIcon {
+                size: Math.min(parent.width, parent.height) - 10
+                anchors {
+                    left: parent.left
+                    top: parent.top
+                    topMargin: 8
+                    leftMargin: 2
+                }
+                name: 'record'
+                color: play_after_record_active_button.play_after_record_active ?
+                    'red' : 'grey'
+            }
+            MaterialDesignIcon {
+                size: Math.min(parent.width, parent.height) - 5
+                anchors {
+                    right: parent.right
+                    bottom: parent.bottom
+                    bottomMargin: 6
+                    rightMargin: -1
+                }
+                name: 'play'
+                color: play_after_record_active_button.play_after_record_active ?
+                    'green' : Material.foreground
             }
         }
 

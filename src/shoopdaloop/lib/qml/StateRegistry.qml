@@ -56,6 +56,20 @@ Registry {
     readonly property bool sync_active : lookup_sync_active.object != null ? lookup_sync_active.object : false
 
     RegistryLookup {
+        id: lookup_solo_active
+        registry: root
+        key: 'solo_active'
+    }
+    readonly property bool solo_active : lookup_solo_active.object != null ? lookup_solo_active.object : false
+
+    RegistryLookup {
+        id: lookup_play_after_record_active
+        registry: root
+        key: 'play_after_record_active'
+    }
+    readonly property bool play_after_record_active : lookup_play_after_record_active.object != null ? lookup_play_after_record_active.object : false
+
+    RegistryLookup {
         id: lookup_apply_n_cycles
         registry: root
         key: 'apply_n_cycles'

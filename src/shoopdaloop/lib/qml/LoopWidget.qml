@@ -248,7 +248,8 @@ Item {
             transition_loops([root], mode, delay, wait_for_sync)
         }        
     }
-    function play_solo_in_track(delay, sync) {
+
+    function selected_and_other_loops_in_track() {
         // Gather all selected loops
         var selected_all = selected_loops
         selected_all.add(root)
@@ -260,10 +261,19 @@ Item {
             }
         })
         var _other_loops = _all_track_loops.filter(l => !selected_all.has(l))
-        // Do the transitions
-        transition_loops(_other_loops, ShoopConstants.LoopMode.Stopped, delay, sync)
-        transition_loops(Array.from(selected_all), ShoopConstants.LoopMode.Playing, delay, sync)
+
+        return [Array.from(selected_all), _other_loops]
     }
+
+    // Apply the given transition to the currently selected loop(s),
+    // and stop all other loops in the same track(s)
+    function transition_solo_in_track(mode, delay, sync) {
+        let r = selected_and_other_loops_in_track()
+        // Do the transitions
+        transition_loops(r[1], ShoopConstants.LoopMode.Stopped, delay, sync)
+        transition_loops(r[0], ShoopConstants.LoopMode.Playing, delay, sync)
+    }
+
     function clear(length=0, emit=true) {
         if(maybe_loop) {
             maybe_loop.clear(length);
@@ -382,8 +392,19 @@ Item {
     }
 
     function record_n(delay_start, n) {
-        root.transition(ShoopConstants.LoopMode.Recording, delay_start, true)
-        root.transition(ShoopConstants.LoopMode.Playing, delay_start + n, true)
+        if (registries.state_registry.solo_active) {
+            root.transition_solo_in_track(ShoopConstants.LoopMode.Recording, delay_start, true)
+            root.transition(
+                registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                delay_start + n, true
+            )
+        } else {
+            root.transition(ShoopConstants.LoopMode.Recording, delay_start, true)
+            root.transition(
+                registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                delay_start + n, true
+            )
+        }
     }
 
     function record_with_targeted() {
@@ -400,12 +421,12 @@ Item {
         root.record_n(n_cycles_delay, n_cycles_record)
     }
 
-    function adopt_ringbuffers(reverse_start_cycle, cycles_length) {
+    function adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_mode) {
         if (!root.maybe_loop) {
             create_backend_loop()
         }
         if (root.maybe_backend_loop) {
-            root.maybe_backend_loop.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length)
+            root.maybe_backend_loop.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length, go_to_mode)
         }
     }
 
@@ -852,7 +873,7 @@ Item {
             }
 
             Grid {
-                visible: statusrect.hovered || playlivefx.hovered || playsolointrack.hovered || record_grab.hovered || recordfx.hovered
+                visible: statusrect.hovered || playlivefx.hovered || record_grab.hovered || recordfx.hovered
                 x: 20
                 y: 2
                 columns: 4
@@ -865,22 +886,38 @@ Item {
                     id : play
                     width: buttongrid.button_width
                     height: buttongrid.button_height
+
                     IconWithText {
                         size: parent.width
                         anchors.centerIn: parent
                         name: 'play'
                         color: root.is_script ? 'white' : 'green'
                         text_color: Material.foreground
-                        text: root.delay_for_targeted != undefined ? ">" : ""
+                        text: {
+                            var rval = ''
+                            if (root.delay_for_targeted != undefined)  { rval += '>' }
+                            if (registries.state_registry.solo_active) { rval += 'S' }
+                            return rval
+                        }
                         font.pixelSize: size / 2.0
                     }
 
-                    onClicked: root.transition(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
+                    onClicked: {
+                        if (registries.state_registry.solo_active) {
+                            root.transition_solo_in_track(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
+                        } else {
+                            root.transition(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
+                        }
+                    }
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
-                    ToolTip.text: "Play wet recording."
+                    ToolTip.text: 'Play wet recording' +
+                        (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                        (registries.state_registry.solo_active ? ' (solo in track)' : '') +
+                        (root.delay_for_targeted != undefined  ? ' (with targeted loop)' : '')
+                        + '.'
 
                     Connections {
                         target: statusrect
@@ -903,7 +940,7 @@ Item {
 
                         Rectangle {
                             width: playlivefx.width
-                            height: playsolointrack.height + playlivefx.height
+                            height: playlivefx.height
                             color: statusrect.color
                             clip: true
 
@@ -917,35 +954,12 @@ Item {
 
                                 onPositionChanged: (mouse) => { 
                                     var p = mapToGlobal(mouse.x, mouse.y)
-                                    playsolointrack.onMousePosition(p)
                                     playlivefx.onMousePosition(p)
                                 }
-                                onExited: { playlivefx.onMouseExited(); playsolointrack.onMouseExited() }
+                                onExited: { playlivefx.onMouseExited() }
                             }
 
                             Column {
-                                SmallButtonWithCustomHover {
-                                    id : playsolointrack
-                                    width: buttongrid.button_width
-                                    height: buttongrid.button_height
-                                    IconWithText {
-                                        size: parent.width
-                                        anchors.centerIn: parent
-                                        name: 'play'
-                                        color: 'green'
-                                        text_color: Material.foreground
-                                        text: root.delay_for_targeted != undefined ? ">S" : "S"
-                                        font.pixelSize: size / 2.0
-                                    }
-                                    onClicked: { if(statusrect.loop) {
-                                        root.play_solo_in_track(root.use_delay, root.sync_active)
-                                        }}
-
-                                    ToolTip.delay: 1000
-                                    ToolTip.timeout: 5000
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: "Play wet recording solo in track."
-                                }
                                 SmallButtonWithCustomHover {
                                     id : playlivefx
                                     width: buttongrid.button_width
@@ -956,15 +970,30 @@ Item {
                                         name: 'play'
                                         color: 'orange'
                                         text_color: Material.foreground
-                                        text: root.delay_for_targeted != undefined ? ">" : ""
+                                        text: {
+                                            var rval = ''
+                                            if (root.delay_for_targeted != undefined)  { rval += '>' }
+                                            if (registries.state_registry.solo_active) { rval += 'S' }
+                                            return rval
+                                        }
                                         font.pixelSize: size / 2.0
                                     }
-                                    onClicked: root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
+                                    onClicked: {
+                                        if (registries.state_registry.solo_active) {
+                                            root.transition_solo_in_track(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
+                                        } else {
+                                            root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
+                                        }
+                                    }
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
+                                    ToolTip.text: "Play dry recording through live effects" +
+                                        (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                                        (registries.state_registry.solo_active ? ' (solo in track)' : '') +
+                                        (root.delay_for_targeted != undefined  ? ' (with targeted loop)' : '') +
+                                        + '.'
                                 }
                             }
                         }
@@ -988,22 +1017,48 @@ Item {
                     }
 
                     IconWithText {
+                        id: record_icon
                         size: parent.width
                         anchors.centerIn: parent
                         name: 'record'
                         color: 'red'
                         text_color: Material.foreground
-                        text: record.record_kind == 'with_targeted' ? '><' :
-                              record.record_kind == 'infinite' ? '' :
-                              record.record_kind.toString() // integer
+                        text: {
+                            var rval = record.record_kind == 'with_targeted' ? '><' :
+                                       record.record_kind == 'infinite' ? '' :
+                                       record.record_kind.toString() // integer
+                            if (registries.state_registry.solo_active) { rval += 'S' }
+                            return rval
+                        }
                         font.pixelSize: size / 2.0
+
+                        // If play-after-record is active, render a half-green icon
+                        Item {
+                            //clipping box that cuts the underlying icon
+                            anchors.fill: parent
+                            anchors.leftMargin: parent.width / 2 + 1
+                            clip: true
+
+                            MaterialDesignIcon {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                size: record_icon.size
+                                name: 'record'
+                                color: 'green'
+                                visible: registries.state_registry.play_after_record_active
+                            }
+                        }
                     }
 
                     onClicked: {
                         if (record.record_kind == 'with_targeted') {
                             root.record_with_targeted();
                         } else if (record.record_kind == 'infinite') {
-                            root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
+                            if (registries.state_registry.solo_active) {
+                                root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
+                            } else {
+                                root.transition_solo_in_track(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
+                            }
                         } else {
                             root.record_n(0, record.record_kind)
                         }                        
@@ -1012,8 +1067,12 @@ Item {
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
-                    ToolTip.text: "Record. If a number is displayed, will record for N cycles (global control). If a '><' is displayed, will record in unison with the targeted loop. Otherwise, start recording indefinitely."
-
+                    ToolTip.text: "Record" +
+                                        (registries.state_registry.play_after_record_active ? ', then play' : ', then stop') +
+                                        (record.record_kind == 'infinite' ? ' (until stopped)' : (record.record_kind == 'with_targeted' ? ' (with targeted loop)' : ` (${record.record_kind} cycles)`)) +
+                                        (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                                        (registries.state_registry.solo_active ? ' (solo in track)' : '')
+                                        + '.'
                     Connections {
                         target: statusrect
                         function onPropagateMousePosition(pt) { record.onMousePosition(pt) }
@@ -1078,17 +1137,42 @@ Item {
                                         text_color: Material.foreground
                                         text: record_grab.n_cycles.toString()
                                         font.pixelSize: size / 2.0
+
+                                        // If play-after-record is active, render a half-green icon
+                                        Item {
+                                            //clipping box that cuts the underlying icon
+                                            anchors.fill: parent
+                                            anchors.topMargin: parent.height / 2 
+                                            clip: true
+
+                                            MaterialDesignIcon {
+                                                anchors.bottom: parent.bottom
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                size: record_icon.size
+                                                name: 'arrow-collapse-down'
+                                                color: 'green'
+                                                visible: registries.state_registry.play_after_record_active
+                                            }
+                                        }
                                     }
 
                                     onClicked: {
                                         root.create_backend_loop()
-                                        root.adopt_ringbuffers(0, record_grab.n_cycles)
+                                        let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
+                                        root.adopt_ringbuffers(0, record_grab.n_cycles, go_to_mode)
+                                        if (registries.state_registry.solo_active) {
+                                            let r = selected_and_other_loops_in_track()
+                                            root.transition_loops(r[1], ShoopConstants.LoopMode.Stopped, 0, false)
+                                        }
                                     }
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "Grab always-on recording. The number displayed is the amount of sync loop cycles to grab. The grab will be synced such that the grabbed clip lines up with the most recently finished sync loop cycle."
+                                    ToolTip.text: "Grab always-on recording" +
+                                        (registries.state_registry.play_after_record_active ? ' and play immediately' : '') +
+                                        ((registries.state_registry.solo_active && registries.state_registry.play_after_record_active) ? ' (solo in track)' : '')
+                                        + '.'
                                 }
                             
                                 SmallButtonWithCustomHover {

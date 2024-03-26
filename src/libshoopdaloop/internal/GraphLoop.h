@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 #include "shoop_globals.h"
+#include "types.h"
 #include "GraphNode.h"
 
 class AudioMidiLoop;
@@ -41,7 +42,7 @@ public:
         m_get_co_process_nodes = cb;
     }
 
-    void PROC_adopt_ringbuffer_contents(unsigned reverse_cycles_start, unsigned cycles_length);
+    void PROC_adopt_ringbuffer_contents(unsigned reverse_cycles_start, unsigned cycles_length, shoop_loop_mode_t go_to_mode);
 
     // Graph node connections are all handled by the channel nodes, so
     // we don't need to connect anything. Just define the processing function
