@@ -82,7 +82,6 @@ ShoopTestFile {
                 loop_at(1,0).clear()
                 loop_at(1,1).clear()
                 testcase.wait_updated(session.backend)
-                registries.state_registry.replace('sync_active', false)
                 loop_at(-1,0).deselect()
                 loop_at(0,0).deselect()
                 loop_at(0,1).deselect()
@@ -214,6 +213,7 @@ ShoopTestFile {
                 'test_loop_transition': () => {
                     check_backend()
                     clear()
+                    registries.state_registry.set_sync_active(false)
 
                     verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
                     do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, 0)')
