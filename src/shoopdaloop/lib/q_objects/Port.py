@@ -34,7 +34,7 @@ class Port(FindParentBackend):
         self._passthrough_muted = self._new_passthrough_muted = None
         self._is_internal = None
         self._ever_initialized = False
-        self._n_ringbuffer_samples = 0
+        self._n_ringbuffer_samples = None
         self.logger = Logger("Frontend.Port")
         
         self.backendChanged.connect(lambda: self.maybe_initialize())
@@ -161,6 +161,7 @@ class Port(FindParentBackend):
         if self._n_ringbuffer_samples != n:
             self._n_ringbuffer_samples = n
             self.nRingbufferSamplesChanged.emit(n)
+            self.maybe_initialize()
     
     ###########
     ## SLOTS
@@ -226,6 +227,7 @@ class Port(FindParentBackend):
             self._is_internal != None and \
             self._muted != None and \
             self._passthrough_muted != None and \
+            self._n_ringbuffer_samples != None and \
             self._backend and \
             self._backend.initialized:
             

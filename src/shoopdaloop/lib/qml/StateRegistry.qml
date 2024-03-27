@@ -58,7 +58,6 @@ Registry {
         replace('sync_active', val)
     }
 
-
     RegistryLookup {
         id: lookup_solo_active
         registry: root
@@ -99,6 +98,17 @@ Registry {
         replace('details_open', val)
     }
 
+    RegistryLookup {
+        id: lookup_targeted_loop
+        registry: root
+        key: 'targeted_loop'
+    }
+    property alias targeted_loop : lookup_targeted_loop.object
+    function set_targeted_loop(maybe_loop) {
+        replace('targeted_loop', maybe_loop)
+    }
+    function untarget_loop() { set_targeted_loop(null) }
+
     onN_saving_actions_activeChanged: my_logger.debug(() => ('N saving actions active: ' + n_saving_actions_active))
     onN_loading_actions_activeChanged: my_logger.debug(() => ('N loading actions active: ' + n_loading_actions_active))
 
@@ -109,6 +119,7 @@ Registry {
         set_sync_active(true)
         set_play_after_record_active(true)
         set_solo_active(false)
+        untarget_loop()
     }
 
     Component.onCompleted: reset()

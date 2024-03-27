@@ -116,12 +116,7 @@ Item {
     readonly property int cycle_length: sync_loop ? sync_loop.length : 0
     readonly property int n_cycles: cycle_length ? Math.ceil(length / cycle_length) : 0
 
-    RegistryLookup {
-        id: targeted_loop_lookup
-        registry: registries.state_registry
-        key: 'targeted_loop'
-    }
-    property alias targeted_loop : targeted_loop_lookup.object
+    property var targeted_loop : registries.state_registry.targeted_loop
     property bool targeted : targeted_loop == root
 
     RegistryLookup {
@@ -221,6 +216,15 @@ Item {
     property int current_cycle: (sync_loop && maybe_loop) ?
         Math.floor(maybe_loop.position / sync_loop.length) : 0
 
+    // possible values: "with_targeted", "infinite", or int > 0
+    readonly property var record_kind : {
+        if (root.is_sync) { return "infinite" }
+        if (root.delay_for_targeted != undefined) { return "with_targeted" }
+        let apply_n_cycles = registries.state_registry.apply_n_cycles
+        if (apply_n_cycles <= 0) { return "infinite" }
+        return apply_n_cycles
+    }
+
     // Signals
     signal cycled
 
@@ -313,11 +317,11 @@ Item {
     }
     function target() {
         deselect()
-        registries.state_registry.replace('targeted_loop', root)
+        registries.state_registry.set_targeted_loop(root)
     }
     function untarget() {
         if (targeted) {
-            registries.state_registry.replace('targeted_loop', null)
+            registries.state_registry.untarget_loop()
         }
     }
     function toggle_selected(clear_if_select = false) {
@@ -523,16 +527,16 @@ Item {
     }
 
     function on_record_clicked() {
-        if (record.record_kind == 'with_targeted') {
+        if (root.record_kind == 'with_targeted') {
             root.record_with_targeted();
-        } else if (record.record_kind == 'infinite') {
+        } else if (root.record_kind == 'infinite') {
             if (registries.state_registry.solo_active) {
                 root.transition_solo_in_track(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
             } else {
                 root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
             }
         } else {
-            root.record_n(0, record.record_kind)
+            root.record_n(0, root.record_kind)
         } 
     }
 
@@ -1058,15 +1062,6 @@ Item {
 
                     visible: !root.is_script
 
-                    // possible values: "with_targeted", "infinite", or int > 0
-                    property var record_kind : {
-                        if (root.is_sync) { return "infinite" }
-                        if (root.delay_for_targeted != undefined) { return "with_targeted" }
-                        let apply_n_cycles = registries.state_registry.apply_n_cycles
-                        if (apply_n_cycles <= 0) { return "infinite" }
-                        return apply_n_cycles
-                    }
-
                     IconWithText {
                         id: record_icon
                         size: parent.width
@@ -1075,9 +1070,9 @@ Item {
                         color: 'red'
                         text_color: Material.foreground
                         text: {
-                            var rval = record.record_kind == 'with_targeted' ? '><' :
-                                       record.record_kind == 'infinite' ? '' :
-                                       record.record_kind.toString() // integer
+                            var rval = root.record_kind == 'with_targeted' ? '><' :
+                                       root.record_kind == 'infinite' ? '' :
+                                       root.record_kind.toString() // integer
                             if (registries.state_registry.solo_active) { rval += 'S' }
                             return rval
                         }
@@ -1108,7 +1103,7 @@ Item {
                     ToolTip.visible: hovered
                     ToolTip.text: "Record" +
                                         (registries.state_registry.play_after_record_active ? ', then play' : ', then stop') +
-                                        (record.record_kind == 'infinite' ? ' (until stopped)' : (record.record_kind == 'with_targeted' ? ' (with targeted loop)' : ` (${record.record_kind} cycles)`)) +
+                                        (root.record_kind == 'infinite' ? ' (until stopped)' : (root.record_kind == 'with_targeted' ? ' (with targeted loop)' : ` (${root.record_kind} cycles)`)) +
                                         (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
                                         (registries.state_registry.solo_active ? ' (solo in track)' : '')
                                         + '.'
