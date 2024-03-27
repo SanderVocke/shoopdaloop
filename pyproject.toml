@@ -19,6 +19,7 @@ dependencies = [
   "numpy",
   "pyjacklib",
   "pyside6-essentials~=6.6.0",
+  "pyside6-addons~=6.6.0",
   "lupa",
   "appdirs",
   "sounddevice",
