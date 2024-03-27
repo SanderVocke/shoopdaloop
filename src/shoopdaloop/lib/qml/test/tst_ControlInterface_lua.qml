@@ -1,4 +1,4 @@
-import QtQuick 6.3
+import QtQuick 6.6
 import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
@@ -95,6 +95,7 @@ ShoopTestFile {
                 verify_loop_cleared(loop_at(1,0))
                 verify_loop_cleared(loop_at(1,1))
                 testcase.wait_updated(session.backend)
+                registries.state_registry.reset()
             }
 
             function do_eval(code) {

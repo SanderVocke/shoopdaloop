@@ -1,5 +1,5 @@
 import ShoopDaLoop.PythonMidiPort
-import QtQuick 6.3
+import QtQuick 6.6
 
 import ShoopConstants
 

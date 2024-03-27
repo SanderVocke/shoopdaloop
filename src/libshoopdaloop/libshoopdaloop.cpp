@@ -1598,14 +1598,14 @@ void set_loop_sync_source (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_so
   });
 }
 
-void adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, unsigned reverse_cycles_start, unsigned cycles_length) {
+void adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, unsigned reverse_cycles_start, unsigned cycles_length, shoop_loop_mode_t go_to_mode) {
   return api_impl<void>("adopt_ringbuffer_contents", [&]() {
     auto _loop = internal_loop(loop);
     if (!_loop) { return; }
     auto backend = _loop->backend.lock();
     if (!backend) { return; }
     backend->queue_process_thread_command([=]() {
-      _loop->PROC_adopt_ringbuffer_contents(reverse_cycles_start, cycles_length);
+      _loop->PROC_adopt_ringbuffer_contents(reverse_cycles_start, cycles_length, go_to_mode);
     });
   });
 }

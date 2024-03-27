@@ -1,4 +1,4 @@
-import QtQuick 6.3
+import QtQuick 6.6
 import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
@@ -45,6 +45,7 @@ ShoopTestFile {
                 testcase.wait_updated(session.backend)
                 verify_loop_cleared(sync_loop())
                 verify_loop_cleared(other_loop())
+                registries.state_registry.reset()
             }
 
             test_fns: ({
@@ -147,7 +148,7 @@ ShoopTestFile {
                     verify_true(!('composition' in other_loop().actual_session_descriptor()))
                     verify_true('channels' in other_loop().actual_session_descriptor())
                     verify_true(other_loop().actual_session_descriptor().channels.every((channel) => channel.data_length == 0))
-                },
+                }
             })
         }
     }

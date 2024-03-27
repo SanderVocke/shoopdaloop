@@ -5,6 +5,7 @@
 #include "GraphNode.h"
 #include "LoopInterface.h"
 #include "process_loops.h"
+#include "types.h"
 #include <memory>
 #include <fmt/format.h>
 
@@ -104,16 +105,16 @@ WeakGraphNodeSet GraphLoop::graph_node_co_process_nodes() {
     return WeakGraphNodeSet();
 }
 
-void GraphLoop::PROC_adopt_ringbuffer_contents(unsigned reverse_cycles_start, unsigned cycles_length) {
+void GraphLoop::PROC_adopt_ringbuffer_contents(unsigned reverse_cycles_start, unsigned cycles_length, shoop_loop_mode_t go_to_mode) {
     std::optional<unsigned> reverse_start_offset = std::nullopt;
     std::optional<unsigned> samples_length = std::nullopt;
 
     auto sync_source = loop->get_sync_source(false);
-    auto len = sync_source ? sync_source->get_length() : 0;
-    if (len > 0) {
-        auto cur_cycle_reverse_start = sync_source->get_position();
-        reverse_start_offset = cur_cycle_reverse_start + len * reverse_cycles_start;
-        samples_length = std::min(cycles_length * len, reverse_start_offset.value());
+    auto sync_len = sync_source ? sync_source->get_length() : 0;
+    auto sync_pos = sync_source ? sync_source->get_position() : 0;
+    if (sync_len > 0) {
+        reverse_start_offset = sync_pos + sync_len * reverse_cycles_start;
+        samples_length = std::min(cycles_length * sync_len, reverse_start_offset.value());
     }
 
     unsigned max_data_length = 0;
@@ -125,4 +126,8 @@ void GraphLoop::PROC_adopt_ringbuffer_contents(unsigned reverse_cycles_start, un
     }
 
     loop->set_length(samples_length.value(), false);
+    if (go_to_mode != LoopMode_Unknown) {
+        loop->plan_transition(go_to_mode, 0, false, false);
+        loop->set_position(sync_pos, false);
+    }
 }

@@ -1,5 +1,5 @@
-import QtQuick 6.3
-import QtQuick.Controls 6.3
+import QtQuick 6.6
+import QtQuick.Controls 6.6
 
 // A mapper is similar to a Repeater, but:
 // - the model is an array as opposed to an integer.

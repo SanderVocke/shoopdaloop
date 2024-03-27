@@ -1,6 +1,6 @@
 import ShoopDaLoop.PythonLoop
 import ShoopDaLoop.PythonLogger
-import QtQuick 6.3
+import QtQuick 6.6
 
 import ShoopConstants
 import '../mode_helpers.js' as ModeHelpers

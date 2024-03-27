@@ -1,6 +1,6 @@
-import QtQuick 6.3
-import QtQuick.Controls 6.3
-import QtQuick.Controls.Material 6.3
+import QtQuick 6.6
+import QtQuick.Controls 6.6
+import QtQuick.Controls.Material 6.6
 
 Item {
     id: item
@@ -12,6 +12,8 @@ Item {
     property alias text_color: text.color
     property alias text: text.text
 
+    default property alias contents: children_container.children
+
     width: size
     height: size
 
@@ -22,6 +24,13 @@ Item {
         name: 'record'
         color: 'red'
     }
+
+    // Children go here so the text is always on top
+    Item {
+        anchors.fill: parent
+        id: children_container
+    }
+
     Text {
         id: text
         anchors.fill: parent

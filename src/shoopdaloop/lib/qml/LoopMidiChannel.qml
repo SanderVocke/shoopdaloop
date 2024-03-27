@@ -1,5 +1,5 @@
 import ShoopDaLoop.PythonLoopMidiChannel
-import QtQuick 6.3
+import QtQuick 6.6
 
 import ShoopConstants
 import '../session_schemas/conversions.js' as Conversions

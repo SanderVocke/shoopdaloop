@@ -74,6 +74,8 @@ def run_qml_tests(args):
     if args.list:
         runner.should_skip = lambda fn: True
     elif args.filter:
+        if args.filter[-1] != '$':
+            args.filter += '$'
         runner.should_skip = lambda fn: not bool(re.match(args.filter, fn))
 
     additional_root_context = {

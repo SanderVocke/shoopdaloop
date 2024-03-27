@@ -1,4 +1,4 @@
-import QtQuick 6.3
+import QtQuick 6.6
 
 Item {
     property real linear: 0.0

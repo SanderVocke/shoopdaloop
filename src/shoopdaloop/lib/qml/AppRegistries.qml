@@ -1,4 +1,4 @@
-import QtQuick 6.3
+import QtQuick 6.6
 
 Item {
     // The main registry stores various important internal states.

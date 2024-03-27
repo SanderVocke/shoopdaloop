@@ -350,9 +350,9 @@ void AudioChannel<SampleT>::PROC_finalize_process() {
 template <typename SampleT>
 void AudioChannel<SampleT>::adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port, std::optional<unsigned> reverse_start_offset, bool thread_safe) {
     if (reverse_start_offset.has_value()) {
-        log<log_level_debug_trace>("queue adopt ringbuffer @ reverse offset {}", reverse_start_offset.value());
+        log<log_level_debug>("queue adopt ringbuffer @ reverse offset {}", reverse_start_offset.value());
     } else {
-        log<log_level_debug_trace>("queue adopt ringbuffer @ begin");
+        log<log_level_debug>("queue adopt ringbuffer @ begin");
     }
     auto audioport = std::dynamic_pointer_cast<AudioPort<SampleT>>(from_port);
     if (!audioport) {
