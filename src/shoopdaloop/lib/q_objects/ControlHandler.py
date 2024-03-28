@@ -143,7 +143,8 @@ class ControlHandler(ShoopQQuickItem):
         [ 'loop_set_gain_fader', lua_loop_selector, lua_float ],
         [ 'loop_get_balance', lua_loop_selector ],
         [ 'loop_set_balance', lua_loop_selector, lua_float ],
-        [ 'loop_transition', lua_loop_selector, lua_int, lua_int ],
+        [ 'loop_transition', lua_loop_selector, lua_int, lua_int, lua_bool ],
+        [ 'loop_trigger', lua_loop_selector, lua_int ],
         [ 'loop_record_n', lua_loop_selector, lua_int, lua_int ],
         [ 'loop_record_with_targeted', lua_loop_selector ],
         [ 'loop_select', lua_loop_selector, lua_bool ],
@@ -151,7 +152,8 @@ class ControlHandler(ShoopQQuickItem):
         [ 'loop_toggle_selected', lua_loop_selector ],
         [ 'loop_toggle_targeted', lua_loop_selector ],
         [ 'loop_clear', lua_loop_selector ],
-        [ 'loop_adopt_ringbuffers', lua_loop_selector, lua_int, lua_int ],
+        [ 'loop_adopt_ringbuffers', lua_loop_selector, lua_int, lua_int, lua_int ],
+        [ 'loop_trigger_grab', lua_loop_selector ],
         [ 'track_get_gain', lua_track_selector ],
         [ 'track_set_gain', lua_track_selector, lua_float ],
         [ 'track_get_gain_fader', lua_track_selector ],
@@ -413,8 +415,31 @@ class ControlHandler(ShoopQQuickItem):
     def loop_transition(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.loop_transition(loop_selector, mode, cycles_delay)
-        Transition the given loops. Whether the transition is immediate or synchronized depends on the global application "synchronization active" state.
+        shoop_control.loop_transition(loop_selector, mode, cycles_delay, wait_for_sync)
+        Transition the given loops.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @ShoopSlot(list, 'QVariant')
+    @allow_qml_override
+    def loop_trigger(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_trigger(loop_selector, mode)
+        Trigger the loop with the given mode. Equivalent to pressing the loop's button in the UI.
+        That means the way the trigger is interpreted also depends on the global controls for e.g. sync.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @ShoopSlot(list, 'QVariant')
+    @allow_qml_override
+    def loop_trigger_grab(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_trigger_grab(loop_selector, mode)
+        Trigger a ringbuffer grab on the given loop. Equivalent to pressing the grab button.
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -514,11 +539,12 @@ class ControlHandler(ShoopQQuickItem):
     def loop_adopt_ringbuffers(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.loop_adopt_ringbuffers(loop_selector, reverse_cycle_start, cycles_length)
+        shoop_control.loop_adopt_ringbuffers(loop_selector, reverse_cycle_start, cycles_length, go_to_cycle, go_to_mode)
         For all channels in the given loops, grab the data currently in the ringbuffer and
         set it as the content (i.e. after-the-fact-recording or "grab").
         reverse_cycle_start sets the start offset for playback. 0 means to play what was being
         recorded in the current sync loop cycle, 1 means start from the previous cycle, etc.
+        go_to_cycle and go_to_mode can control the cycle and mode the loop will have right after adopting.
         cycles_length sets the loop length.
         @shoop_lua_fn_docstring.end
         """

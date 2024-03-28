@@ -101,9 +101,9 @@ end
 local handle_loop_action = function(mode)
     local selected = shoop_control.loop_get_which_selected()
     if (#selected > 0) then
-        shoop_helpers.loop_command(selected, mode)
+        shoop_control.loop_trigger(selected, mode)
     elseif (mode == shoop_control.constants.LoopMode_Stopped) then
-        shoop_helpers.loop_command(shoop_control.loop_get_all(), mode)
+        shoop_control.loop_trigger(shoop_control.loop_get_all(), mode)
     else
         shoop_control.loop_select(shoop_control.loop_get_by_mode(mode), true)
     end
@@ -140,8 +140,7 @@ local handle_keyboard = function(event_type, key, modifiers)
         elseif key == shoop_control.constants.Key_C then
             shoop_control.loop_clear(shoop_control.loop_get_which_selected())
         elseif key == shoop_control.constants.Key_G then
-            local n_cycles = shoop_control.get_apply_n_cycles()
-            shoop_control.loop_adopt_ringbuffers(shoop_control.loop_get_which_selected(), n_cycles, n_cycles)
+            shoop_control.loop_trigger_grab(shoop_control.loop_get_which_selected())
         elseif key == shoop_control.constants.Key_Escape then
             shoop_control.loop_select({}, true)
         elseif as_number ~= nil then

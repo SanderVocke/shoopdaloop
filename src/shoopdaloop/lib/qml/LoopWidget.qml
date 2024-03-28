@@ -193,7 +193,7 @@ Item {
         // then this property will hold the amount of sync loop cycles
         // to delay in order to transition in sync with the targeted loop.
         // Otherwise, it will be 0.
-        if (targeted_loop) {
+        if (targeted_loop && sync_loop) {
             var to_transition = undefined
             if (targeted_loop.next_transition_delay >= 0 && targeted_loop.next_mode >= 0) {
                 to_transition = targeted_loop.next_transition_delay
@@ -251,6 +251,13 @@ Item {
             // If we are not part of the selection, transition ourselves only.
             transition_loops([root], mode, delay, wait_for_sync)
         }        
+    }
+    function trigger_mode_button(mode) {
+        if (mode == ShoopConstants.LoopMode.Stopped) { root.on_stop_clicked() }
+        else if (mode == ShoopConstants.LoopMode.Playing) { root.on_play_clicked() }
+        else if (mode == ShoopConstants.LoopMode.PlayingDryThroughWet) { root.on_playdry_clicked() }
+        else if (mode == ShoopConstants.LoopMode.Recording) { root.on_record_clicked() }
+        else if (mode == ShoopConstants.LoopMode.RecordingDryIntoWet) { root.on_recordfx_clicked() }
     }
 
     function selected_and_other_loops_in_track() {
@@ -550,7 +557,7 @@ Item {
         root.create_backend_loop()
         if (root.sync_active) {
             let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
-            if (root.targeted_loop != null) {
+            if (root.targeted_loop) {
                 // Grab and sync up with the running targeted loop
                 root.adopt_ringbuffers(root.targeted_loop.current_cycle + root.targeted_loop.n_cycles, root.targeted_loop.n_cycles,
                     root.targeted_loop.current_cycle, go_to_mode)
@@ -558,7 +565,7 @@ Item {
                 root.adopt_ringbuffers(root.n_cycles_to_grab, root.n_cycles_to_grab, 0, go_to_mode)
             }
         } else {
-            if (root.targeted_loop != null) {
+            if (root.targeted_loop) {
                 // Grab current targeted loop content and record the rest
                 root.adopt_ringbuffers(null, root.targeted_loop.current_cycle + 1, root.targeted_loop.current_cycle, ShoopConstants.LoopMode.Recording)
                 root.transition(
