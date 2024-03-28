@@ -213,14 +213,13 @@ ShoopTestFile {
                 'test_loop_transition': () => {
                     check_backend()
                     clear()
-                    registries.state_registry.set_sync_active(false)
 
                     verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
-                    do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, 0)')
+                    do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, 0, false)')
                     testcase.wait_updated(session.backend)
                     verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
                     verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Stopped)
-                    do_execute('shoop_control.loop_transition({0,1}, shoop_control.constants.LoopMode_Recording, 0)')
+                    do_execute('shoop_control.loop_transition({0,1}, shoop_control.constants.LoopMode_Recording, 0, false)')
                     testcase.wait_updated(session.backend)
                     verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
                     verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Recording)
@@ -366,7 +365,7 @@ ShoopTestFile {
                     loop_at(-1, 0).set_length(100) // Sync
                     testcase.wait_updated(session.backend)
 
-                    do_execute('shoop_control.loop_adopt_ringbuffers({0, 0}, 2, 2)')
+                    do_execute('shoop_control.loop_adopt_ringbuffers({0, 0}, 2, 2, 0, 0)')
                     testcase.wait_updated(session.backend)
 
                     // Just a sanity check that the correct length was applied

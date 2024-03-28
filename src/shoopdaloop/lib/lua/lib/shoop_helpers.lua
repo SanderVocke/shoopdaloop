@@ -186,10 +186,10 @@ function shoop_helpers.record_into_first_empty(overdub)
     if (#chosen_loops > 0) then
         --  Stop the currently recording loops and start recording into the chosen ones.
         if (overdub)
-        then shoop_control.loop_transition(recording, shoop_control.constants.LoopMode_Playing, 0)
-        else shoop_control.loop_transition(recording, shoop_control.constants.LoopMode_Stopped, 0)
+        then shoop_control.loop_trigger(recording, shoop_control.constants.LoopMode_Playing)
+        else shoop_control.loop_trigger(recording, shoop_control.constants.LoopMode_Stopped)
         end 
-        shoop_control.loop_transition(chosen_loops, shoop_control.constants.LoopMode_Recording, 0)
+        shoop_control.loop_trigger(chosen_loops, shoop_control.constants.LoopMode_Recording)
     end
 end
 
