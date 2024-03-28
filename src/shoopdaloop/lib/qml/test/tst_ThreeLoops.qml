@@ -25,6 +25,13 @@ ShoopTestFile {
             return _session
         }
 
+        RegistryLookup {
+            id: lookup_audio_in
+            registry: registries.objects_registry
+            key: "tut_direct_in_1"
+        }
+        property alias audio_in: lookup_audio_in.object
+
         ShoopSessionTestCase {
             id: testcase
             name: 'ThreeLoops'
@@ -37,6 +44,10 @@ ShoopTestFile {
 
             function first_loop() {
                 return session.main_tracks[0].loops[0]
+            }
+
+            function first_loop_audio_chan() {
+                return first_loop().get_audio_output_channels()[0]
             }
 
             function second_loop() {
@@ -812,6 +823,11 @@ ShoopTestFile {
                     clear()
                     session.backend.dummy_request_controlled_frames(500);
                     session.backend.wait_process()
+                    // One "marker sample"
+                    input_port_1.dummy_queue_data([0.88])
+                    session.backend.dummy_request_controlled_frames(1);
+                    session.backend.wait_process()
+                    
                     testcase.wait_updated(session.backend)
                     registries.state_registry.set_play_after_record_active(false)
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -821,6 +837,8 @@ ShoopTestFile {
                     verify_true(first_loop().length > 0)
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
+                    let data = first_loop_audio_chan().get_data()
+                    verify_eq(data[data.length-1], 0.88)
                 },
 
                 'test_grab_ringbuffer_play': () => {
