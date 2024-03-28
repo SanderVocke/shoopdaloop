@@ -115,9 +115,9 @@ ShoopTestFile {
 
                     // Process 6 frames (record)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     // Data should now be in channel. Switch to playback.
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
@@ -127,9 +127,9 @@ ShoopTestFile {
 
                     // Process 6 frames (play back)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out = midi_output_port.dummy_dequeue_data()
 
@@ -150,7 +150,7 @@ ShoopTestFile {
                     syncloop.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     // Set main loop to record (will pre-record, then transition @ sync)
                     lut.transition(ShoopConstants.LoopMode.Recording, 0, true)
@@ -170,7 +170,7 @@ ShoopTestFile {
 
                     // Process 6 frames (prerecord then record)
                     session.backend.dummy_request_controlled_frames(6)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     // Data should now be in channel. Switch to playback.
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
@@ -180,7 +180,7 @@ ShoopTestFile {
 
                     // Process 6 frames (play back)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out = midi_output_port.dummy_dequeue_data()
 
@@ -207,7 +207,7 @@ ShoopTestFile {
                     syncloop.transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     // Set main loop to record (will pre-record, then transition @ sync)
                     lut.transition(ShoopConstants.LoopMode.Recording, 0, true)
@@ -228,7 +228,7 @@ ShoopTestFile {
 
                     // Process 40 frames (prerecord then record)
                     session.backend.dummy_request_controlled_frames(40)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     // Data should now be in channel. Switch to playback.
                     lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
@@ -238,7 +238,7 @@ ShoopTestFile {
 
                     // Process 40 frames (play back twice)
                     session.backend.dummy_request_controlled_frames(40)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     let out = midi_output_port.dummy_dequeue_data()
 
                     midi_input_port.dummy_clear_queues()
@@ -262,7 +262,7 @@ ShoopTestFile {
                     lut.transition(ShoopConstants.LoopMode.Stopped, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
@@ -287,7 +287,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     midi_output_port.dummy_request_data(40)
                     session.backend.dummy_request_controlled_frames(40)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     out = midi_output_port.dummy_dequeue_data()
 
                     // Verify same as before
@@ -314,11 +314,11 @@ ShoopTestFile {
 
                     // Process 6 frames (nothing, then record)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     // NoteOn should now be in state, NoteOff should be in the
                     // recording. Start playback.
@@ -329,7 +329,7 @@ ShoopTestFile {
 
                     // Process 4 frames (play back)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     let out = midi_output_port.dummy_dequeue_data()
 
                     midi_input_port.dummy_clear_queues()
@@ -348,7 +348,7 @@ ShoopTestFile {
                     lut.transition(ShoopConstants.LoopMode.Stopped, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
@@ -371,7 +371,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     out = midi_output_port.dummy_dequeue_data()
 
                     // Verify same as before

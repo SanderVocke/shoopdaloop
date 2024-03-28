@@ -1598,14 +1598,19 @@ void set_loop_sync_source (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_so
   });
 }
 
-void adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, unsigned reverse_cycles_start, unsigned cycles_length, shoop_loop_mode_t go_to_mode) {
+void adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, int reverse_cycles_start, int cycles_length, int go_to_cycle, shoop_loop_mode_t go_to_mode) {
   return api_impl<void>("adopt_ringbuffer_contents", [&]() {
     auto _loop = internal_loop(loop);
     if (!_loop) { return; }
     auto backend = _loop->backend.lock();
     if (!backend) { return; }
+
+    std::optional<unsigned> _reverse_cycles_start = reverse_cycles_start >= 0 ? std::optional<unsigned>(reverse_cycles_start) : std::nullopt;
+    std::optional<unsigned> _cycles_length = cycles_length >= 0 ? std::optional<unsigned>(cycles_length) : std::nullopt;
+    std::optional<unsigned> _go_to_cycle = go_to_cycle >= 0 ? std::optional<unsigned>(go_to_cycle) : std::nullopt;
+
     backend->queue_process_thread_command([=]() {
-      _loop->PROC_adopt_ringbuffer_contents(reverse_cycles_start, cycles_length, go_to_mode);
+      _loop->PROC_adopt_ringbuffer_contents(_reverse_cycles_start, _cycles_length, _go_to_cycle, go_to_mode);
     });
   });
 }
@@ -2122,6 +2127,18 @@ void dummy_audio_request_controlled_frames(shoop_audio_driver_t *driver, unsigne
     if (!_driver) { return; }
     if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
         maybe_dummy->controlled_mode_request_samples(n_frames);
+    } else {
+        logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_request_controlled_frames called on non-dummy backend");
+    }
+  });
+}
+
+void dummy_audio_run_requested_frames(shoop_audio_driver_t *driver) {
+  return api_impl<void>("dummy_audio_run_requested_frames", [&]() {
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
+        maybe_dummy->controlled_mode_run_request();
     } else {
         logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_request_controlled_frames called on non-dummy backend");
     }

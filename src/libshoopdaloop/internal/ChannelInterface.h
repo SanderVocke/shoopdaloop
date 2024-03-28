@@ -79,6 +79,7 @@ public:
     virtual void adopt_ringbuffer_contents(
         std::shared_ptr<PortInterface> from_port,
         std::optional<unsigned> reverse_start_offset,
+        std::optional<unsigned> keep_samples_before_start_offset,
         bool thread_safe
     ) = 0;
 

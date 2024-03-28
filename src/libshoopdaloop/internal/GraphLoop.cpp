@@ -105,29 +105,50 @@ WeakGraphNodeSet GraphLoop::graph_node_co_process_nodes() {
     return WeakGraphNodeSet();
 }
 
-void GraphLoop::PROC_adopt_ringbuffer_contents(unsigned reverse_cycles_start, unsigned cycles_length, shoop_loop_mode_t go_to_mode) {
+void GraphLoop::PROC_adopt_ringbuffer_contents(
+    std::optional<unsigned> reverse_cycles_start,
+    std::optional<unsigned> cycles_length,
+    std::optional<unsigned> go_to_cycle,
+    shoop_loop_mode_t go_to_mode
+) {
     std::optional<unsigned> reverse_start_offset = std::nullopt;
-    std::optional<unsigned> samples_length = std::nullopt;
 
     auto sync_source = loop->get_sync_source(false);
     auto sync_len = sync_source ? sync_source->get_length() : 0;
     auto sync_pos = sync_source ? sync_source->get_position() : 0;
-    if (sync_len > 0) {
-        reverse_start_offset = sync_pos + sync_len * reverse_cycles_start;
-        samples_length = std::min(cycles_length * sync_len, reverse_start_offset.value());
+    log<log_level_debug>("adopt ringbuffer: reverse start {}, {} cycles, go to cycle {}, go to mode {}, sync pos {}, sync len {}",
+        reverse_cycles_start.has_value() ? (int)reverse_cycles_start.value() : -1,
+        cycles_length.has_value() ? (int)cycles_length.value() : -1,
+        go_to_cycle.has_value() ? (int)go_to_cycle.value() : -1,
+        (int)go_to_mode, sync_pos, sync_len);
+    if (sync_len > 0 && reverse_cycles_start.has_value() && cycles_length.has_value()) {
+        reverse_start_offset = sync_pos + sync_len * reverse_cycles_start.value();
+    } else if (sync_len > 0 && cycles_length.has_value() && cycles_length.value() > 0) {
+        reverse_start_offset = sync_pos + sync_len * (cycles_length.value() - 1);
     }
 
+    // Keep 2 additional cycles of data before the start offset to allow some flexibility
+    unsigned keep_before_start_offset = sync_len * 2;
     unsigned max_data_length = 0;
-    for (auto &c : mp_audio_channels) { c->adopt_ringbuffer_contents(reverse_start_offset, false); max_data_length = std::max(max_data_length, c->channel->get_length()); }
-    for (auto &c : mp_midi_channels)  { c->adopt_ringbuffer_contents(reverse_start_offset, false); /* max_data_length = std::max(max_data_length, c->channel->get_length()); */ }
+    for (auto &c : mp_audio_channels) { c->adopt_ringbuffer_contents(reverse_start_offset, keep_before_start_offset, false); max_data_length = std::max(max_data_length, c->channel->get_length()); }
+    for (auto &c : mp_midi_channels)  { c->adopt_ringbuffer_contents(reverse_start_offset, keep_before_start_offset, false); /* max_data_length = std::max(max_data_length, c->channel->get_length()); */ }
 
-    if (!samples_length.has_value()) {
-        samples_length = max_data_length;
+    unsigned samples_length = max_data_length;
+    if (cycles_length.has_value() && sync_len > 0) {
+        samples_length = std::min(samples_length, cycles_length.value() * sync_len);
+    }
+    if (reverse_start_offset.has_value()) {
+        samples_length = std::min(samples_length, reverse_start_offset.value());
     }
 
-    loop->set_length(samples_length.value(), false);
     if (go_to_mode != LoopMode_Unknown) {
-        loop->plan_transition(go_to_mode, 0, false, false);
-        loop->set_position(sync_pos, false);
+        loop->set_length(samples_length, false);
+        loop->set_mode(go_to_mode, false);
+        unsigned cycle_start = sync_len * go_to_cycle.value_or(0);
+        loop->set_length(samples_length, false);
+        loop->set_position(cycle_start + sync_pos, false);
+        loop->PROC_update_poi();
+    } else {
+        loop->set_length(samples_length, false);
     }
 }

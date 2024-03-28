@@ -287,6 +287,10 @@ class Backend(ShoopQQuickItem):
     @ShoopSlot(result=int)
     def dummy_n_requested_frames(self):
         return self._backend_driver_obj.dummy_n_requested_frames()
+
+    @ShoopSlot()
+    def dummy_run_requested_frames(self):
+        self._backend_driver_obj.dummy_run_requested_frames()
     
     @ShoopSlot(str, int, int)
     def dummy_add_external_mock_port(self, name, direction, data_type):

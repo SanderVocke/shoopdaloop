@@ -47,7 +47,7 @@ SHOOP_EXPORT shoop_loop_state_info_t *get_loop_state          (shoopdaloop_loop_
 SHOOP_EXPORT void              set_loop_length          (shoopdaloop_loop_t *loop, unsigned length);
 SHOOP_EXPORT void              set_loop_position        (shoopdaloop_loop_t *loop, unsigned position);
 SHOOP_EXPORT void              set_loop_sync_source     (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_source);
-SHOOP_EXPORT void              adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, unsigned reverse_cycles_start, unsigned cycles_length, shoop_loop_mode_t go_to_mode);
+SHOOP_EXPORT void              adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, int reverse_cycles_start, int cycles_length, int go_to_cycle, shoop_loop_mode_t go_to_mode);
 SHOOP_EXPORT void loop_transition(shoopdaloop_loop_t *loop,
                       shoop_loop_mode_t mode,
                       unsigned delay, // In # of triggers
@@ -216,6 +216,7 @@ SHOOP_EXPORT void dummy_audio_enter_controlled_mode(shoop_audio_driver_t *driver
 SHOOP_EXPORT void dummy_audio_enter_automatic_mode(shoop_audio_driver_t *driver);
 SHOOP_EXPORT unsigned dummy_audio_is_in_controlled_mode(shoop_audio_driver_t *driver);
 SHOOP_EXPORT void dummy_audio_request_controlled_frames(shoop_audio_driver_t *driver, unsigned n_frames);
+SHOOP_EXPORT void dummy_audio_run_requested_frames(shoop_audio_driver_t *driver);
 SHOOP_EXPORT unsigned dummy_audio_n_requested_frames(shoop_audio_driver_t *driver);
 SHOOP_EXPORT void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, shoop_midi_sequence_t* events);
 SHOOP_EXPORT shoop_midi_sequence_t *dummy_midi_port_dequeue_data(shoopdaloop_midi_port_t *port);

@@ -4,12 +4,14 @@
 #include "shoop_globals.h"
 #include "types.h"
 #include "GraphNode.h"
+#include "LoggingEnabled.h"
 
 class AudioMidiLoop;
 class GraphLoopChannel;
 class BackendSession;
 
-class GraphLoop : public HasGraphNode {
+class GraphLoop : public HasGraphNode,
+                  private ModuleLoggingEnabled<"Backend.GraphLoop"> {
 public:
 
     const std::shared_ptr<AudioMidiLoop> loop = nullptr;
@@ -42,7 +44,11 @@ public:
         m_get_co_process_nodes = cb;
     }
 
-    void PROC_adopt_ringbuffer_contents(unsigned reverse_cycles_start, unsigned cycles_length, shoop_loop_mode_t go_to_mode);
+    void PROC_adopt_ringbuffer_contents(
+        std::optional<unsigned> reverse_cycles_start,
+        std::optional<unsigned> cycles_length,
+        std::optional<unsigned> go_to_cycle,
+        shoop_loop_mode_t go_to_mode);
 
     // Graph node connections are all handled by the channel nodes, so
     // we don't need to connect anything. Just define the processing function

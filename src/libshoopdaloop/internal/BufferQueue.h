@@ -42,6 +42,7 @@ public:
     struct Snapshot {
         std::shared_ptr<std::vector<Buffer>> data;
         uint32_t n_samples;
+        uint32_t buffer_size;
     };
     Snapshot PROC_get();
 

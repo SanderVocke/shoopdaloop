@@ -512,7 +512,7 @@ TEST_CASE("Chain - DryWet adopt audio ringbuffer - no sync loop", "[chain][audio
     tst.int_driver->controlled_mode_run_request();
 
     // Grab the ringbuffer
-    adopt_ringbuffer_contents(tst.api_loop, 0, 1, LoopMode_Unknown);
+    adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
     tst.int_driver->controlled_mode_run_request();
 
     // Since the sync loop is empty, the fallback behavior here should be that the
@@ -546,7 +546,7 @@ TEST_CASE("Chain - DryWet adopt audio ringbuffer - one cycle", "[chain][audio]")
     tst.int_driver->controlled_mode_run_request();
 
     // Grab the ringbuffer. Offset 1 means last completed cycle.
-    adopt_ringbuffer_contents(tst.api_loop, 1, 1, LoopMode_Unknown);
+    adopt_ringbuffer_contents(tst.api_loop, 1, 1, 0, LoopMode_Unknown);
     tst.int_driver->controlled_mode_run_request();
 
     // We should have grabbed the full last completed cycle, which is samples [4, 5, 6].

@@ -105,7 +105,7 @@ ShoopTestFile {
 
                     for(var i=0; i<6; i++) {
                         session.backend.dummy_request_controlled_frames(50)
-                        session.backend.wait_process()
+                        session.backend.dummy_run_requested_frames()
                         testcase.wait_updated(session.backend)
                     }
 

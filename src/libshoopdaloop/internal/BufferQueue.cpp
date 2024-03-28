@@ -55,6 +55,7 @@ typename BufferQueue<SampleT>::Snapshot BufferQueue<SampleT>::PROC_get() {
     s.data = std::make_shared<std::vector<Buffer>>();
     *s.data = std::vector<Buffer>(buffers->begin(), buffers->end());
     s.n_samples = n_samples();
+    s.buffer_size = single_buffer_size();
     return s;
 }
 

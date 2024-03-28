@@ -742,7 +742,10 @@ MidiChannel<TimeType, SizeType>::get_played_back_sample() const {
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port, std::optional<unsigned> reverse_start_offset, bool thread_safe) {
+MidiChannel<TimeType, SizeType>::adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port,
+    std::optional<unsigned> reverse_start_offset,
+    std::optional<unsigned> keep_samples_before_start_offset,
+    bool thread_safe) {
     // TODO
     log<log_level_warning>("MIDI ringbuffer unimplemented");
     return;

@@ -150,8 +150,14 @@ LuaControlInterface {
     function loop_get_by_track_override(track_idx) {
         return select_loops((l) => l.track_idx == track_idx).map(((l) => [l.track_idx, l.idx_in_track]))
     }
-    function loop_transition_override(loop_selector, mode, cycles_delay) {
-        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, registries.state_registry.sync_active) } )
+    function loop_transition_override(loop_selector, mode, cycles_delay, wait_for_sync) {
+        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, wait_for_sync) } )
+    }
+    function loop_trigger_override(loop_selector, mode) {
+        select_loops(loop_selector).forEach((h) => { h.trigger_mode_button(mode) })
+    }
+    function loop_trigger_grab_override(loop_selector) {
+        select_loops(loop_selector).forEach((h) => { h.on_grab_clicked() })
     }
     function loop_get_gain_override(loop_selector) {
         return select_loops(loop_selector).map(l => l.last_pushed_gain)
@@ -208,8 +214,8 @@ LuaControlInterface {
     function loop_toggle_targeted_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.toggle_targeted() } )
     }
-    function loop_adopt_ringbuffers_override(loop_selector, reverse_start_cycle, cycles_length) {
-        select_loops(loop_selector).forEach((h) => { h.adopt_ringbuffers(reverse_start_cycle, cycles_length) } )
+    function loop_adopt_ringbuffers_override(loop_selector, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode) {
+        select_loops(loop_selector).forEach((h) => { h.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode) } )
     }
 
     // Track interface overrides

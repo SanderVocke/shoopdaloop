@@ -348,7 +348,12 @@ void AudioChannel<SampleT>::PROC_finalize_process() {
 
 
 template <typename SampleT>
-void AudioChannel<SampleT>::adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port, std::optional<unsigned> reverse_start_offset, bool thread_safe) {
+void AudioChannel<SampleT>::adopt_ringbuffer_contents(
+    std::shared_ptr<PortInterface> from_port,
+    std::optional<unsigned> reverse_start_offset,
+    std::optional<unsigned> keep_samples_before_start_offset,
+    bool thread_safe)
+{
     if (reverse_start_offset.has_value()) {
         log<log_level_debug>("queue adopt ringbuffer @ reverse offset {}", reverse_start_offset.value());
     } else {
@@ -360,10 +365,20 @@ void AudioChannel<SampleT>::adopt_ringbuffer_contents(std::shared_ptr<PortInterf
         return;
     }
 
-    auto fn = [audioport, reverse_start_offset, this]() {
+    auto fn = [audioport, reverse_start_offset, keep_samples_before_start_offset, this]() {
         auto data = audioport->PROC_get_ringbuffer_contents();
-        mp_buffers.set_contents(data.data);
         unsigned so = reverse_start_offset.has_value() ? data.n_samples - reverse_start_offset.value() : 0;
+        // Remove data as allowed
+        if (keep_samples_before_start_offset.has_value()) {
+            unsigned keep = keep_samples_before_start_offset.value();
+            while(so > (keep + data.buffer_size)) {
+                so -= data.buffer_size;
+                data.n_samples -= data.buffer_size;
+                data.data->erase(data.data->begin());
+            }
+        }
+
+        mp_buffers.set_contents(data.data);
         log<log_level_debug_trace>("adopting ringbuffer @ reverse offset {}", so);
         set_start_offset(so);
         PROC_set_length(data.n_samples);

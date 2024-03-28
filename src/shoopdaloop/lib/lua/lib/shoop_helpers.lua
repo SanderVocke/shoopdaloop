@@ -97,27 +97,6 @@ function shoop_helpers.move_selection(direction_key)
 end
 
 --  @shoop_lua_fn_docstring.start
---  shoop_helpers.loop_command(loop_selector, loop_mode)
---  Perform a "command" with the given loop mode on a loop.
---  This triggers the loop to transition to the given mode, but also takes into account
---  the global "apply n cycles" setting. That is to say, the loop will perform the given
---  mode for the number of cycles set by the global setting.
---  @shoop_lua_fn_docstring.end
-function shoop_helpers.loop_command(loops, mode)
-    local n_cycles = shoop_control.get_apply_n_cycles()
-    shoop_control.loop_transition(loops, mode, 0)
-    if n_cycles > 0 then
-        if mode == shoop_control.constants.LoopMode_Recording or
-           mode == shoop_control.constants.LoopMode_RecordingDryIntoWet
-        then
-            shoop_control.loop_transition(loops, shoop_control.constants.LoopMode_Playing, n_cycles)
-        elseif mode ~= shoop_control.constants.LoopMode_Stopped then
-            shoop_control.loop_transition(loops, shoop_control.constants.LoopMode_Stopped, n_cycles)
-        end
-    end
-end
-
---  @shoop_lua_fn_docstring.start
 --  shoop_helpers.default_loop_action(loop_selector)
 --  Perform the "default loop action" on a set of loop coordinates.
 --  The default loop action is designed to cycle intuitively from empty to recording, playing and stopping.
@@ -134,7 +113,6 @@ function shoop_helpers.default_loop_action(loops)
     table.insert(next_modes_with_nil_and_stopped, nil)
     next_modes_with_nil_and_stopped = list_to_set(next_modes_with_nil_and_stopped)
     local new_mode = nil
-    local forever = false
     local all_recording = sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Recording }))
     local all_empty = sets_equal(lengths, list_to_set({ 0 })) and sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Stopped }))
     local all_stopped = not sets_equal(lengths, list_to_set({ 0 })) and sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Stopped }))
@@ -142,29 +120,21 @@ function shoop_helpers.default_loop_action(loops)
     if any_transition_planned then
         print_debug("Default loop action: Cancel planned transitions")
         new_mode = shoop_control.constants.LoopMode_Stopped
-        forever = true
     elseif all_recording then
         print_debug("Default loop action: Recording -> Playing")
         new_mode = shoop_control.constants.LoopMode_Playing
-        forever = true
     elseif all_empty then
         print_debug("Default loop action: Empty -> Recording")
         new_mode = shoop_control.constants.LoopMode_Recording
     elseif all_stopped then
         print_debug("Default loop action: Stopped -> Playing")
         new_mode = shoop_control.constants.LoopMode_Playing
-        forever = true
     else
         print_debug("Default loop action: Any -> Stopped")
         new_mode = shoop_control.constants.LoopMode_Stopped
-        forever = true
     end
 
-    if forever then
-        shoop_control.loop_transition(loops, new_mode, 0)
-    else
-        shoop_helpers.loop_command(loops, new_mode)
-    end
+    shoop_control.loop_trigger(loops, new_mode)
 end
 
 --  @shoop_lua_fn_docstring.start
@@ -216,10 +186,10 @@ function shoop_helpers.record_into_first_empty(overdub)
     if (#chosen_loops > 0) then
         --  Stop the currently recording loops and start recording into the chosen ones.
         if (overdub)
-        then shoop_control.loop_transition(recording, shoop_control.constants.LoopMode_Playing, 0)
-        else shoop_control.loop_transition(recording, shoop_control.constants.LoopMode_Stopped, 0)
+        then shoop_control.loop_trigger(recording, shoop_control.constants.LoopMode_Playing)
+        else shoop_control.loop_trigger(recording, shoop_control.constants.LoopMode_Stopped)
         end 
-        shoop_control.loop_transition(chosen_loops, shoop_control.constants.LoopMode_Recording, 0)
+        shoop_control.loop_trigger(chosen_loops, shoop_control.constants.LoopMode_Recording)
     end
 end
 
