@@ -82,7 +82,6 @@ ShoopTestFile {
                 loop_at(1,0).clear()
                 loop_at(1,1).clear()
                 testcase.wait_updated(session.backend)
-                registries.state_registry.replace('sync_active', false)
                 loop_at(-1,0).deselect()
                 loop_at(0,0).deselect()
                 loop_at(0,1).deselect()
