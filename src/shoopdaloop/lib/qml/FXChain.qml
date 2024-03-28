@@ -1,6 +1,6 @@
 import ShoopDaLoop.PythonFXChain
 import ShoopDaLoop.PythonLogger
-import QtQuick 6.3
+import QtQuick 6.6
 
 import ShoopConstants
 
