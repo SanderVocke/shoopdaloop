@@ -403,7 +403,9 @@ void DummyAudioMidiDriver<Time, Size>::start(
                 uint32_t to_process = mode == DummyAudioMidiDriverMode::Controlled ?
                     std::min(samples_to_process, AudioMidiDriver::get_buffer_size()) :
                     AudioMidiDriver::get_buffer_size();
-                Log::log<log_level_debug_trace>("Process {}", to_process);
+                if (to_process > 0) {
+                    Log::log<log_level_debug_trace>("Process {}", to_process);
+                }
                 AudioMidiDriver::PROC_process(to_process);
                 if (mode == DummyAudioMidiDriverMode::Controlled) {
                     m_controlled_mode_samples_to_process -= to_process;

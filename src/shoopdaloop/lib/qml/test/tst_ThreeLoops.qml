@@ -46,6 +46,10 @@ ShoopTestFile {
                 return session.main_tracks[0].loops[0]
             }
 
+            function audio_in() {
+                return session.audio_in
+            }
+
             function first_loop_audio_chan() {
                 return first_loop().get_audio_output_channels()[0]
             }
@@ -63,6 +67,57 @@ ShoopTestFile {
                 verify_loop_cleared(first_loop())
                 verify_loop_cleared(second_loop())
                 registries.state_registry.reset()
+            }
+
+            // Convenience function to run the backend in controlled mode
+            // (sending 0 on audio input), but insert "markers" (specifically-valued samples)
+            // at particular times. These can later be checked in output to verify alignment.
+            function run_with_marker_samples(total_frames, marker_positions) {
+                var sent = 0
+                var idx = 0
+                while (sent < total_frames && idx < marker_positions.length) {
+                    let next_marker = marker_positions[idx]
+                    let next_marker_offset = next_marker - sent
+                    let remaining = total_frames - sent
+
+                    if (next_marker_offset >= remaining) {
+                        // Just send the rest
+                        session.backend.dummy_request_controlled_frames(remaining)
+                        session.backend.dummy_run_requested_frames()
+                        sent += remaining
+                    } else {
+                        // Send up to the next marker
+                        if (next_marker_offset > 0) {
+                            session.backend.dummy_request_controlled_frames(next_marker_offset)
+                            session.backend.dummy_run_requested_frames()
+                            sent += next_marker_offset
+                        }
+
+                        // Insert the marker
+                        audio_in().dummy_queue_data([0.51])
+                        session.backend.dummy_request_controlled_frames(1)
+                        session.backend.dummy_run_requested_frames()
+                        sent += 1
+                        idx += 1
+                    }
+                }
+
+                if (total_frames - sent > 0) {
+                    session.backend.dummy_request_controlled_frames(total_frames - sent)
+                    session.backend.dummy_run_requested_frames()
+                }
+            }
+
+            function verify_markers_at(data, offsets) {
+                var result = true
+                function compare (a,b) { return (a == b || ((a - b) < Math.max(a,b) / 10000.0)) }
+                var found_marker_offsets = []
+                for(var idx=0; idx<data.length; idx++) {
+                    if (data[idx] > 0.5) {
+                        found_marker_offsets.push(idx)
+                    }
+                }
+                verify_eq(found_marker_offsets, offsets)
             }
 
             test_fns: ({
@@ -130,7 +185,7 @@ ShoopTestFile {
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -171,7 +226,7 @@ ShoopTestFile {
                     second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -218,7 +273,7 @@ ShoopTestFile {
                     second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -262,7 +317,7 @@ ShoopTestFile {
                     second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -359,7 +414,7 @@ ShoopTestFile {
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -400,7 +455,7 @@ ShoopTestFile {
                     second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -447,7 +502,7 @@ ShoopTestFile {
                     second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -491,7 +546,7 @@ ShoopTestFile {
                     second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -552,7 +607,7 @@ ShoopTestFile {
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -590,7 +645,7 @@ ShoopTestFile {
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -639,7 +694,7 @@ ShoopTestFile {
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -692,7 +747,7 @@ ShoopTestFile {
                     second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -746,7 +801,7 @@ ShoopTestFile {
                     second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -821,12 +876,13 @@ ShoopTestFile {
 
                 'test_grab_ringbuffer_no_play': () => {
                     clear()
-                    session.backend.dummy_request_controlled_frames(500);
-                    session.backend.wait_process()
-                    // One "marker sample"
-                    input_port_1.dummy_queue_data([0.88])
-                    session.backend.dummy_request_controlled_frames(1);
-                    session.backend.wait_process()
+
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    testcase.wait_updated(session.backend)
+
+                    // One marker at end
+                    run_with_marker_samples(500, [499])
                     
                     testcase.wait_updated(session.backend)
                     registries.state_registry.set_play_after_record_active(false)
@@ -837,14 +893,20 @@ ShoopTestFile {
                     verify_true(first_loop().length > 0)
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
-                    let data = first_loop_audio_chan().get_data()
-                    verify_eq(data[data.length-1], 0.88)
+                    let data = first_loop_audio_chan().get_data().slice(-500)
+                    verify_markers_at(data, [data.length - 1])
                 },
 
                 'test_grab_ringbuffer_play': () => {
                     clear()
-                    session.backend.dummy_request_controlled_frames(500);
-                    session.backend.wait_process()
+
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    testcase.wait_updated(session.backend)
+                    
+                    // One marker at end
+                    run_with_marker_samples(500, [499])
+
                     testcase.wait_updated(session.backend)
                     registries.state_registry.set_play_after_record_active(true)
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -854,6 +916,8 @@ ShoopTestFile {
                     verify_true(first_loop().length > 0)
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
+                    let data = first_loop_audio_chan().get_data().slice(-500)
+                    verify_markers_at(data, [data.length - 1])
                 },
 
                 'test_grab_ringbuffer_play_solo': () => {
@@ -881,7 +945,7 @@ ShoopTestFile {
 
                     // Now grab and play
                     session.backend.dummy_request_controlled_frames(500);
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
                     registries.state_registry.set_play_after_record_active(true)
                     registries.state_registry.set_solo_active(true)
@@ -908,8 +972,11 @@ ShoopTestFile {
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
-                    session.backend.dummy_request_controlled_frames(550)
-                    session.backend.wait_process()
+                    
+                    // Run 550 samples with a marker sample at 325 and 475. That corresponds to
+                    // the 25th frame of the 2nd-last cycle and 75th frame of the last cycle.
+                    // Those should both be in the capture.
+                    run_with_marker_samples(550, [325, 475])
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -926,6 +993,9 @@ ShoopTestFile {
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().length, 200)
+                    let start_offset = first_loop_audio_chan().start_offset
+                    let data = first_loop_audio_chan().get_data().slice(start_offset)
+                    verify_markers_at(data, [25, 175])
                 },
 
                 'test_grab_ringbuffer_2_then_play_unsynced': () => {
@@ -940,8 +1010,10 @@ ShoopTestFile {
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
-                    session.backend.dummy_request_controlled_frames(550)
-                    session.backend.wait_process()
+
+                    // Run 550 samples with a marker sample at 425 and 510. That corresponds to
+                    // the 25th frame of the last cycle and 10th frame of the current cycle.
+                    run_with_marker_samples(550, [425, 510])
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -965,13 +1037,16 @@ ShoopTestFile {
 
                     // Perform the transition
                     session.backend.dummy_request_controlled_frames(100)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                     verify_eq(first_loop().length, 200)
                     verify_eq(first_loop().position, 50)
+                    let start_offset = first_loop_audio_chan().start_offset
+                    let data = first_loop_audio_chan().get_data().slice(start_offset)
+                    verify_markers_at(data, [25, 110])
                 },
 
                 'test_grab_ringbuffer_with_targeted_then_play_unsynced': () => {
@@ -989,8 +1064,10 @@ ShoopTestFile {
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
-                    session.backend.dummy_request_controlled_frames(450)
-                    session.backend.wait_process()
+                    
+                    // Run 550 samples with a marker sample at 301 and 410. That corresponds to
+                    // the 1st frame of the last cycle and 10th frame of the current cycle.
+                    run_with_marker_samples(450, [301, 410])
                     testcase.wait_updated(session.backend)
 
                     // Second loop is in its 2nd cycle of 3
@@ -1017,10 +1094,13 @@ ShoopTestFile {
                     verify_eq(first_loop().next_transition_delay, 1) // record the remainder
                     verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(first_loop().length, 150)
+                    let start_offset = first_loop_audio_chan().start_offset
+                    let data = first_loop_audio_chan().get_data().slice(start_offset)
+                    verify_markers_at(data, [1, 110])
 
                     // Perform the transition
                     session.backend.dummy_request_controlled_frames(200)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
@@ -1044,8 +1124,11 @@ ShoopTestFile {
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
-                    session.backend.dummy_request_controlled_frames(450)
-                    session.backend.wait_process()
+
+                    // Run 450 samples with a marker sample at 1, 150 and 299. That corresponds to
+                    // the 1st frame of the first cycle, 50th frame of the 2nd cycle and 99th frame
+                    // of the 3rd cycle of the targeted loop's _previous_ cycle.
+                    run_with_marker_samples(450, [1, 150, 299])
                     testcase.wait_updated(session.backend)
 
                     // Second loop is in its 2nd cycle of 3
@@ -1065,6 +1148,9 @@ ShoopTestFile {
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                     verify_eq(first_loop().length, 300)
                     verify_eq(first_loop().position, 150)
+                    let start_offset = first_loop_audio_chan().start_offset
+                    let data = first_loop_audio_chan().get_data().slice(start_offset)
+                    verify_markers_at(data, [1, 150, 299])
                 },
 
                 'test_stop_immediate': () => {
@@ -1097,7 +1183,7 @@ ShoopTestFile {
                     first_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
@@ -1140,7 +1226,7 @@ ShoopTestFile {
                     second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)

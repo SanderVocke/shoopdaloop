@@ -2133,6 +2133,18 @@ void dummy_audio_request_controlled_frames(shoop_audio_driver_t *driver, unsigne
   });
 }
 
+void dummy_audio_run_requested_frames(shoop_audio_driver_t *driver) {
+  return api_impl<void>("dummy_audio_run_requested_frames", [&]() {
+    auto _driver = internal_audio_driver(driver);
+    if (!_driver) { return; }
+    if (auto maybe_dummy = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(_driver)) {
+        maybe_dummy->controlled_mode_run_request();
+    } else {
+        logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_audio_request_controlled_frames called on non-dummy backend");
+    }
+  });
+}
+
 unsigned dummy_audio_n_requested_frames(shoop_audio_driver_t *driver) {
   return api_impl<unsigned>("dummy_audio_n_requested_frames", [&]() -> unsigned  {
     auto _driver = internal_audio_driver(driver);

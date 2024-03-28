@@ -1157,6 +1157,9 @@ class AudioDriver:
     
     def wait_process(self):
         bindings.wait_process(self._c_handle)
+        
+    def dummy_run_requested_frames(self):
+        bindings.dummy_audio_run_requested_frames(self._c_handle)
     
     def find_external_ports(self, maybe_name_regex, port_direction, data_type):
         result = bindings.find_external_ports(self._c_handle, maybe_name_regex, port_direction, data_type)

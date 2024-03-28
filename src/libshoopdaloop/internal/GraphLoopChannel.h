@@ -32,7 +32,7 @@ public:
     // Adopt the ringbuffer contents of any input port that has an active ringbuffer
     // into the channel contents.
     // If not offset is given, offset will be set to 0 to start playback from the beginning.
-    void adopt_ringbuffer_contents(std::optional<unsigned> reverse_start_offset, bool thread_safe=true);
+    void adopt_ringbuffer_contents(std::optional<unsigned> reverse_start_offset, std::optional<unsigned> keep_before_start_offset, bool thread_safe=true);
 
     void PROC_prepare(uint32_t nframes);
     void PROC_process(uint32_t nframes);

@@ -223,10 +223,13 @@ WeakGraphNodeSet GraphLoopChannel::graph_node_1_outgoing_edges() {
     return rval;
 }
 
-void GraphLoopChannel::adopt_ringbuffer_contents(std::optional<unsigned> reverse_start_offset, bool thread_safe) {
+void GraphLoopChannel::adopt_ringbuffer_contents(
+    std::optional<unsigned> reverse_start_offset,
+    std::optional<unsigned> keep_before_start_offset,
+    bool thread_safe) {
     if (auto input = mp_input_port_mapping.lock()) {
         if (channel) {
-            channel->adopt_ringbuffer_contents(input->maybe_shared_port(), reverse_start_offset, thread_safe);
+            channel->adopt_ringbuffer_contents(input->maybe_shared_port(), reverse_start_offset, keep_before_start_offset, thread_safe);
         }
     }
 }

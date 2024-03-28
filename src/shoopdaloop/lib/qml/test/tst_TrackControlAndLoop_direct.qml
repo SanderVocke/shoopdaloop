@@ -139,7 +139,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -180,9 +180,9 @@ ShoopTestFile {
                     midi_input_port.dummy_queue_msgs(input)
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out = midi_output_port.dummy_dequeue_data()
                     let chan_data = chan.get_recorded_midi_msgs()
@@ -207,7 +207,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -248,9 +248,9 @@ ShoopTestFile {
                     midi_input_port.dummy_queue_msgs(input)
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out = midi_output_port.dummy_dequeue_data()
                     let chan_data = chan.get_recorded_midi_msgs()
@@ -279,7 +279,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -320,9 +320,9 @@ ShoopTestFile {
                     midi_input_port.dummy_queue_msgs(input)
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out = midi_output_port.dummy_dequeue_data()
                     let chan_data = chan.get_recorded_midi_msgs()
@@ -351,7 +351,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -397,9 +397,9 @@ ShoopTestFile {
                     midi_input_port.dummy_queue_msgs(input)
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out = midi_output_port.dummy_dequeue_data()
                     let chan_data = chan.get_recorded_midi_msgs()

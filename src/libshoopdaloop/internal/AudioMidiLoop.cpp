@@ -214,10 +214,10 @@ void AudioMidiLoop::adopt_ringbuffer_contents(
             mp_sync_source->get_length() * n_cycles_length.value() : reverse_start_offset;
 
         for (auto &channel : mp_audio_channels) {
-            channel->adopt_ringbuffer_contents(from_port, reverse_start_offset, false);
+            channel->adopt_ringbuffer_contents(from_port, reverse_start_offset, std::nullopt, false);
         }
         for (auto &channel : mp_midi_channels) {
-            channel->adopt_ringbuffer_contents(from_port, reverse_start_offset, false);
+            channel->adopt_ringbuffer_contents(from_port, reverse_start_offset, std::nullopt, false);
         }
 
         log<log_level_debug>("Adopting {} ringbuffer samples (calculated from {} cycles) at start offset {}.",

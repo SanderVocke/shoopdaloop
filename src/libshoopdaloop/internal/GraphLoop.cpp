@@ -127,9 +127,11 @@ void GraphLoop::PROC_adopt_ringbuffer_contents(
         reverse_start_offset = sync_pos + sync_len * (cycles_length.value() - 1);
     }
 
+    // Keep 2 additional cycles of data before the start offset to allow some flexibility
+    unsigned keep_before_start_offset = sync_len * 2;
     unsigned max_data_length = 0;
-    for (auto &c : mp_audio_channels) { c->adopt_ringbuffer_contents(reverse_start_offset, false); max_data_length = std::max(max_data_length, c->channel->get_length()); }
-    for (auto &c : mp_midi_channels)  { c->adopt_ringbuffer_contents(reverse_start_offset, false); /* max_data_length = std::max(max_data_length, c->channel->get_length()); */ }
+    for (auto &c : mp_audio_channels) { c->adopt_ringbuffer_contents(reverse_start_offset, keep_before_start_offset, false); max_data_length = std::max(max_data_length, c->channel->get_length()); }
+    for (auto &c : mp_midi_channels)  { c->adopt_ringbuffer_contents(reverse_start_offset, keep_before_start_offset, false); /* max_data_length = std::max(max_data_length, c->channel->get_length()); */ }
 
     unsigned samples_length = max_data_length;
     if (cycles_length.has_value() && sync_len > 0) {
