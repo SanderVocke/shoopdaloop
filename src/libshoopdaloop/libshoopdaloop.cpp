@@ -1598,14 +1598,19 @@ void set_loop_sync_source (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_so
   });
 }
 
-void adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, unsigned reverse_cycles_start, unsigned cycles_length, shoop_loop_mode_t go_to_mode) {
+void adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, int reverse_cycles_start, int cycles_length, int go_to_cycle, shoop_loop_mode_t go_to_mode) {
   return api_impl<void>("adopt_ringbuffer_contents", [&]() {
     auto _loop = internal_loop(loop);
     if (!_loop) { return; }
     auto backend = _loop->backend.lock();
     if (!backend) { return; }
+
+    std::optional<unsigned> _reverse_cycles_start = reverse_cycles_start >= 0 ? std::optional<unsigned>(reverse_cycles_start) : std::nullopt;
+    std::optional<unsigned> _cycles_length = cycles_length >= 0 ? std::optional<unsigned>(cycles_length) : std::nullopt;
+    std::optional<unsigned> _go_to_cycle = go_to_cycle >= 0 ? std::optional<unsigned>(go_to_cycle) : std::nullopt;
+
     backend->queue_process_thread_command([=]() {
-      _loop->PROC_adopt_ringbuffer_contents(reverse_cycles_start, cycles_length, go_to_mode);
+      _loop->PROC_adopt_ringbuffer_contents(_reverse_cycles_start, _cycles_length, _go_to_cycle, go_to_mode);
     });
   });
 }

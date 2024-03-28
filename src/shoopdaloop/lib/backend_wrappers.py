@@ -652,9 +652,12 @@ class BackendLoop:
             bindings.destroy_loop(self.shoop_c_handle)
             self.shoop_c_handle = None
             
-    def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length, go_to_mode):
+    def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
+        _reverse_start_cycle = (-1 if reverse_start_cycle == None else reverse_start_cycle)
+        _cycles_length = (-1 if cycles_length == None else cycles_length)
+        _go_to_cycle = (-1 if go_to_cycle == None else go_to_cycle)
         if self.available():
-            bindings.adopt_ringbuffer_contents(self.shoop_c_handle, reverse_start_cycle, cycles_length, go_to_mode)
+            bindings.adopt_ringbuffer_contents(self.shoop_c_handle, _reverse_start_cycle, _cycles_length, _go_to_cycle, go_to_mode)
         
     def __del__(self):
         if self.available():

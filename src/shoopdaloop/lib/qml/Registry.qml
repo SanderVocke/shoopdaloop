@@ -1,4 +1,4 @@
-import QtQuick 6.6
+import QtQuick 6.3
 import ShoopDaLoop.PythonLogger
 
 // A registry is a simple key-value store which can be shared by reference

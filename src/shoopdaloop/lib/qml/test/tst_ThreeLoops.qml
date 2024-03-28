@@ -1,4 +1,4 @@
-import QtQuick 6.6
+import QtQuick 6.3
 import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
@@ -854,9 +854,8 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     // Start playback on both loops
-                    registries.state_registry.set_sync_active(false)
-                    first_loop().on_play_clicked()
-                    second_loop().on_play_clicked()
+                    first_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
 
                     testcase.wait_updated(session.backend)
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
@@ -877,6 +876,177 @@ ShoopTestFile {
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                     verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
                     verify_eq(second_loop().next_transition_delay, -1) // nothing planned
+                },
+
+                'test_grab_ringbuffer_2_then_play_synced': () => {
+                    clear()
+
+                    // Set up so that sync loop is playing and will cycle 50 samples from now
+                    first_loop().create_backend_loop()
+                    first_loop().set_length(1000)
+                    sync_loop().create_backend_loop()
+                    sync_loop().set_length(100)
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(550)
+                    session.backend.wait_process()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().position, 50)
+
+                    registries.state_registry.set_sync_active(true)
+                    registries.state_registry.set_apply_n_cycles(2)
+                    registries.state_registry.set_play_after_record_active(true)
+                    first_loop().on_grab_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_transition_delay, -1) // nothing planned
+                    verify_eq(first_loop().position, 50)
+                    verify_eq(first_loop().length, 200)
+                },
+
+                'test_grab_ringbuffer_2_then_play_unsynced': () => {
+                    clear()
+
+                    // Set up so that sync loop is playing and will cycle 50 samples from now
+                    first_loop().create_backend_loop()
+                    first_loop().set_length(1000)
+                    sync_loop().create_backend_loop()
+                    sync_loop().set_length(100)
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(550)
+                    session.backend.wait_process()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().position, 50)
+
+                    registries.state_registry.set_sync_active(false)
+                    registries.state_registry.set_apply_n_cycles(2)
+                    registries.state_registry.set_play_after_record_active(true)
+                    first_loop().on_grab_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    // The interpretation of "no sync" for grabbing is that the currently
+                    // running cycle is the last one being recorded. Recording should
+                    // immediately continue until the end of the cycle.
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().next_transition_delay, 0) // record the remainder
+                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().length, 150)
+
+                    // Perform the transition
+                    session.backend.dummy_request_controlled_frames(100)
+                    session.backend.wait_process()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_transition_delay, -1) // nothing planned
+                    verify_eq(first_loop().length, 200)
+                    verify_eq(first_loop().position, 50)
+                },
+
+                'test_grab_ringbuffer_with_targeted_then_play_unsynced': () => {
+                    clear()
+
+                    // Set up so that sync loop is playing and will cycle 50 samples from now
+                    first_loop().create_backend_loop()
+                    first_loop().set_length(1000)
+                    second_loop().create_backend_loop()
+                    second_loop().set_length(300)
+                    sync_loop().create_backend_loop()
+                    sync_loop().set_length(100)
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(450)
+                    session.backend.wait_process()
+                    testcase.wait_updated(session.backend)
+
+                    // Second loop is in its 2nd cycle of 3
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().position, 50)
+                    verify_eq(second_loop().position, 150)
+
+                    registries.state_registry.set_sync_active(false)
+                    registries.state_registry.set_apply_n_cycles(2)
+                    registries.state_registry.set_play_after_record_active(true)
+                    second_loop().target()
+                    first_loop().on_grab_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    // The interpretation of "no sync" for grabbing is that the currently
+                    // running cycle is the last one being recorded. Recording should
+                    // immediately continue until the end of the cycle.
+                    // In the targeting use-case, that means the grabbed length should be
+                    // equal to the targeted loop's and the loop should transition to recording
+                    // until the targeted loop restarts.
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().next_transition_delay, 1) // record the remainder
+                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().length, 150)
+
+                    // Perform the transition
+                    session.backend.dummy_request_controlled_frames(200)
+                    session.backend.wait_process()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_transition_delay, -1) // nothing planned
+                    verify_eq(first_loop().length, 300)
+                    verify_eq(first_loop().position, 50)
+                },
+
+                'test_grab_ringbuffer_with_targeted_then_play_synced': () => {
+                    clear()
+
+                    // Set up so that sync loop is playing and will cycle 50 samples from now
+                    first_loop().create_backend_loop()
+                    first_loop().set_length(1000)
+                    second_loop().create_backend_loop()
+                    second_loop().set_length(300)
+                    sync_loop().create_backend_loop()
+                    sync_loop().set_length(100)
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    second_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    testcase.wait_updated(session.backend)
+                    session.backend.dummy_request_controlled_frames(450)
+                    session.backend.wait_process()
+                    testcase.wait_updated(session.backend)
+
+                    // Second loop is in its 2nd cycle of 3
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().position, 50)
+                    verify_eq(second_loop().position, 150)
+
+                    registries.state_registry.set_sync_active(true)
+                    registries.state_registry.set_apply_n_cycles(2)
+                    registries.state_registry.set_play_after_record_active(true)
+                    second_loop().target()
+                    first_loop().on_grab_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_transition_delay, -1) // nothing planned
+                    verify_eq(first_loop().length, 300)
+                    verify_eq(first_loop().position, 150)
                 },
 
                 'test_stop_immediate': () => {

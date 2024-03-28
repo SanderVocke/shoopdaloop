@@ -1,5 +1,5 @@
 import ShoopDaLoop.PythonAudioPort
-import QtQuick 6.6
+import QtQuick 6.3
 
 import ShoopConstants
 

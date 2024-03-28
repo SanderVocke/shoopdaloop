@@ -177,7 +177,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - no sync loop", "[chain][audio
     tst.int_driver->controlled_mode_run_request();
 
     // Grab the ringbuffer
-    adopt_ringbuffer_contents(tst.api_loop, 0, 1, LoopMode_Unknown);
+    adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
     tst.int_driver->controlled_mode_run_request();
 
     // Since the sync loop is empty, the fallback behavior here should be that the
@@ -206,7 +206,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - one cycle", "[chain][audio]")
     tst.int_driver->controlled_mode_run_request();
 
     // Grab the ringbuffer. Offset 1 means last completed cycle.
-    adopt_ringbuffer_contents(tst.api_loop, 1, 1, LoopMode_Unknown);
+    adopt_ringbuffer_contents(tst.api_loop, 1, 1, 0, LoopMode_Unknown);
     tst.int_driver->controlled_mode_run_request();
 
     // We should have grabbed the full last completed cycle, which is samples [4, 5, 6].
@@ -234,7 +234,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - current cycle", "[chain][audi
     tst.int_driver->controlled_mode_run_request();
 
     // Grab the ringbuffer. Offset 0 means currently running cycle (which has 2 samples so far)
-    adopt_ringbuffer_contents(tst.api_loop, 0, 1, LoopMode_Unknown);
+    adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
     tst.int_driver->controlled_mode_run_request();
 
     // We should have grabbed the partially completed current cycle.
@@ -262,7 +262,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - prev cycle", "[chain][audio]"
     tst.int_driver->controlled_mode_run_request();
 
     // Grab the ringbuffer.
-    adopt_ringbuffer_contents(tst.api_loop, 2, 1, LoopMode_Unknown);
+    adopt_ringbuffer_contents(tst.api_loop, 2, 1, 0, LoopMode_Unknown);
     tst.int_driver->controlled_mode_run_request();
 
     // We should have grabbed the cycle with samples [3,4].
@@ -290,7 +290,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - prev 2 cycles", "[chain][audi
     tst.int_driver->controlled_mode_run_request();
 
     // Grab the ringbuffer.
-    adopt_ringbuffer_contents(tst.api_loop, 2, 2, LoopMode_Unknown);
+    adopt_ringbuffer_contents(tst.api_loop, 2, 2, 0, LoopMode_Unknown);
     tst.int_driver->controlled_mode_run_request();
 
     // We should have grabbed the cycles with samples [3,4], [5,6].

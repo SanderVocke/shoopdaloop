@@ -1,6 +1,6 @@
-import QtQuick 6.6
-import QtQuick.Controls 6.6
-import QtQuick.Controls.Material 6.6
+import QtQuick 6.3
+import QtQuick.Controls 6.3
+import QtQuick.Controls.Material 6.3
 import QtQuick.Dialogs
 import ShoopDaLoop.PythonLogger
 import ShoopConstants
@@ -425,12 +425,12 @@ Item {
         root.record_n(n_cycles_delay, n_cycles_record)
     }
 
-    function adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_mode) {
+    function adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode) {
         if (!root.maybe_loop) {
             create_backend_loop()
         }
         if (root.maybe_backend_loop) {
-            root.maybe_backend_loop.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length, go_to_mode)
+            root.maybe_backend_loop.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
         }
     }
 
@@ -548,8 +548,34 @@ Item {
 
     function on_grab_clicked() {
         root.create_backend_loop()
-        let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
-        root.adopt_ringbuffers(0, root.n_cycles_to_grab, go_to_mode)
+        if (root.sync_active) {
+            let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
+            if (root.targeted_loop != null) {
+                // Grab and sync up with the running targeted loop
+                root.adopt_ringbuffers(root.targeted_loop.current_cycle + root.targeted_loop.n_cycles, root.targeted_loop.n_cycles,
+                    root.targeted_loop.current_cycle, go_to_mode)
+            } else {
+                root.adopt_ringbuffers(root.n_cycles_to_grab, root.n_cycles_to_grab, 0, go_to_mode)
+            }
+        } else {
+            if (root.targeted_loop != null) {
+                // Grab current targeted loop content and record the rest
+                root.adopt_ringbuffers(null, root.targeted_loop.current_cycle + 1, root.targeted_loop.current_cycle, ShoopConstants.LoopMode.Recording)
+                root.transition(
+                    registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                    root.delay_for_targeted,
+                    true
+                )
+            } else {
+                root.adopt_ringbuffers(null, root.n_cycles_to_grab, root.n_cycles_to_grab - 1, ShoopConstants.LoopMode.Recording)
+                root.transition(
+                    registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                    0,
+                    true
+                )
+            }
+        }
+
         if (registries.state_registry.solo_active) {
             let r = selected_and_other_loops_in_track()
             root.transition_loops(r[1], ShoopConstants.LoopMode.Stopped, 0, false)

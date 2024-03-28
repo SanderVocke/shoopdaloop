@@ -47,7 +47,7 @@ SHOOP_EXPORT shoop_loop_state_info_t *get_loop_state          (shoopdaloop_loop_
 SHOOP_EXPORT void              set_loop_length          (shoopdaloop_loop_t *loop, unsigned length);
 SHOOP_EXPORT void              set_loop_position        (shoopdaloop_loop_t *loop, unsigned position);
 SHOOP_EXPORT void              set_loop_sync_source     (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_source);
-SHOOP_EXPORT void              adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, unsigned reverse_cycles_start, unsigned cycles_length, shoop_loop_mode_t go_to_mode);
+SHOOP_EXPORT void              adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, int reverse_cycles_start, int cycles_length, int go_to_cycle, shoop_loop_mode_t go_to_mode);
 SHOOP_EXPORT void loop_transition(shoopdaloop_loop_t *loop,
                       shoop_loop_mode_t mode,
                       unsigned delay, // In # of triggers

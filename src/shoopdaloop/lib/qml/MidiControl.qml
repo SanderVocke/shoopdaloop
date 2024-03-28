@@ -1,4 +1,4 @@
-import QtQuick 6.6
+import QtQuick 6.3
 import ShoopDaLoop.PythonLogger
 
 import '../midi.js' as Midi
