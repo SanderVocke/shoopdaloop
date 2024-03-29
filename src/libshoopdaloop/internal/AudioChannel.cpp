@@ -367,11 +367,11 @@ void AudioChannel<SampleT>::adopt_ringbuffer_contents(
 
     auto fn = [audioport, reverse_start_offset, keep_samples_before_start_offset, this]() {
         auto data = audioport->PROC_get_ringbuffer_contents();
-        unsigned so = reverse_start_offset.has_value() ? data.n_samples - reverse_start_offset.value() : 0;
+        int so = reverse_start_offset.has_value() ? (int)data.n_samples - (int)reverse_start_offset.value() : 0;
         // Remove data as allowed
         if (keep_samples_before_start_offset.has_value()) {
             unsigned keep = keep_samples_before_start_offset.value();
-            while(so > (keep + data.buffer_size)) {
+            while(so > (int)(keep + data.buffer_size)) {
                 so -= data.buffer_size;
                 data.n_samples -= data.buffer_size;
                 data.data->erase(data.data->begin());
