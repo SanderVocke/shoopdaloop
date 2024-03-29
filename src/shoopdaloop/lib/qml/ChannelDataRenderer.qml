@@ -83,7 +83,7 @@ Item {
         Rectangle {
             id: loop_window_rect
             color: 'blue'
-            width: (root.n_samples - root.start_offset) / render.samples_per_bin
+            width: (root.loop_length) / render.samples_per_bin
             height: render.height
             opacity: 0.3
             x: (root.start_offset - render.samples_offset) / render.samples_per_bin
