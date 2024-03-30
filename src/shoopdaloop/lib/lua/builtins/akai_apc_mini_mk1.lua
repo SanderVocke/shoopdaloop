@@ -23,7 +23,7 @@ local shoop_helpers = require('shoop_helpers')
 local shoop_format = require('shoop_format')
 local shoop_midi = require('shoop_midi')
 
--- constants
+-- constants: LED colors
 local LED_off = 0
 local LED_green = 1
 local LED_green_blink = 2
@@ -32,16 +32,46 @@ local LED_red_blink = 4
 local LED_yellow = 5
 local LED_yellow_blink = 6
 
--- Track state of the "Fader Ctrl" buttons
-local fader_settings = {'gain', 'pan', 'send', 'device'}
-local fader_setting = fader_settings[1]
+-- constants: special button note IDs (as labeled on the hardware)
+local BUTTON_clip_stop = 82
+local BUTTON_solo = 83
+local BUTTON_rec_arm = 84
+local BUTTON_mute = 85
+local BUTTON_select = 86
+local BUTTON_blank_1 = 87
+local BUTTON_blank_2 = 88
+local BUTTON_stop_all_clips = 89
+local BUTTON_shift = 98
+local BUTTON_up = 64
+local BUTTON_down = 65
+local BUTTON_left = 66
+local BUTTON_right = 67
+local BUTTON_volume = 68
+local BUTTON_pan = 69
+local BUTTON_send = 70
+local BUTTON_device = 71
+
+-- constants: redefined button IDs
+local BUTTON_grab = BUTTON_mute
+local BUTTON_sync_loop = BUTTON_blank_2
+local BUTTON_sync = BUTTON_blank_1
+local BUTTON_dry = BUTTON_send
+
+-- state
+local STATE_shift_pressed = false
+local STATE_select_pressed = false
+local STATE_solo_pressed = false
+local STATE_rec_arm_pressed = false
+local STATE_grab_pressed = false
+local STATE_stop_pressed = false
+local STATE_dry_pressed = false
 
 -- Our function for sending MIDI to the AKAI
 local send_fn = nil
 
 -- Convert a MIDI note to the corresponding loop location on the grid
 local note_to_loop_coords = function(note)
-    if note == 88 then return {-1,0} end -- Special case for sync loop button
+    if note == BUTTON_sync_loop then return {-1,0} end -- Special case for sync loop button
     if note >= 64 or note < 0 then return nil end
     local x = note % 8
     local y = 7 - note // 8
@@ -57,7 +87,7 @@ local led_message = function(coords, color)
         if color == LED_yellow then
             color = LED_off
         end
-        return {0x90, 88, color}
+        return {0x90, BUTTON_sync_loop, color}
     end
 
     local note = (7-y)*8 + x
@@ -75,6 +105,43 @@ local cc_to_fader_track = function(cc)
     return cc - 48
 end
 
+-- Handle (a) loop(s) being pressed
+local handle_loops_pressed = function(coords)
+    if STATE_select_pressed then
+        if STATE_shift_pressed then
+            -- Shift + Select => Target
+            shoop_control.loop_toggle_targeted(coords)
+        else
+            -- Select => Select
+            shoop_control.loop_toggle_selected(coords)
+        end
+    elseif STATE_rec_arm_pressed then
+        if STATE_shift_pressed then
+            -- Shift + RecArm => Set N cycles
+            shoop_control.set_apply_n_cycles(coords[1] + coords[2] * 8)
+        elseif STATE_dry_pressed then
+            -- RecArm + Dry => RecordDryIntoWet
+            shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_RecordingDryIntoWet)
+        else
+            -- RecArm => Record
+            shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_Record)
+        end
+    elseif STATE_grab_pressed then
+        --  Grab => Grab
+        shoop_control.loop_trigger_grab(coords)
+    elseif STATE_stop_pressed then
+        if STATE_shift_pressed then
+            -- Shift + Stop => Clear
+            shoop_control.loop_clear(coords)
+        else
+            -- Stop => Stop
+            shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_Stopped)
+        end
+    else
+        shoop_helpers.default_loop_action({coords}, STATE_dry_pressed)
+    end
+end
+
 -- Handle a NoteOn message
 local handle_noteOn = function(msg, port)
     local note = msg.bytes[1]
@@ -82,8 +149,39 @@ local handle_noteOn = function(msg, port)
 
     if maybe_loop ~= nil then
         shoop_helpers.default_loop_action({maybe_loop})
+    elseif note == BUTTON_shift then
+        STATE_shift_pressed = true
+    elseif note == BUTTON_select then
+        STATE_select_pressed = true
+    elseif note == BUTTON_solo then
+        STATE_solo_pressed = true
+    elseif note == BUTTON_rec_arm then
+        STATE_rec_arm_pressed = true
+    elseif note == BUTTON_grab then
+        STATE_grab_pressed = true
+    elseif note == BUTTON_stop then
+        STATE_stop_pressed = true
     end
 end
+
+-- Handle a NoteOff message
+local handle_noteOff = function(msg, port) {
+    local note = msg.bytes[1]
+
+    if note == BUTTON_shift then
+        STATE_shift_pressed = false
+    elseif note == BUTTON_select then
+        STATE_select_pressed = false
+    elseif note == BUTTON_solo then
+        STATE_solo_pressed = false
+    elseif note == BUTTON_rec_arm then
+        STATE_rec_arm_pressed = false
+    elseif note == BUTTON_grab then
+        STATE_grab_pressed = false
+    elseif note == BUTTON_stop then
+        STATE_stop_pressed = false
+    end
+}
 
 -- Handle a CC message
 local handle_cc = function (msg, port)
@@ -100,14 +198,11 @@ end
 local on_midi_in = function(msg, port)
     if shoop_midi.is_kind(msg, shoop_midi.NoteOn) then
         handle_noteOn(msg, port)
+    elseif shoop_midi.is_kind(msg, shoop_midi.NoteOff) then
+        handle_noteOff(msg, port)
     elseif shoop_midi.is_kind(msg, shoop_midi.ControlChange) then
         handle_cc(msg, port)
     end
-end
-
--- Push our known fader control state to the device lights
-local push_fader_setting = function()
-    if send_fn == nil then return end
 end
 
 -- Track the colors we sent already.
@@ -175,7 +270,6 @@ end
 -- Push all our known state to the device lights
 local push_all_state = function()
     if send_fn == nil then return end
-    push_fader_setting()
     push_all_loop_colors()
 end
 

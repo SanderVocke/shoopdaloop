@@ -97,11 +97,13 @@ function shoop_helpers.move_selection(direction_key)
 end
 
 --  @shoop_lua_fn_docstring.start
---  shoop_helpers.default_loop_action(loop_selector)
+--  shoop_helpers.default_loop_action(loop_selector, dry)
 --  Perform the "default loop action" on a set of loop coordinates.
 --  The default loop action is designed to cycle intuitively from empty to recording, playing and stopping.
+--  If "dry" is set to true, going to playback will go to playing dry through wet instead.
 --  @shoop_lua_fn_docstring.end
-function shoop_helpers.default_loop_action(loops)
+function shoop_helpers.default_loop_action(loops, dry)
+    dry = dry or false
     if #loops == 0 then
         return
     end
@@ -121,14 +123,24 @@ function shoop_helpers.default_loop_action(loops)
         print_debug("Default loop action: Cancel planned transitions")
         new_mode = shoop_control.constants.LoopMode_Stopped
     elseif all_recording then
-        print_debug("Default loop action: Recording -> Playing")
-        new_mode = shoop_control.constants.LoopMode_Playing
+        if dry then
+            print_debug("Default loop action: Recording -> Playing Dry")
+            new_mode = shoop_control.constants.LoopMode_PlayingDryThroughWet
+        else
+            print_debug("Default loop action: Recording -> Playing")
+            new_mode = shoop_control.constants.LoopMode_Playing
+        end
     elseif all_empty then
         print_debug("Default loop action: Empty -> Recording")
         new_mode = shoop_control.constants.LoopMode_Recording
     elseif all_stopped then
-        print_debug("Default loop action: Stopped -> Playing")
-        new_mode = shoop_control.constants.LoopMode_Playing
+        if dry then
+            print_debug("Default loop action: Recording -> Playing Dry")
+            new_mode = shoop_control.constants.LoopMode_PlayingDryThroughWet
+        else
+            print_debug("Default loop action: Stopped -> Playing")
+            new_mode = shoop_control.constants.LoopMode_Playing
+        end
     else
         print_debug("Default loop action: Any -> Stopped")
         new_mode = shoop_control.constants.LoopMode_Stopped
