@@ -161,6 +161,8 @@ local handle_noteOn = function(msg, port)
         STATE_grab_pressed = true
     elseif note == BUTTON_stop then
         STATE_stop_pressed = true
+    elseif note == BUTTON_dry then
+        STATE_dry_pressed = true
     end
 end
 
@@ -180,6 +182,8 @@ local handle_noteOff = function(msg, port) {
         STATE_grab_pressed = false
     elseif note == BUTTON_stop then
         STATE_stop_pressed = false
+    elseif note == BUTTON_dry then
+        STATE_dry_pressed = false
     end
 }
 
