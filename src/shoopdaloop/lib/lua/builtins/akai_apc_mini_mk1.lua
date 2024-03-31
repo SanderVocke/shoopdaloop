@@ -56,6 +56,7 @@ local BUTTON_grab = BUTTON_mute
 local BUTTON_sync_loop = BUTTON_blank_2
 local BUTTON_sync = BUTTON_blank_1
 local BUTTON_dry = BUTTON_send
+local BUTTON_n_cycles = BUTTON_device
 
 -- state
 local STATE_shift_pressed = false
@@ -65,6 +66,7 @@ local STATE_rec_arm_pressed = false
 local STATE_grab_pressed = false
 local STATE_stop_pressed = false
 local STATE_dry_pressed = false
+local STATE_n_cycles_pressed = false
 
 -- Our function for sending MIDI to the AKAI
 local send_fn = nil
@@ -121,10 +123,6 @@ local handle_loops_pressed = function(coords)
             shoop_control.loop_toggle_selected(coords)
         end
     elseif STATE_rec_arm_pressed then
-        if STATE_shift_pressed then
-            -- Shift + RecArm => Set N cycles
-            local n = (coords[1][1] + coords[1][2] * 8 + 1) % 64 -- last button is 0
-            shoop_control.set_apply_n_cycles(n)
         elseif STATE_dry_pressed then
             -- RecArm + Dry => RecordDryIntoWet
             shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_RecordingDryIntoWet)
@@ -143,6 +141,10 @@ local handle_loops_pressed = function(coords)
             -- Stop => Stop
             shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_Stopped)
         end
+    elseif STATE_n_cycles_pressed then
+        -- N Cycles => N Cycles
+        local n = (coords[1][1] + coords[1][2] * 8 + 1) % 64 -- last button is 0
+        shoop_control.set_apply_n_cycles(n)
     else
         shoop_helpers.default_loop_action(coords, STATE_dry_pressed)
     end
@@ -176,6 +178,9 @@ local handle_noteOn = function(msg, port)
     elseif note == BUTTON_dry then
         set_led_by_note(BUTTON_dry, LED_green)
         STATE_dry_pressed = true
+    elseif note == BUTTON_n_cycles then
+        set_led_by_note(BUTTON_n_cycles, LED_green)
+        STATE_n_cycles_pressed = true
     end
 end
 
@@ -204,6 +209,9 @@ local handle_noteOff = function(msg, port)
     elseif note == BUTTON_dry then
         set_led_by_note(BUTTON_dry, LED_off)
         STATE_dry_pressed = false
+    elseif note == BUTTON_n_cycles then
+        set_led_by_note(BUTTON_n_cycles, LED_off)
+        STATE_n_cycles_pressed = false
     end
 end
 

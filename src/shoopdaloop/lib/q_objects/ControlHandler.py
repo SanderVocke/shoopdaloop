@@ -169,7 +169,14 @@ class ControlHandler(ShoopQQuickItem):
         [ 'track_set_muted', lua_track_selector, lua_bool ],
         [ 'track_set_input_muted', lua_track_selector, lua_bool ],
         [ 'set_apply_n_cycles', lua_int ],
-        [ 'get_apply_n_cycles' ]
+        [ 'get_apply_n_cycles' ],
+        [ 'set_solo', lua_bool ],
+        [ 'get_solo' ],
+        [ 'set_sync_active', lua_bool ],
+        [ 'get_sync_active' ],
+        [ 'set_play_after_record', lua_bool ],
+        [ 'get_play_after_record' ],
+        [ 'clear_all_loops' ]
     ]
 
     def generate_loop_mode_constants():
