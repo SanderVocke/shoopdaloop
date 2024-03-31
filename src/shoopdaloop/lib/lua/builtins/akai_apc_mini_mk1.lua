@@ -93,7 +93,12 @@ local led_message = function(coords, color)
     local note = (7-y)*8 + x
     return {0x90, note, color}
 end
-local set_led = function(coords, color)
+
+local set_led_by_note = function(note, color)
+    send_fn({0x90, note, color})
+end
+
+local set_led_by_coords = function(coords, color)
     if send_fn == nil then return end
     send_fn(led_message(coords, color))
 end
@@ -118,7 +123,8 @@ local handle_loops_pressed = function(coords)
     elseif STATE_rec_arm_pressed then
         if STATE_shift_pressed then
             -- Shift + RecArm => Set N cycles
-            shoop_control.set_apply_n_cycles(coords[1] + coords[2] * 8)
+            local n = (coords[1][1] + coords[1][2] * 8 + 1) % 64 -- last button is 0
+            shoop_control.set_apply_n_cycles(n)
         elseif STATE_dry_pressed then
             -- RecArm + Dry => RecordDryIntoWet
             shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_RecordingDryIntoWet)
@@ -138,7 +144,7 @@ local handle_loops_pressed = function(coords)
             shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_Stopped)
         end
     else
-        shoop_helpers.default_loop_action({coords}, STATE_dry_pressed)
+        shoop_helpers.default_loop_action(coords, STATE_dry_pressed)
     end
 end
 
@@ -148,44 +154,58 @@ local handle_noteOn = function(msg, port)
     local maybe_loop = note_to_loop_coords(note)
 
     if maybe_loop ~= nil then
-        shoop_helpers.default_loop_action({maybe_loop})
+        handle_loops_pressed({maybe_loop})
     elseif note == BUTTON_shift then
+        set_led_by_note(BUTTON_shift, LED_green)
         STATE_shift_pressed = true
     elseif note == BUTTON_select then
+        set_led_by_note(BUTTON_select, LED_green)
         STATE_select_pressed = true
     elseif note == BUTTON_solo then
+        set_led_by_note(BUTTON_solo, LED_green)
         STATE_solo_pressed = true
     elseif note == BUTTON_rec_arm then
+        set_led_by_note(BUTTON_rec_arm, LED_green)
         STATE_rec_arm_pressed = true
     elseif note == BUTTON_grab then
+        set_led_by_note(BUTTON_grab, LED_green)
         STATE_grab_pressed = true
     elseif note == BUTTON_stop then
+        set_led_by_note(BUTTON_stop, LED_green)
         STATE_stop_pressed = true
     elseif note == BUTTON_dry then
+        set_led_by_note(BUTTON_dry, LED_green)
         STATE_dry_pressed = true
     end
 end
 
 -- Handle a NoteOff message
-local handle_noteOff = function(msg, port) {
+local handle_noteOff = function(msg, port)
     local note = msg.bytes[1]
 
     if note == BUTTON_shift then
+        set_led_by_note(BUTTON_shift, LED_off)
         STATE_shift_pressed = false
     elseif note == BUTTON_select then
+        set_led_by_note(BUTTON_select, LED_off)
         STATE_select_pressed = false
     elseif note == BUTTON_solo then
+        set_led_by_note(BUTTON_solo, LED_off)
         STATE_solo_pressed = false
     elseif note == BUTTON_rec_arm then
+        set_led_by_note(BUTTON_rec_arm, LED_off)
         STATE_rec_arm_pressed = false
     elseif note == BUTTON_grab then
+        set_led_by_note(BUTTON_grab, LED_off)
         STATE_grab_pressed = false
     elseif note == BUTTON_stop then
+        set_led_by_note(BUTTON_stop, LED_off)
         STATE_stop_pressed = false
     elseif note == BUTTON_dry then
+        set_led_by_note(BUTTON_dry, LED_off)
         STATE_dry_pressed = false
     end
-}
+end
 
 -- Handle a CC message
 local handle_cc = function (msg, port)
@@ -236,7 +256,7 @@ local push_loop_color = function(coords, event)
     end
 
     if prev_color ~= color then
-        set_led(coords, color)
+        set_led_by_coords(coords, color)
         loop_colors[coords[1]][coords[2]] = color
     end
 end
@@ -259,7 +279,7 @@ local push_all_loop_colors = function()
             if color == nil then
                 color = LED_off
             end
-            set_led(coords, color)
+            set_led_by_coords(coords, color)
         end
     end
     -- Sync loop
@@ -268,7 +288,7 @@ local push_all_loop_colors = function()
     if sync_color == nil then
         sync_color = LED_off
     end
-    set_led(sync_coords, sync_color)
+    set_led_by_coords(sync_coords, sync_color)
 end
 
 -- Push all our known state to the device lights
