@@ -2,19 +2,60 @@
 --
 -- This script will automatically open MIDI ports and connect to the APC Mini.
 --
--- Once connected:
+-- In this description, buttons are referred to in capital letters, such as
+-- CLIP STOP.
+--
+-- There are some buttons that have new meanings compared to what is printed on
+-- the device. You can put some stickers for them:
+-- - REC ARM -> RECORD
+-- - MUTE -> GRAB
+-- - first blank soft-key -> SYNC
+-- - second blank soft-key -> maps to the sync loop (loop button)
+-- - SEND -> DRY
+-- - DEVICE -> SET N CYCLES
+--
+-- ---------------
+-- ---- LOOPS ----
+-- ---------------
 --
 -- - Grid buttons will light up to indicate the state of each loop.
--- - Faders will control the track output gains.
 -- - Clicking a grid button will perform the default loop action
 --   (see generic ShoopDaLoop documentation) for that loop.
--- - The sync loop is mapped to the unmarked button above "Shift".
---   Since it does not support multiple LED colors, it just becomes
---   green if playing or recording, and off otherwise.
--- - Faders control the track gain levels.
+-- - Having the following buttons active while clicking a loop modifies
+--   this behavior:
+--      - DRY:       if transitioning to play, it will transtition to
+--                   play dry through wet instead.
+--      - CLIP STOP: stops the clicked loop(s)
+--        - + SHIFT: clears the clicked loop(s)
+--      - RECORD:    records the clicked loop(s)
+--        - + DRY:   re-records the clicked loop(s) dry into wet
+--      - GRAB:      grabs the clicked loop(s)
+--      - SELECT:    toggles selection of clicked loop(s)
+--        - + SHIFT: toggles targeting of clicked loop(s)
 --
--- Note that for now, the loops and tracks simply map to the first 8x8 items
--- on the grid. A movable window will be added in the future.
+-- -------------------------
+-- ---- GLOBAL CONTROLS ----
+-- -------------------------
+--
+-- - SOLO will toggle solo mode while held. If SHIFT is pressed, the toggle will be permanent.
+-- - SYNC will toggle sync mode while held. If SHIFT is pressed, the toggle will be permanent.
+-- - STOP ALL CLIPS will stop all loops, or:
+--   - + SELECT: deselect all loops.
+--   - + SHIFT: clear all loops.
+-- - DEVICE allows to set the N cycles to record. Hold it and press a loop in the grid.
+--   The number of cycles set is the loop location starting from the top left (left to right).
+--   To reset to zero, use the bottom rightmost loop.
+--
+-- -------------------------
+-- ---- FADER CONTROLS ----
+-- -------------------------
+--
+-- Faders don't do anything by default. They only work while one or more of the following
+-- buttons are held:
+-- - VOLUME: sets the gain of the track.
+-- - PAN: sets the balance of the track. Only works for stereo tracks.
+--
+-- Note that the rightmost fader is reserved for the sync loop track.
 
 print_debug("Init akai_apc_mini_mk1.lua")
 
