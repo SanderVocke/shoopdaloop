@@ -264,7 +264,7 @@ class MidiControlPort(FindParentBackend):
             if self._direction == PortDirection.Input.value:
                 self.timer = QTimer(self)
                 self.timer.setSingleShot(False)
-                self.timer.setInterval(50)
+                self.timer.setInterval(10)
                 self.timer.timeout.connect(self.poll)
                 self.timer.start()
                 

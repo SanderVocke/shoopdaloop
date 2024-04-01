@@ -53,11 +53,17 @@ LuaControlInterface {
         } else {
             // Form callback:  (loop) => true/false
             for(var t=0; t<session.main_tracks.length; t++) {
+                // Track loops
                 let track = session.main_tracks[t]
                 for(var l=0; l<track.loops.length; l++) {
                     let loop = track.loops[l]
                     if(loop_selector(loop)) { rval.push(loop) }
                 }
+            }
+            // Sync track loops
+            for(var l=0; l<session.sync_track.loops.length; l++) {
+                let loop = session.sync_track.loops[l]
+                if(loop_selector(loop)) { rval.push(loop) }
             }
         }
         logger.debug(() => (`Selected loops for selector ${JSON.stringify(loop_selector)}: ${JSON.stringify(rval.map(l => l ? l.obj_id : null))}.`))
@@ -225,6 +231,9 @@ LuaControlInterface {
     function track_set_gain_override(track_selector, vol) {
         select_tracks(track_selector).forEach(t => t.control_widget.set_gain(vol))
     }
+    function track_set_balance_override(track_selector, balance) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_balance(balance))
+    }
     function track_set_gain_fader_override(track_selector, vol) {
         select_tracks(track_selector).forEach(t => t.control_widget.set_gain_fader(vol))
     }
@@ -236,6 +245,9 @@ LuaControlInterface {
     }
     function track_get_gain_override(track_selector) {
         return select_tracks(track_selector).map(t => t.control_widget.last_pushed_gain)
+    }
+    function track_get_balance_override(track_selector) {
+        return select_tracks(track_selector).map(t => t.control_widget.last_pushed_stereo_balance)
     }
     function track_get_gain_fader_override(track_selector) {
         return select_tracks(track_selector).map(t => t.control_widget.gain_fader_position)
@@ -396,6 +408,14 @@ LuaControlInterface {
         select_fn: (obj) => obj && obj.object_schema && obj.object_schema.match(/loop.[0-9]+/)
         id: lookup_loops
         values_only: true
+    }
+
+    Connections {
+        target: registries.state_registry
+        function onSolo_activeChanged() { control_interface.global_control_changed() }
+        function onSync_activeChanged() { control_interface.global_control_changed() }
+        function onPlay_after_record_activeChanged() { control_interface.global_control_changed() }
+        function onApply_n_cyclesChanged() { control_interface.global_control_changed() }
     }
 
     Repeater { 

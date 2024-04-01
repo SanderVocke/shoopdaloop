@@ -238,6 +238,9 @@ Item {
     function set_gain(gain) {
         gain_dB = Math.min(Math.max(gain_fader.gainToDb(gain), gain_fader.from), gain_fader.to)
     }
+    function set_balance(balance) {
+        output_balance = balance
+    }
     function set_gain_fader(value) {
         gain_fader.value = gain_fader.valueAt(value)
     }

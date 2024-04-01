@@ -64,7 +64,6 @@ Registry {
         key: 'solo_active'
     }
     readonly property bool solo_active : lookup_solo_active.object != null ? lookup_solo_active.object : false
-    onSolo_activeChanged: console.log('Solo active: ' + solo_active)
     function set_solo_active(val) {
         replace('solo_active', val)
     }

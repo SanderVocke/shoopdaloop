@@ -489,7 +489,7 @@ class ControlHandler(ShoopQQuickItem):
     def loop_select(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.loop_select(loop_selector)
+        shoop_control.loop_select(loop_selector, deselect_others)
         Select the specified loops. If deselect_others is true, all other loops are deselected.
         @shoop_lua_fn_docstring.end
         """
@@ -582,6 +582,17 @@ class ControlHandler(ShoopQQuickItem):
     
     @ShoopSlot(list, 'QVariant', result=list)
     @allow_qml_override
+    def track_get_balance(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_get_balance(track_selector) -> list[float]
+        Get the balance of the given track(s) as a value between -1 and 1.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @ShoopSlot(list, 'QVariant', result=list)
+    @allow_qml_override
     def track_get_gain_fader(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
@@ -664,6 +675,17 @@ class ControlHandler(ShoopQQuickItem):
         @shoop_lua_fn_docstring.start
         shoop_control.track_set_gain(track_selector, vol)
         Set the given track's gain as a gain factor.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @ShoopSlot(list, 'QVariant')
+    @allow_qml_override
+    def track_set_balance(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.track_set_balance(track_selector, val)
+        Set the given track's balance as a value between -1 and 1.
         @shoop_lua_fn_docstring.end
         """
         pass

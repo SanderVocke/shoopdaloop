@@ -40,7 +40,7 @@ local BUTTON_mute = 85
 local BUTTON_select = 86
 local BUTTON_blank_1 = 87
 local BUTTON_blank_2 = 88
-local BUTTON_stop_all_clips = 89
+local BUTTON_clip_stop_all_clips = 89
 local BUTTON_shift = 98
 local BUTTON_up = 64
 local BUTTON_down = 65
@@ -70,6 +70,8 @@ local STATE_dry_pressed = false
 local STATE_n_cycles_pressed = false
 local STATE_sync_pressed = false
 local STATE_sync_toggle_permanent = false
+local STATE_volume_pressed = false
+local STATE_pan_pressed = false
 
 -- Our function for sending MIDI to the AKAI
 local send_fn = nil
@@ -135,7 +137,7 @@ local handle_loops_pressed = function(coords)
         else
             -- RecArm => Record
             print_debug("-> record")
-            shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_Record)
+            shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_Recording)
         end
     elseif STATE_grab_pressed then
         --  Grab => Grab
@@ -160,140 +162,6 @@ local handle_loops_pressed = function(coords)
     else
         print_debug("-> default loop action")
         shoop_helpers.default_loop_action(coords, STATE_dry_pressed)
-    end
-end
-
--- Handle a NoteOn message
-local handle_noteOn = function(msg, port)
-    local note = msg.bytes[1]
-    local maybe_loop = note_to_loop_coords(note)
-
-    if maybe_loop ~= nil then
-        print_debug("loop pressed")
-        handle_loops_pressed({maybe_loop})
-    elseif note == BUTTON_shift then
-        print_debug("shift active")
-        set_led_by_note(BUTTON_shift, LED_green)
-        STATE_shift_pressed = true
-    elseif note == BUTTON_select then
-        print_debug("select active")
-        set_led_by_note(BUTTON_select, LED_green)
-        STATE_select_pressed = true
-    elseif note == BUTTON_solo then
-        print_debug("toggle solo (pressed)")
-        shoop_helpers.toggle_solo()
-        STATE_solo_toggle_permanent = STATE_shift_pressed
-        set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
-        STATE_solo_pressed = true
-    elseif note == BUTTON_rec_arm then
-        print_debug("record active")
-        set_led_by_note(BUTTON_rec_arm, LED_green)
-        STATE_rec_arm_pressed = true
-    elseif note == BUTTON_grab then
-        print_debug("grab active")
-        set_led_by_note(BUTTON_grab, LED_green)
-        STATE_grab_pressed = true
-    elseif note == BUTTON_stop then
-        print_debug("stop active")
-        set_led_by_note(BUTTON_stop, LED_green)
-        STATE_stop_pressed = true
-    elseif note == BUTTON_dry then
-        print_debug("dry active")
-        set_led_by_note(BUTTON_dry, LED_green)
-        STATE_dry_pressed = true
-    elseif note == BUTTON_n_cycles then
-        print_debug("set n cycles active")
-        set_led_by_note(BUTTON_n_cycles, LED_green)
-        STATE_n_cycles_pressed = true
-    elseif note == BUTTON_sync then
-        print_debug("toggle sync active")
-        shoop_helpers.toggle_sync_active()
-        STATE_sync_active_toggle_permanent = STATE_shift_pressed
-        set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
-        STATE_sync_pressed = true
-    elseif note == BUTTON_stop_all_clips then
-        if STATE_shift_pressed then
-            -- Shift + Stop All = Clear All
-            print_debug("clear all")
-            shoop_control.loop_clear_all()
-        else
-            -- Stop All = Stop All
-            print_debug("stop all")
-            shoop_control.loop_trigger(shoop_control.loop_get_all(), shoop_control.constants.LoopMode_Stopped)
-        end
-    end
-end
-
--- Handle a NoteOff message
-local handle_noteOff = function(msg, port)
-    local note = msg.bytes[1]
-
-    if note == BUTTON_shift then
-        print_debug("shift inactive")
-        set_led_by_note(BUTTON_shift, LED_off)
-        STATE_shift_pressed = false
-    elseif note == BUTTON_select then
-        print_debug("select inactive")
-        set_led_by_note(BUTTON_select, LED_off)
-        STATE_select_pressed = false
-    elseif note == BUTTON_solo then
-        if not STATE_solo_toggle_permanent then
-            print_debug("toggle solo back")
-            shoop_helpers.toggle_solo() -- toggle back
-        end
-        set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
-        STATE_solo_toggle_permanent = false
-        STATE_solo_pressed = false
-    elseif note == BUTTON_rec_arm then
-        print_debug("record inactive")
-        set_led_by_note(BUTTON_rec_arm, LED_off)
-        STATE_rec_arm_pressed = false
-    elseif note == BUTTON_grab then
-        print_debug("grab inactive")
-        set_led_by_note(BUTTON_grab, LED_off)
-        STATE_grab_pressed = false
-    elseif note == BUTTON_stop then
-        print_debug("stop inactive")
-        set_led_by_note(BUTTON_stop, LED_off)
-        STATE_stop_pressed = false
-    elseif note == BUTTON_dry then
-        print_debug("dry inactive")
-        set_led_by_note(BUTTON_dry, LED_off)
-        STATE_dry_pressed = false
-    elseif note == BUTTON_n_cycles then
-        print_debug("set n cycles inactive")
-        set_led_by_note(BUTTON_n_cycles, LED_off)
-        STATE_n_cycles_pressed = false
-    elseif note == BUTTON_sync then
-        if not STATE_sync_active_toggle_permanent then
-            print_debug("toggle sync back")
-            shoop_helpers.toggle_sync_active() -- toggle back
-        end
-        set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
-        STATE_sync_active_toggle_permanent = false
-    end
-end
-
--- Handle a CC message
-local handle_cc = function (msg, port)
-    local cc = msg.bytes[1]
-    local value = msg.bytes[2]
-    local maybe_fader_track = cc_to_fader_track(cc)
-
-    if maybe_fader_track ~= nil then
-        print_debug("set gain fader")
-        shoop_control.track_set_gain_fader(maybe_fader_track, value / 127.0)
-    end
-end
-
--- Handle a Midi message (top-level handler)
-local on_midi_in = function(msg, port)
-    if shoop_midi.is_kind(msg, shoop_midi.NoteOn) then
-        handle_noteOn(msg, port)
-    elseif shoop_midi.is_kind(msg, shoop_midi.NoteOff) then
-        handle_noteOff(msg, port)
-    elseif shoop_midi.is_kind(msg, shoop_midi.ControlChange) then
-        handle_cc(msg, port)
     end
 end
 
@@ -361,16 +229,189 @@ end
 
 -- Push all our known state to the device lights
 local reset = function()
+    print_debug("reset")
     if send_fn == nil then return end
     push_all_loop_colors()
+    print_debug(shoop_format.format_table({shoop_control.get_solo()}))
     set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
-    set_led_by_note(BUTTON_sync_active, (shoop_control.get_sync_active()) and LED_green or LED_off)
+    set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
+end
+
+-- Re-check the global controls
+local recheck_global_controls = function()
+    print_debug("recheck global controls")
+    set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
+    set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
+end
+
+-- Handle a NoteOn message
+local handle_noteOn = function(msg, port)
+    local note = msg.bytes[1]
+    local maybe_loop = note_to_loop_coords(note)
+
+    if maybe_loop ~= nil then
+        print_debug("loop pressed")
+        handle_loops_pressed({maybe_loop})
+    elseif note == BUTTON_shift then
+        print_debug("shift active")
+        set_led_by_note(BUTTON_shift, LED_green)
+        STATE_shift_pressed = true
+    elseif note == BUTTON_select then
+        print_debug("select active")
+        set_led_by_note(BUTTON_select, LED_green)
+        STATE_select_pressed = true
+    elseif note == BUTTON_solo then
+        print_debug("toggle solo (pressed)")
+        shoop_helpers.toggle_solo()
+        STATE_solo_toggle_permanent = STATE_shift_pressed
+        set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
+        STATE_solo_pressed = true
+    elseif note == BUTTON_rec_arm then
+        print_debug("record active")
+        set_led_by_note(BUTTON_rec_arm, LED_green)
+        STATE_rec_arm_pressed = true
+    elseif note == BUTTON_grab then
+        print_debug("grab active")
+        set_led_by_note(BUTTON_grab, LED_green)
+        STATE_grab_pressed = true
+    elseif note == BUTTON_clip_stop then
+        print_debug("stop active")
+        set_led_by_note(BUTTON_clip_stop, LED_green)
+        STATE_stop_pressed = true
+    elseif note == BUTTON_dry then
+        print_debug("dry active")
+        set_led_by_note(BUTTON_dry, LED_green)
+        STATE_dry_pressed = true
+    elseif note == BUTTON_n_cycles then
+        if STATE_shift_pressed then
+            -- Shift + N Cycles = Reset akai (debug)
+            reset()
+        else
+            print_debug("set n cycles active")
+            set_led_by_note(BUTTON_n_cycles, LED_green)
+            STATE_n_cycles_pressed = true
+        end
+    elseif note == BUTTON_sync then
+        print_debug("toggle sync active")
+        shoop_helpers.toggle_sync_active()
+        STATE_sync_active_toggle_permanent = STATE_shift_pressed
+        set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
+        STATE_sync_pressed = true
+    elseif note == BUTTON_clip_stop_all_clips then
+        if STATE_shift_pressed then
+            -- Shift + Stop All = Clear All
+            print_debug("clear all")
+            shoop_control.loop_clear_all()
+        elseif STATE_select_pressed then
+            -- Select + Stop All = Deselect All
+            print_debug("deselect all")
+            shoop_control.loop_select({}, true)
+        else
+            -- Stop All = Stop All
+            print_debug("stop all")
+            shoop_control.loop_trigger(shoop_control.loop_get_all(), shoop_control.constants.LoopMode_Stopped)
+        end
+    elseif note == BUTTON_volume then
+        print_debug("volume active")
+        STATE_volume_pressed = true
+        set_led_by_note(BUTTON_volume, LED_green)
+    elseif note == BUTTON_pan then
+        print_debug("pan active")
+        STATE_pan_pressed = true
+        set_led_by_note(BUTTON_pan, LED_green)
+    end
+end
+
+-- Handle a NoteOff message
+local handle_noteOff = function(msg, port)
+    local note = msg.bytes[1]
+
+    if note == BUTTON_shift then
+        print_debug("shift inactive")
+        set_led_by_note(BUTTON_shift, LED_off)
+        STATE_shift_pressed = false
+    elseif note == BUTTON_select then
+        print_debug("select inactive")
+        set_led_by_note(BUTTON_select, LED_off)
+        STATE_select_pressed = false
+    elseif note == BUTTON_solo then
+        if not STATE_solo_toggle_permanent then
+            print_debug("toggle solo back")
+            shoop_helpers.toggle_solo() -- toggle back
+        end
+        set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
+        STATE_solo_toggle_permanent = false
+        STATE_solo_pressed = false
+    elseif note == BUTTON_rec_arm then
+        print_debug("record inactive")
+        set_led_by_note(BUTTON_rec_arm, LED_off)
+        STATE_rec_arm_pressed = false
+    elseif note == BUTTON_grab then
+        print_debug("grab inactive")
+        set_led_by_note(BUTTON_grab, LED_off)
+        STATE_grab_pressed = false
+    elseif note == BUTTON_clip_stop then
+        print_debug("stop inactive")
+        set_led_by_note(BUTTON_clip_stop, LED_off)
+        STATE_stop_pressed = false
+    elseif note == BUTTON_dry then
+        print_debug("dry inactive")
+        set_led_by_note(BUTTON_dry, LED_off)
+        STATE_dry_pressed = false
+    elseif note == BUTTON_n_cycles then
+        print_debug("set n cycles inactive")
+        set_led_by_note(BUTTON_n_cycles, LED_off)
+        STATE_n_cycles_pressed = false
+    elseif note == BUTTON_sync then
+        if not STATE_sync_active_toggle_permanent then
+            print_debug("toggle sync back")
+            shoop_helpers.toggle_sync_active() -- toggle back
+        end
+        set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
+        STATE_sync_active_toggle_permanent = false
+    elseif note == BUTTON_volume then
+        print_debug("volume inactive")
+        STATE_volume_pressed = false
+        set_led_by_note(BUTTON_volume, LED_off)
+    elseif note == BUTTON_pan then
+        print_debug("pan inactive")
+        STATE_pan_pressed = false
+        set_led_by_note(BUTTON_pan, LED_off)
+    end
+end
+
+-- Handle a CC message
+local handle_cc = function (msg, port)
+    local cc = msg.bytes[1]
+    local value = msg.bytes[2]
+    local maybe_fader_track = cc_to_fader_track(cc)
+
+    if maybe_fader_track ~= nil then
+        if STATE_volume_pressed then
+            print_debug("set gain fader ")
+            shoop_control.track_set_gain_fader(maybe_fader_track, value / 127.0)
+        end
+        if STATE_pan_pressed then
+            print_debug("set pan fader")
+            shoop_control.track_set_balance(maybe_fader_track, (value / 63.5) - 1.0)
+        end
+    end
+end
+
+-- Handle a Midi message (top-level handler)
+local on_midi_in = function(msg, port)
+    if shoop_midi.is_kind(msg, shoop_midi.NoteOn) then
+        handle_noteOn(msg, port)
+    elseif shoop_midi.is_kind(msg, shoop_midi.NoteOff) then
+        handle_noteOff(msg, port)
+    elseif shoop_midi.is_kind(msg, shoop_midi.ControlChange) then
+        handle_cc(msg, port)
+    end
 end
 
 -- Handle our output port being opened
 local on_output_port_opened = function(_send_fn)
     send_fn = _send_fn
-    reset()
 end
 
 -- Handle our output port being connected
@@ -389,3 +430,6 @@ shoop_control.auto_open_device_specific_midi_control_input(".*APC MINI MIDI.*", 
 
 -- Register for loop callbacks
 shoop_control.register_loop_event_cb(handle_loop_event)
+
+-- Register for global callbacks
+shoop_control.register_global_event_cb(recheck_global_controls)

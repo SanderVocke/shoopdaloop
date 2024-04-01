@@ -25,17 +25,6 @@ Item {
 
     property bool settings_io_enabled: false
 
-    function update() {
-        registries.state_registry.set_sync_active(sync_active)
-        registries.state_registry.set_solo_active(solo_active)
-        registries.state_registry.set_play_after_record_active(play_after_record_active)
-    }
-
-    onSync_activeChanged: update()
-    onSolo_activeChanged: update()
-    onPlay_after_record_activeChanged: update()
-    Component.onCompleted: update()
-
     Row {
         spacing: 6
         anchors.fill: parent
