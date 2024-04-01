@@ -152,6 +152,7 @@ class ControlHandler(ShoopQQuickItem):
         [ 'loop_toggle_selected', lua_loop_selector ],
         [ 'loop_toggle_targeted', lua_loop_selector ],
         [ 'loop_clear', lua_loop_selector ],
+        [ 'loop_clear_all' ],
         [ 'loop_adopt_ringbuffers', lua_loop_selector, lua_int, lua_int, lua_int, lua_int ],
         [ 'loop_trigger_grab', lua_loop_selector ],
         [ 'track_get_gain', lua_track_selector ],
@@ -175,8 +176,7 @@ class ControlHandler(ShoopQQuickItem):
         [ 'set_sync_active', lua_bool ],
         [ 'get_sync_active' ],
         [ 'set_play_after_record', lua_bool ],
-        [ 'get_play_after_record' ],
-        [ 'clear_all_loops' ]
+        [ 'get_play_after_record' ]
     ]
 
     def generate_loop_mode_constants():

@@ -205,4 +205,31 @@ function shoop_helpers.record_into_first_empty(overdub)
     end
 end
 
+--  @shoop_lua_fn_docstring.start
+--  shoop_helpers.toggle_solo()
+--  Toggle the global "solo" control
+--  @shoop_lua_fn_docstring.end
+function shoop_helpers.toggle_solo()
+    local state = shoop_control.get_solo()
+    shoop_control.set_solo(not state)
+end
+
+--  @shoop_lua_fn_docstring.start
+--  shoop_helpers.toggle_sync_active()
+--  Toggle the global "sync active" control
+--  @shoop_lua_fn_docstring.end
+function shoop_helpers.toggle_sync_active()
+    local state = shoop_control.get_sync_active()
+    shoop_control.set_sync_active(not state)
+end
+
+--  @shoop_lua_fn_docstring.start
+--  shoop_helpers.toggle_play_after_record()
+--  Toggle the global "sync active" control
+--  @shoop_lua_fn_docstring.end
+function shoop_helpers.toggle_play_after_record()
+    local state = shoop_control.get_play_after_record()
+    shoop_control.set_play_after_record(not state)
+end
+
 return shoop_helpers

@@ -62,11 +62,14 @@ local BUTTON_n_cycles = BUTTON_device
 local STATE_shift_pressed = false
 local STATE_select_pressed = false
 local STATE_solo_pressed = false
+local STATE_solo_toggle_permanent = false
 local STATE_rec_arm_pressed = false
 local STATE_grab_pressed = false
 local STATE_stop_pressed = false
 local STATE_dry_pressed = false
 local STATE_n_cycles_pressed = false
+local STATE_sync_pressed = false
+local STATE_sync_toggle_permanent = false
 
 -- Our function for sending MIDI to the AKAI
 local send_fn = nil
@@ -142,7 +145,8 @@ local handle_loops_pressed = function(coords)
             shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_Stopped)
         end
     elseif STATE_n_cycles_pressed then
-        -- N Cycles => N Cycles
+        -- N Cycles => N Cycles instead of a loop action.
+        -- The loops can be pressed to give a number (1 at the top left, last loop = 0)
         local n = (coords[1][1] + coords[1][2] * 8 + 1) % 64 -- last button is 0
         shoop_control.set_apply_n_cycles(n)
     else
@@ -164,7 +168,9 @@ local handle_noteOn = function(msg, port)
         set_led_by_note(BUTTON_select, LED_green)
         STATE_select_pressed = true
     elseif note == BUTTON_solo then
-        set_led_by_note(BUTTON_solo, LED_green)
+        shoop_helpers.toggle_solo()
+        STATE_solo_toggle_permanent = STATE_shift_pressed
+        set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
         STATE_solo_pressed = true
     elseif note == BUTTON_rec_arm then
         set_led_by_note(BUTTON_rec_arm, LED_green)
@@ -181,6 +187,19 @@ local handle_noteOn = function(msg, port)
     elseif note == BUTTON_n_cycles then
         set_led_by_note(BUTTON_n_cycles, LED_green)
         STATE_n_cycles_pressed = true
+    elseif note == BUTTON_sync then
+        shoop_helpers.toggle_sync_active()
+        STATE_sync_active_toggle_permanent = STATE_shift_pressed
+        set_led_by_note(BUTTON_solo, (shoop_control.get_sync_active()) and LED_green or LED_off)
+        STATE_sync_pressed = true
+    elseif note == BUTTON_stop_all_clips then
+        if STATE_shift_pressed then
+            -- Shift + Stop All = Clear All
+            shoop_control.loop_clear_all()
+        else
+            -- Stop All = Stop All
+            shoop_control.loop_trigger(shoop_control.loop_get_all(), shoop_control.constants.LoopMode_Stopped)
+        end
     end
 end
 
@@ -195,7 +214,11 @@ local handle_noteOff = function(msg, port)
         set_led_by_note(BUTTON_select, LED_off)
         STATE_select_pressed = false
     elseif note == BUTTON_solo then
-        set_led_by_note(BUTTON_solo, LED_off)
+        if not STATE_solo_toggle_permanent then
+            shoop_helpers.toggle_solo() -- toggle back
+        end
+        set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
+        STATE_solo_toggle_permanent = false
         STATE_solo_pressed = false
     elseif note == BUTTON_rec_arm then
         set_led_by_note(BUTTON_rec_arm, LED_off)
@@ -212,6 +235,12 @@ local handle_noteOff = function(msg, port)
     elseif note == BUTTON_n_cycles then
         set_led_by_note(BUTTON_n_cycles, LED_off)
         STATE_n_cycles_pressed = false
+    elseif note == BUTTON_sync then
+        if not STATE_sync_active_toggle_permanent then
+            shoop_helpers.toggle_sync_active() -- toggle back
+        end if
+        set_led_by_note(BUTTON_solo, (shoop_control.get_sync_active()) and LED_green or LED_off)
+        STATE_sync_active_toggle_permanent = false
     end
 end
 
@@ -300,20 +329,22 @@ local push_all_loop_colors = function()
 end
 
 -- Push all our known state to the device lights
-local push_all_state = function()
+local reset = function()
     if send_fn == nil then return end
     push_all_loop_colors()
+    set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
+    set_led_by_note(BUTTON_sync_active, (shoop_control.get_sync_active()) and LED_green or LED_off)
 end
 
 -- Handle our output port being opened
 local on_output_port_opened = function(_send_fn)
     send_fn = _send_fn
-    push_all_state()
+    reset()
 end
 
 -- Handle our output port being connected
 local on_output_port_connected = function()
-    push_all_state()
+    reset()
 end
 
 -- Handle loop events
