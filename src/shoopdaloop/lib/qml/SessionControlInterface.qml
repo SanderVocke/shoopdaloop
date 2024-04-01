@@ -205,6 +205,9 @@ LuaControlInterface {
     function loop_clear_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.clear() } )
     }
+    function loop_clear_all_override() {
+        return select_loops((l) => true).forEach(l => l.clear())
+    }
     function loop_untarget_all_override() {
         registries.state_registry.replace('targeted_loop', null)
     }
@@ -263,6 +266,25 @@ LuaControlInterface {
     function get_apply_n_cycles_override() {
         return registries.state_registry.apply_n_cycles
     }
+    function set_solo_override(n) {
+        registries.state_registry.set_solo_active(n)
+    }
+    function get_solo_override() {
+        return registries.state_registry.solo_active
+    }
+    function set_sync_active_override(n) {
+        registries.state_registry.set_sync_active(n)
+    }
+    function get_sync_active_override() {
+        return registries.state_registry.sync_active
+    }
+    function set_play_after_record_override(n) {
+        registries.state_registry.set_play_after_record_active(n)
+    }
+    function get_play_after_record_override() {
+        return registries.state_registry.play_after_record_active
+    }
+    
 
     // Handle creation and deletion of dynamic MIDI control ports based on registered connection rules.
     

@@ -120,36 +120,45 @@ local handle_loops_pressed = function(coords)
     if STATE_select_pressed then
         if STATE_shift_pressed then
             -- Shift + Select => Target
+            print_debug("-> target")
             shoop_control.loop_toggle_targeted(coords)
         else
             -- Select => Select
+            print_debug("-> select")
             shoop_control.loop_toggle_selected(coords)
         end
     elseif STATE_rec_arm_pressed then
-        elseif STATE_dry_pressed then
+        if STATE_dry_pressed then
             -- RecArm + Dry => RecordDryIntoWet
+            print_debug("-> re-record dry into wet")
             shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_RecordingDryIntoWet)
         else
             -- RecArm => Record
+            print_debug("-> record")
             shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_Record)
         end
     elseif STATE_grab_pressed then
         --  Grab => Grab
+        print_debug("-> grab")
         shoop_control.loop_trigger_grab(coords)
     elseif STATE_stop_pressed then
         if STATE_shift_pressed then
             -- Shift + Stop => Clear
+            print_debug("-> clear")
             shoop_control.loop_clear(coords)
         else
             -- Stop => Stop
+            print_debug("-> stop")
             shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_Stopped)
         end
     elseif STATE_n_cycles_pressed then
         -- N Cycles => N Cycles instead of a loop action.
         -- The loops can be pressed to give a number (1 at the top left, last loop = 0)
+        print_debug("-> set n cycles")
         local n = (coords[1][1] + coords[1][2] * 8 + 1) % 64 -- last button is 0
         shoop_control.set_apply_n_cycles(n)
     else
+        print_debug("-> default loop action")
         shoop_helpers.default_loop_action(coords, STATE_dry_pressed)
     end
 end
@@ -160,44 +169,56 @@ local handle_noteOn = function(msg, port)
     local maybe_loop = note_to_loop_coords(note)
 
     if maybe_loop ~= nil then
+        print_debug("loop pressed")
         handle_loops_pressed({maybe_loop})
     elseif note == BUTTON_shift then
+        print_debug("shift active")
         set_led_by_note(BUTTON_shift, LED_green)
         STATE_shift_pressed = true
     elseif note == BUTTON_select then
+        print_debug("select active")
         set_led_by_note(BUTTON_select, LED_green)
         STATE_select_pressed = true
     elseif note == BUTTON_solo then
+        print_debug("toggle solo (pressed)")
         shoop_helpers.toggle_solo()
         STATE_solo_toggle_permanent = STATE_shift_pressed
         set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
         STATE_solo_pressed = true
     elseif note == BUTTON_rec_arm then
+        print_debug("record active")
         set_led_by_note(BUTTON_rec_arm, LED_green)
         STATE_rec_arm_pressed = true
     elseif note == BUTTON_grab then
+        print_debug("grab active")
         set_led_by_note(BUTTON_grab, LED_green)
         STATE_grab_pressed = true
     elseif note == BUTTON_stop then
+        print_debug("stop active")
         set_led_by_note(BUTTON_stop, LED_green)
         STATE_stop_pressed = true
     elseif note == BUTTON_dry then
+        print_debug("dry active")
         set_led_by_note(BUTTON_dry, LED_green)
         STATE_dry_pressed = true
     elseif note == BUTTON_n_cycles then
+        print_debug("set n cycles active")
         set_led_by_note(BUTTON_n_cycles, LED_green)
         STATE_n_cycles_pressed = true
     elseif note == BUTTON_sync then
+        print_debug("toggle sync active")
         shoop_helpers.toggle_sync_active()
         STATE_sync_active_toggle_permanent = STATE_shift_pressed
-        set_led_by_note(BUTTON_solo, (shoop_control.get_sync_active()) and LED_green or LED_off)
+        set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
         STATE_sync_pressed = true
     elseif note == BUTTON_stop_all_clips then
         if STATE_shift_pressed then
             -- Shift + Stop All = Clear All
+            print_debug("clear all")
             shoop_control.loop_clear_all()
         else
             -- Stop All = Stop All
+            print_debug("stop all")
             shoop_control.loop_trigger(shoop_control.loop_get_all(), shoop_control.constants.LoopMode_Stopped)
         end
     end
@@ -208,38 +229,47 @@ local handle_noteOff = function(msg, port)
     local note = msg.bytes[1]
 
     if note == BUTTON_shift then
+        print_debug("shift inactive")
         set_led_by_note(BUTTON_shift, LED_off)
         STATE_shift_pressed = false
     elseif note == BUTTON_select then
+        print_debug("select inactive")
         set_led_by_note(BUTTON_select, LED_off)
         STATE_select_pressed = false
     elseif note == BUTTON_solo then
         if not STATE_solo_toggle_permanent then
+            print_debug("toggle solo back")
             shoop_helpers.toggle_solo() -- toggle back
         end
         set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
         STATE_solo_toggle_permanent = false
         STATE_solo_pressed = false
     elseif note == BUTTON_rec_arm then
+        print_debug("record inactive")
         set_led_by_note(BUTTON_rec_arm, LED_off)
         STATE_rec_arm_pressed = false
     elseif note == BUTTON_grab then
+        print_debug("grab inactive")
         set_led_by_note(BUTTON_grab, LED_off)
         STATE_grab_pressed = false
     elseif note == BUTTON_stop then
+        print_debug("stop inactive")
         set_led_by_note(BUTTON_stop, LED_off)
         STATE_stop_pressed = false
     elseif note == BUTTON_dry then
+        print_debug("dry inactive")
         set_led_by_note(BUTTON_dry, LED_off)
         STATE_dry_pressed = false
     elseif note == BUTTON_n_cycles then
+        print_debug("set n cycles inactive")
         set_led_by_note(BUTTON_n_cycles, LED_off)
         STATE_n_cycles_pressed = false
     elseif note == BUTTON_sync then
         if not STATE_sync_active_toggle_permanent then
+            print_debug("toggle sync back")
             shoop_helpers.toggle_sync_active() -- toggle back
-        end if
-        set_led_by_note(BUTTON_solo, (shoop_control.get_sync_active()) and LED_green or LED_off)
+        end
+        set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
         STATE_sync_active_toggle_permanent = false
     end
 end
@@ -251,6 +281,7 @@ local handle_cc = function (msg, port)
     local maybe_fader_track = cc_to_fader_track(cc)
 
     if maybe_fader_track ~= nil then
+        print_debug("set gain fader")
         shoop_control.track_set_gain_fader(maybe_fader_track, value / 127.0)
     end
 end

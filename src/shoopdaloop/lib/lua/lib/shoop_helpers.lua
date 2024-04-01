@@ -1,5 +1,6 @@
 local shoop_control = shoop_control or require('shoop_control')
 local shoop_coords = shoop_coords or require('shoop_coords')
+local shoop_format = shoop_format or require('shoop_format')
 
 local shoop_helpers = {}
 

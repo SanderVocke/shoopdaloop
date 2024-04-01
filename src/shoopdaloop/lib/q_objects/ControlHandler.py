@@ -540,6 +540,17 @@ class ControlHandler(ShoopQQuickItem):
         @shoop_lua_fn_docstring.end
         """
         pass
+    
+    @ShoopSlot(list, 'QVariant')
+    @allow_qml_override
+    def loop_clear_all(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_clear_all()
+        Clear all loops.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
 
     @ShoopSlot(list, 'QVariant')
     @allow_qml_override
@@ -710,6 +721,72 @@ class ControlHandler(ShoopQQuickItem):
         shoop_control.get_apply_n_cycles(n)
         Get the amount of sync loop cycles future actions will be executed for.
         0 means disabled.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @ShoopSlot(list, 'QVariant')
+    @allow_qml_override
+    def set_solo(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.set_solo(val)
+        Set the global "solo" control state.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @ShoopSlot(list, 'QVariant', result=bool)
+    @allow_qml_override
+    def get_solo(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.get_solo() -> bool
+        Get the global "solo" control state.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @ShoopSlot(list, 'QVariant')
+    @allow_qml_override
+    def set_sync_active(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.set_sync_active(val)
+        Set the global "sync_active" control state.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @ShoopSlot(list, 'QVariant', result=bool)
+    @allow_qml_override
+    def get_sync_active(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.get_sync_active() -> bool
+        Get the global "sync_active" control state.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+    
+    @ShoopSlot(list, 'QVariant')
+    @allow_qml_override
+    def set_play_after_record(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.set_play_after_record(val)
+        Set the global "play_after_record" control state.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @ShoopSlot(list, 'QVariant', result=bool)
+    @allow_qml_override
+    def get_play_after_record(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.get_play_after_record() -> bool
+        Get the global "play_after_record" control state.
         @shoop_lua_fn_docstring.end
         """
         pass
