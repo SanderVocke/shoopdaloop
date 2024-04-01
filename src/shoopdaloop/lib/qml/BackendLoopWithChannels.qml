@@ -16,6 +16,8 @@ Loop {
     readonly property var audio_channel_descriptors: (initial_descriptor && initial_descriptor.channels) ? initial_descriptor.channels.filter(c => c.type == 'audio') : []
     readonly property var midi_channel_descriptors: (initial_descriptor && initial_descriptor.channels) ? initial_descriptor.channels.filter(c => c.type == 'midi') : []
 
+    property var audio_output_channel_gains : []
+
     signal cycled();
 
     function initialize() {
@@ -43,6 +45,15 @@ Loop {
             property int index
             loop: root.loop
             descriptor: mapped_item
+
+            readonly property int output_index : {
+                let output_channels = root.audio_channel_descriptors.filter(c => ['direct', 'wet'].includes(c.mode))
+                return output_channels.findIndex(c => c.id == descriptor.id)
+            }
+            readonly property real my_gain : (output_index >= 0 && output_index < root.audio_output_channel_gains.length) ? root.audio_output_channel_gains[index] : 1.0
+
+            onMy_gainChanged: set_gain(my_gain)
+            onInitializedChanged: set_gain(my_gain)
         }
     }
     Mapper {

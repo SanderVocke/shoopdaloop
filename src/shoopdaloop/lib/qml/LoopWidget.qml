@@ -371,31 +371,22 @@ Item {
     property real last_pushed_gain: initial_gain
     property real last_pushed_stereo_balance: initial_stereo_balance ? initial_stereo_balance : 0.0
 
-    function push_gain(gain) {
-        // Only set the gain on audio output channels:
-        // - gain not supported on MIDI
-        // - Send should always have the original recorded gain of the dry signal.
-        // Also, gain + balance together make up the channel gains in stereo mode.
-        if (root.is_stereo && root.maybe_backend_loop) {
-            var lr = get_stereo_audio_output_channels()
-            var gains = Stereo.individual_gains(gain, last_pushed_stereo_balance)
-            lr[0].set_gain(gains[0])
-            lr[1].set_gain(gains[1])
+    readonly property var audio_output_channel_gains : {
+        if (root.is_stereo) {
+            return Stereo.individual_gains(last_pushed_gain, last_pushed_stereo_balance)
         } else {
-            get_audio_output_channels().forEach(c => c.set_gain(gain))
+            return (initial_descriptor.channels || [])
+                .filter(c => ['direct', 'wet'].includes(c.mode))
+                .map(c => last_pushed_gain)
         }
+    }
 
+    function push_gain(gain) {
         last_pushed_gain = gain
     }
 
     function push_stereo_balance(balance) {
-        if (root.is_stereo && root.maybe_backend_loop) {
-            var lr = get_stereo_audio_output_channels()
-            var gains = Stereo.individual_gains(last_pushed_gain, balance)
-            lr[0].set_gain(gains[0])
-            lr[1].set_gain(gains[1])
-            last_pushed_stereo_balance = balance
-        }
+        last_pushed_stereo_balance = balance
     }
 
     function set_length(length) {
@@ -461,6 +452,7 @@ Item {
         BackendLoopWithChannels {
             maybe_fx_chain: root.maybe_fx_chain
             loop_widget: root
+            audio_output_channel_gains : root.audio_output_channel_gains
         }
     }
 

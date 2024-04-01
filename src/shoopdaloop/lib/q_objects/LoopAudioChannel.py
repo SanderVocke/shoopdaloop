@@ -28,9 +28,9 @@ class LoopAudioChannel(LoopChannel):
     def maybe_initialize(self):
         if self._loop and self._loop.initialized and not self._backend_obj:
             self._backend_obj = self._loop.add_audio_channel(self.mode)
-            self.logger.debug(lambda: "Initialized back-end channel")
             self.initializedChanged.emit(True)
             self.set_gain(self._gain)
+            self.logger.debug(lambda: f"Initialized back-end channel (initial gain {self._gain})")
     
     ######################
     # PROPERTIES
@@ -90,6 +90,7 @@ class LoopAudioChannel(LoopChannel):
         else:
             if self._gain != self._new_gain:
                 self._gain = self._new_gain
+                self.logger.debug(lambda: f"gain -> {self._gain}")
                 self.gainChanged.emit(self._gain)
     
     def get_display_data(self):

@@ -102,4 +102,6 @@ PythonLoopAudioChannel {
         reg_entry.close()
         close()
     }
+
+    onGainChanged: logger.debug(() => `gain -> ${gain}`)
 }
