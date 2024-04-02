@@ -268,21 +268,19 @@ local push_all_loop_colors = function()
     set_led_by_coords(sync_coords, sync_color)
 end
 
--- Push all our known state to the device lights
-local reset = function()
-    print_debug("reset")
-    if send_fn == nil then return end
-    push_all_loop_colors()
-    print_debug(shoop_format.format_table({shoop_control.get_solo()}))
-    set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
-    set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
-end
-
 -- Re-check the global controls
 local recheck_global_controls = function()
     print_debug("recheck global controls")
     set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
     set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
+end
+
+-- Push all our known state to the device lights
+local reset = function()
+    print_debug("reset")
+    if send_fn == nil then return end
+    recheck_global_controls()
+    push_all_loop_colors()
 end
 
 -- Handle a NoteOn message
@@ -452,12 +450,14 @@ end
 
 -- Handle our output port being opened
 local on_output_port_opened = function(_send_fn)
+    print_debug("output port opened")
     send_fn = _send_fn
 end
 
 -- Handle our output port being connected
 local on_output_port_connected = function()
-    reset()
+    print_debug("output port connected")
+    shoop_control.one_shot_timer_cb(reset, 1000)
 end
 
 -- Handle loop events
@@ -466,7 +466,7 @@ local handle_loop_event = function(coords, event)
 end
 
 -- Open ports
-shoop_control.auto_open_device_specific_midi_control_output(".*APC MINI MIDI.*", on_output_port_opened, on_output_port_connected)
+shoop_control.auto_open_device_specific_midi_control_output(".*APC MINI MIDI.*", on_output_port_opened, on_output_port_connected, 1000)
 shoop_control.auto_open_device_specific_midi_control_input(".*APC MINI MIDI.*", on_midi_in)
 
 -- Register for loop callbacks

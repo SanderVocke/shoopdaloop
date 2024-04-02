@@ -89,7 +89,7 @@ class AutoConnect(FindParentBackend):
                     self.logger.trace(lambda: f"{internal_port.name} already connected to {c.name}")
                 elif c.direction != internal_port.direction:
                     if internal_port.initialized:
-                        self.logger.info(lambda: f"Autoconnecting {self._internal_port.name} to {c.name}")
+                        self.logger.info(lambda: f"Autoconnecting {internal_port.name} to {c.name}")
                         internal_port.connect_external_port(c.name)
                         self.connected.emit()
                         break

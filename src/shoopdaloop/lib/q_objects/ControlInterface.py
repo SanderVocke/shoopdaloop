@@ -32,7 +32,7 @@ class ControlInterface(ControlHandler):
     
     lua_interfaces = ControlHandler.lua_interfaces + [
         ['auto_open_device_specific_midi_control_input', lua_str, lua_callable ],
-        ['auto_open_device_specific_midi_control_output', lua_str, lua_callable, lua_callable ],
+        ['auto_open_device_specific_midi_control_output', lua_str, lua_callable, lua_callable, lua_int ],
         ['register_keyboard_event_cb', lua_callable ],
         ['register_loop_event_cb', lua_callable ],
         ['register_global_event_cb', lua_callable ],
@@ -149,21 +149,25 @@ class ControlInterface(ControlHandler):
     def auto_open_device_specific_midi_control_output(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.auto_open_device_specific_midi_control_output(device_name_filter_regex, opened_callback, connected_callback)
+        shoop_control.auto_open_device_specific_midi_control_output(device_name_filter_regex, opened_callback, connected_callback, msg_rate_limit_hz)
         Instruct the application to automatically open a MIDI control output port if a device matching the regex appears, and connect to it.
         Also registers callbacks for when the port is opened and connected. This callbacks just pass a port object which has a 'send' method to send bytes.
+        "msg_rate_limit_hz" can be used to limit the rate at which messages will be sent to the port. Some devices become unstable if sent too fast.
+        Setting this to 0 disables the limit.
         @shoop_lua_fn_docstring.end
         """
         device_name_filter_regex = args[0]
         opened_cb = args[1]
         connected_cb = args[2]
+        rate_limit = args[3]
         self.logger.debug(lambda: "Registering MIDI output control port rule for devices '{}'".format(device_name_filter_regex))
         self._midi_output_port_rules.append({
             'id': self._rule_id,
             'regex': device_name_filter_regex,
             'opened_cb': opened_cb,
             'connected_cb': connected_cb,
-            'engine': lua_engine
+            'engine': lua_engine,
+            'rate_limit_hz': rate_limit
         })
         self.midiOutputPortRulesChanged.emit()
         self._rule_id += 1

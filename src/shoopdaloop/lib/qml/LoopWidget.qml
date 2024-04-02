@@ -253,7 +253,6 @@ Item {
         }        
     }
     function trigger_mode_button(mode) {
-        console.log(mode, ShoopConstants.LoopMode.Recording)
         if (mode == ShoopConstants.LoopMode.Stopped) { root.on_stop_clicked() }
         else if (mode == ShoopConstants.LoopMode.Playing) { root.on_play_clicked() }
         else if (mode == ShoopConstants.LoopMode.PlayingDryThroughWet) { root.on_playdry_clicked() }

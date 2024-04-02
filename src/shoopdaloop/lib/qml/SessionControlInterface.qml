@@ -358,14 +358,15 @@ LuaControlInterface {
                     root.logger.error("MIDI port factory not ready.")
                     return
                 } else {
-                    root.logger.debug(`Creating lazy port for autoconnect rule ${rule.id} (${rule.regex}).`)
+                    root.logger.debug(`Creating lazy port for autoconnect rule ${rule.id} (${rule.regex}), rate limit ${rule.rate_limit_hz}`)
                     var port = midi_control_port_factory.createObject(root, {
                         "may_open": false,
                         "name_hint": "auto_control_" + rule.id,
                         "autoconnect_regexes": [ rule.regex ],
                         "direction": ShoopConstants.PortDirection.Output,
                         "parent": root,
-                        "lua_engine": rule.engine
+                        "lua_engine": rule.engine,
+                        'send_rate_limit_hz': rule.rate_limit_hz
                     });
 
                     let onInit = (cb=rule.opened_cb, p=port) => {
