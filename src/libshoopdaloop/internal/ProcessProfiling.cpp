@@ -8,48 +8,46 @@
 namespace profiling {
 
 struct ProfilingItemPrivate {
-    float n_reported = 0.0f;
-
-    float summed = 0.0f;
-    std::optional<float> most_recent;
-    std::optional<float> worst;
-
-    float current_iteration = 0.0f;
-
-    std::recursive_mutex mutex;
+    std::atomic<float> n_reported = 0.0f;
+    std::atomic<float> summed = 0.0f;
+    std::atomic<float> most_recent = -1.0f;
+    std::atomic<float> worst = -1.0f;
+    std::atomic<float> current_iteration = 0.0f;
 
     void reset(std::function<void(float, float, float, float)> report_cb) {
-        std::lock_guard<std::recursive_mutex> g(mutex);
-
-        if(report_cb) {
-            report_cb(n_reported,
-                      n_reported >= 1.0f ? summed / n_reported : -1.0f,
-                      worst.value_or(-1.0f),
-                      most_recent.value_or(-1.0f));
-        }
+        auto _n_reported = n_reported.load();
+        auto _summed = summed.load();
+        auto _most_recent = most_recent.load();
+        auto _worst = worst.load();
 
         current_iteration = 0.0f;
         n_reported = 0.0f;
         summed = 0.0f;
-        most_recent = std::nullopt;
-        worst = std::nullopt;
+        most_recent = -1.0f;
+        worst = -1.0f;
+
+        if(report_cb) {
+            report_cb(_n_reported,
+                      _n_reported >= 1.0f ? _summed / _n_reported : -1.0f,
+                      _worst,
+                      _most_recent);
+        }
     }
 
     void log_time(float t) {
-        std::lock_guard<std::recursive_mutex> g(mutex);
         current_iteration += t;
     }
 
     void next_iteration() {
-        std::lock_guard<std::recursive_mutex> g(mutex);
+        auto _current_iteration = current_iteration.load();
+        current_iteration = 0.0f;
 
         n_reported += 1.0f;
-        most_recent = current_iteration;
-        if(worst.value_or(0.0f) < current_iteration) {
-            worst = current_iteration;
+        most_recent = _current_iteration;
+        if(worst < _current_iteration) {
+            worst = _current_iteration;
         }
-        summed += current_iteration;
-        current_iteration = 0.0f;
+        summed += _current_iteration;
     }
 };
 
