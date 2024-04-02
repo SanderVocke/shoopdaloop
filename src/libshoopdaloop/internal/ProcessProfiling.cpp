@@ -35,19 +35,31 @@ struct ProfilingItemPrivate {
     }
 
     void log_time(float t) {
+#if __APPLE__
+        current_iteration = current_iteration.load() + t;
+#else
         current_iteration.fetch_add(t);
+#endif
     }
 
     void next_iteration() {
         auto _current_iteration = current_iteration.load();
         current_iteration = 0.0f;
 
+#if __APPLE__
+        n_reported = n_reported.load() + 1.0f;
+#else
         n_reported.fetch_add(1.0f);
+#endif
         most_recent = _current_iteration;
         if(worst < _current_iteration) {
             worst = _current_iteration;
         }
+#if __APPLE__
+        summed = summed.load() + _current_iteration;
+#else
         summed.fetch_add(_current_iteration);
+#endif
     }
 };
 
