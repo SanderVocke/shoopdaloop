@@ -48,7 +48,7 @@ Item {
         return gains.length > 0 ? Math.max(...gains) : 1.0
     }
     readonly property bool is_stereo: initial_descriptor.channels ?
-        (initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode)).length == 2) :
+        (initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode) && c.type == 'audio').length == 2) :
         false
     readonly property var initial_stereo_balance : {
         if (!is_stereo) { return undefined; }
@@ -377,11 +377,13 @@ Item {
         // - Send should always have the original recorded gain of the dry signal.
         // Also, gain + balance together make up the channel gains in stereo mode.
         if (root.is_stereo && root.maybe_backend_loop) {
+            root.logger.debug(`push stereo gain: ${gain}`)
             var lr = get_stereo_audio_output_channels()
             var gains = Stereo.individual_gains(gain, last_pushed_stereo_balance)
             lr[0].set_gain(gains[0])
             lr[1].set_gain(gains[1])
         } else {
+            root.logger.debug(`push homogenous gain: ${gain}`)
             get_audio_output_channels().forEach(c => c.set_gain(gain))
         }
 
@@ -390,12 +392,13 @@ Item {
 
     function push_stereo_balance(balance) {
         if (root.is_stereo && root.maybe_backend_loop) {
+            root.logger.debug(`push balance: ${balance}`)
             var lr = get_stereo_audio_output_channels()
             var gains = Stereo.individual_gains(last_pushed_gain, balance)
             lr[0].set_gain(gains[0])
             lr[1].set_gain(gains[1])
-            last_pushed_stereo_balance = balance
         }
+        last_pushed_stereo_balance = balance
     }
 
     function set_length(length) {
@@ -471,10 +474,14 @@ Item {
             } else if (backend_loop_factory.status != Component.Ready) {
                 throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
             } else {
+                let gain = last_pushed_gain
+                let balance = last_pushed_stereo_balance
                 maybe_loop = backend_loop_factory.createObject(root, {
                     'initial_descriptor': root.initial_descriptor,
                     'sync_source': Qt.binding(() => (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null),
                 })
+                push_stereo_balance(balance)
+                push_gain(gain)
                 maybe_loop.onCycled.connect(root.cycled)
             }
         }
