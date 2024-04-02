@@ -29,6 +29,7 @@ class LuaEngine(ShoopQQuickItem):
         self.lua = lupa.LuaRuntime()
         self._G_registrar = self.lua.eval('function(name, fn) _G[name] = fn end')
         self._G_registrar('__shoop_print', lambda s, l=self.lua_logger: l.info('{}'.format(s)))
+        self._G_registrar('__shoop_print_trace', lambda s, l=self.lua_logger: l.trace('{}'.format(s)))
         self._G_registrar('__shoop_print_debug', lambda s, l=self.lua_logger: l.debug('{}'.format(s)))
         self._G_registrar('__shoop_print_info', lambda s, l=self.lua_logger: l.info('{}'.format(s)))
         self._G_registrar('__shoop_print_warning', lambda s, l=self.lua_logger: l.warning('{}'.format(s)))

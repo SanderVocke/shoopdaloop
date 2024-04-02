@@ -546,15 +546,17 @@ Item {
     }
 
     function on_grab_clicked() {
+        let selection = selected_loops.has(root) ? selected_loops : [root]
+
         root.create_backend_loop()
         if (root.sync_active) {
             let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
             if (root.targeted_loop) {
                 // Grab and sync up with the running targeted loop
-                root.adopt_ringbuffers(root.targeted_loop.current_cycle + root.targeted_loop.n_cycles, root.targeted_loop.n_cycles,
-                    root.targeted_loop.current_cycle, go_to_mode)
+                selection.forEach(l => l.adopt_ringbuffers(root.targeted_loop.current_cycle + root.targeted_loop.n_cycles, root.targeted_loop.n_cycles,
+                    root.targeted_loop.current_cycle, go_to_mode))
             } else {
-                root.adopt_ringbuffers(root.n_cycles_to_grab, root.n_cycles_to_grab, 0, go_to_mode)
+                selection.forEach(l => l.adopt_ringbuffers(root.n_cycles_to_grab, root.n_cycles_to_grab, 0, go_to_mode))
             }
         } else {
             if (root.targeted_loop) {
