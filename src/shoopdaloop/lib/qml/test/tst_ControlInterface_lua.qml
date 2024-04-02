@@ -189,11 +189,22 @@ ShoopTestFile {
                 },
 
                 'test_loop_get_next_mode': () => {
-                    verify_true(false)
+                    check_backend()
+                    clear()
+                    
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 1, true)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.loop_get_next_mode({0,0})', '{ shoop_control.constants.LoopMode_Recording }')
                 },
 
                 'test_loop_get_next_mode_delay': () => {
-                    verify_true(false)
+                    check_backend()
+                    clear()
+                    
+                    verify_eq_lua('shoop_control.loop_get_next_mode_delay({0,0})', '{ -1 }')
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 1, true)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.loop_get_next_mode_delay({0,0})', '{ 1 }')
                 },
 
                 'test_loop_get_length': () => {
@@ -234,10 +245,10 @@ ShoopTestFile {
                     check_backend()
                     clear()
                     
-                    verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,0}, {0,1}, {1,0}, {1,1}}')
+                    verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,0}, {0,1}, {1,0}, {1,1}, {-1,0}}')
                     loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 0, false)
                     testcase.wait_updated(session.backend)
-                    verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,1},{1,0},{1,1}}')
+                    verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,1},{1,0},{1,1},{-1,0}}')
                     verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Recording)', '{{0,0}}')
                 },
 
@@ -253,7 +264,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
                     
-                    verify_eq_lua('shoop_control.loop_get_all()', '{{0,0}, {0,1}, {1,0}, {1,1}}')
+                    verify_eq_lua('shoop_control.loop_get_all()', '{{0,0}, {0,1}, {1,0}, {1,1}, {-1,0}}')
                 },
 
                 'test_loop_set_get_gain': () => {
@@ -310,7 +321,14 @@ ShoopTestFile {
                 },
 
                 'test_loop_trigger': () => {
-                    verify_true(false)
+                    check_backend()
+                    clear()
+
+                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
+                    do_execute('shoop_control.loop_trigger({0,0}, shoop_control.constants.LoopMode_Recording)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(loop_at(0,0).next_mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(loop_at(0,1).next_mode_delay, null)
                 },
 
                 // TODO: harder to test because this requires loops to
@@ -409,7 +427,20 @@ ShoopTestFile {
                 },
 
                 'test_loop_clear_all': () => {
-                    verify_true(false)
+                    check_backend()
+                    clear()
+
+                    loop_at(0,0).set_length(100)
+                    loop_at(0,1).set_length(100)
+                    loop_at(-1,0).set_length(100)
+                    testcase.wait_updated(session.backend)
+                    
+                    do_execute('shoop_control.loop_clear_all()')
+                    testcase.wait_updated(session.backend)
+
+                    verify_loop_cleared(loop_at(0,0))
+                    verify_loop_cleared(loop_at(0,1))
+                    verify_loop_cleared(loop_at(-1,0))
                 },
 
                 'test_loop_adopt_ringbuffers': () => {
@@ -427,7 +458,14 @@ ShoopTestFile {
                 },
 
                 'test_loop_trigger_grab': () => {
-                    verify_true(false)
+                    check_backend()
+                    clear()
+
+                    loop_at(-1,0).set_length(100)
+                    testcase.wait_updated(session.backend)
+                    do_execute('shoop_control.loop_trigger_grab({0,0})')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(loop_at(0,0).length, 100)
                 },
 
                 'test_track_set_get_gain': () => {
@@ -483,7 +521,13 @@ ShoopTestFile {
                 },
 
                 'test_track_set_get_balance': () => {
-                    verify_true(false)
+                    check_backend()
+                    clear()
+                    
+                    do_execute('shoop_control.track_set_balance(0, 1.0)')
+                    verify_eq_lua('shoop_control.track_get_balance(0)', '{1.0}')
+                    do_execute('shoop_control.track_set_balance(0, -1.0)')
+                    verify_eq_lua('shoop_control.track_get_balance(0)', '{-1.0}')
                 },
 
                 'test_track_set_get_muted': () => {
@@ -522,19 +566,43 @@ ShoopTestFile {
                     do_execute('shoop_control.set_apply_n_cycles(4)')
                     verify_eq(registries.state_registry.apply_n_cycles, 4)
                     verify_eq_lua('shoop_control.get_apply_n_cycles()', '4')
-                }
+                },
 
                 'test_set_get_solo': () => {
-                    verify_true(false)
+                    check_backend()
+                    clear()
+
+                    registries.state_registry.set_solo_active(false)
+
+                    verify_eq_lua('shoop_control.get_solo()', 'false')
+                    do_execute('shoop_control.set_solo(true)')
+                    verify_eq(registries.state_registry.solo_active, true)
+                    verify_eq_lua('shoop_control.get_solo()', 'true')
                 },
 
                 'test_set_get_sync_active': () => {
-                    verify_true(false)
-                }
+                    check_backend()
+                    clear()
+
+                    registries.state_registry.set_sync_active(false)
+
+                    verify_eq_lua('shoop_control.get_sync_active()', 'false')
+                    do_execute('shoop_control.set_sync_active(true)')
+                    verify_eq(registries.state_registry.sync_active, true)
+                    verify_eq_lua('shoop_control.get_sync_active()', 'true')
+                },
 
                 'test_set_get_play_after_record': () => {
-                    verify_true(false)
-                }
+                    check_backend()
+                    clear()
+
+                    registries.state_registry.set_play_after_record_active(false)
+
+                    verify_eq_lua('shoop_control.get_play_after_record()', 'false')
+                    do_execute('shoop_control.set_play_after_record(true)')
+                    verify_eq(registries.state_registry.play_after_record_active, true)
+                    verify_eq_lua('shoop_control.get_play_after_record()', 'true')
+                },
 
                 'test_callback_loop_mode_event': () => {
                     check_backend()
@@ -544,7 +612,6 @@ ShoopTestFile {
                         most_recent_event = nil
                         most_recent_loop = nil
                         local function callback(loop, event)
-                            print_error(event)
                             most_recent_loop = loop
                             most_recent_event = event
                         end
@@ -566,7 +633,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('most_recent_event.length', '100')
                     verify_eq_lua('most_recent_loop', '{-1,0}')
-                },
+                }
             })
         }
     }

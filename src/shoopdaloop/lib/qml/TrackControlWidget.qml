@@ -290,6 +290,8 @@ Item {
     }
     property var last_pushed_in_gain: null
     property var last_pushed_gain: null
+    property var last_pushed_in_stereo_balance: null
+    property var last_pushed_out_stereo_balance: null
     function push_in_gains() {
         audio_in_ports.forEach((p, idx) => {
             if (idx == 0 && in_is_stereo) { push_gain(input_gain_dB, p, in_balance_gain_factor_l) }
@@ -297,6 +299,9 @@ Item {
             else { push_gain(input_gain_dB, p) }
         })
         last_pushed_in_gain = convert_gain_to_linear(input_gain_dB)
+        if (in_is_stereo) {
+            last_pushed_in_stereo_balance = input_balance
+        }
     }
     function push_out_gains() {
         audio_out_ports.forEach((p, idx) => {
@@ -305,6 +310,9 @@ Item {
             else { push_gain(gain_dB, p) }
         })
         last_pushed_gain = convert_gain_to_linear(gain_dB)
+        if (out_is_stereo) {
+            last_pushed_out_stereo_balance = output_balance
+        }
     }
     function push_mute() {
         audio_out_ports.forEach((p) => p.set_muted(mute))

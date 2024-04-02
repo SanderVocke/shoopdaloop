@@ -147,7 +147,7 @@ LuaControlInterface {
             if (l.next_mode !== null && l.next_transition_delay !== null && l.next_transition_delay >= 0) {
                 return l.next_transition_delay
             }
-            return null
+            return -1
         })
     }
     function loop_get_length_override(loop_selector) {
@@ -247,7 +247,7 @@ LuaControlInterface {
         return select_tracks(track_selector).map(t => t.control_widget.last_pushed_gain)
     }
     function track_get_balance_override(track_selector) {
-        return select_tracks(track_selector).map(t => t.control_widget.last_pushed_stereo_balance)
+        return select_tracks(track_selector).map(t => t.control_widget.last_pushed_out_stereo_balance)
     }
     function track_get_gain_fader_override(track_selector) {
         return select_tracks(track_selector).map(t => t.control_widget.gain_fader_position)

@@ -46,9 +46,9 @@
 --   The number of cycles set is the loop location starting from the top left (left to right).
 --   To reset to zero, use the bottom rightmost loop.
 --
--- -------------------------
--- ---- FADER CONTROLS ----
--- -------------------------
+-- ----------------------------------
+-- ---- FADER AND TRACK CONTROLS ----
+-- ----------------------------------
 --
 -- Faders don't do anything by default. They only work while one or more of the following
 -- buttons are held:
@@ -56,6 +56,10 @@
 -- - PAN: sets the balance of the track. Only works for stereo tracks.
 --
 -- Note that the rightmost fader is reserved for the sync loop track.
+--
+-- Track muting can be done as follows:
+-- - VOLUME + LOOP BUTTON will toggle mute on the track that the clicked loop is in.
+-- - PAN + LOOP BUTTON will toggle input mute on the track that the clicked loop is in.
 
 print_debug("Init akai_apc_mini_mk1.lua")
 
@@ -200,6 +204,14 @@ local handle_loops_pressed = function(coords)
         print_debug("-> set n cycles")
         local n = (coords[1][1] + coords[1][2] * 8 + 1) % 64 -- last button is 0
         shoop_control.set_apply_n_cycles(n)
+    elseif STATE_volume_pressed then
+        -- Volume => Mute
+        print_debug("-> toggle track muted")
+        shoop_helpers.track_toggle_muted(coords[1])
+    elseif STATE_pan_pressed then
+        -- Pan => Input Mute
+        print_debug("-> toggle track input muted")
+        shoop_helpers.track_toggle_input_muted(coords[1])
     else
         print_debug("-> default loop action")
         shoop_helpers.default_loop_action(coords, STATE_dry_pressed)

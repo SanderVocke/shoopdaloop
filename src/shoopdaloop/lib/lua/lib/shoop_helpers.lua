@@ -233,4 +233,22 @@ function shoop_helpers.toggle_play_after_record()
     shoop_control.set_play_after_record(not state)
 end
 
+--  @shoop_lua_fn_docstring.start
+--  shoop_helpers.track_toggle_muted(index)
+--  Toggle the muted state of the given track. -1 is the sync track.
+--  @shoop_lua_fn_docstring.end
+function shoop_helpers.track_toggle_muted(index)
+    local state = shoop_control.track_get_muted(index)[1]
+    shoop_control.track_set_muted(index, not state)
+end
+
+--  @shoop_lua_fn_docstring.start
+--  shoop_helpers.track_toggle_input_muted(index)
+--  Toggle the input muted state of the given track. -1 is the sync track.
+--  @shoop_lua_fn_docstring.end
+function shoop_helpers.track_toggle_input_muted(index)
+    local state = shoop_control.track_get_input_muted(index)[1]
+    shoop_control.track_set_input_muted(index, not state)
+end
+
 return shoop_helpers
