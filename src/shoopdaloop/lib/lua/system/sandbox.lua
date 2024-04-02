@@ -32,6 +32,7 @@ local env = {
     setmetatable = setmetatable,
     error = error,
     print = __shoop_print,
+    print_trace = __shoop_print_trace,
     print_debug = __shoop_print_debug,
     print_info = __shoop_print_info,
     print_warning = __shoop_print_warning,
@@ -41,6 +42,7 @@ local env = {
     package = package
 }
 
+print_trace = __shoop_print_trace
 print_debug = __shoop_print_debug
 print_info = __shoop_print_info
 print_warning = __shoop_print_warning

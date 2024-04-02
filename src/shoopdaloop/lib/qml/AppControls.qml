@@ -25,17 +25,6 @@ Item {
 
     property bool settings_io_enabled: false
 
-    function update() {
-        registries.state_registry.set_sync_active(sync_active)
-        registries.state_registry.set_solo_active(solo_active)
-        registries.state_registry.set_play_after_record_active(play_after_record_active)
-    }
-
-    onSync_activeChanged: update()
-    onSolo_activeChanged: update()
-    onPlay_after_record_activeChanged: update()
-    Component.onCompleted: update()
-
     Row {
         spacing: 6
         anchors.fill: parent
@@ -191,8 +180,8 @@ Item {
             id: sync_active_button
             height: 40
             width: 30
-            property bool sync_active_base: true
-            onClicked: sync_active_base = !sync_active_base
+            property bool sync_active_base: registries.state_registry.sync_active
+            onClicked: registries.state_registry.set_sync_active(!sync_active_base)
             property bool sync_active : {
                 var rval = sync_active_base
                 if (key_modifiers.control_pressed) { rval = !rval }
@@ -214,8 +203,8 @@ Item {
             id: solo_active_button
             height: 40
             width: 30
-            property bool solo_active_base: false
-            onClicked: solo_active_base = !solo_active_base
+            property bool solo_active_base: registries.state_registry.solo_active
+            onClicked: registries.state_registry.set_solo_active(!solo_active_base)
             property bool solo_active : {
                 var rval = solo_active_base
                 if (key_modifiers.shift_pressed) { rval = !rval }
@@ -237,8 +226,8 @@ Item {
             id: play_after_record_active_button
             height: 40
             width: 30
-            property bool play_after_record_active_base: true
-            onClicked: play_after_record_active_base = !play_after_record_active_base
+            property bool play_after_record_active_base: registries.state_registry.play_after_record_active
+            onClicked: registries.state_registry.set_play_after_record_active(!play_after_record_active_base)
             property bool play_after_record_active : {
                 var rval = play_after_record_active_base
                 if (key_modifiers.alt_pressed) { rval = !rval }

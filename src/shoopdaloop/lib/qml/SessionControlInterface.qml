@@ -53,11 +53,17 @@ LuaControlInterface {
         } else {
             // Form callback:  (loop) => true/false
             for(var t=0; t<session.main_tracks.length; t++) {
+                // Track loops
                 let track = session.main_tracks[t]
                 for(var l=0; l<track.loops.length; l++) {
                     let loop = track.loops[l]
                     if(loop_selector(loop)) { rval.push(loop) }
                 }
+            }
+            // Sync track loops
+            for(var l=0; l<session.sync_track.loops.length; l++) {
+                let loop = session.sync_track.loops[l]
+                if(loop_selector(loop)) { rval.push(loop) }
             }
         }
         logger.debug(() => (`Selected loops for selector ${JSON.stringify(loop_selector)}: ${JSON.stringify(rval.map(l => l ? l.obj_id : null))}.`))
@@ -141,7 +147,7 @@ LuaControlInterface {
             if (l.next_mode !== null && l.next_transition_delay !== null && l.next_transition_delay >= 0) {
                 return l.next_transition_delay
             }
-            return null
+            return -1
         })
     }
     function loop_get_length_override(loop_selector) {
@@ -205,6 +211,9 @@ LuaControlInterface {
     function loop_clear_override(loop_selector) {
         select_loops(loop_selector).forEach((h) => { h.clear() } )
     }
+    function loop_clear_all_override() {
+        return select_loops((l) => true).forEach(l => l.clear())
+    }
     function loop_untarget_all_override() {
         registries.state_registry.replace('targeted_loop', null)
     }
@@ -222,6 +231,9 @@ LuaControlInterface {
     function track_set_gain_override(track_selector, vol) {
         select_tracks(track_selector).forEach(t => t.control_widget.set_gain(vol))
     }
+    function track_set_balance_override(track_selector, balance) {
+        select_tracks(track_selector).forEach(t => t.control_widget.set_balance(balance))
+    }
     function track_set_gain_fader_override(track_selector, vol) {
         select_tracks(track_selector).forEach(t => t.control_widget.set_gain_fader(vol))
     }
@@ -233,6 +245,9 @@ LuaControlInterface {
     }
     function track_get_gain_override(track_selector) {
         return select_tracks(track_selector).map(t => t.control_widget.last_pushed_gain)
+    }
+    function track_get_balance_override(track_selector) {
+        return select_tracks(track_selector).map(t => t.control_widget.last_pushed_out_stereo_balance)
     }
     function track_get_gain_fader_override(track_selector) {
         return select_tracks(track_selector).map(t => t.control_widget.gain_fader_position)
@@ -263,6 +278,25 @@ LuaControlInterface {
     function get_apply_n_cycles_override() {
         return registries.state_registry.apply_n_cycles
     }
+    function set_solo_override(n) {
+        registries.state_registry.set_solo_active(n)
+    }
+    function get_solo_override() {
+        return registries.state_registry.solo_active
+    }
+    function set_sync_active_override(n) {
+        registries.state_registry.set_sync_active(n)
+    }
+    function get_sync_active_override() {
+        return registries.state_registry.sync_active
+    }
+    function set_play_after_record_override(n) {
+        registries.state_registry.set_play_after_record_active(n)
+    }
+    function get_play_after_record_override() {
+        return registries.state_registry.play_after_record_active
+    }
+    
 
     // Handle creation and deletion of dynamic MIDI control ports based on registered connection rules.
     
@@ -324,14 +358,15 @@ LuaControlInterface {
                     root.logger.error("MIDI port factory not ready.")
                     return
                 } else {
-                    root.logger.debug(`Creating lazy port for autoconnect rule ${rule.id} (${rule.regex}).`)
+                    root.logger.debug(`Creating lazy port for autoconnect rule ${rule.id} (${rule.regex}), rate limit ${rule.rate_limit_hz}`)
                     var port = midi_control_port_factory.createObject(root, {
                         "may_open": false,
                         "name_hint": "auto_control_" + rule.id,
                         "autoconnect_regexes": [ rule.regex ],
                         "direction": ShoopConstants.PortDirection.Output,
                         "parent": root,
-                        "lua_engine": rule.engine
+                        "lua_engine": rule.engine,
+                        'send_rate_limit_hz': rule.rate_limit_hz
                     });
 
                     let onInit = (cb=rule.opened_cb, p=port) => {
@@ -374,6 +409,14 @@ LuaControlInterface {
         select_fn: (obj) => obj && obj.object_schema && obj.object_schema.match(/loop.[0-9]+/)
         id: lookup_loops
         values_only: true
+    }
+
+    Connections {
+        target: registries.state_registry
+        function onSolo_activeChanged() { control_interface.global_control_changed() }
+        function onSync_activeChanged() { control_interface.global_control_changed() }
+        function onPlay_after_record_activeChanged() { control_interface.global_control_changed() }
+        function onApply_n_cyclesChanged() { control_interface.global_control_changed() }
     }
 
     Repeater { 
