@@ -148,6 +148,24 @@ ShoopTestFile {
                     verify_true(!('composition' in other_loop().actual_session_descriptor()))
                     verify_true('channels' in other_loop().actual_session_descriptor())
                     verify_true(other_loop().actual_session_descriptor().channels.every((channel) => channel.data_length == 0))
+                },
+
+                'test_set_gains_then_make_backend_loop': () => {
+                    clear()
+
+                    verify_true(!other_loop().maybe_backend_loop)
+                    other_loop().push_gain(0.5)
+                    other_loop().push_stereo_balance(1.0)
+                    testcase.wait_updated(session.backend)
+                    verify_approx(other_loop().last_pushed_gain, 0.5)
+                    verify_approx(other_loop().last_pushed_stereo_balance, 1.0)
+
+                    other_loop().create_backend_loop()
+                    testcase.wait_updated(session.backend)
+                    verify_approx(other_loop().last_pushed_gain, 0.5)
+                    verify_approx(other_loop().last_pushed_stereo_balance, 1.0)
+                    verify_approx(other_loop().audio_channels[0].gain, 0.0)
+                    verify_approx(other_loop().audio_channels[1].gain, 0.5)
                 }
             })
         }
