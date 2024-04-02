@@ -207,7 +207,7 @@ Item {
         
         RenderChannelData {
             id: render
-            input_data: fetcher && fetcher.channel_data && root.visible ? fetcher.channel_data : []
+            input_data: fetcher && fetcher.channel_data && root.visible ? fetcher.channel_data : null
             channel: root.channel
             samples_per_bin: root.samples_per_pixel
             samples_offset: root.samples_offset
