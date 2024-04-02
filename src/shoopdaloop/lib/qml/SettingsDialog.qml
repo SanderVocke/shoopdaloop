@@ -705,7 +705,8 @@ Dialog {
                 anchors.fill: parent
                 id: view
                 Label {
-                    text: window.docstring
+                    text: '```\n' + window.docstring + '\n```'
+                    textFormat: Text.MarkdownText
                 }
             }
         }
