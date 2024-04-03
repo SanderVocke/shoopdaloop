@@ -441,6 +441,8 @@ Item {
         }
         if (root.maybe_backend_loop) {
             root.maybe_backend_loop.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
+        } else if (root.maybe_composite_loop) {
+            root.maybe_composite_loop.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
         }
     }
 
@@ -1193,8 +1195,16 @@ Item {
                                 SmallButtonWithCustomHover {
                                     id : record_grab
                                     
-                                    // This feature makes no sense for composite loops
-                                    visible: !root.maybe_composite_loop
+                                    // This feature makes no sense for composite script loops,
+                                    // which cannot be treated as a "loop".
+                                    // But for regular composite loops, it makes sense - grab
+                                    // each portion to the correct subloop.
+                                    visible: {
+                                        if (root.maybe_composite_loop) {
+                                            return root.maybe_composite_loop.kind == 'regular'
+                                        }
+                                        return true;
+                                    }
                                     width: buttongrid.button_width
                                     height: buttongrid.button_height
 

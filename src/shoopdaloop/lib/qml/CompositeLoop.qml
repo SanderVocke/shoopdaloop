@@ -364,4 +364,22 @@ Item {
         playlists_in = []
         playlists_inChanged()
     }
+
+    function adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode) {
+        if (root.kind != 'regular') { return; }
+
+        let _n_cycles = n_cycles
+        for (var pidx=0; pidx < scheduled_playlists.length; pidx++) {
+            let playlist = scheduled_playlists[pidx]
+            for (var i=0; i<playlist.length; i++) {
+                let elem = playlist[i]
+                let start = elem.start_iteration
+                let end = elem.end_iteration
+                let n = end - start
+                
+                let _reverse_start = _n_cycles - start
+                elem.loop_widget.adopt_ringbuffers(_reverse_start, cycles_length, null, ShoopConstants.LoopMode.Stopped)
+            }
+        }
+    }
 }
