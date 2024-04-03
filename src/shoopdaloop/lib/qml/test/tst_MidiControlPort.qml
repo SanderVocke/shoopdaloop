@@ -100,7 +100,7 @@ ShoopTestFile {
                             'my_testport_in': true
                         }
                     )
-                },                  
+                }               
             })
         }
     }

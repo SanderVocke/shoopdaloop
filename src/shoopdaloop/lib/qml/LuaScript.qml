@@ -39,8 +39,10 @@ Item {
     onLua_engineChanged: update()
 
     onScript_pathChanged: {
-        script_name = script_path
-        script_code = file_io.read_file(script_path)
+        if (script_path) {
+            script_name = script_path
+            script_code = file_io.read_file(script_path)
+        }
     }
 
     onAccepted_script_codeChanged: {

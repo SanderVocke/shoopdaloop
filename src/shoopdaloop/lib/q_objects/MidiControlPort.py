@@ -268,6 +268,10 @@ class MidiControlPort(FindParentBackend):
     
     @ShoopSlot()
     def close(self):
+        self.logger.trace(lambda: "Closing.")
+        if self._backend_obj:
+            self._backend_obj.destroy()
+        self._backend_obj = None
         self._autoconnect_regexes = []
         self.autoconnect_update()
     

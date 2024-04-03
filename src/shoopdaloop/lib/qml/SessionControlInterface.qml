@@ -306,8 +306,17 @@ LuaControlInterface {
     readonly property var midi_control_port_factory : Qt.createComponent("MidiControlPort.qml")
 
     onMidiInputPortRulesChanged: {
-        for(var i=0; i<midi_input_port_rules.length; i++) {
-            let rule = midi_input_port_rules[i]
+        let rules_to_create_port_for = midi_input_port_rules.filter(m => !Object.keys(midi_control_ports).includes(m.id))
+        let port_ids_to_delete = Object.keys(midi_control_ports).filter(id => midi_input_port_rules.filter(n => n.engine == midi_control_ports[id].lua_engine).length == 0)
+        var ports_changed = false
+
+        port_ids_to_delete.forEach(id => {
+            midi_control_ports[id].destroy()
+            delete midi_control_ports[id]
+            ports_changed = true
+        })
+
+        rules_to_create_port_for.forEach(rule => {
             let id = rule.id
             if (!Object.keys(midi_control_ports).includes(id)) {
                 if (midi_control_port_factory.status == Component.Error) {
@@ -339,16 +348,27 @@ LuaControlInterface {
                             root.logger.error('No LUA engine specified for input MIDI control port')
                         }
                     })
-                    midi_control_ports[i] = port
-                    midi_control_portsChanged()
+                    midi_control_ports[id] = port
+                    ports_changed = true
                 }
             }
-        }
+        })
+
+        if (ports_changed) { midi_control_portsChanged() }
     }
 
     onMidiOutputPortRulesChanged: {
-        for(var i=0; i<midi_output_port_rules.length; i++) {
-            let rule = midi_output_port_rules[i]
+        let rules_to_create_port_for = midi_output_port_rules.filter(m => !Object.keys(midi_control_ports).includes(m.id))
+        let port_ids_to_delete = Object.keys(midi_control_ports).filter(id => midi_output_port_rules.filter(n => n.engine == midi_control_ports[id].lua_engine).length == 0)
+        var ports_changed = false
+
+        port_ids_to_delete.forEach(id => {
+            midi_control_ports[id].destroy()
+            delete midi_control_ports[id]
+            ports_changed = true
+        })
+
+        rules_to_create_port_for.forEach(rule => {
             let id = rule.id
             if (!Object.keys(midi_control_ports).includes(id)) {
                 if (midi_control_port_factory.status == Component.Error) {
@@ -396,11 +416,13 @@ LuaControlInterface {
                             p.may_open = true
                         }
                     })
-                    midi_control_ports[i] = port
-                    midi_control_portsChanged()
+                    midi_control_ports[id] = port
+                    ports_changed = true
                 }
             }
-        }
+        })
+
+        if (ports_changed) { midi_control_portsChanged() }
     }
 
     // Gather and forward loop events
