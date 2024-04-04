@@ -64,6 +64,7 @@ class AudioPort(Port):
     @gain.setter
     def gain(self, s):
         if self._gain != s:
+            self.logger.debug(lambda: f'gain -> {s}')
             self._gain = s
             self.gainChanged.emit(s)
     

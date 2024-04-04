@@ -189,6 +189,7 @@ Rectangle {
     TasksFactory { id: tasks_factory }
 
     function save_session(filename) {
+        root.logger.debug(() => `saving session to: ${filename}`)
         registries.state_registry.reset_saving_loading()
         registries.state_registry.save_action_started()
         var tempdir = file_io.create_temporary_folder()
@@ -256,6 +257,7 @@ Rectangle {
     }
 
     function load_session(filename, ignore_resample_warning=false) {
+        root.logger.debug(() => `loading session: ${filename}`)
         registries.state_registry.reset_saving_loading()
         registries.state_registry.load_action_started()
         var tempdir = file_io.create_temporary_folder()
