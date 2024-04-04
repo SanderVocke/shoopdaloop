@@ -31,8 +31,10 @@ Item {
         var settings = new Set();
         ports.forEach((p) => { settings.add(!p.passthrough_muted) })
         if (settings.size == 1) {
+            root.logger.debug("Initial monitor setting: " + Array.from(settings)[0])
             return Array.from(settings)[0]
         }
+        root.logger.debug("Initial monitor setting not found")
         return false
     }
         
@@ -43,8 +45,10 @@ Item {
         var settings = new Set();
         ports.forEach((p) => { settings.add(p.muted) })
         if (settings.size == 1) {
+            root.logger.debug("Initial mute setting: " + Array.from(settings)[0])
             return Array.from(settings)[0]
         }
+        root.logger.debug("Initial mute setting not found")
         return false
     }
 

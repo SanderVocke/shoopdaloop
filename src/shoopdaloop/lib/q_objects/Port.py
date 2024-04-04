@@ -111,6 +111,7 @@ class Port(FindParentBackend):
     @name.setter
     def name(self, s):
         if self._name != s:
+            self.logger.debug(lambda: f'name -> {s}')
             self._name = s
             self.nameChanged.emit(s)
 
@@ -122,6 +123,7 @@ class Port(FindParentBackend):
     @muted.setter
     def muted(self, s):
         if self._muted != s:
+            self.logger.debug(lambda: f'muted -> {s}')
             self._muted = s
             self.mutedChanged.emit(s)
             self.maybe_initialize()
@@ -134,6 +136,7 @@ class Port(FindParentBackend):
     @passthrough_muted.setter
     def passthrough_muted(self, s):
         if self._passthrough_muted != s:
+            self.logger.debug(lambda: f'passthrough muted -> {s}')
             self._passthrough_muted = s
             self.maybe_initialize()
             self.passthroughMutedChanged.emit(s)
@@ -159,6 +162,7 @@ class Port(FindParentBackend):
     @n_ringbuffer_samples.setter
     def n_ringbuffer_samples(self, n):
         if self._n_ringbuffer_samples != n:
+            self.logger.debug(lambda: f'n ringbuffer samples -> {n}')
             self._n_ringbuffer_samples = n
             self.nRingbufferSamplesChanged.emit(n)
             self.maybe_initialize()
@@ -231,9 +235,10 @@ class Port(FindParentBackend):
             self._backend and \
             self._backend.initialized:
             
-            self.logger.debug(lambda: "{}: Initializing port {}".format(self, self._name_hint))
+            self.logger.trace(lambda: "{}: Initializing port {}".format(self, self._name_hint))
             self.maybe_initialize_impl(self._name_hint, self._input_connectability, self._output_connectability, self._is_internal)
             if self._backend_obj:
+                self.logger.debug(lambda: "Initialized port {}".format(self._name_hint))
                 self._initialized = True
                 self.initializedChanged.emit(True)
                 self._ever_initialized = True
