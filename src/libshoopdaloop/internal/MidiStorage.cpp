@@ -1,4 +1,5 @@
 #include "MidiStorage.h"
+#include "types.h"
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -136,6 +137,8 @@ uint32_t MidiStorageBase<TimeType, SizeType>::n_events() const {
 template <typename TimeType, typename SizeType>
 bool MidiStorageBase<TimeType, SizeType>::append(TimeType time, SizeType size,
                                                  const uint8_t *data, bool allow_replace) {
+    log<log_level_debug_trace>("append: time {}, size {}", time, size);
+    
     uint32_t sz = Elem::total_size_of(size);
     if (sz > bytes_free() && !allow_replace) {
         log<log_level_warning>("Ignoring store of MIDI message: buffer full.");
@@ -152,6 +155,7 @@ bool MidiStorageBase<TimeType, SizeType>::append(TimeType time, SizeType size,
     auto new_n_events = m_n_events + 1;
 
     // if we are crossing our own tail, remove message(s) from the tail side
+    uint32_t n_removed = 0;
     while(new_head_nowrap > m_tail_nowrap) {
         auto n = maybe_next_elem_offset(unsafe_at(m_tail));
         if (n.has_value()) {
@@ -159,9 +163,13 @@ bool MidiStorageBase<TimeType, SizeType>::append(TimeType time, SizeType size,
             m_tail = (m_tail + shift_amount) % m_data.size();
             m_tail_nowrap += shift_amount;
             new_n_events -= 1;
+            n_removed += 1;
         } else {
             break;
         }
+    }
+    if (n_removed > 0) {
+        log<log_level_debug_trace>("append: removed {} messages to make space", n_removed);
     }
 
     m_head_start = m_head;
@@ -321,22 +329,25 @@ bool MidiStorageCursor<TimeType, SizeType>::wrapped() const {
 }
 
 template <typename TimeType, typename SizeType>
-uint32_t MidiStorageCursor<TimeType, SizeType>::find_time_forward(
+CursorFindResult MidiStorageCursor<TimeType, SizeType>::find_time_forward(
     uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback)
 {
+    CursorFindResult rval;
+    rval.found_valid_elem = false;
+    rval.n_processed = 0;
+
     auto print_offset = m_offset.has_value() ? (int)m_offset.value() : (int)-1;
     log<log_level_debug_trace>("find_time_forward (storage {}, cursor {}, target time {})", fmt::ptr(m_storage), print_offset, time);
     if (!valid()) {
         log<log_level_debug_trace>("find_time_forward: not valid, returning");
-        return 0;
+        return rval;
     }
     std::optional<uint32_t> prev = m_offset;
-    uint32_t n_processed = 0;
     for (auto next_offset = m_offset, prev = m_prev_offset;
          next_offset.has_value(); prev = next_offset,
               next_offset = m_storage->maybe_next_elem_offset(
                   m_storage->unsafe_at(next_offset.value())),
-              n_processed++) {
+              rval.n_processed++) {
         Elem *elem =
             prev.has_value() ? m_storage->unsafe_at(prev.value()) : nullptr;
         Elem *next_elem = m_storage->unsafe_at(next_offset.value());
@@ -352,14 +363,15 @@ uint32_t MidiStorageCursor<TimeType, SizeType>::find_time_forward(
             log<log_level_debug_trace>("find_time_forward to {} done, next msg @ {}", time, next_elem->storage_time);
             m_offset = next_offset;
             m_prev_offset = prev;
-            return n_processed;
+            rval.found_valid_elem = true;
+            return rval;
         }
     }
 
     // If we reached here, we reached the end. Reset to an invalid
     // cursor.
     log<log_level_debug_trace>("find_time_forward to {}: none found", time);
-    return n_processed;
+    return rval;
 }
 
 template <typename TimeType, typename SizeType>
@@ -395,34 +407,73 @@ void MidiStorage<TimeType, SizeType>::clear() {
 }
 
 template <typename TimeType, typename SizeType>
-void MidiStorage<TimeType, SizeType>::truncate(TimeType time) {
+void MidiStorage<TimeType, SizeType>::truncate(TimeType time, TruncateType type) {
     ModuleLoggingEnabled<"Backend.MidiChannel.Storage">::log<log_level_debug_trace>("truncate to {}", time);
     auto prev_n_events = this->m_n_events;
-    if (this->m_n_events > 0 &&
-        this->unsafe_at(this->m_head_start)->storage_time > time) {
+
+    if (type == TruncateType::TruncateHead &&
+        this->unsafe_at(this->m_head_start)->storage_time > time)
+    {
+            this->template log<log_level_debug_trace>("truncate: head already in range");
+            return;
+    }
+
+    if (type == TruncateType::TruncateTail &&
+        this->unsafe_at(this->m_tail)->storage_time > time)
+    {
+            this->template log<log_level_debug_trace>("truncate: tail already in range");
+            return;
+    }
+
+    if (this->m_n_events > 0) {
         auto cursor = create_cursor();
         if (cursor->valid()) {
-            this->m_n_events = cursor->find_time_forward(time);
-            this->m_head = cursor->offset().value();
-            this->m_head_start = cursor->prev_offset().value_or(0);
+            auto find_result = cursor->find_time_forward(time);
+
+            if (type == TruncateType::TruncateHead) {
+                TimeType new_head = cursor->offset().value();
+                auto new_n = find_result.n_processed;
+                this->template log<log_level_debug_trace>("truncate head: {} -> {}, n msgs {} -> {}", this->m_head, new_head, this->m_n_events, new_n);
+                this->m_n_events = new_n;
+                this->m_head = cursor->offset().value();
+                this->m_head_start = cursor->prev_offset().value_or(0);
+            } else if (type == TruncateType::TruncateTail) {
+                TimeType new_tail = find_result.found_valid_elem ? cursor->offset().value() : this->m_head;
+                auto new_n = this->m_n_events - find_result.n_processed;
+                this->template log<log_level_debug_trace>("truncate tail: {} -> {}, n msgs {} -> {}", this->m_tail, new_tail, this->m_n_events, new_n);
+                this->m_n_events = new_n;
+                this->m_tail = new_tail;
+                if (!find_result.found_valid_elem) {
+                    this->m_head = this->m_tail;
+                    this->m_head_start = this->m_tail;
+                }
+            }
 
             for (auto &cursor : m_cursors) {
                 std::shared_ptr<Cursor> maybe_shared = cursor.lock();
                 if (maybe_shared) {
-                    if (maybe_shared->offset() > this->m_head) {
-                        maybe_shared->overwrite(this->m_head,
-                                                this->m_head_start);
+                    if (type == TruncateType::TruncateHead) {
+                        if (maybe_shared->offset() > this->m_head) {
+                            maybe_shared->overwrite(this->m_head,
+                                                    this->m_head_start);
+                        }
+                    } else if (type == TruncateType::TruncateTail) {
+                        if (maybe_shared->offset() < this->m_tail || !find_result.found_valid_elem) {
+                            maybe_shared->invalidate();
+                        }
                     }
                 }
             }
+        } else {
+            this->template log<log_level_error>("truncate: couldn't make valid cursor");
         }
     }
     ModuleLoggingEnabled<"Backend.MidiChannel.Storage">::log<log_level_debug_trace>("truncate: was {}, now {} msgs", prev_n_events, this->m_n_events);
 }
 
 template <typename TimeType, typename SizeType>
-void MidiStorage<TimeType, SizeType>::for_each_msg(
-    std::function<void(TimeType t, SizeType s, uint8_t *data)> cb) {
+void MidiStorage<TimeType, SizeType>::for_each_msg_modify(
+    std::function<void(TimeType &t, SizeType &s, uint8_t *data)> cb) {
     auto maybe_self = MidiStorageBase<TimeType, SizeType>::weak_from_this();
     if (auto self = maybe_self.lock()) {
         auto cursor = std::make_shared<Cursor>(self);
@@ -435,6 +486,15 @@ void MidiStorage<TimeType, SizeType>::for_each_msg(
         throw std::runtime_error(
             "Attempting to retrieve contents of destructed storage");
     }
+}
+
+template <typename TimeType, typename SizeType>
+void MidiStorage<TimeType, SizeType>::for_each_msg(
+    std::function<void(TimeType t, SizeType s, uint8_t *data)> cb)
+{
+    for_each_msg_modify([cb](TimeType &t, SizeType &s, uint8_t *data) {
+        cb(t, s, data);
+    });
 }
 
 template class MidiStorageElem<uint32_t, uint16_t>;

@@ -4,6 +4,7 @@
 #include "MidiPort.h"
 #include "MidiStateDiffTracker.h"
 #include "MidiStateTracker.h"
+#include "MidiStorage.h"
 #include "channel_mode_helpers.h"
 #include "types.h"
 #include <memory>
@@ -179,7 +180,7 @@ void
 MidiChannel<TimeType, SizeType>::PROC_set_length_impl(Storage &storage, std::atomic<uint32_t> &storage_length,
                           uint32_t length) {
     if (storage_length != length) {
-        storage.truncate(length);
+        storage.truncate(length, Storage::TruncateType::TruncateHead);
         storage_length = length;
         data_changed();
     }
