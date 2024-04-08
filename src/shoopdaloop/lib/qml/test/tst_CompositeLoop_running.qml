@@ -167,13 +167,13 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
 
                     // trigger the composite loop
-                    c().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                    c().transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
 
@@ -252,13 +252,13 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
 
                     // trigger the composite loop
-                    c().transition(ShoopConstants.LoopMode.Recording, 0, true)
+                    c().transition(ShoopConstants.LoopMode.Recording, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(l1().next_mode, ShoopConstants.LoopMode.Recording)
 
@@ -340,13 +340,13 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
 
                     // trigger the composite loop
-                    c().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                    c().transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
 
@@ -415,13 +415,13 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
 
                     // trigger the composite loop
-                    c().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                    c().transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(l1().next_mode, ShoopConstants.LoopMode.Recording)
 
@@ -494,8 +494,8 @@ ShoopTestFile {
                         ]
                     })
 
-                    c().transition(ShoopConstants.LoopMode.Playing, 3, true)
-                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    c().transition(ShoopConstants.LoopMode.Playing, 3, ShoopConstants.DontAlignToSyncImmediately)
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)
@@ -545,8 +545,8 @@ ShoopTestFile {
                         ]
                     })
 
-                    c().transition(ShoopConstants.LoopMode.Playing, 0, true)
-                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    c().transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)
@@ -605,13 +605,13 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
 
                     // trigger the composite loop
-                    c().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                    c().transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
@@ -682,13 +682,13 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
 
                     // trigger the composite loop
-                    l2().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                    l2().transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)

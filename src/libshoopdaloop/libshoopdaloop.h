@@ -56,12 +56,12 @@ SHOOP_EXPORT void              adopt_ringbuffer_contents(shoopdaloop_loop_t *loo
 //   sync source position. In other words: the loop will be in sync with the sync source.
 SHOOP_EXPORT void loop_transition(shoopdaloop_loop_t *loop,
                       shoop_loop_mode_t mode,
-                      int delay,
+                      int maybe_delay,
                       int maybe_to_sync_at_cycle);
 SHOOP_EXPORT void loops_transition(unsigned int n_loops,
                       shoopdaloop_loop_t **loops,
                       shoop_loop_mode_t mode,
-                      int delay,
+                      int maybe_delay,
                       int maybe_to_sync_at_cycle);
 
 // Loop channels

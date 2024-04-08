@@ -117,7 +117,7 @@ Item {
             if (sync_loop.length == 0) {
                 sync_loop.set_length(24000)
             }
-            sync_loop.transition(ShoopConstants.LoopMode.Playing, 0, false, false)
+            sync_loop.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately, false)
 
             let chosen_action = pick_random(actions_distribution, (a) => action_possible(a))
             root.logger.debug(`Main action: ${chosen_action}`)
@@ -235,8 +235,8 @@ Item {
             return;
         }
         root.logger.debug(`--> play ${track.name}::${loop.name}`)
-        loop.transition(ShoopConstants.LoopMode.Playing, 0, true)
-        loop.transition(ShoopConstants.LoopMode.Stopped, 4, true)
+        loop.transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
+        loop.transition(ShoopConstants.LoopMode.Stopped, 4, ShoopConstants.DontAlignToSyncImmediately)
     }
 
     function loop_play_drywet_4() {
@@ -251,7 +251,7 @@ Item {
             return;
         }
         root.logger.debug(`--> play dry ${track.name}::${loop.name}`)
-        loop.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, true)
-        loop.transition(ShoopConstants.LoopMode.Stopped, 4, true)
+        loop.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, ShoopConstants.DontAlignToSyncImmediately)
+        loop.transition(ShoopConstants.LoopMode.Stopped, 4, ShoopConstants.DontAlignToSyncImmediately)
     }
 }

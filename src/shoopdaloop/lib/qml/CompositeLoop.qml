@@ -348,8 +348,8 @@ Item {
 
     property var sync_loop : registries.state_registry.sync_loop
 
-    function transition(mode, delay, wait_for_sync) {
-        py_loop.transition(mode, delay, wait_for_sync)
+    function transition(mode, maybe_delay, maybe_align_to_sync_at) {
+        py_loop.transition(mode, maybe_delay, maybe_align_to_sync_at)
     }
 
     function actual_composition_descriptor() {

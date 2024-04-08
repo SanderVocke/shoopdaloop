@@ -143,7 +143,7 @@ class ControlHandler(ShoopQQuickItem):
         [ 'loop_set_gain_fader', lua_loop_selector, lua_float ],
         [ 'loop_get_balance', lua_loop_selector ],
         [ 'loop_set_balance', lua_loop_selector, lua_float ],
-        [ 'loop_transition', lua_loop_selector, lua_int, lua_int, lua_bool ],
+        [ 'loop_transition', lua_loop_selector, lua_int, lua_int, lua_int ],
         [ 'loop_trigger', lua_loop_selector, lua_int ],
         [ 'loop_record_n', lua_loop_selector, lua_int, lua_int ],
         [ 'loop_record_with_targeted', lua_loop_selector ],
@@ -422,8 +422,9 @@ class ControlHandler(ShoopQQuickItem):
     def loop_transition(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.loop_transition(loop_selector, mode, cycles_delay, wait_for_sync)
+        shoop_control.loop_transition(loop_selector, mode, maybe_cycles_delay, maybe_align_to_sync_at)
         Transition the given loops.
+        Pass shoop_control.constants.DontWaitForSync and shoop_control.constants.DontAlignToSyncImmediately to maybe_cycles_delay and maybe_align_to_sync_at respectively, to disable them.
         @shoop_lua_fn_docstring.end
         """
         pass

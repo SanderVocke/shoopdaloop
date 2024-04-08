@@ -17,8 +17,8 @@ ShoopTestFile {
             function loop_count_override(loop_selector) {
                 logged_calls.push(['loop_count', loop_selector])
             }
-            function loop_transition_override(loop_selector, mode, cycles_delay) {
-                logged_calls.push(['loop_transition', loop_selector, mode, cycles_delay])
+            function loop_transition_override(loop_selector, mode, maybe_cycles_delay, maybe_align_to_sync_at) {
+                logged_calls.push(['loop_transition', loop_selector, mode, maybe_cycles_delay, maybe_align_to_sync_at])
             }
 
             function loop_get_all_override() {
@@ -107,7 +107,7 @@ ShoopTestFile {
                     ctl.handle_midi(Midi.create_noteOn(0, 2, 127), null)
 
                     verify_eq(itf.logged_calls, [
-                        [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], ShoopConstants.LoopMode.Stopped, 0 ]
+                        [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], ShoopConstants.LoopMode.Stopped, 0, ShoopConstants.DontAlignToSyncImmediately ]
                     ])
                 },
 
@@ -116,7 +116,7 @@ ShoopTestFile {
                     ctl.handle_midi(Midi.create_noteOn(0, 3, 127), null)
 
                     verify_eq(itf.logged_calls, [
-                        [ 'loop_transition', [[0, 0], [2, 2]], ShoopConstants.LoopMode.Stopped, 0 ]
+                        [ 'loop_transition', [[0, 0], [2, 2]], ShoopConstants.LoopMode.Stopped, 0, ShoopConstants.DontAlignToSyncImmediately ]
                     ])
                 },
 
@@ -125,7 +125,7 @@ ShoopTestFile {
                     ctl.handle_midi(Midi.create_noteOn(0, 4, 127), null)
 
                     verify_eq(itf.logged_calls, [
-                        [ 'loop_transition', [[1, 1]], ShoopConstants.LoopMode.Stopped, 0 ]
+                        [ 'loop_transition', [[1, 1]], ShoopConstants.LoopMode.Stopped, 0, ShoopConstants.DontAlignToSyncImmediately ]
                     ])
                 },
 
@@ -141,7 +141,7 @@ ShoopTestFile {
                     ctl.handle_midi(Midi.create_noteOn(0, 6, 127), null)
 
                     verify_eq(itf.logged_calls, [
-                        [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], ShoopConstants.LoopMode.Stopped, 0 ]
+                        [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], ShoopConstants.LoopMode.Stopped, 0, ShoopConstants.DontAlignToSyncImmediately ]
                     ])
                 }
             })

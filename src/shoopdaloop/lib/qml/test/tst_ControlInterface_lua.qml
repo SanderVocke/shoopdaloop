@@ -180,7 +180,7 @@ ShoopTestFile {
                     clear()
                     
                     verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Stopped }')
-                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Recording }')
                     verify_eq_lua('shoop_control.loop_get_mode({0,1})', '{ shoop_control.constants.LoopMode_Stopped }')
@@ -192,7 +192,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
                     
-                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 1, true)
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 1, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('shoop_control.loop_get_next_mode({0,0})', '{ shoop_control.constants.LoopMode_Recording }')
                 },
@@ -202,7 +202,7 @@ ShoopTestFile {
                     clear()
                     
                     verify_eq_lua('shoop_control.loop_get_next_mode_delay({0,0})', '{ -1 }')
-                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 1, true)
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 1, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('shoop_control.loop_get_next_mode_delay({0,0})', '{ 1 }')
                 },
@@ -246,7 +246,7 @@ ShoopTestFile {
                     clear()
                     
                     verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,0}, {0,1}, {1,0}, {1,1}, {-1,0}}')
-                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,1},{1,0},{1,1},{-1,0}}')
                     verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Recording)', '{{0,0}}')
@@ -310,11 +310,11 @@ ShoopTestFile {
                     clear()
 
                     verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
-                    do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, 0, false)')
+                    do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, 0, shoop_control.Loop_DontAlignToSyncImmediately)')
                     testcase.wait_updated(session.backend)
                     verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
                     verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Stopped)
-                    do_execute('shoop_control.loop_transition({0,1}, shoop_control.constants.LoopMode_Recording, 0, false)')
+                    do_execute('shoop_control.loop_transition({0,1}, shoop_control.constants.LoopMode_Recording, shoop_control.Loop_DontWaitForSync, shoop_control.Loop_DontAlignToSyncImmediately)')
                     testcase.wait_updated(session.backend)
                     verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
                     verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Recording)
@@ -618,12 +618,12 @@ ShoopTestFile {
                         shoop_control.register_loop_event_cb(callback)
                     `)
 
-                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Recording')
                     verify_eq_lua('most_recent_loop', '{0,0}')
 
-                    loop_at(0,0).transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Stopped')
                     verify_eq_lua('most_recent_loop', '{0,0}')

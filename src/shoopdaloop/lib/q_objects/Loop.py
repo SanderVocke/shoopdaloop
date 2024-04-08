@@ -288,24 +288,24 @@ class Loop(FindParentBackend):
         for channel in midi_chans:
             channel.updateOnGuiThread()
     
-    @ShoopSlot(int, int, bool, thread_protection=ThreadProtectionType.AnyThread)
-    def transition(self, mode, delay, wait_for_sync):
-        self._pending_transitions.append([mode, delay, wait_for_sync])
+    @ShoopSlot(int, int, int, thread_protection=ThreadProtectionType.AnyThread)
+    def transition(self, mode, maybe_delay, maybe_align_to_sync_at):
+        self._pending_transitions.append([mode, maybe_delay, maybe_align_to_sync_at])
 
-    def transition_impl(self, mode, delay, wait_for_sync):
+    def transition_impl(self, mode, maybe_delay, maybe_align_to_sync_at):
         if self._initialized:
-            if wait_for_sync and not self._sync_source:
+            if maybe_delay >= 0 and not self._sync_source:
                 self.logger.warning(lambda: "Synchronous transition requested but no sync loop set")
-            self._backend_loop.transition(LoopMode(mode), delay, wait_for_sync)
+            self._backend_loop.transition(LoopMode(mode), maybe_delay, maybe_align_to_sync_at)
     
-    @ShoopSlot(list, int, int, bool)
-    def transition_multiple(self, loops, mode, delay, wait_for_sync):
-        self._pending_transitions.append([loops, mode, delay, wait_for_sync])
+    @ShoopSlot(list, int, int, int)
+    def transition_multiple(self, loops, mode, maybe_delay, maybe_align_to_sync_at):
+        self._pending_transitions.append([loops, mode, maybe_delay, maybe_align_to_sync_at])
 
-    def transition_multiple_impl(self, loops, mode, delay, wait_for_sync):
+    def transition_multiple_impl(self, loops, mode, maybe_delay, maybe_align_to_sync_at):
         if self._initialized:
             backend_loops = [l._backend_loop for l in loops]
-            BackendLoop.transition_multiple(backend_loops, LoopMode(mode), delay, wait_for_sync)
+            BackendLoop.transition_multiple(backend_loops, LoopMode(mode), maybe_delay, maybe_align_to_sync_at)
     
     @ShoopSlot('QVariant', 'QVariant', 'QVariant', int)
     def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
