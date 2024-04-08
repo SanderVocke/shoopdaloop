@@ -331,6 +331,10 @@ class CompositeLoop(FindParentBackend):
     def handle_sync_loop_trigger(self):
         self._pending_cycles += 1
 
+    @ShoopSlot('QVariant', 'QVariant', 'QVariant', int)
+    def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
+        pass
+
     def handle_sync_loop_trigger_impl(self):
         self.logger.debug(lambda: 'handle sync cycle')
 
