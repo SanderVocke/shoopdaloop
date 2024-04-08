@@ -85,6 +85,7 @@ protected:
     void push() {
         m_queue.push(allocate());
         m_actual_n_objects++;
+        m_none_available = false;
     }
 
     void fill() {

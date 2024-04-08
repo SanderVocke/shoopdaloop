@@ -1,6 +1,6 @@
 from PySide6.QtQml import QJSValue
 
-from .backend_wrappers import LoopMode, ChannelMode, AudioDriverType, PortDirection, FXChainType, PortDataType, PortConnectability, DontWaitForSync, DontAlignWithSyncImmediately
+from .backend_wrappers import LoopMode, ChannelMode, AudioDriverType, PortDirection, FXChainType, PortDataType, PortConnectability, DontWaitForSync, DontAlignToSyncImmediately
 from .types import KeyEventType
 
 # Create a QJSValue which contains a multitude of ShoopDaLoop constant
@@ -28,7 +28,7 @@ def create_js_constants(engine):
 
     # Other constants
     rval.setProperty('DontWaitForSync', DontWaitForSync)
-    rval.setProperty('DontAlignWithSyncImmediately', DontAlignWithSyncImmediately)
+    rval.setProperty('DontAlignToSyncImmediately', DontAlignToSyncImmediately)
 
     return rval
 

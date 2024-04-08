@@ -615,8 +615,10 @@ Item {
     }
 
     function on_stop_clicked() {
-        root.transition(ShoopConstants.LoopMode.Stopped,
-           root.sync_active ? root.use_delay : ShoopConstants.DontAlignToSyncImmediately)
+        root.transition(
+           ShoopConstants.LoopMode.Stopped,
+           root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+           ShoopConstants.DontAlignToSyncImmediately)
     }
 
     function on_recordfx_clicked() {

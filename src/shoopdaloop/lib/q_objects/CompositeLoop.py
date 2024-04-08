@@ -353,11 +353,11 @@ class CompositeLoop(FindParentBackend):
                 self.logger.debug(lambda: 'preparing cycle end')
                 if self.kind == 'script' and not (self.next_transition_delay >= 0 and is_running_mode(self.next_mode)):
                     self.logger.debug(lambda: f'ending script {self.mode} {self.next_mode} {self.next_transition_delay}')
-                    self.transition_impl(LoopMode.Stopped.value, 0, DontAlignWithSyncImmediately)
+                    self.transition_impl(LoopMode.Stopped.value, 0, DontAlignToSyncImmediately)
                 elif is_recording_mode(self.mode):
                     self.logger.debug(lambda: 'cycle: recording to playing')
                     # Recording ends next cycle, transition to playing
-                    self.transition_impl(LoopMode.Playing.value, 0, DontAlignWithSyncImmediately)
+                    self.transition_impl(LoopMode.Playing.value, 0, DontAlignToSyncImmediately)
                 else:
                     self.logger.debug(lambda: 'cycling')
                     # Will cycle around - trigger the actions for next cycle
@@ -371,7 +371,7 @@ class CompositeLoop(FindParentBackend):
     def cancel_all(self):
         self.logger.trace(lambda: 'cancel_all')
         for loop in self._running_loops:
-            loop.transition(LoopMode.Stopped.value, 0, DontAlignWithSyncImmediately)
+            loop.transition(LoopMode.Stopped.value, 0, DontAlignToSyncImmediately)
         self.running_loops = []
 
     def handle_transition(self, mode):
@@ -392,7 +392,7 @@ class CompositeLoop(FindParentBackend):
             loops_start = elem['loops_start']
             for loop in loops_end:
                 self.logger.debug(lambda: f'loop end: {loop}')
-                loop.transition(LoopMode.Stopped.value, 0, DontAlignWithSyncImmediately)
+                loop.transition(LoopMode.Stopped.value, 0, DontAlignToSyncImmediately)
                 if loop in self._running_loops:
                     self._running_loops.remove(loop)
                 self.runningLoopsChanged.emit(self._running_loops)
@@ -419,7 +419,7 @@ class CompositeLoop(FindParentBackend):
                                     if loop in other_starts:
                                         # We have already recorded this loop. Don't record it again.
                                         self.logger.debug(lambda: f'Not re-recording {loop}')
-                                        loop.transition(LoopMode.Stopped.value, 0, DontAlignWithSyncImmediately)
+                                        loop.transition(LoopMode.Stopped.value, 0, DontAlignToSyncImmediately)
                                         self._running_loops.remove(loop)
                                         self.runningLoopsChanged.emit(self._running_loops)
                                         handled = True
@@ -429,7 +429,7 @@ class CompositeLoop(FindParentBackend):
                             continue
 
                     self.logger.debug(lambda: f'loop start: {loop}')
-                    loop.transition(loop_mode, 0, DontAlignWithSyncImmediately)
+                    loop.transition(loop_mode, 0, DontAlignToSyncImmediately)
                     self._running_loops.add(loop)
                     self.runningLoopsChangedUnsafe.emit(self._running_loops)
     
