@@ -928,8 +928,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record and set to sync", "[AudioMidiLoop][aud
 
     auto data = create_audio_buf<int>(256, [](uint32_t position) { return position; });
     for (auto &channel : channels) {
-        channel->load_data(data.data(), 256);
-        channel->set_start_offset(110);
+        channel->PROC_set_recording_buffer(data.data(), 256);
     }
     loop.set_length(128);
 
@@ -947,8 +946,9 @@ TEST_CASE("AudioMidiLoop - Audio - Record and set to sync", "[AudioMidiLoop][aud
     loop.plan_transition(LoopMode_Recording, std::nullopt, 1, false);
 
     CHECK(sync_source->get_position() == 10);
-    CHECK(loop.get_position() == 40);
-    CHECK(loop.get_mode() == LoopMode_Playing);
+    CHECK(loop.get_position() == 0);
+    CHECK(loop.get_length() == 40);
+    CHECK(loop.get_mode() == LoopMode_Recording);
     
     // Sanity check: play some samples
     process(4);
@@ -959,14 +959,16 @@ TEST_CASE("AudioMidiLoop - Audio - Record and set to sync", "[AudioMidiLoop][aud
 
     for (uint32_t idx=0; idx < 3; idx++) {
         auto &channel = channels[idx];
-        auto &buf = play_bufs[idx];
+        auto buf = channels[idx]->get_data(false);
         auto chan_mode = channel->get_mode();
+
+        REQUIRE(buf.size() == 44);
 
         for (uint32_t p=0; p<40; p++) {
             CHECK(buf[p]== 0);
         }
         for (uint32_t p=40; p<44; p++) {
-            CHECK(buf[p] == ((chan_mode == ChannelMode_Dry) ? 0 : p + 110));
+            CHECK(buf[p] == p);
         }
     }
 };

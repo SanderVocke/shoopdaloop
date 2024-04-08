@@ -351,7 +351,12 @@ void BasicLoop::plan_transition(
                 uint32_t pos =
                     sync_source->get_position() +
                     maybe_to_sync_cycle.value() * sync_source->get_length();
-                set_position(pos, false);
+                if (mode == LoopMode_Recording) {
+                    set_position (0, false);
+                    set_length (pos, false);
+                } else {
+                    set_position(pos, false);
+                }
             }
             mp_planned_states.clear();
             mp_planned_state_countdowns.clear();
