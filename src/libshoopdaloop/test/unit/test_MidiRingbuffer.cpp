@@ -150,3 +150,130 @@ TEST_CASE("MidiRingbuffer - Put and truncate", "[MidiRingbuffer]") {
 
     CHECK(out == expect);
 };
+
+TEST_CASE("MidiRingbuffer - Put and wrap", "[MidiRingbuffer]") {
+    using Msg = MidiMessage<uint32_t, uint32_t>;
+    using Ringbuffer = MidiRingbuffer<uint32_t, uint32_t>;
+    using Storage = Ringbuffer::Storage;
+
+    constexpr size_t elem_size = sizeof(Storage::Elem);
+    constexpr size_t three_byte_msg_size = elem_size + 3;
+
+    // enough for almost 4 messages
+    auto b = std::make_shared<Ringbuffer>(three_byte_msg_size * 3 + (three_byte_msg_size - 2));
+
+    b->set_n_samples(10000);
+    b->next_buffer(10);
+
+    {
+        // 1st message
+        auto m = Msg(0, 3, {0, 0, 0});
+        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+    }
+    {
+        // 2nd message
+        auto m = Msg(1, 3, {1, 1, 1});
+        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+    }
+    {
+        // 3rd message
+        auto m = Msg(2, 3, {2, 2, 2});
+        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+    }
+    {
+        // 4th message, should be stored wrapped, mostly replaces 1st msg
+        auto m = Msg(3, 2, {3, 3});
+        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+    }
+    {
+        // 5th message, should be stored wrapped after 4th, mostly replaces 2nd msg
+        auto m = Msg(4, 3, {4, 4, 4});
+        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+    }
+    b->next_buffer(10);
+
+    std::vector<Msg> out;
+    std::vector<Msg> expect = {
+        Msg(2, 3, {2, 2, 2}),
+        Msg(3, 2, {3, 3}),
+        Msg(4, 3, {4, 4, 4})
+    };
+    CHECK(b->n_events() == expect.size());
+
+    auto cursor = b->create_cursor();
+    while (cursor->valid()) {
+        auto elem = cursor->get();
+        out.push_back(Msg(
+            elem->storage_time,
+            elem->size,
+            std::vector<uint8_t>(elem->data(), elem->data() + elem->size)
+        ));
+        cursor->next();
+        if(cursor->is_at_start()) { break; }
+    }
+
+    CHECK(out == expect);
+};
+
+TEST_CASE("MidiRingbuffer - Put and wrap then truncate", "[MidiRingbuffer]") {
+    using Msg = MidiMessage<uint32_t, uint32_t>;
+    using Ringbuffer = MidiRingbuffer<uint32_t, uint32_t>;
+    using Storage = Ringbuffer::Storage;
+
+    constexpr size_t elem_size = sizeof(Storage::Elem);
+    constexpr size_t three_byte_msg_size = elem_size + 3;
+
+    // enough for almost 4 messages
+    auto b = std::make_shared<Ringbuffer>(three_byte_msg_size * 3 + (three_byte_msg_size - 2));
+
+    b->set_n_samples(17);
+    b->next_buffer(10);
+
+    {
+        // 1st message
+        auto m = Msg(0, 3, {0, 0, 0});
+        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+    }
+    {
+        // 2nd message
+        auto m = Msg(1, 3, {1, 1, 1});
+        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+    }
+    {
+        // 3rd message
+        auto m = Msg(2, 3, {2, 2, 2});
+        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+    }
+    {
+        // 4th message, should be stored wrapped, mostly replaces 1st msg
+        auto m = Msg(3, 2, {3, 3});
+        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+    }
+    {
+        // 5th message, should be stored wrapped after 4th, mostly replaces 2nd msg
+        auto m = Msg(4, 3, {4, 4, 4});
+        CHECK(b->put(m.get_time(), m.get_size(), m.get_data()) == true);
+    }
+    b->next_buffer(10);
+
+    std::vector<Msg> out;
+    std::vector<Msg> expect = {
+        Msg(3, 2, {3, 3}),
+        Msg(4, 3, {4, 4, 4})
+    };
+    CHECK(b->n_events() == expect.size());
+
+    auto cursor = b->create_cursor();
+    while (cursor->valid()) {
+        auto elem = cursor->get();
+        out.push_back(Msg(
+            elem->storage_time,
+            elem->size,
+            std::vector<uint8_t>(elem->data(), elem->data() + elem->size)
+        ));
+        cursor->next();
+        if(cursor->is_at_start()) { break; }
+    }
+
+    CHECK(out == expect);
+};
