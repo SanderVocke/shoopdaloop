@@ -821,8 +821,8 @@ void set_midi_port_ringbuffer_n_samples (shoopdaloop_midi_port_t* port, unsigned
 
 void loop_transition(shoopdaloop_loop_t *loop,
                       shoop_loop_mode_t mode,
-                      unsigned delay, // In # of triggers
-                      unsigned wait_for_sync)
+                      int maybe_delay,
+                      int maybe_to_sync_at_cycle)
 {
   return api_impl<void>("loop_transition", [&]() {
     auto _loop = internal_loop(loop);
@@ -830,7 +830,11 @@ void loop_transition(shoopdaloop_loop_t *loop,
     _loop->get_backend().queue_process_thread_command([=]() {
         auto loop_info = internal_loop(loop);
         if (!loop_info) { return; }
-        loop_info->loop->plan_transition(mode, delay, wait_for_sync, false);
+        loop_info->loop->plan_transition(
+          mode,
+          maybe_delay >= 0 ? (unsigned)maybe_delay : 0,
+          maybe_delay >= 0,
+          false);
     });
   });
 }
@@ -838,8 +842,8 @@ void loop_transition(shoopdaloop_loop_t *loop,
 void loops_transition(unsigned int n_loops,
                       shoopdaloop_loop_t **loops,
                       shoop_loop_mode_t mode,
-                      unsigned delay, // In # of triggers
-                      unsigned wait_for_sync)
+                      int maybe_delay,
+                      int maybe_to_sync_at_cycle)
 {
   return api_impl<void>("loops_transition", [&]() {
     auto internal_loops = std::make_shared<std::vector<std::shared_ptr<GraphLoop>>>(n_loops);
@@ -855,7 +859,11 @@ void loops_transition(unsigned int n_loops,
         for (uint32_t idx=0; idx<n_loops; idx++) {
             auto loop_info = (*internal_loops)[idx];
             if (loop_info) {
-              loop_info->loop->plan_transition(mode, delay, wait_for_sync, false);
+              loop_info->loop->plan_transition(
+                mode,
+                maybe_delay >= 0 ? (unsigned)maybe_delay : 0,
+                maybe_delay >= 0,
+                false);
             }
         }
         // Ensure that sync is fully propagated
