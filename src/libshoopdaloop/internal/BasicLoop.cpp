@@ -376,7 +376,7 @@ void BasicLoop::plan_transition(
         PROC_update_planned_transition_cache();
         PROC_update_trigger_eta();
     };
-if (thread_safe) { exec_process_thread_command(fn); }
+    if (thread_safe) { exec_process_thread_command(fn); }
     else { fn(); }
 }
 

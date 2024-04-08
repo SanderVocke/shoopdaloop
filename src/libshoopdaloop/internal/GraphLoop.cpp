@@ -141,14 +141,8 @@ void GraphLoop::PROC_adopt_ringbuffer_contents(
         samples_length = std::min(samples_length, reverse_start_offset.value());
     }
 
+    loop->set_length(samples_length, false);
     if (go_to_mode != LoopMode_Unknown) {
-        loop->set_length(samples_length, false);
-        loop->set_mode(go_to_mode, false);
-        unsigned cycle_start = sync_len * go_to_cycle.value_or(0);
-        loop->set_length(samples_length, false);
-        loop->set_position(cycle_start + sync_pos, false);
-        loop->PROC_update_poi();
-    } else {
-        loop->set_length(samples_length, false);
+        loop->plan_transition(go_to_mode, std::nullopt, go_to_cycle.value_or(0), false);
     }
 }
