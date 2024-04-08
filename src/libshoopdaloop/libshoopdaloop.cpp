@@ -1317,7 +1317,7 @@ void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
     auto _port = internal_decoupled_midi_port(port);
     auto _driver = _port->get_maybe_driver();
     if (!_driver) {
-      throw std::runtime_error("close_decoupled_midi_port: port driver not available");
+      return;
     }
     _driver->queue_process_thread_command([=]() {
         auto _port = internal_decoupled_midi_port(port);
