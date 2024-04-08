@@ -832,8 +832,8 @@ void loop_transition(shoopdaloop_loop_t *loop,
         if (!loop_info) { return; }
         loop_info->loop->plan_transition(
           mode,
-          maybe_delay >= 0 ? (unsigned)maybe_delay : 0,
-          maybe_delay >= 0,
+          maybe_delay >= 0 ? std::optional<uint32_t>(maybe_delay) : std::nullopt,
+          maybe_to_sync_at_cycle >= 0 ? std::optional<uint32_t>(maybe_to_sync_at_cycle) : std::nullopt,
           false);
     });
   });
@@ -861,8 +861,8 @@ void loops_transition(unsigned int n_loops,
             if (loop_info) {
               loop_info->loop->plan_transition(
                 mode,
-                maybe_delay >= 0 ? (unsigned)maybe_delay : 0,
-                maybe_delay >= 0,
+                maybe_delay >= 0 ? std::optional<uint32_t>(maybe_delay) : std::nullopt,
+                maybe_to_sync_at_cycle >= 0 ? std::optional<uint32_t>(maybe_to_sync_at_cycle) : std::nullopt,
                 false);
             }
         }
@@ -1317,7 +1317,7 @@ void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
     auto _port = internal_decoupled_midi_port(port);
     auto _driver = _port->get_maybe_driver();
     if (!_driver) {
-      return;
+      throw std::runtime_error("close_decoupled_midi_port: port driver not available");
     }
     _driver->queue_process_thread_command([=]() {
         auto _port = internal_decoupled_midi_port(port);
