@@ -180,14 +180,20 @@ class Loop(FindParentBackend):
     def display_midi_events_triggered(self):
         return self._display_midi_events_triggered
     
+    # instanceIdentifier (for clarity in debugging)
+    instanceIdentifierChanged = ShoopSignal(str)
+    @ShoopProperty(str, notify=instanceIdentifierChanged, thread_protection=ThreadProtectionType.AnyThread)
+    def instanceIdentifier(self):
+        return self.logger.instanceIdentifier
+    @instanceIdentifier.setter
+    def instanceIdentifier(self, l):
+        if l and l != self.logger.instanceIdentifier:
+            self.logger.instanceIdentifier = l
+            self.instanceIdentifierChanged.emit(l)
+    
     ###########
     ## SLOTS
     ###########
-    
-    # For debugging
-    @ShoopSlot(str)
-    def set_logging_instance_identifier(self, id):
-        self.logger.instanceIdentifier = id
 
     def get_audio_channels_impl(self):
         from .LoopAudioChannel import LoopAudioChannel

@@ -313,6 +313,12 @@ class CompositeLoop(FindParentBackend):
             # We cannot record a composite loop if the lengths of the other loops are not yet set.
             return
 
+        if maybe_to_sync_at_cycle >= 0:
+            self.transition_with_immediate_sync_impl(mode, maybe_to_sync_at_cycle)
+        else:
+            self.transition_default_impl(mode, maybe_delay)
+       
+    def transition_default_impl(self, mode, maybe_delay):
         if not is_running_mode(self.mode) and is_running_mode(mode):
             self.iteration = -1
         
@@ -326,6 +332,46 @@ class CompositeLoop(FindParentBackend):
 
         if maybe_delay < 0:
             self.handle_sync_loop_trigger()
+
+    def transition_with_immediate_sync_impl(self, mode, sync_cycle):
+        # Gather the mode changes throughout the schedule up until just before the point we
+        # want to go to
+        new_loop_modes = {}
+        new_loop_cycle_pos = {}
+        schedule = self._schedule
+        sched_keys = [int(i) for i in schedule.keys()]
+        for i in range(sched_keys[-1] + 1):
+            if i >= sync_cycle:
+                break
+            
+            for k in new_loop_cycle_pos.keys():
+                new_loop_cycle_pos[k] += 1
+
+            if i in sched_keys:
+                elem = schedule[str(i)]
+                loops_end = elem['loops_end']
+                loops_start = elem['loops_start']
+                for loop in loops_end:
+                    new_loop_modes[loop] = LoopMode.Stopped.value
+                    del new_loop_cycle_pos[loop]
+                for entry in loops_start:
+                    loop = entry[0]
+                    loop_mode = entry[1]
+                    if loop_mode == None:
+                        # Automatic
+                        loop_mode = mode
+                    new_loop_modes[loop] = loop_mode
+                    new_loop_cycle_pos[loop] = 0
+        for l in [l for l in self._running_loops if l not in new_loop_modes]:
+            new_loop_modes[l] = LoopMode.Stopped.value
+        
+        for loop,loop_mode in new_loop_modes.items():
+            sync_align = DontAlignToSyncImmediately if loop not in new_loop_cycle_pos else new_loop_cycle_pos[loop]
+            loop.transition(loop_mode, DontWaitForSync, sync_align)
+        
+        self.mode = mode
+        self.iteration = sync_cycle
+        self.do_triggers(self.iteration + 1, mode)
     
     @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def handle_sync_loop_trigger(self):
@@ -395,7 +441,7 @@ class CompositeLoop(FindParentBackend):
             loops_end = elem['loops_end']
             loops_start = elem['loops_start']
             for loop in loops_end:
-                self.logger.debug(lambda: f'loop end: {loop}')
+                self.logger.debug(lambda: f'loop end: {loop.instanceIdentifier}')
                 loop.transition(LoopMode.Stopped.value, 0, DontAlignToSyncImmediately)
                 if loop in self._running_loops:
                     self._running_loops.remove(loop)
