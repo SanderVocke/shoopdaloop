@@ -61,14 +61,23 @@
 -- - VOLUME + LOOP BUTTON will toggle mute on the track that the clicked loop is in.
 -- - PAN + LOOP BUTTON will toggle input mute on the track that the clicked loop is in.
 
+
+-- This file serves as an example for implementing similar scripts, so there
+-- are many comments to help you understand the code.
+
+-- Upon loading, this LUA script will be executed from top to bottom.
+-- The continued behavior during the lifetime of the script is set up near
+-- the bottom by registering callbacks.
 print_debug("Init akai_apc_mini_mk1.lua")
 
+-- Import the necessary modules from the ShoopDaLoop API
 local shoop_control = require('shoop_control')
 local shoop_helpers = require('shoop_helpers')
 local shoop_format = require('shoop_format')
 local shoop_midi = require('shoop_midi')
 
--- constants: LED colors
+-- constants: LED colors. These correspond to the defined MIDI note
+-- values in the APC Mini MIDI spec.
 local LED_off = 0
 local LED_green = 1
 local LED_green_blink = 2
@@ -96,14 +105,16 @@ local BUTTON_pan = 69
 local BUTTON_send = 70
 local BUTTON_device = 71
 
--- constants: redefined button IDs
+-- constants: redefined button IDs for ShoopDaLoop.
 local BUTTON_grab = BUTTON_mute
 local BUTTON_sync_loop = BUTTON_blank_2
 local BUTTON_sync = BUTTON_blank_1
 local BUTTON_dry = BUTTON_send
 local BUTTON_n_cycles = BUTTON_device
 
--- state
+-- state variables.
+-- these will be used to track the current state
+-- of button presses and other things.
 local STATE_shift_pressed = false
 local STATE_select_pressed = false
 local STATE_solo_pressed = false
@@ -118,7 +129,13 @@ local STATE_sync_toggle_permanent = false
 local STATE_volume_pressed = false
 local STATE_pan_pressed = false
 
--- Our function for sending MIDI to the AKAI
+-- This state variable table will be used to remember which color we
+-- sent most recently to each loop.
+local loop_colors = {}
+
+-- Our function for sending MIDI to the AKAI.
+-- Once it gets set, we can use it to send MIDI messages.
+-- It is unset initially.
 local send_fn = nil
 
 -- Convert a MIDI note to the corresponding loop location on the grid
@@ -131,6 +148,7 @@ local note_to_loop_coords = function(note)
 end
 
 -- Return the message for setting the given coordinate to the given color.
+-- It is returned as an array of bytes for a binary MIDI message.
 local led_message = function(coords, color)
     local x = coords[1]
     local y = coords[2]
@@ -146,17 +164,22 @@ local led_message = function(coords, color)
     return {0x90, note, color}
 end
 
+-- Send a MIDI message to the device to set a LED color to a
+-- specific loop (identified by its note number on the grid)
 local set_led_by_note = function(note, color)
     if send_fn == nil then return end
     send_fn({0x90, note, color})
 end
 
+-- Send a MIDI message to the device to set a LED color to a
+-- specific loop (identified by its coordinates on the grid)
 local set_led_by_coords = function(coords, color)
     if send_fn == nil then return end
     send_fn(led_message(coords, color))
 end
 
--- Convert a CC to the corresponding fader track
+-- Convert a midi CC index to the corresponding fader track
+-- on the device.
 local cc_to_fader_track = function(cc)
     if cc > 56 or cc < 48 then return nil end
     if cc == 56 then return -1 end -- sync track
@@ -219,10 +242,8 @@ local handle_loops_pressed = function(coords)
     end
 end
 
--- Track the colors we sent already.
-local loop_colors = {}
-
--- Push a mode light color to a loop
+-- Based on a event that happened on a particular loop, update that loop's
+-- color and send it to the device.
 local push_loop_color = function(coords, event)
     if send_fn == nil then return end
 
@@ -251,6 +272,8 @@ local push_loop_color = function(coords, event)
     end
 end
 
+-- Get the color of the loop, based on what we have sent in the
+-- past. It is not actually queried from the device.
 local get_loop_color = function(coords)
     if loop_colors[coords[1]] ~= nil then
         if loop_colors[coords[2]] ~= nil then
@@ -260,7 +283,7 @@ local get_loop_color = function(coords)
     return nil
 end
 
--- Push all our known loop colors to the device lights
+-- For all colors we are tracking, send them to the loop(s) again.
 local push_all_loop_colors = function()
     for i = 0, 7 do
         for j = 0, 7 do
@@ -281,14 +304,16 @@ local push_all_loop_colors = function()
     set_led_by_coords(sync_coords, sync_color)
 end
 
--- Re-check the global controls
+-- Check the state of global ShoopDaLoop controls and update the resp. buttons' colors
+-- on the device.
 local recheck_global_controls = function()
     print_debug("recheck global controls")
     set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
     set_led_by_note(BUTTON_sync, (not shoop_control.get_sync_active()) and LED_green or LED_off)
 end
 
--- Push all our known state to the device lights
+-- This reset function ensures the button and loop colors on the device match
+-- the state of ShoopDaLoop.
 local reset = function()
     print_debug("reset")
     if send_fn == nil then return end
@@ -296,7 +321,7 @@ local reset = function()
     push_all_loop_colors()
 end
 
--- Handle a NoteOn message
+-- Handle a NoteOn message coming from the device (a button was pressed).
 local handle_noteOn = function(msg, port)
     local note = msg.bytes[1]
     local maybe_loop = note_to_loop_coords(note)
@@ -374,7 +399,7 @@ local handle_noteOn = function(msg, port)
     end
 end
 
--- Handle a NoteOff message
+-- Handle a NoteOff message from the device (a button was released)
 local handle_noteOff = function(msg, port)
     local note = msg.bytes[1]
 
@@ -432,7 +457,7 @@ local handle_noteOff = function(msg, port)
     end
 end
 
--- Handle a CC message
+-- Handle a CC message coming from the device (a fader was moved)
 local handle_cc = function (msg, port)
     local cc = msg.bytes[1]
     local value = msg.bytes[2]
@@ -450,7 +475,7 @@ local handle_cc = function (msg, port)
     end
 end
 
--- Handle a Midi message (top-level handler)
+-- Handle a Midi message coming from the device (top-level handler)
 local on_midi_in = function(msg, port)
     if shoop_midi.is_kind(msg, shoop_midi.NoteOn) then
         handle_noteOn(msg, port)
@@ -461,29 +486,33 @@ local on_midi_in = function(msg, port)
     end
 end
 
--- Handle our output port being opened
+-- We will register this callback to execute when ShoopDaLoop automatically
+-- opens a MIDI port which can send messages to the AKAI device.
 local on_output_port_opened = function(_send_fn)
     print_debug("output port opened")
     send_fn = _send_fn
 end
 
--- Handle our output port being connected
+-- We will register this callback to execute when ShoopDaLoop automatically
+-- connects to the AKAI device via MIDI.
 local on_output_port_connected = function()
     print_debug("output port connected")
     shoop_control.one_shot_timer_cb(reset, 1000)
 end
 
--- Handle loop events
+-- We will register this callback to execute when a loop generates an event
+-- from ShoopDaLoop. The event contains information such as the loop mode
+-- and length.
 local handle_loop_event = function(coords, event)
     push_loop_color(coords, event)
 end
 
--- Open ports
+-- Register the port-related callbacks
 shoop_control.auto_open_device_specific_midi_control_output(".*APC MINI MIDI.*", on_output_port_opened, on_output_port_connected, 1000)
 shoop_control.auto_open_device_specific_midi_control_input(".*APC MINI MIDI.*", on_midi_in)
 
--- Register for loop callbacks
+-- Register the loop event handler
 shoop_control.register_loop_event_cb(handle_loop_event)
 
--- Register for global callbacks
+-- Register the re-check function to handle global events from ShoopDaLoop.
 shoop_control.register_global_event_cb(recheck_global_controls)
