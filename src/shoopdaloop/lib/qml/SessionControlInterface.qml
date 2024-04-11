@@ -462,6 +462,7 @@ LuaControlInterface {
                 function onSelectedChanged() { send_event() }
                 function onTargetedChanged() { send_event() }
             }
+            onCoordsChanged: send_event()
         }
     }
 }
