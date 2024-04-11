@@ -147,6 +147,7 @@ local led_message = function(coords, color)
 end
 
 local set_led_by_note = function(note, color)
+    if send_fn == nil then return end
     send_fn({0x90, note, color})
 end
 

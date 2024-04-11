@@ -12,15 +12,23 @@ Global Controls
 
    The global controls bar.
 
-The global controls, from left to right, are: **menu**, **stop all**, **sync mode**, **solo mode**, **auto-play recorded**, **clear all** and **record cycles**. Hovering over these buttons shows their function in a tooltip.
-Some of these are *togglbable*. These can be clicked to toggle them, and also have a keyboard mapping to momentarily invert them.
+The global controls groups and their contents, from left to right, are:
+
+* **menu**
+* **action buttons**:
+     * **stop all**, **deselect all**, **clear multiple**
+* **controls**:
+     * **auto-play recorded**, **sync mode**, **solo mode**, **record cycles**
+
+Hovering over any of these buttons shows their function in a tooltip.
+Some of these are *toggleable*. These can be clicked to toggle them, and also have a keyboard mapping to momentarily invert them.
 
 Some details:
 
-* **sync mode**: *togglable* (``Ctrl`` key). Affects the timing of loop triggers. If sync is not active (exclamation symbol), loop triggers such as play, stop, record execute immediately. If sync is active (hourglass symbol), such commands happen at the first upcoming restart of the **sync loop**.
-* **solo mode**: *togglable* (``Shift`` key). If active (highlighted), commands such as play and record will stop all other loops in the same track(s).
-* **auto-play recorded**: *togglable* (``Alt`` key). If active (highlighted), the default trigger after recording a loop is to play it back. That includes the behavior when doing a default trigger on a loop (spacebar / MIDI controller), but also affects what happens after triggering a fixed-length recording (playback or stop). It also affects the **grab** button (explained below).
-* **record cycles**: Numeric control. Change by typing or pressing the number keys on the keyboard. Setting to 0 sets it to *infinite*. This affects recording commands. If set to *infinite*, triggering a recording will record the loop until another trigger is given. However, if set to a specific number, the recording will last N sync loop cycles before going to playback/stop. This also affects the **grab** button (explained below).
+* **sync mode**: *toggleable* (``Ctrl`` key). Affects the timing of loop triggers. If sync is not active (exclamation symbol), loop triggers such as play, stop, record execute immediately. If sync is active (hourglass symbol), such commands happen at the first upcoming restart of the **sync loop**.
+* **solo mode**: *toggleable* (``Shift`` key). If active (highlighted), commands such as play and record will stop all other loops in the same track(s).
+* **auto-play recorded**: *toggleable* (``Alt`` key). If active (highlighted), the default trigger after recording a loop is to play it back. That includes the behavior when doing a default trigger on a loop (spacebar / MIDI controller), but also affects what happens after triggering a fixed-length recording (playback or stop). It also affects the **grab** button (explained below).
+* **record cycles**: Numeric control. Change by pressing the number keys on the keyboard at any time, or clicking the +/- controls. Setting to 0 sets it to *infinite*. This affects recording commands. If set to *infinite*, triggering a recording will record the loop until another trigger is given. However, if set to a specific number, the recording will last N sync loop cycles before going to playback/stop. This also affects the **grab** button (explained below).
 
 Loop Controls
 ^^^^^^^^^^^^^

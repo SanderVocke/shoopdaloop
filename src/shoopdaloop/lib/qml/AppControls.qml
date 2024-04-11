@@ -39,7 +39,7 @@ Item {
             MaterialDesignIcon {
                 size: Math.min(parent.width, parent.height) - 10
                 anchors.centerIn: parent
-                name: 'dots-vertical'
+                name: 'menu'
                 color: Material.foreground
             }
 
@@ -157,6 +157,11 @@ Item {
             }
         }
 
+        ToolSeparator {
+            orientation: Qt.Vertical
+            height: 40
+        }
+
         ExtendedButton {
             tooltip: "Stop all loops (respects sync active)"
 
@@ -172,93 +177,6 @@ Item {
                 anchors.centerIn: parent
                 name: 'stop'
                 color: Material.foreground
-            }
-        }
-
-        ExtendedButton {
-            tooltip: "Sync active. If off (exclamation point), requested actions happen instantly."
-            id: sync_active_button
-            height: 40
-            width: 30
-            property bool sync_active_base: registries.state_registry.sync_active
-            onClicked: registries.state_registry.set_sync_active(!sync_active_base)
-            property bool sync_active : {
-                var rval = sync_active_base
-                if (key_modifiers.control_pressed) { rval = !rval }
-                return rval
-            }
-
-            highlighted : !sync_active
-
-            MaterialDesignIcon {
-                size: Math.min(parent.width, parent.height) - 10
-                anchors.centerIn: parent
-                name: sync_active_button.sync_active ? 'timer-sand' : 'exclamation';
-                color: Material.foreground
-            }
-        }
-
-        ExtendedButton {
-            tooltip: "Solo active. If on (highlighted), requested transitions to loop(s) will stop other loop(s) in the same track(s)."
-            id: solo_active_button
-            height: 40
-            width: 30
-            property bool solo_active_base: registries.state_registry.solo_active
-            onClicked: registries.state_registry.set_solo_active(!solo_active_base)
-            property bool solo_active : {
-                var rval = solo_active_base
-                if (key_modifiers.shift_pressed) { rval = !rval }
-                return rval
-            }
-
-            highlighted : solo_active
-
-            Label {
-                text: 'S'
-                anchors.centerIn: parent
-                font.pixelSize: 18
-                font.weight: Font.Medium
-            }
-        }
-
-        ExtendedButton {
-            tooltip: "Play-after-record active. If on (highlighted), a fixed-length record or ringbuffer grab action will automatically transition to playback."
-            id: play_after_record_active_button
-            height: 40
-            width: 30
-            property bool play_after_record_active_base: registries.state_registry.play_after_record_active
-            onClicked: registries.state_registry.set_play_after_record_active(!play_after_record_active_base)
-            property bool play_after_record_active : {
-                var rval = play_after_record_active_base
-                if (key_modifiers.alt_pressed) { rval = !rval }
-                return rval
-            }
-
-            highlighted : play_after_record_active
-
-            MaterialDesignIcon {
-                size: Math.min(parent.width, parent.height) - 10
-                anchors {
-                    left: parent.left
-                    top: parent.top
-                    topMargin: 8
-                    leftMargin: 2
-                }
-                name: 'record'
-                color: play_after_record_active_button.play_after_record_active ?
-                    'red' : 'grey'
-            }
-            MaterialDesignIcon {
-                size: Math.min(parent.width, parent.height) - 5
-                anchors {
-                    right: parent.right
-                    bottom: parent.bottom
-                    bottomMargin: 6
-                    rightMargin: -1
-                }
-                name: 'play'
-                color: play_after_record_active_button.play_after_record_active ?
-                    'green' : Material.foreground
             }
         }
 
@@ -366,6 +284,98 @@ Item {
                     anchors.centerIn: parent
                     text: 'hello world'
                 }
+            }
+        }
+
+        ToolSeparator {
+            orientation: Qt.Vertical
+            height: 40
+        }
+
+        ExtendedButton {
+            tooltip: "Play-after-record active. If on (highlighted), a fixed-length record or ringbuffer grab action will automatically transition to playback."
+            id: play_after_record_active_button
+            height: 40
+            width: 30
+            property bool play_after_record_active_base: registries.state_registry.play_after_record_active
+            onClicked: registries.state_registry.set_play_after_record_active(!play_after_record_active_base)
+            property bool play_after_record_active : {
+                var rval = play_after_record_active_base
+                if (key_modifiers.alt_pressed) { rval = !rval }
+                return rval
+            }
+
+            highlighted : play_after_record_active
+
+            MaterialDesignIcon {
+                size: Math.min(parent.width, parent.height) - 10
+                anchors {
+                    left: parent.left
+                    top: parent.top
+                    topMargin: 8
+                    leftMargin: 2
+                }
+                name: 'record'
+                color: play_after_record_active_button.play_after_record_active ?
+                    'red' : 'grey'
+            }
+            MaterialDesignIcon {
+                size: Math.min(parent.width, parent.height) - 5
+                anchors {
+                    right: parent.right
+                    bottom: parent.bottom
+                    bottomMargin: 6
+                    rightMargin: -1
+                }
+                name: 'play'
+                color: play_after_record_active_button.play_after_record_active ?
+                    'green' : Material.foreground
+            }
+        }
+
+        ExtendedButton {
+            tooltip: "Sync active. If off (exclamation point), requested actions happen instantly."
+            id: sync_active_button
+            height: 40
+            width: 30
+            property bool sync_active_base: registries.state_registry.sync_active
+            onClicked: registries.state_registry.set_sync_active(!sync_active_base)
+            property bool sync_active : {
+                var rval = sync_active_base
+                if (key_modifiers.control_pressed) { rval = !rval }
+                return rval
+            }
+
+            highlighted : sync_active
+
+            MaterialDesignIcon {
+                size: Math.min(parent.width, parent.height) - 10
+                anchors.centerIn: parent
+                name: sync_active_button.sync_active ? 'timer-sand' : 'exclamation';
+                color: Material.foreground
+            }
+        }
+
+        ExtendedButton {
+            tooltip: "Solo active. If on (highlighted), requested transitions to loop(s) will stop other loop(s) in the same track(s)."
+            id: solo_active_button
+            height: 40
+            width: 30
+            property bool solo_active_base: registries.state_registry.solo_active
+            onClicked: registries.state_registry.set_solo_active(!solo_active_base)
+            property bool solo_active : {
+                var rval = solo_active_base
+                if (key_modifiers.shift_pressed) { rval = !rval }
+                return rval
+            }
+
+            highlighted : solo_active
+
+            Label {
+                text: 'S'
+                anchors.centerIn: parent
+                font.pixelSize: 18
+                font.weight: Font.Medium
             }
         }
 
