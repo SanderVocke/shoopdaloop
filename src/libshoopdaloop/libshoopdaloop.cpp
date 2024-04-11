@@ -64,35 +64,43 @@ std::set<std::shared_ptr<BackendSession>> &get_active_backends() {
 
 // HELPER FUNCTIONS
 std::shared_ptr<BackendSession> internal_backend_session(shoop_backend_session_t *backend) {
+    if (!backend) { return nullptr; }
     return ((std::weak_ptr<BackendSession> *)backend)->lock();
 }
 
 std::shared_ptr<AudioMidiDriver> internal_audio_driver(shoop_audio_driver_t *driver) {
+    if (!driver) { return nullptr; }
     return ((std::weak_ptr<AudioMidiDriver> *)driver)->lock();
 }
 
 std::shared_ptr<GraphPort> internal_audio_port(shoopdaloop_audio_port_t *port) {
+    if (!port) { return nullptr; }
     return ((std::weak_ptr<GraphPort> *)port)->lock();
 }
 
 std::shared_ptr<GraphPort> internal_midi_port(shoopdaloop_midi_port_t *port) {
+    if (!port) { return nullptr; }
     return ((std::weak_ptr<GraphPort> *)port)->lock();
 }
 
 std::shared_ptr<GraphLoopChannel> internal_audio_channel(shoopdaloop_loop_audio_channel_t *chan) {
+    if (!chan) { return nullptr; }
     return ((std::weak_ptr<GraphLoopChannel> *)chan)->lock();
 }
 
 std::shared_ptr<GraphLoopChannel> internal_midi_channel(shoopdaloop_loop_midi_channel_t *chan) {
+    if (!chan) { return nullptr; }
     return ((std::weak_ptr<GraphLoopChannel> *)chan)->lock();
 }
 
 //TODO: make the handles point to globally stored weak pointers to avoid trying to access deleted shared object
 std::shared_ptr<GraphLoop> internal_loop(shoopdaloop_loop_t *loop) {
+    if (!loop) { return nullptr; }
     return ((std::weak_ptr<GraphLoop> *)loop)->lock();
 }
 
 std::shared_ptr<GraphFXChain> internal_fx_chain(shoopdaloop_fx_chain_t *chain) {
+    if (!chain) { return nullptr; }
     return ((std::weak_ptr<GraphFXChain> *)chain)->lock();
 }
 
