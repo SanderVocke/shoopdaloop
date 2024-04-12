@@ -156,8 +156,8 @@ LuaControlInterface {
     function loop_get_by_track_override(track_idx) {
         return select_loops((l) => l.track_idx == track_idx).map(((l) => [l.track_idx, l.idx_in_track]))
     }
-    function loop_transition_override(loop_selector, mode, cycles_delay, wait_for_sync) {
-        select_loops(loop_selector).forEach((h) => { h.transition(mode, cycles_delay, wait_for_sync) } )
+    function loop_transition_override(loop_selector, mode, maybe_cycles_delay, maybe_align_to_sync_at) {
+        select_loops(loop_selector).forEach((h) => { h.transition(mode, maybe_cycles_delay, maybe_align_to_sync_at) } )
     }
     function loop_trigger_override(loop_selector, mode) {
         select_loops(loop_selector).forEach((h) => { h.trigger_mode_button(mode) })

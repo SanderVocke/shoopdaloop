@@ -49,6 +49,13 @@ class ControlInterface(ControlHandler):
         [ 'KeyEventType_Pressed', KeyEventType.Pressed ],
         [ 'KeyEventType_Released', KeyEventType.Released ],
     ] + generate_keyboard_constants()
+
+    # @shoop_lua_enum_docstring.start
+    # shoop_control.constants.Loop_
+    # Special values to pass to loop functions.
+    # DontWaitForSync
+    # DontAlignToSyncImmediately
+    # @shoop_lua_enum_docstring.end
     
     def __init__(self, parent=None):
         super(ControlInterface, self).__init__(parent)

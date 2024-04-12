@@ -79,6 +79,9 @@ class FXChainType(Enum):
     Carla_Patchbay_16x = bindings.Carla_Patchbay_16x
     Test2x2x1 = bindings.Test2x2x1
 
+DontWaitForSync = -1
+DontAlignToSyncImmediately = -1
+
 @dataclass
 class FXChainState:
     visible : bool
@@ -593,17 +596,20 @@ class BackendLoop:
             return rval
         return None
 
-    def transition(self, to_state : Type['LoopMode'],
-                   cycles_delay : int, wait_for_sync : bool):
+    def transition(self,
+                   to_state : Type['LoopMode'],
+                   maybe_cycles_delay : int,
+                   maybe_to_sync_at_cycle : int):
         if self.available():
             bindings.loop_transition(self.shoop_c_handle,
                                     to_state.value,
-                                    cycles_delay,
-                                    wait_for_sync)
+                                    maybe_cycles_delay,
+                                    maybe_to_sync_at_cycle)
     
     # Static version for multiple loops
     def transition_multiple(loops, to_state : Type['LoopMode'],
-                   cycles_delay : int, wait_for_sync : bool):
+                   maybe_cycles_delay : int,
+                   maybe_to_sync_at_cycle : int):
         if len(loops) == 0:
             return
         backend = loops[0]._backend
@@ -615,8 +621,8 @@ class BackendLoop:
             bindings.loops_transition(len(loops),
                                     handles,
                                     to_state.value,
-                                    cycles_delay,
-                                    wait_for_sync)
+                                    maybe_cycles_delay,
+                                    maybe_to_sync_at_cycle)
             del handles
     
     def get_state(self):

@@ -151,7 +151,7 @@ TEST_CASE("Chain - Direct playback MIDI basic", "[chain][midi]") {
     load_midi_channel_data(tst.api_midi_chan, sequence);
     destroy_midi_sequence(sequence);
     set_loop_length(tst.api_loop, 30);
-    loop_transition(tst.api_loop, LoopMode_Playing, 0, false);
+    loop_transition(tst.api_loop, LoopMode_Playing, -1, -1);
 
     tst.int_dummy_midi_output_port->request_data(50);
     tst.int_driver->controlled_mode_request_samples(30);
@@ -200,7 +200,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - one cycle", "[chain][audio]")
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
     tst.int_sync_loop->loop->set_length(3, true);
-    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, -1, -1);
 
     tst.int_driver->controlled_mode_request_samples(7); // Two cycles and 1 sample
     tst.int_driver->controlled_mode_run_request();
@@ -228,7 +228,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - current cycle", "[chain][audi
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
     tst.int_sync_loop->loop->set_length(3, true);
-    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, -1, -1);
 
     tst.int_driver->controlled_mode_request_samples(8); // Two cycles and 2 samples
     tst.int_driver->controlled_mode_run_request();
@@ -256,7 +256,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - prev cycle", "[chain][audio]"
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
     tst.int_sync_loop->loop->set_length(2, true);
-    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, -1, -1);
 
     tst.int_driver->controlled_mode_request_samples(7); // Three cycles and 1 sample
     tst.int_driver->controlled_mode_run_request();
@@ -284,7 +284,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - prev 2 cycles", "[chain][audi
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
     tst.int_sync_loop->loop->set_length(2, true);
-    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, -1, -1);
 
     tst.int_driver->controlled_mode_request_samples(7); // Three cycles and 1 sample
     tst.int_driver->controlled_mode_run_request();

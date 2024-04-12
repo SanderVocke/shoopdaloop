@@ -17,6 +17,8 @@ Item {
     property string obj_id : 'unknown'
     property var loop_widget : null
 
+    onObj_idChanged: instanceIdentifier = obj_id
+
     readonly property bool initialized: true
 
     // set internally
@@ -348,8 +350,8 @@ Item {
 
     property var sync_loop : registries.state_registry.sync_loop
 
-    function transition(mode, delay, wait_for_sync) {
-        py_loop.transition(mode, delay, wait_for_sync)
+    function transition(mode, maybe_delay, maybe_align_to_sync_at) {
+        py_loop.transition(mode, maybe_delay, maybe_align_to_sync_at)
     }
 
     function actual_composition_descriptor() {
@@ -363,5 +365,9 @@ Item {
     function clear() {
         playlists_in = []
         playlists_inChanged()
+    }
+
+    function adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode) {
+        py_loop.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
     }
 }

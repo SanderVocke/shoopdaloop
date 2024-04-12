@@ -13,9 +13,16 @@ function loops_input(_default='selection') {
 
 function delay_input(_default='0') {
     return {
-      'description': 'Delay by # of sync loop cycles',
+      'description': 'Delay by # of sync loop cycles (-1 is instant)',
       'default': _default,
     }
+}
+
+function align_input(_default='-1') {
+  return {
+    'description': 'Immediately force align to the sync loop at cycle # (-1 is disable)',
+    'default': _default,
+  }
 }
 
 function mode_input(_default='stopped') {
@@ -74,11 +81,12 @@ const builtin_actions = ({
     },
     'Loop Transition': {
         'description': 'Transition loop(s) to a mode',
-        'script': 'shoop_control.loop_transition(loops, mode, delay_cycles)',
+        'script': 'shoop_control.loop_transition(loops, mode, maybe_delay_cycles, maybe_align_with_sync_cycle)',
         'inputs': {
           'loops': loops_input('selection'),
           'mode': mode_input('stopped'),
-          'delay_cycles': delay_input('0')
+          'maybe_delay_cycles': delay_input('0'),
+          'maybe_align_with_sync_cycle': align_input('-1')
         }
     },
     'Move Selection': {

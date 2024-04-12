@@ -48,15 +48,21 @@ SHOOP_EXPORT void              set_loop_length          (shoopdaloop_loop_t *loo
 SHOOP_EXPORT void              set_loop_position        (shoopdaloop_loop_t *loop, unsigned position);
 SHOOP_EXPORT void              set_loop_sync_source     (shoopdaloop_loop_t *loop, shoopdaloop_loop_t *sync_source);
 SHOOP_EXPORT void              adopt_ringbuffer_contents(shoopdaloop_loop_t *loop, int reverse_cycles_start, int cycles_length, int go_to_cycle, shoop_loop_mode_t go_to_mode);
+// Transition loop(s).
+// maybe_delay is given in # of triggers to wait before transitioning.
+//   when -1 is given, the delay is instant and does not take into account the sync source.
+// maybe_to_sync_at_cycle is ignored if it is negative. If it is >= 0, the transition will
+//   be instantaneous, and the position will be set to the Nth loop cycle plus the current
+//   sync source position. In other words: the loop will be in sync with the sync source.
 SHOOP_EXPORT void loop_transition(shoopdaloop_loop_t *loop,
                       shoop_loop_mode_t mode,
-                      unsigned delay, // In # of triggers
-                      unsigned wait_for_sync);
+                      int maybe_delay,
+                      int maybe_to_sync_at_cycle);
 SHOOP_EXPORT void loops_transition(unsigned int n_loops,
                       shoopdaloop_loop_t **loops,
                       shoop_loop_mode_t mode,
-                      unsigned delay, // In # of triggers
-                      unsigned wait_for_sync);
+                      int maybe_delay,
+                      int maybe_to_sync_at_cycle);
 
 // Loop channels
 SHOOP_EXPORT void                   clear_audio_channel      (shoopdaloop_loop_audio_channel_t *channel, unsigned length);

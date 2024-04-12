@@ -78,7 +78,7 @@ ShoopTestFile {
             }
 
             function reset_loop(loopwidget) {
-                loopwidget.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                loopwidget.transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                 testcase.wait_updated(session.backend)
                 loopwidget.clear(0)
                 session.backend.wait_process()
@@ -98,7 +98,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = false
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -120,7 +120,7 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
 
                     // Data should now be in channel. Switch to playback.
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     midi_output_port.dummy_request_data(6)
@@ -147,13 +147,13 @@ ShoopTestFile {
 
                     // Set sync loop so that it will trigger in 2 frames from now
                     syncloop.set_length(4)
-                    syncloop.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    syncloop.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_run_requested_frames()
 
                     // Set main loop to record (will pre-record, then transition @ sync)
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, true)
+                    lut.transition(ShoopConstants.LoopMode.Recording, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -173,7 +173,7 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
 
                     // Data should now be in channel. Switch to playback.
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     midi_output_port.dummy_request_data(4)
@@ -204,13 +204,13 @@ ShoopTestFile {
 
                     // Set sync loop so that it will trigger in 20 frames from now
                     syncloop.set_length(20)
-                    syncloop.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    syncloop.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)
                     session.backend.dummy_run_requested_frames()
 
                     // Set main loop to record (will pre-record, then transition @ sync)
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, true)
+                    lut.transition(ShoopConstants.LoopMode.Recording, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -231,7 +231,7 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
 
                     // Data should now be in channel. Switch to playback.
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     midi_output_port.dummy_request_data(40)
@@ -259,7 +259,7 @@ ShoopTestFile {
                     verify_eq(chan.get_recorded_midi_msgs(), input, null, true)
                     verify_eq(out, expect_output, null, true)
 
-                    lut.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)
                     session.backend.dummy_run_requested_frames()
@@ -283,7 +283,7 @@ ShoopTestFile {
                                 20,
                                 false)
 
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     midi_output_port.dummy_request_data(40)
                     session.backend.dummy_request_controlled_frames(40)
@@ -315,14 +315,14 @@ ShoopTestFile {
                     // Process 6 frames (nothing, then record)
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_run_requested_frames()
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
                     // NoteOn should now be in state, NoteOff should be in the
                     // recording. Start playback.
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     midi_output_port.dummy_request_data(4)
@@ -345,7 +345,7 @@ ShoopTestFile {
                     // playback behavior is still the same.
 
                     // First stop for a while
-                    lut.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)
                     session.backend.dummy_run_requested_frames()
@@ -367,7 +367,7 @@ ShoopTestFile {
                                 0,
                                 false)
 
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)

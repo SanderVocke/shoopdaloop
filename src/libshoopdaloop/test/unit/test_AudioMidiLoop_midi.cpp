@@ -934,7 +934,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     channel.PROC_set_recording_buffer(&source_buf, 512);
 
     // Plan recording (pre-record starts), record will start after 10 frames
-    loop.plan_transition(LoopMode_Recording, 0, true, false);
+    loop.plan_transition(LoopMode_Recording, 0, std::nullopt, false);
 
     // Note On is prerecorded
     process(10);
@@ -971,12 +971,12 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     channel.set_pre_play_samples(6);
 
     // Stop for a while
-    loop.plan_transition(LoopMode_Stopped, 0, false, false);
+    loop.plan_transition(LoopMode_Stopped, std::nullopt, std::nullopt, false);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt); // sanity check
     process(50);
 
     // Plan playback
-    loop.plan_transition(LoopMode_Playing, 0, true, false);
+    loop.plan_transition(LoopMode_Playing, 0, std::nullopt, false);
 
     // process 10 samples. That should cover the pre-play period.
     // NoteOn is played.
@@ -1072,7 +1072,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
     channel.PROC_set_recording_buffer(&source_buf, 512);
 
     // Plan recording (pre-record starts), record will start after 10 frames
-    loop.plan_transition(LoopMode_Recording, 0, true, false);
+    loop.plan_transition(LoopMode_Recording, 0, std::nullopt, false);
 
     // Note On is prerecorded
     process(10);
@@ -1106,12 +1106,12 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
     CHECK(contents[3].get_data()[0] == 0x80);
 
     // Stop for a while
-    loop.plan_transition(LoopMode_Stopped, 0, false, false);
+    loop.plan_transition(LoopMode_Stopped, std::nullopt, std::nullopt, false);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt); // sanity check
     process(50);
 
     // Plan playback
-    loop.plan_transition(LoopMode_Playing, 0, true, false);
+    loop.plan_transition(LoopMode_Playing, 0, std::nullopt, false);
 
     // process 10 samples. That should cover the pre-play period.
     // Nothing is played because no pre-play is enabled.
