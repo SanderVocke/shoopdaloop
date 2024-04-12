@@ -374,6 +374,23 @@ class CompositeLoop(FindParentBackend):
                 for t in ts:
                     str = str + f'\n - iteration {iteration}: {t["loop"].instanceIdentifier} -> {t["mode"]}'
             self.logger.trace(lambda: str)
+        
+        # Find the last transition for each loop up until this point.
+        last_loop_transitions = {}
+        for it,ts in transitions.items():
+            for t in ts:
+                last_loop_transitions[t['loop']] = {'mode': t['mode'], 'iteration': it}
+        
+        # Get all the currently active loops into their correct mode and cycle.
+        for t in last_loop_transitions:
+            n_cycles_ago = sync_cycle - t['iteration']
+            loop = t['loop']
+            n_cycles = loop.n_cycles
+            
+            current_cycle = None
+            if t['mode'] in [LoopMode.Playing.value, LoopMode.Replacing.value, LoopMode.PlayingDryThroughWet.value]:
+                current_cycle = n_cycles_ago % n_cycles
+                
 
         # new_loop_modes = {}
         # new_loop_cycle_pos = {}
