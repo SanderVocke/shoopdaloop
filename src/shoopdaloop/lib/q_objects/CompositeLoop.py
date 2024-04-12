@@ -84,7 +84,19 @@ class CompositeLoop(FindParentBackend):
     def schedule(self, val):
         # The schedule may arrive as a JSValue and loops in the schedule may be JSValues too
         val = recursively_convert_jsvalue(val)
-        self.logger.trace(lambda: f'schedule -> {val}')
+        def stringify_schedule (schedule):
+            rval = ''
+            for iteration,elem in schedule.items():
+                rval += f'{iteration}:'
+                for to_stop in elem['loops_end']:
+                    rval += f'\n- {to_stop.instanceIdentifier} -> Stopped'
+                for to_start in elem['loops_start']:
+                    rval += f'\n- {to_start[0].instanceIdentifier} -> {to_start[1] if to_start[1] != None else "Autostart"}'
+                for to_ignore in elem['loops_ignored']:
+                    rval += f'\n- {to_ignore.instanceIdentifier} ignored'
+            return rval
+
+        self.logger.trace(lambda: f'schedule updated:\n{stringify_schedule(val)}')
         self._schedule = val
         self.scheduleChangedUnsafe.emit(self._schedule)
         n = (max([int(k) for k in self._schedule.keys()]) if self._schedule else 0)
@@ -341,17 +353,18 @@ class CompositeLoop(FindParentBackend):
         schedule = self._schedule
         sched_keys = [int(i) for i in schedule.keys()]
         for i in range(sched_keys[-1] + 1):
-            if i >= sync_cycle:
-                break
+            self.logger.trace(lambda: f'immediate sync: handle virtual cycle {i}')
             
             for k in new_loop_cycle_pos.keys():
                 new_loop_cycle_pos[k] += 1
+                self.logger.trace(lambda: f'immediate sync: virtual loop cycle {loop.instanceIdentifier} -> {new_loop_cycle_pos[k]}')
 
             if i in sched_keys:
                 elem = schedule[str(i)]
                 loops_end = elem['loops_end']
                 loops_start = elem['loops_start']
                 for loop in loops_end:
+                    self.logger.trace(lambda: f'immediate sync: virtual stop loop {loop.instanceIdentifier}')
                     new_loop_modes[loop] = LoopMode.Stopped.value
                     del new_loop_cycle_pos[loop]
                 for entry in loops_start:
@@ -360,18 +373,26 @@ class CompositeLoop(FindParentBackend):
                     if loop_mode == None:
                         # Automatic
                         loop_mode = mode
+                    self.logger.trace(lambda: f'immediate sync: virtual start loop {loop.instanceIdentifier}, mode {loop_mode}')
                     new_loop_modes[loop] = loop_mode
                     new_loop_cycle_pos[loop] = 0
-        for l in [l for l in self._running_loops if l not in new_loop_modes]:
-            new_loop_modes[l] = LoopMode.Stopped.value
+            
+            if i >= sync_cycle:
+                break
+            
+        for loop in [l for l in self._running_loops if l not in new_loop_modes]:
+            self.logger.trace(lambda: f'immediate sync: stop unhandled running loop {loop.instanceIdentifier}')
+            new_loop_modes[loop] = LoopMode.Stopped.value
         
         for loop,loop_mode in new_loop_modes.items():
             sync_align = DontAlignToSyncImmediately if loop not in new_loop_cycle_pos else new_loop_cycle_pos[loop]
+            self.logger.trace(lambda: f'immediate sync: final transition {loop.instanceIdentifier} -> mode {loop_mode}, cycle {sync_align}')
             loop.transition(loop_mode, DontWaitForSync, sync_align)
         
         self.mode = mode
         self.iteration = sync_cycle
         self.do_triggers(self.iteration + 1, mode)
+        self.logger.trace(lambda: f'immediate sync: Done - mode -> {mode}, iteration -> {sync_cycle}')
     
     @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def handle_sync_loop_trigger(self):
@@ -435,7 +456,7 @@ class CompositeLoop(FindParentBackend):
     def do_triggers(self, iteration, mode):
         schedule = self._schedule
         sched_keys = [int(k) for k in schedule.keys()]
-        self.logger.debug(lambda: f'{self.kind} do_triggers({iteration}, {mode})')
+        self.logger.debug(lambda: f'{self.kind} composite loop - do_triggers({iteration}, {mode})')
         if iteration in sched_keys:
             elem = schedule[str(iteration)]
             loops_end = elem['loops_end']
@@ -478,7 +499,7 @@ class CompositeLoop(FindParentBackend):
                         if handled:
                             continue
 
-                    self.logger.debug(lambda: f'loop start: {loop}')
+                    self.logger.debug(lambda: f'loop start: {loop.instanceIdentifier}')
                     loop.transition(loop_mode, 0, DontAlignToSyncImmediately)
                     self._running_loops.add(loop)
                     self.runningLoopsChangedUnsafe.emit(self._running_loops)

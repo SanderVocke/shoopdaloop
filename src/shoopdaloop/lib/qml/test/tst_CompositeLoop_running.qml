@@ -930,8 +930,9 @@ ShoopTestFile {
 
                     process(50); // sync loop is playing
 
-                    // trigger the composite loop to start in cycle 5 (last cycle of second playlist item)
-                    c().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, 5)
+                    // trigger the composite loop to start in the 5th cycle (last cycle of second playlist item)
+                    // the transition should be immediate
+                    c().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, 4)
                     testcase.wait_updated(session.backend)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // m
@@ -939,7 +940,11 @@ ShoopTestFile {
                                   ShoopConstants.LoopMode.Playing, // l2
                                   ShoopConstants.LoopMode.Stopped, // l3
                                   ShoopConstants.LoopMode.Playing, // c
-                                  50, 0, 250, 0, 550)
+                                  50, 0, 250, 0, 450)
+                    verify_eq(l2().next_mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(l2().next_transition_delay, 0)
+                    verify_eq(l3().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l3().next_transition_delay, 0)
 
                     process(100) // middle of last playlist item
 
@@ -948,7 +953,7 @@ ShoopTestFile {
                                   ShoopConstants.LoopMode.Stopped, // l2
                                   ShoopConstants.LoopMode.Playing, // l3
                                   ShoopConstants.LoopMode.Playing, // c
-                                  50, 0, 0, 50, 650)
+                                  50, 0, 0, 50, 550)
                 }
             })
         }
