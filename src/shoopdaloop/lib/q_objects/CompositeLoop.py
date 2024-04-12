@@ -379,20 +379,38 @@ class CompositeLoop(FindParentBackend):
             
             if i >= sync_cycle:
                 break
-            
+
         for loop in [l for l in self._running_loops if l not in new_loop_modes]:
             self.logger.trace(lambda: f'immediate sync: stop unhandled running loop {loop.instanceIdentifier}')
             new_loop_modes[loop] = LoopMode.Stopped.value
         
+        # Now apply the found mode changes all at once
         for loop,loop_mode in new_loop_modes.items():
             sync_align = DontAlignToSyncImmediately if loop not in new_loop_cycle_pos else new_loop_cycle_pos[loop]
             self.logger.trace(lambda: f'immediate sync: final transition {loop.instanceIdentifier} -> mode {loop_mode}, cycle {sync_align}')
             loop.transition(loop_mode, DontWaitForSync, sync_align)
         
+        # Apply our own mode change
         self.mode = mode
         self.iteration = sync_cycle
-        self.do_triggers(self.iteration + 1, mode)
         self.logger.trace(lambda: f'immediate sync: Done - mode -> {mode}, iteration -> {sync_cycle}')
+
+        # Perform the trigger(s) for the next loop cycle
+        iteration_to_trigger = self.iteration + 1
+        self.do_triggers(iteration_to_trigger, mode)
+        if iteration_to_trigger >= self.n_cycles:
+            if self.kind == 'script' and not (self.next_transition_delay >= 0 and is_running_mode(self.next_mode)):
+                self.logger.debug(lambda: f'immediate sync: ending script {self.mode} {self.next_mode} {self.next_transition_delay}')
+                self.transition_impl(LoopMode.Stopped.value, 0, DontAlignToSyncImmediately)
+                iteration_to_trigger = None
+            elif is_recording_mode(self.mode):
+                self.logger.debug(lambda: 'immediate sync: recording to playing')
+                # Recording ends next cycle, transition to playing
+                self.transition_impl(LoopMode.Playing.value, 0, DontAlignToSyncImmediately)
+                iteration_to_trigger = None
+            else:
+                self.logger.debug(lambda: 'immediate sync: cycling')
+                self.do_triggers(0, mode)
     
     @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def handle_sync_loop_trigger(self):
