@@ -9,11 +9,11 @@ from .ShoopPyObject import *
 
 from ..backend_wrappers import *
 from ..mode_helpers import is_playing_mode, is_running_mode, is_recording_mode
-from ..q_objects.Backend import Backend
-from ..q_objects.Logger import Logger
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from ..recursive_jsvalue_convert import recursively_convert_jsvalue
+from ..q_objects.Backend import Backend
+from ..q_objects.Logger import Logger
 
 from collections.abc import Mapping, Sequence
 
@@ -243,6 +243,17 @@ class CompositeLoop(FindParentBackend):
     # sync_position
     syncPositionChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
     syncPositionChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
+
+    # instanceIdentifier (for clarity in debugging)
+    instanceIdentifierChanged = ShoopSignal(str)
+    @ShoopProperty(str, notify=instanceIdentifierChanged, thread_protection=ThreadProtectionType.AnyThread)
+    def instanceIdentifier(self):
+        return self.logger.instanceIdentifier
+    @instanceIdentifier.setter
+    def instanceIdentifier(self, l):
+        if l and l != self.logger.instanceIdentifier:
+            self.logger.instanceIdentifier = l
+            self.instanceIdentifierChanged.emit(l)
     
     @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
     def update_sync_position_with_value(self, v):

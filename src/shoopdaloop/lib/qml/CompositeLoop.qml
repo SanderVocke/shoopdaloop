@@ -17,6 +17,8 @@ Item {
     property string obj_id : 'unknown'
     property var loop_widget : null
 
+    onObj_idChanged: instanceIdentifier = obj_id
+
     readonly property bool initialized: true
 
     // set internally
