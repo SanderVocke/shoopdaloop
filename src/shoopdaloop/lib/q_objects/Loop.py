@@ -142,7 +142,7 @@ class Loop(FindParentBackend):
     
     # synchronization source loop
     syncSourceChanged = ShoopSignal('QVariant')
-    @ShoopProperty('QVariant', notify=syncSourceChanged)
+    @ShoopProperty('QVariant', notify=syncSourceChanged, thread_protection=ThreadProtectionType.AnyThread)
     def sync_source(self):
         return self._sync_source
     @sync_source.setter
