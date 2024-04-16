@@ -441,11 +441,7 @@ Item {
         if (!root.maybe_loop) {
             create_backend_loop()
         }
-        if (root.maybe_backend_loop) {
-            root.maybe_backend_loop.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
-        } else if (root.maybe_composite_loop) {
-            root.maybe_composite_loop.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
-        }
+        maybe_loop.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
     }
 
     anchors {

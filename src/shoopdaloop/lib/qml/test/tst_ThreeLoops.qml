@@ -1252,7 +1252,7 @@ ShoopTestFile {
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
                     verify_eq(first_loop().position, 0)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
-                }
+                },
             })
         }
     }

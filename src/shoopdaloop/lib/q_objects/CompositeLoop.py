@@ -438,8 +438,49 @@ class CompositeLoop(FindParentBackend):
         self._pending_cycles += 1
 
     @ShoopSlot('QVariant', 'QVariant', 'QVariant', int)
-    def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
-        pass
+    def adopt_ringbuffers(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
+        self.logger.trace(lambda: f'adopt ringbuffer and go to cycle {go_to_cycle}, go to mode {go_to_mode}')
+
+        # Proceed through the schedule up to the point we want to go by calling our trigger function with a callback just
+        # recording the transitions.
+        transitions = self.list_transitions(LoopMode.Recording.value, 0, self._n_cycles)
+
+        if self.logger.should_trace():
+            str = 'ringbuffer grab - virtual transition list:'
+            for iteration,ts in transitions.items():
+                for t in ts:
+                    str = str + f'\n - iteration {iteration}: {t["loop"].instanceIdentifier} -> {t["mode"]}'
+            self.logger.trace(lambda: str)
+        
+        # Find the first recording range for each loop.
+        loop_recording_starts = {}
+        loop_recording_ends = {}
+        for it,ts in transitions.items():
+            for t in ts:
+                if t['mode'] == LoopMode.Recording.value:
+                    # Store only the first recording start.
+                    loop_recording_starts[t['loop']] = min(
+                        it,
+                        loop_recording_starts[t['loop']]
+                    ) if t['loop'] in loop_recording_starts.keys() else it
+        for it,ts in transitions.items():
+            for t in ts:
+                if t['mode'] != LoopMode.Recording.value and t['loop'] in loop_recording_starts.keys() and it > loop_recording_starts[t['loop']]:
+                    loop_recording_ends[t['loop']] = min(
+                        it,
+                        loop_recording_ends[t['loop']]
+                    ) if t['loop'] in loop_recording_ends.keys() else it
+        
+        to_grab = []
+        for loop,start_it in loop_recording_starts.items():
+            end_it = (loop_recording_ends[loop] if loop in loop_recording_ends.keys() else self._n_cycles)
+            grab_n = max(end_it - start_it, 1)
+            reverse_start_offset = self._n_cycles - start_it
+            to_grab.append({'loop': loop, 'reverse_start': reverse_start_offset, 'n': grab_n})
+            self.logger.trace(f"to grab: {loop.instanceIdentifier} @ reverse start {reverse_start_offset}, n = {grab_n}")
+
+        for item in to_grab:
+            item['loop'].adopt_ringbuffers(item['reverse_start'], item['n'], 0, LoopMode.Unknown.value)
 
     def handle_sync_loop_trigger_impl(self):
         self.logger.debug(lambda: 'handle sync cycle')
