@@ -43,6 +43,7 @@ class CompositeLoop(FindParentBackend):
         self._pending_cycles = 0
         self._backend = None
         self._initialized = False
+        self._play_after_record = False
 
         self.scheduleChangedUnsafe.connect(self.scheduleChanged, Qt.QueuedConnection)
         self.nCyclesChangedUnsafe.connect(self.nCyclesChanged, Qt.QueuedConnection)
@@ -56,6 +57,7 @@ class CompositeLoop(FindParentBackend):
         self.kindChangedUnsafe.connect(self.kindChanged, Qt.QueuedConnection)
         self.lengthChangedUnsafe.connect(self.lengthChanged, Qt.QueuedConnection)
         self.positionChangedUnsafe.connect(self.positionChanged, Qt.QueuedConnection)
+        self.playAfterRecordChangedUnsafe.connect(self.playAfterRecordChanged, Qt.QueuedConnection)
         
         self.syncLoopChanged.connect(self.update_sync_position, Qt.QueuedConnection)
         self.syncLoopChanged.connect(self.update_sync_length, Qt.QueuedConnection)
@@ -166,6 +168,19 @@ class CompositeLoop(FindParentBackend):
             self.logger.debug(lambda: f'iteration -> {val}')
             self._iteration = val
             self.iterationChangedUnsafe.emit(self._iteration)
+
+    # play_after_record
+    playAfterRecordChangedUnsafe = ShoopSignal(bool, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
+    playAfterRecordChanged = ShoopSignal(bool) # on GUI thread only, for e.g. bindings
+    @ShoopProperty(int, notify=playAfterRecordChanged, thread_protection=ThreadProtectionType.AnyThread)
+    def play_after_record(self):
+        return self._play_after_record
+    @play_after_record.setter
+    def play_after_record(self, val):
+        if self._play_after_record != val:
+            self.logger.debug(lambda: f'play after record -> {val}')
+            self._play_after_record = val
+            self.playAfterRecordChangedUnsafe.emit(self._play_after_record)
 
     # mode
     modeChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
@@ -397,17 +412,12 @@ class CompositeLoop(FindParentBackend):
             mode = elem['mode']
             
             current_cycle = None
-            if t['mode'] in [LoopMode.Playing.value, LoopMode.Replacing.value, LoopMode.PlayingDryThroughWet.value]:
+            if t['mode'] in [LoopMode.Playing.value, LoopMode.Replacing.value, LoopMode.PlayingDryThroughWet.value, LoopMode.RecordingDryIntoWet]:
                 # loop around
                 current_cycle = n_cycles_ago % n_cycles
             elif t['mode'] == LoopMode.Recording.value:
                 # keep going indefinitely
                 current_cycle = n_cycles_ago
-            elif t['mode'] == LoopMode.RecordingDryIntoWet.value:
-                # loop around once, then go to playing
-                if n_cycles >= n_cycles:
-                    mode = LoopMode.Playing.value
-                current_cycle = n_cycles_ago % n_cycles
             
             self.logger.trace(lambda: f'loop {loop.instanceIdentifier} -> {mode}, goto cycle {current_cycle} ({elem["mode"]} triggered {n_cycles_ago} cycles ago, loop length {n_cycles} cycles)')
             loop.transition(mode, DontWaitForSync,
@@ -417,24 +427,11 @@ class CompositeLoop(FindParentBackend):
         # Apply our own mode change
         self.mode = mode
         self.iteration = sync_cycle
-        self.logger.trace(lambda: f'immediate sync: Done - mode -> {mode}, iteration -> {sync_cycle}')
+        self.update_length()
+        self.logger.trace(lambda: f'immediate sync: Done - mode -> {mode}, iteration -> {sync_cycle}, position -> {self._position}')
 
         # Perform the trigger(s) for the next loop cycle
-        iteration_to_trigger = self.iteration + 1
-        self.do_triggers(iteration_to_trigger, mode)
-        if iteration_to_trigger >= self.n_cycles:
-            if self.kind == 'script' and not (self.next_transition_delay >= 0 and is_running_mode(self.next_mode)):
-                self.logger.debug(lambda: f'immediate sync: ending script {self.mode} {self.next_mode} {self.next_transition_delay}')
-                self.transition_impl(LoopMode.Stopped.value, 0, DontAlignToSyncImmediately)
-                iteration_to_trigger = None
-            elif is_recording_mode(self.mode):
-                self.logger.debug(lambda: 'immediate sync: recording to playing')
-                # Recording ends next cycle, transition to playing
-                self.transition_impl(LoopMode.Playing.value, 0, DontAlignToSyncImmediately)
-                iteration_to_trigger = None
-            else:
-                self.logger.debug(lambda: 'immediate sync: cycling')
-                self.do_triggers(0, mode)
+        self.do_triggers(self.iteration + 1, mode)
     
     @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def handle_sync_loop_trigger(self):
@@ -542,9 +539,9 @@ class CompositeLoop(FindParentBackend):
                 self.logger.debug(lambda: f'ending script {self.mode} {self.next_mode} {self.next_transition_delay}')
                 trigger_callback(self, LoopMode.Stopped.value)
             elif is_recording_mode(self.mode):
-                self.logger.debug(lambda: 'cycle: recording to playing')
-                # Recording ends next cycle, transition to playing
-                trigger_callback(self, LoopMode.Playing.value)
+                self.logger.debug(lambda: 'cycle: recording end')
+                # Recording ends next cycle, transition to playing or stopped
+                trigger_callback(self, (LoopMode.Playing.value if self._play_after_record else LoopMode.Stopped.value))
             else:
                 self.logger.debug(lambda: 'cycling')
                 # Will cycle around - trigger the actions for next cycle

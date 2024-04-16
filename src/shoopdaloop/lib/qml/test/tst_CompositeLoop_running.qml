@@ -1083,7 +1083,207 @@ ShoopTestFile {
                                   ShoopConstants.LoopMode.Stopped, // l3
                                   ShoopConstants.LoopMode.Playing, // c
                                   50, 50, 0, 0, 50)
-                }
+                },
+
+                'test_transition_with_instant_sync_change_cycle': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+
+                    l1().create_backend_loop()
+                    l2().create_backend_loop()
+                    l3().create_backend_loop()
+                    m().create_backend_loop()
+
+                    testcase.wait_updated(session.backend)
+
+                    l1().set_length(200)
+                    l2().set_length(300)
+                    l3().set_length(100)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l3().obj_id, 'delay': 0 }]
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                0, 0, 0, 0, 0)
+
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+
+                    process(50); // sync loop is playing
+
+                    // trigger the composite loop to start in the 2nd cycle.
+                    // the transition should be immediate
+                    c().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, 1)
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                  ShoopConstants.LoopMode.Playing, // l1
+                                  ShoopConstants.LoopMode.Stopped, // l2
+                                  ShoopConstants.LoopMode.Stopped, // l3
+                                  ShoopConstants.LoopMode.Playing, // c
+                                  50, 150, 0, 0, 150)
+                    
+                    // trigger the composite loop to start in the last cycle.
+                    // the transition should be immediate
+                    c().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, 5)
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                  ShoopConstants.LoopMode.Stopped, // l1
+                                  ShoopConstants.LoopMode.Stopped, // l2
+                                  ShoopConstants.LoopMode.Playing, // l3
+                                  ShoopConstants.LoopMode.Playing, // c
+                                  50, 0, 0, 50, 550)
+                },
+
+                'test_transition_with_instant_sync_play_after_record': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+
+                    l1().create_backend_loop()
+                    l2().create_backend_loop()
+                    l3().create_backend_loop()
+                    m().create_backend_loop()
+
+                    registries.state_registry.set_play_after_record_active(true)
+
+                    testcase.wait_updated(session.backend)
+
+                    l1().set_length(100)
+                    l2().set_length(100)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                0, 0, 0, 0, 0)
+
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+
+                    process(50); // sync loop is playing
+
+                    // trigger the composite loop to start in the last cycle.
+                    // the transition should be immediate.
+                    // l2 should be recording still, and the cycle after, all
+                    // should be playing.
+                    c().transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, 1)
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing,   // m
+                                  ShoopConstants.LoopMode.Stopped,   // l1
+                                  ShoopConstants.LoopMode.Recording, // l2
+                                  ShoopConstants.LoopMode.Stopped,   // l3
+                                  ShoopConstants.LoopMode.Recording, // c
+                                  50, 0, 0, 0, 150,
+                                  100, 100, 50, 0, 200)
+                    
+                    process(100) // first cycle of next composite iteration
+
+                    verify_states(ShoopConstants.LoopMode.Playing,   // m
+                                  ShoopConstants.LoopMode.Playing,   // l1
+                                  ShoopConstants.LoopMode.Stopped,   // l2
+                                  ShoopConstants.LoopMode.Stopped,   // l3
+                                  ShoopConstants.LoopMode.Playing, // c
+                                  50, 50, 0, 0, 50,
+                                  100, 100, 100, 0, 200)
+                },
+
+                'test_transition_with_instant_sync_no_play_after_record': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+
+                    l1().create_backend_loop()
+                    l2().create_backend_loop()
+                    l3().create_backend_loop()
+                    m().create_backend_loop()
+
+                    registries.state_registry.set_play_after_record_active(false)
+
+                    testcase.wait_updated(session.backend)
+
+                    l1().set_length(100)
+                    l2().set_length(100)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l2().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                0, 0, 0, 0, 0)
+
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+
+                    process(50); // sync loop is playing
+
+                    // trigger the composite loop to start in the last cycle.
+                    // the transition should be immediate.
+                    // l2 should be recording still, and the cycle after, all
+                    // should be playing.
+                    c().transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, 1)
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing,   // m
+                                  ShoopConstants.LoopMode.Stopped,   // l1
+                                  ShoopConstants.LoopMode.Recording, // l2
+                                  ShoopConstants.LoopMode.Stopped,   // l3
+                                  ShoopConstants.LoopMode.Recording, // c
+                                  50, 0, 0, 0, 150,
+                                  100, 100, 50, 0, 200)
+                    
+                    process(100) // first cycle of next composite iteration
+
+                    verify_states(ShoopConstants.LoopMode.Playing,   // m
+                                  ShoopConstants.LoopMode.Stopped,   // l1
+                                  ShoopConstants.LoopMode.Stopped,   // l2
+                                  ShoopConstants.LoopMode.Stopped,   // l3
+                                  ShoopConstants.LoopMode.Stopped, // c
+                                  50, 0, 0, 0, 0,
+                                  100, 100, 100, 0, 200)
+                },
             })
         }
     }
