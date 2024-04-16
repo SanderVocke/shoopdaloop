@@ -1389,6 +1389,11 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,   // c
                                 0, 0, 0, 0, 0,
                                 100, 100, 100, 0, 200)
+
+                    let l1_data = l1().get_audio_channels()[0].get_data().slice(-100)
+                    let l2_data = l2().get_audio_channels()[0].get_data().slice(-100)
+                    verify_markers_at(l1_data, [49])
+                    verify_markers_at(l2_data, [99])
                 },
             })
         }

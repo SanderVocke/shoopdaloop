@@ -481,6 +481,9 @@ class CompositeLoop(FindParentBackend):
 
         for item in to_grab:
             item['loop'].adopt_ringbuffers(item['reverse_start'], item['n'], 0, LoopMode.Unknown.value)
+        
+        if go_to_mode != LoopMode.Unknown.value:
+            self.transition(go_to_mode, DontWaitForSync, go_to_cycle)
 
     def handle_sync_loop_trigger_impl(self):
         self.logger.debug(lambda: 'handle sync cycle')
