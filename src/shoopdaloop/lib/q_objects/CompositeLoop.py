@@ -341,6 +341,19 @@ class CompositeLoop(FindParentBackend):
             self.transition_with_immediate_sync_impl(mode, maybe_to_sync_at_cycle)
         else:
             self.transition_default_impl(mode, maybe_delay)
+
+    def list_transitions(self, mode, start_cycle, end_cycle):
+        # Proceed through the schedule up to the point we want to go by calling our trigger function with a callback just
+        # recording the transitions.
+        transitions = {}
+        schedule = self._schedule
+        sched_keys = [int(i) for i in schedule.keys()]
+        for i in range(start_cycle, sched_keys[-1] + 1):
+            transitions[i] = []
+            self.do_triggers(i, mode, lambda loop, mode: transitions[i].append({'loop': loop, 'mode': mode}))
+            if i >= end_cycle:
+                break
+        return transitions
        
     def transition_default_impl(self, mode, maybe_delay):
         if not is_running_mode(self.mode) and is_running_mode(mode):
@@ -360,14 +373,7 @@ class CompositeLoop(FindParentBackend):
     def transition_with_immediate_sync_impl(self, mode, sync_cycle):
         # Proceed through the schedule up to the point we want to go by calling our trigger function with a callback just
         # recording the transitions.
-        transitions = {}
-        schedule = self._schedule
-        sched_keys = [int(i) for i in schedule.keys()]
-        for i in range(sched_keys[-1] + 1):
-            transitions[i] = []
-            self.do_triggers(i, mode, lambda loop, mode: transitions[i].append({'loop': loop, 'mode': mode}))
-            if i >= sync_cycle:
-                break
+        transitions = self.list_transitions(mode, 0, sync_cycle)
         
         if self.logger.should_trace():
             str = 'immediate sync transition - virtual transition list:'
@@ -387,7 +393,7 @@ class CompositeLoop(FindParentBackend):
             n_cycles_ago = sync_cycle - elem['iteration']
             n_cycles = 1
             if loop.sync_source:
-                n_cycles = math.ceil(loop.sync_source.length / loop.length)
+                n_cycles = math.ceil(loop.length / loop.sync_source.length)
             mode = elem['mode']
             
             current_cycle = None
@@ -403,7 +409,10 @@ class CompositeLoop(FindParentBackend):
                     mode = LoopMode.Playing.value
                 current_cycle = n_cycles_ago % n_cycles
             
-            loop.transition(mode, DontWaitForSync, current_cycle)
+            self.logger.trace(lambda: f'loop {loop.instanceIdentifier} -> {mode}, goto cycle {current_cycle} ({elem["mode"]} triggered {n_cycles_ago} cycles ago, loop length {n_cycles} cycles)')
+            loop.transition(mode, DontWaitForSync,
+                (current_cycle if mode != LoopMode.Stopped.value else DontAlignToSyncImmediately)
+            )
         
         # Apply our own mode change
         self.mode = mode
