@@ -63,6 +63,10 @@ PythonTestCase {
     }
     Component.onDestruction: logger.info(() => ("Testcase " + name + " destroyed."))
 
+    function section(title) {
+        logger.debug(() => `Test section: ${title}`)
+    }
+
     function verify_loop_cleared(loop) {
         verify_eq(loop.mode, ShoopConstants.LoopMode.Stopped)
         verify_eq(loop.length, 0)

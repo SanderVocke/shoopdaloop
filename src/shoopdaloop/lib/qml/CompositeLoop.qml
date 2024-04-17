@@ -17,7 +17,7 @@ Item {
     property string obj_id : 'unknown'
     property var loop_widget : null
 
-    onObj_idChanged: instanceIdentifier = obj_id
+    onObj_idChanged: py_loop.instanceIdentifier = obj_id
 
     readonly property bool initialized: true
 
@@ -44,6 +44,8 @@ Item {
         iteration: 0
         sync_loop: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
         schedule: root.schedule
+        play_after_record: registries.state_registry.play_after_record_active
+        sync_mode_active: registries.state_registry.sync_active
 
         onCycled: root.cycled()
         Component.onCompleted: root.recalculate_schedule()

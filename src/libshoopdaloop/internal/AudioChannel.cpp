@@ -367,6 +367,7 @@ void AudioChannel<SampleT>::adopt_ringbuffer_contents(
 
     auto fn = [audioport, reverse_start_offset, keep_samples_before_start_offset, this]() {
         auto data = audioport->PROC_get_ringbuffer_contents();
+        auto ori_len = data.n_samples;
         int so = reverse_start_offset.has_value() ? (int)data.n_samples - (int)reverse_start_offset.value() : 0;
         // Remove data as allowed
         if (keep_samples_before_start_offset.has_value()) {
@@ -379,9 +380,9 @@ void AudioChannel<SampleT>::adopt_ringbuffer_contents(
         }
 
         mp_buffers.set_contents(data.data);
-        log<log_level_debug_trace>("adopting ringbuffer @ reverse offset {}", so);
         set_start_offset(so);
         PROC_set_length(data.n_samples);
+        log<log_level_debug_trace>("adopted ringbuffer: {} of {} samples stored, start offset {}", data.n_samples, ori_len, so);
         data_changed();
     };
 

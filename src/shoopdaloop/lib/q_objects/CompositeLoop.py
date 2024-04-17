@@ -18,6 +18,7 @@ from ..q_objects.Logger import Logger
 from collections.abc import Mapping, Sequence
 
 import traceback
+import math
 
 # Manage a back-end composite loop, keeps running if GUI thread stalls
 class CompositeLoop(FindParentBackend):
@@ -42,6 +43,8 @@ class CompositeLoop(FindParentBackend):
         self._pending_cycles = 0
         self._backend = None
         self._initialized = False
+        self._play_after_record = False
+        self._sync_mode_active = False
 
         self.scheduleChangedUnsafe.connect(self.scheduleChanged, Qt.QueuedConnection)
         self.nCyclesChangedUnsafe.connect(self.nCyclesChanged, Qt.QueuedConnection)
@@ -55,6 +58,7 @@ class CompositeLoop(FindParentBackend):
         self.kindChangedUnsafe.connect(self.kindChanged, Qt.QueuedConnection)
         self.lengthChangedUnsafe.connect(self.lengthChanged, Qt.QueuedConnection)
         self.positionChangedUnsafe.connect(self.positionChanged, Qt.QueuedConnection)
+        self.playAfterRecordChangedUnsafe.connect(self.playAfterRecordChanged, Qt.QueuedConnection)
         
         self.syncLoopChanged.connect(self.update_sync_position, Qt.QueuedConnection)
         self.syncLoopChanged.connect(self.update_sync_length, Qt.QueuedConnection)
@@ -165,6 +169,32 @@ class CompositeLoop(FindParentBackend):
             self.logger.debug(lambda: f'iteration -> {val}')
             self._iteration = val
             self.iterationChangedUnsafe.emit(self._iteration)
+
+    # play_after_record
+    playAfterRecordChangedUnsafe = ShoopSignal(bool, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
+    playAfterRecordChanged = ShoopSignal(bool) # on GUI thread only, for e.g. bindings
+    @ShoopProperty(int, notify=playAfterRecordChanged, thread_protection=ThreadProtectionType.AnyThread)
+    def play_after_record(self):
+        return self._play_after_record
+    @play_after_record.setter
+    def play_after_record(self, val):
+        if self._play_after_record != val:
+            self.logger.debug(lambda: f'play after record -> {val}')
+            self._play_after_record = val
+            self.playAfterRecordChangedUnsafe.emit(self._play_after_record)
+    
+    # sync_mode_active
+    syncModeActiveChangedUnsafe = ShoopSignal(bool, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
+    syncModeActiveChanged = ShoopSignal(bool) # on GUI thread only, for e.g. bindings
+    @ShoopProperty(int, notify=syncModeActiveChanged, thread_protection=ThreadProtectionType.AnyThread)
+    def sync_mode_active(self):
+        return self._sync_mode_active
+    @sync_mode_active.setter
+    def sync_mode_active(self, val):
+        if self._sync_mode_active != val:
+            self.logger.debug(lambda: f'sync mode active -> {val}')
+            self._sync_mode_active = val
+            self.syncModeActiveChangedUnsafe.emit(self._sync_mode_active)
 
     # mode
     modeChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
@@ -340,6 +370,19 @@ class CompositeLoop(FindParentBackend):
             self.transition_with_immediate_sync_impl(mode, maybe_to_sync_at_cycle)
         else:
             self.transition_default_impl(mode, maybe_delay)
+
+    def list_transitions(self, mode, start_cycle, end_cycle):
+        # Proceed through the schedule up to the point we want to go by calling our trigger function with a callback just
+        # recording the transitions.
+        transitions = {}
+        schedule = self._schedule
+        sched_keys = [int(i) for i in schedule.keys()]
+        for i in range(start_cycle, sched_keys[-1] + 1):
+            transitions[i] = []
+            self.do_triggers(i, mode, lambda self, loop, mode: transitions[i].append({'loop': loop, 'mode': mode}))
+            if i >= end_cycle:
+                break
+        return transitions
        
     def transition_default_impl(self, mode, maybe_delay):
         if not is_running_mode(self.mode) and is_running_mode(mode):
@@ -357,79 +400,111 @@ class CompositeLoop(FindParentBackend):
             self.handle_sync_loop_trigger()
 
     def transition_with_immediate_sync_impl(self, mode, sync_cycle):
-        # Gather the mode changes throughout the schedule up until just before the point we
-        # want to go to
-        new_loop_modes = {}
-        new_loop_cycle_pos = {}
-        schedule = self._schedule
-        sched_keys = [int(i) for i in schedule.keys()]
-        for i in range(sched_keys[-1] + 1):
-            self.logger.trace(lambda: f'immediate sync: handle virtual cycle {i}')
-            
-            for k in new_loop_cycle_pos.keys():
-                new_loop_cycle_pos[k] += 1
-                self.logger.trace(lambda: f'immediate sync: virtual loop cycle {loop.instanceIdentifier} -> {new_loop_cycle_pos[k]}')
-
-            if i in sched_keys:
-                elem = schedule[str(i)]
-                loops_end = elem['loops_end']
-                loops_start = elem['loops_start']
-                for loop in loops_end:
-                    self.logger.trace(lambda: f'immediate sync: virtual stop loop {loop.instanceIdentifier}')
-                    new_loop_modes[loop] = LoopMode.Stopped.value
-                    del new_loop_cycle_pos[loop]
-                for entry in loops_start:
-                    loop = entry[0]
-                    loop_mode = entry[1]
-                    if loop_mode == None:
-                        # Automatic
-                        loop_mode = mode
-                    self.logger.trace(lambda: f'immediate sync: virtual start loop {loop.instanceIdentifier}, mode {loop_mode}')
-                    new_loop_modes[loop] = loop_mode
-                    new_loop_cycle_pos[loop] = 0
-            
-            if i >= sync_cycle:
-                break
-
-        for loop in [l for l in self._running_loops if l not in new_loop_modes]:
-            self.logger.trace(lambda: f'immediate sync: stop unhandled running loop {loop.instanceIdentifier}')
-            new_loop_modes[loop] = LoopMode.Stopped.value
+        # Proceed through the schedule up to the point we want to go by calling our trigger function with a callback just
+        # recording the transitions.
+        transitions = self.list_transitions(mode, 0, sync_cycle)
         
-        # Now apply the found mode changes all at once
-        for loop,loop_mode in new_loop_modes.items():
-            sync_align = DontAlignToSyncImmediately if loop not in new_loop_cycle_pos else new_loop_cycle_pos[loop]
-            self.logger.trace(lambda: f'immediate sync: final transition {loop.instanceIdentifier} -> mode {loop_mode}, cycle {sync_align}')
-            loop.transition(loop_mode, DontWaitForSync, sync_align)
+        if self.logger.should_trace():
+            str = 'immediate sync transition - virtual transition list:'
+            for iteration,ts in transitions.items():
+                for t in ts:
+                    str = str + f'\n - iteration {iteration}: {t["loop"].instanceIdentifier} -> {t["mode"]}'
+            self.logger.trace(lambda: str)
+        
+        # Find the last transition for each loop up until this point.
+        last_loop_transitions = {}
+        for it,ts in transitions.items():
+            for t in ts:
+                last_loop_transitions[t['loop']] = {'mode': t['mode'], 'iteration': it}
+        
+        # Get all the currently active loops into their correct mode and cycle.
+        for loop,elem in last_loop_transitions.items():
+            n_cycles_ago = sync_cycle - elem['iteration']
+            n_cycles = 1
+            if loop.sync_source:
+                n_cycles = math.ceil(loop.length / loop.sync_source.length)
+            mode = elem['mode']
+            
+            current_cycle = None
+            if t['mode'] in [LoopMode.Playing.value, LoopMode.Replacing.value, LoopMode.PlayingDryThroughWet.value, LoopMode.RecordingDryIntoWet]:
+                # loop around
+                current_cycle = n_cycles_ago % max(n_cycles, 1)
+            elif t['mode'] == LoopMode.Recording.value:
+                # keep going indefinitely
+                current_cycle = n_cycles_ago
+            
+            self.logger.trace(lambda: f'loop {loop.instanceIdentifier} -> {mode}, goto cycle {current_cycle} ({elem["mode"]} triggered {n_cycles_ago} cycles ago, loop length {n_cycles} cycles)')
+            loop.transition(mode, DontWaitForSync,
+                (current_cycle if mode != LoopMode.Stopped.value else DontAlignToSyncImmediately)
+            )
         
         # Apply our own mode change
         self.mode = mode
         self.iteration = sync_cycle
-        self.logger.trace(lambda: f'immediate sync: Done - mode -> {mode}, iteration -> {sync_cycle}')
+        self.update_length()
+        self.logger.trace(lambda: f'immediate sync: Done - mode -> {mode}, iteration -> {sync_cycle}, position -> {self._position}')
 
         # Perform the trigger(s) for the next loop cycle
-        iteration_to_trigger = self.iteration + 1
-        self.do_triggers(iteration_to_trigger, mode)
-        if iteration_to_trigger >= self.n_cycles:
-            if self.kind == 'script' and not (self.next_transition_delay >= 0 and is_running_mode(self.next_mode)):
-                self.logger.debug(lambda: f'immediate sync: ending script {self.mode} {self.next_mode} {self.next_transition_delay}')
-                self.transition_impl(LoopMode.Stopped.value, 0, DontAlignToSyncImmediately)
-                iteration_to_trigger = None
-            elif is_recording_mode(self.mode):
-                self.logger.debug(lambda: 'immediate sync: recording to playing')
-                # Recording ends next cycle, transition to playing
-                self.transition_impl(LoopMode.Playing.value, 0, DontAlignToSyncImmediately)
-                iteration_to_trigger = None
-            else:
-                self.logger.debug(lambda: 'immediate sync: cycling')
-                self.do_triggers(0, mode)
+        self.do_triggers(self.iteration + 1, mode)
     
     @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def handle_sync_loop_trigger(self):
+        self.logger.trace(lambda: f'queue sync loop trigger')
         self._pending_cycles += 1
 
     @ShoopSlot('QVariant', 'QVariant', 'QVariant', int)
-    def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
-        pass
+    def adopt_ringbuffers(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
+        if not self._sync_loop or self._sync_length <= 0:
+            self.logger.warning(lambda: f'ignoring grab - undefined or empty sync loop')
+            return
+        self.logger.trace(lambda: f'adopt ringbuffer and go to cycle {go_to_cycle}, go to mode {go_to_mode}')
+
+        # Proceed through the schedule up to the point we want to go by calling our trigger function with a callback just
+        # recording the transitions.
+        transitions = self.list_transitions(LoopMode.Recording.value, 0, self._n_cycles)
+
+        if self.logger.should_trace():
+            str = 'ringbuffer grab - virtual transition list:'
+            for iteration,ts in transitions.items():
+                for t in ts:
+                    str = str + f'\n - iteration {iteration}: {t["loop"].instanceIdentifier} -> {t["mode"]}'
+            self.logger.trace(lambda: str)
+        
+        # Find the first recording range for each loop.
+        loop_recording_starts = {}
+        loop_recording_ends = {}
+        for it,ts in transitions.items():
+            for t in ts:
+                if t['mode'] == LoopMode.Recording.value:
+                    # Store only the first recording start.
+                    loop_recording_starts[t['loop']] = min(
+                        it,
+                        loop_recording_starts[t['loop']]
+                    ) if t['loop'] in loop_recording_starts.keys() else it
+        for it,ts in transitions.items():
+            for t in ts:
+                if t['mode'] != LoopMode.Recording.value and t['loop'] in loop_recording_starts.keys() and it > loop_recording_starts[t['loop']]:
+                    loop_recording_ends[t['loop']] = min(
+                        it,
+                        loop_recording_ends[t['loop']]
+                    ) if t['loop'] in loop_recording_ends.keys() else it
+        
+        to_grab = []
+        for loop,start_it in loop_recording_starts.items():
+            end_it = (loop_recording_ends[loop] if loop in loop_recording_ends.keys() else self._n_cycles)
+            grab_n = max(end_it - start_it, 1)
+            reverse_start_offset = self._n_cycles - start_it
+            if not self._sync_mode_active:
+                # If sync mode is inactive, we want to end up inside the last cycle.
+                reverse_start_offset = max(0, reverse_start_offset - 1)
+            to_grab.append({'loop': loop, 'reverse_start': reverse_start_offset, 'n': grab_n})
+            self.logger.trace(f"to grab: {loop.instanceIdentifier} @ reverse start {reverse_start_offset}, n = {grab_n}")
+
+        for item in to_grab:
+            item['loop'].adopt_ringbuffers(item['reverse_start'], item['n'], 0, LoopMode.Unknown.value)
+        
+        if go_to_mode != LoopMode.Unknown.value:
+            self.transition(go_to_mode, DontWaitForSync, go_to_cycle)
 
     def handle_sync_loop_trigger_impl(self):
         self.logger.debug(lambda: 'handle sync cycle')
@@ -443,25 +518,13 @@ class CompositeLoop(FindParentBackend):
 
         if is_running_mode(self.mode):
             cycled = False
-            self.iteration = self.iteration + 1
-            if (self.iteration >= self.n_cycles):
-                self.iteration = 0
+            new_iteration = self.iteration + 1
+            if (new_iteration >= self.n_cycles):
+                new_iteration = 0
                 cycled = True
+            self.iteration = new_iteration
             
             self.do_triggers(self.iteration+1, self.mode)
-            if ((self.iteration+1) >= self.n_cycles):
-                self.logger.debug(lambda: 'preparing cycle end')
-                if self.kind == 'script' and not (self.next_transition_delay >= 0 and is_running_mode(self.next_mode)):
-                    self.logger.debug(lambda: f'ending script {self.mode} {self.next_mode} {self.next_transition_delay}')
-                    self.transition_impl(LoopMode.Stopped.value, 0, DontAlignToSyncImmediately)
-                elif is_recording_mode(self.mode):
-                    self.logger.debug(lambda: 'cycle: recording to playing')
-                    # Recording ends next cycle, transition to playing
-                    self.transition_impl(LoopMode.Playing.value, 0, DontAlignToSyncImmediately)
-                else:
-                    self.logger.debug(lambda: 'cycling')
-                    # Will cycle around - trigger the actions for next cycle
-                    self.do_triggers(0, self.mode)
 
             if cycled:
                 self.cycledUnsafe.emit()
@@ -475,14 +538,28 @@ class CompositeLoop(FindParentBackend):
         self.running_loops = []
 
     def handle_transition(self, mode):
-        self.logger.debug(lambda: f'handle_transition({mode})')
+        self.logger.debug(lambda: f'handle transition to {mode}')
         self.next_transition_delay = -1
         if mode != self._mode:
             self.mode = mode
             if not is_running_mode(mode):
                 self.iteration = 0
 
-    def do_triggers(self, iteration, mode):
+    def default_trigger_handler(self, loop, mode):
+        if loop == self:
+            # Don't queue the transition, apply it immediately
+            self.transition_impl (mode, 0, DontAlignToSyncImmediately)
+        else:
+            # Queue the transition for next cycle. That ensures with nested composites that
+            # composites always trigger themselves first, then get triggered by others.
+            # This is desired (e.g. if a script wants to stop, but a composite wants it to
+            # continue playing next cycle)
+            QTimer.singleShot(0, lambda loop=loop, mode=mode: loop.transition(mode, 0, DontAlignToSyncImmediately))
+
+    # In preparation for the given upcoming iteration, create the triggers for our child loops.
+    # Instead of executing them directly, each trigger will call the callback with (loop, mode).
+    # (the default callback is to execute the transition)
+    def do_triggers(self, iteration, mode, trigger_callback = lambda self,loop,mode: CompositeLoop.default_trigger_handler(self, loop, mode), nested=False):
         schedule = self._schedule
         sched_keys = [int(k) for k in schedule.keys()]
         self.logger.debug(lambda: f'{self.kind} composite loop - do_triggers({iteration}, {mode})')
@@ -492,7 +569,7 @@ class CompositeLoop(FindParentBackend):
             loops_start = elem['loops_start']
             for loop in loops_end:
                 self.logger.debug(lambda: f'loop end: {loop.instanceIdentifier}')
-                loop.transition(LoopMode.Stopped.value, 0, DontAlignToSyncImmediately)
+                trigger_callback(self, loop, LoopMode.Stopped.value)
                 if loop in self._running_loops:
                     self._running_loops.remove(loop)
                 self.runningLoopsChanged.emit(self._running_loops)
@@ -519,7 +596,7 @@ class CompositeLoop(FindParentBackend):
                                     if loop in other_starts:
                                         # We have already recorded this loop. Don't record it again.
                                         self.logger.debug(lambda: f'Not re-recording {loop}')
-                                        loop.transition(LoopMode.Stopped.value, 0, DontAlignToSyncImmediately)
+                                        trigger_callback(self, loop, LoopMode.Stopped.value)
                                         self._running_loops.remove(loop)
                                         self.runningLoopsChanged.emit(self._running_loops)
                                         handled = True
@@ -528,10 +605,24 @@ class CompositeLoop(FindParentBackend):
                         if handled:
                             continue
 
-                    self.logger.debug(lambda: f'loop start: {loop.instanceIdentifier}')
-                    loop.transition(loop_mode, 0, DontAlignToSyncImmediately)
+                    self.logger.debug(lambda: f'generate loop start: {loop.instanceIdentifier}')
+                    trigger_callback(self, loop, loop_mode)
                     self._running_loops.add(loop)
                     self.runningLoopsChangedUnsafe.emit(self._running_loops)
+
+        if (iteration >= self.n_cycles) and not nested:
+            self.logger.debug(lambda: 'extra trigger for cycle end')
+            if self.kind == 'script' and not (self.next_transition_delay >= 0 and is_running_mode(self.next_mode)):
+                self.logger.debug(lambda: f'ending script {self.mode} {self.next_mode} {self.next_transition_delay}')
+                trigger_callback(self, self, LoopMode.Stopped.value)
+            elif is_recording_mode(self.mode):
+                self.logger.debug(lambda: 'cycle: recording end')
+                # Recording ends next cycle, transition to playing or stopped
+                trigger_callback(self, self, (LoopMode.Playing.value if self._play_after_record else LoopMode.Stopped.value))
+            else:
+                self.logger.debug(lambda: 'cycling')
+                # Will cycle around - trigger the actions for next cycle
+                self.do_triggers(0, self.mode, trigger_callback, True)
     
     def maybe_initialize(self):
         if self._backend and self._backend.initialized and not self._initialized:

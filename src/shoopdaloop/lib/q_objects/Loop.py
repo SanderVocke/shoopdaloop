@@ -142,7 +142,7 @@ class Loop(FindParentBackend):
     
     # synchronization source loop
     syncSourceChanged = ShoopSignal('QVariant')
-    @ShoopProperty('QVariant', notify=syncSourceChanged)
+    @ShoopProperty('QVariant', notify=syncSourceChanged, thread_protection=ThreadProtectionType.AnyThread)
     def sync_source(self):
         return self._sync_source
     @sync_source.setter
@@ -314,7 +314,7 @@ class Loop(FindParentBackend):
             BackendLoop.transition_multiple(backend_loops, LoopMode(mode), maybe_delay, maybe_align_to_sync_at)
     
     @ShoopSlot('QVariant', 'QVariant', 'QVariant', int)
-    def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
+    def adopt_ringbuffers(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
         if self._initialized:
             self.logger.debug(lambda: f'adopt ringbuffer contents @ {reverse_start_cycle}, len {cycles_length}, go to cycle {go_to_cycle}, go to mode {go_to_mode}')
             self._backend_loop.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
