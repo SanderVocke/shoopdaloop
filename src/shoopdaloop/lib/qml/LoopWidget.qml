@@ -549,9 +549,7 @@ Item {
     }
 
     function on_record_clicked() {
-        if (root.record_kind == 'with_targeted') {
-            root.record_with_targeted();
-        } else if (root.record_kind == 'infinite') {
+        if (root.record_kind == 'infinite' || root.maybe_composite_loop) {
             if (registries.state_registry.solo_active) {
                 root.transition_solo_in_track(ShoopConstants.LoopMode.Recording,
                     root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
@@ -561,6 +559,8 @@ Item {
                     root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
                     ShoopConstants.DontAlignToSyncImmediately)
             }
+        } else if (root.record_kind == 'with_targeted') {
+            root.record_with_targeted();
         } else {
             root.record_n(0, root.record_kind)
         } 

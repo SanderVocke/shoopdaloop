@@ -1777,6 +1777,68 @@ ShoopTestFile {
                         verify_markers_at(l2_data, [2, 50])
                     }
                 },
+
+                'test_record_synced_global_n_cycles': () => {
+                    check_backend()
+                    clear()
+
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    testcase.wait_updated(session.backend)
+
+                    s().set_length(100)
+                    s().create_backend_loop()
+                    s().on_play_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    process(50)
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(s().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(s().position, 50)
+
+                    registries.state_registry.set_sync_active(true)
+                    registries.state_registry.set_play_after_record_active(false)
+                    registries.state_registry.set_apply_n_cycles(2)
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+                    verify_eq(c().length, 400)
+                    
+                    c().on_record_clicked()
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                ShoopConstants.LoopMode.Stopped,   // l0
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Stopped,   // c
+                                50, 0, 0, 0, 0,
+                                100, 0, 0, 0, 400)
+                    
+                    testcase.section("run the recording")
+
+                    process(500, 20)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                ShoopConstants.LoopMode.Stopped,   // l0
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Stopped,   // c
+                                50, 0, 0, 0, 0,
+                                100, 200, 200, 0, 400)
+                },
             })
         }
     }

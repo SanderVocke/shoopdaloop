@@ -167,7 +167,10 @@ Item {
                     let loop_cycles =  Math.max(1, 
                         elem.n_cycles ?
                             elem.n_cycles :
-                            (loop_widget.n_cycles > 0 ? loop_widget.n_cycles : registries.state_registry.apply_n_cycles)
+                            ((loop_widget.n_cycles > 0 && !ModeHelpers.is_recording_mode(loop_widget.mode)) ?
+                                loop_widget.n_cycles :
+                                registries.state_registry.apply_n_cycles
+                            )
                     )
                     let loop_end = loop_start + loop_cycles
 

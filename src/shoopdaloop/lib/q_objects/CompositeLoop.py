@@ -98,6 +98,7 @@ class CompositeLoop(FindParentBackend):
                     rval += f'\n- {to_start[0].instanceIdentifier} -> {to_start[1] if to_start[1] != None else "Autostart"}'
                 for to_ignore in elem['loops_ignored']:
                     rval += f'\n- {to_ignore.instanceIdentifier} ignored'
+                rval += "\n"
             return rval
 
         self.logger.trace(lambda: f'schedule updated:\n{stringify_schedule(val)}')
@@ -358,14 +359,11 @@ class CompositeLoop(FindParentBackend):
     
     @ShoopSlot(int, int, int, thread_protection=ThreadProtectionType.AnyThread)
     def transition(self, mode, maybe_delay, maybe_to_sync_at_cycle):
+        self.logger.trace(lambda: f'queue transition -> {mode} : wait {maybe_delay}, align @ {maybe_to_sync_at_cycle}')
         self._pending_transitions.append([mode, maybe_delay, maybe_to_sync_at_cycle])
 
     def transition_impl(self, mode, maybe_delay, maybe_to_sync_at_cycle):
         self.logger.debug(lambda: f'transition -> {mode} : wait {maybe_delay}, align @ {maybe_to_sync_at_cycle}')
-        if not (self.n_cycles > 0) and is_recording_mode(self.mode):
-            # We cannot record a composite loop if the lengths of the other loops are not yet set.
-            return
-
         if maybe_to_sync_at_cycle >= 0:
             self.transition_with_immediate_sync_impl(mode, maybe_to_sync_at_cycle)
         else:
