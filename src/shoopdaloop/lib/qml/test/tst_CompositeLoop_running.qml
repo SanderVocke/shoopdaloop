@@ -80,6 +80,7 @@ ShoopTestFile {
                 l2().clear()
                 c().clear()
                 registries.state_registry.set_sync_active(true)
+                registries.state_registry.set_apply_n_cycles(0)
                 testcase.wait_updated(session.backend)
                 verify_loop_cleared(s())
                 verify_loop_cleared(l0())
@@ -349,9 +350,9 @@ ShoopTestFile {
                     process(100) // middle of 1st step
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
-                                ShoopConstants.LoopMode.Recording, // l1
+                                ShoopConstants.LoopMode.Recording, // l0
+                                ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Recording, // c
                                 50, 0, 0, 0, 50,
                                 100, 50, 0, 0, 400)
@@ -359,9 +360,9 @@ ShoopTestFile {
                     process(100) // middle of 2nd step
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
-                                ShoopConstants.LoopMode.Recording, // l1
+                                ShoopConstants.LoopMode.Recording, // l0
+                                ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Recording, // c
                                 50, 0, 0, 0, 150,
                                 100, 150, 0, 0, 400)
@@ -369,9 +370,9 @@ ShoopTestFile {
                     process(100) // middle of 3rd step (delay)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
+                                ShoopConstants.LoopMode.Stopped,   // l0
                                 ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Recording, // c
                                 50, 0, 0, 0, 250,
                                 100, 200, 0, 0, 400)
@@ -379,9 +380,9 @@ ShoopTestFile {
                     process(100) // middle of 4th step (record 2nd loop)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
-                                ShoopConstants.LoopMode.Stopped,   // l1
-                                ShoopConstants.LoopMode.Recording,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
+                                ShoopConstants.LoopMode.Stopped,   // l0
+                                ShoopConstants.LoopMode.Recording,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
                                 ShoopConstants.LoopMode.Recording, // c
                                 50, 0, 0, 0, 350,
                                 100, 200, 50, 0, 400)
@@ -389,9 +390,9 @@ ShoopTestFile {
                     process(100) // middle of 5th step (whole thing starts playing after finish recording)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
-                                ShoopConstants.LoopMode.Playing,   // l1
+                                ShoopConstants.LoopMode.Playing,   // l0
+                                ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Playing, // c
                                 50, 50, 0, 0, 50,
                                 100, 200, 100, 0, 400)
@@ -523,9 +524,9 @@ ShoopTestFile {
                     process(100) // middle of 1st step (record l1)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
-                                ShoopConstants.LoopMode.Recording, // l1
+                                ShoopConstants.LoopMode.Recording, // l0
+                                ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Playing,   // c
                                 50, 0, 0, 0, 50,
                                 100, 50, 0, 0, 400)
@@ -533,9 +534,9 @@ ShoopTestFile {
                     process(100) // middle of 2nd step (record l2)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
-                                ShoopConstants.LoopMode.Stopped,   // l1
-                                ShoopConstants.LoopMode.Recording, // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
+                                ShoopConstants.LoopMode.Stopped,   // l0
+                                ShoopConstants.LoopMode.Recording, // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
                                 ShoopConstants.LoopMode.Playing,   // c
                                 50, 0, 0, 0, 150,
                                 100, 100, 50, 0, 400)
@@ -543,9 +544,9 @@ ShoopTestFile {
                     process(100) // middle of 3rd step (play l1)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
-                                ShoopConstants.LoopMode.Playing,   // l1
+                                ShoopConstants.LoopMode.Playing,   // l0
+                                ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Playing,   // c
                                 50, 50, 0, 0, 250,
                                 100, 100, 100, 0, 400)
@@ -553,9 +554,9 @@ ShoopTestFile {
                     process(100) // middle of 4th step (play l2)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
-                                ShoopConstants.LoopMode.Stopped,   // l1
-                                ShoopConstants.LoopMode.Playing,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
+                                ShoopConstants.LoopMode.Stopped,   // l0
+                                ShoopConstants.LoopMode.Playing,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
                                 ShoopConstants.LoopMode.Playing,   // c
                                 50, 0, 50, 0, 350,
                                 100, 100, 100, 0, 400)
@@ -563,9 +564,9 @@ ShoopTestFile {
                     process(100) // middle of 5th step (script ended)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
+                                ShoopConstants.LoopMode.Stopped,   // l0
                                 ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Stopped, // c
                                 50, 0, 0, 0, 0,
                                 100, 100, 100, 0, 400)
@@ -999,10 +1000,10 @@ ShoopTestFile {
                     c().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, 4)
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
-                                  ShoopConstants.LoopMode.Stopped, // l1
-                                  ShoopConstants.LoopMode.Playing, // l2
-                                  ShoopConstants.LoopMode.Stopped, // l3
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                  ShoopConstants.LoopMode.Stopped, // l0
+                                  ShoopConstants.LoopMode.Playing, // l1
+                                  ShoopConstants.LoopMode.Stopped, // l2
                                   ShoopConstants.LoopMode.Playing, // c
                                   50, 0, 250, 0, 450)
                     verify_eq(l1().next_mode, ShoopConstants.LoopMode.Stopped)
@@ -1012,10 +1013,10 @@ ShoopTestFile {
 
                     process(100) // middle of last playlist item
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                  ShoopConstants.LoopMode.Stopped, // l0
                                   ShoopConstants.LoopMode.Stopped, // l1
-                                  ShoopConstants.LoopMode.Stopped, // l2
-                                  ShoopConstants.LoopMode.Playing, // l3
+                                  ShoopConstants.LoopMode.Playing, // l2
                                   ShoopConstants.LoopMode.Playing, // c
                                   50, 0, 0, 50, 550)
                 },
@@ -1066,10 +1067,10 @@ ShoopTestFile {
                     c().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, 0)
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
-                                  ShoopConstants.LoopMode.Playing, // l1
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                  ShoopConstants.LoopMode.Playing, // l0
+                                  ShoopConstants.LoopMode.Stopped, // l1
                                   ShoopConstants.LoopMode.Stopped, // l2
-                                  ShoopConstants.LoopMode.Stopped, // l3
                                   ShoopConstants.LoopMode.Playing, // c
                                   50, 50, 0, 0, 50)
 
@@ -1077,10 +1078,10 @@ ShoopTestFile {
                     process(100)
                     process(100)
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
-                                  ShoopConstants.LoopMode.Stopped, // l1
-                                  ShoopConstants.LoopMode.Playing, // l2
-                                  ShoopConstants.LoopMode.Stopped, // l3
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                  ShoopConstants.LoopMode.Stopped, // l0
+                                  ShoopConstants.LoopMode.Playing, // l1
+                                  ShoopConstants.LoopMode.Stopped, // l2
                                   ShoopConstants.LoopMode.Playing, // c
                                   50, 0, 50, 0, 250)
                 },
@@ -1131,19 +1132,19 @@ ShoopTestFile {
                     c().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, 5)
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                  ShoopConstants.LoopMode.Stopped, // l0
                                   ShoopConstants.LoopMode.Stopped, // l1
-                                  ShoopConstants.LoopMode.Stopped, // l2
-                                  ShoopConstants.LoopMode.Playing, // l3
+                                  ShoopConstants.LoopMode.Playing, // l2
                                   ShoopConstants.LoopMode.Playing, // c
                                   50, 0, 0, 50, 550)
 
                     process(100) // first cycle of next composite iteration
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
-                                  ShoopConstants.LoopMode.Playing, // l1
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                  ShoopConstants.LoopMode.Playing, // l0
+                                  ShoopConstants.LoopMode.Stopped, // l1
                                   ShoopConstants.LoopMode.Stopped, // l2
-                                  ShoopConstants.LoopMode.Stopped, // l3
                                   ShoopConstants.LoopMode.Playing, // c
                                   50, 50, 0, 0, 50)
                 },
@@ -1194,10 +1195,10 @@ ShoopTestFile {
                     c().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, 1)
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
-                                  ShoopConstants.LoopMode.Playing, // l1
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                  ShoopConstants.LoopMode.Playing, // l0
+                                  ShoopConstants.LoopMode.Stopped, // l1
                                   ShoopConstants.LoopMode.Stopped, // l2
-                                  ShoopConstants.LoopMode.Stopped, // l3
                                   ShoopConstants.LoopMode.Playing, // c
                                   50, 150, 0, 0, 150)
                     
@@ -1206,10 +1207,10 @@ ShoopTestFile {
                     c().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, 5)
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                  ShoopConstants.LoopMode.Stopped, // l0
                                   ShoopConstants.LoopMode.Stopped, // l1
-                                  ShoopConstants.LoopMode.Stopped, // l2
-                                  ShoopConstants.LoopMode.Playing, // l3
+                                  ShoopConstants.LoopMode.Playing, // l2
                                   ShoopConstants.LoopMode.Playing, // c
                                   50, 0, 0, 50, 550)
                 },
@@ -1257,25 +1258,25 @@ ShoopTestFile {
 
                     // trigger the composite loop to start in the last cycle.
                     // the transition should be immediate.
-                    // l2 should be recording still, and the cycle after, all
+                    // l1 should be recording still, and the cycle after, all
                     // should be playing.
                     c().transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, 1)
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing,   // m
-                                  ShoopConstants.LoopMode.Stopped,   // l1
-                                  ShoopConstants.LoopMode.Recording, // l2
-                                  ShoopConstants.LoopMode.Stopped,   // l3
+                    verify_states(ShoopConstants.LoopMode.Playing,   // s
+                                  ShoopConstants.LoopMode.Stopped,   // l0
+                                  ShoopConstants.LoopMode.Recording, // l1
+                                  ShoopConstants.LoopMode.Stopped,   // l2
                                   ShoopConstants.LoopMode.Recording, // c
                                   50, 0, 0, 0, 150,
                                   100, 100, 50, 0, 200)
                     
                     process(100) // first cycle of next composite iteration
 
-                    verify_states(ShoopConstants.LoopMode.Playing,   // m
-                                  ShoopConstants.LoopMode.Playing,   // l1
+                    verify_states(ShoopConstants.LoopMode.Playing,   // s
+                                  ShoopConstants.LoopMode.Playing,   // l0
+                                  ShoopConstants.LoopMode.Stopped,   // l1
                                   ShoopConstants.LoopMode.Stopped,   // l2
-                                  ShoopConstants.LoopMode.Stopped,   // l3
                                   ShoopConstants.LoopMode.Playing, // c
                                   50, 50, 0, 0, 50,
                                   100, 100, 100, 0, 200)
@@ -1324,25 +1325,25 @@ ShoopTestFile {
 
                     // trigger the composite loop to start in the last cycle.
                     // the transition should be immediate.
-                    // l2 should be recording still, and the cycle after, all
+                    // l1 should be recording still, and the cycle after, all
                     // should be playing.
                     c().transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, 1)
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing,   // m
-                                  ShoopConstants.LoopMode.Stopped,   // l1
-                                  ShoopConstants.LoopMode.Recording, // l2
-                                  ShoopConstants.LoopMode.Stopped,   // l3
+                    verify_states(ShoopConstants.LoopMode.Playing,   // s
+                                  ShoopConstants.LoopMode.Stopped,   // l0
+                                  ShoopConstants.LoopMode.Recording, // l1
+                                  ShoopConstants.LoopMode.Stopped,   // l2
                                   ShoopConstants.LoopMode.Recording, // c
                                   50, 0, 0, 0, 150,
                                   100, 100, 50, 0, 200)
                     
                     process(100) // first cycle of next composite iteration
 
-                    verify_states(ShoopConstants.LoopMode.Playing,   // m
+                    verify_states(ShoopConstants.LoopMode.Playing,   // s
+                                  ShoopConstants.LoopMode.Stopped,   // l0
                                   ShoopConstants.LoopMode.Stopped,   // l1
                                   ShoopConstants.LoopMode.Stopped,   // l2
-                                  ShoopConstants.LoopMode.Stopped,   // l3
                                   ShoopConstants.LoopMode.Stopped, // c
                                   50, 0, 0, 0, 0,
                                   100, 100, 100, 0, 200)
@@ -1382,10 +1383,10 @@ ShoopTestFile {
                     // If the sync loop is empty, grab should have no effect. It makes no sense
                     // in the context of a composite loop.
 
-                    verify_states(ShoopConstants.LoopMode.Stopped, // m
+                    verify_states(ShoopConstants.LoopMode.Stopped, // s
+                                ShoopConstants.LoopMode.Stopped,   // l0
                                 ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Stopped,   // c
                                 0, 0, 0, 0, 0,
                                 0, 0, 0, 0, 0)
@@ -1430,10 +1431,10 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                ShoopConstants.LoopMode.Stopped,   // l0
                                 ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Stopped,   // c
                                 50, 0, 0, 0, 0,
                                 100, 100, 100, 0, 200)
@@ -1444,6 +1445,117 @@ ShoopTestFile {
                     let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
                     verify_markers_at(l1_data, [50, 51])
                     verify_markers_at(l2_data, [80, 99])
+                },
+
+                'test_grab_ringbuffer_synced_fixed_length': () => {
+                    check_backend()
+                    clear()
+
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    testcase.wait_updated(session.backend)
+
+                    s().set_length(100)
+                    s().create_backend_loop()
+                    s().on_play_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    run_with_marker_samples(550, [255, 350, 351, 480, 499])
+
+                    testcase.wait_updated(session.backend)
+                    verify_eq(s().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(s().position, 50)
+
+                    registries.state_registry.set_sync_active(true)
+                    registries.state_registry.set_play_after_record_active(false)
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0, 'n_cycles': 2 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+                    
+                    c().on_grab_clicked()
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                ShoopConstants.LoopMode.Stopped,   // l0
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Stopped,   // c
+                                50, 0, 0, 0, 0,
+                                100, 200, 100, 0, 300)
+
+                    let c1 = l0().get_audio_channels()[0]
+                    let c2 = l1().get_audio_channels()[0]
+                    let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+200)
+                    let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
+                    verify_markers_at(l1_data, [55, 150, 151])
+                    verify_markers_at(l2_data, [80, 99])
+                },
+
+                'test_grab_ringbuffer_synced_global_n_cycles': () => {
+                    check_backend()
+                    clear()
+
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    testcase.wait_updated(session.backend)
+
+                    s().set_length(100)
+                    s().create_backend_loop()
+                    s().on_play_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    run_with_marker_samples(550, [156, 255, 350, 351, 480, 499])
+
+                    testcase.wait_updated(session.backend)
+                    verify_eq(s().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(s().position, 50)
+
+                    registries.state_registry.set_sync_active(true)
+                    registries.state_registry.set_play_after_record_active(false)
+                    registries.state_registry.set_apply_n_cycles(2)
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+                    
+                    c().on_grab_clicked()
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                ShoopConstants.LoopMode.Stopped,   // l0
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Stopped,   // c
+                                50, 0, 0, 0, 0,
+                                100, 200, 200, 0, 400)
+
+                    let c1 = l0().get_audio_channels()[0]
+                    let c2 = l1().get_audio_channels()[0]
+                    let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+200)
+                    let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+200)
+                    verify_markers_at(l1_data, [56, 155])
+                    verify_markers_at(l2_data, [50, 51, 180, 199])
                 },
 
                 'test_grab_ringbuffer_synced_then_play': () => {
@@ -1485,10 +1597,10 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
-                                ShoopConstants.LoopMode.Playing,   // l1
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                ShoopConstants.LoopMode.Playing,   // l0
+                                ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Playing,   // c
                                 50, 50, 0, 0, 50,
                                 100, 100, 100, 0, 200)
@@ -1545,10 +1657,10 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
-                                ShoopConstants.LoopMode.Stopped,   // l1
-                                ShoopConstants.LoopMode.Recording, // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                ShoopConstants.LoopMode.Stopped,   // l0
+                                ShoopConstants.LoopMode.Recording, // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
                                 ShoopConstants.LoopMode.Recording, // c
                                 50, 0, 0, 0, 150,
                                 100, 100, 50, 0, 200)
@@ -1570,10 +1682,10 @@ ShoopTestFile {
                     process(50)
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                ShoopConstants.LoopMode.Stopped,   // l0
                                 ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Stopped,   // c
                                 50, 0, 0, 0, 0,
                                 100, 100, 100, 0, 200)
@@ -1627,10 +1739,10 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
-                                ShoopConstants.LoopMode.Stopped,   // l1
-                                ShoopConstants.LoopMode.Recording, // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                ShoopConstants.LoopMode.Stopped,   // l0
+                                ShoopConstants.LoopMode.Recording, // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
                                 ShoopConstants.LoopMode.Recording, // c
                                 50, 0, 0, 0, 150,
                                 100, 100, 50, 0, 200)
@@ -1648,10 +1760,10 @@ ShoopTestFile {
                     process(50)
                     testcase.wait_updated(session.backend)
 
-                    verify_states(ShoopConstants.LoopMode.Playing, // m
-                                ShoopConstants.LoopMode.Playing,   // l1
+                    verify_states(ShoopConstants.LoopMode.Playing, // s
+                                ShoopConstants.LoopMode.Playing,   // l0
+                                ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
-                                ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Playing,   // c
                                 50, 50, 0, 0, 50,
                                 100, 100, 100, 0, 200)

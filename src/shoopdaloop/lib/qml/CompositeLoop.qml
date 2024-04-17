@@ -164,7 +164,11 @@ Item {
                         continue
                     }
                     let loop_start = _it + elem.delay
-                    let loop_cycles =  Math.max(1, elem.n_cycles ? elem.n_cycles : loop_widget.n_cycles)
+                    let loop_cycles =  Math.max(1, 
+                        elem.n_cycles ?
+                            elem.n_cycles :
+                            (loop_widget.n_cycles > 0 ? loop_widget.n_cycles : registries.state_registry.apply_n_cycles)
+                    )
                     let loop_end = loop_start + loop_cycles
 
                     elem['start_iteration'] = loop_start
@@ -301,6 +305,10 @@ Item {
         update_schedule()
     }
     onSync_emptyChanged: update_schedule()
+    Connections {
+        target: registries.state_registry
+        function onApply_n_cyclesChanged() { update_schedule() }
+    }
 
     // Calculated properties
     readonly property int display_position : position

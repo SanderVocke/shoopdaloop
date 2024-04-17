@@ -127,9 +127,9 @@ Playing back a composite loop will play the loops as sequenced. Empty sub-loops 
 Recording
 """""""""
 
-In order to record a composite loop, the sub-loops must already have contents so their lengths can be determined. That means you will first need to record the subloops separately or manually set their lenghts.
+Pressing "record" on the composite loop will re-record the subloops in sequence.
 
-When this is the case, pressing "record" on the composite loop will re-record the subloops in sequence.
+Loops are recorded based on their current length. For empty loops, the application assumes that they will be **n cycles** long (referring to the global **n cycles control**).
 
 Note that there is a special case if the same subloop is sequenced multiple times. It will not re-record multiple times. Instead, after re-recording it the first time, additional occurrences in the sequence are skipped with the subloop idle.
 
@@ -150,7 +150,7 @@ Generally speaking, grabbing on composite loops does what you would expect given
 
 * Grabbing a composite loop does not respect the global **n cycles** control or the **targeted loop** for synchronization and length of the grab. Instead:
   
-  * The total length of the grab is always the already calculated composite loop length. Child loops which do not have an explicit length are assumed to be 1 sync cycle long.
+  * The total length of the grab is always the already calculated composite loop length. Child loops which do not have an explicit length are assumed to be **n cycles** (global control) sync cycle long.
   * The alignment of the grab is as follows:
 
     * If the global **sync control** is active, the last completed sync cycle is mapped to the last cycle of the composite loop.
