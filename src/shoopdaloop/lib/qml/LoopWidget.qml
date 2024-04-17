@@ -575,7 +575,9 @@ Item {
     function on_grab_clicked() {
         let selection = selected_loops.has(root) ? selected_loops : [root]
 
-        root.create_backend_loop()
+        if (!root.maybe_loop) {
+            root.create_backend_loop()
+        }
         if (root.sync_active) {
             let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
             if (root.targeted_loop) {
@@ -595,7 +597,11 @@ Item {
                     ShoopConstants.DontAlignToSyncImmediately
                 )
             } else {
-                root.adopt_ringbuffers(null, root.n_cycles_to_grab, root.n_cycles_to_grab - 1, ShoopConstants.LoopMode.Recording)
+                let goto_cycle =
+                    root.maybe_composite_loop ?
+                        root.maybe_composite_loop.n_cycles - 1 :
+                        root.n_cycles_to_grab - 1
+                root.adopt_ringbuffers(null, root.n_cycles_to_grab, goto_cycle, ShoopConstants.LoopMode.Recording)
                 root.transition(
                     registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
                     0,

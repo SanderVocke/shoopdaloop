@@ -44,22 +44,22 @@ ShoopTestFile {
             session: session
 
             // sync loop
-            function m() {
+            function s() {
                 return session.sync_track.loops[0]
             }
 
             // generic loop 1
-            function l1() {
+            function l0() {
                 return session.main_tracks[0].loops[0]
             }
 
             // generic loop 2
-            function l2() {
+            function l1() {
                 return session.main_tracks[0].loops[1]
             }
 
             // generic loop 3
-            function l3() {
+            function l2() {
                 return session.main_tracks[0].loops[2]
             }
 
@@ -74,18 +74,17 @@ ShoopTestFile {
             }
 
             function clear() {
-                session.backend.dummy_enter_automatic_mode()
-                m().clear()
+                s().clear()
+                l0().clear()
                 l1().clear()
                 l2().clear()
-                l3().clear()
                 c().clear()
                 registries.state_registry.set_sync_active(true)
                 testcase.wait_updated(session.backend)
-                verify_loop_cleared(m())
+                verify_loop_cleared(s())
+                verify_loop_cleared(l0())
                 verify_loop_cleared(l1())
                 verify_loop_cleared(l2())
-                verify_loop_cleared(l3())
                 verify_loop_cleared(c())
             }
 
@@ -106,20 +105,20 @@ ShoopTestFile {
                 l3_length=undefined,
                 c_length=undefined
             ) {
-                if(m_mode !== undefined) { verify_eq(m().mode, m_mode, 'sync loop mode') }
-                if(l1_mode !== undefined) { verify_eq(l1().mode, l1_mode, 'loop 1 mode') }
-                if(l2_mode !== undefined) { verify_eq(l2().mode, l2_mode, 'loop 2 mode') }
-                if(l3_mode !== undefined) { verify_eq(l3().mode, l3_mode, 'loop 3 mode') }
+                if(m_mode !== undefined) { verify_eq(s().mode, m_mode, 'sync loop mode') }
+                if(l1_mode !== undefined) { verify_eq(l0().mode, l1_mode, 'loop 0 mode') }
+                if(l2_mode !== undefined) { verify_eq(l1().mode, l2_mode, 'loop 1 mode') }
+                if(l3_mode !== undefined) { verify_eq(l2().mode, l3_mode, 'loop 2 mode') }
                 if(c_mode !== undefined) { verify_eq(c().mode, c_mode, 'composite loop mode') }
-                if(m_pos !== undefined) { verify_eq(m().position, m_pos, 'sync loop pos') }
-                if(l1_pos !== undefined) { verify_eq(l1().position, l1_pos, 'loop 1 pos') }
-                if(l2_pos !== undefined) { verify_eq(l2().position, l2_pos, 'loop 2 pos') }
-                if(l3_pos !== undefined) { verify_eq(l3().position, l3_pos, 'loop 3 pos') }
+                if(m_pos !== undefined) { verify_eq(s().position, m_pos, 'sync loop pos') }
+                if(l1_pos !== undefined) { verify_eq(l0().position, l1_pos, 'loop 0 pos') }
+                if(l2_pos !== undefined) { verify_eq(l1().position, l2_pos, 'loop 1 pos') }
+                if(l3_pos !== undefined) { verify_eq(l2().position, l3_pos, 'loop 2 pos') }
                 if(c_pos !== undefined) { verify_eq(c().position, c_pos, 'composite loop pos') }
-                if(m_length !== undefined) { verify_eq(m().length, m_length, 'sync loop length') }
-                if(l1_length !== undefined) { verify_eq(l1().length, l1_length, 'loop 1 length') }
-                if(l2_length !== undefined) { verify_eq(l2().length, l2_length, 'loop 2 length') }
-                if(l3_length !== undefined) { verify_eq(l3().length, l3_length, 'loop 3 length') }
+                if(m_length !== undefined) { verify_eq(s().length, m_length, 'sync loop length') }
+                if(l1_length !== undefined) { verify_eq(l0().length, l1_length, 'loop 0 length') }
+                if(l2_length !== undefined) { verify_eq(l1().length, l2_length, 'loop 1 length') }
+                if(l3_length !== undefined) { verify_eq(l2().length, l3_length, 'loop 2 length') }
                 if(c_length !== undefined) { verify_eq(c().length, c_length, 'composite loop length') }
             }
 
@@ -217,22 +216,22 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
 
+                    l0().create_backend_loop()
                     l1().create_backend_loop()
-                    l2().create_backend_loop()
-                    m().create_backend_loop()
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l1().set_length(200)
-                    l2().set_length(300)
+                    l0().set_length(200)
+                    l1().set_length(300)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
@@ -246,7 +245,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
@@ -254,7 +253,7 @@ ShoopTestFile {
                     // trigger the composite loop
                     c().on_play_clicked()
                     testcase.wait_updated(session.backend)
-                    verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l0().next_mode, ShoopConstants.LoopMode.Playing)
 
                     process(100) // middle of 1st step
 
@@ -315,15 +314,15 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
 
                     testcase.wait_updated(session.backend)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                [{ 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 2 }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
+                                [{ 'loop_id': l0().obj_id, 'delay': 0, 'n_cycles': 2 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
@@ -337,7 +336,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
@@ -345,7 +344,7 @@ ShoopTestFile {
                     // trigger the composite loop
                     c().on_record_clicked()
                     testcase.wait_updated(session.backend)
-                    verify_eq(l1().next_mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(l0().next_mode, ShoopConstants.LoopMode.Recording)
 
                     process(100) // middle of 1st step
 
@@ -402,22 +401,22 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
+                    l0().create_backend_loop()
                     l1().create_backend_loop()
-                    l2().create_backend_loop()
-                    m().create_backend_loop()
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    m().set_length(100)
-                    l1().set_length(200)
-                    l2().set_length(100)
+                    s().set_length(100)
+                    l0().set_length(200)
+                    l1().set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                [{ 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 1 }],
-                                [{ 'loop_id': l1().obj_id, 'delay': 1, 'n_cycles': 2 },
-                                 { 'loop_id': l2().obj_id, 'delay': 2, 'n_cycles': 1 }],
+                                [{ 'loop_id': l0().obj_id, 'delay': 0, 'n_cycles': 1 }],
+                                [{ 'loop_id': l0().obj_id, 'delay': 1, 'n_cycles': 2 },
+                                 { 'loop_id': l1().obj_id, 'delay': 2, 'n_cycles': 1 }],
                             ]
                         ]
                     })
@@ -431,7 +430,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
@@ -439,7 +438,7 @@ ShoopTestFile {
                     // trigger the composite loop
                     c().on_play_clicked()
                     testcase.wait_updated(session.backend)
-                    verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l0().next_mode, ShoopConstants.LoopMode.Playing)
 
                     process(100) // middle of 1st step (1st loop plays)
 
@@ -487,17 +486,17 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
 
                     testcase.wait_updated(session.backend)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0, 'n_cycles': 1, 'mode': ShoopConstants.LoopMode.Recording }],
                                 [{ 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 1, 'mode': ShoopConstants.LoopMode.Recording }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 0, 'n_cycles': 1, 'mode': ShoopConstants.LoopMode.Recording }],
+                                [{ 'loop_id': l0().obj_id, 'delay': 0, 'n_cycles': 1, 'mode': ShoopConstants.LoopMode.Playing }],
                                 [{ 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 1, 'mode': ShoopConstants.LoopMode.Playing }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 0, 'n_cycles': 1, 'mode': ShoopConstants.LoopMode.Playing }],
                             ]
                         ]
                     })
@@ -511,7 +510,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
@@ -519,7 +518,7 @@ ShoopTestFile {
                     // trigger the composite loop
                     c().on_play_clicked()
                     testcase.wait_updated(session.backend)
-                    verify_eq(l1().next_mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(l0().next_mode, ShoopConstants.LoopMode.Recording)
 
                     process(100) // middle of 1st step (record l1)
 
@@ -576,27 +575,27 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
+                    l0().create_backend_loop()
                     l1().create_backend_loop()
-                    l2().create_backend_loop()
-                    m().create_backend_loop()
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l1().set_length(200)
-                    l2().set_length(300)
+                    l0().set_length(200)
+                    l1().set_length(300)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
 
                     c().transition(ShoopConstants.LoopMode.Playing, 3, ShoopConstants.DontAlignToSyncImmediately)
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)
@@ -609,14 +608,14 @@ ShoopTestFile {
                     verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(c().next_transition_delay, 0)
 
-                    verify_eq(l1().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(l1().next_transition_delay, 0)
+                    verify_eq(l0().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(l0().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l0().next_transition_delay, 0)
 
                     process(100)
 
                     verify_eq(c().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(l1().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l0().mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(c().maybe_loop.iteration, 0)
                 },
 
@@ -626,27 +625,27 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(12000) // 1/4s
+                    s().set_length(12000) // 1/4s
+                    l0().create_backend_loop()
                     l1().create_backend_loop()
-                    l2().create_backend_loop()
-                    m().create_backend_loop()
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l1().set_length(12000) // 1/4s
-                    l2().set_length(12000)
+                    l0().set_length(12000) // 1/4s
+                    l1().set_length(12000)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
 
                     c().on_play_clicked()
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)
@@ -662,8 +661,8 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
                     verify_eq(c().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(l1().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(l2().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l0().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(l1().mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(c().maybe_loop.iteration, 2)
                 },
 
@@ -673,27 +672,27 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(12000) // 1/4s
+                    s().set_length(12000) // 1/4s
+                    l0().create_backend_loop()
                     l1().create_backend_loop()
-                    l2().create_backend_loop()
-                    m().create_backend_loop()
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l1().set_length(12000) // 1/4s
-                    l2().set_length(12000)
+                    l0().set_length(12000) // 1/4s
+                    l1().set_length(12000)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 1 }],
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 1 }],
                             ]
                         ]
                     })
 
                     c().on_play_clicked()
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     verify_eq(c().mode, ShoopConstants.LoopMode.Stopped)
@@ -709,8 +708,8 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
                     verify_eq(c().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(l1().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(l2().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l0().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(l1().mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(c().maybe_loop.iteration, 2)
                 },
 
@@ -718,28 +717,28 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
 
-                    l1().create_backend_loop()
-                    m().create_backend_loop()
+                    l0().create_backend_loop()
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l1().set_length(200)
+                    l0().set_length(200)
 
                     // use c as the composite (triggers the script)
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                [{ 'loop_id': l2().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
                             ]
                         ]
                     })
                     // use l2 as the script (triggers the loop)
-                    l2().create_composite_loop({
+                    l1().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                [{ 'loop_id': l1().obj_id, 'delay': 0, 'mode': ShoopConstants.LoopMode.Playing }],
+                                [{ 'loop_id': l0().obj_id, 'delay': 0, 'mode': ShoopConstants.LoopMode.Playing }],
                             ]
                         ]
                     })
@@ -753,7 +752,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
@@ -762,8 +761,8 @@ ShoopTestFile {
                     c().on_play_clicked()
                     testcase.wait_updated(session.backend)
                     verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l0().next_mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(l2().next_mode, ShoopConstants.LoopMode.Playing)
 
                     process(100) // middle of 1st step
 
@@ -784,9 +783,9 @@ ShoopTestFile {
                                 50, 150, 150, 0, 150)
                     
                     process(100) // middle of 3rd step.
+
                     // A script would normally have stopped now. But because a composite
                     // is triggering it, that one should make sure it keeps looping
-
                     verify_states(ShoopConstants.LoopMode.Playing,
                                 ShoopConstants.LoopMode.Playing,
                                 ShoopConstants.LoopMode.Playing,
@@ -799,25 +798,25 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
 
-                    l1().create_backend_loop()
-                    m().create_backend_loop()
+                    l0().create_backend_loop()
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l1().set_length(200)
+                    l0().set_length(200)
 
                     // use c as the composite (triggers the loop)
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
                             ]
                         ]
                     })
                     // use l2 as the script (triggers the composite)
-                    l2().create_composite_loop({
+                    l1().create_composite_loop({
                         'playlists': [
                             [ // playlist
                                 [{ 'loop_id': c().obj_id, 'delay': 0, 'mode': ShoopConstants.LoopMode.Playing }],
@@ -834,17 +833,17 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
 
                     // trigger the composite loop
-                    l2().on_play_clicked()
+                    l1().on_play_clicked()
                     testcase.wait_updated(session.backend)
                     verify_eq(c().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(l0().next_mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(l2().next_mode, ShoopConstants.LoopMode.Playing)
 
                     process(100) // middle of 1st step
 
@@ -880,20 +879,20 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
-                    m().create_backend_loop()
+                    s().set_length(100)
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
                     c().create_composite_loop()
-                    l1().create_composite_loop()
+                    l0().create_composite_loop()
 
                     c().maybe_composite_loop.playlists_in = [
                         [ // playlist
-                            [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                            [{ 'loop_id': l0().obj_id, 'delay': 0 }],
                         ]
                     ]
-                    l1().maybe_composite_loop.playlists_in = [
+                    l0().maybe_composite_loop.playlists_in = [
                         [ // playlist
                             [{ 'loop_id': c().obj_id, 'delay': 0 }],
                         ]
@@ -901,11 +900,11 @@ ShoopTestFile {
 
                     // The setting of the playlists to a circular value should have been ignored.
                     // The playlists are thrown away.
-                    verify_eq(l1().maybe_composite_loop.playlists, [])
+                    verify_eq(l0().maybe_composite_loop.playlists, [])
                     // The first loop should still have its schedule.
                     verify_eq(c().maybe_composite_loop.playlists, [
                         [
-                            [{ 'loop_id': l1().obj_id, 'delay': 0 }]
+                            [{ 'loop_id': l0().obj_id, 'delay': 0 }]
                         ]
                     ])
                 },
@@ -914,31 +913,31 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
-                    m().create_backend_loop()
+                    s().set_length(100)
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
-                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
                             ]
                         ]
                     })
 
-                    l1().create_composite_loop()
-                    verify_true(l1().maybe_composite_loop)
+                    l0().create_composite_loop()
+                    verify_true(l0().maybe_composite_loop)
                 },
 
                 'test_circular_composite_self': () => {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
 
-                    l1().create_backend_loop()
-                    m().create_backend_loop()
+                    l0().create_backend_loop()
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
@@ -958,25 +957,25 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
 
+                    l0().create_backend_loop()
                     l1().create_backend_loop()
                     l2().create_backend_loop()
-                    l3().create_backend_loop()
-                    m().create_backend_loop()
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l1().set_length(200)
-                    l2().set_length(300)
-                    l3().set_length(100)
+                    l0().set_length(200)
+                    l1().set_length(300)
+                    l2().set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
                                 [{ 'loop_id': l1().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l3().obj_id, 'delay': 0 }]
+                                [{ 'loop_id': l2().obj_id, 'delay': 0 }]
                             ]
                         ]
                     })
@@ -990,7 +989,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
@@ -1006,10 +1005,10 @@ ShoopTestFile {
                                   ShoopConstants.LoopMode.Stopped, // l3
                                   ShoopConstants.LoopMode.Playing, // c
                                   50, 0, 250, 0, 450)
-                    verify_eq(l2().next_mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(l1().next_mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(l1().next_transition_delay, 0)
+                    verify_eq(l2().next_mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(l2().next_transition_delay, 0)
-                    verify_eq(l3().next_mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(l3().next_transition_delay, 0)
 
                     process(100) // middle of last playlist item
 
@@ -1025,25 +1024,25 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
 
+                    l0().create_backend_loop()
                     l1().create_backend_loop()
                     l2().create_backend_loop()
-                    l3().create_backend_loop()
-                    m().create_backend_loop()
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l1().set_length(200)
-                    l2().set_length(300)
-                    l3().set_length(100)
+                    l0().set_length(200)
+                    l1().set_length(300)
+                    l2().set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
                                 [{ 'loop_id': l1().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l3().obj_id, 'delay': 0 }]
+                                [{ 'loop_id': l2().obj_id, 'delay': 0 }]
                             ]
                         ]
                     })
@@ -1057,7 +1056,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
@@ -1090,25 +1089,25 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
 
+                    l0().create_backend_loop()
                     l1().create_backend_loop()
                     l2().create_backend_loop()
-                    l3().create_backend_loop()
-                    m().create_backend_loop()
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l1().set_length(200)
-                    l2().set_length(300)
-                    l3().set_length(100)
+                    l0().set_length(200)
+                    l1().set_length(300)
+                    l2().set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
                                 [{ 'loop_id': l1().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l3().obj_id, 'delay': 0 }]
+                                [{ 'loop_id': l2().obj_id, 'delay': 0 }]
                             ]
                         ]
                     })
@@ -1122,7 +1121,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
@@ -1153,25 +1152,25 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
 
+                    l0().create_backend_loop()
                     l1().create_backend_loop()
                     l2().create_backend_loop()
-                    l3().create_backend_loop()
-                    m().create_backend_loop()
+                    s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l1().set_length(200)
-                    l2().set_length(300)
-                    l3().set_length(100)
+                    l0().set_length(200)
+                    l1().set_length(300)
+                    l2().set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
                                 [{ 'loop_id': l1().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l3().obj_id, 'delay': 0 }]
+                                [{ 'loop_id': l2().obj_id, 'delay': 0 }]
                             ]
                         ]
                     })
@@ -1185,7 +1184,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
@@ -1219,25 +1218,25 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
 
+                    l0().create_backend_loop()
                     l1().create_backend_loop()
                     l2().create_backend_loop()
-                    l3().create_backend_loop()
-                    m().create_backend_loop()
+                    s().create_backend_loop()
 
                     registries.state_registry.set_play_after_record_active(true)
 
                     testcase.wait_updated(session.backend)
 
+                    l0().set_length(100)
                     l1().set_length(100)
-                    l2().set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
                                 [{ 'loop_id': l1().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 0 }],
                             ]
                         ]
                     })
@@ -1251,7 +1250,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
@@ -1286,25 +1285,25 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    m().set_length(100)
+                    s().set_length(100)
 
+                    l0().create_backend_loop()
                     l1().create_backend_loop()
                     l2().create_backend_loop()
-                    l3().create_backend_loop()
-                    m().create_backend_loop()
+                    s().create_backend_loop()
 
                     registries.state_registry.set_play_after_record_active(false)
 
                     testcase.wait_updated(session.backend)
 
+                    l0().set_length(100)
                     l1().set_length(100)
-                    l2().set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
                                 [{ 'loop_id': l1().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 0 }],
                             ]
                         ]
                     })
@@ -1318,7 +1317,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 0, 0, 0, 0, 0)
 
-                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    s().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     process(50); // sync loop is playing
@@ -1349,7 +1348,7 @@ ShoopTestFile {
                                   100, 100, 100, 0, 200)
                 },
 
-                'test_grab_ringbuffer_basic': () => {
+                'test_grab_ringbuffer_sync_empty': () => {
                     check_backend()
                     clear()
 
@@ -1359,9 +1358,7 @@ ShoopTestFile {
 
                     // One marker at end and one at -150
                     run_with_marker_samples(500, [349, 499])
-
-                    m().set_length(100)
-                    m().create_backend_loop()
+                    s().create_backend_loop()
 
                     registries.state_registry.set_play_after_record_active(false)
 
@@ -1370,8 +1367,8 @@ ShoopTestFile {
                     c().create_composite_loop({
                         'playlists': [
                             [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
                                 [{ 'loop_id': l1().obj_id, 'delay': 0 }],
-                                [{ 'loop_id': l2().obj_id, 'delay': 0 }],
                             ]
                         ]
                     })
@@ -1382,18 +1379,291 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
+                    // If the sync loop is empty, grab should have no effect. It makes no sense
+                    // in the context of a composite loop.
+
                     verify_states(ShoopConstants.LoopMode.Stopped, // m
                                 ShoopConstants.LoopMode.Stopped,   // l1
                                 ShoopConstants.LoopMode.Stopped,   // l2
                                 ShoopConstants.LoopMode.Stopped,   // l3
                                 ShoopConstants.LoopMode.Stopped,   // c
                                 0, 0, 0, 0, 0,
+                                0, 0, 0, 0, 0)
+                },
+
+                'test_grab_ringbuffer_synced_then_stop': () => {
+                    check_backend()
+                    clear()
+
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    testcase.wait_updated(session.backend)
+
+                    s().set_length(100)
+                    s().create_backend_loop()
+                    s().on_play_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    run_with_marker_samples(550, [350, 351, 480, 499])
+
+                    testcase.wait_updated(session.backend)
+                    verify_eq(s().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(s().position, 50)
+
+                    registries.state_registry.set_sync_active(true)
+                    registries.state_registry.set_play_after_record_active(false)
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+                    
+                    c().on_grab_clicked()
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Stopped,   // l3
+                                ShoopConstants.LoopMode.Stopped,   // c
+                                50, 0, 0, 0, 0,
                                 100, 100, 100, 0, 200)
 
-                    let l1_data = l1().get_audio_channels()[0].get_data().slice(-100)
-                    let l2_data = l2().get_audio_channels()[0].get_data().slice(-100)
-                    verify_markers_at(l1_data, [49])
-                    verify_markers_at(l2_data, [99])
+                    let c1 = l0().get_audio_channels()[0]
+                    let c2 = l1().get_audio_channels()[0]
+                    let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+100)
+                    let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
+                    verify_markers_at(l1_data, [50, 51])
+                    verify_markers_at(l2_data, [80, 99])
+                },
+
+                'test_grab_ringbuffer_synced_then_play': () => {
+                    check_backend()
+                    clear()
+
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    testcase.wait_updated(session.backend)
+
+                    s().set_length(100)
+                    s().create_backend_loop()
+                    s().on_play_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    run_with_marker_samples(550, [350, 351, 480, 499])
+
+                    testcase.wait_updated(session.backend)
+                    verify_eq(s().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(s().position, 50)
+
+                    registries.state_registry.set_sync_active(true)
+                    registries.state_registry.set_play_after_record_active(true)
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+                    
+                    c().on_grab_clicked()
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                ShoopConstants.LoopMode.Playing,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Stopped,   // l3
+                                ShoopConstants.LoopMode.Playing,   // c
+                                50, 50, 0, 0, 50,
+                                100, 100, 100, 0, 200)
+
+                    let c1 = l0().get_audio_channels()[0]
+                    let c2 = l1().get_audio_channels()[0]
+                    let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+100)
+                    let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
+                    verify_markers_at(l1_data, [50, 51])
+                    verify_markers_at(l2_data, [80, 99])
+                },
+
+                'test_grab_ringbuffer_unsynced_then_stop': () => {
+                    testcase.section('setup')
+                    check_backend()
+                    clear()
+
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    testcase.wait_updated(session.backend)
+
+                    testcase.section('play sync loop 50 frames')
+                    s().set_length(100)
+                    s().create_backend_loop()
+                    s().on_play_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    testcase.section('prefill with 550 marked frames')
+                    run_with_marker_samples(550, [350, 351, 480, 499, 502])
+
+                    testcase.wait_updated(session.backend)
+                    verify_eq(s().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(s().position, 50)
+
+                    testcase.section('setup composite')
+                    registries.state_registry.set_sync_active(false)
+                    registries.state_registry.set_play_after_record_active(false)
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+
+                    testcase.section('grab')                    
+                    c().on_grab_clicked()
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Recording, // l2
+                                ShoopConstants.LoopMode.Stopped,   // l3
+                                ShoopConstants.LoopMode.Recording, // c
+                                50, 0, 0, 0, 150,
+                                100, 100, 50, 0, 200)
+
+                    {
+                        let c1 = l0().get_audio_channels()[0]
+                        let c2 = l1().get_audio_channels()[0]
+                        let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+100)
+                        let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
+                        verify_markers_at(l1_data, [80, 99])
+                        verify_markers_at(l2_data, [2])
+                        verify_eq(l1().mode, ShoopConstants.LoopMode.Recording)
+                        verify_eq(l1().next_mode, ShoopConstants.LoopMode.Stopped)
+                        verify_eq(l1().next_transition_delay, 0)
+                    }
+
+                    testcase.section('process 100 more')
+                    run_with_marker_samples(50, [0])
+                    process(50)
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Stopped,   // l3
+                                ShoopConstants.LoopMode.Stopped,   // c
+                                50, 0, 0, 0, 0,
+                                100, 100, 100, 0, 200)
+                    
+                    {
+                        let c1 = l0().get_audio_channels()[0]
+                        let c2 = l1().get_audio_channels()[0]
+                        let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+100)
+                        let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
+                        verify_markers_at(l1_data, [80, 99])
+                        verify_markers_at(l2_data, [2, 50])
+                    }
+                },
+
+                'test_grab_ringbuffer_unsynced_then_play': () => {
+                    check_backend()
+                    clear()
+
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+                    testcase.wait_updated(session.backend)
+
+                    s().set_length(100)
+                    s().create_backend_loop()
+                    s().on_play_clicked()
+                    testcase.wait_updated(session.backend)
+
+                    run_with_marker_samples(550, [350, 351, 480, 499, 502])
+
+                    testcase.wait_updated(session.backend)
+                    verify_eq(s().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(s().position, 50)
+
+                    registries.state_registry.set_sync_active(false)
+                    registries.state_registry.set_play_after_record_active(true)
+
+                    testcase.wait_updated(session.backend)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l0().obj_id, 'delay': 0 }],
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+                    
+                    c().on_grab_clicked()
+
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                ShoopConstants.LoopMode.Stopped,   // l1
+                                ShoopConstants.LoopMode.Recording, // l2
+                                ShoopConstants.LoopMode.Stopped,   // l3
+                                ShoopConstants.LoopMode.Recording, // c
+                                50, 0, 0, 0, 150,
+                                100, 100, 50, 0, 200)
+
+                    {
+                        let c1 = l0().get_audio_channels()[0]
+                        let c2 = l1().get_audio_channels()[0]
+                        let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+100)
+                        let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
+                        verify_markers_at(l1_data, [80, 99])
+                        verify_markers_at(l2_data, [2])
+                    }
+
+                    run_with_marker_samples(50, [0])
+                    process(50)
+                    testcase.wait_updated(session.backend)
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                ShoopConstants.LoopMode.Playing,   // l1
+                                ShoopConstants.LoopMode.Stopped,   // l2
+                                ShoopConstants.LoopMode.Stopped,   // l3
+                                ShoopConstants.LoopMode.Playing,   // c
+                                50, 50, 0, 0, 50,
+                                100, 100, 100, 0, 200)
+                    
+                    {
+                        let c1 = l0().get_audio_channels()[0]
+                        let c2 = l1().get_audio_channels()[0]
+                        let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+100)
+                        let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
+                        verify_markers_at(l1_data, [80, 99])
+                        verify_markers_at(l2_data, [2, 50])
+                    }
                 },
             })
         }

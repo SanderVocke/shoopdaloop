@@ -44,6 +44,7 @@ class CompositeLoop(FindParentBackend):
         self._backend = None
         self._initialized = False
         self._play_after_record = False
+        self._sync_mode_active = False
 
         self.scheduleChangedUnsafe.connect(self.scheduleChanged, Qt.QueuedConnection)
         self.nCyclesChangedUnsafe.connect(self.nCyclesChanged, Qt.QueuedConnection)
@@ -181,6 +182,19 @@ class CompositeLoop(FindParentBackend):
             self.logger.debug(lambda: f'play after record -> {val}')
             self._play_after_record = val
             self.playAfterRecordChangedUnsafe.emit(self._play_after_record)
+    
+    # sync_mode_active
+    syncModeActiveChangedUnsafe = ShoopSignal(bool, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
+    syncModeActiveChanged = ShoopSignal(bool) # on GUI thread only, for e.g. bindings
+    @ShoopProperty(int, notify=syncModeActiveChanged, thread_protection=ThreadProtectionType.AnyThread)
+    def sync_mode_active(self):
+        return self._sync_mode_active
+    @sync_mode_active.setter
+    def sync_mode_active(self, val):
+        if self._sync_mode_active != val:
+            self.logger.debug(lambda: f'sync mode active -> {val}')
+            self._sync_mode_active = val
+            self.syncModeActiveChangedUnsafe.emit(self._sync_mode_active)
 
     # mode
     modeChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
@@ -365,7 +379,7 @@ class CompositeLoop(FindParentBackend):
         sched_keys = [int(i) for i in schedule.keys()]
         for i in range(start_cycle, sched_keys[-1] + 1):
             transitions[i] = []
-            self.do_triggers(i, mode, lambda loop, mode: transitions[i].append({'loop': loop, 'mode': mode}))
+            self.do_triggers(i, mode, lambda self, loop, mode: transitions[i].append({'loop': loop, 'mode': mode}))
             if i >= end_cycle:
                 break
         return transitions
@@ -414,7 +428,7 @@ class CompositeLoop(FindParentBackend):
             current_cycle = None
             if t['mode'] in [LoopMode.Playing.value, LoopMode.Replacing.value, LoopMode.PlayingDryThroughWet.value, LoopMode.RecordingDryIntoWet]:
                 # loop around
-                current_cycle = n_cycles_ago % n_cycles
+                current_cycle = n_cycles_ago % max(n_cycles, 1)
             elif t['mode'] == LoopMode.Recording.value:
                 # keep going indefinitely
                 current_cycle = n_cycles_ago
@@ -435,10 +449,14 @@ class CompositeLoop(FindParentBackend):
     
     @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def handle_sync_loop_trigger(self):
+        self.logger.trace(lambda: f'queue sync loop trigger')
         self._pending_cycles += 1
 
     @ShoopSlot('QVariant', 'QVariant', 'QVariant', int)
     def adopt_ringbuffers(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
+        if not self._sync_loop or self._sync_length <= 0:
+            self.logger.warning(lambda: f'ignoring grab - undefined or empty sync loop')
+            return
         self.logger.trace(lambda: f'adopt ringbuffer and go to cycle {go_to_cycle}, go to mode {go_to_mode}')
 
         # Proceed through the schedule up to the point we want to go by calling our trigger function with a callback just
@@ -476,6 +494,9 @@ class CompositeLoop(FindParentBackend):
             end_it = (loop_recording_ends[loop] if loop in loop_recording_ends.keys() else self._n_cycles)
             grab_n = max(end_it - start_it, 1)
             reverse_start_offset = self._n_cycles - start_it
+            if not self._sync_mode_active:
+                # If sync mode is inactive, we want to end up inside the last cycle.
+                reverse_start_offset = max(0, reverse_start_offset - 1)
             to_grab.append({'loop': loop, 'reverse_start': reverse_start_offset, 'n': grab_n})
             self.logger.trace(f"to grab: {loop.instanceIdentifier} @ reverse start {reverse_start_offset}, n = {grab_n}")
 
@@ -497,10 +518,11 @@ class CompositeLoop(FindParentBackend):
 
         if is_running_mode(self.mode):
             cycled = False
-            self.iteration = self.iteration + 1
-            if (self.iteration >= self.n_cycles):
-                self.iteration = 0
+            new_iteration = self.iteration + 1
+            if (new_iteration >= self.n_cycles):
+                new_iteration = 0
                 cycled = True
+            self.iteration = new_iteration
             
             self.do_triggers(self.iteration+1, self.mode)
 
@@ -516,17 +538,28 @@ class CompositeLoop(FindParentBackend):
         self.running_loops = []
 
     def handle_transition(self, mode):
-        self.logger.debug(lambda: f'handle_transition({mode})')
+        self.logger.debug(lambda: f'handle transition to {mode}')
         self.next_transition_delay = -1
         if mode != self._mode:
             self.mode = mode
             if not is_running_mode(mode):
                 self.iteration = 0
 
+    def default_trigger_handler(self, loop, mode):
+        if loop == self:
+            # Don't queue the transition, apply it immediately
+            self.transition_impl (mode, 0, DontAlignToSyncImmediately)
+        else:
+            # Queue the transition for next cycle. That ensures with nested composites that
+            # composites always trigger themselves first, then get triggered by others.
+            # This is desired (e.g. if a script wants to stop, but a composite wants it to
+            # continue playing next cycle)
+            QTimer.singleShot(0, lambda loop=loop, mode=mode: loop.transition(mode, 0, DontAlignToSyncImmediately))
+
     # In preparation for the given upcoming iteration, create the triggers for our child loops.
     # Instead of executing them directly, each trigger will call the callback with (loop, mode).
     # (the default callback is to execute the transition)
-    def do_triggers(self, iteration, mode, trigger_callback = lambda loop,mode: loop.transition(mode, 0, DontAlignToSyncImmediately), nested=False):
+    def do_triggers(self, iteration, mode, trigger_callback = lambda self,loop,mode: CompositeLoop.default_trigger_handler(self, loop, mode), nested=False):
         schedule = self._schedule
         sched_keys = [int(k) for k in schedule.keys()]
         self.logger.debug(lambda: f'{self.kind} composite loop - do_triggers({iteration}, {mode})')
@@ -536,7 +569,7 @@ class CompositeLoop(FindParentBackend):
             loops_start = elem['loops_start']
             for loop in loops_end:
                 self.logger.debug(lambda: f'loop end: {loop.instanceIdentifier}')
-                trigger_callback(loop, LoopMode.Stopped.value)
+                trigger_callback(self, loop, LoopMode.Stopped.value)
                 if loop in self._running_loops:
                     self._running_loops.remove(loop)
                 self.runningLoopsChanged.emit(self._running_loops)
@@ -563,7 +596,7 @@ class CompositeLoop(FindParentBackend):
                                     if loop in other_starts:
                                         # We have already recorded this loop. Don't record it again.
                                         self.logger.debug(lambda: f'Not re-recording {loop}')
-                                        trigger_callback(loop, LoopMode.Stopped.value)
+                                        trigger_callback(self, loop, LoopMode.Stopped.value)
                                         self._running_loops.remove(loop)
                                         self.runningLoopsChanged.emit(self._running_loops)
                                         handled = True
@@ -573,7 +606,7 @@ class CompositeLoop(FindParentBackend):
                             continue
 
                     self.logger.debug(lambda: f'generate loop start: {loop.instanceIdentifier}')
-                    trigger_callback(loop, loop_mode)
+                    trigger_callback(self, loop, loop_mode)
                     self._running_loops.add(loop)
                     self.runningLoopsChangedUnsafe.emit(self._running_loops)
 
@@ -581,11 +614,11 @@ class CompositeLoop(FindParentBackend):
             self.logger.debug(lambda: 'extra trigger for cycle end')
             if self.kind == 'script' and not (self.next_transition_delay >= 0 and is_running_mode(self.next_mode)):
                 self.logger.debug(lambda: f'ending script {self.mode} {self.next_mode} {self.next_transition_delay}')
-                trigger_callback(self, LoopMode.Stopped.value)
+                trigger_callback(self, self, LoopMode.Stopped.value)
             elif is_recording_mode(self.mode):
                 self.logger.debug(lambda: 'cycle: recording end')
                 # Recording ends next cycle, transition to playing or stopped
-                trigger_callback(self, (LoopMode.Playing.value if self._play_after_record else LoopMode.Stopped.value))
+                trigger_callback(self, self, (LoopMode.Playing.value if self._play_after_record else LoopMode.Stopped.value))
             else:
                 self.logger.debug(lambda: 'cycling')
                 # Will cycle around - trigger the actions for next cycle
