@@ -69,6 +69,7 @@ For this, the global controls are used:
 * When **sync mode** is off (immediate), the behavior slightly changes. The currently playing sync loop cycle will be included in the grab. Because the cycle is not yet finished, the loop will also immediately go into "record" mode to record the remainder, and then automatically go to playback/stop afterward. This is useful if you want the playback to start seamlessly - after all, when grabbing in hindsight, you only hear the playback after grabbing.
 * Grabbing works nicely together with **loop targeting**. If you have targeted another loop (details below), grab will behave as if that loop was the sync loop. In other words: if you target a loop that is playing back, play a second part together with it, and then grab afterward, your recording will line up with the targeted loop.
 
+Grabbing also works on composite loops, in which case the behavior is slightly different - see below in the composite loop section for details.
 
 Selecting and Targeting
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -131,3 +132,29 @@ In order to record a composite loop, the sub-loops must already have contents so
 When this is the case, pressing "record" on the composite loop will re-record the subloops in sequence.
 
 Note that there is a special case if the same subloop is sequenced multiple times. It will not re-record multiple times. Instead, after re-recording it the first time, additional occurrences in the sequence are skipped with the subloop idle.
+
+Grabbing
+""""""""
+
+A composite loop can also be grabbed. Instead of grabbing audio data into the composite loop, instead this will cause the child loops to each grab their portion.
+
+This can be a powerful tool for structuring your looping session. Let's illustrate with an example.
+
+Say you've reserved your 1st and 2nd rows of loops in the session for two different "scenes" (or sections of the song). And let's say these two scenes need different basslines, which you want to record in one go.
+
+One thing you could do is define a composite loop which is a sequence of the bass loops in scene 1 and 2 (e.g. by using Alt+click while the composite slot is selected).
+
+Now, you can play your two basslines directly after one another on the instrument without touching a thing, then use Grab on the composite loop. Each bassline will be grabbed into its respective slot instantly, and the sequence of these two basslines will start playing if **play after record** is enabled.
+
+Generally speaking, grabbing on composite loops does what you would expect given the behavior described in the loop controls section. But there are some differences for composite loops:
+
+* Grabbing a composite loop does not respect the global **n cycles** control or the **targeted loop** for synchronization and length of the grab. Instead:
+  
+  * The total length of the grab is always the already calculated composite loop length. Child loops which do not have an explicit length are assumed to be 1 sync cycle long.
+  * The alignment of the grab is as follows:
+
+    * If the global **sync control** is active, the last completed sync cycle is mapped to the last cycle of the composite loop.
+    * If the global **sync control** is inactive, the currently running sync cycle is mapped to the last cycle of the composite loop. The remainder of the current sync cycle will keep recording into the last part.
+
+Note that only regular composite loops can be grabbed.
+

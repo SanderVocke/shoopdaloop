@@ -8,6 +8,5 @@ Many buttons in **ShoopDaLoop** have tooltips on mouse hover to explain their fu
 
 .. include:: usage.loopcontrols.rst
 .. include:: usage.trackcontrols.rst
-.. include:: usage.composite.rst
 .. include:: usage.midicontrol.rst
 .. include:: usage.keyboard.rst
