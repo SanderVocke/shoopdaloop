@@ -1665,6 +1665,123 @@ ShoopTestFile {
                         verify_markers_at(l2_data, [2, 50])
                     }
                 },
+                
+                'test_play_subset': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+
+                    l1().create_backend_loop()
+                    m().create_backend_loop()
+
+                    testcase.wait_updated(session.backend)
+
+                    l1().set_length(200)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l1().obj_id, 'delay': 0, 'n_cycles': 1 }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+
+                    process(50); // sync loop is playing
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                  ShoopConstants.LoopMode.Stopped, // l1
+                                  ShoopConstants.LoopMode.Stopped, // l2
+                                  ShoopConstants.LoopMode.Stopped, // l3
+                                  ShoopConstants.LoopMode.Stopped, // c
+                                  50, 0, 0, 0, 0,
+                                  100, 200, 0, 0, 100)
+
+                    // Queue playback.
+                    c().on_play_clicked()
+
+                    process(50)
+                    process(50) // to 1st cycle
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                  ShoopConstants.LoopMode.Playing, // l1
+                                  ShoopConstants.LoopMode.Stopped, // l2
+                                  ShoopConstants.LoopMode.Stopped, // l3
+                                  ShoopConstants.LoopMode.Playing, // c
+                                  50, 50, 0, 0, 50,
+                                  100, 200, 0, 0, 100)
+                    
+                    process(50)
+                    process(50) // to 2nd cycle
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                  ShoopConstants.LoopMode.Playing, // l1
+                                  ShoopConstants.LoopMode.Stopped, // l2
+                                  ShoopConstants.LoopMode.Stopped, // l3
+                                  ShoopConstants.LoopMode.Playing, // c
+                                  50, 50, 0, 0, 50,
+                                  100, 200, 0, 0, 100)
+                },
+
+                'test_play_already_playing': () => {
+                    check_backend()
+                    clear()
+
+                    m().set_length(100)
+
+                    l1().create_backend_loop()
+                    m().create_backend_loop()
+
+                    testcase.wait_updated(session.backend)
+
+                    l1().set_length(300)
+
+                    c().create_composite_loop({
+                        'playlists': [
+                            [ // playlist
+                                [{ 'loop_id': l1().obj_id, 'delay': 0 }],
+                            ]
+                        ]
+                    })
+
+                    testcase.wait_updated(session.backend)
+
+                    m().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    l1().transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+
+                    process(50); // sync loop is playing
+                    process(200); // l1 is playing too
+
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                  ShoopConstants.LoopMode.Playing, // l1
+                                  ShoopConstants.LoopMode.Stopped, // l2
+                                  ShoopConstants.LoopMode.Stopped, // l3
+                                  ShoopConstants.LoopMode.Stopped, // c
+                                  50, 150, 0, 0, 0,
+                                  100, 300, 0, 0, 300)
+
+                    // Queue playback.
+                    c().on_play_clicked()
+
+                    process(50)
+                    process(50) // to 1st cycle
+
+                    // Composite loop trigger should have ensured that the loop
+                    // goes back to its first cycle.
+                    verify_states(ShoopConstants.LoopMode.Playing, // m
+                                  ShoopConstants.LoopMode.Playing, // l1
+                                  ShoopConstants.LoopMode.Stopped, // l2
+                                  ShoopConstants.LoopMode.Stopped, // l3
+                                  ShoopConstants.LoopMode.Playing, // c
+                                  50, 50, 0, 0, 50,
+                                  100, 300, 0, 0, 300)
+                },
             })
         }
     }
