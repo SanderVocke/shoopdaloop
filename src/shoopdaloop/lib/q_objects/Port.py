@@ -207,7 +207,7 @@ class Port(FindParentBackend):
     @ShoopSlot(int)
     def set_min_n_ringbuffer_samples(self, n):
         if self._backend_obj:
-            self._backend_obj.set_n_ringbuffer_samples(n)
+            self._backend_obj.set_ringbuffer_n_samples(n)
         else:
             self.n_ringbuffer_samples = n
             self.maybe_initialize()

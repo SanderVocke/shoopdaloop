@@ -74,7 +74,7 @@ void BufferQueue<SampleT>::set_max_buffers(uint32_t max_buffers) {
 
 template<typename SampleT>
 void BufferQueue<SampleT>::set_min_n_samples(uint32_t n) {
-    unsigned bufs = (n + single_buffer_size() - 1) / single_buffer_size(); // Ceil
+    unsigned bufs = (n + single_buffer_size() - 1) / std::max((uint32_t) 1, single_buffer_size()); // Ceil
     set_max_buffers(bufs);
 }
 
