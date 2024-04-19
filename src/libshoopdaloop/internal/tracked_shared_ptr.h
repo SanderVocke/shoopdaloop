@@ -23,9 +23,9 @@ public:
 
     ~tracked_shared_ptr() noexcept { m_ptr = nullptr; }
 
-    tracked_shared_ptr &operator=(nullptr_t) noexcept { *this = tracked_shared_ptr<T>(nullptr); return *this; }
-    tracked_shared_ptr &operator=(tracked_shared_ptr<T> const& rhs) noexcept { *this = tracked_shared_ptr(rhs.m_ptr); return *this; }
-    tracked_shared_ptr &operator=(std::shared_ptr<T> const& rhs) noexcept { *this = tracked_shared_ptr(rhs); return *this; }
+    tracked_shared_ptr &operator=(nullptr_t) noexcept { m_ptr = nullptr; return *this; }
+    tracked_shared_ptr &operator=(tracked_shared_ptr<T> const& rhs) noexcept { m_ptr = rhs.m_ptr; return *this; }
+    tracked_shared_ptr &operator=(std::shared_ptr<T> const& rhs) noexcept { m_ptr = rhs.m_ptr; return *this; }
 
     template<typename First>
     void reset(First first) { m_ptr.reset(first); }
