@@ -1,7 +1,6 @@
 #pragma once
 #include "GraphNode.h"
 #include <vector>
-#include <memory>
 #include <set>
 
 // Determine a processing order for a set of nodes.

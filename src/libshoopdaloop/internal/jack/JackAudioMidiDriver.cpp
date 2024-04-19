@@ -75,7 +75,7 @@ void GenericJackAudioMidiDriver<API>::PROC_update_ports_cb_inst() {
 template<typename API>
 GenericJackAudioMidiDriver<API>::GenericJackAudioMidiDriver():
     m_started(false),
-    m_all_ports_tracker(std::make_shared<GenericJackAllPorts<API>>()) {}
+    m_all_ports_tracker(shoop_make_shared<GenericJackAllPorts<API>>()) {}
 
 template<typename API>
 void GenericJackAudioMidiDriver<API>::start(
@@ -139,27 +139,31 @@ GenericJackAudioMidiDriver<API>::~GenericJackAudioMidiDriver() {
 }
 
 template<typename API>
-std::shared_ptr<AudioPort<float>>GenericJackAudioMidiDriver<API>::open_audio_port(std::string name, shoop_port_direction_t direction,
-    std::shared_ptr<typename AudioPort<jack_default_audio_sample_t>::BufferPool> buffer_pool) {
-    std::shared_ptr<PortInterface> port =
-        std::static_pointer_cast<PortInterface>(
-            std::make_shared<GenericJackAudioPort<API>>(name, direction, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker, buffer_pool)
+shoop_shared_ptr<AudioPort<float>>GenericJackAudioMidiDriver<API>::open_audio_port(std::string name, shoop_port_direction_t direction,
+    shoop_shared_ptr<typename AudioPort<jack_default_audio_sample_t>::BufferPool> buffer_pool) {
+    shoop_shared_ptr<PortInterface> port =
+        shoop_static_pointer_cast<PortInterface>(
+            shoop_make_shared<GenericJackAudioPort<API>>(name, direction, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker, buffer_pool)
         );
     m_ports[port->name()] = port;
-    return std::dynamic_pointer_cast<AudioPort<float>>(port);
+    return shoop_dynamic_pointer_cast<AudioPort<float>>(port);
 }
 
 template<typename API>
-std::shared_ptr<MidiPort> GenericJackAudioMidiDriver<API>::open_midi_port(std::string name, shoop_port_direction_t direction) {
-    std::shared_ptr<PortInterface> port;
+shoop_shared_ptr<MidiPort> GenericJackAudioMidiDriver<API>::open_midi_port(std::string name, shoop_port_direction_t direction) {
+    shoop_shared_ptr<PortInterface> port;
     
     if (direction == ShoopPortDirection_Input) {
-        port = std::make_shared<GenericJackMidiInputPort<API>>(name, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker);
+        port = shoop_static_pointer_cast<PortInterface>(
+            shoop_make_shared<GenericJackMidiInputPort<API>>(name, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker)
+        );
     } else {
-        port = std::make_shared<GenericJackMidiOutputPort<API>>(name, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker);
+        port = shoop_static_pointer_cast<PortInterface>(
+            shoop_make_shared<GenericJackMidiOutputPort<API>>(name, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker)
+        );
     }
     m_ports[port->name()] = port;
-    return std::dynamic_pointer_cast<MidiPort>(port);
+    return shoop_dynamic_pointer_cast<MidiPort>(port);
 }
 
 template<typename API>

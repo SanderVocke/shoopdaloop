@@ -4,7 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 TEST_CASE("BufferQueue - Starting state", "[BufferQueue][audio]") {
-    auto pool = std::make_shared<BufferQueue<int>::BufferPool>("Test", 10, 10);
+    auto pool = shoop_make_shared<BufferQueue<int>::BufferPool>("Test", 10, 10);
     BufferQueue<int> q(pool, 10);
 
     CHECK(q.n_samples() == 0);
@@ -13,7 +13,7 @@ TEST_CASE("BufferQueue - Starting state", "[BufferQueue][audio]") {
 };
 
 TEST_CASE("BufferQueue - Single Buf Full", "[BufferQueue][audio]") {
-    auto pool = std::make_shared<BufferQueue<int>::BufferPool>("Test", 10, 10);
+    auto pool = shoop_make_shared<BufferQueue<int>::BufferPool>("Test", 10, 10);
     BufferQueue<int> q(pool, 10);
 
     std::vector<int> data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
@@ -27,7 +27,7 @@ TEST_CASE("BufferQueue - Single Buf Full", "[BufferQueue][audio]") {
 };
 
 TEST_CASE("BufferQueue - Single Buf Partial", "[BufferQueue][audio]") {
-    auto pool = std::make_shared<BufferQueue<int>::BufferPool>("Test", 10, 10);
+    auto pool = shoop_make_shared<BufferQueue<int>::BufferPool>("Test", 10, 10);
     BufferQueue<int> q(pool, 10);
 
     std::vector<int> data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
@@ -43,7 +43,7 @@ TEST_CASE("BufferQueue - Single Buf Partial", "[BufferQueue][audio]") {
 };
 
 TEST_CASE("BufferQueue - Two bufs full", "[BufferQueue][audio]") {
-    auto pool = std::make_shared<BufferQueue<int>::BufferPool>("Test", 10, 4);
+    auto pool = shoop_make_shared<BufferQueue<int>::BufferPool>("Test", 10, 4);
     BufferQueue<int> q(pool, 4);
 
     std::vector<int> data = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -60,7 +60,7 @@ TEST_CASE("BufferQueue - Two bufs full", "[BufferQueue][audio]") {
 };
 
 TEST_CASE("BufferQueue - Two bufs partial", "[BufferQueue][audio]") {
-    auto pool = std::make_shared<BufferQueue<int>::BufferPool>("Test", 10, 4);
+    auto pool = shoop_make_shared<BufferQueue<int>::BufferPool>("Test", 10, 4);
     BufferQueue<int> q(pool, 4);
 
     std::vector<int> data = {1, 2, 3, 4, 5, 6};
@@ -78,7 +78,7 @@ TEST_CASE("BufferQueue - Two bufs partial", "[BufferQueue][audio]") {
 };
 
 TEST_CASE("BufferQueue - drop buffer", "[BufferQueue][audio]") {
-    auto pool = std::make_shared<BufferQueue<int>::BufferPool>("Test", 2, 2);
+    auto pool = shoop_make_shared<BufferQueue<int>::BufferPool>("Test", 2, 2);
     BufferQueue<int> q(pool, 2);
     using Vec = std::vector<int>;
 
@@ -100,7 +100,7 @@ TEST_CASE("BufferQueue - drop buffer", "[BufferQueue][audio]") {
 };
 
 TEST_CASE("BufferQueue - drop buffer then change max to drop buffer", "[BufferQueue][audio]") {
-    auto pool = std::make_shared<BufferQueue<int>::BufferPool>("Test", 2, 2);
+    auto pool = shoop_make_shared<BufferQueue<int>::BufferPool>("Test", 2, 2);
     BufferQueue<int> q(pool, 2);
     using Vec = std::vector<int>;
 
@@ -131,7 +131,7 @@ TEST_CASE("BufferQueue - drop buffer then change max to drop buffer", "[BufferQu
 };
 
 TEST_CASE("BufferQueue - clone then drop", "[BufferQueue][audio]") {
-    auto pool = std::make_shared<BufferQueue<int>::BufferPool>("Test", 2, 2);
+    auto pool = shoop_make_shared<BufferQueue<int>::BufferPool>("Test", 2, 2);
     BufferQueue<int> q(pool, 2);
     using Vec = std::vector<int>;
 

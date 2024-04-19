@@ -44,6 +44,11 @@ if(ENABLE_PROCESS_PROFILING)
     add_compile_options(-DSHOOP_PROFILING)
 endif()
 set(OVERRIDE_COMPILE_LOG_LEVEL "" CACHE STRING "If set, overrides the compile-time log level filter. Valid options are LOG_LEVEL_[TRACE, DEBUG, INFO, WARNING, ERROR].")
+option(ENABLE_TRACKED_SHARED_PTRS "Enable tracked shared pointers for debugging")
+if(ENABLE_TRACKED_SHARED_PTRS)
+    message("Using tracked shared pointers for debugging.")
+    add_compile_options(-DUSE_TRACKED_SHARED_PTRS)
+endif()
 
 # Needed for windows to get backtraces from Boost
 if (WIN32)

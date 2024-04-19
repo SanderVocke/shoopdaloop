@@ -9,7 +9,7 @@
 template <typename SampleT>
 InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
                                               uint32_t n_frames,
-                                              std::shared_ptr<typename AudioPort<SampleT>::BufferPool> buffer_pool)
+                                              shoop_shared_ptr<typename AudioPort<SampleT>::BufferPool> buffer_pool)
     : AudioPort<SampleT>(buffer_pool), m_name(name), m_buffer(n_frames) {}
 
 template <typename SampleT>

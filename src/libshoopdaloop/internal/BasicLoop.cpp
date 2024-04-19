@@ -187,7 +187,7 @@ void BasicLoop::PROC_process(uint32_t n_samples) {
     PROC_handle_poi();
 }
 
-void BasicLoop::set_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe) {
+void BasicLoop::set_sync_source(shoop_shared_ptr<LoopInterface> const& src, bool thread_safe) {
 
     auto fn = [=, this]() {
         mp_sync_source = src;
@@ -199,9 +199,9 @@ void BasicLoop::set_sync_source(std::shared_ptr<LoopInterface> const& src, bool 
         fn();
     }
 }
-std::shared_ptr<LoopInterface> BasicLoop::get_sync_source(bool thread_safe) {
+shoop_shared_ptr<LoopInterface> BasicLoop::get_sync_source(bool thread_safe) {
     if(thread_safe) {
-        std::shared_ptr<LoopInterface> rval;
+        shoop_shared_ptr<LoopInterface> rval;
         exec_process_thread_command([this, &rval]() { rval = mp_sync_source; });
         return rval;
     }

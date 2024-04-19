@@ -21,60 +21,60 @@
 struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWetLoopTestChain"> {
 
     shoop_backend_session_t *api_backend_session;
-    std::shared_ptr<BackendSession> int_backend_session;
+    shoop_shared_ptr<BackendSession> int_backend_session;
 
     shoop_audio_driver_t *api_driver;
-    std::shared_ptr<shoop_types::_DummyAudioMidiDriver> int_driver;
+    shoop_shared_ptr<shoop_types::_DummyAudioMidiDriver> int_driver;
 
     shoopdaloop_audio_port_t *api_input_port;
-    std::shared_ptr<GraphPort> int_input_port;
+    shoop_shared_ptr<GraphPort> int_input_port;
     DummyAudioPort* int_dummy_input_port;
 
     shoopdaloop_audio_port_t *api_output_port;
-    std::shared_ptr<GraphPort> int_output_port;
+    shoop_shared_ptr<GraphPort> int_output_port;
     DummyAudioPort* int_dummy_output_port;
 
     shoopdaloop_midi_port_t *api_midi_input_port;
-    std::shared_ptr<GraphPort> int_midi_input_port;
+    shoop_shared_ptr<GraphPort> int_midi_input_port;
     DummyMidiPort* int_dummy_midi_input_port;
 
     shoopdaloop_fx_chain_t *api_fx_chain;
-    std::shared_ptr<GraphFXChain> int_fx_chain;
-    std::shared_ptr<shoop_types::FXChain> int_custom_processing_chain;
+    shoop_shared_ptr<GraphFXChain> int_fx_chain;
+    shoop_shared_ptr<shoop_types::FXChain> int_custom_processing_chain;
     shoopdaloop_audio_port_t *api_fx_in;
     shoopdaloop_audio_port_t *api_fx_out;
-    std::shared_ptr<GraphPort> int_fx_in;
-    std::shared_ptr<GraphPort> int_fx_out;
+    shoop_shared_ptr<GraphPort> int_fx_in;
+    shoop_shared_ptr<GraphPort> int_fx_out;
 
     shoopdaloop_midi_port_t *api_fx_midi_in;
-    std::shared_ptr<GraphPort> int_fx_midi_in;
+    shoop_shared_ptr<GraphPort> int_fx_midi_in;
 
     shoopdaloop_loop_t *api_loop;
-    std::shared_ptr<GraphLoop> int_loop;
-    std::shared_ptr<AudioMidiLoop> int_audiomidi_loop;
+    shoop_shared_ptr<GraphLoop> int_loop;
+    shoop_shared_ptr<AudioMidiLoop> int_audiomidi_loop;
 
     shoopdaloop_loop_t *api_sync_loop;
-    std::shared_ptr<GraphLoop> int_sync_loop;
+    shoop_shared_ptr<GraphLoop> int_sync_loop;
 
-    std::shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
+    shoop_shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
 
     shoopdaloop_loop_audio_channel_t *api_dry_chan;
     shoopdaloop_loop_audio_channel_t *api_wet_chan;
-    std::shared_ptr<GraphLoopChannel> int_dry_chan_node;
-    std::shared_ptr<GraphLoopChannel> int_wet_chan_node;
-    std::shared_ptr<shoop_types::LoopAudioChannel> int_dry_audio_chan;
-    std::shared_ptr<shoop_types::LoopAudioChannel> int_wet_audio_chan;
+    shoop_shared_ptr<GraphLoopChannel> int_dry_chan_node;
+    shoop_shared_ptr<GraphLoopChannel> int_wet_chan_node;
+    shoop_shared_ptr<shoop_types::LoopAudioChannel> int_dry_audio_chan;
+    shoop_shared_ptr<shoop_types::LoopAudioChannel> int_wet_audio_chan;
 
     shoopdaloop_loop_midi_channel_t *api_dry_midi_chan;
-    std::shared_ptr<GraphLoopChannel> int_dry_midi_chan_node;
-    std::shared_ptr<shoop_types::LoopMidiChannel> int_dry_midi_chan;
+    shoop_shared_ptr<GraphLoopChannel> int_dry_midi_chan_node;
+    shoop_shared_ptr<shoop_types::LoopMidiChannel> int_dry_midi_chan;
 
     SingleDryWetLoopTestChain() {
         api_backend_session = create_backend_session();
         int_backend_session = internal_backend_session(api_backend_session);
 
         api_driver = create_audio_driver(Dummy);
-        int_driver = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(internal_audio_driver(api_driver));
+        int_driver = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(internal_audio_driver(api_driver));
 
         auto settings = DummyAudioMidiDriverSettings{};
         int_driver->start(settings);
@@ -93,7 +93,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
 
         api_fx_chain = create_fx_chain(api_backend_session, Test2x2x1, "Test");
         int_fx_chain = internal_fx_chain(api_fx_chain);
-        int_custom_processing_chain = std::dynamic_pointer_cast<shoop_types::FXChain>(int_fx_chain->chain);
+        int_custom_processing_chain = shoop_dynamic_pointer_cast<shoop_types::FXChain>(int_fx_chain->chain);
         api_fx_in = fx_chain_audio_input_port(api_fx_chain, 0);
         api_fx_out = fx_chain_audio_output_port(api_fx_chain, 0);
         int_fx_in = internal_audio_port(api_fx_in);
@@ -119,9 +119,9 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         // Note: need to wait for channels to really appear
         int_driver->wait_process();
 
-        int_dry_audio_chan = std::dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_dry_chan_node->channel);
-        int_wet_audio_chan = std::dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_wet_chan_node->channel);
-        int_dry_midi_chan = std::dynamic_pointer_cast<shoop_types::LoopMidiChannel>(int_dry_midi_chan_node->channel);
+        int_dry_audio_chan = shoop_dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_dry_chan_node->channel);
+        int_wet_audio_chan = shoop_dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_wet_chan_node->channel);
+        int_dry_midi_chan = shoop_dynamic_pointer_cast<shoop_types::LoopMidiChannel>(int_dry_midi_chan_node->channel);
 
         if(!int_dry_audio_chan) { throw std::runtime_error("ChannelMode_Dry audio channel is null"); }
         if(!int_wet_audio_chan) { throw std::runtime_error("Wet audio channel is null"); }

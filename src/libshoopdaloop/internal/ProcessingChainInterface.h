@@ -8,13 +8,14 @@
 #include "AudioPort.h"
 #include "InternalAudioPort.h"
 #include <functional>
+#include "shoop_shared_ptr.h"
 
 template<typename TimeType, typename SizeType>
 class ProcessingChainInterface {
 public:
     using _InternalAudioPort = InternalAudioPort<float>;
-    using SharedInternalAudioPort = std::shared_ptr<InternalAudioPort<float>>;
-    using SharedMidiPort = std::shared_ptr<MidiPort>;
+    using SharedInternalAudioPort = shoop_shared_ptr<InternalAudioPort<float>>;
+    using SharedMidiPort = shoop_shared_ptr<MidiPort>;
 
     ProcessingChainInterface() {}
     virtual ~ProcessingChainInterface() {}

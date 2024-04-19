@@ -14,7 +14,7 @@ template<typename LoopIterator, typename SharedLoopsBegin, typename SharedLoopsE
 void process_loops(SharedLoopsBegin loops_begin,
                    SharedLoopsEnd loops_end,
                    uint32_t n_samples,
-                   std::function<LoopInterface*(LoopIterator &)> loop_getter = [](LoopIterator &l) -> LoopInterface* { return static_pointer_cast<LoopInterface>(*l).get(); },
+                   std::function<LoopInterface*(LoopIterator &)> loop_getter = [](LoopIterator &l) -> LoopInterface* { return shoop_static_pointer_cast<LoopInterface>(*l).get(); },
                    uint32_t n_recursive_0_procs=0) {
     if (n_recursive_0_procs > g_max_0_procs) {
         throw std::runtime_error("Stuck in recursive 0-processing loop");

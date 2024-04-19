@@ -3,6 +3,7 @@
 #include "LoggingEnabled.h"
 #include <vector>
 #include <functional>
+#include "shoop_shared_ptr.h"
 
 // We need a variable-sized struct that also supports interface inheritance.
 // This cannot really be done in C++, so instead we just make a fixed-size
@@ -33,7 +34,7 @@ template<typename TimeType, typename SizeType>
 class MidiStorageCursor;
 
 template<typename TimeType, typename SizeType>
-class MidiStorageBase : public std::enable_shared_from_this<MidiStorageBase<TimeType, SizeType>>,
+class MidiStorageBase : public shoop_enable_shared_from_this<MidiStorageBase<TimeType, SizeType>>,
                         protected ModuleLoggingEnabled<"Backend.MidiChannel.Storage"> {
 public:
     using Elem = MidiStorageElem<TimeType, SizeType>;
@@ -80,10 +81,10 @@ public:
 private:
     std::optional<uint32_t> m_offset = std::nullopt;
     std::optional<uint32_t> m_prev_offset = std::nullopt;
-    std::shared_ptr<const Storage> m_storage = nullptr;
+    shoop_shared_ptr<const Storage> m_storage = nullptr;
 
 public:
-    MidiStorageCursor(std::shared_ptr<const Storage> _storage);
+    MidiStorageCursor(shoop_shared_ptr<const Storage> _storage);
 
     bool valid() const;
 
@@ -114,10 +115,10 @@ class MidiStorage : public MidiStorageBase<TimeType, SizeType> {
 public:
     using Elem = MidiStorageElem<TimeType, SizeType>;
     using Cursor = MidiStorageCursor<TimeType, SizeType>;
-    using SharedCursor = std::shared_ptr<Cursor>;
+    using SharedCursor = shoop_shared_ptr<Cursor>;
 
 private:
-    std::vector<std::weak_ptr<Cursor>> m_cursors;
+    std::vector<shoop_weak_ptr<Cursor>> m_cursors;
     static constexpr uint32_t n_starting_cursors = 10;
 
 public:

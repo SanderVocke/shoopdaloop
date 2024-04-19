@@ -1,7 +1,5 @@
 #pragma once
-#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <functional>
 
 template<typename SampleT> class AudioBuffer;
