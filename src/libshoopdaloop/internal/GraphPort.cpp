@@ -10,7 +10,7 @@ using namespace shoop_constants;
 
 GraphPort::GraphPort (shoop_shared_ptr<BackendSession> const& backend) :
     m_passthrough_enabled(true),
-    backend(tracked_weak_ptr<BackendSession>(backend)) {}
+    backend(shoop_weak_ptr<BackendSession>(backend)) {}
 
 BackendSession &GraphPort::get_backend() {
     auto b = backend.lock();
