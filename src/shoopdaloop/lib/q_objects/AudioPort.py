@@ -163,7 +163,6 @@ class AudioPort(Port):
                         idx
                     )
                 self.push_state()
-                self.logger.error(f"aah {n_ringbuffer}")
                 self.set_min_n_ringbuffer_samples (n_ringbuffer)
 
     def maybe_initialize_external(self, name_hint, input_connectability, output_connectability):

@@ -285,7 +285,7 @@ Item {
                 Label {
                     id: clear_label
                     anchors.centerIn: parent
-                    text: 'hello world'
+                    text: 'placeholder'
                 }
             }
         }
@@ -293,6 +293,40 @@ Item {
         ToolSeparator {
             orientation: Qt.Vertical
             height: 40
+        }
+
+        ExtendedButton {
+            tooltip: "Default recording action (record or grab). Affects the default action on empty loops when no specific command is received, e.g. when pressing the spacebar or a MIDI input device triggering the default action."
+            id: default_recording_action_button
+            height: 40
+            width: 30
+            onClicked: registries.state_registry.toggle_default_recording_action()
+            highlighted : false
+            readonly property string value : registries.state_registry.default_recording_action
+
+            MaterialDesignIcon {
+                size: Math.min(parent.width, parent.height) - 10
+                anchors {
+                    left: parent.left
+                    top: parent.top
+                    topMargin: 8
+                    leftMargin: 2
+                }
+                name: parent.value == 'record' ? 'arrow-collapse-down' : 'record'
+                color: 'grey'
+            }
+            MaterialDesignIcon {
+                size: parent.value == 'grab' ? (Math.min(parent.width, parent.height) - 10) :
+                                               (Math.min(parent.width, parent.height) - 5)
+                anchors {
+                    right: parent.right
+                    bottom: parent.bottom
+                    bottomMargin: parent.value == 'grab' ? 10 : 5
+                    rightMargin:  parent.value == 'grab' ? 4 : 0
+                }
+                name: parent.value == 'grab' ? 'arrow-collapse-down' : 'record'
+                color: 'red'
+            }
         }
 
         ExtendedButton {

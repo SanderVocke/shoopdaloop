@@ -30,6 +30,7 @@
 --      - RECORD:    records the clicked loop(s)
 --        - + DRY:   re-records the clicked loop(s) dry into wet
 --      - GRAB:      grabs the clicked loop(s)
+--        - + SHIFT: toggles default recording action between record/grab
 --      - SELECT:    toggles selection of clicked loop(s)
 --        - + SHIFT: toggles targeting of clicked loop(s)
 --
@@ -209,9 +210,19 @@ local handle_loops_pressed = function(coords)
             shoop_control.loop_trigger(coords, shoop_control.constants.LoopMode_Recording)
         end
     elseif STATE_grab_pressed then
-        --  Grab => Grab
-        print_debug("-> grab")
-        shoop_control.loop_trigger_grab(coords)
+        if STATE_shift_pressed then
+            -- Shift + Grab => toggle default record action
+            print_debug('-> default rec action toggle')
+            if shoop_control.get_default_recording_action() == 'record' then
+                shoop_control.set_default_recording_action('grab')
+            else
+                shoop_control.set_default_recording_action('record')
+            end
+        else
+            --  Grab => Grab
+            print_debug("-> grab")
+            shoop_control.loop_trigger_grab(coords)
+        end
     elseif STATE_stop_pressed then
         if STATE_shift_pressed then
             -- Shift + Stop => Clear

@@ -296,6 +296,12 @@ LuaControlInterface {
     function get_play_after_record_override() {
         return registries.state_registry.play_after_record_active
     }
+    function set_default_recording_action_override(v) {
+        registries.state_registry.set_default_recording_action(v)
+    }
+    function get_default_recording_action_override() {
+        return registries.state_registry.default_recording_action
+    }
     
 
     // Handle creation and deletion of dynamic MIDI control ports based on registered connection rules.

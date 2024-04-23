@@ -176,7 +176,9 @@ class ControlHandler(ShoopQQuickItem):
         [ 'set_sync_active', lua_bool ],
         [ 'get_sync_active' ],
         [ 'set_play_after_record', lua_bool ],
-        [ 'get_play_after_record' ]
+        [ 'get_play_after_record' ],
+        [ 'set_default_recording_action', lua_str ],
+        [ 'get_default_recording_action' ]
     ]
 
     def generate_loop_mode_constants():
@@ -810,6 +812,28 @@ class ControlHandler(ShoopQQuickItem):
         @shoop_lua_fn_docstring.start
         shoop_control.get_play_after_record() -> bool
         Get the global "play_after_record" control state.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @ShoopSlot(list, 'QVariant')
+    @allow_qml_override
+    def set_default_recording_action(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.set_default_recording_action(val)
+        Set the global "default recording action" control state. Valid values are 'record' or 'grab' - others are ignored.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @ShoopSlot(list, 'QVariant', result=str)
+    @allow_qml_override
+    def get_default_recording_action(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.get_default_recording_action() -> string
+        Get the global "default recording action" control state ('record' or 'grab').
         @shoop_lua_fn_docstring.end
         """
         pass

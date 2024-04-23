@@ -1087,6 +1087,7 @@ Item {
                                     id : playlivefx
                                     width: buttongrid.button_width
                                     height: buttongrid.button_height
+                                    
                                     IconWithText {
                                         size: parent.width
                                         anchors.centerIn: parent
