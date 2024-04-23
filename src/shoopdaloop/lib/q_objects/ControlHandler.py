@@ -155,6 +155,7 @@ class ControlHandler(ShoopQQuickItem):
         [ 'loop_clear_all' ],
         [ 'loop_adopt_ringbuffers', lua_loop_selector, lua_int, lua_int, lua_int, lua_int ],
         [ 'loop_trigger_grab', lua_loop_selector ],
+        [ 'loop_compose_add_to_end', lua_loop_selector, lua_loop_selector, lua_bool ],
         [ 'track_get_gain', lua_track_selector ],
         [ 'track_set_gain', lua_track_selector, lua_float ],
         [ 'track_get_gain_fader', lua_track_selector ],
@@ -567,6 +568,21 @@ class ControlHandler(ShoopQQuickItem):
         recorded in the current sync loop cycle, 1 means start from the previous cycle, etc.
         go_to_cycle and go_to_mode can control the cycle and mode the loop will have right after adopting.
         cycles_length sets the loop length.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @ShoopSlot(list, 'QVariant', 'QVariant')
+    @allow_qml_override
+    def loop_compose_add_to_end(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_compose_add_to_end(loop_selector, loop_selector, parallel)
+        Add a loop to the a composition. The first argument is the singular target loop in which
+        the composition is stored. If empty, a composition is created.
+        The second argument is the loop that should be added.
+        The third argument is whether the addition should be parallel to the existing composition.
+        If false, the loop is added to the end.
         @shoop_lua_fn_docstring.end
         """
         pass

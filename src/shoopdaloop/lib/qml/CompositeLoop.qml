@@ -129,8 +129,11 @@ Item {
 
     signal cycled()
 
-    function add_loop(loop, delay, n_cycles=undefined, playlist_idx=0) {
+    function add_loop(loop, delay, n_cycles=undefined, playlist_idx=undefined) {
         root.logger.debug(`Adding loop ${loop.obj_id} to playlist ${playlist_idx} with delay ${delay}, n_cycles override ${n_cycles}`)
+        if (playlist_idx === undefined) {
+            playlist_idx = playlists_in.length()
+        }
         while (playlist_idx >= playlists_in.length) {
             playlists_in.push([])
         }
@@ -168,8 +171,7 @@ Item {
                         elem.n_cycles ?
                             elem.n_cycles :
                             ((loop_widget.n_cycles > 0 && !ModeHelpers.is_recording_mode(loop_widget.mode)) ?
-                                loop_widget.n_cycles :
-                                registries.state_registry.apply_n_cycles
+                                loop_widget.n_cycles : 1
                             )
                     )
                     let loop_end = loop_start + loop_cycles
@@ -308,10 +310,6 @@ Item {
         update_schedule()
     }
     onSync_emptyChanged: update_schedule()
-    Connections {
-        target: registries.state_registry
-        function onApply_n_cyclesChanged() { update_schedule() }
-    }
 
     // Calculated properties
     readonly property int display_position : position
