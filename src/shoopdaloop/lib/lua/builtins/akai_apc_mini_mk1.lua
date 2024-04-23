@@ -212,11 +212,11 @@ local handle_loop_pressed = function(coords)
         if STATE_composition_target_loop == nil then
             STATE_composition_target_loop = coords
         else
-            STATE_composition_n_parallel += 1
+            STATE_composition_n_parallel = STATE_composition_n_parallel + 1
             if STATE_composition_n_parallel > 1 then
-                -- parallel
+                shoop_control.loop_compose_add_to_end(STATE_composition_target_loop, coords, true)
             else
-                -- serial
+                shoop_control.loop_compose_add_to_end(STATE_composition_target_loop, coords, false)
             end
         end
     elseif STATE_select_pressed then
@@ -279,9 +279,9 @@ local handle_loop_pressed = function(coords)
         shoop_helpers.track_toggle_input_muted(coords[1])
     elseif STATE_dry_pressed and STATE_shift_pressed then
         -- Shift + Dry => Composition mode
-        print_debug("-> enter composition mode")
+        print_debug("-> enter composition mode with loop")
         STATE_composition_active = true
-        STATE_composition_target_loop = nil
+        STATE_composition_target_loop = coords
         STATE_composition_n_parallel = 0
     else
         print_debug("-> default loop action")
@@ -290,12 +290,12 @@ local handle_loop_pressed = function(coords)
 end
 
 -- Handle (a) loop(s) being released
-local handle_loop_pressed = function(coords)
+local handle_loop_released = function(coords)
     if STATE_composition_active then
-        STATE_composition_n_parallel -= 1
+        STATE_composition_n_parallel = STATE_composition_n_parallel - 1
         if STATE_composition_n_parallel < 0 then
             STATE_composition_n_parallel = 0
-        end if
+        end
     end
 end
 
@@ -496,6 +496,8 @@ local handle_noteOff = function(msg, port)
         print_debug("dry inactive")
         set_led_by_note(BUTTON_dry, LED_off)
         STATE_dry_pressed = false
+        STATE_composition_active = false
+        STATE_composition_target_loop = nil
     elseif note == BUTTON_n_cycles then
         print_debug("set n cycles inactive")
         set_led_by_note(BUTTON_n_cycles, LED_off)

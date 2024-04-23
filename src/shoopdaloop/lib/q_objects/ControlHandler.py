@@ -572,7 +572,7 @@ class ControlHandler(ShoopQQuickItem):
         """
         pass
 
-    @ShoopSlot(list, 'QVariant', 'QVariant')
+    @ShoopSlot(list, 'QVariant')
     @allow_qml_override
     def loop_compose_add_to_end(self, args, lua_engine):
         """

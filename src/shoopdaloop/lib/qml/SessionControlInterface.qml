@@ -227,9 +227,11 @@ LuaControlInterface {
         select_loops(loop_selector).forEach((h) => { h.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode) } )
     }
     function loop_compose_add_to_end_override(target_loop_selector, add_loop_selector, parallel) {
-        let target = select_loops(target_loop_selector)
-        let add = select_loops(add_loops_selector)
-        if (target.length != 1 || add.length != 1) { return; }
+        let targets = select_loops(target_loop_selector)
+        let adds = select_loops(add_loop_selector)
+        if (targets.length != 1 || adds.length != 1) { return; }
+        let target = targets[0]
+        let add = adds[0]
         if (!target.maybe_loop) { target.create_composite_loop() }
         if (!target.maybe_composite_loop) { return; }
         target.maybe_composite_loop.add_loop(add, 0, registries.state_registry.apply_n_cycles,

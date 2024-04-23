@@ -132,7 +132,7 @@ Item {
     function add_loop(loop, delay, n_cycles=undefined, playlist_idx=undefined) {
         root.logger.debug(`Adding loop ${loop.obj_id} to playlist ${playlist_idx} with delay ${delay}, n_cycles override ${n_cycles}`)
         if (playlist_idx === undefined) {
-            playlist_idx = playlists_in.length()
+            playlist_idx = playlists_in.length
         }
         while (playlist_idx >= playlists_in.length) {
             playlists_in.push([])
