@@ -31,7 +31,7 @@ Some of these are *toggleable*. These can be clicked to toggle them, and some al
 
 Some details:
 
-* **default record action**: *toggleable* (no mapped key). Some input devices have a key which maps to the "default loop action" on currently selected loops (e.g. spacebar on the keyboard). This is a context-sensitive action depending on the current state of the loop. If such a trigger decides a loop should record new content, this control decides whether the loop is "grabbed" or recorded regularly.
+* **default record action**: *toggleable* (no mapped key). Chooses the preferred method of recording ("record" or "grab"). This affects default behavior or some buttons / MIDI inputs (such as the spacebar).
 * **auto-play recorded**: *toggleable* (``Alt`` key). If active (highlighted), the default trigger after recording a loop is to play it back. That includes the behavior when doing a default trigger on a loop (spacebar / MIDI controller), but also affects what happens after triggering a fixed-length recording (playback or stop). It also affects the **grab** button (explained below).
 * **sync mode**: *toggleable* (``Ctrl`` key). Affects the timing of loop triggers. If sync is not active (exclamation symbol), loop triggers such as play, stop, record execute immediately. If sync is active (hourglass symbol), such commands happen at the first upcoming restart of the **sync loop**.
 * **solo mode**: *toggleable* (``Shift`` key). If active (highlighted), commands such as play and record will stop all other loops in the same track(s).
