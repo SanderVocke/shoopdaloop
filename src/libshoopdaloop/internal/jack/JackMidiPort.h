@@ -16,7 +16,7 @@ public:
         std::string name,
         shoop_port_direction_t direction,
         jack_client_t *client,
-        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     ) : GenericJackPort<API>(name, direction, PortDataType::Midi, client, all_ports_tracker) {}
 };
 
@@ -48,7 +48,7 @@ public:
     GenericJackMidiInputPort(
         std::string name,
         jack_client_t *client,
-        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );
 
     MidiReadableBufferInterface *PROC_internal_read_input_data_buffer (uint32_t nframes) override;
@@ -90,7 +90,7 @@ public:
     GenericJackMidiOutputPort(
         std::string name,
         jack_client_t *client,
-        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     ) : GenericJackMidiPort<API>(name, ShoopPortDirection_Output, client, all_ports_tracker),
         MidiSortingReadWritePort(true, false, false),
         m_write_buffer(JackMidiWriteBuffer{}) {}

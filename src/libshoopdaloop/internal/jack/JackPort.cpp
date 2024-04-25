@@ -31,7 +31,7 @@ GenericJackPort<API>::GenericJackPort(std::string name,
                    shoop_port_direction_t direction,
                    PortDataType type,
                    jack_client_t *client,
-                   std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
+                   shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker)
     : m_client(client), m_type(type), m_direction(direction), m_all_ports_tracker(all_ports_tracker) {
 
     log<log_level_debug>("Opening JACK port: {}", name);

@@ -1,6 +1,7 @@
 #include "shoop_globals.h"
 #include "CustomProcessingChain.h"
 #include "DummyAudioMidiDriver.h"
+#include "shoop_shared_ptr.h"
 
 template<typename TimeType, typename SizeType>
 CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(
@@ -8,20 +9,23 @@ CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(
     uint32_t n_audio_outputs,
     uint32_t n_midi_inputs,
     ProcessFunctor process_callback,
-    std::shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool) :
+    shoop_shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool) :
     m_active(true),
     m_freewheeling(false),
     m_process_callback(process_callback)
 {
     for(uint32_t i=0; i<n_audio_inputs; i++) {
-        m_input_audio_ports.push_back(std::make_shared<InternalAudioPort<shoop_types::audio_sample_t>>("fx_audio_in_" + std::to_string(i+1), 4096, nullptr));
+        m_input_audio_ports.push_back(shoop_make_shared<InternalAudioPort<shoop_types::audio_sample_t>>("fx_audio_in_" + std::to_string(i+1), 4096, nullptr));
     }
     for(uint32_t i=0; i<n_audio_outputs; i++) {
         // Output ports get a ringbuffer, because those may go into further channels to record
-        m_output_audio_ports.push_back(std::make_shared<InternalAudioPort<shoop_types::audio_sample_t>>("fx_audio_out_" + std::to_string(i+1), 4096, maybe_buffer_pool));
+        m_output_audio_ports.push_back(shoop_make_shared<InternalAudioPort<shoop_types::audio_sample_t>>("fx_audio_out_" + std::to_string(i+1), 4096, maybe_buffer_pool));
     }
     for(uint32_t i=0; i<n_midi_inputs; i++) {
-        m_input_midi_ports.push_back(std::make_shared<DummyMidiPort>("fx_midi_in_" + std::to_string(i+1), ShoopPortDirection_Output));
+        m_input_midi_ports.push_back(
+            shoop_static_pointer_cast<MidiPort>(
+                shoop_make_shared<DummyMidiPort>("fx_midi_in_" + std::to_string(i+1), ShoopPortDirection_Output)
+            ));
     }
 }
     

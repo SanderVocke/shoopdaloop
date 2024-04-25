@@ -6,7 +6,7 @@
 
 AudioMidiDriver::AudioMidiDriver() :
   WithCommandQueue(),
-  m_processors(std::make_shared<std::set<HasAudioProcessingFunction*>>()),
+  m_processors(shoop_make_shared<std::set<HasAudioProcessingFunction*>>()),
   m_active(false),
   m_client_name("unknown")
 {
@@ -14,7 +14,7 @@ AudioMidiDriver::AudioMidiDriver() :
 
 void AudioMidiDriver::add_processor(HasAudioProcessingFunction &p) {
     auto old = m_processors;
-    auto _new = std::make_shared<std::set<HasAudioProcessingFunction*>>();
+    auto _new = shoop_make_shared<std::set<HasAudioProcessingFunction*>>();
     *_new = *old;
     _new->insert(&p);
     m_processors = _new;
@@ -22,7 +22,7 @@ void AudioMidiDriver::add_processor(HasAudioProcessingFunction &p) {
 
 void AudioMidiDriver::remove_processor(HasAudioProcessingFunction &p) {
     auto old = m_processors;
-    auto _new = std::make_shared<std::set<HasAudioProcessingFunction*>>();
+    auto _new = shoop_make_shared<std::set<HasAudioProcessingFunction*>>();
     *_new = *old;
     _new->erase(&p);
     m_processors = _new;
@@ -52,7 +52,7 @@ float AudioMidiDriver::get_dsp_load() {
     return m_dsp_load;
 }
 
-void AudioMidiDriver::unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port) {
+void AudioMidiDriver::unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) {
     exec_process_thread_command([this, port]() {
         m_decoupled_midi_ports.erase(port);
     });
@@ -138,10 +138,10 @@ void AudioMidiDriver::wait_process() {
     log<log_level_debug_trace>("AudioMidiDriver::wait_process done");
 }
 
-std::shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
+shoop_shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
     constexpr uint32_t decoupled_midi_port_queue_size = 256;
     auto port = open_midi_port(name, direction);
-    auto decoupled = std::make_shared<shoop_types::_DecoupledMidiPort>(
+    auto decoupled = shoop_make_shared<shoop_types::_DecoupledMidiPort>(
         port,
         weak_from_this(),
         decoupled_midi_port_queue_size,

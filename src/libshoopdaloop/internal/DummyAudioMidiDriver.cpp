@@ -23,7 +23,7 @@ DummyPort::DummyPort(
     std::string name,
     shoop_port_direction_t direction,
     PortDataType type,
-    std::weak_ptr<DummyExternalConnections> external_connections
+    shoop_weak_ptr<DummyExternalConnections> external_connections
 ) : m_name(name), m_direction(direction), m_external_connections(external_connections) {}
 
 const char* DummyPort::name() const { return m_name.c_str(); }
@@ -53,7 +53,7 @@ void *DummyPort::maybe_driver_handle() const {
     return (void*)this;
 }
 
-DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, std::shared_ptr<AudioPort<audio_sample_t>::BufferPool> buffer_pool, std::weak_ptr<DummyExternalConnections> external_connections)
+DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, shoop_shared_ptr<AudioPort<audio_sample_t>::BufferPool> buffer_pool, shoop_weak_ptr<DummyExternalConnections> external_connections)
     : AudioPort<audio_sample_t>(buffer_pool), m_name(name),
       DummyPort(name, direction, PortDataType::Audio, external_connections),
       m_direction(direction),
@@ -189,7 +189,7 @@ bool DummyMidiPort::write_by_reference_supported() const { return true; }
 
 bool DummyMidiPort::write_by_value_supported() const { return true; }
 
-DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction, std::weak_ptr<DummyExternalConnections> external_connections)
+DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction, shoop_weak_ptr<DummyExternalConnections> external_connections)
     : MidiPort(true, false, false), DummyPort(name, direction, PortDataType::Midi, external_connections) {
 }
 
@@ -359,7 +359,7 @@ DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver()
       m_controlled_mode_samples_to_process(0),
       m_audio_port_closed_cb(nullptr), m_audio_port_opened_cb(nullptr),
       m_midi_port_closed_cb(nullptr), m_midi_port_opened_cb(nullptr),
-      m_external_connections(std::make_shared<DummyExternalConnections>())
+      m_external_connections(shoop_make_shared<DummyExternalConnections>())
 {
     m_audio_ports.clear();
     m_midi_ports.clear();
@@ -438,24 +438,24 @@ DummyAudioMidiDriver<Time, Size>::~DummyAudioMidiDriver() {
 }
 
 template <typename Time, typename Size>
-std::shared_ptr<AudioPort<audio_sample_t>>
+shoop_shared_ptr<AudioPort<audio_sample_t>>
 DummyAudioMidiDriver<Time, Size>::open_audio_port(std::string name,
                                               shoop_port_direction_t direction,
-                                              std::shared_ptr<typename AudioPort<audio_sample_t>::BufferPool> buffer_pool) {
+                                              shoop_shared_ptr<typename AudioPort<audio_sample_t>::BufferPool> buffer_pool) {
     Log::log<log_level_debug>("DummyAudioMidiDriver : add audio port");
-    auto rval = std::make_shared<DummyAudioPort>(name, direction, buffer_pool, m_external_connections);
+    auto rval = shoop_make_shared<DummyAudioPort>(name, direction, buffer_pool, m_external_connections);
     m_audio_ports.insert(rval);
-    return rval;
+    return shoop_static_pointer_cast<AudioPort<audio_sample_t>>(rval);
 }
 
 template <typename Time, typename Size>
-std::shared_ptr<MidiPort>
+shoop_shared_ptr<MidiPort>
 DummyAudioMidiDriver<Time, Size>::open_midi_port(std::string name,
                                              shoop_port_direction_t direction) {
     Log::log<log_level_debug>("DummyAudioMidiDriver: add midi port");
-    auto rval = std::make_shared<DummyMidiPort>(name, direction, m_external_connections);
+    auto rval = shoop_make_shared<DummyMidiPort>(name, direction, m_external_connections);
     m_midi_ports.insert(rval);
-    return rval;
+    return shoop_static_pointer_cast<MidiPort>(rval);
 }
 
 template <typename Time, typename Size>

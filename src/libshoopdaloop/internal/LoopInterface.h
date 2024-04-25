@@ -3,6 +3,7 @@
 #include <memory>
 #include <stdio.h>
 #include "types.h"
+#include "shoop_shared_ptr.h"
 
 class LoopInterface {
 public:
@@ -26,8 +27,8 @@ public:
     virtual bool PROC_is_triggering_now() = 0;
 
     // The sync source determines from which other loop this loop receives triggers.
-    virtual std::shared_ptr<LoopInterface> get_sync_source(bool thread_safe = true) = 0;
-    virtual void set_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe = true) = 0;
+    virtual shoop_shared_ptr<LoopInterface> get_sync_source(bool thread_safe = true) = 0;
+    virtual void set_sync_source(shoop_shared_ptr<LoopInterface> const& src, bool thread_safe = true) = 0;
 
     // Trigger from outside. Handled immediately. If propagate is set to true,
     // other loops synced to this one will also receive the trigger.

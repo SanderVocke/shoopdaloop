@@ -144,18 +144,18 @@ MidiStateDiffTracker::MidiStateDiffTracker(SharedTracker a, SharedTracker b,
 void MidiStateDiffTracker::reset(SharedTracker a, SharedTracker b,
                                  StateDiffTrackerAction action) {
     if (m_a) {
-        m_a->unsubscribe(shared_from_this());
+        m_a->unsubscribe(shoop_static_pointer_cast<MidiStateTracker::Subscriber>(shared_from_this()));
     }
     if (m_b) {
-        m_b->unsubscribe(shared_from_this());
+        m_b->unsubscribe(shoop_static_pointer_cast<MidiStateTracker::Subscriber>(shared_from_this()));
     }
     m_a = a;
     m_b = b;
     if (m_a) {
-        m_a->subscribe(shared_from_this());
+        m_a->subscribe(shoop_static_pointer_cast<MidiStateTracker::Subscriber>(shared_from_this()));
     }
     if (m_b) {
-        m_b->subscribe(shared_from_this());
+        m_b->subscribe(shoop_static_pointer_cast<MidiStateTracker::Subscriber>(shared_from_this()));
     }
     switch (action) {
     case StateDiffTrackerAction::ScanDiff:

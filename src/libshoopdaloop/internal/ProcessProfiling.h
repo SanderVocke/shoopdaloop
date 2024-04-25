@@ -1,12 +1,9 @@
 #pragma once
-#include <string_view>
 #include <memory>
-#include <type_traits>
 #include <vector>
-#include <map>
-#include <mutex>
 #include <chrono>
 #include <functional>
+#include "shoop_shared_ptr.h"
 
 // This module allows profiling the audio process thread.
 // Different software modules can register to log profiling data.
@@ -54,7 +51,7 @@ class Profiler {
     std::unique_ptr<ProfilerPrivate> pvt;
     
 public:
-    std::shared_ptr<ProfilingItem> maybe_get_profiling_item(std::string name);
+    shoop_shared_ptr<ProfilingItem> maybe_get_profiling_item(std::string name);
     ProfilingReport report();
     void next_iteration();
 
@@ -65,7 +62,7 @@ public:
 
 namespace {
 
-inline void log_time(float time, std::shared_ptr<ProfilingItem> item) {
+inline void log_time(float time, shoop_shared_ptr<ProfilingItem> item) {
     if(item) { item->log_time(time); }
 }
  
@@ -76,7 +73,7 @@ void log_time(float time, ProfItem first, ProfItems... rest)
     log_time(time, rest...);
 }
 
-inline bool any_valid(std::shared_ptr<ProfilingItem> item) {
+inline bool any_valid(shoop_shared_ptr<ProfilingItem> item) {
     return (bool) item;
 }
  
