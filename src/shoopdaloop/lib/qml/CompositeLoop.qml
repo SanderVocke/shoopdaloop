@@ -163,7 +163,7 @@ Item {
                     let elem = elems[h]
                     let loop_widget = registries.objects_registry.value_or(elem.loop_id, undefined)
                     if (!loop_widget) {
-                        root.logger.debug("Could not find " + elem.loop_id) 
+                        root.logger.debug(() => "Could not find " + elem.loop_id) 
                         continue
                     }
                     let loop_start = _it + elem.delay
