@@ -25,6 +25,7 @@
 --   this behavior:
 --      - DRY:       if transitioning to play, it will transtition to
 --                   play dry through wet instead.
+--        - + SHIFT: composition mode (details below).
 --      - CLIP STOP: stops the clicked loop(s)
 --        - + SHIFT: clears the clicked loop(s)
 --      - RECORD:    records the clicked loop(s)
@@ -61,7 +62,21 @@
 -- Track muting can be done as follows:
 -- - VOLUME + LOOP BUTTON will toggle mute on the track that the clicked loop is in.
 -- - PAN + LOOP BUTTON will toggle input mute on the track that the clicked loop is in.
-
+--
+-- -----------------------
+-- -- COMPOSITION MODE ---
+-- -----------------------
+--
+-- Composition mode lets you quickly create simple composite loops directly from the
+-- AKAI device. The steps for this are as follows:
+--
+-- - Press SHIFT + DRY and hold these buttons throughout the composition process.
+-- - Click any loop. This loop becomes the target where the composition will be stored.
+-- - Any subsequent loops clicked are added to the end of the composition immediately.
+--   Note that if the target was already a composite loop, it is not cleared - the new
+--   loops(s) get added to the end.
+-- - Pressing multiple loops together will cause the additionally pressed loops to be
+--   inserted parallel to the current composition.
 
 -- This file serves as an example for implementing similar scripts, so there
 -- are many comments to help you understand the code.
@@ -74,8 +89,8 @@ print_debug("Init akai_apc_mini_mk1.lua")
 -- Import the necessary modules from the ShoopDaLoop API
 local shoop_control = require('shoop_control')
 local shoop_helpers = require('shoop_helpers')
-local shoop_format = require('shoop_format')
-local shoop_midi = require('shoop_midi')
+local shoop_format  = require('shoop_format')
+local shoop_midi    = require('shoop_midi')
 
 -- constants: LED colors. These correspond to the defined MIDI note
 -- values in the APC Mini MIDI spec.
@@ -108,6 +123,7 @@ local BUTTON_device = 71
 
 -- constants: redefined button IDs for ShoopDaLoop.
 local BUTTON_grab = BUTTON_mute
+local BUTTON_record = BUTTON_rec_arm
 local BUTTON_sync_loop = BUTTON_blank_2
 local BUTTON_sync = BUTTON_blank_1
 local BUTTON_dry = BUTTON_send
@@ -120,7 +136,7 @@ local STATE_shift_pressed = false
 local STATE_select_pressed = false
 local STATE_solo_pressed = false
 local STATE_solo_toggle_permanent = false
-local STATE_rec_arm_pressed = false
+local STATE_record_pressed = false
 local STATE_grab_pressed = false
 local STATE_stop_pressed = false
 local STATE_dry_pressed = false
@@ -129,6 +145,9 @@ local STATE_sync_pressed = false
 local STATE_sync_toggle_permanent = false
 local STATE_volume_pressed = false
 local STATE_pan_pressed = false
+local STATE_composition_active = false
+local STATE_composition_target_loop = nil
+local STATE_composition_n_parallel = 0
 
 -- This state variable table will be used to remember which color we
 -- sent most recently to each loop.
@@ -188,8 +207,19 @@ local cc_to_fader_track = function(cc)
 end
 
 -- Handle (a) loop(s) being pressed
-local handle_loops_pressed = function(coords)
-    if STATE_select_pressed then
+local handle_loop_pressed = function(coords)
+    if STATE_composition_active then
+        if STATE_composition_target_loop == nil then
+            STATE_composition_target_loop = coords
+        else
+            STATE_composition_n_parallel = STATE_composition_n_parallel + 1
+            if STATE_composition_n_parallel > 1 then
+                shoop_control.loop_compose_add_to_end(STATE_composition_target_loop, coords, true)
+            else
+                shoop_control.loop_compose_add_to_end(STATE_composition_target_loop, coords, false)
+            end
+        end
+    elseif STATE_select_pressed then
         if STATE_shift_pressed then
             -- Shift + Select => Target
             print_debug("-> target")
@@ -199,7 +229,7 @@ local handle_loops_pressed = function(coords)
             print_debug("-> select")
             shoop_control.loop_toggle_selected(coords)
         end
-    elseif STATE_rec_arm_pressed then
+    elseif STATE_record_pressed then
         if STATE_dry_pressed then
             -- RecArm + Dry => RecordDryIntoWet
             print_debug("-> re-record dry into wet")
@@ -247,9 +277,25 @@ local handle_loops_pressed = function(coords)
         -- Pan => Input Mute
         print_debug("-> toggle track input muted")
         shoop_helpers.track_toggle_input_muted(coords[1])
+    elseif STATE_dry_pressed and STATE_shift_pressed then
+        -- Shift + Dry => Composition mode
+        print_debug("-> enter composition mode with loop")
+        STATE_composition_active = true
+        STATE_composition_target_loop = coords
+        STATE_composition_n_parallel = 0
     else
         print_debug("-> default loop action")
         shoop_helpers.default_loop_action(coords, STATE_dry_pressed)
+    end
+end
+
+-- Handle (a) loop(s) being released
+local handle_loop_released = function(coords)
+    if STATE_composition_active then
+        STATE_composition_n_parallel = STATE_composition_n_parallel - 1
+        if STATE_composition_n_parallel < 0 then
+            STATE_composition_n_parallel = 0
+        end
     end
 end
 
@@ -339,7 +385,7 @@ local handle_noteOn = function(msg, port)
 
     if maybe_loop ~= nil then
         print_debug("loop pressed")
-        handle_loops_pressed({maybe_loop})
+        handle_loop_pressed(maybe_loop)
     elseif note == BUTTON_shift then
         print_debug("shift active")
         set_led_by_note(BUTTON_shift, LED_green)
@@ -354,10 +400,10 @@ local handle_noteOn = function(msg, port)
         STATE_solo_toggle_permanent = STATE_shift_pressed
         set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
         STATE_solo_pressed = true
-    elseif note == BUTTON_rec_arm then
+    elseif note == BUTTON_record then
         print_debug("record active")
-        set_led_by_note(BUTTON_rec_arm, LED_green)
-        STATE_rec_arm_pressed = true
+        set_led_by_note(BUTTON_record, LED_green)
+        STATE_record_pressed = true
     elseif note == BUTTON_grab then
         print_debug("grab active")
         set_led_by_note(BUTTON_grab, LED_green)
@@ -413,8 +459,12 @@ end
 -- Handle a NoteOff message from the device (a button was released)
 local handle_noteOff = function(msg, port)
     local note = msg.bytes[1]
+    local maybe_loop = note_to_loop_coords(note)
 
-    if note == BUTTON_shift then
+    if maybe_loop ~= nil then
+        print_debug("loop released")
+        handle_loop_released(maybe_loop)
+    elseif note == BUTTON_shift then
         print_debug("shift inactive")
         set_led_by_note(BUTTON_shift, LED_off)
         STATE_shift_pressed = false
@@ -430,10 +480,10 @@ local handle_noteOff = function(msg, port)
         set_led_by_note(BUTTON_solo, (shoop_control.get_solo()) and LED_green or LED_off)
         STATE_solo_toggle_permanent = false
         STATE_solo_pressed = false
-    elseif note == BUTTON_rec_arm then
+    elseif note == BUTTON_record then
         print_debug("record inactive")
-        set_led_by_note(BUTTON_rec_arm, LED_off)
-        STATE_rec_arm_pressed = false
+        set_led_by_note(BUTTON_record, LED_off)
+        STATE_record_pressed = false
     elseif note == BUTTON_grab then
         print_debug("grab inactive")
         set_led_by_note(BUTTON_grab, LED_off)
@@ -446,6 +496,8 @@ local handle_noteOff = function(msg, port)
         print_debug("dry inactive")
         set_led_by_note(BUTTON_dry, LED_off)
         STATE_dry_pressed = false
+        STATE_composition_active = false
+        STATE_composition_target_loop = nil
     elseif note == BUTTON_n_cycles then
         print_debug("set n cycles inactive")
         set_led_by_note(BUTTON_n_cycles, LED_off)

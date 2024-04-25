@@ -878,9 +878,9 @@ Item {
                                             // Add the selected loop to the currently selected composite loop.
                                             // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
                                             if (key_modifiers.control_pressed) {
-                                                selected.maybe_composite_loop.add_loop(root, 0, undefined, selected.maybe_composite_loop.playlists.length)
+                                                selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, undefined)
                                             } else {
-                                                selected.maybe_composite_loop.add_loop(root, 0, undefined)
+                                                selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, 0)
                                             }
                                         }
                                     }
