@@ -3,6 +3,7 @@
 #include <vector>
 #include <chrono>
 #include <functional>
+#include <string>
 #include "shoop_shared_ptr.h"
 
 // This module allows profiling the audio process thread.
