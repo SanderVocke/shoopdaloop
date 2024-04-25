@@ -24,8 +24,8 @@ class GenericJackAudioMidiDriver :
 {
     using Log = ModuleLoggingEnabled<"Backend.JackAudioMidiDriver">;
 private:
-    std::map<std::string, std::shared_ptr<PortInterface>> m_ports;
-    std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker = nullptr;
+    std::map<std::string, shoop_shared_ptr<PortInterface>> m_ports;
+    shoop_shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker = nullptr;
     std::atomic<bool> m_started = false;
 
     static int PROC_process_cb_static (uint32_t nframes,
@@ -52,13 +52,13 @@ public:
     
     void start(AudioMidiDriverSettingsInterface &settings) override;
 
-    std::shared_ptr<AudioPort<float>> open_audio_port(
+    shoop_shared_ptr<AudioPort<float>> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        std::shared_ptr<typename AudioPort<jack_default_audio_sample_t>::BufferPool>
+        shoop_shared_ptr<typename AudioPort<jack_default_audio_sample_t>::BufferPool>
     ) override;
 
-    std::shared_ptr<MidiPort> open_midi_port(
+    shoop_shared_ptr<MidiPort> open_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;

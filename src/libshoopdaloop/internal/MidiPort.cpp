@@ -37,7 +37,7 @@ uint32_t MidiPort::get_n_output_notes_active() const {
     return (m && !ma_muted) ? m->n_notes_active() : 0;
 }
 
-std::shared_ptr<MidiStateTracker> &MidiPort::maybe_midi_state_tracker() {
+shoop_shared_ptr<MidiStateTracker> &MidiPort::maybe_midi_state_tracker() {
     return m_maybe_midi_state;
 }
 
@@ -153,7 +153,7 @@ MidiPort::MidiPort(
     bool track_programs
 ) : ModuleLoggingEnabled<"Backend.MidiPort">() {
     if (track_notes || track_controls || track_programs) {
-        m_maybe_midi_state = std::make_shared<MidiStateTracker>(
+        m_maybe_midi_state = shoop_make_shared<MidiStateTracker>(
             track_notes, track_controls, track_programs
         );
     }

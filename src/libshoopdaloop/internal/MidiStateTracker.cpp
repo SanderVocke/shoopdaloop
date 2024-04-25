@@ -355,9 +355,9 @@ bool MidiStateTracker::tracking_anything() const {
     return tracking_programs() || tracking_controls() || tracking_notes();
 }
 
-void MidiStateTracker::subscribe(std::shared_ptr<Subscriber> s) {
+void MidiStateTracker::subscribe(shoop_shared_ptr<Subscriber> s) {
     m_subscribers.insert(s);
 }
-void MidiStateTracker::unsubscribe(std::shared_ptr<Subscriber> s) {
+void MidiStateTracker::unsubscribe(shoop_shared_ptr<Subscriber> s) {
     m_subscribers.erase(s);
 }

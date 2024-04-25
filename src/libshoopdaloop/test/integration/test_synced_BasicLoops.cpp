@@ -8,10 +8,10 @@
 #include "process_loops.h"
 
 TEST_CASE("SyncedBasicLoops - Simple", "[SyncedBasicLoops]") {
-    auto loop1 = std::make_shared<BasicLoop>();
-    auto loop2 = std::make_shared<BasicLoop>();
+    auto loop1 = shoop_make_shared<BasicLoop>();
+    auto loop2 = shoop_make_shared<BasicLoop>();
     
-    loop1->set_sync_source(loop2);
+    loop1->set_sync_source(shoop_static_pointer_cast<LoopInterface>(loop2));
     loop1->set_mode(LoopMode_Stopped, false);
     loop1->set_length(10, false);
     loop1->plan_transition(LoopMode_Playing);
@@ -25,10 +25,10 @@ TEST_CASE("SyncedBasicLoops - Simple", "[SyncedBasicLoops]") {
 };
 
 TEST_CASE("SyncedBasicLoops - Loop Restart", "[SyncedBasicLoops]") {
-    auto loop1 = std::make_shared<BasicLoop>();
-    auto loop2 = std::make_shared<BasicLoop>();
+    auto loop1 = shoop_make_shared<BasicLoop>();
+    auto loop2 = shoop_make_shared<BasicLoop>();
 
-    loop1->set_sync_source(loop2);
+    loop1->set_sync_source(shoop_static_pointer_cast<LoopInterface>(loop2));
     loop1->set_length(100, false);
     loop1->set_mode(LoopMode_Stopped, false);
     loop1->plan_transition(LoopMode_Playing);
@@ -39,7 +39,7 @@ TEST_CASE("SyncedBasicLoops - Loop Restart", "[SyncedBasicLoops]") {
     loop2->set_position(90, false);
     loop2->PROC_update_poi();
 
-    std::set<std::shared_ptr<BasicLoop>> loops ({loop1, loop2});
+    std::set<shoop_shared_ptr<BasicLoop>> loops ({loop1, loop2});
     process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), 20);
 
     REQUIRE(loop2->get_position() == 10);
@@ -51,10 +51,10 @@ TEST_CASE("SyncedBasicLoops - Loop Restart", "[SyncedBasicLoops]") {
 };
 
 TEST_CASE("SyncedBasicLoops - Loop Restart LoopMode_Playing", "[SyncedBasicLoops]") {
-    auto loop1 = std::make_shared<BasicLoop>();
-    auto loop2 = std::make_shared<BasicLoop>();
+    auto loop1 = shoop_make_shared<BasicLoop>();
+    auto loop2 = shoop_make_shared<BasicLoop>();
 
-    loop1->set_sync_source(loop2);
+    loop1->set_sync_source(shoop_static_pointer_cast<LoopInterface>(loop2));
     loop1->set_length(100, false);
     loop1->set_mode(LoopMode_Playing, false);
     loop1->set_position(90, false);
@@ -65,7 +65,7 @@ TEST_CASE("SyncedBasicLoops - Loop Restart LoopMode_Playing", "[SyncedBasicLoops
     loop2->set_position(90, false);
     loop2->PROC_update_poi();
 
-    std::set<std::shared_ptr<BasicLoop>> loops ({loop1, loop2});
+    std::set<shoop_shared_ptr<BasicLoop>> loops ({loop1, loop2});
     process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), 20);
 
     REQUIRE(loop2->get_position() == 110);

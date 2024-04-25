@@ -8,24 +8,25 @@
 #include "shoop_globals.h"
 #include "GraphNode.h"
 #include "PortInterface.h"
+#include "shoop_shared_ptr.h"
 
 class GraphPort :     public HasTwoGraphNodes,
                       protected ModuleLoggingEnabled<"Backend.GraphPort"> {
 public:
     
-    std::weak_ptr<BackendSession> backend;
-    std::vector<std::weak_ptr<GraphPort>> mp_internal_port_connections;
+    shoop_weak_ptr<BackendSession> backend;
+    std::vector<shoop_weak_ptr<GraphPort>> mp_internal_port_connections;
     std::atomic<bool> m_passthrough_enabled = false;
 
-    GraphPort (std::shared_ptr<BackendSession> const& backend);
+    GraphPort (shoop_shared_ptr<BackendSession> const& backend);
 
     virtual PortInterface &get_port() const = 0;
     virtual shoop_types::_AudioPort *maybe_audio_port() const { return nullptr; };
     virtual MidiPort *maybe_midi_port() const { return nullptr; }
 
-    virtual std::shared_ptr<PortInterface> maybe_shared_port() const { return nullptr; }
-    virtual std::shared_ptr<shoop_types::_AudioPort> maybe_shared_audio_port() const { return nullptr; }
-    virtual std::shared_ptr<MidiPort> maybe_shared_midi_port() const { return nullptr; }
+    virtual shoop_shared_ptr<PortInterface> maybe_shared_port() const { return nullptr; }
+    virtual shoop_shared_ptr<shoop_types::_AudioPort> maybe_shared_audio_port() const { return nullptr; }
+    virtual shoop_shared_ptr<MidiPort> maybe_shared_midi_port() const { return nullptr; }
 
     virtual void PROC_internal_connections(uint32_t n_frames) = 0;
     virtual void PROC_prepare(uint32_t n_frames) = 0;
@@ -36,7 +37,7 @@ public:
 
     void PROC_notify_changed_buffer_size(uint32_t buffer_size) override;
 
-    void connect_internal(std::shared_ptr<GraphPort> const& other);
+    void connect_internal(shoop_shared_ptr<GraphPort> const& other);
     BackendSession &get_backend();
 
     // The first graph node we encapsulate is for preparing/creating

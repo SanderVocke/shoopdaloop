@@ -19,18 +19,18 @@ struct DecoupledMidiMessage {
 // Incoming messages are stored into the queue and outgoing ones taken form a queue.
 // This way, port messaging can be easily handled outside of the processing thread.
 template<typename TimeType, typename SizeType>
-class DecoupledMidiPort : public std::enable_shared_from_this<DecoupledMidiPort<TimeType, SizeType>>,
+class DecoupledMidiPort : public shoop_enable_shared_from_this<DecoupledMidiPort<TimeType, SizeType>>,
                           private ModuleLoggingEnabled<"Backend.DecoupledMidiPort"> {
     using Message = DecoupledMidiMessage;
     using Queue = boost::lockfree::spsc_queue<Message>;
 
-    const std::shared_ptr<MidiPort> port;
+    const shoop_shared_ptr<MidiPort> port;
     const shoop_port_direction_t direction;
     Queue ma_queue;
-    std::weak_ptr<AudioMidiDriver> maybe_driver;
+    shoop_weak_ptr<AudioMidiDriver> maybe_driver;
 public:
-    DecoupledMidiPort (std::shared_ptr<MidiPort> port,
-                       std::weak_ptr<AudioMidiDriver> driver,
+    DecoupledMidiPort (shoop_shared_ptr<MidiPort> port,
+                       shoop_weak_ptr<AudioMidiDriver> driver,
                        uint32_t queue_size,
                        shoop_port_direction_t direction);
 
@@ -39,13 +39,13 @@ public:
     const char* name() const;
     void close();
 
-    std::shared_ptr<AudioMidiDriver> get_maybe_driver() const;
+    shoop_shared_ptr<AudioMidiDriver> get_maybe_driver() const;
     void forget_driver();
 
     std::optional<Message> pop_incoming();
     void push_outgoing (Message m);
 
-    std::shared_ptr<MidiPort> const& get_port();
+    shoop_shared_ptr<MidiPort> const& get_port();
 };
 
 extern template class DecoupledMidiPort<uint32_t, uint16_t>;
