@@ -1,6 +1,6 @@
 import ShoopDaLoop.PythonLoop
 import ShoopDaLoop.PythonLogger
-import QtQuick 6.3
+import QtQuick 6.6
 
 import ShoopConstants
 import '../mode_helpers.js' as ModeHelpers
@@ -12,7 +12,7 @@ PythonLoop {
         name: "Frontend.Qml.Loop"
         instanceIdentifier: obj_id
     }
-    onObj_idChanged: set_logging_instance_identifier(obj_id)
+    onObj_idChanged: instanceIdentifier = obj_id
 
     property var maybe_fx_chain: null
     property var loop_widget : null

@@ -8,54 +8,64 @@
 namespace profiling {
 
 struct ProfilingItemPrivate {
-    float n_reported = 0.0f;
-
-    float summed = 0.0f;
-    std::optional<float> most_recent;
-    std::optional<float> worst;
-
-    float current_iteration = 0.0f;
-
-    std::recursive_mutex mutex;
+    std::atomic<float> n_reported = 0.0f;
+    std::atomic<float> summed = 0.0f;
+    std::atomic<float> most_recent = -1.0f;
+    std::atomic<float> worst = -1.0f;
+    std::atomic<float> current_iteration = 0.0f;
 
     void reset(std::function<void(float, float, float, float)> report_cb) {
-        std::lock_guard<std::recursive_mutex> g(mutex);
-
-        if(report_cb) {
-            report_cb(n_reported,
-                      n_reported >= 1.0f ? summed / n_reported : -1.0f,
-                      worst.value_or(-1.0f),
-                      most_recent.value_or(-1.0f));
-        }
+        auto _n_reported = n_reported.load();
+        auto _summed = summed.load();
+        auto _most_recent = most_recent.load();
+        auto _worst = worst.load();
 
         current_iteration = 0.0f;
         n_reported = 0.0f;
         summed = 0.0f;
-        most_recent = std::nullopt;
-        worst = std::nullopt;
+        most_recent = -1.0f;
+        worst = -1.0f;
+
+        if(report_cb) {
+            report_cb(_n_reported,
+                      _n_reported >= 1.0f ? _summed / _n_reported : -1.0f,
+                      _worst,
+                      _most_recent);
+        }
     }
 
     void log_time(float t) {
-        std::lock_guard<std::recursive_mutex> g(mutex);
-        current_iteration += t;
+#if __APPLE__
+        current_iteration = current_iteration.load() + t;
+#else
+        current_iteration.fetch_add(t);
+#endif
     }
 
     void next_iteration() {
-        std::lock_guard<std::recursive_mutex> g(mutex);
-
-        n_reported += 1.0f;
-        most_recent = current_iteration;
-        if(worst.value_or(0.0f) < current_iteration) {
-            worst = current_iteration;
-        }
-        summed += current_iteration;
+        auto _current_iteration = current_iteration.load();
         current_iteration = 0.0f;
+
+#if __APPLE__
+        n_reported = n_reported.load() + 1.0f;
+#else
+        n_reported.fetch_add(1.0f);
+#endif
+        most_recent = _current_iteration;
+        if(worst < _current_iteration) {
+            worst = _current_iteration;
+        }
+#if __APPLE__
+        summed = summed.load() + _current_iteration;
+#else
+        summed.fetch_add(_current_iteration);
+#endif
     }
 };
 
 struct ProfilerPrivate {
     std::recursive_mutex m_registry_access;
-    std::map<std::string, std::weak_ptr<ProfilingItem>> m_registry;
+    std::map<std::string, shoop_weak_ptr<ProfilingItem>> m_registry;
 };
 
 void Profiler::next_iteration() {
@@ -117,7 +127,7 @@ ProfilingReport Profiler::report() {
     return rval;
 }
 
-std::shared_ptr<ProfilingItem> Profiler::maybe_get_profiling_item(std::string name) {
+shoop_shared_ptr<ProfilingItem> Profiler::maybe_get_profiling_item(std::string name) {
     if (!g_ProfilingEnabled) { return nullptr; }
 
     std::lock_guard<std::recursive_mutex> g(pvt->m_registry_access);
@@ -130,7 +140,7 @@ std::shared_ptr<ProfilingItem> Profiler::maybe_get_profiling_item(std::string na
     }
 
     auto rr = new ProfilingItem;
-    auto r = std::shared_ptr<ProfilingItem>(rr);
+    auto r = shoop_shared_ptr<ProfilingItem>(rr);
     pvt->m_registry[name] = r;
     return r;
 }

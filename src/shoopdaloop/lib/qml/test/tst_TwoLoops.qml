@@ -1,4 +1,4 @@
-import QtQuick 6.3
+import QtQuick 6.6
 import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
@@ -45,6 +45,7 @@ ShoopTestFile {
                 testcase.wait_updated(session.backend)
                 verify_loop_cleared(sync_loop())
                 verify_loop_cleared(other_loop())
+                registries.state_registry.reset()
             }
 
             test_fns: ({
@@ -58,7 +59,7 @@ ShoopTestFile {
                     clear()
                     testcase.wait_updated(session.backend)
 
-                    sync_loop().transition(ShoopConstants.LoopMode.Recording, 0, true)
+                    sync_loop().transition(ShoopConstants.LoopMode.Recording, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Recording)
                     verify_gt(sync_loop().length, 0)
@@ -71,7 +72,7 @@ ShoopTestFile {
                     check_backend()
 
                     sync_loop().set_length(48000)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(sync_loop().length, 48000)
@@ -92,9 +93,9 @@ ShoopTestFile {
                     other_loop().create_backend_loop()
                     other_loop().set_length(100)
 
-                    other_loop().transition(ShoopConstants.LoopMode.Playing, 2, true)
+                    other_loop().transition(ShoopConstants.LoopMode.Playing, 2, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
 
@@ -104,7 +105,7 @@ ShoopTestFile {
 
                     for(var i=0; i<6; i++) {
                         session.backend.dummy_request_controlled_frames(50)
-                        session.backend.wait_process()
+                        session.backend.dummy_run_requested_frames()
                         testcase.wait_updated(session.backend)
                     }
 
@@ -148,6 +149,24 @@ ShoopTestFile {
                     verify_true('channels' in other_loop().actual_session_descriptor())
                     verify_true(other_loop().actual_session_descriptor().channels.every((channel) => channel.data_length == 0))
                 },
+
+                'test_set_gains_then_make_backend_loop': () => {
+                    clear()
+
+                    verify_true(!other_loop().maybe_backend_loop)
+                    other_loop().push_gain(0.5)
+                    other_loop().push_stereo_balance(1.0)
+                    testcase.wait_updated(session.backend)
+                    verify_approx(other_loop().last_pushed_gain, 0.5)
+                    verify_approx(other_loop().last_pushed_stereo_balance, 1.0)
+
+                    other_loop().create_backend_loop()
+                    testcase.wait_updated(session.backend)
+                    verify_approx(other_loop().last_pushed_gain, 0.5)
+                    verify_approx(other_loop().last_pushed_stereo_balance, 1.0)
+                    verify_approx(other_loop().audio_channels[0].gain, 0.0)
+                    verify_approx(other_loop().audio_channels[1].gain, 0.5)
+                }
             })
         }
     }

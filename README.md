@@ -4,7 +4,7 @@
 ![build](https://github.com/sandervocke/shoopdaloop/actions/workflows/build_and_test.yml/badge.svg)
 [![Docs](https://github.com/SanderVocke/shoopdaloop/actions/workflows/docs.yml/badge.svg)](https://github.com/SanderVocke/shoopdaloop/actions/workflows/docs.yml)
 
-# ShoopDaLoop - Limitless Live Looping
+# ShoopDaLoop - Limitless Looping
 
 ShoopDaLoop is an cross-platform advanced live looping application. It offers intuitive looping of audio+MIDI clips in a grid-style layout and some DAW-like features for sequencing.
 
@@ -28,6 +28,8 @@ For currently open known issues, check the GitHub Issues page.
 - **FX/synthesis**: can be inserted into a loop via external JACK connections or by using plugins. The same loop can simultaneously record "dry" and "wet", akin to [Luppp](http://openavproductions.com/luppp/), to save precious CPU during playback.
 - **Synchronization**: every loop is synced to the "sync loop", which typically holds a beat, click-track or just fixed-length silence. Loops may also be a multiple of the sync loop length.
 - **Click tracks**: can be generated via a dialog in the app.
+- **Grabbing**: instead of planning the recording of loops, you can grab them retroactively from an always-on recording buffer.
+- **Combining**: A powerful system for combining multiple loops into sequences and/or scenes, which can also be controlled as if they were loops.
 - **NSM**: Non/New Session Manager support on Linux (experimental).
 - **Hackable**: Users can run their own Lua scripts to control the application in new ways.
 

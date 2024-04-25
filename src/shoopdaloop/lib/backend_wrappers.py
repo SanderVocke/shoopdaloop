@@ -79,6 +79,9 @@ class FXChainType(Enum):
     Carla_Patchbay_16x = bindings.Carla_Patchbay_16x
     Test2x2x1 = bindings.Test2x2x1
 
+DontWaitForSync = -1
+DontAlignToSyncImmediately = -1
+
 @dataclass
 class FXChainState:
     visible : bool
@@ -593,17 +596,20 @@ class BackendLoop:
             return rval
         return None
 
-    def transition(self, to_state : Type['LoopMode'],
-                   cycles_delay : int, wait_for_sync : bool):
+    def transition(self,
+                   to_state : Type['LoopMode'],
+                   maybe_cycles_delay : int,
+                   maybe_to_sync_at_cycle : int):
         if self.available():
             bindings.loop_transition(self.shoop_c_handle,
                                     to_state.value,
-                                    cycles_delay,
-                                    wait_for_sync)
+                                    maybe_cycles_delay,
+                                    maybe_to_sync_at_cycle)
     
     # Static version for multiple loops
     def transition_multiple(loops, to_state : Type['LoopMode'],
-                   cycles_delay : int, wait_for_sync : bool):
+                   maybe_cycles_delay : int,
+                   maybe_to_sync_at_cycle : int):
         if len(loops) == 0:
             return
         backend = loops[0]._backend
@@ -615,8 +621,8 @@ class BackendLoop:
             bindings.loops_transition(len(loops),
                                     handles,
                                     to_state.value,
-                                    cycles_delay,
-                                    wait_for_sync)
+                                    maybe_cycles_delay,
+                                    maybe_to_sync_at_cycle)
             del handles
     
     def get_state(self):
@@ -652,9 +658,12 @@ class BackendLoop:
             bindings.destroy_loop(self.shoop_c_handle)
             self.shoop_c_handle = None
             
-    def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length):
+    def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
+        _reverse_start_cycle = (-1 if reverse_start_cycle == None else reverse_start_cycle)
+        _cycles_length = (-1 if cycles_length == None else cycles_length)
+        _go_to_cycle = (-1 if go_to_cycle == None else go_to_cycle)
         if self.available():
-            bindings.adopt_ringbuffer_contents(self.shoop_c_handle, reverse_start_cycle, cycles_length)
+            bindings.adopt_ringbuffer_contents(self.shoop_c_handle, _reverse_start_cycle, _cycles_length, _go_to_cycle, go_to_mode)
         
     def __del__(self):
         if self.available():
@@ -1154,6 +1163,9 @@ class AudioDriver:
     
     def wait_process(self):
         bindings.wait_process(self._c_handle)
+        
+    def dummy_run_requested_frames(self):
+        bindings.dummy_audio_run_requested_frames(self._c_handle)
     
     def find_external_ports(self, maybe_name_regex, port_direction, data_type):
         result = bindings.find_external_ports(self._c_handle, maybe_name_regex, port_direction, data_type)

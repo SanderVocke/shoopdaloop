@@ -35,8 +35,8 @@ MidiChannel<TimeType, SizeType>::TrackedState::TrackedState(bool notes,
                                                             bool controls,
                                                             bool programs)
     : m_valid(false),
-      state(std::make_shared<MidiStateTracker>(notes, controls, programs)),
-      diff(std::make_shared<MidiStateDiffTracker>()) {}
+      state(shoop_make_shared<MidiStateTracker>(notes, controls, programs)),
+      diff(shoop_make_shared<MidiStateDiffTracker>()) {}
 
 template <typename TimeType, typename SizeType>
 typename MidiChannel<TimeType, SizeType>::TrackedState &
@@ -54,7 +54,7 @@ MidiChannel<TimeType, SizeType>::TrackedState::operator=(
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::TrackedState::start_tracking_from(std::shared_ptr<MidiStateTracker> &t) {
+MidiChannel<TimeType, SizeType>::TrackedState::start_tracking_from(shoop_shared_ptr<MidiStateTracker> &t) {
     state->copy_relevant_state(*t);
     diff->reset(t, state, StateDiffTrackerAction::ClearDiff);
     m_valid = true;
@@ -62,10 +62,10 @@ MidiChannel<TimeType, SizeType>::TrackedState::start_tracking_from(std::shared_p
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::TrackedState::start_tracking_from_with_state(std::shared_ptr<MidiStateTracker> &to_track,
-                                            std::shared_ptr<MidiStateTracker> const& starting_state)
+MidiChannel<TimeType, SizeType>::TrackedState::start_tracking_from_with_state(shoop_shared_ptr<MidiStateTracker> &to_track,
+                                            shoop_shared_ptr<MidiStateTracker> const& starting_state)
 {
-    auto tmp_diff = std::make_shared<MidiStateDiffTracker>();
+    auto tmp_diff = shoop_make_shared<MidiStateDiffTracker>();
     tmp_diff->reset(to_track, starting_state, StateDiffTrackerAction::ScanDiff);
     
     start_tracking_from(to_track);
@@ -110,16 +110,16 @@ MidiChannel<TimeType, SizeType>::MidiChannel(uint32_t data_size, shoop_channel_m
     : WithCommandQueue(50),
       mp_playback_target_buffer(std::make_pair(ExternalBufState(), nullptr)),
       mp_recording_source_buffer(std::make_pair(ExternalBufState(), nullptr)),
-      mp_storage(std::make_shared<Storage>(data_size)),
-      mp_prerecord_storage(std::make_shared<Storage>(data_size)),
+      mp_storage(shoop_make_shared<Storage>(data_size)),
+      mp_prerecord_storage(shoop_make_shared<Storage>(data_size)),
       mp_playback_cursor(nullptr), ma_mode(mode), ma_data_length(0),
       mp_output_midi_state(
-          std::make_shared<MidiStateTracker>(true, true, true)),
+          shoop_make_shared<MidiStateTracker>(true, true, true)),
       mp_input_midi_state(
-          std::make_shared<MidiStateTracker>(true, true, true)),
-      mp_recording_start_state_tracker(std::make_shared<TrackedState>(true, true, true)),
-      mp_track_state_until_first_msg_playback(std::make_shared<TrackedState>(true, true, true)),
-      mp_temp_prerecording_start_state_tracker(std::make_shared<TrackedState>(true, true, true)),
+          shoop_make_shared<MidiStateTracker>(true, true, true)),
+      mp_recording_start_state_tracker(shoop_make_shared<TrackedState>(true, true, true)),
+      mp_track_state_until_first_msg_playback(shoop_make_shared<TrackedState>(true, true, true)),
+      mp_temp_prerecording_start_state_tracker(shoop_make_shared<TrackedState>(true, true, true)),
       ma_n_events_triggered(0), ma_start_offset(0), ma_data_seq_nr(0),
       ma_pre_play_samples(0), mp_prev_pos_after(0), mp_prev_process_flags(0),
       ma_last_played_back_sample(0), ma_prerecord_data_length(0) {
@@ -254,7 +254,7 @@ MidiChannel<TimeType, SizeType>::PROC_process(shoop_loop_mode_t mode, std::optio
             log<log_level_debug>("Pre-record end -> discard");
         }
         mp_prerecord_storage =
-            std::make_shared<Storage>(mp_storage->bytes_capacity());
+            shoop_make_shared<Storage>(mp_storage->bytes_capacity());
         ma_prerecord_data_length = 0;
     }
 
@@ -639,7 +639,7 @@ template <typename TimeType, typename SizeType>
 typename MidiChannel<TimeType, SizeType>::Contents
 MidiChannel<TimeType, SizeType>::retrieve_contents(bool thread_safe) {
     MidiStateTracker state(true, true, true);
-    auto s = std::make_shared<Storage>(mp_storage->bytes_capacity());
+    auto s = shoop_make_shared<Storage>(mp_storage->bytes_capacity());
     auto fn = [this, &s, &state]() {
         log<log_level_debug_trace>("retrieving contents");
         mp_storage->copy(*s);
@@ -664,10 +664,10 @@ template <typename TimeType, typename SizeType>
 void
 MidiChannel<TimeType, SizeType>::set_contents(Contents contents, uint32_t length_samples,
                   bool thread_safe) {
-    auto s = std::make_shared<Storage>(mp_storage->bytes_capacity());
+    auto s = shoop_make_shared<Storage>(mp_storage->bytes_capacity());
     size_t n_state_msgs = contents.starting_state_msg_datas.size();
 
-    std::shared_ptr<MidiStateTracker> new_start_state = std::make_shared<MidiStateTracker>(true, true, true);
+    shoop_shared_ptr<MidiStateTracker> new_start_state = shoop_make_shared<MidiStateTracker>(true, true, true);
     for (auto const &data : contents.starting_state_msg_datas) {
         new_start_state->process_msg(data.data());
     }
@@ -742,7 +742,10 @@ MidiChannel<TimeType, SizeType>::get_played_back_sample() const {
 
 template <typename TimeType, typename SizeType>
 void
-MidiChannel<TimeType, SizeType>::adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port, std::optional<unsigned> reverse_start_offset, bool thread_safe) {
+MidiChannel<TimeType, SizeType>::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port,
+    std::optional<unsigned> reverse_start_offset,
+    std::optional<unsigned> keep_samples_before_start_offset,
+    bool thread_safe) {
     // TODO
     log<log_level_warning>("MIDI ringbuffer unimplemented");
     return;

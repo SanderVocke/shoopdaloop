@@ -1,6 +1,6 @@
-import QtQuick 6.3
-import QtQuick.Controls 6.3
-import QtQuick.Controls.Material 6.3
+import QtQuick 6.6
+import QtQuick.Controls 6.6
+import QtQuick.Controls.Material 6.6
 
 ApplicationWindow {
     
@@ -116,6 +116,11 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
+
+                ItemRow {
+                    label: "min n ringbuffer samples:"
+                    Label { text: object.n_ringbuffer_samples }
                 }
 
                 Loader {

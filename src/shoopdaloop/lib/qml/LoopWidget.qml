@@ -1,6 +1,6 @@
-import QtQuick 6.3
-import QtQuick.Controls 6.3
-import QtQuick.Controls.Material 6.3
+import QtQuick 6.6
+import QtQuick.Controls 6.6
+import QtQuick.Controls.Material 6.6
 import QtQuick.Dialogs
 import ShoopDaLoop.PythonLogger
 import ShoopConstants
@@ -48,7 +48,7 @@ Item {
         return gains.length > 0 ? Math.max(...gains) : 1.0
     }
     readonly property bool is_stereo: initial_descriptor.channels ?
-        (initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode)).length == 2) :
+        (initial_descriptor.channels.filter(c => ['direct', 'wet'].includes(c.mode) && c.type == 'audio').length == 2) :
         false
     readonly property var initial_stereo_balance : {
         if (!is_stereo) { return undefined; }
@@ -116,12 +116,7 @@ Item {
     readonly property int cycle_length: sync_loop ? sync_loop.length : 0
     readonly property int n_cycles: cycle_length ? Math.ceil(length / cycle_length) : 0
 
-    RegistryLookup {
-        id: targeted_loop_lookup
-        registry: registries.state_registry
-        key: 'targeted_loop'
-    }
-    property alias targeted_loop : targeted_loop_lookup.object
+    property var targeted_loop : registries.state_registry.targeted_loop
     property bool targeted : targeted_loop == root
 
     RegistryLookup {
@@ -198,7 +193,7 @@ Item {
         // then this property will hold the amount of sync loop cycles
         // to delay in order to transition in sync with the targeted loop.
         // Otherwise, it will be 0.
-        if (targeted_loop) {
+        if (targeted_loop && sync_loop) {
             var to_transition = undefined
             if (targeted_loop.next_transition_delay >= 0 && targeted_loop.next_mode >= 0) {
                 to_transition = targeted_loop.next_transition_delay
@@ -221,34 +216,51 @@ Item {
     property int current_cycle: (sync_loop && maybe_loop) ?
         Math.floor(maybe_loop.position / sync_loop.length) : 0
 
+    // possible values: "with_targeted", "infinite", or int > 0
+    readonly property var record_kind : {
+        if (root.is_sync) { return "infinite" }
+        if (root.delay_for_targeted != undefined) { return "with_targeted" }
+        let apply_n_cycles = registries.state_registry.apply_n_cycles
+        if (apply_n_cycles <= 0) { return "infinite" }
+        return apply_n_cycles
+    }
+
     // Signals
     signal cycled
 
     // Methods
-    function transition_loops(loops, mode, delay, wait_for_sync) {
+    function transition_loops(loops, mode, maybe_delay, maybe_align_to_sync_at) {
         loops.forEach(loop => {
             // Force to load all loops involved
             loop.create_backend_loop()
         })
         var backend_loops = loops.filter(o => o.maybe_backend_loop).map(o => o.maybe_backend_loop)
         var other_loops = loops.filter(o => o.maybe_loop && !o.maybe_backend_loop).map(o => o.maybe_loop)
-        if (backend_loops.length > 0) { backend_loops[0].transition_multiple(backend_loops, mode, delay, wait_for_sync) }
-        other_loops.forEach(o => o.transition(mode, delay, wait_for_sync))
+        if (backend_loops.length > 0) { backend_loops[0].transition_multiple(backend_loops, mode, maybe_delay, maybe_align_to_sync_at) }
+        other_loops.forEach(o => o.transition(mode, maybe_delay, maybe_align_to_sync_at))
     }
-    function transition(mode, delay, wait_for_sync, include_selected=true) {
+    function transition(mode, maybe_delay, maybe_align_to_sync_at, include_selected=true) {
         // Do the transition for this loop and all selected loops, if any
         var selected_all = include_selected ? selected_loops : new Set()
         
         if (selected_all.has (root)) {
             // If we are part of the selection, transition them all as a group.
             var objects = Array.from(selected_all)
-            transition_loops(objects, mode, delay, wait_for_sync)
+            transition_loops(objects, mode, maybe_delay, maybe_align_to_sync_at)
         } else {
             // If we are not part of the selection, transition ourselves only.
-            transition_loops([root], mode, delay, wait_for_sync)
+            transition_loops([root], mode, maybe_delay, maybe_align_to_sync_at)
         }        
     }
-    function play_solo_in_track(delay, sync) {
+    function trigger_mode_button(mode) {
+        if (mode == ShoopConstants.LoopMode.Stopped) { root.on_stop_clicked() }
+        else if (mode == ShoopConstants.LoopMode.Playing) { root.on_play_clicked() }
+        else if (mode == ShoopConstants.LoopMode.PlayingDryThroughWet) { root.on_playdry_clicked() }
+        else if (mode == ShoopConstants.LoopMode.Recording) { root.on_record_clicked() }
+        else if (mode == ShoopConstants.LoopMode.RecordingDryIntoWet) { root.on_recordfx_clicked() }
+    }
+
+    function selected_and_other_loops_in_track() {
         // Gather all selected loops
         var selected_all = selected_loops
         selected_all.add(root)
@@ -260,10 +272,19 @@ Item {
             }
         })
         var _other_loops = _all_track_loops.filter(l => !selected_all.has(l))
-        // Do the transitions
-        transition_loops(_other_loops, ShoopConstants.LoopMode.Stopped, delay, sync)
-        transition_loops(Array.from(selected_all), ShoopConstants.LoopMode.Playing, delay, sync)
+
+        return [Array.from(selected_all), _other_loops]
     }
+
+    // Apply the given transition to the currently selected loop(s),
+    // and stop all other loops in the same track(s)
+    function transition_solo_in_track(mode, maybe_delay, maybe_align_to_sync_at) {
+        let r = selected_and_other_loops_in_track()
+        // Do the transitions
+        transition_loops(r[1], ShoopConstants.LoopMode.Stopped, maybe_delay, maybe_align_to_sync_at)
+        transition_loops(r[0], mode, maybe_delay, maybe_align_to_sync_at)
+    }
+
     function clear(length=0, emit=true) {
         if(maybe_loop) {
             maybe_loop.clear(length);
@@ -303,11 +324,11 @@ Item {
     }
     function target() {
         deselect()
-        registries.state_registry.replace('targeted_loop', root)
+        registries.state_registry.set_targeted_loop(root)
     }
     function untarget() {
         if (targeted) {
-            registries.state_registry.replace('targeted_loop', null)
+            registries.state_registry.untarget_loop()
         }
     }
     function toggle_selected(clear_if_select = false) {
@@ -356,11 +377,13 @@ Item {
         // - Send should always have the original recorded gain of the dry signal.
         // Also, gain + balance together make up the channel gains in stereo mode.
         if (root.is_stereo && root.maybe_backend_loop) {
+            root.logger.debug(`push stereo gain: ${gain}`)
             var lr = get_stereo_audio_output_channels()
             var gains = Stereo.individual_gains(gain, last_pushed_stereo_balance)
             lr[0].set_gain(gains[0])
             lr[1].set_gain(gains[1])
         } else {
+            root.logger.debug(`push homogenous gain: ${gain}`)
             get_audio_output_channels().forEach(c => c.set_gain(gain))
         }
 
@@ -369,12 +392,13 @@ Item {
 
     function push_stereo_balance(balance) {
         if (root.is_stereo && root.maybe_backend_loop) {
+            root.logger.debug(`push balance: ${balance}`)
             var lr = get_stereo_audio_output_channels()
             var gains = Stereo.individual_gains(last_pushed_gain, balance)
             lr[0].set_gain(gains[0])
             lr[1].set_gain(gains[1])
-            last_pushed_stereo_balance = balance
         }
+        last_pushed_stereo_balance = balance
     }
 
     function set_length(length) {
@@ -382,8 +406,21 @@ Item {
     }
 
     function record_n(delay_start, n) {
-        root.transition(ShoopConstants.LoopMode.Recording, delay_start, true)
-        root.transition(ShoopConstants.LoopMode.Playing, delay_start + n, true)
+        if (registries.state_registry.solo_active) {
+            root.transition_solo_in_track(ShoopConstants.LoopMode.Recording, delay_start, ShoopConstants.DontAlignToSyncImmediately)
+            root.transition(
+                registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                delay_start + n,
+                ShoopConstants.DontAlignToSyncImmediately
+            )
+        } else {
+            root.transition(ShoopConstants.LoopMode.Recording, delay_start, ShoopConstants.DontAlignToSyncImmediately)
+            root.transition(
+                registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                delay_start + n,
+                ShoopConstants.DontAlignToSyncImmediately
+            )
+        }
     }
 
     function record_with_targeted() {
@@ -400,13 +437,11 @@ Item {
         root.record_n(n_cycles_delay, n_cycles_record)
     }
 
-    function adopt_ringbuffers(reverse_start_cycle, cycles_length) {
+    function adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode) {
         if (!root.maybe_loop) {
             create_backend_loop()
         }
-        if (root.maybe_backend_loop) {
-            root.maybe_backend_loop.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length)
-        }
+        maybe_loop.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
     }
 
     anchors {
@@ -439,10 +474,14 @@ Item {
             } else if (backend_loop_factory.status != Component.Ready) {
                 throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
             } else {
+                let gain = last_pushed_gain
+                let balance = last_pushed_stereo_balance
                 maybe_loop = backend_loop_factory.createObject(root, {
                     'initial_descriptor': root.initial_descriptor,
                     'sync_source': Qt.binding(() => (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null),
                 })
+                push_stereo_balance(balance)
+                push_gain(gain)
                 maybe_loop.onCycled.connect(root.cycled)
             }
         }
@@ -484,6 +523,117 @@ Item {
             maybe_loop.onCycled.connect(root.cycled)
         }
     }
+
+    function on_play_clicked() {
+        if (registries.state_registry.solo_active) {
+            root.transition_solo_in_track(ShoopConstants.LoopMode.Playing,
+                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+                ShoopConstants.DontAlignToSyncImmediately)
+        } else {
+            root.transition(ShoopConstants.LoopMode.Playing,
+                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+                ShoopConstants.DontAlignToSyncImmediately)
+        }
+    }
+
+    function on_playdry_clicked() {
+        if (registries.state_registry.solo_active) {
+            root.transition_solo_in_track(ShoopConstants.LoopMode.PlayingDryThroughWet,
+                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+                ShoopConstants.DontAlignToSyncImmediately)
+        } else {
+            root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet,
+                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+                ShoopConstants.DontAlignToSyncImmediately)
+        }
+    }
+
+    function on_record_clicked() {
+        if (root.record_kind == 'infinite' || root.maybe_composite_loop) {
+            if (registries.state_registry.solo_active) {
+                root.transition_solo_in_track(ShoopConstants.LoopMode.Recording,
+                    root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+                    ShoopConstants.DontAlignToSyncImmediately)
+            } else {
+                root.transition(ShoopConstants.LoopMode.Recording,
+                    root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+                    ShoopConstants.DontAlignToSyncImmediately)
+            }
+        } else if (root.record_kind == 'with_targeted') {
+            root.record_with_targeted();
+        } else {
+            root.record_n(0, root.record_kind)
+        } 
+    }
+
+    readonly property int n_cycles_to_grab : {
+        var rval = registries.state_registry.apply_n_cycles
+        if (rval <= 0) { rval = 1; }
+        return rval
+    }
+
+    function on_grab_clicked() {
+        let selection = selected_loops.has(root) ? selected_loops : [root]
+
+        if (!root.maybe_loop) {
+            root.create_backend_loop()
+        }
+        if (root.sync_active) {
+            let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
+            if (root.targeted_loop) {
+                // Grab and sync up with the running targeted loop
+                selection.forEach(l => l.adopt_ringbuffers(root.targeted_loop.current_cycle + root.targeted_loop.n_cycles, root.targeted_loop.n_cycles,
+                    root.targeted_loop.current_cycle, go_to_mode))
+            } else {
+                selection.forEach(l => l.adopt_ringbuffers(root.n_cycles_to_grab, root.n_cycles_to_grab, 0, go_to_mode))
+            }
+        } else {
+            if (root.targeted_loop) {
+                // Grab current targeted loop content and record the rest
+                root.adopt_ringbuffers(null, root.targeted_loop.current_cycle + 1, root.targeted_loop.current_cycle, ShoopConstants.LoopMode.Recording)
+                root.transition(
+                    registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                    root.delay_for_targeted,
+                    ShoopConstants.DontAlignToSyncImmediately
+                )
+            } else {
+                let goto_cycle =
+                    root.maybe_composite_loop ?
+                        root.maybe_composite_loop.n_cycles - 1 :
+                        root.n_cycles_to_grab - 1
+                root.adopt_ringbuffers(null, root.n_cycles_to_grab, goto_cycle, ShoopConstants.LoopMode.Recording)
+                root.transition(
+                    registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                    0,
+                    ShoopConstants.DontAlignToSyncImmediately
+                )
+            }
+        }
+
+        if (registries.state_registry.solo_active) {
+            let r = selected_and_other_loops_in_track()
+            root.transition_loops(r[1], ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+        }
+    }
+
+    function on_stop_clicked() {
+        root.transition(
+           ShoopConstants.LoopMode.Stopped,
+           root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+           ShoopConstants.DontAlignToSyncImmediately)
+    }
+
+    function on_recordfx_clicked() {
+        var n = root.n_multiples_of_sync_length
+        var delay = 
+            root.delay_for_targeted != undefined ? 
+                root.use_delay : // delay to other
+                root.n_multiples_of_sync_length - root.current_cycle - 1 // delay to self
+        var prev_mode = statusrect.loop.mode
+        root.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, delay, ShoopConstants.DontAlignToSyncImmediately)
+        statusrect.loop.transition(prev_mode, delay + n, ShoopConstants.DontAlignToSyncImmediately)
+    }
+
     property bool initialized : maybe_loop ? (maybe_loop.initialized ? true : false) : false
     property var channels: (maybe_loop && maybe_loop.channels) ? maybe_loop.channels : []
     property var audio_channels : (maybe_loop && maybe_loop.audio_channels) ? maybe_loop.audio_channels : []
@@ -852,7 +1002,7 @@ Item {
             }
 
             Grid {
-                visible: statusrect.hovered || playlivefx.hovered || playsolointrack.hovered || record_grab.hovered || recordfx.hovered
+                visible: statusrect.hovered || playlivefx.hovered || record_grab.hovered || recordfx.hovered
                 x: 20
                 y: 2
                 columns: 4
@@ -865,22 +1015,32 @@ Item {
                     id : play
                     width: buttongrid.button_width
                     height: buttongrid.button_height
+
                     IconWithText {
                         size: parent.width
                         anchors.centerIn: parent
                         name: 'play'
                         color: root.is_script ? 'white' : 'green'
                         text_color: Material.foreground
-                        text: root.delay_for_targeted != undefined ? ">" : ""
+                        text: {
+                            var rval = ''
+                            if (root.delay_for_targeted != undefined)  { rval += '>' }
+                            if (registries.state_registry.solo_active) { rval += 'S' }
+                            return rval
+                        }
                         font.pixelSize: size / 2.0
                     }
 
-                    onClicked: root.transition(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
+                    onClicked: root.on_play_clicked()
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
-                    ToolTip.text: "Play wet recording."
+                    ToolTip.text: 'Play wet recording' +
+                        (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                        (registries.state_registry.solo_active ? ' (solo in track)' : '') +
+                        (root.delay_for_targeted != undefined  ? ' (with targeted loop)' : '')
+                        + '.'
 
                     Connections {
                         target: statusrect
@@ -903,7 +1063,7 @@ Item {
 
                         Rectangle {
                             width: playlivefx.width
-                            height: playsolointrack.height + playlivefx.height
+                            height: playlivefx.height
                             color: statusrect.color
                             clip: true
 
@@ -917,54 +1077,42 @@ Item {
 
                                 onPositionChanged: (mouse) => { 
                                     var p = mapToGlobal(mouse.x, mouse.y)
-                                    playsolointrack.onMousePosition(p)
                                     playlivefx.onMousePosition(p)
                                 }
-                                onExited: { playlivefx.onMouseExited(); playsolointrack.onMouseExited() }
+                                onExited: { playlivefx.onMouseExited() }
                             }
 
                             Column {
                                 SmallButtonWithCustomHover {
-                                    id : playsolointrack
-                                    width: buttongrid.button_width
-                                    height: buttongrid.button_height
-                                    IconWithText {
-                                        size: parent.width
-                                        anchors.centerIn: parent
-                                        name: 'play'
-                                        color: 'green'
-                                        text_color: Material.foreground
-                                        text: root.delay_for_targeted != undefined ? ">S" : "S"
-                                        font.pixelSize: size / 2.0
-                                    }
-                                    onClicked: { if(statusrect.loop) {
-                                        root.play_solo_in_track(root.use_delay, root.sync_active)
-                                        }}
-
-                                    ToolTip.delay: 1000
-                                    ToolTip.timeout: 5000
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: "Play wet recording solo in track."
-                                }
-                                SmallButtonWithCustomHover {
                                     id : playlivefx
                                     width: buttongrid.button_width
                                     height: buttongrid.button_height
+                                    
                                     IconWithText {
                                         size: parent.width
                                         anchors.centerIn: parent
                                         name: 'play'
                                         color: 'orange'
                                         text_color: Material.foreground
-                                        text: root.delay_for_targeted != undefined ? ">" : ""
+                                        text: {
+                                            var rval = ''
+                                            if (root.delay_for_targeted != undefined)  { rval += '>' }
+                                            if (registries.state_registry.solo_active) { rval += 'S' }
+                                            return rval
+                                        }
                                         font.pixelSize: size / 2.0
                                     }
-                                    onClicked: root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
+
+                                    onClicked: root.on_playdry_clicked()
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "Play dry recording through live effects. Allows hearing FX changes on-the-fly."
+                                    ToolTip.text: "Play dry recording through live effects" +
+                                        (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                                        (registries.state_registry.solo_active ? ' (solo in track)' : '') +
+                                        (root.delay_for_targeted != undefined  ? ' (with targeted loop)' : '') +
+                                        + '.'
                                 }
                             }
                         }
@@ -978,42 +1126,51 @@ Item {
 
                     visible: !root.is_script
 
-                    // possible values: "with_targeted", "infinite", or int > 0
-                    property var record_kind : {
-                        if (root.is_sync) { return "infinite" }
-                        if (root.delay_for_targeted != undefined) { return "with_targeted" }
-                        let apply_n_cycles = registries.state_registry.apply_n_cycles
-                        if (apply_n_cycles <= 0) { return "infinite" }
-                        return apply_n_cycles
-                    }
-
                     IconWithText {
+                        id: record_icon
                         size: parent.width
                         anchors.centerIn: parent
                         name: 'record'
                         color: 'red'
                         text_color: Material.foreground
-                        text: record.record_kind == 'with_targeted' ? '><' :
-                              record.record_kind == 'infinite' ? '' :
-                              record.record_kind.toString() // integer
+                        text: {
+                            var rval = root.record_kind == 'with_targeted' ? '><' :
+                                       root.record_kind == 'infinite' ? '' :
+                                       root.record_kind.toString() // integer
+                            if (registries.state_registry.solo_active) { rval += 'S' }
+                            return rval
+                        }
                         font.pixelSize: size / 2.0
+
+                        // If play-after-record is active, render a half-green icon
+                        Item {
+                            //clipping box that cuts the underlying icon
+                            anchors.fill: parent
+                            anchors.leftMargin: parent.width / 2 + 1
+                            clip: true
+
+                            MaterialDesignIcon {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                size: record_icon.size
+                                name: 'record'
+                                color: 'green'
+                                visible: registries.state_registry.play_after_record_active
+                            }
+                        }
                     }
 
-                    onClicked: {
-                        if (record.record_kind == 'with_targeted') {
-                            root.record_with_targeted();
-                        } else if (record.record_kind == 'infinite') {
-                            root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
-                        } else {
-                            root.record_n(0, record.record_kind)
-                        }                        
-                    }
+                    onClicked: root.on_record_clicked()
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
-                    ToolTip.text: "Record. If a number is displayed, will record for N cycles (global control). If a '><' is displayed, will record in unison with the targeted loop. Otherwise, start recording indefinitely."
-
+                    ToolTip.text: "Record" +
+                                        (registries.state_registry.play_after_record_active ? ', then play' : ', then stop') +
+                                        (root.record_kind == 'infinite' ? ' (until stopped)' : (root.record_kind == 'with_targeted' ? ' (with targeted loop)' : ` (${root.record_kind} cycles)`)) +
+                                        (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                                        (registries.state_registry.solo_active ? ' (solo in track)' : '')
+                                        + '.'
                     Connections {
                         target: statusrect
                         function onPropagateMousePosition(pt) { record.onMousePosition(pt) }
@@ -1058,15 +1215,16 @@ Item {
                                 SmallButtonWithCustomHover {
                                     id : record_grab
                                     
-                                    // This feature makes no sense for composite loops
-                                    visible: !root.maybe_composite_loop
-
-                                    property int n_cycles : {
-                                        var rval = registries.state_registry.apply_n_cycles
-                                        if (rval <= 0) { rval = 1; }
-                                        return rval
+                                    // This feature makes no sense for composite script loops,
+                                    // which cannot be treated as a "loop".
+                                    // But for regular composite loops, it makes sense - grab
+                                    // each portion to the correct subloop.
+                                    visible: {
+                                        if (root.maybe_composite_loop) {
+                                            return root.maybe_composite_loop.kind == 'regular'
+                                        }
+                                        return true;
                                     }
-
                                     width: buttongrid.button_width
                                     height: buttongrid.button_height
 
@@ -1076,19 +1234,36 @@ Item {
                                         name: 'arrow-collapse-down'
                                         color: 'red'
                                         text_color: Material.foreground
-                                        text: record_grab.n_cycles.toString()
+                                        text: root.n_cycles_to_grab.toString()
                                         font.pixelSize: size / 2.0
+
+                                        // If play-after-record is active, render a half-green icon
+                                        Item {
+                                            //clipping box that cuts the underlying icon
+                                            anchors.fill: parent
+                                            anchors.topMargin: parent.height / 2 
+                                            clip: true
+
+                                            MaterialDesignIcon {
+                                                anchors.bottom: parent.bottom
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                size: record_icon.size
+                                                name: 'arrow-collapse-down'
+                                                color: 'green'
+                                                visible: registries.state_registry.play_after_record_active
+                                            }
+                                        }
                                     }
 
-                                    onClicked: {
-                                        root.create_backend_loop()
-                                        root.adopt_ringbuffers(0, record_grab.n_cycles)
-                                    }
+                                    onClicked: root.on_grab_clicked()
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
                                     ToolTip.visible: hovered
-                                    ToolTip.text: "Grab always-on recording. The number displayed is the amount of sync loop cycles to grab. The grab will be synced such that the grabbed clip lines up with the most recently finished sync loop cycle."
+                                    ToolTip.text: "Grab always-on recording" +
+                                        (registries.state_registry.play_after_record_active ? ' and play immediately' : '') +
+                                        ((registries.state_registry.solo_active && registries.state_registry.play_after_record_active) ? ' (solo in track)' : '')
+                                        + '.'
                                 }
                             
                                 SmallButtonWithCustomHover {
@@ -1104,16 +1279,7 @@ Item {
                                         text: root.delay_for_targeted != undefined ? ">" : ""
                                         font.pixelSize: size / 2.0
                                     }
-                                    onClicked: {
-                                        var n = root.n_multiples_of_sync_length
-                                        var delay = 
-                                            root.delay_for_targeted != undefined ? 
-                                                root.use_delay : // delay to other
-                                                root.n_multiples_of_sync_length - root.current_cycle - 1 // delay to self
-                                        var prev_mode = statusrect.loop.mode
-                                        root.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, delay, true)
-                                        statusrect.loop.transition(prev_mode, delay + n, true)
-                                    }
+                                    onClicked: root.on_recordfx_clicked()
 
                                     ToolTip.delay: 1000
                                     ToolTip.timeout: 5000
@@ -1139,7 +1305,7 @@ Item {
                         font.pixelSize: size / 2.0
                     }
 
-                    onClicked: root.transition(ShoopConstants.LoopMode.Stopped, root.use_delay, root.sync_active)
+                    onClicked: root.on_stop_clicked()
 
                     ToolTip.delay: 1000
                     ToolTip.timeout: 5000

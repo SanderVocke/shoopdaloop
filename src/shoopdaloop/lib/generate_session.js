@@ -137,7 +137,7 @@ function generate_default_track(
     have_drywet_explicit_ports = false,
     drywet_carla_type = undefined
     ) {
-    let default_ringbuffer_size = 48000 * 5 // normally 5 seconds (TODO more flexible)
+    let default_ringbuffer_size = 48000 * 30 // normally 30 seconds (TODO more flexible)
 
     function fx_chain_port_id_part(typestr, inoutstr, idx) {
         var r = "_fx_chain_" + typestr + "_" + inoutstr;

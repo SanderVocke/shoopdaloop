@@ -1,6 +1,6 @@
-import QtQuick 6.3
-import QtQuick.Controls 6.3
-import QtQuick.Controls.Material 6.3
+import QtQuick 6.6
+import QtQuick.Controls 6.6
+import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.PythonLogger
 
 import '../mode_helpers.js' as ModeHelpers
@@ -257,10 +257,13 @@ Item {
 
             property int padding: 0.2 * 48000
             
-            // Overall data starting point, where 0 is each channel's start offset.
-            // That is to say: if three channels exist with start offsets 10, 20 and 30,
+            // Overall data starting point.
+            // This number is calculated assuming that all channels' data is aligned such that
+            // their start offsets are at 0. The overall start is then the earliest available
+            // data from any of the channels, plus an extra padding margin.
+            // Example: if three channels exist with start offsets 10, 20 and 30,
             // the one with offset 30 dominates so that the overall data starting point
-            // becomes -30.
+            // becomes -30 plus padding.
             property int data_start : -Math.max(...loop.channels.map(c => c ? c.start_offset : 0)) - padding
             
             // Likewise for the end point.
@@ -311,9 +314,10 @@ Item {
                             }
                         }
 
+                        // The sample that aligns with the left-most pixel on screen.
+                        // This 
                         property int first_pixel_sample: (channel ? channel.start_offset : 0) + channels_combine_range.data_start
-
-                        samples_offset: channels_column.samples_offset
+                        samples_offset: first_pixel_sample + channels_column.samples_offset
                         onPan: (amount) => { channels_column.samples_offset += amount }
 
                         loop_length: root.loop ? root.loop.length : 0

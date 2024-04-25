@@ -5,6 +5,7 @@
 #include "BufferQueue.h"
 #include "ObjectPool.h"
 #include "AudioBuffer.h"
+#include "shoop_shared_ptr.h"
 
 template<typename SampleT>
 class AudioPort : public virtual PortInterface {
@@ -19,10 +20,10 @@ class AudioPort : public virtual PortInterface {
     BufferQueue<SampleT> mp_always_record_ringbuffer;
 
 public:
-    using RingbufferSnapshot = BufferQueue<SampleT>::Snapshot;
+    using RingbufferSnapshot = typename BufferQueue<SampleT>::Snapshot;
     using BufferPool = ObjectPool<AudioBuffer<SampleT>>;
 
-    AudioPort(std::shared_ptr<BufferPool> maybe_ringbuffer_buffer_pool);
+    AudioPort(shoop_shared_ptr<BufferPool> maybe_ringbuffer_buffer_pool);
     virtual ~AudioPort();
 
     virtual SampleT *PROC_get_buffer(uint32_t n_frames) = 0;

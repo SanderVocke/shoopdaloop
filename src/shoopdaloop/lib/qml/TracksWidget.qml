@@ -1,6 +1,6 @@
-import QtQuick 6.3
-import QtQuick.Controls 6.3
-import QtQuick.Controls.Material 6.3
+import QtQuick 6.6
+import QtQuick.Controls 6.6
+import QtQuick.Controls.Material 6.6
 
 import "../generate_session.js" as GenerateSession
 
@@ -261,6 +261,9 @@ ScrollView {
     }
     function get_track_control_widget(track_idx) {
         return track_controls_mapper.unsorted_instances[track_idx].widget
+    }
+    function get_track_control_widgets() {
+        return track_controls_mapper.unsorted_instances.map((item) => item.widget)
     }
 
     Row {

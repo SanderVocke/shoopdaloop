@@ -56,7 +56,7 @@ TEST_CASE("MidiStorage - Round-trip", "[MidiStorage]") {
     uint32_t total_data_size = 0;
     for(auto &i : in) { total_data_size += Storage::Elem::total_size_of(i.data.size()); }
 
-    auto s = std::make_shared<Storage>(total_data_size);
+    auto s = shoop_make_shared<Storage>(total_data_size);
 
     for(auto &i: in) { s->append(i.time, i.size, i.data.data()); }
 
@@ -102,7 +102,7 @@ TEST_CASE("MidiStorage - prepend", "[MidiStorage]") {
     for(auto &i : in) { total_data_size += Storage::Elem::total_size_of(i.data.size()); }
     for(auto &i : prepend) { total_data_size += Storage::Elem::total_size_of(i.data.size()); }
 
-    auto s = std::make_shared<Storage>(total_data_size);
+    auto s = shoop_make_shared<Storage>(total_data_size);
 
     for(auto &i: in) { s->append(i.time, i.size, i.data.data()); }
     for(auto &i: prepend) { s->prepend(i.time, i.size, i.data.data()); }
@@ -145,7 +145,7 @@ TEST_CASE("MidiStorage - replace append", "[MidiStorage]") {
     uint32_t total_data_size = 0;
     for(auto &i : in) { total_data_size += Storage::Elem::total_size_of(i.data.size()); }
 
-    auto s = std::make_shared<Storage>(total_data_size);
+    auto s = shoop_make_shared<Storage>(total_data_size);
 
     for(auto &i: in) { s->append(i.time, i.size, i.data.data()); }
 
@@ -193,7 +193,7 @@ TEST_CASE("MidiStorage - replace multiple append", "[MidiStorage]") {
     uint32_t total_data_size = 0;
     for(auto &i : in) { total_data_size += Storage::Elem::total_size_of(i.data.size()); }
 
-    auto s = std::make_shared<Storage>(total_data_size);
+    auto s = shoop_make_shared<Storage>(total_data_size);
 
     for(auto &i: in) { s->append(i.time, i.size, i.data.data()); }
 

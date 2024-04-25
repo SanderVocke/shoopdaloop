@@ -55,7 +55,7 @@ class Pyramid:
 class RenderAudioWaveform(ShoopQQuickPaintedItem):
     def __init__(self, parent=None):
         super(RenderAudioWaveform, self).__init__(parent)
-        self._input_data = []
+        self._input_data = None
         self._samples_per_bin = 1.0
         self._samples_offset = 0
         self._pyramid = Pyramid()
@@ -72,8 +72,6 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
         return self._input_data
     @input_data.setter
     def input_data(self, v):
-        if isinstance(v, QJSValue):
-            v = v.toVariant()
         self._input_data = v
         self.inputDataChanged.emit(self._input_data)
 
@@ -100,8 +98,9 @@ class RenderAudioWaveform(ShoopQQuickPaintedItem):
     @ShoopSlot()
     def preprocess(self, *args):
         logger.trace(lambda: 'preprocess')
-        self._pyramid.create(self._input_data)
-        self.update()
+        if self._input_data:
+            self._pyramid.create(self._input_data.data)
+            self.update()
     
     @ShoopSlot()
     def update_lines(self):

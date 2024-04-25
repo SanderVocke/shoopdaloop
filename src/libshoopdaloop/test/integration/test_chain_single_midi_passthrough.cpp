@@ -20,17 +20,17 @@
 
 struct SingleMidiPortPassthroughTestChain : public ModuleLoggingEnabled<"Test.SingleMidiPortPassthroughTestChain"> {
     shoop_backend_session_t *api_backend_session;
-    std::shared_ptr<BackendSession> int_backend_session;
+    shoop_shared_ptr<BackendSession> int_backend_session;
 
     shoop_audio_driver_t *api_driver;
-    std::shared_ptr<shoop_types::_DummyAudioMidiDriver> int_driver;
+    shoop_shared_ptr<shoop_types::_DummyAudioMidiDriver> int_driver;
 
     shoopdaloop_midi_port_t *api_input_port;
-    std::shared_ptr<GraphPort> int_input_port;
+    shoop_shared_ptr<GraphPort> int_input_port;
     DummyMidiPort* int_dummy_input_port;
 
     shoopdaloop_midi_port_t *api_output_port;
-    std::shared_ptr<GraphPort> int_output_port;
+    shoop_shared_ptr<GraphPort> int_output_port;
     DummyMidiPort* int_dummy_output_port;
 
     SingleMidiPortPassthroughTestChain() {
@@ -38,7 +38,7 @@ struct SingleMidiPortPassthroughTestChain : public ModuleLoggingEnabled<"Test.Si
         int_backend_session = internal_backend_session(api_backend_session);
 
         api_driver = create_audio_driver(Dummy);
-        int_driver = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(internal_audio_driver(api_driver));
+        int_driver = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(internal_audio_driver(api_driver));
 
         auto settings = DummyAudioMidiDriverSettings{};
         int_driver->start(settings);

@@ -15,6 +15,7 @@
 #include <boost/lockfree/spsc_queue.hpp>
 #include <memory>
 #include <stdint.h>
+#include "shoop_shared_ptr.h"
 
 
 class DummyPort;
@@ -44,14 +45,14 @@ class DummyPort : public virtual PortInterface {
 protected:
     std::string m_name = "";
     shoop_port_direction_t m_direction = ShoopPortDirection_Input;
-    std::weak_ptr<DummyExternalConnections> m_external_connections;
+    shoop_weak_ptr<DummyExternalConnections> m_external_connections;
 
 public:
     DummyPort(
         std::string name,
         shoop_port_direction_t direction,
         PortDataType type,
-        std::weak_ptr<DummyExternalConnections> external_connections = std::weak_ptr<DummyExternalConnections>()
+        shoop_weak_ptr<DummyExternalConnections> external_connections = shoop_weak_ptr<DummyExternalConnections>()
     );
 
     const char* name() const override;
@@ -78,8 +79,8 @@ public:
     DummyAudioPort(
         std::string name,
         shoop_port_direction_t direction,
-        std::shared_ptr<AudioPort<audio_sample_t>::BufferPool> maybe_ringbuffer_buffer_pool,
-        std::weak_ptr<DummyExternalConnections> external_connections = std::weak_ptr<DummyExternalConnections>());
+        shoop_shared_ptr<AudioPort<audio_sample_t>::BufferPool> maybe_ringbuffer_buffer_pool,
+        shoop_weak_ptr<DummyExternalConnections> external_connections = shoop_weak_ptr<DummyExternalConnections>());
     
     audio_sample_t *PROC_get_buffer(uint32_t n_frames) override;
     ~DummyAudioPort() override;
@@ -148,7 +149,7 @@ public:
     DummyMidiPort(
         std::string name,
         shoop_port_direction_t direction,
-        std::weak_ptr<DummyExternalConnections> external_connections = std::weak_ptr<DummyExternalConnections>()
+        shoop_weak_ptr<DummyExternalConnections> external_connections = shoop_weak_ptr<DummyExternalConnections>()
     );
 
     void queue_msg(uint32_t size, uint32_t time, const uint8_t* data);
@@ -200,8 +201,8 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
     std::atomic<uint32_t> m_controlled_mode_samples_to_process = 0;
     std::atomic<bool> m_paused = false;
     std::thread m_proc_thread;
-    std::set<std::shared_ptr<DummyAudioPort>> m_audio_ports;
-    std::set<std::shared_ptr<DummyMidiPort>> m_midi_ports;
+    std::set<shoop_shared_ptr<DummyAudioPort>> m_audio_ports;
+    std::set<shoop_shared_ptr<DummyMidiPort>> m_midi_ports;
     std::string m_client_name_str = "";
 
     std::function<void(std::string, shoop_port_direction_t)> m_audio_port_opened_cb = nullptr;
@@ -211,20 +212,20 @@ class DummyAudioMidiDriver : public AudioMidiDriver,
 
 public:
 
-    std::shared_ptr<DummyExternalConnections> m_external_connections;
+    shoop_shared_ptr<DummyExternalConnections> m_external_connections;
 
     DummyAudioMidiDriver();
     virtual ~DummyAudioMidiDriver();
 
     void start(AudioMidiDriverSettingsInterface &settings) override;
 
-    std::shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
+    shoop_shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        std::shared_ptr<typename AudioPort<audio_sample_t>::BufferPool> buffer_pool
+        shoop_shared_ptr<typename AudioPort<audio_sample_t>::BufferPool> buffer_pool
     ) override;
 
-    std::shared_ptr<MidiPort> open_midi_port(
+    shoop_shared_ptr<MidiPort> open_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) override;

@@ -4,6 +4,7 @@
 #include "LoggingEnabled.h"
 #include <deque>
 #include <atomic>
+#include "shoop_shared_ptr.h"
 
 #ifdef BASICLOOP_EXPOSE_ALL_FOR_TEST
 #define private public
@@ -34,7 +35,7 @@ public:
 protected:
     std::optional<PointOfInterest> mp_next_poi = std::nullopt;
     std::optional<uint32_t> mp_next_trigger = std::nullopt;
-    std::shared_ptr<LoopInterface> mp_sync_source = nullptr;
+    shoop_shared_ptr<LoopInterface> mp_sync_source = nullptr;
     std::deque<shoop_loop_mode_t> mp_planned_states;
     std::deque<int> mp_planned_state_countdowns;
 
@@ -73,8 +74,8 @@ public:
         uint32_t length_after
     );
     void PROC_process(uint32_t n_samples) override;
-    void set_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe=true) override;
-    std::shared_ptr<LoopInterface> get_sync_source(bool thread_safe = true) override;
+    void set_sync_source(shoop_shared_ptr<LoopInterface> const& src, bool thread_safe=true) override;
+    shoop_shared_ptr<LoopInterface> get_sync_source(bool thread_safe = true) override;
     void PROC_update_planned_transition_cache();
     void PROC_trigger(bool propagate=true) override;
     void PROC_handle_sync() override;
@@ -83,7 +84,12 @@ public:
     uint32_t get_planned_transition_delay(uint32_t idx, bool thread_safe=true) override;
     shoop_loop_mode_t get_planned_transition_state(uint32_t idx, bool thread_safe=true) override;
     void clear_planned_transitions(bool thread_safe) override;
-    void plan_transition(shoop_loop_mode_t mode, uint32_t n_cycles_delay = 0, bool wait_for_sync = true, bool thread_safe=true) override;
+    void plan_transition(
+        shoop_loop_mode_t mode,
+        std::optional<uint32_t> maybe_n_cycles_delay = 0,
+        std::optional<uint32_t> maybe_to_sync_cycle = std::nullopt,
+        bool thread_safe=true
+    ) override;
     uint32_t get_position() const override;
     void set_position(uint32_t position, bool thread_safe=true) override;
     uint32_t get_length() const override;

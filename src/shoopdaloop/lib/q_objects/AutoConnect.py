@@ -75,9 +75,10 @@ class AutoConnect(FindParentBackend):
     @ShoopSlot()
     def update(self):
         if self._backend and self._internal_port and self._backend.initialized and not self._closed:
+            internal_port = self._internal_port
             external_candidates = []
-            my_connections = self._internal_port.get_connections_state() if self._internal_port else {}
-            data_type = self._internal_port.get_data_type()
+            my_connections = internal_port.get_connections_state() if internal_port else {}
+            data_type = internal_port.get_data_type()
 
             if self._to_regex is not None:
                 external_candidates = self._backend.find_external_ports(self._to_regex, PortDirection.Any.value, data_type)
@@ -85,12 +86,13 @@ class AutoConnect(FindParentBackend):
             for c in external_candidates:
                 connected = c.name in my_connections.keys() and my_connections[c.name] == True
                 if connected:
-                    self.logger.trace(lambda: f"{self._internal_port.name} already connected to {c.name}")
-                elif c.direction != self._internal_port.direction:
-                    if self._internal_port.initialized:
-                        self.logger.info(lambda: f"Autoconnecting {self._internal_port.name} to {c.name}")
-                        self._internal_port.connect_external_port(c.name)
+                    self.logger.trace(lambda: f"{internal_port.name} already connected to {c.name}")
+                elif c.direction != internal_port.direction:
+                    if internal_port.initialized:
+                        self.logger.info(lambda: f"Autoconnecting {internal_port.name} to {c.name}")
+                        internal_port.connect_external_port(c.name)
                         self.connected.emit()
+                        break
                     else:
                         self.logger.debug(lambda: f"Found external autoconnect port {c.name}, internal port not yet opened")
                         self.onlyExternalFound.emit()

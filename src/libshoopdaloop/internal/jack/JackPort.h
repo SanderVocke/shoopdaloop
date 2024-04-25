@@ -20,7 +20,7 @@ protected:
     std::string m_name = "";
     shoop_port_direction_t m_direction = ShoopPortDirection_Input;
     PortDataType m_type;
-    std::shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
+    shoop_shared_ptr<GenericJackAllPorts<API>> m_all_ports_tracker;
 
 public:
     const char* name() const override;
@@ -48,7 +48,7 @@ public:
         shoop_port_direction_t direction,
         PortDataType type,
         jack_client_t *client,
-        std::shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
+        shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     );
     ~GenericJackPort() override;
 };

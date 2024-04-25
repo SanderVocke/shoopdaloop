@@ -19,13 +19,13 @@ using namespace shoop_constants;
 namespace {
 std::vector<audio_sample_t> g_dummy_audio_input_buffer (default_audio_dummy_buffer_size);
 std::vector<audio_sample_t> g_dummy_audio_output_buffer (default_audio_dummy_buffer_size);
-std::shared_ptr<DummyReadMidiBuf> g_dummy_midi_input_buffer = std::make_shared<DummyReadMidiBuf>();
-std::shared_ptr<DummyWriteMidiBuf> g_dummy_midi_output_buffer = std::make_shared<DummyWriteMidiBuf>();
+shoop_shared_ptr<DummyReadMidiBuf> g_dummy_midi_input_buffer = shoop_make_shared<DummyReadMidiBuf>();
+shoop_shared_ptr<DummyWriteMidiBuf> g_dummy_midi_output_buffer = shoop_make_shared<DummyWriteMidiBuf>();
 }
 
-GraphLoopChannel::GraphLoopChannel(std::shared_ptr<ChannelInterface> chan,
-                std::shared_ptr<GraphLoop> loop,
-                std::shared_ptr<BackendSession> backend) :
+GraphLoopChannel::GraphLoopChannel(shoop_shared_ptr<ChannelInterface> chan,
+                shoop_shared_ptr<GraphLoop> loop,
+                shoop_shared_ptr<BackendSession> backend) :
         ModuleLoggingEnabled<"Backend.GraphLoopChannel">(),
         channel(chan),
         loop(loop),
@@ -53,17 +53,17 @@ bool GraphLoopChannel::get_data_dirty() const {
     return ma_data_sequence_nr != channel->get_data_seq_nr();
 }
 
-void GraphLoopChannel::connect_output_port(std::shared_ptr<GraphPort> port, bool thread_safe) {
+void GraphLoopChannel::connect_output_port(shoop_shared_ptr<GraphPort> port, bool thread_safe) {
     mp_output_port_mapping = port;
     get_backend().set_graph_node_changes_pending();
 }
 
-void GraphLoopChannel::connect_input_port(std::shared_ptr<GraphPort> port, bool thread_safe) {
+void GraphLoopChannel::connect_input_port(shoop_shared_ptr<GraphPort> port, bool thread_safe) {
     mp_input_port_mapping = port;
     get_backend().set_graph_node_changes_pending();
 }
 
-void GraphLoopChannel::disconnect_output_port(std::shared_ptr<GraphPort> port, bool thread_safe) {
+void GraphLoopChannel::disconnect_output_port(shoop_shared_ptr<GraphPort> port, bool thread_safe) {
     auto locked = mp_output_port_mapping.lock();
     if (locked) {
         if (port != locked) {
@@ -79,7 +79,7 @@ void GraphLoopChannel::disconnect_output_ports(bool thread_safe) {
     get_backend().set_graph_node_changes_pending();
 }
 
-void GraphLoopChannel::disconnect_input_port(std::shared_ptr<GraphPort> port, bool thread_safe) {
+void GraphLoopChannel::disconnect_input_port(shoop_shared_ptr<GraphPort> port, bool thread_safe) {
     auto locked = mp_input_port_mapping.lock();
     if (locked) {
         if (port != locked) {
@@ -173,10 +173,10 @@ void GraphLoopChannel::graph_node_0_process(uint32_t nframes) {
 WeakGraphNodeSet GraphLoopChannel::graph_node_0_incoming_edges() {
     WeakGraphNodeSet rval;
     if (auto in_locked = mp_input_port_mapping.lock()) {
-        rval.insert(in_locked->first_graph_node());
+        rval.insert(shoop_static_pointer_cast<GraphNode>(in_locked->first_graph_node()));
     }
     if (auto out_locked = mp_output_port_mapping.lock()) {
-        rval.insert(out_locked->first_graph_node());
+        rval.insert(shoop_static_pointer_cast<GraphNode>(out_locked->first_graph_node()));
     }
     return rval;
 }
@@ -184,7 +184,7 @@ WeakGraphNodeSet GraphLoopChannel::graph_node_0_incoming_edges() {
 WeakGraphNodeSet GraphLoopChannel::graph_node_0_outgoing_edges() {
     WeakGraphNodeSet rval;
     if (auto l = loop.lock()) {
-        rval.insert(l->graph_node());
+        rval.insert(shoop_static_pointer_cast<GraphNode>(l->graph_node()));
     }
     return rval;
 }
@@ -201,11 +201,11 @@ WeakGraphNodeSet GraphLoopChannel::graph_node_1_incoming_edges() {
     WeakGraphNodeSet rval;
     rval.insert(first_graph_node());
     if (auto l = loop.lock()) {
-        rval.insert(l->graph_node());
+        rval.insert(shoop_static_pointer_cast<GraphNode>(l->graph_node()));
     }
     if (auto in_locked = mp_input_port_mapping.lock()) {
         log<log_level_debug_trace>("found incoming edge from port node {}", in_locked->graph_node_1_name());
-        rval.insert(in_locked->second_graph_node());
+        rval.insert(shoop_static_pointer_cast<GraphNode>(in_locked->second_graph_node()));
     } else {
         log<log_level_debug_trace>("found no incoming edge to any port node");
     }
@@ -216,17 +216,20 @@ WeakGraphNodeSet GraphLoopChannel::graph_node_1_outgoing_edges() {
     WeakGraphNodeSet rval;
     if (auto out_locked = mp_output_port_mapping.lock()) {
         log<log_level_debug_trace>("found outgoing edge to port node {}", out_locked->graph_node_1_name());
-        rval.insert(out_locked->second_graph_node());
+        rval.insert(shoop_static_pointer_cast<GraphNode>(out_locked->second_graph_node()));
     } else {
         log<log_level_debug_trace>("found no outgoing edge to any port node");
     }
     return rval;
 }
 
-void GraphLoopChannel::adopt_ringbuffer_contents(std::optional<unsigned> reverse_start_offset, bool thread_safe) {
+void GraphLoopChannel::adopt_ringbuffer_contents(
+    std::optional<unsigned> reverse_start_offset,
+    std::optional<unsigned> keep_before_start_offset,
+    bool thread_safe) {
     if (auto input = mp_input_port_mapping.lock()) {
         if (channel) {
-            channel->adopt_ringbuffer_contents(input->maybe_shared_port(), reverse_start_offset, thread_safe);
+            channel->adopt_ringbuffer_contents(input->maybe_shared_port(), reverse_start_offset, keep_before_start_offset, thread_safe);
         }
     }
 }

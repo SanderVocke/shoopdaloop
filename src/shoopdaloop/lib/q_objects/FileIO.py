@@ -43,6 +43,10 @@ class FileIO(ShoopQObject):
     ######################
     # SLOTS
     ######################
+
+    @ShoopSlot(int)
+    def wait_blocking(self, delay_ms):
+        time.sleep(0.001 * delay_ms)
     
     @ShoopSlot(result=str)
     def get_current_directory(self):

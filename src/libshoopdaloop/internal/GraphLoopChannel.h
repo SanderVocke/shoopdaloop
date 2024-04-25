@@ -5,34 +5,36 @@
 #include "shoop_globals.h"
 #include "GraphNode.h"
 #include "LoggingEnabled.h"
+#include "shoop_shared_ptr.h"
+
 class GraphLoopChannel:  public HasTwoGraphNodes,
                          protected ModuleLoggingEnabled<"Backend.GraphLoopChannel"> {
 public:
-    std::shared_ptr<ChannelInterface> channel = nullptr;
-    std::weak_ptr<GraphLoop> loop;
-    std::weak_ptr<GraphPort> mp_input_port_mapping;
-    std::weak_ptr<BackendSession> backend;
-    std::weak_ptr<GraphPort> mp_output_port_mapping;
+    shoop_shared_ptr<ChannelInterface> channel = nullptr;
+    shoop_weak_ptr<GraphLoop> loop;
+    shoop_weak_ptr<GraphPort> mp_input_port_mapping;
+    shoop_weak_ptr<BackendSession> backend;
+    shoop_weak_ptr<GraphPort> mp_output_port_mapping;
     std::atomic<unsigned> ma_data_sequence_nr = 0;
 
-    GraphLoopChannel(std::shared_ptr<ChannelInterface> chan,
-                std::shared_ptr<GraphLoop> loop,
-                std::shared_ptr<BackendSession> backend);
+    GraphLoopChannel(shoop_shared_ptr<ChannelInterface> chan,
+                shoop_shared_ptr<GraphLoop> loop,
+                shoop_shared_ptr<BackendSession> backend);
 
     // NOTE: only use on process thread
     GraphLoopChannel &operator= (GraphLoopChannel const& other);
 
-    void connect_output_port(std::shared_ptr<GraphPort> port, bool thread_safe=true);
-    void connect_input_port(std::shared_ptr<GraphPort> port, bool thread_safe=true);
-    void disconnect_output_port(std::shared_ptr<GraphPort> port, bool thread_safe=true);
+    void connect_output_port(shoop_shared_ptr<GraphPort> port, bool thread_safe=true);
+    void connect_input_port(shoop_shared_ptr<GraphPort> port, bool thread_safe=true);
+    void disconnect_output_port(shoop_shared_ptr<GraphPort> port, bool thread_safe=true);
     void disconnect_output_ports(bool thread_safe=true);
-    void disconnect_input_port(std::shared_ptr<GraphPort> port, bool thread_safe=true);
+    void disconnect_input_port(shoop_shared_ptr<GraphPort> port, bool thread_safe=true);
     void disconnect_input_ports(bool thread_safe=true);
 
     // Adopt the ringbuffer contents of any input port that has an active ringbuffer
     // into the channel contents.
     // If not offset is given, offset will be set to 0 to start playback from the beginning.
-    void adopt_ringbuffer_contents(std::optional<unsigned> reverse_start_offset, bool thread_safe=true);
+    void adopt_ringbuffer_contents(std::optional<unsigned> reverse_start_offset, std::optional<unsigned> keep_before_start_offset, bool thread_safe=true);
 
     void PROC_prepare(uint32_t nframes);
     void PROC_process(uint32_t nframes);

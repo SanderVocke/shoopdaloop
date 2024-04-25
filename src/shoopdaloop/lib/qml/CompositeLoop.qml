@@ -1,6 +1,6 @@
-import QtQuick 6.3
-import QtQuick.Controls 6.3
-import QtQuick.Controls.Material 6.3
+import QtQuick 6.6
+import QtQuick.Controls 6.6
+import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.PythonCompositeLoop
 
@@ -16,6 +16,8 @@ Item {
     property var initial_composition_descriptor: null
     property string obj_id : 'unknown'
     property var loop_widget : null
+
+    onObj_idChanged: py_loop.instanceIdentifier = obj_id
 
     readonly property bool initialized: true
 
@@ -42,6 +44,8 @@ Item {
         iteration: 0
         sync_loop: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
         schedule: root.schedule
+        play_after_record: registries.state_registry.play_after_record_active
+        sync_mode_active: registries.state_registry.sync_active
 
         onCycled: root.cycled()
         Component.onCompleted: root.recalculate_schedule()
@@ -160,7 +164,14 @@ Item {
                         continue
                     }
                     let loop_start = _it + elem.delay
-                    let loop_cycles =  Math.max(1, elem.n_cycles ? elem.n_cycles : loop_widget.n_cycles)
+                    let loop_cycles =  Math.max(1, 
+                        elem.n_cycles ?
+                            elem.n_cycles :
+                            ((loop_widget.n_cycles > 0 && !ModeHelpers.is_recording_mode(loop_widget.mode)) ?
+                                loop_widget.n_cycles :
+                                registries.state_registry.apply_n_cycles
+                            )
+                    )
                     let loop_end = loop_start + loop_cycles
 
                     elem['start_iteration'] = loop_start
@@ -297,6 +308,10 @@ Item {
         update_schedule()
     }
     onSync_emptyChanged: update_schedule()
+    Connections {
+        target: registries.state_registry
+        function onApply_n_cyclesChanged() { update_schedule() }
+    }
 
     // Calculated properties
     readonly property int display_position : position
@@ -348,8 +363,8 @@ Item {
 
     property var sync_loop : registries.state_registry.sync_loop
 
-    function transition(mode, delay, wait_for_sync) {
-        py_loop.transition(mode, delay, wait_for_sync)
+    function transition(mode, maybe_delay, maybe_align_to_sync_at) {
+        py_loop.transition(mode, maybe_delay, maybe_align_to_sync_at)
     }
 
     function actual_composition_descriptor() {
@@ -363,5 +378,9 @@ Item {
     function clear() {
         playlists_in = []
         playlists_inChanged()
+    }
+
+    function adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode) {
+        py_loop.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
     }
 }

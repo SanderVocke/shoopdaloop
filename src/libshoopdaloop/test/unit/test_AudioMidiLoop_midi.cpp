@@ -362,12 +362,12 @@ TEST_CASE("AudioMidiLoop - Midi - Playback", "[AudioMidiLoop][midi]") {
 
 TEST_CASE("AudioMidiLoop - Midi - Prerecord", "[AudioMidiLoop][midi]") {
     AudioMidiLoop loop;
-    auto sync_source = std::make_shared<AudioMidiLoop>();
+    auto sync_source = shoop_make_shared<AudioMidiLoop>();
     sync_source->set_length(100);
     sync_source->plan_transition(LoopMode_Playing);
     REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 100);
 
-    loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
+    loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(sync_source)); // Needed because otherwise will immediately transition
     loop.PROC_update_poi();
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 100);
@@ -426,12 +426,12 @@ TEST_CASE("AudioMidiLoop - Midi - Prerecord", "[AudioMidiLoop][midi]") {
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
-    auto loop_ptr = std::make_shared<AudioMidiLoop>();
+    auto loop_ptr = shoop_make_shared<AudioMidiLoop>();
     auto &loop = *loop_ptr;
-    auto sync_source = std::make_shared<AudioMidiLoop>();
+    auto sync_source = shoop_make_shared<AudioMidiLoop>();
 
     auto process = [&](uint32_t n_samples) {
-        std::set<std::shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
+        std::set<shoop_shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
         process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
     };
 
@@ -439,7 +439,7 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
     sync_source->plan_transition(LoopMode_Playing);
     REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 100);
 
-    loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
+    loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(sync_source)); // Needed because otherwise will immediately transition
     loop.PROC_update_poi();
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 100);
@@ -901,20 +901,20 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     // If a note started during the pre-play period, it doesn't have to be re-started
     // by the state tracker. But when the loop loops around, it may have to be played again.
 
-    auto loop_ptr = std::make_shared<AudioMidiLoop>();
+    auto loop_ptr = shoop_make_shared<AudioMidiLoop>();
     auto &loop = *loop_ptr;
-    auto sync_source = std::make_shared<AudioMidiLoop>();
+    auto sync_source = shoop_make_shared<AudioMidiLoop>();
     sync_source->set_length(10);
     sync_source->plan_transition(LoopMode_Playing);
     REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 10);
 
-    loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
+    loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(sync_source)); // Needed because otherwise will immediately transition
     loop.PROC_update_poi();
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 10);
 
     auto process = [&](uint32_t n_samples) {
-        std::set<std::shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
+        std::set<shoop_shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
         process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
     };
 
@@ -934,7 +934,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     channel.PROC_set_recording_buffer(&source_buf, 512);
 
     // Plan recording (pre-record starts), record will start after 10 frames
-    loop.plan_transition(LoopMode_Recording, 0, true, false);
+    loop.plan_transition(LoopMode_Recording, 0, std::nullopt, false);
 
     // Note On is prerecorded
     process(10);
@@ -971,12 +971,12 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     channel.set_pre_play_samples(6);
 
     // Stop for a while
-    loop.plan_transition(LoopMode_Stopped, 0, false, false);
+    loop.plan_transition(LoopMode_Stopped, std::nullopt, std::nullopt, false);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt); // sanity check
     process(50);
 
     // Plan playback
-    loop.plan_transition(LoopMode_Playing, 0, true, false);
+    loop.plan_transition(LoopMode_Playing, 0, std::nullopt, false);
 
     // process 10 samples. That should cover the pre-play period.
     // NoteOn is played.
@@ -1039,20 +1039,20 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay", "[AudioMidiLoop][midi]") {
-    auto loop_ptr = std::make_shared<AudioMidiLoop>();
+    auto loop_ptr = shoop_make_shared<AudioMidiLoop>();
     auto &loop = *loop_ptr;
-    auto sync_source = std::make_shared<AudioMidiLoop>();
+    auto sync_source = shoop_make_shared<AudioMidiLoop>();
     sync_source->set_length(10);
     sync_source->plan_transition(LoopMode_Playing);
     REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 10);
 
-    loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
+    loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(sync_source)); // Needed because otherwise will immediately transition
     loop.PROC_update_poi();
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 10);
 
     auto process = [&](uint32_t n_samples) {
-        std::set<std::shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
+        std::set<shoop_shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
         process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
     };
 
@@ -1072,7 +1072,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
     channel.PROC_set_recording_buffer(&source_buf, 512);
 
     // Plan recording (pre-record starts), record will start after 10 frames
-    loop.plan_transition(LoopMode_Recording, 0, true, false);
+    loop.plan_transition(LoopMode_Recording, 0, std::nullopt, false);
 
     // Note On is prerecorded
     process(10);
@@ -1106,12 +1106,12 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
     CHECK(contents[3].get_data()[0] == 0x80);
 
     // Stop for a while
-    loop.plan_transition(LoopMode_Stopped, 0, false, false);
+    loop.plan_transition(LoopMode_Stopped, std::nullopt, std::nullopt, false);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt); // sanity check
     process(50);
 
     // Plan playback
-    loop.plan_transition(LoopMode_Playing, 0, true, false);
+    loop.plan_transition(LoopMode_Playing, 0, std::nullopt, false);
 
     // process 10 samples. That should cover the pre-play period.
     // Nothing is played because no pre-play is enabled.

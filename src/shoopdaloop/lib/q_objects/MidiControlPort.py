@@ -34,6 +34,13 @@ class MidiControlPort(FindParentBackend):
         self._name = None
         self._may_open = False
         self._initialized = False
+        self._send_rate_limit_hz = 0
+        self._send_queue = []
+        
+        self._send_timer = QTimer(self)
+        self._send_timer.setSingleShot(True)
+        self._send_timer.timeout.connect(self.update_send_queue)
+        self._send_timer.setInterval(1)
         
         # Track CC states
         self._cc_states = [[ None for cc in range(128)] for channel in range(128)]
@@ -41,9 +48,9 @@ class MidiControlPort(FindParentBackend):
         self._active_notes = set()
         
         self._autoconnecters = []
-        self.nameChanged.connect(lambda: self.autoconnect_update())
-        self.autoconnect_regexesChanged.connect(lambda: self.autoconnect_update())
-        self.directionChanged.connect(lambda: self.autoconnect_update())
+        self.nameChanged.connect(lambda: QTimer.singleShot(1, lambda: self.autoconnect_update()))
+        self.autoconnect_regexesChanged.connect(lambda: QTimer.singleShot(1, lambda: self.autoconnect_update()))
+        self.directionChanged.connect(lambda: QTimer.singleShot(1, lambda: self.autoconnect_update()))
         self.autoconnect_update()
     
         self._lua_obj = None
@@ -132,6 +139,19 @@ class MidiControlPort(FindParentBackend):
             self._may_open = l
             self.mayOpenChanged.emit(l)
             self.maybe_init()
+            
+    # send_rate_limit_hz
+    sendRateLimitHzChanged = ShoopSignal(int)
+    @ShoopProperty(int, notify=sendRateLimitHzChanged)
+    def send_rate_limit_hz(self):
+        return self._send_rate_limit_hz
+    @send_rate_limit_hz.setter
+    def send_rate_limit_hz(self, l):
+        if l != self._send_rate_limit_hz:
+            self._send_rate_limit_hz = l
+            self.logger.trace(lambda: f'send rate limit -> {l}')
+            self._send_timer.setInterval(1000/l)
+            self.sendRateLimitHzChanged.emit(l)
     
     ###########
     ## METHODS
@@ -202,13 +222,31 @@ class MidiControlPort(FindParentBackend):
         """
         return [list(_tuple) for _tuple in self._active_notes]
     
+    @ShoopSlot()
+    def update_send_queue(self):
+        def send(msg):
+            self.logger.debug(lambda: "Sending: {}".format(msg))
+            if self._direction == PortDirection.Output.value and self._backend_obj:
+                self._backend_obj.send_midi(msg)
+        
+        if self._send_rate_limit_hz == 0:
+            while len(self._send_queue) > 0:
+                send(self._send_queue.pop(0))
+        elif len(self._send_queue) > 0:
+            msg = self._send_queue.pop(0)
+            send(msg)
+            if len(self._send_queue) > 0:
+                self._send_timer.start()
+    
     @ShoopSlot(list)
     def send_msg(self, msg):
         # NOTE: not for direct use from Lua.
         # Sends the given bytes as a MIDI message.
-        self.logger.trace(lambda: "Sending: {}".format(msg))
-        if self._direction == PortDirection.Output.value and self._backend_obj:
-            self._backend_obj.send_midi(msg)
+        self._send_queue.append(msg)
+        if self._send_rate_limit_hz > 0:
+            self._send_timer.start()
+        else:
+            self.update_send_queue()        
     
     @ShoopSlot()
     def autoconnect_update(self):
@@ -230,6 +268,10 @@ class MidiControlPort(FindParentBackend):
     
     @ShoopSlot()
     def close(self):
+        self.logger.trace(lambda: "Closing.")
+        if self._backend_obj:
+            self._backend_obj.destroy()
+        self._backend_obj = None
         self._autoconnect_regexes = []
         self.autoconnect_update()
     
@@ -264,10 +306,10 @@ class MidiControlPort(FindParentBackend):
             if self._direction == PortDirection.Input.value:
                 self.timer = QTimer(self)
                 self.timer.setSingleShot(False)
-                self.timer.setInterval(50)
+                self.timer.setInterval(10)
                 self.timer.timeout.connect(self.poll)
                 self.timer.start()
-                
+            
             self.initializedChanged.emit(True)
     
     @ShoopSlot(result='QVariant')

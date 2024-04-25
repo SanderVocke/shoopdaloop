@@ -17,6 +17,12 @@ from ..logging import Logger
 from ..backend_wrappers import *
 from ..mode_helpers import *
 
+# Encapsulate the data in a class. We don't want to convert it to Javascript data,
+# rather just pass the Python handle around.
+class FetchedData():
+    def __init__(self):
+        self.data = None
+
 # Wraps a back-end loop channel.
 class FetchChannelData(ShoopQQuickItem):
     def __init__(self, parent=None):
@@ -71,7 +77,7 @@ class FetchChannelData(ShoopQQuickItem):
     
     # channel_data
     # set automatically. Will hold the most recently
-    # fetched data.
+    # fetched data handle.
     channelDataChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=channelDataChanged)
     def channel_data(self):
@@ -186,7 +192,8 @@ class FetchChannelData(ShoopQQuickItem):
         def worker(channel=self.channel, seq_nr=self._requested_sequence_nr, cb_to=self, logger=self.logger):
             try:
                 logger.debug(lambda: "Fetching channel data to front-end.")
-                data = channel.get_display_data()
+                data = FetchedData()
+                data.data = channel.get_display_data()
                 logger.debug(lambda: "Fetched")
                 QMetaObject.invokeMethod(
                     cb_to,

@@ -1,4 +1,4 @@
-import QtQuick 6.3
+import QtQuick 6.6
 import QtTest 1.0
 import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.PythonTestCase
@@ -62,6 +62,10 @@ PythonTestCase {
         update_next_cycle.trigger()
     }
     Component.onDestruction: logger.info(() => ("Testcase " + name + " destroyed."))
+
+    function section(title) {
+        logger.debug(() => `Test section: ${title}`)
+    }
 
     function verify_loop_cleared(loop) {
         verify_eq(loop.mode, ShoopConstants.LoopMode.Stopped)

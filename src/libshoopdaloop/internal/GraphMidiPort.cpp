@@ -6,8 +6,8 @@
 #include "types.h"
 #include <memory>
 
-GraphMidiPort::GraphMidiPort (std::shared_ptr<MidiPort> const& port,
-                    std::shared_ptr<BackendSession> const& backend) :
+GraphMidiPort::GraphMidiPort (shoop_shared_ptr<MidiPort> const& port,
+                    shoop_shared_ptr<BackendSession> const& backend) :
     GraphPort(backend), port(port) {}
 
 PortInterface &GraphMidiPort::get_port() const {
@@ -18,12 +18,12 @@ MidiPort *GraphMidiPort::maybe_midi_port() const {
     return port.get();
 }
 
-std::shared_ptr<MidiPort> GraphMidiPort::maybe_shared_midi_port() const {
+shoop_shared_ptr<MidiPort> GraphMidiPort::maybe_shared_midi_port() const {
     return port;
 }
 
-std::shared_ptr<PortInterface> GraphMidiPort::maybe_shared_port() const {
-    return port;
+shoop_shared_ptr<PortInterface> GraphMidiPort::maybe_shared_port() const {
+    return shoop_static_pointer_cast<PortInterface>(port);
 }
 
 void GraphMidiPort::PROC_internal_connections(uint32_t n_frames) {

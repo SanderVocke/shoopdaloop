@@ -1,5 +1,5 @@
 import ShoopDaLoop.PythonMidiPort
-import QtQuick 6.3
+import QtQuick 6.6
 
 import ShoopConstants
 
@@ -34,8 +34,8 @@ PythonMidiPort {
             'type': descriptor.type,
             'input_connectability': descriptor.input_connectability,
             'output_connectability': descriptor.output_connectability,
-            'muted': descriptor.muted,
-            'passthrough_muted': descriptor.muted,
+            'muted': muted,
+            'passthrough_muted': passthrough_muted,
             'internal_port_connections': descriptor.internal_port_connections,
             'external_port_connections': get_connected_external_ports(),
             'min_n_ringbuffer_samples': descriptor.min_n_ringbuffer_samples

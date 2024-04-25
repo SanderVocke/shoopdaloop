@@ -7,6 +7,7 @@
 #include "ObjectPool.h"
 #include "WithCommandQueue.h"
 #include "LoggingEnabled.h"
+#include "shoop_shared_ptr.h"
 
 template<typename SampleT>
 struct BufferQueue : private WithCommandQueue,
@@ -14,16 +15,16 @@ struct BufferQueue : private WithCommandQueue,
 public:
     typedef AudioBuffer<SampleT> BufferObj;
     typedef ObjectPool<BufferObj> BufferPool;
-    typedef std::shared_ptr<BufferObj> Buffer;
+    typedef shoop_shared_ptr<BufferObj> Buffer;
 
 private:
-    std::shared_ptr<std::deque<Buffer>> buffers;
-    std::shared_ptr<BufferPool> pool = nullptr;
+    shoop_shared_ptr<std::deque<Buffer>> buffers;
+    shoop_shared_ptr<BufferPool> pool = nullptr;
     std::atomic<uint32_t> ma_active_buffer_pos = 0;
     std::atomic<uint32_t> ma_max_buffers = 0;
 
 public:
-    BufferQueue(std::shared_ptr<BufferPool> pool, uint32_t max_buffers);
+    BufferQueue(shoop_shared_ptr<BufferPool> pool, uint32_t max_buffers);
 
     uint32_t n_samples() const;
     uint32_t single_buffer_size() const;
@@ -40,8 +41,9 @@ public:
     // Note though that the front buffer which is still being filled may have
     // vacant samples written after this function returns.
     struct Snapshot {
-        std::shared_ptr<std::vector<Buffer>> data;
+        shoop_shared_ptr<std::vector<Buffer>> data;
         uint32_t n_samples;
+        uint32_t buffer_size;
     };
     Snapshot PROC_get();
 

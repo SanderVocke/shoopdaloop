@@ -1,4 +1,4 @@
-import QtQuick 6.3
+import QtQuick 6.6
 import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
@@ -326,6 +326,54 @@ ShoopTestFile {
                     verify_eq(dt_loop(other_session).length, 4)
                     verify_eq(dwt_loop(other_session).length, 8)
                     verify_eq(mt_midi_channels(other_session)[0].get_recorded_midi_msgs(), midichan_resampled)
+                },
+
+                "test_save_load_track_controls": () => {
+                    check_backend()
+
+                    mt().control_widget.mute = true
+                    mt().control_widget.monitor = true
+                    dt().control_widget.mute = true
+                    dt().control_widget.monitor = true
+                    dt().control_widget.set_gain(0.5)
+                    dt().control_widget.set_balance(0.9)
+                    dwt().control_widget.monitor = true
+                    dwt().control_widget.mute = true
+                    dwt().control_widget.set_gain(0.4)
+                    dwt().control_widget.set_balance(0.8)
+                    testcase.wait_updated(session.backend)
+
+
+                    var filename = file_io.generate_temporary_filename() + '.shl'
+                    session.save_session(filename)
+
+                    testcase.wait_session_io_done()
+                    mt().control_widget.mute = false
+                    mt().control_widget.monitor = false
+                    dt().control_widget.mute = false
+                    dt().control_widget.monitor = false
+                    dt().control_widget.set_gain(1.0)
+                    dt().control_widget.set_balance(0.0)
+                    dwt().control_widget.monitor = false
+                    dwt().control_widget.mute = false
+                    dwt().control_widget.set_gain(1.0)
+                    dwt().control_widget.set_balance(0.0)
+                    testcase.wait_updated(session.backend)
+
+                    session.load_session(filename)
+                    testcase.wait_session_loaded(session)
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(mt().control_widget.mute, true)
+                    verify_eq(mt().control_widget.monitor, true)
+                    verify_eq(dt().control_widget.mute, true)
+                    verify_eq(dt().control_widget.monitor, true)
+                    verify_approx(dt().control_widget.last_pushed_gain, 0.5)
+                    verify_approx(dt().control_widget.last_pushed_out_stereo_balance, 0.9)
+                    verify_eq(dwt().control_widget.monitor, true)
+                    verify_eq(dwt().control_widget.mute, true)
+                    verify_approx(dwt().control_widget.last_pushed_gain, 0.4)
+                    verify_approx(dwt().control_widget.last_pushed_out_stereo_balance, 0.8)
                 },
             })
         }

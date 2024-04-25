@@ -1,6 +1,6 @@
-import QtQuick 6.3
-import QtQuick.Controls 6.3
-import QtQuick.Controls.Material 6.3
+import QtQuick 6.6
+import QtQuick.Controls 6.6
+import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.PythonFetchChannelData
 
 import '../mode_helpers.js' as ModeHelpers
@@ -83,7 +83,7 @@ Item {
         Rectangle {
             id: loop_window_rect
             color: 'blue'
-            width: (root.n_samples - root.start_offset) / render.samples_per_bin
+            width: (root.loop_length) / render.samples_per_bin
             height: render.height
             opacity: 0.3
             x: (root.start_offset - render.samples_offset) / render.samples_per_bin
@@ -188,8 +188,9 @@ Item {
             model: at_pixels.length
 
             Rectangle {
-                color: '#555555'
+                color: '#0000CC'
                 width: 1
+                height: root.height
                 property var val : major_grid_lines_repeater.at_pixels[index]
                 x: val ? val : 0
             }
@@ -207,7 +208,7 @@ Item {
         
         RenderChannelData {
             id: render
-            input_data: fetcher && fetcher.channel_data && root.visible ? fetcher.channel_data : []
+            input_data: fetcher && fetcher.channel_data && root.visible ? fetcher.channel_data : null
             channel: root.channel
             samples_per_bin: root.samples_per_pixel
             samples_offset: root.samples_offset

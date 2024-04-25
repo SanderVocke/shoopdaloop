@@ -1,7 +1,7 @@
-import QtQuick 6.3
-import QtQuick.Controls 6.3
-import QtQuick.Layouts 6.3
-import QtQuick.Controls.Material 6.3
+import QtQuick 6.6
+import QtQuick.Controls 6.6
+import QtQuick.Layouts 6.6
+import QtQuick.Controls.Material 6.6
 import Qt.labs.qmlmodels 1.0
 import QtQuick.Dialogs
 
@@ -762,7 +762,8 @@ Dialog {
                 anchors.fill: parent
                 id: view
                 Label {
-                    text: window.docstring
+                    text: '```\n' + window.docstring + '\n```'
+                    textFormat: Text.MarkdownText
                 }
             }
         }

@@ -21,60 +21,60 @@
 struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWetLoopTestChain"> {
 
     shoop_backend_session_t *api_backend_session;
-    std::shared_ptr<BackendSession> int_backend_session;
+    shoop_shared_ptr<BackendSession> int_backend_session;
 
     shoop_audio_driver_t *api_driver;
-    std::shared_ptr<shoop_types::_DummyAudioMidiDriver> int_driver;
+    shoop_shared_ptr<shoop_types::_DummyAudioMidiDriver> int_driver;
 
     shoopdaloop_audio_port_t *api_input_port;
-    std::shared_ptr<GraphPort> int_input_port;
+    shoop_shared_ptr<GraphPort> int_input_port;
     DummyAudioPort* int_dummy_input_port;
 
     shoopdaloop_audio_port_t *api_output_port;
-    std::shared_ptr<GraphPort> int_output_port;
+    shoop_shared_ptr<GraphPort> int_output_port;
     DummyAudioPort* int_dummy_output_port;
 
     shoopdaloop_midi_port_t *api_midi_input_port;
-    std::shared_ptr<GraphPort> int_midi_input_port;
+    shoop_shared_ptr<GraphPort> int_midi_input_port;
     DummyMidiPort* int_dummy_midi_input_port;
 
     shoopdaloop_fx_chain_t *api_fx_chain;
-    std::shared_ptr<GraphFXChain> int_fx_chain;
-    std::shared_ptr<shoop_types::FXChain> int_custom_processing_chain;
+    shoop_shared_ptr<GraphFXChain> int_fx_chain;
+    shoop_shared_ptr<shoop_types::FXChain> int_custom_processing_chain;
     shoopdaloop_audio_port_t *api_fx_in;
     shoopdaloop_audio_port_t *api_fx_out;
-    std::shared_ptr<GraphPort> int_fx_in;
-    std::shared_ptr<GraphPort> int_fx_out;
+    shoop_shared_ptr<GraphPort> int_fx_in;
+    shoop_shared_ptr<GraphPort> int_fx_out;
 
     shoopdaloop_midi_port_t *api_fx_midi_in;
-    std::shared_ptr<GraphPort> int_fx_midi_in;
+    shoop_shared_ptr<GraphPort> int_fx_midi_in;
 
     shoopdaloop_loop_t *api_loop;
-    std::shared_ptr<GraphLoop> int_loop;
-    std::shared_ptr<AudioMidiLoop> int_audiomidi_loop;
+    shoop_shared_ptr<GraphLoop> int_loop;
+    shoop_shared_ptr<AudioMidiLoop> int_audiomidi_loop;
 
     shoopdaloop_loop_t *api_sync_loop;
-    std::shared_ptr<GraphLoop> int_sync_loop;
+    shoop_shared_ptr<GraphLoop> int_sync_loop;
 
-    std::shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
+    shoop_shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
 
     shoopdaloop_loop_audio_channel_t *api_dry_chan;
     shoopdaloop_loop_audio_channel_t *api_wet_chan;
-    std::shared_ptr<GraphLoopChannel> int_dry_chan_node;
-    std::shared_ptr<GraphLoopChannel> int_wet_chan_node;
-    std::shared_ptr<shoop_types::LoopAudioChannel> int_dry_audio_chan;
-    std::shared_ptr<shoop_types::LoopAudioChannel> int_wet_audio_chan;
+    shoop_shared_ptr<GraphLoopChannel> int_dry_chan_node;
+    shoop_shared_ptr<GraphLoopChannel> int_wet_chan_node;
+    shoop_shared_ptr<shoop_types::LoopAudioChannel> int_dry_audio_chan;
+    shoop_shared_ptr<shoop_types::LoopAudioChannel> int_wet_audio_chan;
 
     shoopdaloop_loop_midi_channel_t *api_dry_midi_chan;
-    std::shared_ptr<GraphLoopChannel> int_dry_midi_chan_node;
-    std::shared_ptr<shoop_types::LoopMidiChannel> int_dry_midi_chan;
+    shoop_shared_ptr<GraphLoopChannel> int_dry_midi_chan_node;
+    shoop_shared_ptr<shoop_types::LoopMidiChannel> int_dry_midi_chan;
 
     SingleDryWetLoopTestChain() {
         api_backend_session = create_backend_session();
         int_backend_session = internal_backend_session(api_backend_session);
 
         api_driver = create_audio_driver(Dummy);
-        int_driver = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(internal_audio_driver(api_driver));
+        int_driver = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(internal_audio_driver(api_driver));
 
         auto settings = DummyAudioMidiDriverSettings{};
         int_driver->start(settings);
@@ -93,7 +93,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
 
         api_fx_chain = create_fx_chain(api_backend_session, Test2x2x1, "Test");
         int_fx_chain = internal_fx_chain(api_fx_chain);
-        int_custom_processing_chain = std::dynamic_pointer_cast<shoop_types::FXChain>(int_fx_chain->chain);
+        int_custom_processing_chain = shoop_dynamic_pointer_cast<shoop_types::FXChain>(int_fx_chain->chain);
         api_fx_in = fx_chain_audio_input_port(api_fx_chain, 0);
         api_fx_out = fx_chain_audio_output_port(api_fx_chain, 0);
         int_fx_in = internal_audio_port(api_fx_in);
@@ -119,9 +119,9 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         // Note: need to wait for channels to really appear
         int_driver->wait_process();
 
-        int_dry_audio_chan = std::dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_dry_chan_node->channel);
-        int_wet_audio_chan = std::dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_wet_chan_node->channel);
-        int_dry_midi_chan = std::dynamic_pointer_cast<shoop_types::LoopMidiChannel>(int_dry_midi_chan_node->channel);
+        int_dry_audio_chan = shoop_dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_dry_chan_node->channel);
+        int_wet_audio_chan = shoop_dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_wet_chan_node->channel);
+        int_dry_midi_chan = shoop_dynamic_pointer_cast<shoop_types::LoopMidiChannel>(int_dry_midi_chan_node->channel);
 
         if(!int_dry_audio_chan) { throw std::runtime_error("ChannelMode_Dry audio channel is null"); }
         if(!int_wet_audio_chan) { throw std::runtime_error("Wet audio channel is null"); }
@@ -216,7 +216,7 @@ TEST_CASE("Chain - DryWet Basic", "[chain][audio]") {
 TEST_CASE("Chain - DryWet record basic", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
-    loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Recording, -1, -1);
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
@@ -240,7 +240,7 @@ TEST_CASE("Chain - DryWet record basic", "[chain][audio]") {
 TEST_CASE("Chain - DryWet record passthrough muted", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
-    loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Recording, -1, -1);
     set_audio_port_passthroughMuted(tst.api_input_port, 1);
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
@@ -260,7 +260,7 @@ TEST_CASE("Chain - DryWet record passthrough muted", "[chain][audio]") {
 TEST_CASE("Chain - DryWet record muted", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
-    loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Recording, -1, -1);
     set_audio_port_muted(tst.api_input_port, 1);
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
@@ -278,7 +278,7 @@ TEST_CASE("Chain - DryWet record muted", "[chain][audio]") {
 TEST_CASE("Chain - DryWet record gain", "[chain][audio]") {
     SingleDryWetLoopTestChain tst;
 
-    loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Recording, -1, -1);
     set_audio_port_gain(tst.api_input_port, 0.5);
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
@@ -313,7 +313,7 @@ TEST_CASE("Chain - DryWet playback basic", "[chain][audio]") {
     load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
     tst.int_loop->loop->set_length(4, false);
 
-    loop_transition(tst.api_loop, LoopMode_Playing, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Playing, -1, -1);
     
     tst.int_driver->controlled_mode_request_samples(4);
     tst.int_dummy_output_port->request_data(4);
@@ -336,7 +336,7 @@ TEST_CASE("Chain - DryWet playback gain", "[chain][audio]") {
     tst.int_loop->loop->set_length(4, false);
     set_audio_port_gain(tst.api_output_port, 0.5);
 
-    loop_transition(tst.api_loop, LoopMode_Playing, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Playing, -1, -1);
     
     tst.int_driver->controlled_mode_request_samples(4);
     tst.int_dummy_output_port->request_data(4);
@@ -358,7 +358,7 @@ TEST_CASE("Chain - DryWet dry playback basic", "[chain][audio]") {
     load_audio_channel_data(tst.api_dry_chan, &api_dry_data);
     tst.int_loop->loop->set_length(4, false);
     
-    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, -1, -1);
     
     tst.int_driver->controlled_mode_request_samples(4);
     tst.int_dummy_output_port->request_data(4);
@@ -383,7 +383,7 @@ TEST_CASE("Chain - DryWet dry playback gain", "[chain][audio]") {
     tst.int_loop->loop->set_length(4, true);
 
     set_audio_port_gain(tst.api_output_port, 0.5);
-    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, -1, -1);
     
     tst.int_driver->controlled_mode_request_samples(4);
     tst.int_dummy_output_port->request_data(4);
@@ -408,7 +408,7 @@ TEST_CASE("Chain - DryWet dry playback input passthrough muted", "[chain][audio]
     tst.int_loop->loop->set_length(4, true);
 
     set_audio_port_passthroughMuted(tst.api_input_port, 1);
-    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, -1, -1);
     
     tst.int_driver->controlled_mode_request_samples(4);
     tst.int_dummy_output_port->request_data(4);
@@ -433,7 +433,7 @@ TEST_CASE("Chain - DryWet dry playback input muted", "[chain][audio]") {
     tst.int_loop->loop->set_length(4, true);
 
     set_audio_port_muted(tst.api_input_port, 1);
-    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, -1, -1);
     
     tst.int_driver->controlled_mode_request_samples(4);
     tst.int_dummy_output_port->request_data(4);
@@ -450,7 +450,7 @@ TEST_CASE("Chain - DryWet dry playback input muted", "[chain][audio]") {
 TEST_CASE("Chain - DryWet record MIDI basic", "[chain][midi]") {
     SingleDryWetLoopTestChain tst;
 
-    loop_transition(tst.api_loop, LoopMode_Recording, 0, 0);
+    loop_transition(tst.api_loop, LoopMode_Recording, -1, -1);
     
     std::vector<Msg> msgs = {
         create_noteOn<Msg>(0, 1, 10, 10),
@@ -485,7 +485,7 @@ TEST_CASE("Chain - DryWet live playback MIDI basic", "[chain][midi]") {
     load_midi_channel_data(tst.api_dry_midi_chan, sequence);
     destroy_midi_sequence(sequence);
     set_loop_length(tst.api_loop, 4);
-    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, 0, false);
+    loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, -1, -1);
 
     tst.int_dummy_output_port->request_data(4);
     tst.int_driver->controlled_mode_request_samples(4);
@@ -512,7 +512,7 @@ TEST_CASE("Chain - DryWet adopt audio ringbuffer - no sync loop", "[chain][audio
     tst.int_driver->controlled_mode_run_request();
 
     // Grab the ringbuffer
-    adopt_ringbuffer_contents(tst.api_loop, 0, 1);
+    adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
     tst.int_driver->controlled_mode_run_request();
 
     // Since the sync loop is empty, the fallback behavior here should be that the
@@ -540,13 +540,13 @@ TEST_CASE("Chain - DryWet adopt audio ringbuffer - one cycle", "[chain][audio]")
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
     tst.int_sync_loop->loop->set_length(3, true);
-    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, -1, -1);
 
     tst.int_driver->controlled_mode_request_samples(7); // Two cycles and 1 sample
     tst.int_driver->controlled_mode_run_request();
 
     // Grab the ringbuffer. Offset 1 means last completed cycle.
-    adopt_ringbuffer_contents(tst.api_loop, 1, 1);
+    adopt_ringbuffer_contents(tst.api_loop, 1, 1, 0, LoopMode_Unknown);
     tst.int_driver->controlled_mode_run_request();
 
     // We should have grabbed the full last completed cycle, which is samples [4, 5, 6].

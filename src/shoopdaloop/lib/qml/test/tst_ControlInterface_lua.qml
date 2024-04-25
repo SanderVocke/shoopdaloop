@@ -1,4 +1,4 @@
-import QtQuick 6.3
+import QtQuick 6.6
 import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
@@ -70,27 +70,31 @@ ShoopTestFile {
 
             function clear() {
                 testcase.wait_updated(session.backend)
+                loop_at(-1,0).create_backend_loop()
                 loop_at(0,0).create_backend_loop()
                 loop_at(0,1).create_backend_loop()
                 loop_at(1,0).create_backend_loop()
                 loop_at(1,1).create_backend_loop()
                 testcase.wait_updated(session.backend)
+                loop_at(-1,0).clear()
                 loop_at(0,0).clear()
                 loop_at(0,1).clear()
                 loop_at(1,0).clear()
                 loop_at(1,1).clear()
                 testcase.wait_updated(session.backend)
-                registries.state_registry.replace('sync_active', false)
+                loop_at(-1,0).deselect()
                 loop_at(0,0).deselect()
                 loop_at(0,1).deselect()
                 loop_at(1,0).deselect()
                 loop_at(1,1).deselect()
                 testcase.wait_updated(session.backend)
+                verify_loop_cleared(loop_at(-1,0))
                 verify_loop_cleared(loop_at(0,0))
                 verify_loop_cleared(loop_at(0,1))
                 verify_loop_cleared(loop_at(1,0))
                 verify_loop_cleared(loop_at(1,1))
                 testcase.wait_updated(session.backend)
+                registries.state_registry.reset()
             }
 
             function do_eval(code) {
@@ -171,6 +175,50 @@ ShoopTestFile {
                     verify_eq(do_eval('return shoop_control.loop_count({{0, 0}, {0, 1}})'), 2)
                 },
 
+                'test_loop_get_mode': () => {
+                    check_backend()
+                    clear()
+                    
+                    verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Stopped }')
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Recording }')
+                    verify_eq_lua('shoop_control.loop_get_mode({0,1})', '{ shoop_control.constants.LoopMode_Stopped }')
+                    verify_eq_lua('shoop_control.loop_get_mode({{1,0},{0,0}})', '{ shoop_control.constants.LoopMode_Stopped, shoop_control.constants.LoopMode_Recording }')
+                    verify_eq_lua('shoop_control.loop_get_mode({})', '{}')
+                },
+
+                'test_loop_get_next_mode': () => {
+                    check_backend()
+                    clear()
+                    
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 1, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.loop_get_next_mode({0,0})', '{ shoop_control.constants.LoopMode_Recording }')
+                },
+
+                'test_loop_get_next_mode_delay': () => {
+                    check_backend()
+                    clear()
+                    
+                    verify_eq_lua('shoop_control.loop_get_next_mode_delay({0,0})', '{ -1 }')
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 1, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.loop_get_next_mode_delay({0,0})', '{ 1 }')
+                },
+
+                'test_loop_get_length': () => {
+                    check_backend()
+                    clear()
+                    
+                    verify_eq_lua('shoop_control.loop_get_length({0,0})', '{0}')
+
+                    loop_at(1,1).set_length(100)
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq_lua('shoop_control.loop_get_length({1,1})', '{100}')
+                },
+
                 'test_loop_get_which_selected': () => {
                     check_backend()
                     clear()
@@ -193,32 +241,30 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0, 1}')
                 },
 
-                'test_loop_get_mode': () => {
+                'test_loop_get_by_mode': () => {
                     check_backend()
                     clear()
                     
-                    verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Stopped }')
-                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,0}, {0,1}, {1,0}, {1,1}, {-1,0}}')
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
-                    verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Recording }')
-                    verify_eq_lua('shoop_control.loop_get_mode({0,1})', '{ shoop_control.constants.LoopMode_Stopped }')
-                    verify_eq_lua('shoop_control.loop_get_mode({{1,0},{0,0}})', '{ shoop_control.constants.LoopMode_Stopped, shoop_control.constants.LoopMode_Recording }')
-                    verify_eq_lua('shoop_control.loop_get_mode({})', '{}')
+                    verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,1},{1,0},{1,1},{-1,0}}')
+                    verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Recording)', '{{0,0}}')
                 },
 
-                'test_loop_transition': () => {
+                'test_loop_get_by_track': () => {
                     check_backend()
                     clear()
+                    
+                    verify_eq_lua('shoop_control.loop_get_by_track(0)', '{{0,0}, {0,1}}')
+                    verify_eq_lua('shoop_control.loop_get_by_track(1)', '{{1,0}, {1,1}}')
+                },
 
-                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
-                    do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, 0)')
-                    testcase.wait_updated(session.backend)
-                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
-                    verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Stopped)
-                    do_execute('shoop_control.loop_transition({0,1}, shoop_control.constants.LoopMode_Recording, 0)')
-                    testcase.wait_updated(session.backend)
-                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
-                    verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Recording)
+                'test_loop_get_all': () => {
+                    check_backend()
+                    clear()
+                    
+                    verify_eq_lua('shoop_control.loop_get_all()', '{{0,0}, {0,1}, {1,0}, {1,1}, {-1,0}}')
                 },
 
                 'test_loop_set_get_gain': () => {
@@ -259,6 +305,32 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.loop_get_balance({{0,0},{1,0}})', '{0.5, 1.0}')
                 },
 
+                'test_loop_transition': () => {
+                    check_backend()
+                    clear()
+
+                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
+                    do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, 0, shoop_control.Loop_DontAlignToSyncImmediately)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Stopped)
+                    do_execute('shoop_control.loop_transition({0,1}, shoop_control.constants.LoopMode_Recording, shoop_control.Loop_DontWaitForSync, shoop_control.Loop_DontAlignToSyncImmediately)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Recording)
+                },
+
+                'test_loop_trigger': () => {
+                    check_backend()
+                    clear()
+
+                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
+                    do_execute('shoop_control.loop_trigger({0,0}, shoop_control.constants.LoopMode_Recording)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(loop_at(0,0).next_mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(loop_at(0,1).next_mode_delay, null)
+                },
+
                 // TODO: harder to test because this requires loops to
                 // trigger each other
                 // 'test_loop_record_n'
@@ -283,16 +355,6 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}, {0,1}}')
                 },
 
-                'test_loop_toggle_selected': () => {
-                    check_backend()
-                    clear()
-                    
-                    do_execute('shoop_control.loop_toggle_selected({0,0})')
-                    verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}}')
-                    do_execute('shoop_control.loop_toggle_selected({0,0})')
-                    verify_eq_lua('shoop_control.loop_get_which_selected()', '{}')
-                },
-
                 'test_loop_target': () => {
                     check_backend()
                     clear()
@@ -305,6 +367,16 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
                     do_execute('shoop_control.loop_target(nil)')
                     verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
+                },
+
+                'test_loop_toggle_selected': () => {
+                    check_backend()
+                    clear()
+                    
+                    do_execute('shoop_control.loop_toggle_selected({0,0})')
+                    verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}}')
+                    do_execute('shoop_control.loop_toggle_selected({0,0})')
+                    verify_eq_lua('shoop_control.loop_get_which_selected()', '{}')
                 },
 
                 'test_loop_toggle_targeted': () => {
@@ -354,6 +426,23 @@ ShoopTestFile {
                     verify_loop_cleared(loop_at(1,1))
                 },
 
+                'test_loop_clear_all': () => {
+                    check_backend()
+                    clear()
+
+                    loop_at(0,0).set_length(100)
+                    loop_at(0,1).set_length(100)
+                    loop_at(-1,0).set_length(100)
+                    testcase.wait_updated(session.backend)
+                    
+                    do_execute('shoop_control.loop_clear_all()')
+                    testcase.wait_updated(session.backend)
+
+                    verify_loop_cleared(loop_at(0,0))
+                    verify_loop_cleared(loop_at(0,1))
+                    verify_loop_cleared(loop_at(-1,0))
+                },
+
                 'test_loop_adopt_ringbuffers': () => {
                     check_backend()
                     clear()
@@ -361,49 +450,22 @@ ShoopTestFile {
                     loop_at(-1, 0).set_length(100) // Sync
                     testcase.wait_updated(session.backend)
 
-                    do_execute('shoop_control.loop_adopt_ringbuffers({0, 0}, 2, 2)')
+                    do_execute('shoop_control.loop_adopt_ringbuffers({0, 0}, 2, 2, 0, 0)')
                     testcase.wait_updated(session.backend)
 
                     // Just a sanity check that the correct length was applied
                     verify_eq(loop_at(0, 0).length, 200)
                 },
 
-                'test_loop_get_all': () => {
+                'test_loop_trigger_grab': () => {
                     check_backend()
                     clear()
-                    
-                    verify_eq_lua('shoop_control.loop_get_all()', '{{0,0}, {0,1}, {1,0}, {1,1}}')
-                },
 
-                'test_loop_get_by_mode': () => {
-                    check_backend()
-                    clear()
-                    
-                    verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,0}, {0,1}, {1,0}, {1,1}}')
-                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    loop_at(-1,0).set_length(100)
                     testcase.wait_updated(session.backend)
-                    verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,1},{1,0},{1,1}}')
-                    verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Recording)', '{{0,0}}')
-                },
-
-                'test_loop_get_by_track': () => {
-                    check_backend()
-                    clear()
-                    
-                    verify_eq_lua('shoop_control.loop_get_by_track(0)', '{{0,0}, {0,1}}')
-                    verify_eq_lua('shoop_control.loop_get_by_track(1)', '{{1,0}, {1,1}}')
-                },
-
-                'test_loop_get_length': () => {
-                    check_backend()
-                    clear()
-                    
-                    verify_eq_lua('shoop_control.loop_get_length({0,0})', '{0}')
-
-                    loop_at(1,1).set_length(100)
+                    do_execute('shoop_control.loop_trigger_grab({0,0})')
                     testcase.wait_updated(session.backend)
-
-                    verify_eq_lua('shoop_control.loop_get_length({1,1})', '{100}')
+                    verify_eq(loop_at(0,0).length, 100)
                 },
 
                 'test_track_set_get_gain': () => {
@@ -458,6 +520,16 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{0.0}')
                 },
 
+                'test_track_set_get_balance': () => {
+                    check_backend()
+                    clear()
+                    
+                    do_execute('shoop_control.track_set_balance(0, 1.0)')
+                    verify_eq_lua('shoop_control.track_get_balance(0)', '{1.0}')
+                    do_execute('shoop_control.track_set_balance(0, -1.0)')
+                    verify_eq_lua('shoop_control.track_get_balance(0)', '{-1.0}')
+                },
+
                 'test_track_set_get_muted': () => {
                     check_backend()
                     clear()
@@ -484,39 +556,7 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.track_get_input_muted({1,0})', '{true, false}')
                 },
 
-                'test_loop_event_callback_mode': () => {
-                    check_backend()
-                    clear()
-
-                    do_execute(`
-                        most_recent_event = nil
-                        most_recent_loop = nil
-                        local function callback(loop, event)
-                            print_error(event)
-                            most_recent_loop = loop
-                            most_recent_event = event
-                        end
-                        shoop_control.register_loop_event_cb(callback)
-                    `)
-
-                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 0, false)
-                    testcase.wait_updated(session.backend)
-                    verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Recording')
-                    verify_eq_lua('most_recent_loop', '{0,0}')
-
-                    loop_at(0,0).transition(ShoopConstants.LoopMode.Stopped, 0, false)
-                    testcase.wait_updated(session.backend)
-                    verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Stopped')
-                    verify_eq_lua('most_recent_loop', '{0,0}')
-
-                    loop_at(-1,0).set_length(100)
-                    testcase.wait_updated(session.backend)
-                    testcase.wait_updated(session.backend)
-                    verify_eq_lua('most_recent_event.length', '100')
-                    verify_eq_lua('most_recent_loop', '{-1,0}')
-                },
-
-                'test_apply_n_cycles': () => {
+                'test_set_get_apply_n_cycles': () => {
                     check_backend()
                     clear()
 
@@ -526,6 +566,73 @@ ShoopTestFile {
                     do_execute('shoop_control.set_apply_n_cycles(4)')
                     verify_eq(registries.state_registry.apply_n_cycles, 4)
                     verify_eq_lua('shoop_control.get_apply_n_cycles()', '4')
+                },
+
+                'test_set_get_solo': () => {
+                    check_backend()
+                    clear()
+
+                    registries.state_registry.set_solo_active(false)
+
+                    verify_eq_lua('shoop_control.get_solo()', 'false')
+                    do_execute('shoop_control.set_solo(true)')
+                    verify_eq(registries.state_registry.solo_active, true)
+                    verify_eq_lua('shoop_control.get_solo()', 'true')
+                },
+
+                'test_set_get_sync_active': () => {
+                    check_backend()
+                    clear()
+
+                    registries.state_registry.set_sync_active(false)
+
+                    verify_eq_lua('shoop_control.get_sync_active()', 'false')
+                    do_execute('shoop_control.set_sync_active(true)')
+                    verify_eq(registries.state_registry.sync_active, true)
+                    verify_eq_lua('shoop_control.get_sync_active()', 'true')
+                },
+
+                'test_set_get_play_after_record': () => {
+                    check_backend()
+                    clear()
+
+                    registries.state_registry.set_play_after_record_active(false)
+
+                    verify_eq_lua('shoop_control.get_play_after_record()', 'false')
+                    do_execute('shoop_control.set_play_after_record(true)')
+                    verify_eq(registries.state_registry.play_after_record_active, true)
+                    verify_eq_lua('shoop_control.get_play_after_record()', 'true')
+                },
+
+                'test_callback_loop_mode_event': () => {
+                    check_backend()
+                    clear()
+
+                    do_execute(`
+                        most_recent_event = nil
+                        most_recent_loop = nil
+                        local function callback(loop, event)
+                            most_recent_loop = loop
+                            most_recent_event = event
+                        end
+                        shoop_control.register_loop_event_cb(callback)
+                    `)
+
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Recording')
+                    verify_eq_lua('most_recent_loop', '{0,0}')
+
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Stopped')
+                    verify_eq_lua('most_recent_loop', '{0,0}')
+
+                    loop_at(-1,0).set_length(100)
+                    testcase.wait_updated(session.backend)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('most_recent_event.length', '100')
+                    verify_eq_lua('most_recent_loop', '{-1,0}')
                 }
             })
         }

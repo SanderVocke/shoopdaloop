@@ -4,9 +4,9 @@
 #include <iostream>
 
 template<typename SampleT>
-BufferQueue<SampleT>::BufferQueue(std::shared_ptr<BufferPool> pool, uint32_t max_buffers) : pool(pool)
+BufferQueue<SampleT>::BufferQueue(shoop_shared_ptr<BufferPool> pool, uint32_t max_buffers) : pool(pool)
 {
-    buffers = std::make_shared<std::deque<Buffer>>();
+    buffers = shoop_make_shared<std::deque<Buffer>>();
     ma_active_buffer_pos.store(pool ? pool->object_size() : 0); // put at end of a virtual buffer, ensures new buffer will be created immediately
     ma_max_buffers.store(max_buffers);
 }
@@ -52,9 +52,10 @@ void BufferQueue<SampleT>::PROC_put(const std::initializer_list<SampleT>& list) 
 template<typename SampleT>
 typename BufferQueue<SampleT>::Snapshot BufferQueue<SampleT>::PROC_get() {
     Snapshot s;
-    s.data = std::make_shared<std::vector<Buffer>>();
+    s.data = shoop_make_shared<std::vector<Buffer>>();
     *s.data = std::vector<Buffer>(buffers->begin(), buffers->end());
     s.n_samples = n_samples();
+    s.buffer_size = single_buffer_size();
     return s;
 }
 
@@ -62,7 +63,7 @@ template<typename SampleT>
 void BufferQueue<SampleT>::set_max_buffers(uint32_t max_buffers) {
     log<log_level_debug_trace>("queue set max buffers -> {}", max_buffers);
     auto new_buffers =
-        std::make_shared<std::deque<Buffer>>();
+        shoop_make_shared<std::deque<Buffer>>();
     WithCommandQueue::queue_process_thread_command([this, new_buffers, max_buffers]() {
         log<log_level_debug_trace>("set max buffers -> {}", max_buffers);
         buffers = new_buffers;
@@ -73,7 +74,7 @@ void BufferQueue<SampleT>::set_max_buffers(uint32_t max_buffers) {
 
 template<typename SampleT>
 void BufferQueue<SampleT>::set_min_n_samples(uint32_t n) {
-    unsigned bufs = (n + single_buffer_size() - 1) / single_buffer_size(); // Ceil
+    unsigned bufs = (n + single_buffer_size() - 1) / std::max((uint32_t) 1, single_buffer_size()); // Ceil
     set_max_buffers(bufs);
 }
 

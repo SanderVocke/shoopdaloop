@@ -1,4 +1,4 @@
-import QtQuick 6.3
+import QtQuick 6.6
 import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
@@ -138,7 +138,7 @@ ShoopTestFile {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -172,10 +172,10 @@ ShoopTestFile {
                     midi_input_port.dummy_queue_msgs(msgs)
                     midi_output_port.dummy_request_data(8)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out = midi_output_port.dummy_dequeue_data()
 
@@ -198,7 +198,7 @@ ShoopTestFile {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -221,7 +221,7 @@ ShoopTestFile {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -245,7 +245,7 @@ ShoopTestFile {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -269,7 +269,7 @@ ShoopTestFile {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -291,7 +291,7 @@ ShoopTestFile {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -320,12 +320,12 @@ ShoopTestFile {
                     midi_input_port.dummy_queue_msgs(msgs)
                     midi_output_port.dummy_request_data(8)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out = midi_output_port.dummy_dequeue_data()
 
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out2 = midi_output_port.dummy_dequeue_data()
 
@@ -348,7 +348,7 @@ ShoopTestFile {
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = audio_output_port_1.dummy_dequeue_data(4)
                     let out2 = audio_output_port_2.dummy_dequeue_data(4)
@@ -377,10 +377,10 @@ ShoopTestFile {
                     midi_input_port.dummy_queue_msgs(msgs)
                     midi_output_port.dummy_request_data(8)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out = midi_output_port.dummy_dequeue_data()
 

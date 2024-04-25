@@ -54,9 +54,9 @@ struct MaxSizeMidiMessage : public MidiSortableMessageInterface {
     const uint8_t* get_data() const override {
         return data;
     }
-    void     get(uint32_t &size_out,
-                         uint32_t &time_out,
-                         const uint8_t* &data_out) const override {
+    void get(uint32_t &size_out,
+             uint32_t &time_out,
+             const uint8_t* &data_out) const override {
         size_out = size;
         time_out = time;
         data_out = data;

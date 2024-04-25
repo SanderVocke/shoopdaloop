@@ -1,4 +1,4 @@
-import QtQuick 6.3
+import QtQuick 6.6
 import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
@@ -135,7 +135,7 @@ ShoopTestFile {
             }
 
             function reset_loop(loopwidget) {
-                loopwidget.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                loopwidget.transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                 testcase.wait_updated(session.backend)
                 loopwidget.clear(0)
             }
@@ -162,7 +162,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = false
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([2, 4, 6, 8])
@@ -170,7 +170,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
@@ -195,7 +195,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = false
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -222,9 +222,9 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -252,7 +252,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([2, 4, 6, 8])
@@ -260,7 +260,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -284,7 +284,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -311,9 +311,9 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -345,7 +345,7 @@ ShoopTestFile {
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -353,7 +353,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -386,7 +386,7 @@ ShoopTestFile {
                     ]
                     midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -402,9 +402,9 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -436,7 +436,7 @@ ShoopTestFile {
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([2, 4, 6, 8])
@@ -444,7 +444,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -478,7 +478,7 @@ ShoopTestFile {
                     ]
                     midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -499,9 +499,9 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -533,7 +533,7 @@ ShoopTestFile {
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -541,7 +541,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
@@ -575,7 +575,7 @@ ShoopTestFile {
                     ]
                     midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -602,9 +602,9 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
@@ -637,7 +637,7 @@ ShoopTestFile {
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([2, 4, 6, 8])
@@ -645,7 +645,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -678,7 +678,7 @@ ShoopTestFile {
                     ]
                     midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -706,9 +706,9 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
@@ -741,7 +741,7 @@ ShoopTestFile {
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -749,7 +749,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
@@ -783,7 +783,7 @@ ShoopTestFile {
                     ]
                     midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -810,9 +810,9 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
@@ -845,7 +845,7 @@ ShoopTestFile {
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -853,7 +853,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
@@ -887,7 +887,7 @@ ShoopTestFile {
                     ]
                     midi_channel().load_all_midi_data(midichan)
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -915,9 +915,9 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     session.backend.dummy_request_controlled_frames(2)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
                     let out1 = output_port_1.dummy_dequeue_data(4)

@@ -1,4 +1,4 @@
-import QtQuick 6.3
+import QtQuick 6.6
 import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
@@ -135,7 +135,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -172,7 +172,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -197,7 +197,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -221,7 +221,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -246,7 +246,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -271,7 +271,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -294,7 +294,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -326,7 +326,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -350,7 +350,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
@@ -382,7 +382,7 @@ ShoopTestFile {
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
-                    session.backend.wait_process()
+                    session.backend.dummy_run_requested_frames()
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
