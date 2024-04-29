@@ -310,7 +310,7 @@ ShoopTestFile {
                     clear()
 
                     verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
-                    do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, 0, shoop_control.constants.Loop_DontAlignToSyncImmediately)')
+                    do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, shoop_control.constants.Loop_DontWaitForSync, shoop_control.constants.Loop_DontAlignToSyncImmediately)')
                     testcase.wait_updated(session.backend)
                     verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
                     verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Stopped)
