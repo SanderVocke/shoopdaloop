@@ -117,6 +117,7 @@ shoop_backend_session_state_info_t BackendSession::get_state() {
 
 //TODO delete destroyed ports
 void BackendSession::PROC_process (uint32_t nframes) {
+    auto weak_self = weak_from_this();
     log<log_level_debug_trace>("Process {}: start", nframes);
     profiling::stopwatch(
         [this, &nframes]() {
