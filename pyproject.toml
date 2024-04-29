@@ -18,7 +18,7 @@ dependencies = [
   "jsonschema",
   "numpy",
   "pyjacklib",
-  "pyside6-essentials==6.6.2",
+  "pyside6-essentials==6.6.7",
   "lupa",
   "appdirs",
   "sounddevice",
