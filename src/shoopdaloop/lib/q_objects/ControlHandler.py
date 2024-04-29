@@ -9,7 +9,7 @@ from .ShoopPyObject import *
 
 from ..logging import Logger
 from ..lua_qobject_interface import lua_passthrough, qt_typename, lua_int, lua_bool, lua_str, lua_float, lua_callable
-from ..backend_wrappers import LoopMode
+from ..backend_wrappers import LoopMode, DontAlignToSyncImmediately, DontWaitForSync
 
 def as_loop_selector(lua_val):
     def iscoords(l):
@@ -78,8 +78,9 @@ def allow_qml_override(func):
             try:
                 return self._methods[func.__name__ + "_override"]['call_qml'](*args[0])
             except RuntimeError as e:
-                self.logger.error(lambda: "Failed to call QML override: {}".format(str(e)))
-
+                self.logger.error(lambda: "Failed to call QML override on QML instance {}: {}".format(str(e), self.qml_instance))
+                return None
+        
         self.cache_call([func.__name__, *args[0]])
         raise NotImplementedError(
             "ControlHandler interface {0} not or incorrectly overridden.".format(func.__name__)
@@ -197,8 +198,18 @@ class ControlHandler(ShoopQQuickItem):
         for i in list(LoopMode):
             rval.append(['LoopMode_' + i.name, i.value])
         return rval
+
+    # @shoop_lua_enum_docstring.start
+    # shoop_control.constants.Loop_
+    # Special values to pass to loop functions.
+    # DontWaitForSync
+    # DontAlignToSyncImmediately
+    # @shoop_lua_enum_docstring.end
     
-    lua_constants = generate_loop_mode_constants()
+    lua_constants = generate_loop_mode_constants() + [
+        [ 'Loop_DontWaitForSync', DontWaitForSync ],
+        [ 'Loop_DontAlignToSyncImmediately', DontAlignToSyncImmediately ]
+    ]
     
     introspectedQmlInstanceChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=introspectedQmlInstanceChanged)
@@ -427,7 +438,7 @@ class ControlHandler(ShoopQQuickItem):
         @shoop_lua_fn_docstring.start
         shoop_control.loop_transition(loop_selector, mode, maybe_cycles_delay, maybe_align_to_sync_at)
         Transition the given loops.
-        Pass shoop_control.constants.DontWaitForSync and shoop_control.constants.DontAlignToSyncImmediately to maybe_cycles_delay and maybe_align_to_sync_at respectively, to disable them.
+        Pass shoop_control.constants.Loop_DontWaitForSync and shoop_control.constants.Loop_DontAlignToSyncImmediately to maybe_cycles_delay and maybe_align_to_sync_at respectively, to disable them.
         @shoop_lua_fn_docstring.end
         """
         pass
