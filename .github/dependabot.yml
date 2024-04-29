@@ -6,6 +6,19 @@
 version: 2
 updates:
 - package-ecosystem: "gitsubmodule"
-    directory: "/"
+    directory: "/third_party"
     schedule:
       interval: "weekly"
+- package-ecosystem: "gitsubmodule"
+    directory: "/src/third_party"
+    schedule:
+      interval: "weekly"
+- package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "02:00"
+    groups:
+      python-packages:
+        patterns:
+          - "*"
