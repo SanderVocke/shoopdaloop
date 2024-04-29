@@ -334,7 +334,7 @@ void destroy_backend_session(shoop_backend_session_t *backend) {
         auto _backend = internal_backend_session(backend);
         if (!_backend) { return; }
         for (auto &driver : g_active_drivers) {
-          driver->remove_processor(*_backend);
+          driver->remove_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(_backend));
         }
         _backend->destroy();
         g_active_backends.erase(_backend);
@@ -397,7 +397,7 @@ shoop_result_t set_audio_driver(shoop_backend_session_t *backend, shoop_audio_dr
     _driver->queue_process_thread_command([_backend, _driver]() {
         _backend->set_buffer_size(_driver->get_buffer_size());
         _backend->set_sample_rate(_driver->get_sample_rate());
-        _driver->add_processor(*_backend);
+        _driver->add_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(_backend));
     });
     return Success;
   }, Failure);

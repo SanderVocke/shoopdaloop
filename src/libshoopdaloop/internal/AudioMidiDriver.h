@@ -37,7 +37,7 @@ public:
 class AudioMidiDriver : public WithCommandQueue,
                         private ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
                         private shoop_enable_shared_from_this<AudioMidiDriver> {
-    shoop_shared_ptr<std::set<HasAudioProcessingFunction*>> m_processors;
+    shoop_shared_ptr<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>> m_processors;
     std::atomic<uint32_t> m_xruns = 0;
     std::atomic<uint32_t> m_sample_rate = 0;
     std::atomic<uint32_t> m_buffer_size = 0;
@@ -66,9 +66,9 @@ protected:
     void PROC_process(uint32_t nframes);
 
 public:
-    void add_processor(HasAudioProcessingFunction &p);
-    void remove_processor(HasAudioProcessingFunction &p);
-    std::set<HasAudioProcessingFunction*> processors() const;
+    void add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p);
+    void remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p);
+    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> processors() const;
 
     virtual void start(AudioMidiDriverSettingsInterface &settings) = 0;
 

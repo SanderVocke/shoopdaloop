@@ -28,7 +28,7 @@ struct Tracker : public HasAudioProcessingFunction {
 
 template <typename Time, typename Size>
 struct TrackedDummyAudioMidiDriver : public DummyAudioMidiDriver<Time, Size> {
-    Tracker tracker;
+    shoop_shared_ptr<Tracker> tracker;
 
     TrackedDummyAudioMidiDriver(
         std::string client_name,
@@ -37,9 +37,9 @@ struct TrackedDummyAudioMidiDriver : public DummyAudioMidiDriver<Time, Size> {
         uint32_t sample_rate = 48000,
         uint32_t buffer_size = 256) :
         DummyAudioMidiDriver<Time, Size>(),
-        tracker(Tracker())
+        tracker(shoop_make_shared<Tracker>())
     {
-        AudioMidiDriver::add_processor(tracker);
+        AudioMidiDriver::add_processor(shoop_static_pointer_cast<HasAudioProcessingFunction>(tracker));
         DummyAudioMidiDriverSettings settings;
         settings.buffer_size = buffer_size;
         settings.client_name = client_name;
@@ -48,7 +48,7 @@ struct TrackedDummyAudioMidiDriver : public DummyAudioMidiDriver<Time, Size> {
         DummyAudioMidiDriver<Time, Size>::start(settings);
     }
     
-    std::set<uint32_t> get_unique_n_samples_processed() { return std::set (tracker.each_n_samples_processed.begin(), tracker.each_n_samples_processed.end()); }
+    std::set<uint32_t> get_unique_n_samples_processed() { return std::set (tracker->each_n_samples_processed.begin(), tracker->each_n_samples_processed.end()); }
 };
 
 TEST_CASE("DummyAudioMidiDriver - Automatic", "[DummyAudioMidiDriver]") {
@@ -63,7 +63,7 @@ TEST_CASE("DummyAudioMidiDriver - Automatic", "[DummyAudioMidiDriver]") {
     dut.wait_process();\
     dut.close();
 
-    REQUIRE(dut.tracker.total_samples_processed.load() > 0);
+    REQUIRE(dut.tracker->total_samples_processed.load() > 0);
     REQUIRE(dut.get_unique_n_samples_processed().size() == 1);
     REQUIRE(*dut.get_unique_n_samples_processed().begin() == 256);
 };
@@ -80,18 +80,18 @@ TEST_CASE("DummyAudioMidiDriver - Controlled", "[DummyAudioMidiDriver]") {
     dut.wait_process();
     dut.pause();
     
-    REQUIRE(dut.tracker.total_samples_processed.load() == 0);
+    REQUIRE(dut.tracker->total_samples_processed.load() == 0);
     REQUIRE(dut.get_unique_n_samples_processed() == std::set<uint32_t>({0}));
 
     dut.controlled_mode_request_samples(64);
-    dut.tracker.reset();
+    dut.tracker->reset();
     REQUIRE(dut.get_controlled_mode_samples_to_process() == 64);
 
     dut.resume();
     dut.wait_process();
     dut.pause();
 
-    REQUIRE(dut.tracker.total_samples_processed.load() == 64);
+    REQUIRE(dut.tracker->total_samples_processed.load() == 64);
     REQUIRE(dut.get_unique_n_samples_processed() == std::set<uint32_t>({64, 0}));
     REQUIRE(dut.get_controlled_mode_samples_to_process() == 0);
 
