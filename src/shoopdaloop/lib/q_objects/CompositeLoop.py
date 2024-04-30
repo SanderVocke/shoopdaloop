@@ -442,6 +442,7 @@ class CompositeLoop(FindParentBackend):
         self.mode = mode
         self.iteration = sync_cycle
         self.update_length()
+        self.update_position()
         self.logger.trace(lambda: f'immediate sync: Done - mode -> {mode}, iteration -> {sync_cycle}, position -> {self._position}')
 
         # Perform the trigger(s) for the next loop cycle
