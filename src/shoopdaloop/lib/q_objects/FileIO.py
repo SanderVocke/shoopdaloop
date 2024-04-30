@@ -10,6 +10,7 @@ import mido
 import math
 import glob
 import json
+import inspect
 
 from PySide6.QtCore import QObject, Slot, Signal, QThread, QMetaObject, Qt
 from PySide6.QtQml import QJSValue
@@ -106,7 +107,10 @@ class FileIO(ShoopQObject):
     def extract_tarfile(self, filename, target_dir):
         flags = "r:*"
         with tarfile.open(filename, flags) as tar:
-            tar.extractall(target_dir, filter='fully_trusted')
+            if 'filter' in inspect.signature(tar.extractall).signature.parameters:
+                tar.extractall(target_dir, filter='fully_trusted')
+            else:
+                tar.extractall(target_dir)
 
     def save_data_to_soundfile_impl(self, filename, sample_rate, data):
         self.startSavingFile.emit()
