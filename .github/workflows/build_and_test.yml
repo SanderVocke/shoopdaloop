@@ -460,12 +460,12 @@ jobs:
   collect_crashes:
     runs-on: ubuntu-latest
     needs:
-      - build_linux
-      - test_linux
+  #    - build_linux
+  #    - test_linux
       - build_macos
       - test_macos
-      - build_windows
-      - test_windows
+  #    - build_windows
+  #    - test_windows
     if: ${{ always() }}
     container:
       image: archlinux:latest
