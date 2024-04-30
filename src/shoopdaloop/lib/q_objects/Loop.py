@@ -24,8 +24,8 @@ import traceback
 # Wraps a back-end loop.
 class Loop(FindParentBackend):
     # Other signals
-    cycled = ShoopSignal()
-    cycledUnsafe = ShoopSignal(thread_protection=ThreadProtectionType.OtherThread)
+    cycled = ShoopSignal(int)
+    cycledUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.OtherThread)
 
     def __init__(self, parent=None):
         super(Loop, self).__init__(parent)
@@ -44,6 +44,7 @@ class Loop(FindParentBackend):
         self.logger.name = "Frontend.Loop"
         self._pending_transitions = []
         self._pending_cycles = 0
+        self._cycle_nr = 0
 
         self.modeChangedUnsafe.connect(self.modeChanged, Qt.QueuedConnection)
         self.nextModeChangedUnsafe.connect(self.nextModeChanged, Qt.QueuedConnection)
@@ -276,8 +277,9 @@ class Loop(FindParentBackend):
         self._pending_transitions = []
 
         if (self.position < prev_position and is_playing_mode(prev_mode) and is_playing_mode(self.mode)):
-            self.logger.debug(lambda: 'cycled')
-            self.cycledUnsafe.emit()
+            self._cycle_nr += 1
+            self.logger.debug(lambda: f'cycled -> nr {self._cycle_nr}')
+            self.cycledUnsafe.emit(self._cycle_nr)
     
     # Update on GUI thread.
     @ShoopSlot()
@@ -379,6 +381,12 @@ class Loop(FindParentBackend):
     @ShoopSlot(result="QVariant")
     def py_loop(self):
         return self
+
+    # Another loop which references this loop (composite) can notify this loop that it is
+    # about to handle a sync loop cycle in advance, to ensure a deterministic ordering.
+    @ShoopSlot(int, thread_protection = ThreadProtectionType.OtherThread)
+    def dependent_will_handle_sync_loop_cycle(self, cycle_nr):
+        pass
     
     def maybe_initialize(self):
         if self._backend and self._backend.initialized and not self._backend_loop:

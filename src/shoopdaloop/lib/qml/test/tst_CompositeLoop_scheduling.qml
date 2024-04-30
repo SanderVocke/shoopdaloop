@@ -17,7 +17,7 @@ ShoopTestFile {
 
         property var maybe_loop: this
         
-        signal cycled()
+        signal cycled(int cycle_nr)
 
         RegisterInRegistry {
             object: fakeloop
