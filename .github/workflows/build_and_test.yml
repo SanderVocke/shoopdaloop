@@ -183,12 +183,23 @@ jobs:
             build_type: 'Release'
             appbundle: true
             package_kind: dmg
+            os: macos-11
           - name: macos_debug
             build_type: 'Debug'
+            os: macos-11
           - name: macos_barebones
             build_type: 'Debug'
             cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
-    runs-on: macos-11
+            os: macos-11
+          - name: macos_release_arm
+            build_type: 'Release'
+            appbundle: true
+            package_kind: dmg
+            os: macos-14
+          - name: macos_debug_arm
+            build_type: 'Debug'
+            os: macos-14
+    runs-on: ${{ matrix.kind.os }}
     #if: false
     steps:
     - name: Checkout
@@ -247,7 +258,7 @@ jobs:
             pytest: python3 -m pytest
             container: null
             os: macos-14
-            package: wheel_macos_release
+            package: wheel_macos_release_arm
             qpa_platform: offscreen
           - name: debug_whl_macos14
             python: python3
@@ -255,7 +266,7 @@ jobs:
             pytest: python3 -m pytest
             container: null
             os: macos-14
-            package: wheel_macos_debug
+            package: wheel_macos_debug_arm
             qpa_platform: offscreen
           - name: release_dmg_macos14
             python: python3
@@ -263,7 +274,7 @@ jobs:
             pytest: python3 -m pytest
             container: null
             os: macos-14
-            package: package_macos_release
+            package: package_macos_release_arm
             qpa_platform: offscreen
     runs-on: ${{ matrix.kind.os }}
     needs: build_macos
