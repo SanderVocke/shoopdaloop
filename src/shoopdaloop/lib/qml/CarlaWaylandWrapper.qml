@@ -46,7 +46,16 @@ Item {
             onWlShellSurfaceCreated: (shellSurface) => compositor.add_surface(shellSurface)
         }
         XdgShell {
-            onToplevelCreated: (toplevel, xdgSurface) => compositor.add_surface(xdgSurface)
+            onToplevelCreated: (toplevel, xdgSurface) => {
+                toplevel.onActivatedChanged.connect(() => { root.logger.trace(() => `XdgShell toplevel ${toplevel}: activated => ${toplevel.activated}`) })
+                toplevel.onMinSizeChanged.connect(() => { root.logger.trace(() => `XdgShell toplevel ${toplevel}: minSize => ${toplevel.minSize}`) })
+                toplevel.onMaxSizeChanged.connect(() => { root.logger.trace(() => `XdgShell toplevel ${toplevel}: maxSize => ${toplevel.maxSize}`) })
+                toplevel.onParentToplevelChanged.connect(() => { root.logger.trace(() => `XdgShell toplevel ${toplevel}: parentToplevel => ${toplevel.parentToplevel}`) })
+
+                root.logger.trace(() => `XdgShell toplevel ${toplevel} created: minSize ${toplevel.minSize}, maxSize ${toplevel.maxSize}, activated ${toplevel.activated}, parentToplevel ${toplevel.parentToplevel}`)
+
+                compositor.add_surface(xdgSurface)
+            }
         }
         IviApplication {
             onIviSurfaceCreated: (iviSurface) =>  compositor.add_surface(iviSurface)
