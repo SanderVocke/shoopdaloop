@@ -61,6 +61,7 @@ runs:
     if: ${{ steps.get_type.outputs.type == 'whl' }}
     shell: bash
     run: |
+      ${{ matrix.kind.pip }} install --upgrade pip
       ${{ matrix.kind.pip }} install --force-reinstall ${{ inputs.package }}
       ${{ matrix.kind.python }} -m shoopdaloop --info
       export INSTALLDIR="$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})"
