@@ -107,7 +107,7 @@ class FileIO(ShoopQObject):
     def extract_tarfile(self, filename, target_dir):
         flags = "r:*"
         with tarfile.open(filename, flags) as tar:
-            if 'filter' in inspect.signature(tar.extractall).signature.parameters:
+            if 'filter' in inspect.signature(tar.extractall).parameters:
                 tar.extractall(target_dir, filter='fully_trusted')
             else:
                 tar.extractall(target_dir)
