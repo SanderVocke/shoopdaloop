@@ -19,7 +19,7 @@ dependencies = [
   "numpy==1.24.4; python_version < \"3.12\"",
   "numpy==1.26.4; python_version >= \"3.12\"",
   "pyjacklib==0.1.1",
-  "pyside6-essentials==6.6.2",
+  "pyside6-essentials==6.7.0",
   "lupa==2.1",
   "appdirs==1.4.4",
   "sounddevice==0.4.6",
