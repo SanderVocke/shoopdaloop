@@ -46,5 +46,5 @@ jobs:
           file: distribution/dockerfiles/${{ matrix.variant }}_${{ matrix.os }}.Dockerfile
           push: true
           tags: |
-            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}:latest
+            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}:test39
             sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}:${{ env.UNIQUETAG }}
