@@ -62,7 +62,8 @@ runs:
     shell: bash
     run: |
       ${{ matrix.kind.python }} -m venv test_venv
-      export VENV_PYTHON=./test_venv/bin/python
+      export PYTHON_BINARY=$(echo ${{ matrix.kind.python }} | basename)
+      export VENV_PYTHON=./test_venv/bin/$PYTHON_BINARY
       export VENV_PIP="${VENV_PYTHON} -m pip"
       export SHOOPDALOOP="${VENV_PYTHON} -m shoopdaloop"
       $VENV_PIP install --upgrade pip
