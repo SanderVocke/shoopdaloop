@@ -61,11 +61,15 @@ runs:
     if: ${{ steps.get_type.outputs.type == 'whl' }}
     shell: bash
     run: |
-      ${{ matrix.kind.pip }} install --upgrade pip
-      ${{ matrix.kind.pip }} install --force-reinstall ${{ inputs.package }}
-      ${{ matrix.kind.python }} -m shoopdaloop --info
-      export INSTALLDIR="$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})"
-      echo "cmd=${{ matrix.kind.python }} -m shoopdaloop" | tee -a $GITHUB_ENV
+      ${{ matrix.kind.python }} -m venv test_venv
+      export VENV_PYTHON=./test_venv/bin/python
+      export VENV_PIP="${VENV_PYTHON} -m pip"
+      export SHOOPDALOOP="${VENV_PYTHON} -m shoopdaloop"
+      $VENV_PIP install --upgrade pip
+      $VENV_PIP install --force-reinstall ${{ inputs.package }}
+      $VENV_PYTHON -m shoopdaloop --info
+      export INSTALLDIR="$($SHOOPDALOOP --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})"
+      echo "cmd=$SHOOPDALOOP" | tee -a $GITHUB_ENV
       echo "install_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "pytest_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "test_runner=$INSTALLDIR/test_runner" | tee -a $GITHUB_ENV
