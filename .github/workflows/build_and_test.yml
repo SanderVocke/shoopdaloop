@@ -48,7 +48,7 @@ jobs:
             coverage: true
     runs-on: ubuntu-latest
     container:
-      image: sandervocke/shoopdaloop_base_manylinux_2_28:latest
+      image: sandervocke/shoopdaloop_base_manylinux_2_28:test39
       options: --user root --workdir /
     #if: false
     steps:
