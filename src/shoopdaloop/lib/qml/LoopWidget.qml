@@ -226,7 +226,7 @@ Item {
     }
 
     // Signals
-    signal cycled
+    signal cycled(int cycle_nr)
 
     // Methods
     function transition_loops(loops, mode, maybe_delay, maybe_align_to_sync_at) {

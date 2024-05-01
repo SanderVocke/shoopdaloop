@@ -40,11 +40,13 @@ class CompositeLoop(FindParentBackend):
         self._n_cycles = 0
         self._kind = 'regular'
         self._pending_transitions = []
-        self._pending_cycles = 0
+        self._pending_cycles = []
         self._backend = None
         self._initialized = False
         self._play_after_record = False
         self._sync_mode_active = False
+        self._cycle_nr = 0
+        self._last_handled_source_cycle_nr = -1
 
         self.scheduleChangedUnsafe.connect(self.scheduleChanged, Qt.QueuedConnection)
         self.nCyclesChangedUnsafe.connect(self.nCyclesChanged, Qt.QueuedConnection)
@@ -70,8 +72,8 @@ class CompositeLoop(FindParentBackend):
         self.backendChanged.connect(lambda: self.maybe_initialize())
         self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
     
-    cycled = ShoopSignal()
-    cycledUnsafe = ShoopSignal()
+    cycled = ShoopSignal(int)
+    cycledUnsafe = ShoopSignal(int)
 
     ######################
     ## PROPERTIES
@@ -440,15 +442,16 @@ class CompositeLoop(FindParentBackend):
         self.mode = mode
         self.iteration = sync_cycle
         self.update_length()
+        self.update_position()
         self.logger.trace(lambda: f'immediate sync: Done - mode -> {mode}, iteration -> {sync_cycle}, position -> {self._position}')
 
         # Perform the trigger(s) for the next loop cycle
         self.do_triggers(self.iteration + 1, mode)
     
-    @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
-    def handle_sync_loop_trigger(self):
+    @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
+    def handle_sync_loop_trigger(self, cycle_nr):
         self.logger.trace(lambda: f'queue sync loop trigger')
-        self._pending_cycles += 1
+        self._pending_cycles.append(cycle_nr)
 
     @ShoopSlot('QVariant', 'QVariant', 'QVariant', int)
     def adopt_ringbuffers(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
@@ -504,8 +507,27 @@ class CompositeLoop(FindParentBackend):
         if go_to_mode != LoopMode.Unknown.value:
             self.transition(go_to_mode, DontWaitForSync, go_to_cycle)
 
-    def handle_sync_loop_trigger_impl(self):
-        self.logger.debug(lambda: 'handle sync cycle')
+    def all_loops(self):
+        loops = set()
+        for elem in self._schedule.values():
+            for e in elem['loops_start']:
+                loops.add(e[0])
+            for e in elem['loops_end']:
+                loops.add(e)
+            for e in elem['loops_ignored']:
+                loops.add(e)
+        return loops
+
+    def handle_sync_loop_trigger_impl(self, cycle_nr):
+        if cycle_nr == self._last_handled_source_cycle_nr:
+            self.logger.trace(lambda: f'already handled sync cycle {cycle_nr}, skipping')
+            return
+        self.logger.debug(lambda: f'handle sync cycle {cycle_nr}')
+
+        # Before we start, give any of the loops in our schedule a chance to handle the cycle
+        # first. This ensures a deterministic ordering of execution.
+        for l in self.all_loops():
+            l.dependent_will_handle_sync_loop_cycle(cycle_nr)
 
         if self._next_transition_delay == 0:
             self.handle_transition(self.next_mode)
@@ -525,8 +547,10 @@ class CompositeLoop(FindParentBackend):
             self.do_triggers(self.iteration+1, self.mode)
 
             if cycled:
-                self.cycledUnsafe.emit()
+                self._cycle_nr += 1
+                self.cycledUnsafe.emit(self._cycle_nr)
                 
+        self._last_handled_source_cycle_nr = cycle_nr
         self.logger.trace(lambda: 'handle sync cycle done')
     
     def cancel_all(self):
@@ -631,10 +655,16 @@ class CompositeLoop(FindParentBackend):
     @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
         if self._backend:
-            for _ in range(self._pending_cycles):
-                self.handle_sync_loop_trigger_impl()
+            for cycle_nr in self._pending_cycles:
+                self.handle_sync_loop_trigger_impl(cycle_nr)
             for transition in self._pending_transitions:
                 self.transition_impl(*transition)
             self._pending_transitions = []
-            self._pending_cycles = 0
+            self._pending_cycles = []
+
+    # Another loop which references this loop (composite) can notify this loop that it is
+    # about to handle a sync loop cycle in advance, to ensure a deterministic ordering.
+    @ShoopSlot(int, thread_protection = ThreadProtectionType.OtherThread)
+    def dependent_will_handle_sync_loop_cycle(self, cycle_nr):
+        self.handle_sync_loop_trigger_impl(cycle_nr)
     

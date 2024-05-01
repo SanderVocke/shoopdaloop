@@ -47,7 +47,7 @@ Item {
         play_after_record: registries.state_registry.play_after_record_active
         sync_mode_active: registries.state_registry.sync_active
 
-        onCycled: root.cycled()
+        onCycled: n => root.cycled(n)
         Component.onCompleted: root.recalculate_schedule()
     }
 
@@ -127,7 +127,7 @@ Item {
         instanceIdentifier: obj_id
     }
 
-    signal cycled()
+    signal cycled(int cycle_nr)
 
     function add_loop(loop, delay, n_cycles=undefined, playlist_idx=undefined) {
         root.logger.debug(`Adding loop ${loop.obj_id} to playlist ${playlist_idx} with delay ${delay}, n_cycles override ${n_cycles}`)
