@@ -5,9 +5,9 @@ WORKDIR /
 
 # Python alias
 # (note: pre-installed python is a static build from manylinux)
-RUN ln -s /usr/local/bin/python3.8 /usr/local/bin/python && \
-    ln -s /usr/local/bin/python3.8 /usr/local/bin/python3 && \
-    echo "export PATH=\"\$PATH:$(find /opt/_internal -name "cpython-3.8.*")/bin\"" >> $HOME/.bashrc
+RUN ln -s /usr/local/bin/python3.9 /usr/local/bin/python && \
+    ln -s /usr/local/bin/python3.9 /usr/local/bin/python3 && \
+    echo "export PATH=\"\$PATH:$(find /opt/_internal -name "cpython-3.9.*")/bin\"" >> $HOME/.bashrc
 
 COPY dependencies dependencies
 

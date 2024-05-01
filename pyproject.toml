@@ -10,7 +10,7 @@ authors = [
 maintainers = [
   { name = "Sander Vocke", email = "sandervocke@gmail.com" },
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 
 dependencies = [
   "soundfile==0.12.1",
@@ -88,7 +88,7 @@ args = ["--log-level=verbose"]
 install_components = ["package_install"]
 build_path = "build"
 python_abi = "abi3"
-abi3_minimum_cpython_version = 38
+abi3_minimum_cpython_version = 39
 generator = "Ninja"
 
 [tool.py-build-cmake.editable]

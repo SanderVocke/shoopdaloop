@@ -63,10 +63,10 @@ jobs:
         cmake_build_type: ${{ matrix.kind.build_type }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: 'manylinux_2_28'
-        python: python3.8
+        python: python3.9
         rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
         pyinstaller: ${{ matrix.kind.pyinstaller }}
-        pyinstaller_python: /usr/bin/python3.8 # pyinstaller uses the official AlmaLinux Python because it has shared libs
+        pyinstaller_python: /usr/bin/python3.9 # pyinstaller uses the official AlmaLinux Python because it has shared libs
         package_kind: ${{ matrix.kind.package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         
@@ -106,15 +106,15 @@ jobs:
             container: sandervocke/shoopdaloop_run_base_arch:latest
             package: package_linux_release_pacman
           - name: release_rpm_manylinux
-            python: python3.8
-            pip: python3.8 -m pip
-            pytest: python3.8 -m pytest
+            python: python3.9
+            pip: python3.9 -m pip
+            pytest: python3.9 -m pytest
             container: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             package: package_linux_release_rpm
           - name: coverage_manylinux_2_28
-            python: python3.8 -m coverage run --source=shoopdaloop
-            pip: python3.8 -m pip
-            pytest: python3.8 -m coverage run --source=shoopdaloop -m pytest
+            python: python3.9 -m coverage run --source=shoopdaloop
+            pip: python3.9 -m pip
+            pytest: python3.9 -m coverage run --source=shoopdaloop -m pytest
             container: sandervocke/shoopdaloop_base_manylinux_2_28:latest
             package: wheel_linux_coverage
             coverage: true
@@ -202,7 +202,7 @@ jobs:
         cmake_build_type: ${{ matrix.kind.build_type }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: 'macos'
-        python: python3.8
+        python: python3.9
         pyinstaller: ${{ matrix.kind.pyinstaller }}
         appbundle: ${{ matrix.kind.appbundle }}
         pyinstaller_python: ${{ matrix.kind.pyinstaller_python }}
