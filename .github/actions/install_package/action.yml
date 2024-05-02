@@ -70,6 +70,10 @@ runs:
       export VENV_PIP="${VENV_PYTHON} -m pip"
       export SHOOPDALOOP="${VENV_PYTHON} -m shoopdaloop"
       $VENV_PIP install --upgrade pip
+      # Bug: this should work automatically
+      if [[ ${{ runner.os }} == *"Windows"* ]]; then
+        $VENV_PIP install pywin32
+      fi
       $VENV_PIP install --force-reinstall ${{ inputs.package }}
       $VENV_PYTHON -m shoopdaloop --info
       export INSTALLDIR="$($SHOOPDALOOP --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})"
