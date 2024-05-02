@@ -23,7 +23,7 @@ dependencies = [
   "lupa==2.1",
   "appdirs==1.4.4",
   "sounddevice==0.4.6",
-  "pywin32 ; platform_system == \"Windows\"",
+  "pywin32 ; sys_platform == \"win32\"",
 ]
 
 keywords = ['music', 'midi', 'jack', 'looping']
