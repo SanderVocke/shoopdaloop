@@ -62,7 +62,7 @@ runs:
     shell: bash
     run: |
       ${{ matrix.kind.python }} -m venv test_venv
-      if [[ ${{ runner.os =~ (?i)windows }} ]]; then
+      if [[ ${{ runner.os }} == *"Windows"* ]]; then
         export VENV_PYTHON=./test_venv/Scripts/python.exe
       else
         export VENV_PYTHON=./test_venv/bin/python
