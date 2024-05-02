@@ -62,8 +62,11 @@ runs:
     shell: bash
     run: |
       ${{ matrix.kind.python }} -m venv test_venv
-      export PYTHON_BINARY=$(echo ${{ matrix.kind.python }} | basename)
-      export VENV_PYTHON=./test_venv/bin/$PYTHON_BINARY
+      if [[ ${{ runner.os }} == *"windows"* ]]; then
+        export VENV_PYTHON=./test_venv/Scripts/python.exe
+      else
+        export VENV_PYTHON=./test_venv/bin/python
+      fi
       export VENV_PIP="${VENV_PYTHON} -m pip"
       export SHOOPDALOOP="${VENV_PYTHON} -m shoopdaloop"
       $VENV_PIP install --upgrade pip
