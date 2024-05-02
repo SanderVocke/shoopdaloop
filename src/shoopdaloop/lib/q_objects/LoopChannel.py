@@ -177,6 +177,7 @@ class LoopChannel(ShoopQQuickItem):
         return [p for p in self._ports if p and p.isValid()]
     @ports.setter
     def ports(self, p):
+        self.__logger.debug(lambda: 'ports -> {}'.format(p))
         for port in self._connected_ports:
             if p and port and port.isValid() and not port in p:
                 self.disconnect(port)
@@ -203,6 +204,7 @@ class LoopChannel(ShoopQQuickItem):
 
     @ShoopSlot('QVariant')
     def connect_port(self, port):
+        self.__logger.debug(lambda: f'Connect port {port}')
         if not port.isValid():
             return
         if not self._backend_obj:

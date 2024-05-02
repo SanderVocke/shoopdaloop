@@ -70,7 +70,7 @@ PythonMidiPort {
         close()
     }
 
-    property list<string> name_parts : descriptor.name_parts
+    property var name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
     muted: descriptor.muted
     passthrough_muted: descriptor.passthrough_muted

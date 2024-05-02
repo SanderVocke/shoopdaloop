@@ -10,11 +10,11 @@ import QtQuick.Controls 6.6
 //   re-ordered.
 Item {
     id: root
-    property list<var> model : []
+    property var model : []
     default property Component delegate : Item {}
 
-    property list<var> unsorted_instances : []
-    property list<var> sorted_instances : []
+    property var unsorted_instances : []
+    property var sorted_instances : []
 
     signal aboutToAdd(var model_elem, int index)
 
