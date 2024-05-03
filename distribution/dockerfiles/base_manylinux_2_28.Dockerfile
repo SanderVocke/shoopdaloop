@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
    
-FROM quay.io/pypa/manylinux_2_28_x86_64:latest
+ARG architecture=x86_64
+FROM quay.io/pypa/manylinux_2_28_${architecture}:latest
 WORKDIR /
 
 # Python alias

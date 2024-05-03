@@ -12,11 +12,17 @@ jobs:
       matrix:
         os: [ debian_stable, ubuntu_latest, arch ]
         variant: [ run_base ]
+        arch: [ x86_64 ]
         include:
           - os: debian_stable
             variant: build_base
           - os: manylinux_2_28
             variant: base
+            suffix: _x86_64
+          - os: manylinux_2_28
+            variant: base
+            arch: aarch64
+            suffix: _aarch64
     runs-on: ubuntu-latest
     steps:
       -
@@ -44,8 +50,8 @@ jobs:
         with:
           context: distribution
           file: distribution/dockerfiles/${{ matrix.variant }}_${{ matrix.os }}.Dockerfile
-          platforms: linux/amd64,linux/arm64
           push: true
+          platforms: linux/${{ matrix.arch }}
           tags: |
-            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}:latest
-            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}:${{ env.UNIQUETAG }}
+            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}${{ matrix.suffix }}:latest
+            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}${{ matrix.suffix }}:${{ env.UNIQUETAG }}
