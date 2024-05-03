@@ -16,9 +16,11 @@ jobs:
         include:
           - os: debian_stable
             variant: build_base
+            arch: x86_64
           - os: manylinux_2_28
             variant: base
             suffix: _x86_64
+            arch: x86_64
           - os: manylinux_2_28
             variant: base
             arch: aarch64
