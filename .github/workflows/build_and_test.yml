@@ -26,8 +26,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        container: sandervocke/shoopdaloop_base_manylinux_2_28_x86_64:latest
-        container_options: --user root --workdir /
+        container: [ "sandervocke/shoopdaloop_base_manylinux_2_28_x86_64:latest" ]
+        container_options: [ "--user root --workdir /" ]
         kind:
           # - name: linux_release
           #   build_type: 'Release'
