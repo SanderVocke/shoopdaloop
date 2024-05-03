@@ -44,6 +44,7 @@ jobs:
         with:
           context: distribution
           file: distribution/dockerfiles/${{ matrix.variant }}_${{ matrix.os }}.Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}:latest
