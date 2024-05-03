@@ -20,7 +20,7 @@ runs:
 
   # Versions
   - name: Determine version
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       set -x
       VERSION=$(cat $(find ${{ inputs.input_path }} -name version.txt -print -quit) | tr -d ' ')
@@ -33,7 +33,7 @@ runs:
   # Linux packages
   - name: Build .deb + pacman + .rpm
     if: ${{ inputs.package_kind == 'linuxes' }}
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       mkdir -p linux_packages
       WORKDIR=$(pwd)
@@ -107,7 +107,7 @@ runs:
       options: /O+ /DMyAppVersion="${{ env.version }}.${{ env.gitversion }}"
   - name: Move .EXE installer
     if: ${{ inputs.package_kind == 'innosetup' }}   
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       ls distribution/innosetup
       INSTALLER=$(find distribution/innosetup -name "ShoopDaLoop-*.exe")
@@ -122,7 +122,7 @@ runs:
   # MacOS .dmg
   - name: Build MacOSX .pkg
     if: ${{ inputs.package_kind == 'dmg' }}
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       DMGFILE=shoopdaloop-${{ env.version }}.${{ env.gitversion }}.dmg
       create-dmg \
@@ -147,7 +147,7 @@ runs:
 
   - name: Find output
     id: find_output
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       echo "output=${{ env.pkg }}" | tee -a $GITHUB_OUTPUT
       

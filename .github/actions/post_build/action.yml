@@ -32,7 +32,7 @@ runs:
     with:
       wheel: ${{ inputs.wheel }}
   - name: Store debug info
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       mkdir -p debuginfo
       cp -r ${{ inputs.build_dir }}/breakpad_symbols debuginfo/breakpad_symbols

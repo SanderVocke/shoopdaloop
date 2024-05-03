@@ -17,7 +17,7 @@ runs:
   - name: Process dumps (${{ inputs.variant }})
     id: process
     if: ${{ !env.ACT }}
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       if [ $(ls ${{ inputs.dumps_dir}} | wc -l) -gt 0 ]; then
         echo "upload=true" | tee -a $GITHUB_OUTPUT

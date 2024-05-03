@@ -11,7 +11,7 @@ runs:
   steps:
   - name: run
     id: run
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       ~/.local/bin/qoverage instrument --glob "${{ inputs.package_path }}/lib/qml/*.qml" --in-place --store-intermediates
       echo "upload_sources_path=$(realpath ${{ inputs.package_path }}/lib)" | tee -a $GITHUB_OUTPUT

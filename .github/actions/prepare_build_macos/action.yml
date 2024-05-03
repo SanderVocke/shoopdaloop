@@ -5,7 +5,7 @@ runs:
   using: "composite"
   steps:
   - name: Install packages
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       # Skip if already done (local act builds)
       if [ -f _macos_prepared ]; then
@@ -26,7 +26,7 @@ runs:
     with:
       dir: includes
   - name: Set outputs
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       touch _macos_prepared
       echo "CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes LDFLAGS=-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib CFLAGS=-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include CPPFLAGS=-isystem/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" > prepend_build_cmd.txt

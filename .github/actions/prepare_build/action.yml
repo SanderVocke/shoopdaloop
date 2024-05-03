@@ -26,6 +26,6 @@ runs:
     uses: ./.github/actions/prepare_build_windows
   - name: Collect information
     id: collect
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       echo "prepend_build_cmd=$(cat prepend_build_cmd.txt)" | tee -a $GITHUB_OUTPUT

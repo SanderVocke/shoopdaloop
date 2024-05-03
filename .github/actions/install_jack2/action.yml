@@ -6,7 +6,7 @@ runs:
   steps:
   - name: Install JACK2
     id: jack
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       # Skip if already done (local act builds)
       if [ -f _jack2_installed ]; then

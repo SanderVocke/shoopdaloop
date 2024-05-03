@@ -28,7 +28,7 @@ runs:
   using: "composite"
   steps:
   - name: Save screenshots
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
         LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }} SHOOP_LOG=Frontend.TestScreenGrabber=debug ${{ inputs.run_cmd_prefix }} ${{ inputs.shoopdaloop_command }} -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
   

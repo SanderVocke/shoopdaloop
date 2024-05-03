@@ -22,13 +22,13 @@ runs:
   using: "composite"
   steps:
   - name: prepare
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       mkdir -p reports
       echo "results_xml=reports/pytest_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
 
   - name: pytest (${{ inputs.variant_name }})
-    shell: bash
+    shell: wrap-shell.sh {0}
     run: |
       ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 ${{ inputs.run_cmd_prefix }} ${{ inputs.pytest_command }} ${{ inputs.root_path }} --junit-xml=${{ env.results_xml }}
       echo "Python test results file: $(ls -la ${{ env.results_xml }})"
