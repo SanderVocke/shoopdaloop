@@ -27,6 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         container: [ "sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest" ]
+        container_options: [ "--user root --workdir /" ]
         arch: [ x86_64 ]
         kind:
           # - name: linux_release
@@ -51,6 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ matrix.container }}
+      options: ${{ matrix.container_options }}
     #if: false
     steps:
     - name: Checkout

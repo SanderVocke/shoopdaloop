@@ -4,11 +4,6 @@ description: Prepare Linux for building Shoopdaloop wheels
 runs:
   using: "composite"
   steps:
-  - name: Install boost
-    id: install_boost
-    uses: ./.github/actions/install_boost_headers
-    with:
-      dir: /usr/include
-  - name: Install JACK2
-    id: install_jack2
-    uses: ./.github/actions/install_jack2
+  - name: Dummy
+    shell: bash
+    run: echo "Hello world, nothing to do"
