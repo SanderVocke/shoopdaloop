@@ -225,6 +225,56 @@ jobs:
         coverage: ${{ matrix.kind.coverage }}
   
 
+  test_linux_arm:
+    strategy:
+      fail-fast: false
+      matrix:
+        container_arch: [ arm64 ]
+        kind:
+          - name: release_wheel_debian_stable
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_debian_stable_arm64:latest
+            package: wheel_linux_release
+    runs-on: ubuntu-latest
+    needs: build_linux_arm
+    #if: false
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Start QEMU container
+      if: ${{ matrix.container }}
+      uses: sandervocke/setup-qemu-container@v1
+      with:
+        container: ${{ matrix.kind.container }}
+        arch: ${{ matrix.container_arch }}
+    - name: Setup Shell Wrapper
+      uses: sandervocke/setup-shell-wrapper@v1
+    - name: Use container shell
+      shell: bash
+      run: echo "WRAP_SHELL=run-in-container.sh" >> $GITHUB_ENV
+    - name: Test
+      uses: ./.github/actions/test_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        package: ${{ matrix.kind.package }}
+        asan: ${{ matrix.kind.asan }}
+        coverage: ${{ matrix.kind.coverage }}
+        pip: ${{ matrix.kind.pip }}
+        python: ${{ matrix.kind.python }}
+        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
+        pytest: ${{ matrix.kind.pytest }}
+        qpa_platform: vnc
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
+
+
+
+
+
 
 
 
@@ -502,6 +552,7 @@ jobs:
     needs:
       - build_linux
       - build_linux_arm
+      - test_linux_arm
       #- test_linux
       #- build_macos
       #- test_macos
