@@ -178,9 +178,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        container: [ "sandervocke/shoopdaloop_build_base_debian_bullseye_aarch64:latest" ]
-        container_arch: [ arm64 ]
-        arch: [ aarch64 ]
+        container: [ "sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest" ]
+        arch: [ arm64 ]
         kind:
           - name: linux_arm_release
             build_type: 'Release'
@@ -204,7 +203,7 @@ jobs:
       uses: sandervocke/setup-qemu-container@v1
       with:
         container: ${{ matrix.container }}
-        arch: ${{ matrix.container_arch }}
+        arch: ${{ matrix.arch }}
     - name: Setup Shell Wrapper
       uses: sandervocke/setup-shell-wrapper@v1
     - name: Use container shell
