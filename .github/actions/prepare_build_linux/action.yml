@@ -7,5 +7,4 @@ runs:
   - name: Dummy
     shell: wrap-shell.sh {0}
     run: |
-      python3 -m pip install --upgrade pip
-      python3 -m pip install --upgrade build
+      python3 -m pip install --upgrade pip build auditwheel
