@@ -37,6 +37,14 @@ jobs:
           #   package_kind: linuxes
           - name: linux_debug
             build_type: 'Debug'
+        include:
+          - container: null
+            container_options: "--hello-world"
+            qemu_container: "sandervocke/shoopdaloop_base_manylinux_2_28_aarch64:latest"
+            qemu_arch: aarch64
+            kind:
+              name: linux_debug_arm
+              build_type: 'Debug'
           # - name: linux_barebones
           #   build_type: 'Release'
           #   cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
