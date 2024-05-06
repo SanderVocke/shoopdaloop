@@ -4,7 +4,7 @@
 # build stuff
 build-essential
 git
-cmake
+cmake/bullseye-backports
 ninja-build
 pkgconf
 lcov
