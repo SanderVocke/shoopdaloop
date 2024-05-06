@@ -4,7 +4,7 @@
 ninja-build
 libsndfile
 libasan8
-gcc-toolset-12-libasan-devel.x86_64
+gcc-toolset-12-libasan-devel
 perl-Time-HiRes
 perl-Capture-Tiny
 perl-Module-Load-Conditional
