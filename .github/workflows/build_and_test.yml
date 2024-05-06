@@ -84,6 +84,11 @@ jobs:
       if: ${{ matrix.qemu_container }}
       shell: bash
       run: echo "WRAP_SHELL=run-in-container.sh" >> $GITHUB_ENV
+    - name: Print environment info
+      run: |
+         echo "OS release: $(cat /etc/os-release)"
+         echo "GCC:\n$(gcc --version)"
+         echo "Python:\n$(python3.8 --version)"
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
