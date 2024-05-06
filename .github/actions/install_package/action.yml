@@ -17,6 +17,9 @@ outputs:
   test_runner:
     description: "path to back-end testrunner, if any"
     value: ${{ steps.get_cmd.outputs.test_runner }}
+  pytest:
+    description: "updated pytest command to use"
+    value: ${{ steps.get_cmd.outputs.pytest }}
 
 runs:
   using: "composite"
