@@ -120,7 +120,7 @@ runs:
       variant_name: release
       run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=pytest_lcov ${{ inputs.run_cmd_prefix }}
       root_path: ${{ steps.install_package.outputs.pytest_dir }}
-      pytest_command: ${{ inputs.pytest }}
+      pytest_command: ${{ steps.install_package.outputs.pytest }}
       python_coverage: ${{ inputs.coverage }}
   - name: Generate Pytest Python coverage report
     if: ${{ (success() || failure()) && inputs.coverage }}

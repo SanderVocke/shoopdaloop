@@ -55,6 +55,7 @@ runs:
       "extracted/{app}/shoopdaloop.exe" --info
       echo "cmd=extracted/{app}/shoopdaloop.exe" | tee -a $GITHUB_ENV
       echo "install_dir=extracted/{app}" | tee -a $GITHUB_ENV
+      echo "pytest=${{ inputs.pytest }}" | tee -a $GITHUB_ENV
 
   # Python wheel
   - name: Install wheel
@@ -81,6 +82,7 @@ runs:
       echo "install_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "pytest_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "test_runner=$INSTALLDIR/test_runner" | tee -a $GITHUB_ENV
+      echo "pytest=$VENV_PYTHON -m pytest" | tee -a $GITHUB_ENV
 
   # Pacman
   - name: Install Pacman
@@ -92,6 +94,7 @@ runs:
       pacman -Ql shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "pytest=${{ inputs.pytest }}" | tee -a $GITHUB_ENV
   
   # Debian
   - name: Install deb
@@ -103,6 +106,7 @@ runs:
       dpkg-query -L shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "pytest=${{ inputs.pytest }}" | tee -a $GITHUB_ENV
   
   # RPM
   - name: Install rpm
@@ -113,6 +117,7 @@ runs:
       dnf list installed shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "pytest=${{ inputs.pytest }}" | tee -a $GITHUB_ENV
 
   # PyInstaller portable folder
   - name: Install PyIntaller portable folder (just determine contents)
@@ -122,6 +127,7 @@ runs:
       chmod a+x ${{ inputs.package }}/shoopdaloop
       echo "cmd=${{ inputs.package }}/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=${{ inputs.package }}" | tee -a $GITHUB_ENV
+      echo "pytest=${{ inputs.pytest }}" | tee -a $GITHUB_ENV
 
   # MacOS App Bundle folder
   - name: Install MacOS App Bundle folder
@@ -131,6 +137,7 @@ runs:
       chmod a+x ${{ inputs.package }}/Contents/MacOS/shoopdaloop
       echo "cmd=${{ inputs.package }}/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=${{ inputs.package }}/Contents/MacOS" | tee -a $GITHUB_ENV
+      echo "pytest=${{ inputs.pytest }}" | tee -a $GITHUB_ENV
   
   # MacOS .dmg installer
   - name: Install MacOS .dmg
@@ -140,6 +147,7 @@ runs:
       hdiutil attach ${{ inputs.package }}
       echo "cmd=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS" | tee -a $GITHUB_ENV
+      echo "pytest=${{ inputs.pytest }}" | tee -a $GITHUB_ENV
 
   # Final step: gather env to outputs
   - name: Get command
@@ -150,4 +158,5 @@ runs:
       echo "install_dir=${{ env.install_dir }}" | tee -a $GITHUB_OUTPUT
       echo "pytest_dir=${{ env.pytest_dir }}" | tee -a $GITHUB_OUTPUT
       echo "test_runner=${{ env.test_runner }}" | tee -a $GITHUB_OUTPUT
+      echo "pytest=${{ env.pytest }}" | tee -a $GITHUB_OUTPUT
       
