@@ -31,8 +31,8 @@ jobs:
         arch: [ x86_64 ]
         manylinux_arch: [ x86_64 ]
         kind:
-          # - name: linux_release
-          #   build_type: 'Release'
+          - name: linux_release
+            build_type: 'Release'
           #   pyinstaller: true
           #   package_kind: linuxes
           - name: linux_debug
@@ -87,12 +87,12 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: release_wheel_debian_stable
-          #   python: python3
-          #   pip: python3 -m pip
-          #   pytest: python3 -m pytest
-          #   container: sandervocke/shoopdaloop_run_base_debian_stable_x86_64:latest
-          #   package: wheel_linux_release
+          - name: release_wheel_debian_stable
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+            package: wheel_linux_release
           # - name: barebones_debian_stable
           #   python: python3
           #   pip: python3 -m pip
@@ -123,23 +123,23 @@ jobs:
           #   pytest: python3.9 -m pytest
           #   container: sandervocke/shoopdaloop_base_manylinux_2_31_x86_64:latest
           #   package: package_linux_release_rpm
-          - name: coverage_debian_bullseye
-            python: python3.9 -m coverage run --source=shoopdaloop
-            pip: python3.9 -m pip
-            pytest: python3.9 -m coverage run --source=shoopdaloop -m pytest
-            container: sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
-            package: wheel_linux_coverage
-            coverage: true
-            run_cmd_prefix: >-
-              BASEDIR=$(pwd)
-              EXCLUDE='/*/third_party/* /*/catch2/*'
-              REPORTDIR=coverage_reports
-              BUILDDIR=$(realpath build/cp*/)
-              ORI_BUILD_DIR=$(cat ori_build_dir.txt)
-              DO_GENHTML=0
-              SHOOP_LOG=QoverageCollectorFactory=debug
-              QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
-              scripts/run_and_generate_coverage.sh
+          # - name: coverage_debian_bullseye
+          #   python: python3.9 -m coverage run --source=shoopdaloop
+          #   pip: python3.9 -m pip
+          #   pytest: python3.9 -m coverage run --source=shoopdaloop -m pytest
+          #   container: sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
+          #   package: wheel_linux_coverage
+          #   coverage: true
+          #   run_cmd_prefix: >-
+          #     BASEDIR=$(pwd)
+          #     EXCLUDE='/*/third_party/* /*/catch2/*'
+          #     REPORTDIR=coverage_reports
+          #     BUILDDIR=$(realpath build/cp*/)
+          #     ORI_BUILD_DIR=$(cat ori_build_dir.txt)
+          #     DO_GENHTML=0
+          #     SHOOP_LOG=QoverageCollectorFactory=debug
+          #     QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
+          #     scripts/run_and_generate_coverage.sh
     runs-on: ubuntu-latest
     needs: build_linux
     #if: false
