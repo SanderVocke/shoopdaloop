@@ -1,4 +1,4 @@
-name: prepare_build_manylinux_2_28
+name: prepare_build_manylinux_2_31
 description: Prepare manylinux for building Shoopdaloop wheels
 
 runs:

@@ -19,7 +19,7 @@ portaudio
 
 # Install an additional Python from the official repos, which
 # has the shared libraries as well, needed for PyInstaller
-python38
+python39
 
 # Packaging
 rpm-build

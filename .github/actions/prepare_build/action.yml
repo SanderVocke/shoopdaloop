@@ -16,8 +16,8 @@ runs:
   using: "composite"
   steps:
   - name: Prepare manylinux
-    if: ${{ inputs.variant == 'manylinux_2_28' }}
-    uses: ./.github/actions/prepare_build_manylinux_2_28
+    if: ${{ inputs.variant == 'manylinux_2_31' }}
+    uses: ./.github/actions/prepare_build_manylinux_2_31
   - name: Prepare MacOS
     if: ${{ inputs.variant == 'macos' }}
     uses: ./.github/actions/prepare_build_macos
