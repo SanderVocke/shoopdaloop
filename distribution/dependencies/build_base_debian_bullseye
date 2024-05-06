@@ -8,6 +8,7 @@ cmake/bullseye-backports
 ninja-build
 pkgconf
 lcov
+patchelf
 
 # libraries
 libglib2.0-0
