@@ -21,7 +21,7 @@ To get other versions: the CI build generates these packages on every commit. Fi
 > :warning: **For all binary wheels, packages and installers: install at your own risk. I do not take responsibility for any harm done to your system.** Be aware that these wheels and packages include code from not just this repository, but also:
 >  - several GitHub linked repo's;
 >  - packages pulled in during the CI build from PyPi repositories;
->  - in case of "fat" packages: system libraries duplicated from the `manylinux` build distro;
+>  - in case of "fat" packages: system libraries duplicated from the build distro;
 > 
 > All of the above are not created, controlled or thoroughly audited by ShoopDaLoop developers. For maximum control, you can build your own packages and dependencies from source.
 

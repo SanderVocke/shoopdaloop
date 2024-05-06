@@ -10,25 +10,22 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ debian_stable, ubuntu_latest, arch ]
+        os: [ debian_latest, ubuntu_latest, arch ]
         variant: [ run_base ]
         arch: [ x86_64 ]
         include:
-          - os: debian_stable
+          - os: debian_bullseye
             variant: build_base
             arch: x86_64
-          - os: debian_stable
+          - os: debian_bullseye
+            variant: build_base
+            arch: arm64
+          - os: debian_latest
             variant: run_base
             arch: arm64
           - os: ubuntu_latest
             variant: run_base
             arch: arm64
-          - os: manylinux_2_31
-            variant: base
-            arch: x86_64
-          - os: manylinux_2_31
-            variant: base
-            arch: aarch64
     runs-on: ubuntu-latest
     steps:
       -

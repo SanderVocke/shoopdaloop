@@ -1,5 +1,5 @@
-name: prepare_build_manylinux_2_31
-description: Prepare manylinux for building Shoopdaloop wheels
+name: prepare_build_linux
+description: Prepare Linux for building Shoopdaloop wheels
 
 runs:
   using: "composite"

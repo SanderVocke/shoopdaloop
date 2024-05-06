@@ -1,5 +1,5 @@
-name: post_build_manylinux_2_31
-description: Steps after building wheel for manylinux.
+name: post_build_linux
+description: Steps after building wheel for linux.
 
 inputs:
   wheel:

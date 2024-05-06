@@ -16,9 +16,9 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - name: Post-build manylinux
-    if: ${{ inputs.variant == 'manylinux_2_31' }}
-    uses: ./.github/actions/post_build_manylinux_2_31
+  - name: Post-build linux
+    if: ${{ inputs.variant == 'linux' }}
+    uses: ./.github/actions/post_build_linux
     with:
       wheel: ${{ inputs.wheel }}
   - name: Post-build MacOS
