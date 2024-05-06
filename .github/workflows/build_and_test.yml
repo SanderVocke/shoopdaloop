@@ -28,8 +28,7 @@ jobs:
       matrix:
         container: [ "sandervocke/shoopdaloop_base_manylinux_2_28_x86_64:latest" ]
         container_options: [ "--user root --workdir /" ]
-        qemu_container: [ null ]
-        qemu_arch: [ null ]
+        arch: [ x86_64 ]
         kind:
           # - name: linux_release
           #   build_type: 'Release'
@@ -37,14 +36,6 @@ jobs:
           #   package_kind: linuxes
           - name: linux_debug
             build_type: 'Debug'
-        include:
-          - container: null
-            container_options: "--hello-world"
-            qemu_container: "sandervocke/shoopdaloop_base_manylinux_2_28_aarch64:latest"
-            qemu_arch: arm64
-            kind:
-              name: linux_debug_arm
-              build_type: 'Debug'
           # - name: linux_barebones
           #   build_type: 'Release'
           #   cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
@@ -68,27 +59,11 @@ jobs:
       uses: actions/checkout@v3
       with:
         submodules: recursive
-    - name: Start QEMU container
-      if: ${{ matrix.qemu_container }}
-      uses: sandervocke/setup-qemu-container@v1
-      with:
-        container: ${{ matrix.qemu_container }}
-        arch: ${{ matrix.qemu_arch }}
     - name: Setup Shell Wrapper
       uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell   # Only triggered for non-container jobs
-      if: ${{ ! matrix.qemu_container }}
+    - name: Use regular shell
       shell: bash
       run: echo "WRAP_SHELL=bash" >> $GITHUB_ENV
-    - name: Use container shell   # Only triggered for container jobs
-      if: ${{ matrix.qemu_container }}
-      shell: bash
-      run: echo "WRAP_SHELL=run-in-container.sh" >> $GITHUB_ENV
-    - name: Print environment info
-      run: |
-         echo "OS release: $(cat /etc/os-release)"
-         echo "GCC:\n$(gcc --version)"
-         echo "Python:\n$(python3.8 --version)"
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
@@ -195,9 +170,60 @@ jobs:
 
 
 
+  ##############################################################
+  ## Linux (ARM emulated)
+  ##############################################################
 
+  build_linux_arm:
+    strategy:
+      fail-fast: false
+      matrix:
+        container: [ "sandervocke/shoopdaloop_base_manylinux_2_28_aarch64:latest" ]
+        container_arch: [ arm64 ]
+        arch: [ aarch64 ]
+        kind:
+          - name: linux_arm_release
+            build_type: 'Release'
+            pyinstaller: true
+            package_kind: linuxes
+          - name: linux_arm_debug
+            build_type: 'Debug'
+          - name: linux_arm_barebones
+            build_type: 'Release'
+            cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
 
-
+    runs-on: ubuntu-latest
+    #if: false
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: Start QEMU container
+      if: ${{ matrix.container }}
+      uses: sandervocke/setup-qemu-container@v1
+      with:
+        container: ${{ matrix.container }}
+        arch: ${{ matrix.container_arch }}
+    - name: Setup Shell Wrapper
+      uses: sandervocke/setup-shell-wrapper@v1
+    - name: Use container shell
+      shell: bash
+      run: echo "WRAP_SHELL=run-in-container.sh" >> $GITHUB_ENV
+    - name: Build
+      uses: ./.github/actions/build_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: 'manylinux_2_28'
+        python: python3.8
+        rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        pyinstaller_python: /usr/bin/python3.8 # pyinstaller uses the official AlmaLinux Python because it has shared libs
+        package_kind: ${{ matrix.kind.package_kind }}
+        coverage: ${{ matrix.kind.coverage }}
+  
 
 
 
@@ -475,6 +501,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build_linux
+      - build_linux_arm
       #- test_linux
       #- build_macos
       #- test_macos
