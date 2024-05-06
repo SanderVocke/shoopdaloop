@@ -12,24 +12,17 @@ jobs:
       matrix:
         os: [ debian_stable, ubuntu_latest, arch ]
         variant: [ run_base ]
-        arch: [ x86_64 ]
+        arch: [ x86_64, arm64 ]
         include:
           - os: debian_stable
             variant: build_base
             arch: x86_64
-            suffix: _x86_64
-          - os: debian_stable
-            variant: build_base
-            arch: arm64
-            suffix: _arm64
           - os: manylinux_2_28
             variant: base
-            suffix: _x86_64
             arch: x86_64
           - os: manylinux_2_28
             variant: base
             arch: aarch64
-            suffix: _aarch64
     runs-on: ubuntu-latest
     steps:
       -
@@ -62,5 +55,5 @@ jobs:
           build-args: |
             architecture=${{ matrix.arch }}
           tags: |
-            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}${{ matrix.suffix }}:latest
-            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}${{ matrix.suffix }}:${{ env.UNIQUETAG }}
+            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}_${{ matrix.arch }}:latest
+            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}_${{ matrix.arch }}:${{ env.UNIQUETAG }}
