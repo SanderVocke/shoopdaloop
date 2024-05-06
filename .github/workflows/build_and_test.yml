@@ -77,6 +77,9 @@ jobs:
         pyinstaller_python: /usr/bin/python3.9 # pyinstaller uses the official AlmaLinux Python because it has shared libs
         package_kind: ${{ matrix.kind.package_kind }}
         coverage: ${{ matrix.kind.coverage }}
+    - name: Setup tmate session
+      if: failure()
+      uses: SanderVocke/action-tmate@master
         
   # test_linux:
   #   strategy:
