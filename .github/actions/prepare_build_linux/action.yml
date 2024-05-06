@@ -5,5 +5,7 @@ runs:
   using: "composite"
   steps:
   - name: Dummy
-    shell: bash
-    run: echo "Hello world, nothing to do"
+    shell: wrap-shell.sh {0}
+    run: |
+      python3 -m pip install --upgrade pip
+      python3 -m pip install --upgrade build
