@@ -10,6 +10,7 @@ pkgconf
 lcov
 ruby
 rpm
+libarchive-tools
 
 # libraries
 libglib2.0-0
