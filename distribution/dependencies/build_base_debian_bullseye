@@ -9,6 +9,7 @@ ninja-build
 pkgconf
 lcov
 ruby
+rpm
 
 # libraries
 libglib2.0-0

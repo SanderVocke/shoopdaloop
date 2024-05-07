@@ -90,6 +90,12 @@ jobs:
             pytest: python3 -m pytest
             container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: wheel_linux_release
+          - name: debug_wheel_debian_stable
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
+            container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+            package: wheel_linux_debug
           - name: release_deb_ubuntu_latest
             python: python3
             pip: python3 -m pip
@@ -108,7 +114,7 @@ jobs:
             pytest: python -m pytest
             container: sandervocke/shoopdaloop_run_base_arch_x86_64:latest
             package: package_linux_release_pacman
-          - name: release_rpm_manylinux
+          - name: release_rpm_fedora
             python: python3.9
             pip: python3.9 -m pip
             pytest: python3.9 -m pytest
