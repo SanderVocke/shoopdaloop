@@ -9,14 +9,24 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ debian_stable, ubuntu_latest, arch ]
+        os: [ debian_latest, ubuntu_latest, arch, fedora ]
         variant: [ run_base ]
+        arch: [ x86_64 ]
         include:
-          - os: debian_stable
+          - os: debian_bullseye
             variant: build_base
-          - os: manylinux_2_28
-            variant: base
+            arch: x86_64
+          - os: debian_bullseye
+            variant: build_base
+            arch: arm64
+          - os: debian_latest
+            variant: run_base
+            arch: arm64
+          - os: ubuntu_latest
+            variant: run_base
+            arch: arm64
     runs-on: ubuntu-latest
     steps:
       -
@@ -45,6 +55,9 @@ jobs:
           context: distribution
           file: distribution/dockerfiles/${{ matrix.variant }}_${{ matrix.os }}.Dockerfile
           push: true
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            architecture=${{ matrix.arch }}
           tags: |
-            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}:latest
-            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}:${{ env.UNIQUETAG }}
+            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}_${{ matrix.arch }}:latest
+            sandervocke/shoopdaloop_${{ matrix.variant }}_${{ matrix.os }}_${{ matrix.arch }}:${{ env.UNIQUETAG }}

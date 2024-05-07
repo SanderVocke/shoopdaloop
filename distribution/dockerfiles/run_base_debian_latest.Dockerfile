@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
    
-FROM debian:bookworm
+FROM debian:latest
 WORKDIR /
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
@@ -12,4 +12,4 @@ USER build
 WORKDIR /home/build
 COPY dependencies dependencies
 
-RUN sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(dependencies/get_dependencies.sh run_base_debian)
+RUN sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(dependencies/get_dependencies.sh run_base_debian_latest)

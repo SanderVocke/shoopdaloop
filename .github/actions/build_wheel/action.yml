@@ -48,7 +48,7 @@ runs:
   steps:
   - name: Build wheel (${{ inputs.variant_name }})
     if: ${{ inputs.windows != 'true' }}
-    shell: bash
+    shell: wrap-shell {0}
     id: build
     run: |
       ${{ inputs.prepend_build_cmd }} ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
@@ -61,7 +61,7 @@ runs:
       ${{ inputs.prepend_build_cmd }} ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
 
   - name: Find wheel (${{ inputs.variant_name }})
-    shell: bash
+    shell: wrap-shell {0}
     id: find_wheel
     run: |
       echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" | tee -a $GITHUB_OUTPUT
@@ -70,7 +70,7 @@ runs:
   
   - name: Rename wheel
     if: ${{ inputs.rename_wheel_sed }}
-    shell: bash
+    shell: wrap-shell {0}
     id: rename
     run: |
       cd dist
@@ -80,7 +80,7 @@ runs:
       echo "Renamed wheel from $before to $after"
   
   - name: Find wheel
-    shell: bash
+    shell: wrap-shell {0}
     id: find
     run: |
       echo "name=$(ls dist/*.whl)" | tee -a $GITHUB_OUTPUT

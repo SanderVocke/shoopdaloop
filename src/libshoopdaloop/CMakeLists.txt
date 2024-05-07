@@ -64,7 +64,7 @@ find_package(Boost REQUIRED)
 if (BACKEND_JACK)
   # Generate a wrapper for libjack which allows dynamic loading using dlopen
   find_package(Jack REQUIRED)
-  add_compile_definitions(-DSHOOP_HAVE_BACKEND_JACK)
+  add_compile_definitions(SHOOP_HAVE_BACKEND_JACK)
 endif()
 
 # Generate the run cmd prefix so that it can be referred to after the build (e.g. when running tests)
