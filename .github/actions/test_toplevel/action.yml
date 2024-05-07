@@ -27,7 +27,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - shell: wrap-shell.sh {0}
+  - shell: sh wrap-shell.sh {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -43,7 +43,7 @@ runs:
   - name: Find package
     if: ${{ inputs.package }}
     id: find_package
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       echo "package=package/$(ls package | head -n1)" | tee -a $GITHUB_OUTPUT
   - name: Install package (${{ inputs.package }})
@@ -52,7 +52,7 @@ runs:
     uses: ./.github/actions/install_package
     with:
       package: ${{ steps.find_package.outputs.package }}
-  - shell: wrap-shell.sh {0}
+  - shell: sh wrap-shell.sh {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -66,18 +66,18 @@ runs:
       name: coverage_context
   - name: Pre-install ASAN shared lib
     if: ${{ inputs.asan }}
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       ${{ inputs.pip }} install wheel
       mkdir unzip_whl
       ${{ inputs.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
       cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
   - name: Create crashdumps folder
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       mkdir -p crashdumps
   - name: Install Python modules
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       ${{ inputs.pip }} install pytest coverage pipx
   - name: Install Qoverage
@@ -90,7 +90,7 @@ runs:
     uses: ./.github/actions/qoverage_instrument
     with:
       package_path: ${{ steps.install_package.outputs.install_dir }}
-  - shell: wrap-shell.sh {0}
+  - shell: sh wrap-shell.sh {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -106,7 +106,7 @@ runs:
       # for usage with shared ASAN library.
       run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=backend_lcov ${{ inputs.run_cmd_prefix }}
       test_runner: ${{ steps.install_package.outputs.test_runner }}
-  - shell: wrap-shell.sh {0}
+  - shell: sh wrap-shell.sh {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -124,11 +124,11 @@ runs:
       python_coverage: ${{ inputs.coverage }}
   - name: Generate Pytest Python coverage report
     if: ${{ (success() || failure()) && inputs.coverage }}
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
       sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
-  - shell: wrap-shell.sh {0}
+  - shell: sh wrap-shell.sh {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -148,7 +148,7 @@ runs:
       tee_all_output_to: test-qml-console-output.log
   - name: Generate QML Python coverage report
     if: ${{ (success() || failure()) && inputs.coverage }}
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
       sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
@@ -160,7 +160,7 @@ runs:
       package_path: ${{ steps.install_package.outputs.install_dir }}
       console_output_file: test-qml-console-output.log
       report_file: coverage_reports/qml_qoverage.xml
-  - shell: wrap-shell.sh {0}
+  - shell: sh wrap-shell.sh {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -178,7 +178,7 @@ runs:
       qt_qpa_platform: ${{ inputs.qpa_platform }}
       python: ${{ inputs.python }}
       shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
-  - shell: wrap-shell.sh {0}
+  - shell: sh wrap-shell.sh {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -195,7 +195,7 @@ runs:
       python: ${{ inputs.python }}
       qt_qpa_platform: ${{ inputs.qpa_platform }}
       shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
-  - shell: wrap-shell.sh {0}
+  - shell: sh wrap-shell.sh {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="

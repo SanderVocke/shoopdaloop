@@ -17,7 +17,7 @@ runs:
   steps:
   - name: Install Boost headers
     id: boost
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       # Skip if already done (local act builds)
       if [ -f _boost_headers_installed ]; then

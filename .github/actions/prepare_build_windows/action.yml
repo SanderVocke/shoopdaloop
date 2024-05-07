@@ -8,7 +8,7 @@ runs:
     with:
       python-version: '3.9'
   - name: Report python version
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       echo "Default python version is $(python --version)"
   - name: Install boost
@@ -17,7 +17,7 @@ runs:
     with:
       dir: includes
   - name: Install pkgconfig lite
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pkg-config-lite-0.28-1_bin-win32.zip --output pkg-config-lite-0.28-1_bin-win32.zip
       unzip pkg-config-lite-0.28-1_bin-win32.zip
@@ -35,7 +35,7 @@ runs:
 
   - name: Path conversion
     id: pathconvert
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       echo "boost_include_dir=$(cygpath -w ${{ steps.install_boost.outputs.include_dir }})" | tee -a $GITHUB_OUTPUT
       echo "jack_dir=$(cygpath -w $(pwd)/jack)" | tee -a $GITHUB_OUTPUT
@@ -46,7 +46,7 @@ runs:
       version: latest
       platform: x64
   - name: Install dependencies and provide build command prefix
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       python -m pip install build virtualenv pytest meson
       choco install -y ninja

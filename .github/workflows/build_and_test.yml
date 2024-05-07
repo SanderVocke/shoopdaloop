@@ -590,7 +590,7 @@ jobs:
         path: crashdumps
     - name: Count crash dumps
       id: count
-      shell: wrap-shell.sh {0}
+      shell: sh wrap-shell.sh {0}
       run: |
         mkdir -p crashdumps
         echo "crashdumps=$(ls crashdumps/crashdumps_* | wc -l)" | tee -a $GITHUB_OUTPUT
@@ -611,7 +611,7 @@ jobs:
         key: minidump-stackwalk-1
     - name: Get minidump package sources
       if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true' }}
-      shell: wrap-shell.sh {0}
+      shell: sh wrap-shell.sh {0}
       run: |
         pacman --noconfirm -Syy
         pacman --noconfirm -S --needed git base-devel && git clone https://aur.archlinux.org/minidump-stackwalk.git
@@ -623,12 +623,12 @@ jobs:
         pkgdir: minidump-stackwalk
     - name: Install minidump package
       if: ${{ steps.count.outputs.crashdumps != 0 }}
-      shell: wrap-shell.sh {0}
+      shell: sh wrap-shell.sh {0}
       run: |
         pacman --noconfirm -U minidump-stackwalk/minidump-stackwalk*.pkg*
     - name: Process dumps
       if: ${{ steps.count.outputs.crashdumps != 0 }}
-      shell: wrap-shell.sh {0}
+      shell: sh wrap-shell.sh {0}
       run: |
         tree crashdumps
         cp -r debuginfo crashdumps/debuginfo
@@ -641,7 +641,7 @@ jobs:
         done
     - name: Upload crash dumps to Bugsplat
       if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
-      shell: wrap-shell.sh {0}
+      shell: sh wrap-shell.sh {0}
       run: |
         for dump in $(find crashdumps -name "*.dmp"); do
           echo ""

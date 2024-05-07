@@ -10,6 +10,6 @@ runs:
   using: "composite"
   steps:
   - name: Auditwheel repair
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       auditwheel repair --plat manylinux_2_31_${{ matrix.manylinux_arch }} --only-plat -w final_wheel ${{ inputs.wheel }}

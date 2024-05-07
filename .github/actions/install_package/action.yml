@@ -22,7 +22,7 @@ runs:
   using: "composite"
   steps:
   - name: Determine package kind
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     id: get_type
     run: |
        if [ ! -f ${{ inputs.package }} ]; then
@@ -48,7 +48,7 @@ runs:
     uses: MinoruSekine/setup-scoop@v3
   - name: Install InnoSetup .exe by extracting
     if: ${{ steps.get_type.outputs.type == 'exe' }}
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       scoop install innounp
       innounp -x -dextracted ${{ inputs.package }}
@@ -59,7 +59,7 @@ runs:
   # Python wheel
   - name: Install wheel
     if: ${{ steps.get_type.outputs.type == 'whl' }}
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       ${{ matrix.kind.pip }} install --upgrade pip
       ${{ matrix.kind.pip }} install --force-reinstall ${{ inputs.package }}
@@ -73,7 +73,7 @@ runs:
   # Pacman
   - name: Install Pacman
     if: ${{ steps.get_type.outputs.type == 'pacman' }}
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       pacman -Uv --noconfirm ${{ inputs.package }}
       pacman -Q shoopdaloop
@@ -84,7 +84,7 @@ runs:
   # Debian
   - name: Install deb
     if: ${{ steps.get_type.outputs.type == 'deb' }}
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical dpkg --debug=10 -i ${{ inputs.package }}
       dpkg -l shoopdaloop
@@ -95,7 +95,7 @@ runs:
   # RPM
   - name: Install rpm
     if: ${{ steps.get_type.outputs.type == 'rpm' }}
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       dnf -y install ${{ inputs.package }}
       dnf list installed shoopdaloop
@@ -105,7 +105,7 @@ runs:
   # PyInstaller portable folder
   - name: Install PyIntaller portable folder (just determine contents)
     if: ${{ steps.get_type.outputs.type == 'pyinstaller' }}
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       chmod a+x ${{ inputs.package }}/shoopdaloop
       echo "cmd=${{ inputs.package }}/shoopdaloop" | tee -a $GITHUB_ENV
@@ -114,7 +114,7 @@ runs:
   # MacOS App Bundle folder
   - name: Install MacOS App Bundle folder
     if: ${{ steps.get_type.outputs.type == 'appbundle' }}
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       chmod a+x ${{ inputs.package }}/Contents/MacOS/shoopdaloop
       echo "cmd=${{ inputs.package }}/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
@@ -123,7 +123,7 @@ runs:
   # MacOS .dmg installer
   - name: Install MacOS .dmg
     if: ${{ steps.get_type.outputs.type == 'dmg' }}
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       hdiutil attach ${{ inputs.package }}
       echo "cmd=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
@@ -132,7 +132,7 @@ runs:
   # Final step: gather env to outputs
   - name: Get command
     id: get_cmd
-    shell: wrap-shell.sh {0}
+    shell: sh wrap-shell.sh {0}
     run: |
       echo "cmd=${{ env.cmd }}" | tee -a $GITHUB_OUTPUT
       echo "install_dir=${{ env.install_dir }}" | tee -a $GITHUB_OUTPUT
