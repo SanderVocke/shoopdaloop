@@ -16,13 +16,13 @@ runs:
   using: "composite"
   steps:
   - name: prepare
-    shell: sh wrap-shell.sh {0}
+    shell: wrap-shell {0}
     run: |
       mkdir -p reports
       echo "results_xml=reports/test_runner_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
 
   - name: Expand prefix for Mac
-    shell: sh wrap-shell.sh {0}
+    shell: wrap-shell {0}
     id: runcmdprefix
     run: |
       if [[ "$RUNNER_OS" == "macOS" ]]; then
@@ -32,7 +32,7 @@ runs:
       fi
 
   - name: test_runner (${{ inputs.variant_name }})
-    shell: sh wrap-shell.sh {0}
+    shell: wrap-shell {0}
     run: |
       mkdir -p reports
       ${{ steps.runcmdprefix.outputs.run_cmd_prefix }} ${{ inputs.test_runner }} -r JUnit -o ${{ env.results_xml }}
