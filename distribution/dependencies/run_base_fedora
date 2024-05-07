@@ -4,7 +4,6 @@
 libxkbcommon
 portaudio
 libsndfile
-curl
 fontconfig
 jack-audio-connection-kit
 portaudio
