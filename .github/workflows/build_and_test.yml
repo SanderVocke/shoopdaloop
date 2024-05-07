@@ -115,15 +115,15 @@ jobs:
             container: sandervocke/shoopdaloop_run_base_arch_x86_64:latest
             package: package_linux_release_pacman
           - name: release_rpm_fedora
-            python: python3.9
-            pip: python3.9 -m pip
-            pytest: python3.9 -m pytest
+            python: python3
+            pip: python3 -m pip
+            pytest: python3 -m pytest
             container: sandervocke/shoopdaloop_run_base_fedora_x86_64:latest
             package: package_linux_release_rpm
           - name: coverage_debian_bullseye
-            python: python3.9 -m coverage run --source=shoopdaloop
-            pip: python3.9 -m pip
-            pytest: python3.9 -m coverage run --source=shoopdaloop -m pytest
+            python: python3 -m coverage run --source=shoopdaloop
+            pip: python3 -m pip
+            pytest: python3 -m coverage run --source=shoopdaloop -m pytest
             container: sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
             package: wheel_linux_coverage
             coverage: true
