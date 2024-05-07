@@ -11,13 +11,13 @@ runs:
   steps:
   - name: Delocate
     id: delocate
-    shell: bash
+    shell: wrap-shell {0}
     run: |
-      python3.8 -m pip install delocate
+      python3.9 -m pip install delocate
       /usr/local/bin/delocate-listdeps --all ${{ inputs.wheel }}
   - name: Passthrough
     id: passthrough
-    shell: bash
+    shell: wrap-shell {0}
     run: |
       mkdir -p final_wheel
       cp dist/*.whl final_wheel/
