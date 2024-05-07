@@ -9,5 +9,6 @@ portaudio
 procps-ng
 git
 mesa-libGL
+mesa-libEGL
 python3
 python3-pip
