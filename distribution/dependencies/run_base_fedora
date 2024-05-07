@@ -8,3 +8,6 @@ jack-audio-connection-kit
 portaudio
 procps-ng
 git
+mesa-libGL
+python3
+python3-pip
