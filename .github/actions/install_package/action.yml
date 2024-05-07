@@ -73,7 +73,7 @@ runs:
       fi
       export VENV_PIP="${VENV_PYTHON} -m pip"
       export SHOOPDALOOP="${VENV_PYTHON} -m shoopdaloop"
-      $VENV_PIP install --upgrade pip pytest
+      $VENV_PIP install --upgrade pip pytest coverage
       # Bug: this should work automatically
       if [[ "${{ runner.os }}" == "Windows" ]]; then
         $VENV_PIP install pywin32
