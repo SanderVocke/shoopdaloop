@@ -100,13 +100,13 @@ jobs:
             python: python3
             pip: python3 -m pip
             pytest: python3 -m pytest
-            container: sandervocke/shoopdaloop_run_base_ubuntu_latest_x86_64:latest
+            container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: package_linux_release_deb
           - name: release_pyinst_ubuntu_latest
             python: python3
             pip: python3 -m pip
             pytest: python3 -m pytest
-            container: sandervocke/shoopdaloop_run_base_ubuntu_latest_x86_64:latest
+            container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: pyinstaller_linux_release
           - name: release_pacman_arch
             python: python
