@@ -14,7 +14,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       python3.9 -m pip install delocate
-      /usr/local/bin/delocate-listdeps --all ${{ inputs.wheel }}
+      delocate-listdeps --all ${{ inputs.wheel }}
   - name: Passthrough
     id: passthrough
     shell: wrap-shell {0}

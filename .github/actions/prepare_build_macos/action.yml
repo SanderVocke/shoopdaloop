@@ -19,6 +19,7 @@ runs:
       brew install create-dmg
 
       # Install Python packages
+      python3.9 -m pip install --upgrade pip
       python3.9 -m pip install build
   - name: Install boost
     id: install_boost

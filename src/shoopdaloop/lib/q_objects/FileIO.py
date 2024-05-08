@@ -19,6 +19,7 @@ from .Task import Task
 from .Tasks import Tasks
 from .ShoopPyObject import *
 from ..directories import installation_dir, scripts_dir
+from ..recursive_jsvalue_convert import recursively_convert_jsvalue
 
 from shoopdaloop.lib.logging import Logger
 from shoopdaloop.lib.smf import generate_smf, parse_smf
@@ -250,7 +251,7 @@ class FileIO(ShoopQObject):
                     })
             
             if isinstance(channels, QJSValue):
-                channels = channels.toVariant()
+                channels = recursively_convert_jsvalue(channels)
             for channel in channels:
                 channel.load_all_midi_data(backend_msgs)        
                 if maybe_set_start_offset != None:

@@ -7,14 +7,14 @@ inputs:
     description: "Whether to enable ASAN"
   coverage:
     description: "Whether to gather code coverage"
-  pip:
-    description: "pip command"
+  python_pip_args:
+    description: "pip command args to append to the python command"
   python:
     description: "python command"
   name:
     description: "workflow name"
-  pytest:
-    description: "PyTest command"
+  python_pytest_args:
+    description: "PyTest args to append to the python command"
   run_cmd_prefix:
     description: "Prefix for running commands"
   qpa_platform:
@@ -52,6 +52,8 @@ runs:
     uses: ./.github/actions/install_package
     with:
       package: ${{ steps.find_package.outputs.package }}
+      python: ${{ inputs.python }}
+      python_pytest_args: ${{ inputs.python_pytest_args }}
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -68,7 +70,7 @@ runs:
     if: ${{ inputs.asan }}
     shell: wrap-shell {0}
     run: |
-      ${{ inputs.pip }} install wheel
+      ${{ inputs.python }} ${{ inputs.python_pip_args }} install wheel
       mkdir unzip_whl
       ${{ inputs.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
       cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
@@ -79,7 +81,7 @@ runs:
   - name: Install Python modules
     shell: wrap-shell {0}
     run: |
-      ${{ inputs.pip }} install pytest coverage pipx
+      ${{ inputs.python }} ${{ inputs.python_pip_args }} install pytest coverage pipx
   - name: Install Qoverage
     if: ${{ inputs.coverage }}
     uses: ./.github/actions/install_qoverage
@@ -120,8 +122,7 @@ runs:
       variant_name: release
       run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=pytest_lcov ${{ inputs.run_cmd_prefix }}
       root_path: ${{ steps.install_package.outputs.pytest_dir }}
-      pytest_command: ${{ inputs.pytest }}
-      python_coverage: ${{ inputs.coverage }}
+      pytest_command: ${{ steps.install_package.outputs.python }} ${{ inputs.python_pytest_args }}
   - name: Generate Pytest Python coverage report
     if: ${{ (success() || failure()) && inputs.coverage }}
     shell: wrap-shell {0}

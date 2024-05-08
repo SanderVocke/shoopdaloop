@@ -14,9 +14,6 @@ inputs:
   pytest_command:
     type: string
     default: "python3 -m pytest"
-  python_coverage:
-    type: boolean
-    default: false
 
 runs:
   using: "composite"
