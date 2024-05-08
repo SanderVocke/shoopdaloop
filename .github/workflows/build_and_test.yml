@@ -86,38 +86,38 @@ jobs:
         kind:
           - name: release_wheel_debian_stable
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: wheel_linux_release
           - name: debug_wheel_debian_stable
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: wheel_linux_debug
           - name: release_deb_ubuntu_latest
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: package_linux_release_deb
           - name: release_pyinst_ubuntu_latest
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: pyinstaller_linux_release
           - name: release_pacman_arch
             python: python
-            pip: python -m pip
-            pytest: python -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: sandervocke/shoopdaloop_run_base_arch_x86_64:latest
             package: package_linux_release_pacman
           - name: release_rpm_fedora
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: sandervocke/shoopdaloop_run_base_fedora_x86_64:latest
             package: package_linux_release_rpm
           - name: coverage_debian_bullseye
@@ -234,14 +234,14 @@ jobs:
         kind:
           - name: release_wheel_debian_bullseye
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: sandervocke/shoopdaloop_run_base_debian_latest_arm64:latest
             package: wheel_linux_arm_release
           - name: release_deb_ubuntu_latest
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: sandervocke/shoopdaloop_run_base_ubuntu_latest_arm64:latest
             package: package_linux_arm_release_deb
     runs-on: ubuntu-latest
@@ -344,48 +344,48 @@ jobs:
         kind:
           - name: release_whl_macos11
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: null
             os: macos-11
             package: wheel_macos_release
             qpa_platform: offscreen
           - name: release_whl_macos12
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: null
             os: macos-12
             package: wheel_macos_release
             qpa_platform: offscreen
           - name: release_whl_macos13
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: null
             os: macos-13
             package: wheel_macos_release
             qpa_platform: offscreen
           - name: release_whl_macos14
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: null
             os: macos-14
             package: wheel_macos_release_arm
             qpa_platform: offscreen
           - name: debug_whl_macos14
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: null
             os: macos-14
             package: wheel_macos_debug_arm
             qpa_platform: offscreen
           - name: release_dmg_macos14
             python: python3
-            pip: python3 -m pip
-            pytest: python3 -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: null
             os: macos-14
             package: package_macos_release_arm
@@ -499,8 +499,8 @@ jobs:
         kind:
           - name: release_windows
             python: python.exe
-            pip: python.exe -m pip
-            pytest: python.exe -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: null
             os: windows-2022
             package: wheel_windows_release
@@ -508,8 +508,8 @@ jobs:
             pathconvert: "| cygpath -u -f -"
           - name: release_windows_innosetup
             python: python.exe
-            pip: python.exe -m pip
-            pytest: python.exe -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: null
             os: windows-2022
             package: package_windows_release
@@ -517,8 +517,8 @@ jobs:
             pathconvert: "| cygpath -u -f -"
           - name: debug_windows
             python: python.exe
-            pip: python.exe -m pip
-            pytest: python.exe -m pytest
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
             container: null
             os: windows-2022
             package: wheel_windows_debug
