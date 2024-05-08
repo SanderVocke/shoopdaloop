@@ -16,7 +16,7 @@ _WORKDIR=${WORKDIR:-${PWD}}
 
 cd ${_WORKDIR}
 
-_LCOV="${_LCOV} --ignore-errors source,negative --gcov-tool ${_GCOV} -b ${_BASEDIR} -d ${_BUILDDIR} ${_LCOV_ARGS}"
+_LCOV="${_LCOV} --ignore-errors source --gcov-tool ${_GCOV} -b ${_BASEDIR} -d ${_BUILDDIR} ${_LCOV_ARGS}"
 echo "Using lcov as: ${_LCOV}"
 echo "Running in: $(pwd)"
 
