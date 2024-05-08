@@ -121,9 +121,10 @@ jobs:
           #   container: sandervocke/shoopdaloop_run_base_fedora_x86_64:latest
           #   package: package_linux_release_rpm
           - name: coverage_debian_bullseye
-            python: python3 -m coverage run --source=shoopdaloop
-            pip: python3 -m pip
-            pytest: python3 -m coverage run --source=shoopdaloop -m pytest
+            python: python3
+            python_shoopdaloop_args: -m coverage run --source=shoopdaloop
+            python_pip_args: -m pip
+            python_pytest_args: -m coverage run --source=shoopdaloop -m pytest
             container: sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
             package: wheel_linux_coverage
             coverage: true
@@ -158,10 +159,10 @@ jobs:
         package: ${{ matrix.kind.package }}
         asan: ${{ matrix.kind.asan }}
         coverage: ${{ matrix.kind.coverage }}
-        pip: ${{ matrix.kind.pip }}
+        python_pip_args: ${{ matrix.kind.python_pip_args }}
         python: ${{ matrix.kind.python }}
         run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-        pytest: ${{ matrix.kind.pytest }}
+        python_pytest_args: ${{ matrix.kind.python_pytest_args }}
         qpa_platform: vnc
         pyinstaller: ${{ matrix.kind.pyinstaller }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
@@ -266,10 +267,10 @@ jobs:
   #       package: ${{ matrix.kind.package }}
   #       asan: ${{ matrix.kind.asan }}
   #       coverage: ${{ matrix.kind.coverage }}
-  #       pip: ${{ matrix.kind.pip }}
+  #       python_pip_args: ${{ matrix.kind.python_pip_args }}
   #       python: ${{ matrix.kind.python }}
   #       run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-  #       pytest: ${{ matrix.kind.pytest }}
+  #       python_pytest_args: ${{ matrix.kind.python_pytest_args }}
   #       qpa_platform: vnc
   #       pyinstaller: ${{ matrix.kind.pyinstaller }}
   #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
@@ -410,10 +411,10 @@ jobs:
   #       package: ${{ matrix.kind.package }}
   #       asan: ${{ matrix.kind.asan }}
   #       coverage: ${{ matrix.kind.coverage }}
-  #       pip: ${{ matrix.kind.pip }}
+  #       python_pip_args: ${{ matrix.kind.python_pip_args }}
   #       python: ${{ matrix.kind.python }}
   #       run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-  #       pytest: ${{ matrix.kind.pytest }}
+  #       python_pytest_args: ${{ matrix.kind.python_pytest_args }}
   #       qpa_platform: ${{ matrix.kind.qpa_platform }}
   #       pyinstaller: ${{ matrix.kind.pyinstaller }}
   #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
@@ -544,10 +545,10 @@ jobs:
   #       package: ${{ matrix.kind.package }}
   #       asan: ${{ matrix.kind.asan }}
   #       coverage: ${{ matrix.kind.coverage }}
-  #       pip: ${{ matrix.kind.pip }}
+  #       python_pip_args: ${{ matrix.kind.python_pip_args }}
   #       python: ${{ matrix.kind.python }}
   #       run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-  #       pytest: ${{ matrix.kind.pytest }}
+  #       python_pytest_args: ${{ matrix.kind.python_pytest_args }}
   #       qpa_platform: ${{ matrix.kind.qpa_platform }}
   #       pyinstaller: ${{ matrix.kind.pyinstaller }}
   #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
