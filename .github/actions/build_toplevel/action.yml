@@ -26,11 +26,11 @@ runs:
   using: "composite"
   steps:  
   - name: Store cwd
-    shell: bash
+    shell: wrap-shell {0}
     id: cwd
     run: |
         echo "cwd=$(pwd)" | tee -a $GITHUB_OUTPUT
-  - shell: bash
+  - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -43,11 +43,11 @@ runs:
     with:
       variant: ${{ inputs.prepare_kind }}
   - name: Set overrides
-    shell: bash
+    shell: wrap-shell {0}
     run: |
       echo 'cmake.build_type = "${{ inputs.cmake_build_type }}"' > py-build-cmake.local.toml
       echo 'cmake.options = { ${{ inputs.cmake_opts }} }' >> py-build-cmake.local.toml
-  - shell: bash
+  - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -71,11 +71,11 @@ runs:
       wheel: ${{ steps.buildwheel.outputs.wheel_filename }}
       build_dir: ${{ steps.buildwheel.outputs.build_dir }}
   - name: Find wheel
-    shell: bash
+    shell: wrap-shell {0}
     id: find
     run: |
       echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
-  - shell: bash
+  - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -90,7 +90,7 @@ runs:
       python: ${{ inputs.pyinstaller_python && inputs.pyinstaller_python || inputs.python }}
       wheel: ${{ steps.find.outputs.name }}
       appbundle: ${{ inputs.appbundle }}
-  - shell: bash
+  - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -105,7 +105,7 @@ runs:
       input_path: ${{ steps.cwd.outputs.cwd }}/distribution/pyinstaller/dist/shoopdaloop${{ inputs.appbundle && '.app' || '' }}
       package_kind: ${{ inputs.package_kind }}
       upload_name: package_${{ inputs.name }}
-  - shell: bash
+  - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -137,7 +137,7 @@ runs:
       name: appbundle_${{ inputs.name }}
       path: ${{ steps.pyinstaller.outputs.distribution }}
   - name: Save build infor for coverage analyis
-    shell: bash
+    shell: wrap-shell {0}
     if: ${{ inputs.coverage }}
     run: |
       echo "$(realpath build/cp*/)" | tee ori_build_dir.txt

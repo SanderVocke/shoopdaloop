@@ -10,6 +10,6 @@ runs:
   using: "composite"
   steps:
   - name: run
-    shell: bash
+    shell: wrap-shell {0}
     run: |
       ${{ inputs.python }} -m pipx install --force qoverage

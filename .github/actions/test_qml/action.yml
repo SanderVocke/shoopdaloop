@@ -29,13 +29,13 @@ runs:
   using: "composite"
   steps:
   - name: prepare
-    shell: bash
+    shell: wrap-shell {0}
     run: |
       mkdir -p reports
       echo "results_xml=reports/qml_test_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
 
   - name: QML test (${{ inputs.variant_name }})
-    shell: bash
+    shell: wrap-shell {0}
     run: >
       ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0
       QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}
@@ -47,7 +47,7 @@ runs:
       2>&1 | tee ${{ inputs.tee_all_output_to }}
   
   - name: Report results filename
-    shell: bash
+    shell: wrap-shell {0}
     if: success() || failure()
     run: |
       echo "QML test results file: $(ls -la ${{ env.results_xml }})"
