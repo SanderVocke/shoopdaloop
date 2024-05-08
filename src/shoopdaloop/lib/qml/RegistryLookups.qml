@@ -3,14 +3,14 @@ import QtQuick.Controls 6.6
 
 Item {
     property var registry
-    property list<string> keys : []
+    property var keys : []
 
     // Only found objects
-    property list<var> objects : []
+    property var objects : []
 
     // This list matches the keys list in shape, with
     // non-found objects set to null.
-    property list<var> objects_exact : keys.map(() => null)
+    property var objects_exact : keys.map(() => null)
 
     // If true, the objects list will only contain found objects.
     // If false, the shape of the objects list will match the shape

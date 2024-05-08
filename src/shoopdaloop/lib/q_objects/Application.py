@@ -64,7 +64,7 @@ class Application(ShoopQApplication):
             mode = QQmlDebuggingEnabler.StartMode.WaitForClient if qml_debug_wait else QQmlDebuggingEnabler.StartMode.DoNotWaitForClient
             self.logger.info(lambda: "Enabling QML debugging on port {}. Wait on connection: {}.".format(qml_debug_port, qml_debug_wait))
             dbg = QQmlDebuggingEnabler(True)
-            QQmlDebuggingEnabler.startTcpDebugServer(qml_debug_port)
+            QQmlDebuggingEnabler.startTcpDebugServer(qml_debug_port, mode)
 
         register_shoopdaloop_qml_classes()
         self.global_args = global_args

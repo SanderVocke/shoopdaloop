@@ -58,10 +58,12 @@ class Port(FindParentBackend):
         return self._name_hint if self._name_hint != None else ''
     @name_hint.setter
     def name_hint(self, n):
-        if n != self._name_hint:
+        if n != self._name_hint and n != '':
             if self._name_hint != None:
                 raise Exception('Port name hint may only be set once.')
+            self.logger.debug(lambda: f'name_hint -> {n}')
             self._name_hint = n
+            self.nameHintChanged.emit(n)
             self.maybe_initialize()
     
     # input connectability

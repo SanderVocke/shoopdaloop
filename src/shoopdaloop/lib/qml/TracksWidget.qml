@@ -22,7 +22,7 @@ ScrollView {
     property bool loaded : false
     property int n_loaded : 0
 
-    property list<var> tracks : []
+    property var tracks : []
     property var track_initial_descriptors : []
 
     onTracksChanged: {

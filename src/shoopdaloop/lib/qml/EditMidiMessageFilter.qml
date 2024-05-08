@@ -12,7 +12,7 @@ Column {
     id: root
     width: parent.width
 
-    property list<var> filters: create_default_filters(MidiControl.UiMessageFilterKind.NoteOn)
+    property var filters: create_default_filters(MidiControl.UiMessageFilterKind.NoteOn)
     property var filters_descriptor: MidiControl.parse_midi_filters(filters)
 
     property PythonLogger logger: PythonLogger { name: 'Frontend.Qml.EditMidiMessageFilter'}
@@ -400,7 +400,7 @@ Column {
     component EditAdvancedFilter: Row {
         id: edit_filter
         spacing: 5
-        property list<int> filter: [ 0, 0xF0, Midi.NoteOn ]
+        property var filter: [ 0, 0xF0, Midi.NoteOn ]
 
         function update_filter(new_filter) {
             filter = new_filter
