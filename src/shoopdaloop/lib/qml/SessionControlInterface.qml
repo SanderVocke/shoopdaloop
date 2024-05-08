@@ -19,10 +19,25 @@ LuaControlInterface {
         var rval = []
         if (loop_selector.length == 0) {
             rval = []
-        } else if (Array.isArray(loop_selector)) {
+        } else if (typeof loop_selector == 'function') {
+            // Form callback:  (loop) => true/false
+            for(var t=0; t<session.main_tracks.length; t++) {
+                // Track loops
+                let track = session.main_tracks[t]
+                for(var l=0; l<track.loops.length; l++) {
+                    let loop = track.loops[l]
+                    if(loop_selector(loop)) { rval.push(loop) }
+                }
+            }
+            // Sync track loops
+            for(var l=0; l<session.sync_track.loops.length; l++) {
+                let loop = session.sync_track.loops[l]
+                if(loop_selector(loop)) { rval.push(loop) }
+            }
+        } else if (loop_selector.length !== undefined) {
             if (loop_selector.length == 0) { rval = [] }
             else {
-                if (Array.isArray(loop_selector[0])) {
+                if (loop_selector[0] && loop_selector[0].length !== undefined) {
                     // form [[x, y], [x, y], ...]
                     rval = loop_selector.map((coords) => {
                         if (coords[0] >= 0 && coords[0] < session.main_tracks.length &&
@@ -49,21 +64,6 @@ LuaControlInterface {
                     logger.warning(() => (`Invalid loop selector: ${JSON.stringify(loop_selector)}`))        
                     rval = []
                 }
-            }
-        } else {
-            // Form callback:  (loop) => true/false
-            for(var t=0; t<session.main_tracks.length; t++) {
-                // Track loops
-                let track = session.main_tracks[t]
-                for(var l=0; l<track.loops.length; l++) {
-                    let loop = track.loops[l]
-                    if(loop_selector(loop)) { rval.push(loop) }
-                }
-            }
-            // Sync track loops
-            for(var l=0; l<session.sync_track.loops.length; l++) {
-                let loop = session.sync_track.loops[l]
-                if(loop_selector(loop)) { rval.push(loop) }
             }
         }
         logger.debug(() => (`Selected loops for selector ${JSON.stringify(loop_selector)}: ${JSON.stringify(rval.map(l => l ? l.obj_id : null))}.`))

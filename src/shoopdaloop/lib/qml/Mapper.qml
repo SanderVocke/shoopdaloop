@@ -10,7 +10,7 @@ import QtQuick.Controls 6.6
 //   re-ordered.
 Item {
     id: root
-    property var model : []
+    property list<var> model : []
     default property Component delegate : Item {}
 
     property var unsorted_instances : []
