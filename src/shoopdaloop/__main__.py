@@ -33,10 +33,10 @@ def main():
         )
         parser.add_argument('session_filename', type=str, default=None, nargs='?', help='(optional) Load a session from a file upon startup.')
         parser.add_argument('-i', '--info', action='store_true', help='Show information about the ShoopDaLoop installation.')
-        parser.add_argument('-b', '--backend', type=str, default='jack', help='Choose an audio backend to use. Available backends (default = jack): {}'.format(', '.join([b.name.lower() for b in AudioDriverType])))
+        parser.add_argument('-b', '--backend', type=str, default='dummy', help='Choose an audio backend to use. Available backends (default = jack): {}'.format(', '.join([b.name.lower() for b in AudioDriverType])))
 
         dev_group = parser.add_argument_group('Developer options')
-        dev_group.add_argument('-m', '--main', type=str, default='shoopdaloop_main', help='Choose a specific app main window to open. Any choice other than the default is usually for debugging. Available windows: {}'.format(', '.join(mains)))
+        dev_group.add_argument('-m', '--main', type=str, default='tracks', help='Choose a specific app main window to open. Any choice other than the default is usually for debugging. Available windows: {}'.format(', '.join(mains)))
         dev_group.add_argument('-d', '--qml-debug', metavar='PORT', type=int, help='Start QML debugging on PORT')
         dev_group.add_argument('-w', '--debug-wait', action='store_true', help='With QML debugging enabled, will wait until debugger connects.')
         dev_group.add_argument('-e', '--developer', action='store_true', help='Enable developer functionality in the UI.')

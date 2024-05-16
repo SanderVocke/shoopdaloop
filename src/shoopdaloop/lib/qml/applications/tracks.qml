@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 
 import ".."
 import ShoopConstants
+import "../../generate_session.js" as GenerateSession
 
 ApplicationWindow {
     id: root
@@ -23,19 +24,16 @@ ApplicationWindow {
         id: registries
         anchors.fill:parent
 
-        Backend {
-            id: backend
-            update_interval_ms: 30
-            client_name_hint: 'ShoopDaLoop_Tracks'
-            backend_type: ShoopConstants.AudioDriverType.Jack
-
-            anchors.fill: parent
-
             TracksWidget {
                 anchors.fill: parent
 
-                initial_track_descriptors: []
+                initial_track_descriptors: [
+                    GenerateSession.generate_default_track('a', 4, 'a', false, 'a'),
+                    GenerateSession.generate_default_track('b', 4, 'b', false, 'b'),
+                    GenerateSession.generate_default_track('c', 4, 'c', false, 'c')
+                ]
+
+                onLoadedChanged: Qt.quit()
             }
-        }
     }
 }
