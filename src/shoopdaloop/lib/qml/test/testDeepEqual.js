@@ -1,3 +1,5 @@
+.import "../../type_checks.js" as TypeChecks
+
 function testDeepEqual(object1, object2, log_cb=console.log, crumbs=[]) {
     const keys1 = Object.keys(object1);
     const keys2 = Object.keys(object2);
@@ -8,7 +10,7 @@ function testDeepEqual(object1, object2, log_cb=console.log, crumbs=[]) {
     for (const key of keys1) {
       const val1 = object1[key];
       const val2 = object2[key];
-      const areObjects = isObject(val1) && isObject(val2);
+      const areObjects = is_object(val1) && is_object(val2);
       if(areObjects && !testDeepEqual(val1, val2, log_cb, crumbs.concat([key]))) { return false; }
       else if(!areObjects && val1 !== val2) {
         log_cb(`At ${crumbs.concat([key])}: value unequal (${JSON.stringify(val1, null, 2)} vs ${JSON.stringify(val2, null, 2)})\n`)
@@ -19,7 +21,7 @@ function testDeepEqual(object1, object2, log_cb=console.log, crumbs=[]) {
 }
 
 function testArraysCompare(a, b, compare=(a, b) => a == b, log_cb=console.log, crumbs=[]) {
-  if (!Array.isArray(a) || !Array.isArray(b)) { return a == b; }
+  if (!TypeChecks.is_array(a) || !TypeChecks.is_array(b)) { return a == b; }
   if (a.length != b.length) {
     log_cb(`At ${crumbs}: # of keys unequal (${JSON.stringify(a, null, 2)} vs ${JSON.stringify(b, null, 2)} - lengths ${a.length} vs ${b.length})\n`)
     return false;
@@ -27,7 +29,7 @@ function testArraysCompare(a, b, compare=(a, b) => a == b, log_cb=console.log, c
   var result = true;
   a.forEach((elem, idx) => {
     const other = b[idx];
-    const areArrays = Array.isArray(elem) && Array.isArray(other);
+    const areArrays = TypeChecks.is_array(elem) && TypeChecks.is_array(other);
     if(areArrays && !testArraysCompare(elem, other, compare, log_cb, crumbs.concat([idx]))) { result = false; }
     else if(!areArrays && !compare(elem, other)) {
       log_cb(`At ${crumbs.concat([idx])}: value compare failed (${elem} vs ${other})\n`)
@@ -35,8 +37,4 @@ function testArraysCompare(a, b, compare=(a, b) => a == b, log_cb=console.log, c
     }
   })
   return result;
-}
-
-function isObject(object) {
-  return object != null && typeof object === 'object';
 }
