@@ -10,7 +10,7 @@ function testDeepEqual(object1, object2, log_cb=console.log, crumbs=[]) {
     for (const key of keys1) {
       const val1 = object1[key];
       const val2 = object2[key];
-      const areObjects = is_object(val1) && is_object(val2);
+      const areObjects = TypeChecks.is_object(val1) && TypeChecks.is_object(val2);
       if(areObjects && !testDeepEqual(val1, val2, log_cb, crumbs.concat([key]))) { return false; }
       else if(!areObjects && val1 !== val2) {
         log_cb(`At ${crumbs.concat([key])}: value unequal (${JSON.stringify(val1, null, 2)} vs ${JSON.stringify(val2, null, 2)})\n`)
@@ -21,7 +21,7 @@ function testDeepEqual(object1, object2, log_cb=console.log, crumbs=[]) {
 }
 
 function testArraysCompare(a, b, compare=(a, b) => a == b, log_cb=console.log, crumbs=[]) {
-  if (!TypeChecks.is_array(a) || !TypeChecks.is_array(b)) { return a == b; }
+  if (!TypeChecks.is_array(a) || !TypeChecks.is_array(b)) { throw new Error("testArraysCompare only takes arrays") }
   if (a.length != b.length) {
     log_cb(`At ${crumbs}: # of keys unequal (${JSON.stringify(a, null, 2)} vs ${JSON.stringify(b, null, 2)} - lengths ${a.length} vs ${b.length})\n`)
     return false;

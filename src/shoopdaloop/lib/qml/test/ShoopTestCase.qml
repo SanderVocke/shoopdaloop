@@ -15,7 +15,7 @@ PythonTestCase {
     property var logger : PythonLogger { name: `Frontend.Qml.ShoopTestCase` }
 
     property bool print_error_traces: os_utils.get_env("QMLTEST_NO_ERROR_TRACES") == null
-    
+
     // It seems the built-in test function filter of the QML test runner is not working.
     // Provide a means to only run a subset of tests.
     property var testfn_filter: null
@@ -92,7 +92,7 @@ PythonTestCase {
             return `${failstring}\nBacktrace:\n${trace}`
         } else {
             return failstring
-        }        
+        }
     }
 
     function verify_throw(fn) {
@@ -142,7 +142,7 @@ PythonTestCase {
             }
         }
         result = compare(a,b);
-        
+
         if (!result) {
             logger.error(() => (format_error(failstring)))
         }
@@ -151,7 +151,7 @@ PythonTestCase {
 
     function verify_approx(a, b, do_print=true) {
         var result;
-        function compare (a,b) { return (a == b || (Math.abs(a - b) < Math.max(Math.abs(a),Math.abs(b)) / 1000.0)) }
+        function compare (a,b) { return (a == b || (Math.abs(a - b) < Math.max(Math.abs(a),Math.abs(b)) / 10000.0)) }
         let failstring = `verify_approx failed`
         if (do_print) {
             failstring += ` (a = ${a}, b = ${b})`
@@ -298,7 +298,7 @@ PythonTestCase {
             shoop_test_runner.testcase_register_fn(root, key)
         }
 
-        for (var key in test_fns) {        
+        for (var key in test_fns) {
             let fullname = root.name + "::" + key
             var status = 'skip'
             try {
