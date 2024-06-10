@@ -89,7 +89,10 @@ LuaControlInterface {
                 return null
             }
         }
-        if (Array.isArray(track_selector)) {
+        if (typeof track_selector == 'function') {
+            // Form [track_select_fn]
+            rval = session.main_tracks.filter((t) => track_selector(t))
+        } else if (track_selector.length !== undefined) {
             if (track_selector.length == 0) { rval = [] }
             else {
                 // Form [track_idx1, track_idx2, ...]
@@ -99,10 +102,7 @@ LuaControlInterface {
             }
         } else if (Number.isInteger(track_selector)) {
             return select_track(track_selector)
-        } else {
-            // Form [track_select_fn]
-            rval = session.main_tracks.filter((t) => track_selector(t))
-        }
+        } 
         logger.debug(() => (`Selected ${rval.length} target track(s).`))
         return rval
     }
