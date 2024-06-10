@@ -36,12 +36,12 @@ runs:
 
   - name: QML test (${{ inputs.variant_name }})
     shell: wrap-shell {0}
-    timeout-minutes: 15
     run: >
       ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0
       QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}
       QT_ASSUME_STDERR_HAS_CONSOLE=1
       ${{ inputs.run_cmd_prefix }}
+      timeout 15m
       ${{ inputs.shoopdaloop_command }} --qml-self-test
       --
       --junit ${{ env.results_xml }}
