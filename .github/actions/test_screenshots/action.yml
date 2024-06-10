@@ -29,9 +29,12 @@ runs:
   steps:
   - name: Save screenshots
     shell: wrap-shell {0}
-    timeout-minutes: 15
-    run: |
-        LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }} SHOOP_LOG=Frontend.TestScreenGrabber=debug ${{ inputs.run_cmd_prefix }} ${{ inputs.shoopdaloop_command }} -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
+    run: >
+        LIBGL_ALWAYS_SOFTWARE=1
+        QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}
+        SHOOP_LOG=Frontend.TestScreenGrabber=debug
+        ${{ inputs.run_cmd_prefix }}
+        ${{ inputs.shoopdaloop_command }} -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
   
   - name: Upload screenshots
     uses: actions/upload-artifact@v4

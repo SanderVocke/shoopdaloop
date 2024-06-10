@@ -19,9 +19,9 @@ dependencies = [
   "numpy==1.26.4",
   "pyjacklib==0.1.1",
   "pyside6-essentials==6.7.1",
-  "lupa==2.1",
+  "lupa==2.2",
   "appdirs==1.4.4",
-  "sounddevice==0.4.6",
+  "sounddevice==0.4.7",
   "pywin32 ; platform_system == \"Windows\"",
 ]
 
