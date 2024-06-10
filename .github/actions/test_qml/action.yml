@@ -41,7 +41,6 @@ runs:
       QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}
       QT_ASSUME_STDERR_HAS_CONSOLE=1
       ${{ inputs.run_cmd_prefix }}
-      timeout 15m
       ${{ inputs.shoopdaloop_command }} --qml-self-test
       --
       --junit ${{ env.results_xml }}

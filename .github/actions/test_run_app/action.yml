@@ -31,7 +31,6 @@ runs:
         ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0
         QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}
         ${{ inputs.run_cmd_prefix }}
-        timeout 15m
         ${{ inputs.shoopdaloop_command }} --quit-after=40 -b dummy --monkey-tester
 
 
