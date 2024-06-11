@@ -9,6 +9,7 @@ from PySide6.QtQml import QJSValue
 class Logger:
     def __init__(self, module_name):
         self._name = module_name
+        print("Attempt get logger python: name is " + self._name)
         self._backend_handle = get_logger(self._name)
 
     def should_trace(self):
