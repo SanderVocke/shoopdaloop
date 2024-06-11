@@ -547,7 +547,7 @@ jobs:
         coverage: ${{ matrix.kind.coverage }}
         python_pip_args: ${{ matrix.kind.python_pip_args }}
         python: ${{ matrix.kind.python }}
-        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
+        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }} "C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\cdb.exe -c 'g;q'"
         python_pytest_args: ${{ matrix.kind.python_pytest_args }}
         qpa_platform: ${{ matrix.kind.qpa_platform }}
         pyinstaller: ${{ matrix.kind.pyinstaller }}
