@@ -1955,6 +1955,8 @@ void destroy_external_port_descriptors(shoop_external_port_descriptors_t *d) {
 
 shoopdaloop_logger_t *get_logger(const char* name) {
   return api_impl<shoopdaloop_logger_t*, log_level_debug_trace>("get_logger", [&]() {
+    std::cout << "namelen: " << strlen (name) << std::endl;
+    std::cout << "Attempt get logger: " << name << std::endl;
     return (shoopdaloop_logger_t*) strdup(name);
   }, nullptr);
 }
