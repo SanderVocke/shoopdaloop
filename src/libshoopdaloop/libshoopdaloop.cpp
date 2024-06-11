@@ -1957,7 +1957,10 @@ shoopdaloop_logger_t *get_logger(const char* name) {
   return api_impl<shoopdaloop_logger_t*, log_level_debug_trace>("get_logger", [&]() {
     std::cout << "namelen: " << strlen (name) << std::endl;
     std::cout << "Attempt get logger: " << name << std::endl;
-    return (shoopdaloop_logger_t*) strdup(name);
+    char* name2 = (char*) malloc(strlen(name) + 1);
+    memcpy(name2, name, strlen(name) + 1);
+    std::cout << "Result: " << name2 << std::endl;
+    return (shoopdaloop_logger_t*) name2;
   }, nullptr);
 }
 
