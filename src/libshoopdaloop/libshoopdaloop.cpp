@@ -48,9 +48,12 @@ using namespace logging;
 using namespace shoop_constants;
 using namespace shoop_types;
 
-#ifdef _strdup
-  #define strdup _strdup
-#endif
+char* duplicate_string(const char* string) {
+  if (!string) { return nullptr; }
+  auto rval = (char*) malloc(strlen(string) + 1);
+  strcpy(rval, string);
+  return rval;
+}
 
 // GLOBALS
 namespace {
@@ -317,7 +320,7 @@ shoop_audio_driver_state_t *get_audio_driver_state(shoop_audio_driver_t *driver)
       return nullptr;
     }
     rval->maybe_driver_handle = d->get_maybe_client_handle();
-    rval->maybe_instance_name = d->get_client_name() ? strdup(d->get_client_name()) : "(unknown)";
+    rval->maybe_instance_name = d->get_client_name() ? duplicate_string(d->get_client_name()) : "(unknown)";
     rval->buffer_size = d->get_buffer_size();
     rval->sample_rate = d->get_sample_rate();
     rval->dsp_load_percent = d->get_dsp_load();
@@ -381,7 +384,7 @@ shoop_external_port_descriptors_t *find_external_ports(
     rval->n_ports = ports.size();
     rval->ports = (shoop_external_port_descriptor_t*) malloc(sizeof(shoop_external_port_descriptor_t) * ports.size());
     for(size_t i=0; i<ports.size(); i++) {
-      rval->ports[i].name = strdup(ports[i].name.c_str());
+      rval->ports[i].name = duplicate_string(ports[i].name.c_str());
       rval->ports[i].direction = ports[i].direction;
       rval->ports[i].data_type = ports[i].data_type;
     }
@@ -1038,7 +1041,7 @@ shoop_port_connections_state_t *get_audio_port_connections_state(shoopdaloop_aud
     rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
     uint32_t idx = 0;
     for (auto &pair : connections) {
-        auto name = strdup(pair.first.c_str());
+        auto name = duplicate_string(pair.first.c_str());
         auto connected = pair.second;
         rval->ports[idx].name = name;
         rval->ports[idx].connected = connected;
@@ -1076,7 +1079,7 @@ shoop_port_connections_state_t *get_midi_port_connections_state(shoopdaloop_midi
     rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
     uint32_t idx = 0;
     for (auto &pair : connections) {
-        rval->ports[idx].name = strdup(pair.first.c_str());
+        rval->ports[idx].name = duplicate_string(pair.first.c_str());
         rval->ports[idx].connected = pair.second;
         idx++;
     }
@@ -1095,7 +1098,7 @@ shoop_port_connections_state_t *get_decoupled_midi_port_connections_state(shoopd
     rval->ports = new shoop_port_maybe_connection_t[rval->n_ports];
     uint32_t idx = 0;
     for (auto &pair : connections) {
-        rval->ports[idx].name = strdup(pair.first.c_str());
+        rval->ports[idx].name = duplicate_string(pair.first.c_str());
         rval->ports[idx].connected = pair.second;
         idx++;
     }
@@ -1543,7 +1546,7 @@ shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *po
       r->gain = p->get_gain();
       r->muted = p->get_muted();
       r->passthrough_muted = !pp->get_passthrough_enabled();
-      r->name = strdup(p->name());
+      r->name = duplicate_string(p->name());
       r->ringbuffer_n_samples = pp->get_port().get_ringbuffer_n_samples();
       p->reset_input_peak();
       p->reset_output_peak();
@@ -1568,7 +1571,7 @@ shoop_midi_port_state_info_t *get_midi_port_state(shoopdaloop_midi_port_t *port)
       r->n_output_notes_active = p->get_n_output_notes_active();
       r->muted = p->get_muted();
       r->passthrough_muted = !pp->get_passthrough_enabled();
-      r->name = strdup(p->name());
+      r->name = duplicate_string(p->name());
       r->ringbuffer_n_samples = pp->get_port().get_ringbuffer_n_samples();
       p->reset_n_input_events();
       p->reset_n_output_events();

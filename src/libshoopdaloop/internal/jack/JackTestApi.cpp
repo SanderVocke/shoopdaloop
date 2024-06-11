@@ -3,6 +3,17 @@
 #include <jack/types.h>
 #include <vector>
 
+namespace {
+
+char* duplicate_string(const char* string) {
+  if (!string) { return nullptr; }
+  auto rval = (char*) malloc(strlen(string) + 1);
+  strcpy(rval, string);
+  return rval;
+}
+
+}
+
 namespace jacktestapi_globals {
     std::map<std::string, JackTestApi::Client> clients;
     JackPortRegistrationCallback port_registration_callback = nullptr;
@@ -57,7 +68,7 @@ const char** JackTestApi::port_get_connections(const jack_port_t* port) {
     auto rval = new const char*[conns.size() + 1];
     uint32_t i=0;
     for (auto it = conns.begin(); it != conns.end(); it++, i++) {
-        rval[i] = strdup(it->c_str());
+        rval[i] = duplicate_string(it->c_str());
     }
     rval[conns.size()] = nullptr;
     logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "Get all connections for port {} -> {} connections", (void*)port, conns.size());
@@ -106,7 +117,7 @@ const char** JackTestApi::get_ports(jack_client_t * client,
     for (uint32_t i=0; i<ports.size(); i++) {
         auto &c = ports[i]->client;
         auto name = c.name + ":" + ports[i]->name;
-        port_names[i] = strdup(name.c_str());
+        port_names[i] = duplicate_string(name.c_str());
         logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "Get ports: {} -> {}", i, port_names[i]);
     }
     port_names[ports.size()] = nullptr;
@@ -168,13 +179,13 @@ const char* JackTestApi::port_type(const jack_port_t* port) {
 }
 
 const char* JackTestApi::port_name(const jack_port_t* port) {
-    auto rval = strdup(Port::from_ptr((jack_port_t*) port).name.c_str());
+    auto rval = duplicate_string(Port::from_ptr((jack_port_t*) port).name.c_str());
     logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "Get port name {} -> {}", (void*)port, rval);
     return rval;
 }
 
 const char* JackTestApi::get_client_name(jack_client_t *client) {
-    auto rval = strdup(Client::from_ptr(client).name.c_str());
+    auto rval = duplicate_string(Client::from_ptr(client).name.c_str());
     logging::log<"Backend.JackTestApi", log_level_debug_trace>(std::nullopt, std::nullopt, "Get client name {} -> {}", (void*)client, rval);
     return rval;
 }
