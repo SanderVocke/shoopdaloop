@@ -154,12 +154,12 @@ runs:
       echo "install_dir=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS" | tee -a $GITHUB_ENV
       echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
 
-  # Final step: gather env to outputs
+  # Final step: gather env to outputs (note: add CDB)
   - name: Get command
     id: get_cmd
     shell: wrap-shell {0}
     run: |
-      echo "cmd=${{ env.cmd }}" | tee -a $GITHUB_OUTPUT
+      echo "cmd=\"C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\cdb.exe -c 'g;q'\" ${{ env.cmd }}" | tee -a $GITHUB_OUTPUT
       echo "install_dir=${{ env.install_dir }}" | tee -a $GITHUB_OUTPUT
       echo "pytest_dir=${{ env.pytest_dir }}" | tee -a $GITHUB_OUTPUT
       echo "test_runner=${{ env.test_runner }}" | tee -a $GITHUB_OUTPUT
