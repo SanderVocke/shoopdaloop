@@ -159,7 +159,7 @@ runs:
     id: get_cmd
     shell: wrap-shell {0}
     run: |
-      echo "cmd=\"C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\cdb.exe\" -c 'g;q' ${{ env.cmd }}" | tee -a $GITHUB_OUTPUT
+      echo "cmd=\"C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\cdb.exe\" -xe av -c 'g;k;q' ${{ env.cmd }}" | tee -a $GITHUB_OUTPUT
       echo "install_dir=${{ env.install_dir }}" | tee -a $GITHUB_OUTPUT
       echo "pytest_dir=${{ env.pytest_dir }}" | tee -a $GITHUB_OUTPUT
       echo "test_runner=${{ env.test_runner }}" | tee -a $GITHUB_OUTPUT
