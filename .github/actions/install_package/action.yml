@@ -52,7 +52,7 @@ runs:
     if: ${{ steps.get_type.outputs.type == 'exe' }}
     shell: wrap-shell {0}
     run: |
-      ${{ inputs.package }} /CURRENTUSER /VERYSILENT /LOG="install.log"
+      ${{ inputs.package }} /CURRENTUSER /VERYSILENT /LOG="install.log" & tail -f install.log
       cat install.log
       echo "cmd=C:\\Program Files (x86)\\ShoopDaLoop\\shoopdaloop.exe" | tee -a $GITHUB_ENV
       echo "install_dir=C:\\Program Files (x86)\\ShoopDaLoop" | tee -a $GITHUB_ENV
