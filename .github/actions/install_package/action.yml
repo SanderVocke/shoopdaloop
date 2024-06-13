@@ -92,6 +92,7 @@ runs:
       echo "python=$VENV_PYTHON" | tee -a $GITHUB_ENV
   - name: Add coverage command
     if: ${{ steps.get_type.outputs.type == 'whl' && inputs.coverage }}
+    shell: wrap-shell {0}
     run: |
       echo "python=${{ env.python }} -m coverage" | tee -a $GITHUB_ENV
 
