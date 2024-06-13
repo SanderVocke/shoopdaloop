@@ -152,7 +152,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
-      sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
+      sed -r -i 's/test_venv\/.*site-packages\/shoopdaloop/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
   - name: Qoverage - Generate report
     if: ${{ (success() || failure()) && inputs.coverage }}
     uses: ./.github/actions/qoverage_generate_report
