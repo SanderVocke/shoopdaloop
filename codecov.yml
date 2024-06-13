@@ -37,3 +37,7 @@ coverage:
         branches:
           - master
         informational: true
+
+codecov:
+  fixes:
+  - "*site-packages::src" 
