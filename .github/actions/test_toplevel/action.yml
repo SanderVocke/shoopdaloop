@@ -128,7 +128,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
-      sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
+      sed -r -i 's/test_venv\/.*site-packages\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
