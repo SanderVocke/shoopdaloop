@@ -38,6 +38,5 @@ coverage:
           - master
         informational: true
 
-codecov:
-  fixes:
+fixes:
   - "*site-packages::src" 
