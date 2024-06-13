@@ -581,10 +581,22 @@ Item {
 
     // Delete PlaylistElement from the schedule and push
     function delete_elem_and_push(elem) {
-        playlist_elems.forEach(p => {
-            p.forEach(pp => {
+        playlist_elems.forEach((p, idx) => {
+            p.forEach((pp, pidx) => {
+                function block_length(elems) {
+                    return elems.length > 0 ?
+                        Math.max(elems.map(e => e.delay + e.end_iteration - e.start_iteration)) : 0
+                }
+
                 if (pp.includes(elem)) {
-                    pp.splice(pp.findIndex(e => e == elem), 1)
+                    let length_before = block_length(pp)
+                    let index = pp.findIndex(e => e == elem)
+                    pp.splice(index, 1)
+                    let length_after = block_length(pp)
+
+                    if (p.length > (pidx + 1)) {
+                        p[pidx + 1].forEach(e => e.delay += (length_before - length_after))
+                    }
                 }
             })
         })
