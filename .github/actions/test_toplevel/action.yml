@@ -54,6 +54,7 @@ runs:
       package: ${{ steps.find_package.outputs.package }}
       python: ${{ inputs.python }}
       python_pytest_args: ${{ inputs.python_pytest_args }}
+      coverage: ${{ inputs.coverage }}
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
