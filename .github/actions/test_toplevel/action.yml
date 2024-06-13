@@ -128,7 +128,8 @@ runs:
     shell: wrap-shell {0}
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
-      sed -r -i 's/test_venv/\/test_venv/g' coverage_reports/pytest_pycoverage.xml
+      sed -r -i 's/test_venv\//\/test_venv\//g' coverage_reports/pytest_pycoverage.xml
+      sed -r -i 's/test_venv\./\.test_venv\./g' coverage_reports/pytest_pycoverage.xml
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -152,7 +153,8 @@ runs:
     shell: wrap-shell {0}
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
-      sed -r -i 's/test_venv/\/test_venv/g' coverage_reports/qml_pycoverage.xml
+      sed -r -i 's/test_venv\//\/test_venv\//g' coverage_reports/qml_pycoverage.xml
+      sed -r -i 's/test_venv\./\.test_venv\./g' coverage_reports/qml_pycoverage.xml
   - name: Qoverage - Generate report
     if: ${{ (success() || failure()) && inputs.coverage }}
     uses: ./.github/actions/qoverage_generate_report
