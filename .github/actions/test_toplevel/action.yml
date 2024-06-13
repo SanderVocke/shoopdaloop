@@ -148,6 +148,8 @@ runs:
       qt_qpa_platform: ${{ inputs.qpa_platform }}
       macos_rpath_patch: ${{ contains(inputs.name, 'macos') }}
       tee_all_output_to: test-qml-console-output.log
+  - name: Setup tmate session
+    uses: SanderVocke/action-tmate@master
   - name: Generate QML Python coverage report
     if: ${{ (success() || failure()) && inputs.coverage }}
     shell: wrap-shell {0}
