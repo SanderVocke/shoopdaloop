@@ -1,0 +1,19 @@
+﻿2024-06-13 20:32:10.187   Log opened. (Time zone: UTC+02:00)
+2024-06-13 20:32:10.187   Setup version: Inno Setup version 6.3.0
+2024-06-13 20:32:10.187   Original Setup EXE: Z:\home\sander\Downloads\ShoopDaLoop-0.1.0.4e848f15.exe
+2024-06-13 20:32:10.187   Setup command line: /SL5="$20066,51113096,776192,Z:\home\sander\Downloads\ShoopDaLoop-0.1.0.4e848f15.exe" /CURRENTUSER /VERYSILENT /LOG=install.log
+2024-06-13 20:32:10.187   Windows version: 10.0.7601 SP1
+2024-06-13 20:32:10.187   Windows architecture: x64 (64-bit)
+2024-06-13 20:32:10.187   Machine types supported by system: x86 x64
+2024-06-13 20:32:10.187   User privileges: Administrative
+2024-06-13 20:32:10.201   Administrative install mode: No
+2024-06-13 20:32:10.201   Install mode root key: HKEY_CURRENT_USER
+2024-06-13 20:32:10.201   64-bit install mode: No
+2024-06-13 20:32:10.203   Created protected temporary directory: C:\users\sander\Temp\is-J2E93.tmp
+2024-06-13 20:32:10.272   Warning: SHGetKnownFolderPath failed with code 0x80070057
+2024-06-13 20:32:10.275   Exception message:
+2024-06-13 20:32:10.275   Message box (OK):
+                          Internal error: Failed to expand shell folder constant "autopf"
+2024-06-13 20:32:14.890   User chose OK.
+2024-06-13 20:32:14.890   Deinitializing Setup.
+2024-06-13 20:32:14.896   Log closed.
