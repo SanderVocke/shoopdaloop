@@ -48,6 +48,8 @@ runs:
        echo "type=$type" | tee -a $GITHUB_OUTPUT
   
   # Windows (InnoSetup) (no pytest and test_runner included)
+  - name: Setup tmate session
+    uses: SanderVocke/action-tmate@master
   - name: Install InnoSetup installer
     if: ${{ steps.get_type.outputs.type == 'exe' }}
     shell: wrap-shell {0}
