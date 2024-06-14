@@ -56,8 +56,9 @@ runs:
       powershell -Command "$WINDOWS_SETUP_PATH /VERYSILENT /CURRENTUSER /LOG=$INSTALL_LOG"
       cat install.log
       SHOOPDALOOP_EXE=$(cygpath -u $(cat install.log | grep -E "Dest filename:.*shoopdaloop.exe" | sed -r 's/.*Dest filename:[ ]*(.*shoopdaloop\.exe).*/\1/g'))
-      echo "cmd=$SHOOPDALOOP_EXE" | tee -a $GITHUB_ENV
-      echo "install_dir=$(dirname $SHOOPDALOOP_EXE)" | tee -a $GITHUB_ENV
+      echo "ShoopDaLoop executable found at: $SHOOPDALOOP_EXE"
+      echo "cmd=\"$SHOOPDALOOP_EXE\"" | tee -a $GITHUB_ENV
+      echo "install_dir=$(dirname \"$SHOOPDALOOP_EXE\")" | tee -a $GITHUB_ENV
       echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
 
   # Python wheel
