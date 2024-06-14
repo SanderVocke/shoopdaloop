@@ -59,8 +59,8 @@ runs:
       SHOOPDALOOP_DIR=$(dirname "$SHOOPDALOOP_EXE")
       echo "ShoopDaLoop executable found at: $SHOOPDALOOP_EXE"
       echo "Installed at: $SHOOPDALOOP_DIR"
-      echo "cmd=\"$SHOOPDALOOP_EXE\"" | tee -a $GITHUB_ENV
-      echo "install_dir=\"$SHOOPDALOOP_DIR\"" | tee -a $GITHUB_ENV
+      echo "cmd=\\\"$SHOOPDALOOP_EXE\\\"" | tee -a $GITHUB_ENV
+      echo "install_dir=\\\"$SHOOPDALOOP_DIR\\\"" | tee -a $GITHUB_ENV
       echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
 
   # Python wheel
