@@ -53,7 +53,7 @@ runs:
     run: |
       WINDOWS_SETUP_PATH=$(cygpath -w $(realpath ${{ inputs.package }}))
       INSTALL_LOG=$(cygpath -w $(pwd)/install.log)
-      powershell -Command "$WINDOWS_SETUP_PATH /VERYSILENT /CURRENTUSER /LOG=$INSTALL_LOG"
+      powershell -Command "$WINDOWS_SETUP_PATH /VERYSILENT /CURRENTUSER /LOG=$INSTALL_LOG /DIR=\"$(cygpath -w $(pwd)/installed)\""
       cat install.log
       SHOOPDALOOP_EXE=$(cygpath -u "$(cat install.log | grep -E "Dest filename:.*shoopdaloop.exe" | sed -r 's/.*Dest filename:[ ]*(.*shoopdaloop\.exe).*/\1/g')")
       SHOOPDALOOP_DIR=$(dirname "$SHOOPDALOOP_EXE")
