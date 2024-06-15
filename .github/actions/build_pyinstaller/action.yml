@@ -22,13 +22,14 @@ outputs:
 runs:
   using: "composite"
   steps:
-  - name: PyInstaller
+  - name: Install wheel and PyInstaller, sanity check run
     shell: wrap-shell {0}
     run: |
       export PIP="${{ inputs.python }} -m pip"
       $PIP install --upgrade pip
       $PIP install pyinstaller
       $PIP install ${{ inputs.wheel }}
+      ${{ inputs.python }} -m shoopdaloop --info
   
   - name: Find PyInstaller
     shell: wrap-shell {0}
