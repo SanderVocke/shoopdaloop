@@ -552,9 +552,6 @@ jobs:
         qpa_platform: ${{ matrix.kind.qpa_platform }}
         pyinstaller: ${{ matrix.kind.pyinstaller }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
-    - name: Setup tmate session
-      if: failure()
-      uses: SanderVocke/action-tmate@master
 
 
 
