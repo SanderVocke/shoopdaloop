@@ -48,6 +48,7 @@ runs:
     run: |
       cd distribution/pyinstaller
       ${{ steps.find.outputs.pyinstaller }} shoopdaloop.spec
+      dist/shoopdaloop.exe --info
 
   - name: Find distribution
     shell: wrap-shell {0}
