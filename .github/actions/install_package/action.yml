@@ -52,13 +52,14 @@ runs:
     shell: wrap-shell {0}
     run: |
       WINDOWS_SETUP_PATH=$(cygpath -w $(realpath ${{ inputs.package }}))
+      BASH_INSTALL_LOG=$(pwd)/install.log
+      rm -f "$BASH_INSTALL_LOG"
       INSTALL_LOG=$(cygpath -w $(pwd)/install.log)
       INSTALL_CMD="$WINDOWS_SETUP_PATH /VERYSILENT /CURRENTUSER /LOG=$INSTALL_LOG /DIR=\"$(cygpath -w $(pwd)/installed)\""
       echo "PowerShell installation command: $INSTALL_CMD"
-      powershell -Command "Get-WmiObject -Class Win32_Product"
       powershell -Command "echo \"Run in powershell: $INSTALL_CMD\" ; $INSTALL_CMD"
-      cat install.log
-      SHOOPDALOOP_EXE=$(cygpath -u "$(cat install.log | grep -E "Dest filename:.*shoopdaloop.exe" | sed -r 's/.*Dest filename:[ ]*(.*shoopdaloop\.exe).*/\1/g')")
+      cat $BASH_INSTALL_LOG
+      SHOOPDALOOP_EXE=$(cygpath -u "$(cat $BASH_INSTALL_LOG | grep -E "Dest filename:.*shoopdaloop.exe" | sed -r 's/.*Dest filename:[ ]*(.*shoopdaloop\.exe).*/\1/g')")
       SHOOPDALOOP_DIR=$(dirname "$SHOOPDALOOP_EXE")
       echo "ShoopDaLoop executable installed to: $SHOOPDALOOP_EXE"
       echo "Installed at: $SHOOPDALOOP_DIR"
