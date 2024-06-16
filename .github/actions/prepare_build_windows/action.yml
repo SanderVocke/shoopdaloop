@@ -8,7 +8,6 @@ runs:
   #   with:
   #     python-version: '3.9'
   - name: Setup tmate session
-    if: failure()
     uses: SanderVocke/action-tmate@master
   - name: Report python version
     shell: wrap-shell {0}

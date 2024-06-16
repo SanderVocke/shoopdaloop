@@ -43,7 +43,6 @@ runs:
       echo "pyinstaller=$PYINSTALLER" | tee -a $GITHUB_OUTPUT
   
   - name: Setup tmate session
-    if: failure()
     uses: SanderVocke/action-tmate@master
 
   - name: Build
