@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.25)
 set(CMAKE_OSX_ARCHITECTURES "${ARCHS_STANDARD}") # Enables a universal build on MacOS where possible
 project(shoopdaloop)
 
