@@ -153,7 +153,7 @@ runs:
     if: ${{ inputs.prepare_kind == 'windows' }}
     uses: actions/upload-artifact@v4
     with:
-      name: windows_pdb_files
+      name: pdb_${{ inputs.name }
       path: |
         ./**/*.pdb
         ./**/*.PDB
