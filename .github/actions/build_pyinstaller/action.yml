@@ -47,6 +47,10 @@ runs:
     run: |
       cd distribution/pyinstaller
       ${{ steps.find.outputs.pyinstaller }} shoopdaloop.spec
+      for f in $(find . -name "*.toc"); do
+         echo "Contents of $f:"
+         cat $f
+      done
 
   - name: Find distribution
     shell: wrap-shell {0}
