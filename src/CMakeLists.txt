@@ -35,7 +35,7 @@ if (WIN32)
     add_link_options("/OPT:ICF")
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-g -gcodeview)
-    add_link_options(-fuse-ld=lld -Wl,--pdb=)
+    add_link_options(-fuse-ld=lld -g -Wl,--pdb=)
   endif()
 endif()
 
