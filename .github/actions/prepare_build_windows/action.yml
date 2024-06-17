@@ -19,7 +19,7 @@ runs:
       cd PCbuild
       powershell -Command ".\get_externals.bat"
       powershell -Command ".\build.bat -e -p x64"
-      ./amd64/python.exe -m venv /custom_python
+      ./amd64/python.exe -m venv ${{ github.workspace }}/custom_python
   - name: Report python version
     shell: wrap-shell {0}
     run: |

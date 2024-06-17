@@ -447,8 +447,8 @@ jobs:
         kind:
           - name: windows_release
             os: windows-2022
-            python: /custom_python/Scripts/python.exe
-            pip: /custom_python/Scripts/python.exe -m pip
+            python: "$GITHUB_WORKSPACE/custom_python/Scripts/python.exe"
+            pip: "$GITHUB_WORKSPACE/custom_python/Scripts/python.exe -m pip"
             container_image: null
             prepare: 'windows'
             build_type: 'Release'
