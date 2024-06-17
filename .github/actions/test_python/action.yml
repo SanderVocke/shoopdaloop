@@ -37,4 +37,5 @@ runs:
       report_paths: ${{ env.results_xml }}
       include_passed: false
       check_name: 'python test (${{ inputs.variant_name }})'
+      annotate_only: true
 
