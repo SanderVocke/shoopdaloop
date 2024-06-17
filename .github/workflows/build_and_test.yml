@@ -62,7 +62,7 @@ jobs:
       uses: sandervocke/setup-shell-wrapper@v1
     - name: Use regular shell
       shell: bash
-      run: echo "WRAP_SHELL=bash" >> $GITHUB_ENV
+      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
@@ -151,7 +151,7 @@ jobs:
       uses: sandervocke/setup-shell-wrapper@v1
     - name: Use regular shell
       shell: bash
-      run: echo "WRAP_SHELL=bash" >> $GITHUB_ENV
+      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
     - name: Test
       uses: ./.github/actions/test_toplevel
       with:
@@ -319,7 +319,7 @@ jobs:
       uses: sandervocke/setup-shell-wrapper@v1
     - name: Use regular shell
       shell: bash
-      run: echo "WRAP_SHELL=bash" >> $GITHUB_ENV
+      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
@@ -394,7 +394,7 @@ jobs:
       uses: sandervocke/setup-shell-wrapper@v1
     - name: Use regular shell
       shell: bash
-      run: echo "WRAP_SHELL=bash" >> $GITHUB_ENV
+      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
     - name: Test
       uses: ./.github/actions/test_toplevel
       with:
@@ -469,7 +469,7 @@ jobs:
       uses: sandervocke/setup-shell-wrapper@v1
     - name: Use regular shell
       shell: bash
-      run: echo "WRAP_SHELL=bash" >> $GITHUB_ENV
+      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
@@ -528,7 +528,7 @@ jobs:
       uses: sandervocke/setup-shell-wrapper@v1
     - name: Use regular shell
       shell: bash
-      run: echo "WRAP_SHELL=bash" >> $GITHUB_ENV
+      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
     - name: Test
       uses: ./.github/actions/test_toplevel
       with:
@@ -586,7 +586,7 @@ jobs:
       uses: sandervocke/setup-shell-wrapper@v1
     - name: Use regular shell
       shell: bash
-      run: echo "WRAP_SHELL=bash" >> $GITHUB_ENV
+      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
