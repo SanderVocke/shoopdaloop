@@ -27,14 +27,15 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAK
 
 # Ensure PDB file generation
 if (WIN32)
-  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase")
   set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pdb")
   if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    add_compile_options("/Zi")
     add_link_options("/DEBUG")
     add_link_options("/OPT:REF")
     add_link_options("/OPT:ICF")
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    add_link_options("-Wl,--pdb=")
+    add_compile_options("-g -gcodeview")
+    add_link_options("-fuse-ld=lld -Wl,--pdb=")
   endif()
 endif()
 
