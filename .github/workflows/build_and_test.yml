@@ -296,11 +296,10 @@ jobs:
             build_type: 'Release'
             appbundle: true
             package_kind: dmg
-            os: macos-11
+            os: macos-12
           - name: macos_debug
             build_type: 'Debug'
-            os: macos-11
-            # cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
+            os: macos-12
           - name: macos_release_arm
             build_type: 'Release'
             appbundle: true
