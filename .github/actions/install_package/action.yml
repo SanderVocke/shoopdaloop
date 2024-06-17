@@ -5,6 +5,8 @@ inputs:
     description: "package file / directory"
   python:
     description: "python command to use"
+  coverage:
+    description: "Whether to gather code coverage"
 
 outputs:
   shoopdaloop:
@@ -25,7 +27,8 @@ outputs:
 
 runs:
   using: "composite"
-  steps:
+  steps:  
+
   - name: Determine package kind
     shell: wrap-shell {0}
     id: get_type
@@ -63,6 +66,14 @@ runs:
       echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
 
   # Python wheel
+  - name: Coverage on
+    if: ${{ inputs.coverage }}
+    shell: wrap-shell {0}
+    run: echo "coverage_part=-m coverage run --source=shoopdaloop" | tee -a $GITHUB_ENV
+  - name: Coverage off
+    if: ${{ ! inputs.coverage }}
+    shell: wrap-shell {0}
+    run: echo "coverage_part=" | tee -a $GITHUB_ENV
   - name: Install wheel
     if: ${{ steps.get_type.outputs.type == 'whl' }}
     shell: wrap-shell {0}
@@ -74,13 +85,13 @@ runs:
         export VENV_PYTHON=./test_venv/bin/python
       fi
       export VENV_PIP="${VENV_PYTHON} -m pip"
-      export SHOOPDALOOP="${VENV_PYTHON} -m shoopdaloop"
       $VENV_PIP install --upgrade pip pytest coverage
       # Bug: this should work automatically
       if [[ "${{ runner.os }}" == "Windows" ]]; then
         $VENV_PIP install pywin32
       fi
       $VENV_PIP install --force-reinstall ${{ inputs.package }}
+      export SHOOPDALOOP="${VENV_PYTHON} ${{ env.coverage_part }} -m shoopdaloop"
       $VENV_PYTHON -m shoopdaloop --info
       export INSTALLDIR="$($SHOOPDALOOP --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})"
       echo "cmd=$SHOOPDALOOP" | tee -a $GITHUB_ENV

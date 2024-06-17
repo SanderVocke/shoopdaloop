@@ -54,6 +54,7 @@ runs:
       package: ${{ steps.find_package.outputs.package }}
       python: ${{ inputs.python }}
       python_pytest_args: ${{ inputs.python_pytest_args }}
+      coverage: ${{ inputs.coverage }}
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -128,7 +129,8 @@ runs:
     shell: wrap-shell {0}
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
-      sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
+      sed -r -i 's/test_venv.*shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
+      ${{ inputs.python }} -m coverage erase
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -152,7 +154,8 @@ runs:
     shell: wrap-shell {0}
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
-      sed -i 's/pip\/shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
+      sed -r -i 's/test_venv.*shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
+      ${{ inputs.python }} -m coverage erase
   - name: Qoverage - Generate report
     if: ${{ (success() || failure()) && inputs.coverage }}
     uses: ./.github/actions/qoverage_generate_report
@@ -218,6 +221,7 @@ runs:
       flags: back-end
       files: coverage_reports/backend_lcov.info
       verbose: true
+      fail_ci_if_error: true
   - name: Upload Pytest coverage to CodeCov
     if: ${{ (success() || failure()) && inputs.coverage && !(inputs.pyinstaller) }}
     uses: codecov/codecov-action@v3
@@ -226,6 +230,7 @@ runs:
       flags: pytest
       files: coverage_reports/pytest_lcov.info,coverage_reports/pytest_pycoverage.xml
       verbose: true
+      fail_ci_if_error: true
   - name: Upload QML test coverage to CodeCov
     if: ${{ (success() || failure()) && inputs.coverage }}
     uses: codecov/codecov-action@v3
@@ -234,6 +239,7 @@ runs:
       flags: qml
       files: coverage_reports/qml_lcov.info,coverage_reports/qml_pycoverage.xml,coverage_reports/qml_qoverage.xml
       verbose: true
+      fail_ci_if_error: true
   - name: Upload raw coverage reports
     if: ${{ (success() || failure()) && inputs.coverage }}
     uses: actions/upload-artifact@v4
