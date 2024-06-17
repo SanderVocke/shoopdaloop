@@ -22,14 +22,13 @@ outputs:
 runs:
   using: "composite"
   steps:
-  - name: Install wheel and PyInstaller, sanity check run
+  - name: Install wheel and PyInstaller
     shell: wrap-shell {0}
     run: |
       export PIP="${{ inputs.python }} -m pip"
       $PIP install --upgrade pip
       $PIP install pyinstaller
       $PIP install ${{ inputs.wheel }}
-      ${{ inputs.python }} -m shoopdaloop --info
   
   - name: Find PyInstaller
     shell: wrap-shell {0}
@@ -41,9 +40,6 @@ runs:
       export PYINSTALLER="${{ inputs.find_pyinstaller && '$PYINSTALLER_SEARCH' || '$PYINSTALLER_DEFAULT' }}"
       echo "PyInstaller: $PYINSTALLER"
       echo "pyinstaller=$PYINSTALLER" | tee -a $GITHUB_OUTPUT
-  
-  - name: Setup tmate session
-    uses: SanderVocke/action-tmate@master
 
   - name: Build
     shell: wrap-shell {0}
@@ -51,7 +47,6 @@ runs:
     run: |
       cd distribution/pyinstaller
       ${{ steps.find.outputs.pyinstaller }} shoopdaloop.spec
-      dist/shoopdaloop/shoopdaloop.exe --info
 
   - name: Find distribution
     shell: wrap-shell {0}

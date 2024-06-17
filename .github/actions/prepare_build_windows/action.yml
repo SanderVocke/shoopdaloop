@@ -23,7 +23,7 @@ runs:
   - name: Report python version
     shell: wrap-shell {0}
     run: |
-      echo "Default python version is $(python --version)"
+      echo "Default python version is $(/custom_python/Scripts/python.exe --version)"
   - name: Install boost
     id: install_boost
     uses: ./.github/actions/install_boost_headers

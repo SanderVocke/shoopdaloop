@@ -491,6 +491,9 @@ jobs:
         pyinstaller: ${{ matrix.kind.pyinstaller }}
         package_kind: ${{ matrix.kind.package_kind }}
         coverage: ${{ matrix.kind.coverage }}
+    - name: Setup tmate session
+      if: failure()
+      uses: SanderVocke/action-tmate@master
 
   test_windows:
     strategy:
