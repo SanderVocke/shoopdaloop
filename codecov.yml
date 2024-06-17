@@ -37,6 +37,3 @@ coverage:
         branches:
           - master
         informational: true
-
-fixes:
-  - "*site-packages::src" 
