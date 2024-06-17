@@ -20,7 +20,7 @@ runs:
       powershell -Command ".\get_externals.bat"
       powershell -Command ".\build.bat -e -p x64"
       powershell -Command ".\\amd64\\python.exe -m venv D:\\a\\shoopdaloop\\shoopdaloop\\custom_python"
-      echo "python=${{ github.workspace }}/custom_python/Scripts/python.exe" | tee -a $GITHUB_ENV
+      echo "python=/d/a/shoopdaloop/shoopdaloop/custom_python/Scripts/python.exe" | tee -a $GITHUB_ENV
   - name: Report python version
     shell: wrap-shell {0}
     run: |
