@@ -37,6 +37,10 @@ if (WIN32)
     add_compile_options(-g -gcodeview)
     add_link_options(-fuse-ld=lld -g -Wl,--pdb=)
   endif()
+
+  # Prevent access violations in STL mutex functions due to mixed
+  # runtime DLLs in PyInstaller distribution
+  add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
 endif()
 
 option(ENABLE_COVERAGE "Enable code coverage" OFF)
