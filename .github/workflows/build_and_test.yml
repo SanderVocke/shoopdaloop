@@ -341,14 +341,6 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: release_whl_macos11
-            python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
-            container: null
-            os: macos-11
-            package: wheel_macos_release
-            qpa_platform: offscreen
           - name: release_whl_macos12
             python: python3
             python_pip_args: -m pip
