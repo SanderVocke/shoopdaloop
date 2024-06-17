@@ -8,6 +8,7 @@
 #include <mutex>
 #include <optional>
 #include <vector>
+
 namespace logging {
 
 //TODO intentionally leaky globals because of de-initialization problems. Find a better solution.

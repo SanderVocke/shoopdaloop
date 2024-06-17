@@ -50,6 +50,8 @@ extern std::unique_ptr<shoop_log_level_t>* g_maybe_global_level;
 extern std::map<std::string, std::unique_ptr<shoop_log_level_t>>* g_module_log_levels;
 extern std::atomic<bool> g_log_initialized;
 
+void maybe_initialize_log_backend_globals();
+
 // Configure using a configure string.
 // String format example:
 //
@@ -81,9 +83,7 @@ constexpr std::array<const char*, log_level_error+1> level_indicators = {
     "[\033[32minfo\033[0m] ",  // green
     "[\033[33mwarning\033[0m] ",  // yellow
     "[\033[31merror\033[0m] ",  // red
-};               
-
-void maybe_initialize_log_backend_globals();
+};
 
 template<typename Name, typename Level>
 bool should_log_impl(Name name, Level level) {
