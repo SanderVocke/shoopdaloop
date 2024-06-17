@@ -37,7 +37,7 @@ runs:
       export PIP="${{ inputs.python }} -m pip"
       export PYINSTALLER_SEARCH=$($PIP show pyinstaller | grep Location | sed 's/Location: //g')/$($PIP show -f pyinstaller | grep -E '.*/pyinstaller' | sed -r 's/^\s+//g')
       export PYINSTALLER_DEFAULT=pyinstaller
-      export PYINSTALLER=/d/a/shoopdaloop/shoopdaloop/custom_python/Scripts/pyinstaller.exe
+      export PYINSTALLER="${{ inputs.find_pyinstaller && '$PYINSTALLER_SEARCH' || '$PYINSTALLER_DEFAULT' }}"
       echo "PyInstaller: $PYINSTALLER"
       echo "pyinstaller=$PYINSTALLER" | tee -a $GITHUB_OUTPUT
 
