@@ -1,12 +1,5 @@
-cmake_minimum_required(VERSION 3.25)
-
+cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_ARCHITECTURES "${ARCHS_STANDARD}") # Enables a universal build on MacOS where possible
-
-#  Enable CMAKE_MSVC_DEBUG_INFORMATION_FORMAT to override the cmake pdb flags easily
-if (POLICY CMP0141)
-  cmake_policy(SET CMP0141 NEW)
-endif (POLICY CMP0141)
-
 project(shoopdaloop)
 
 # Set up language settings

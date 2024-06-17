@@ -50,8 +50,6 @@ extern std::unique_ptr<shoop_log_level_t>* g_maybe_global_level;
 extern std::map<std::string, std::unique_ptr<shoop_log_level_t>>* g_module_log_levels;
 extern std::atomic<bool> g_log_initialized;
 
-void maybe_initialize_log_backend_globals();
-
 // Configure using a configure string.
 // String format example:
 //
@@ -87,7 +85,6 @@ constexpr std::array<const char*, log_level_error+1> level_indicators = {
 
 template<typename Name, typename Level>
 bool should_log_impl(Name name, Level level) {
-    maybe_initialize_log_backend_globals();
     std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
     auto compile_time_allows = (level >= logging::CompileTimeLogLevel);
     auto maybe_module_level = (*g_module_log_levels).find(std::string(name));
@@ -140,7 +137,6 @@ void log_impl(std::optional<shoop_log_level_t> maybe_log_level,
               std::string_view str)
 {
     auto _log_level = maybe_log_level.value_or(log_level_info);
-    maybe_initialize_log_backend_globals();
     parse_conf_from_env();
     if(UseCompileTimeLevel && UseCompileTimeModuleName && !should_log<MaybeName, MaybeLevel>()) { return; }
     if(UseCompileTimeLevel && !UseCompileTimeModuleName && !internal::should_log<MaybeLevel>(std::string(*maybe_module_name))) { return; }
@@ -228,7 +224,6 @@ void log(std::optional<shoop_log_level_t> maybe_log_level,
 // Set the global runtime filter level.
 // Does not override already set module filter levels.
 inline void set_filter_level(shoop_log_level_t level) {
-    maybe_initialize_log_backend_globals();
     std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
     if (!(*g_maybe_global_level)) { (*g_maybe_global_level) = std::make_unique<shoop_log_level_t>(level); }
     else { *(*g_maybe_global_level) = level; }
@@ -238,7 +233,6 @@ inline void set_filter_level(shoop_log_level_t level) {
 // Set a module filter level.
 // Always overrides the global level - reset by passing nullopt.
 inline void set_module_filter_level(std::string name, std::optional<shoop_log_level_t> level) {
-    maybe_initialize_log_backend_globals();
     std::lock_guard<std::recursive_mutex> lock((*g_log_mutex));
     auto &maybe_level = (*g_module_log_levels)[name];
     if (!maybe_level) { maybe_level = std::make_unique<shoop_log_level_t>(level.value()); }
