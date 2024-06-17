@@ -18,6 +18,14 @@ find_package(Threads REQUIRED)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
 
+# Ensure PDB file generation
+if (WIN32)
+  add_compile_options("/Zi")
+  add_link_options("/DEBUG")
+  add_link_options("/OPT:REF")
+  add_link_options("/OPT:ICF")
+endif()
+
 option(ENABLE_COVERAGE "Enable code coverage" OFF)
 if(ENABLE_COVERAGE)
   include (CodeCoverage)

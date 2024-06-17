@@ -447,8 +447,8 @@ jobs:
         kind:
           - name: windows_release
             os: windows-2022
-            python: /d/a/shoopdaloop/shoopdaloop/custom_python/Scripts/python.exe
-            pip: /d/a/shoopdaloop/shoopdaloop/custom_python/Scripts/python.exe -m pip
+            python: python.exe
+            pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
             build_type: 'Release'
@@ -491,24 +491,21 @@ jobs:
         pyinstaller: ${{ matrix.kind.pyinstaller }}
         package_kind: ${{ matrix.kind.package_kind }}
         coverage: ${{ matrix.kind.coverage }}
-    - name: Setup tmate session
-      if: failure()
-      uses: SanderVocke/action-tmate@master
 
   test_windows:
     strategy:
       fail-fast: false
       matrix:
         kind:
-          # - name: release_windows
-          #   python: python.exe
-          #   python_pip_args: -m pip
-          #   python_pytest_args: -m pytest
-          #   container: null
-          #   os: windows-2022
-          #   package: wheel_windows_release
-          #   qpa_platform: offscreen
-          #   pathconvert: "| cygpath -u -f -"
+          - name: release_windows_whl
+            python: python.exe
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
+            container: null
+            os: windows-2022
+            package: wheel_windows_release
+            qpa_platform: offscreen
+            pathconvert: "| cygpath -u -f -"
           - name: release_windows_innosetup
             python: python.exe
             python_pip_args: -m pip
