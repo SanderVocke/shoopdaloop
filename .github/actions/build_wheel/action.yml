@@ -58,7 +58,7 @@ runs:
     shell: cmd
     id: build-windows
     run: |
-      ${{ inputs.prepend_build_cmd }} ${{ inputs.python }} -m build -w ${{ inputs.pypa_build_extra_args }}
+      ${{ inputs.prepend_build_cmd }} D:\a\shoopdaloop\shoopdaloop\custom_python\Scripts\python.exe -m build -w ${{ inputs.pypa_build_extra_args }}
 
   - name: Find wheel (${{ inputs.variant_name }})
     shell: wrap-shell {0}
