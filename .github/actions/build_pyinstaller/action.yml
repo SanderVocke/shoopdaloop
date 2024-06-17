@@ -22,7 +22,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-  - name: PyInstaller
+  - name: Install wheel and PyInstaller
     shell: wrap-shell {0}
     run: |
       export PIP="${{ inputs.python }} -m pip"

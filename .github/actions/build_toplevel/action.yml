@@ -136,7 +136,7 @@ runs:
     with:
       name: appbundle_${{ inputs.name }}
       path: ${{ steps.pyinstaller.outputs.distribution }}
-  - name: Save build infor for coverage analyis
+  - name: Save build info for coverage analyis
     shell: wrap-shell {0}
     if: ${{ inputs.coverage }}
     run: |
@@ -149,6 +149,14 @@ runs:
       path: |
         ./**/*.gcno
         ori_build_dir.txt
+  - name: Upload .PDB files
+    if: ${{ inputs.prepare_kind == 'windows' }}
+    uses: actions/upload-artifact@v4
+    with:
+      name: pdb_${{ inputs.name }}
+      path: |
+        ./**/*.pdb
+        ./**/*.PDB
   # - name: TMate failure session
   #   if: ${{ failure() }}
   #   uses: SanderVocke/action-tmate@master

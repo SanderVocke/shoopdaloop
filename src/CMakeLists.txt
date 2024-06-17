@@ -18,6 +18,24 @@ find_package(Threads REQUIRED)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
 
+# Ensure PDB file generation
+if (WIN32)
+  set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pdb")
+  if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    add_compile_options("/Zi")
+    add_link_options("/DEBUG")
+    add_link_options("/OPT:REF")
+    add_link_options("/OPT:ICF")
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-g -gcodeview)
+    add_link_options(-fuse-ld=lld -g -Wl,--pdb=)
+  endif()
+
+  # Prevent access violations in STL mutex functions due to mixed
+  # runtime DLLs in PyInstaller distribution
+  add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+endif()
+
 option(ENABLE_COVERAGE "Enable code coverage" OFF)
 if(ENABLE_COVERAGE)
   include (CodeCoverage)
