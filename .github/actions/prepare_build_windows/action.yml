@@ -7,8 +7,19 @@ runs:
   # - uses: actions/setup-python@v4
   #   with:
   #     python-version: '3.9'
-  - name: Setup tmate session
-    uses: SanderVocke/action-tmate@master
+  # - name: Setup tmate session
+  #   uses: SanderVocke/action-tmate@master
+  - name: Build Python
+    shell: wrap-shell {0}
+    run: |
+      git clone --depth 1 --branch v3.9.19 https://github.com/python/cpython.git
+      wget https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/disable_seh.patch
+      cd cpython
+      git apply ../disable_seh.patch
+      cd PCbuild
+      powershell -Command ".\get_externals.bat"
+      powershell -Command ".\build.bat -e -p x64"
+      ./PCbuild/amd64/python.exe -m venv /custom_python
   - name: Report python version
     shell: wrap-shell {0}
     run: |
