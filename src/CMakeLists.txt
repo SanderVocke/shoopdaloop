@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.25)
+
 set(CMAKE_OSX_ARCHITECTURES "${ARCHS_STANDARD}") # Enables a universal build on MacOS where possible
+
+#  Enable CMAKE_MSVC_DEBUG_INFORMATION_FORMAT to override the cmake pdb flags easily
+if (POLICY CMP0141)
+  cmake_policy(SET CMP0141 NEW)
+endif (POLICY CMP0141)
+
 project(shoopdaloop)
 
 # Set up language settings
@@ -23,8 +30,11 @@ if (WIN32)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase")
   set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pdb)
   if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    add_link_options("/DEBUG")
     add_link_options("/OPT:REF")
     add_link_options("/OPT:ICF")
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_link_options("-Wl,--pdb=")
   endif()
 endif()
 
