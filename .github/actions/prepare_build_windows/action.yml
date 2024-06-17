@@ -20,6 +20,7 @@ runs:
       powershell -Command ".\get_externals.bat"
       powershell -Command ".\build.bat -e -p x64"
       ./amd64/python.exe -m venv ${{ github.workspace }}/custom_python
+      echo "python=${{ github.workspace }}/custom_python/Scripts/python.exe" | tee -a $GITHUB_ENV
   - name: Report python version
     shell: wrap-shell {0}
     run: |
@@ -61,6 +62,6 @@ runs:
   - name: Install dependencies and provide build command prefix
     shell: wrap-shell {0}
     run: |
-      python -m pip install build virtualenv pytest meson
+      ${{ env.python }} -m pip install build virtualenv pytest meson
       choco install -y ninja
       echo "set \"CMAKE_INCLUDE_PATH=${{ steps.pathconvert.outputs.boost_include_dir }}\" && set \"C_INCLUDE_PATH=${{ steps.pathconvert.outputs.pthreads_dir }}\" && set \"CPLUS_INCLUDE_PATH=${{ steps.pathconvert.outputs.pthreads_dir }}\" && set \"CMAKE_PREFIX_PATH=${{ steps.pathconvert.outputs.jack_dir }};${{ steps.pathconvert.outputs.pthreads_dir }}\" &&" > prepend_build_cmd.txt
