@@ -1443,53 +1443,64 @@ Item {
     component LoopProgressRect : Item {
         id: loopprogressrect
         property var loop
+        
+        FirstTimeLoader {
+            activate: loopprogressrect.loop.display_position > 0
 
-        Rectangle {
-            function getRightMargin() {
-                var st = loopprogressrect.loop
-                if(st && st.length && st.length > 0) {
-                    return (1.0 - (st.display_position / st.length)) * parent.width
-                }
-                return parent.width
-            }
-
-            anchors {
-                fill: parent
-                rightMargin: getRightMargin()
-            }
-            color: {
-                var default_color = '#444444'
-                if (!loopprogressrect.loop) {
-                    return default_color;
+            sourceComponent: Rectangle {
+                function getRightMargin() {
+                    var st = loopprogressrect.loop
+                    if(st && st.length && st.length > 0) {
+                        return (1.0 - (st.display_position / st.length)) * parent.width
+                    }
+                    return parent.width
                 }
 
-                switch(loopprogressrect.loop.mode) {
-                case ShoopConstants.LoopMode.Playing:
-                    return '#004400';
-                case ShoopConstants.LoopMode.PlayingDryThroughWet:
-                    return '#333300';
-                case ShoopConstants.LoopMode.Recording:
-                    return '#660000';
-                case ShoopConstants.LoopMode.RecordingDryIntoWet:
-                    return '#663300';
-                default:
-                    return default_color;
+                anchors {
+                    fill: parent
+                    rightMargin: getRightMargin()
+                }
+                color: {
+                    var default_color = '#444444'
+                    if (!loopprogressrect.loop) {
+                        return default_color;
+                    }
+
+                    switch(loopprogressrect.loop.mode) {
+                    case ShoopConstants.LoopMode.Playing:
+                        return '#004400';
+                    case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                        return '#333300';
+                    case ShoopConstants.LoopMode.Recording:
+                        return '#660000';
+                    case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                        return '#663300';
+                    default:
+                        return default_color;
+                    }
                 }
             }
         }
 
-        Rectangle {
-            visible: root.maybe_loop ?
-                (root.maybe_loop.display_midi_events_triggered > 0 || root.maybe_loop.display_midi_notes_active > 0) :
-                false
-            anchors {
-                right: parent.right
-                top: parent.top
-                bottom: parent.bottom
-            }
-            width: 8
+        FirstTimeLoader {
+            id: midi_flash_loader
+            property bool flashing:
+                    root.maybe_loop ?
+                    (root.maybe_loop.display_midi_events_triggered > 0 || root.maybe_loop.display_midi_notes_active > 0) :
+                    false
+            activate: flashing
 
-            color: '#00FFFF'
+            sourceComponent: Rectangle {
+                visible: midi_flash_loader.flashing
+                anchors {
+                    right: parent.right
+                    top: parent.top
+                    bottom: parent.bottom
+                }
+                width: 8
+
+                color: '#00FFFF'
+            }
         }
     }
 
