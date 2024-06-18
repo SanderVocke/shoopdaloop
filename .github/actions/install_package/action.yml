@@ -9,7 +9,7 @@ inputs:
     description: "Whether to gather code coverage"
   sudo:
     description: "whether sudo is needed to install software"
-    default: false
+    default: 'false'
 
 outputs:
   shoopdaloop:
@@ -56,7 +56,7 @@ runs:
   - name: Sudo command
     shell: wrap-shell {0}
     run: |
-       echo "maybe_sudo=${{ inputs.sudo && 'sudo' || '' }}" | tee -a $GITHUB_ENV
+       echo "maybe_sudo=${{ (inputs.sudo == 'true') && 'sudo' || '' }}" | tee -a $GITHUB_ENV
   
   - name: Install InnoSetup installer
     if: ${{ steps.get_type.outputs.type == 'exe' }}

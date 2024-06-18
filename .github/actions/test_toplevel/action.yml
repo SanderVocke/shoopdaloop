@@ -25,7 +25,7 @@ inputs:
     description: "Token for CodeCov"
   install_with_sudo:
     description: "Whether to install with sudo"
-    default: false
+    default: 'false'
   
 runs:
   using: "composite"

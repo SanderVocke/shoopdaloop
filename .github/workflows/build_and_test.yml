@@ -244,7 +244,7 @@ jobs:
             python_pytest_args: -m pytest
             container: docker.io/sandervocke/shoopdaloop_run_base_ubuntu_latest_arm64:latest
             package: package_linux_arm_release_deb
-            install_with_sudo: true
+            install_with_sudo: 'true'
     runs-on: ubuntu-latest
     needs: build_linux_arm
     #if: false
