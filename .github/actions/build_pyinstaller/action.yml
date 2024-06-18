@@ -27,8 +27,8 @@ runs:
     run: |
       export PIP="${{ inputs.python }} -m pip"
       $PIP install --upgrade pip
-      $PIP install pyinstaller
-      $PIP install ${{ inputs.wheel }}
+      $PIP install --no-cache-dir pyinstaller
+      $PIP install --no-cache-dir ${{ inputs.wheel }}
   
   - name: Find PyInstaller
     shell: wrap-shell {0}
