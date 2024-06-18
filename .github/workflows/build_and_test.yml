@@ -44,7 +44,7 @@ jobs:
             build_type: 'Debug'
             cmake_opts: '"ENABLE_COVERAGE" = "On"'
             coverage: true
-        container: [ "sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest" ]
+        container: [ "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest" ]
         container_options: [ "--user root --workdir /" ]
         arch: [ x86_64 ]
         manylinux_arch: [ x86_64 ]
@@ -88,44 +88,44 @@ jobs:
             python: python3
             python_pip_args: -m pip
             python_pytest_args: -m pytest
-            container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: wheel_linux_release
           - name: debug_wheel_debian_stable
             python: python3
             python_pip_args: -m pip
             python_pytest_args: -m pytest
-            container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: wheel_linux_debug
           - name: release_deb_ubuntu_latest
             python: python3
             python_pip_args: -m pip
             python_pytest_args: -m pytest
-            container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: package_linux_release_deb
           - name: release_pyinst_ubuntu_latest
             python: python3
             python_pip_args: -m pip
             python_pytest_args: -m pytest
-            container: sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: pyinstaller_linux_release
           - name: release_pacman_arch
             python: python
             python_pip_args: -m pip
             python_pytest_args: -m pytest
-            container: sandervocke/shoopdaloop_run_base_arch_x86_64:latest
+            container: docker.io/sandervocke/shoopdaloop_run_base_arch_x86_64:latest
             package: package_linux_release_pacman
           - name: release_rpm_fedora
             python: python3
             python_pip_args: -m pip
             python_pytest_args: -m pytest
-            container: sandervocke/shoopdaloop_run_base_fedora_x86_64:latest
+            container: docker.io/sandervocke/shoopdaloop_run_base_fedora_x86_64:latest
             package: package_linux_release_rpm
           - name: coverage_debian_bullseye
             python: python3
             python_shoopdaloop_args: -m coverage run --source=shoopdaloop
             python_pip_args: -m pip
             python_pytest_args: -m coverage run --source=shoopdaloop -m pytest
-            container: sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
+            container: docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
             package: wheel_linux_coverage
             coverage: true
             run_cmd_prefix: >-
@@ -183,7 +183,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        container: [ "sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest" ]
+        container: [ "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest" ]
         arch: [ arm64 ]
         manylinux_arch: [ aarch64 ]
         kind:
@@ -236,13 +236,13 @@ jobs:
             python: python3
             python_pip_args: -m pip
             python_pytest_args: -m pytest
-            container: sandervocke/shoopdaloop_run_base_debian_latest_arm64:latest
+            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_arm64:latest
             package: wheel_linux_arm_release
           - name: release_deb_ubuntu_latest
             python: python3
             python_pip_args: -m pip
             python_pytest_args: -m pytest
-            container: sandervocke/shoopdaloop_run_base_ubuntu_latest_arm64:latest
+            container: docker.io/sandervocke/shoopdaloop_run_base_ubuntu_latest_arm64:latest
             package: package_linux_arm_release_deb
     runs-on: ubuntu-latest
     needs: build_linux_arm
