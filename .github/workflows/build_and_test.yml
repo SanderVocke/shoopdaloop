@@ -211,7 +211,7 @@ jobs:
       uses: sandervocke/setup-shell-wrapper@v1
     - name: Use container shell
       shell: bash
-      run: echo "WRAP_SHELL=run-in-container.sh" >> $GITHUB_ENV
+      run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
@@ -259,7 +259,7 @@ jobs:
       uses: sandervocke/setup-shell-wrapper@v1
     - name: Use container shell
       shell: bash
-      run: echo "WRAP_SHELL=run-in-container.sh" >> $GITHUB_ENV
+      run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV
     - name: Test
       uses: ./.github/actions/test_toplevel
       with:
