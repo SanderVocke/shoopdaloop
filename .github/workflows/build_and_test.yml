@@ -274,6 +274,7 @@ jobs:
         qpa_platform: vnc
         pyinstaller: ${{ matrix.kind.pyinstaller }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
+        do_qml_tests: false # Too slow on ARM emulation
 
 
 
