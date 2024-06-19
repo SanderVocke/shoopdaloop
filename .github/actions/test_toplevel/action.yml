@@ -83,11 +83,9 @@ runs:
     run: |
       mkdir -p crashdumps
   - name: Install Python modules
-    shell: wrap-shell {0}
-    env:
-      PIP_BREAK_SYSTEM_PACKAGES: 1
+    shell: wrap-shell {0}      
     run: |
-      ${{ inputs.python }} ${{ inputs.python_pip_args }} install pytest coverage pipx
+      PIP_BREAK_SYSTEM_PACKAGES=1 ${{ inputs.python }} ${{ inputs.python_pip_args }} install pytest coverage pipx
   - name: Install Qoverage
     if: ${{ inputs.coverage }}
     uses: ./.github/actions/install_qoverage
