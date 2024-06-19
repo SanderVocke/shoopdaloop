@@ -23,6 +23,9 @@ inputs:
     description: "Whether to build PyInstaller"
   codecov_token:
     description: "Token for CodeCov"
+  install_with_sudo:
+    description: "Whether to install with sudo"
+    default: 'false'
   do_qml_tests:
     description: "Whether to do the QML test step."
     default: 'true'
@@ -58,6 +61,7 @@ runs:
       python: ${{ inputs.python }}
       python_pytest_args: ${{ inputs.python_pytest_args }}
       coverage: ${{ inputs.coverage }}
+      sudo: ${{ inputs.install_with_sudo }}
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
