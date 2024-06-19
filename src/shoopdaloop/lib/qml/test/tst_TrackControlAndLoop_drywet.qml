@@ -618,8 +618,8 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
 
                     verify_true(fx.active)
-                    verify_approx(out1, elems_add(synthed_chan, [50, 60, 70, 80]))
-                    verify_approx(out2, elems_add(synthed_chan, [80, 70, 60, 50]))
+                    verify_approx(out1, elems_add(synthed_chan, [25, 30, 35, 40]))
+                    verify_approx(out2, elems_add(synthed_chan, [40, 35, 30, 25]))
                     verify_eq(dry1, [50, 60, 70, 80])
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_eq(wet1, [5, 6, 7, 8])
@@ -722,8 +722,8 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
 
                     verify_true(fx.active)
-                    verify_approx(out1, elems_add(synthed_both, [50, 60, 70, 80]))
-                    verify_approx(out2, elems_add(synthed_both, [80, 70, 60, 50]))
+                    verify_approx(out1, elems_add(synthed_both, [25, 30, 35, 40]))
+                    verify_approx(out2, elems_add(synthed_both, [40, 35, 30, 25]))
                     verify_eq(dry1, [50, 60, 70, 80])
                     verify_eq(dry2, [80, 70, 60, 50])
                     verify_eq(wet1, [5, 6, 7, 8])
@@ -826,12 +826,12 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
 
                     verify_true(fx.active)
-                    verify_approx(out1, elems_add(synthed_chan, [50, 60, 70, 80]))
-                    verify_approx(out2, elems_add(synthed_chan, [80, 70, 60, 50]))
+                    verify_approx(out1, elems_add(synthed_chan, [25, 30, 35, 40]))
+                    verify_approx(out2, elems_add(synthed_chan, [40, 35, 30, 25]))
                     verify_eq(dry1, [50, 60, 70, 80])
                     verify_eq(dry2, [80, 70, 60, 50])
-                    verify_approx(wet1, elems_add(synthed_chan, [50, 60, 70, 80]))
-                    verify_approx(wet2, elems_add(synthed_chan, [80, 70, 60, 50]))
+                    verify_approx(wet1, elems_add(synthed_chan, [25, 30, 35, 40]))
+                    verify_approx(wet2, elems_add(synthed_chan, [40, 35, 30, 25]))
                     verify_eq(midi, midichan, null, true)
                 },
 
@@ -931,12 +931,12 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
 
                     verify_true(fx.active)
-                    verify_approx(out1, elems_add(synthed_both, [50, 60, 70, 80]))
-                    verify_approx(out2, elems_add(synthed_both, [80, 70, 60, 50]))
+                    verify_approx(out1, elems_add(synthed_both, [25, 30, 35, 40]))
+                    verify_approx(out2, elems_add(synthed_both, [40, 35, 30, 25]))
                     verify_eq(dry1, [50, 60, 70, 80])
                     verify_eq(dry2, [80, 70, 60, 50])
-                    verify_approx(wet1, elems_add(synthed_both, [50, 60, 70, 80]))
-                    verify_approx(wet2, elems_add(synthed_both, [80, 70, 60, 50]))
+                    verify_approx(wet1, elems_add(synthed_both, [25, 30, 35, 40]))
+                    verify_approx(wet2, elems_add(synthed_both, [40, 35, 30, 25]))
                     verify_eq(midi, midichan, null, true)
                 },
             })
