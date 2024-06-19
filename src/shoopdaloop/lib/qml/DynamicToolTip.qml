@@ -8,7 +8,7 @@ FirstTimeLoader {
 
     activate: visible
 
-    ToolTip {
+    sourceComponent: ToolTip {
         id: tooltip
     }
 }
