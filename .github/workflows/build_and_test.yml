@@ -106,4 +106,45 @@ jobs:
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
 
 
-
+  build_windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          - name: windows_release
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            build_type: 'Release'
+            pyinstaller: true
+            package_kind: innosetup
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+    runs-on: ${{ matrix.kind.os}}
+    container:
+      image: ${{ matrix.kind.container_image }}
+      options: --user root --workdir /
+    #if: false
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Setup Shell Wrapper
+      uses: sandervocke/setup-shell-wrapper@v1
+    - name: Use regular shell
+      shell: bash
+      run: echo "WRAP_SHELL=bash" >> $GITHUB_ENV
+    - name: Build
+      uses: ./.github/actions/build_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: ${{ matrix.kind.prepare }}
+        python: ${{ matrix.kind.python }}
+        rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        package_kind: ${{ matrix.kind.package_kind }}
+        coverage: ${{ matrix.kind.coverage }}
