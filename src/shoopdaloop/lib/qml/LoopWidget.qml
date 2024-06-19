@@ -1445,7 +1445,7 @@ Item {
         property var loop
         
         FirstTimeLoader {
-            activate: loopprogressrect.loop.display_position > 0
+            activate: loopprogressrect.loop && loopprogressrect.loop.display_position > 0
 
             sourceComponent: Rectangle {
                 function getRightMargin() {
@@ -1610,16 +1610,21 @@ Item {
             id: ma
         }
 
-        ToolTip {
+        DynamicToolTip {
             delay: 1000
             visible: ma.containsMouse
             text: description
         }
     }
 
-    component ContextMenu: Item {
-        property alias opened: menu.opened
-        visible: menu.visible
+    component ContextMenu: FirstTimeLoader {
+        property alias opened: active ? menu.opened : false
+        visible: active ? menu.visible : false
+
+        function popup () {
+            active = true
+            menu.popup()
+        }
 
         ClickTrackDialog {
             id: clicktrackdialog
@@ -2046,8 +2051,5 @@ Item {
             onRejected: doLoad(false)
         }
 
-        function popup () {
-            menu.popup()
-        }
     }
 }
