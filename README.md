@@ -8,11 +8,11 @@
 
 ShoopDaLoop is an cross-platform advanced live looping application. It offers intuitive looping of audio+MIDI clips in a grid-style layout and some DAW-like features for sequencing.
 
-It is designed for both free-form jamming (solo or together) and pre-scripted looping sessions. In principle, live performance is a good use-case, although it is not battle-tested and stable enough yet to recommend that at this point.
+It is designed for both free-form jamming (solo or together) and pre-scripted looping sessions. Live performance could be a good use-case, although it is not stable enough yet to recommend that at this point.
 
 [Documentation](https://sandervocke.github.io/shoopdaloop/) lives here.
 
-> :warning: **There is no release yet. This is in pre-alpha. All there is to see on this repo is a preview of things to come.**
+> :warning: **There is no release yet. This is in pre-alpha. Feel free to give this a test drive, but don't expect a finished product.**
 
 For currently open known issues, check the GitHub Issues page.
 
@@ -23,12 +23,11 @@ For currently open known issues, check the GitHub Issues page.
 # In a nutshell
 
 - **Fast**: can easily handle a large number of loops.
-- **Tracks**: loops are organized into tracks, which share inputs/outputs and effects/synthesis.
+- **Grid-based**: loops are organized into a grid of tracks, which share inputs/outputs and effects/synthesis.
 - **MIDI and audio**: can both be looped, including alongside each other in the same loop.
-- **FX/synthesis**: can be inserted into a loop via external JACK connections or by using plugins. The same loop can simultaneously record "dry" and "wet", akin to [Luppp](http://openavproductions.com/luppp/), to save precious CPU during playback.
+- **FX/synthesis**: can be inserted into a loop directly (plugins) or via external JACK connections. The same loop can simultaneously record "dry" and "wet" (post-fx) to save precious CPU during playback.
 - **Synchronization**: every loop is synced to the "sync loop", which typically holds a beat, click-track or just fixed-length silence. Loops may also be a multiple of the sync loop length.
-- **Click tracks**: can be generated via a dialog in the app.
-- **Grabbing**: instead of planning the recording of loops, you can grab them retroactively from an always-on recording buffer.
+- **Grabbing**: instead of triggering the recording, you can grab loops retroactively from an always-on recording buffer.
 - **Combining**: A powerful system for combining multiple loops into sequences and/or scenes, which can also be controlled as if they were loops.
 - **NSM**: Non/New Session Manager support on Linux (experimental).
 - **Hackable**: Users can run their own Lua scripts to control the application in new ways.
@@ -38,8 +37,11 @@ These features are explained in detail in the [docs](https://sandervocke.github.
 # Status
 
 ShoopDaLoop is in early development. The basics work but not nearly all of its intended functionality is finished yet (see below).
+
 The intent is for the master branch to always work and pass CI tests, but at the moment, some significant bugs will probably come and go. Check the issues list for currently known issues and please add any you encounter yourself.
+
 As such, it obviously has not been used for on-stage performing and definitely shouldn't until after doing some serious testing.
+
 Note however that having automated testing with high coverage is among the project goals.
 
 # Comparison table

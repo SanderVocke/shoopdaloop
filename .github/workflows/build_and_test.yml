@@ -276,6 +276,7 @@ jobs:
         pyinstaller: ${{ matrix.kind.pyinstaller }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
         install_with_sudo: ${{ matrix.kind.install_with_sudo }}
+        do_qml_tests: false # Too slow on ARM emulation
 
 
 
