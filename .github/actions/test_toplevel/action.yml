@@ -23,6 +23,9 @@ inputs:
     description: "Whether to build PyInstaller"
   codecov_token:
     description: "Token for CodeCov"
+  do_qml_tests:
+    description: "Whether to do the QML test step."
+    default: 'true'
   
 runs:
   using: "composite"
@@ -80,9 +83,9 @@ runs:
     run: |
       mkdir -p crashdumps
   - name: Install Python modules
-    shell: wrap-shell {0}
+    shell: wrap-shell {0}      
     run: |
-      ${{ inputs.python }} ${{ inputs.python_pip_args }} install pytest coverage pipx
+      PIP_BREAK_SYSTEM_PACKAGES=1 ${{ inputs.python }} ${{ inputs.python_pip_args }} install pytest coverage pipx
   - name: Install Qoverage
     if: ${{ inputs.coverage }}
     uses: ./.github/actions/install_qoverage
@@ -132,6 +135,7 @@ runs:
       sed -r -i 's/test_venv.*shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
       ${{ inputs.python }} -m coverage erase
   - shell: wrap-shell {0}
+    if: ${{ (success() || failure()) && (inputs.do_qml_tests == 'true') }}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -139,7 +143,7 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test QML
-    if: ${{ success() || failure() }}
+    if: ${{ (success() || failure()) && (inputs.do_qml_tests == 'true') }}
     uses: ./.github/actions/test_qml
     with:
       variant_name: release
@@ -150,14 +154,14 @@ runs:
       macos_rpath_patch: ${{ contains(inputs.name, 'macos') }}
       tee_all_output_to: test-qml-console-output.log
   - name: Generate QML Python coverage report
-    if: ${{ (success() || failure()) && inputs.coverage }}
+    if: ${{ (success() || failure()) && inputs.coverage && (inputs.do_qml_tests == 'true') }}
     shell: wrap-shell {0}
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
       sed -r -i 's/test_venv.*shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
       ${{ inputs.python }} -m coverage erase
   - name: Qoverage - Generate report
-    if: ${{ (success() || failure()) && inputs.coverage }}
+    if: ${{ (success() || failure()) && inputs.coverage && (inputs.do_qml_tests == 'true') }}
     uses: ./.github/actions/qoverage_generate_report
     with:
       strip: ".*/pip/shoopdaloop"
@@ -232,7 +236,7 @@ runs:
       verbose: true
       fail_ci_if_error: true
   - name: Upload QML test coverage to CodeCov
-    if: ${{ (success() || failure()) && inputs.coverage }}
+    if: ${{ (success() || failure()) && inputs.coverage && (inputs.do_qml_tests == 'true') }}
     uses: codecov/codecov-action@v3
     with:
       token: ${{ inputs.codecov_token }}
