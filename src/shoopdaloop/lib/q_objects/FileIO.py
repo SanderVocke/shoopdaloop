@@ -133,7 +133,11 @@ class FileIO(ShoopQObject):
         self.save_data_to_soundfile_impl(filename, sample_rate, data)
 
     def save_channels_to_soundfile_impl(self, filename, sample_rate, channels):
+        import time
+        start = time.time()
         datas = [c.get_data() for c in channels]
+        end = time.time()
+        print(f"Got channel data in {(end-start)*1000.0}ms")
         self.save_data_to_soundfile_impl(filename, sample_rate, datas)
         self.logger.info(lambda: "Saved {}-channel audio to {} ({} samples)".format(len(channels), filename, len(datas[0])))
     
@@ -303,6 +307,9 @@ class FileIO(ShoopQObject):
     
     @ShoopSlot(str, int, list, result=Task)
     def save_channels_to_soundfile_async(self, filename, sample_rate, channels):
+        import time
+        start = time.time()
+        
         task = Task(parent=self)
         def do_save():
             try:
@@ -312,6 +319,10 @@ class FileIO(ShoopQObject):
         
         t = Thread(target=do_save)
         t.start()
+        
+        end = time.time()
+        
+        print(f"Save async function body completed in {(end-start)*1000.0}ms")
         return task
 
     @ShoopSlot(str, int, list)

@@ -369,6 +369,39 @@ class ExternalPortDescriptor:
             self.direction = None
             self.data_type = None
 
+class WrappedCFloatArray:
+    def __init__(self, array, destruct_fn):
+        if array == None:
+            self.ctypes_array = None
+            self.raw_data_ptr = None
+            self.np_array = numpy.empty(0)
+            return      
+        if not isinstance(array, ctypes.c_float * array.__len__()):
+            raise ValueError("array must be a ctypes array of c_float")
+
+        self.ctypes_array = array
+
+        # Get the raw memory address of the ctypes array
+        self.raw_data_ptr = ctypes.cast(array, ctypes.POINTER(ctypes.c_float)).contents.value
+
+        # Create a NumPy shape using the length of the ctypes array
+        array_shape = (array.__len__(),)
+
+        # Create the NumPy array with a format string to match ctypes memory layout
+        # (important for non-native byte order or alignment)
+        format_string = f"{numpy.dtype.char} {array_shape[0]}"
+        self.np_array = numpy.frombuffer(self.raw_data_ptr, dtype=format_string)
+        
+        self._destruct_fn = destruct_fn
+    
+    def __len__(self):
+        return len(self.np_array)
+    
+    def __del__(self):
+        self.raw_data_ptr = None
+        self.np_array = None
+        self._destruct_fn(self.ctypes_array)
+
 def deref_ptr(backend_ptr):
     if not backend_ptr:
         return None
@@ -436,12 +469,13 @@ class BackendLoopAudioChannel:
     
     def get_data(self) -> List[float]:
         if self.available():
-            r = bindings.get_audio_channel_data(self.shoop_c_handle)
-            if r:
-                data = [float(r[0].data[i]) for i in range(r[0].n_samples)]
-                bindings.destroy_audio_channel_data(r)
-                return data
-        return []
+            import time
+            start = time.time()
+            rval = WrappedCFloatArray(bindings.get_audio_channel_data(self.shoop_c_handle), bindings.destroy_audio_channel_data)
+            got = time.time()
+            print(f'get data took {(got - start)*1000.0}ms')
+            return rval
+        return WrappedCFloatArray(None, lambda _: None)
     
     def get_state(self):
         if self.available():

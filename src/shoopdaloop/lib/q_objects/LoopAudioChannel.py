@@ -52,7 +52,7 @@ class LoopAudioChannel(LoopChannel):
     # SLOTS
     ######################
     
-    @ShoopSlot(list, thread_protection=ThreadProtectionType.AnyThread)
+    @ShoopSlot(list, thread_protection=ThreadProtectionType.OtherThread)
     def load_data(self, data):
         self.requestBackendInit.emit()
         if self._backend_obj:
@@ -60,7 +60,7 @@ class LoopAudioChannel(LoopChannel):
         else:
             self.initializedChanged.connect(lambda: self._backend_obj.load_data(data))
     
-    @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
+    @ShoopSlot(result=list, thread_protection=ThreadProtectionType.OtherThread)
     def get_data(self):
         if not self._backend_obj:
             self.logger.throw_error("Attempting to get data of an invalid audio channel.")
