@@ -343,6 +343,10 @@ ShoopTestFile {
                     dwt().control_widget.set_balance(0.8)
                     testcase.wait_updated(session.backend)
 
+                    verify_approx(dt().control_widget.last_pushed_gain, 0.5)
+                    verify_approx(dt().control_widget.last_pushed_out_stereo_balance, 0.9)
+                    verify_approx(dwt().control_widget.last_pushed_gain, 0.4)
+                    verify_approx(dwt().control_widget.last_pushed_out_stereo_balance, 0.8)
 
                     var filename = file_io.generate_temporary_filename() + '.shl'
                     session.save_session(filename)
@@ -359,6 +363,11 @@ ShoopTestFile {
                     dwt().control_widget.set_gain(1.0)
                     dwt().control_widget.set_balance(0.0)
                     testcase.wait_updated(session.backend)
+
+                    verify_approx(dt().control_widget.last_pushed_gain, 1.0)
+                    verify_approx(dt().control_widget.last_pushed_out_stereo_balance, 0.0)
+                    verify_approx(dwt().control_widget.last_pushed_gain, 1.0)
+                    verify_approx(dwt().control_widget.last_pushed_out_stereo_balance, 0.0)
 
                     session.load_session(filename)
                     testcase.wait_session_loaded(session)

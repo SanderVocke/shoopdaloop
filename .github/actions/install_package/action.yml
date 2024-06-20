@@ -7,6 +7,9 @@ inputs:
     description: "python command to use"
   coverage:
     description: "Whether to gather code coverage"
+  sudo:
+    description: "whether sudo is needed to install software"
+    default: 'false'
 
 outputs:
   shoopdaloop:
@@ -49,6 +52,11 @@ runs:
           fi
        fi
        echo "type=$type" | tee -a $GITHUB_OUTPUT
+
+  - name: Sudo command
+    shell: wrap-shell {0}
+    run: |
+       echo "maybe_sudo=${{ (inputs.sudo == 'true') && 'sudo' || '' }}" | tee -a $GITHUB_ENV
   
   - name: Install InnoSetup installer
     if: ${{ steps.get_type.outputs.type == 'exe' }}
@@ -62,7 +70,6 @@ runs:
       SHOOPDALOOP_DIR=$(dirname "$SHOOPDALOOP_EXE")
       echo "ShoopDaLoop executable installed to: $SHOOPDALOOP_EXE"
       echo "Installed at: $SHOOPDALOOP_DIR"
-      ls -la "$SHOOPDALOOP_EXE"
       echo "cmd=\\\"$SHOOPDALOOP_EXE\\\"" | tee -a $GITHUB_ENV
       echo "install_dir=\\\"$SHOOPDALOOP_DIR\\\"" | tee -a $GITHUB_ENV
       echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
@@ -107,9 +114,9 @@ runs:
     if: ${{ steps.get_type.outputs.type == 'pacman' }}
     shell: wrap-shell {0}
     run: |
-      pacman -Uv --noconfirm ${{ inputs.package }}
-      pacman -Q shoopdaloop
-      pacman -Ql shoopdaloop
+      ${{ env.maybe_sudo }} pacman -Uv --noconfirm ${{ inputs.package }}
+      ${{ env.maybe_sudo }} pacman -Q shoopdaloop
+      ${{ env.maybe_sudo }} pacman -Ql shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
       echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
@@ -119,9 +126,9 @@ runs:
     if: ${{ steps.get_type.outputs.type == 'deb' }}
     shell: wrap-shell {0}
     run: |
-      DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical dpkg --debug=10 -i ${{ inputs.package }}
-      dpkg -l shoopdaloop
-      dpkg-query -L shoopdaloop
+      DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical ${{ env.maybe_sudo }} dpkg --debug=10 -i ${{ inputs.package }}
+      ${{ env.maybe_sudo }} dpkg -l shoopdaloop
+      ${{ env.maybe_sudo }} dpkg-query -L shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
       echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
@@ -131,8 +138,8 @@ runs:
     if: ${{ steps.get_type.outputs.type == 'rpm' }}
     shell: wrap-shell {0}
     run: |
-      dnf -y install ${{ inputs.package }}
-      dnf list installed shoopdaloop
+      ${{ env.maybe_sudo }} dnf -y install ${{ inputs.package }}
+      ${{ env.maybe_sudo }} dnf list installed shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
       echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV

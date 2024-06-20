@@ -569,6 +569,10 @@ class BackendLoopMidiChannel:
         if self.available():
             bindings.clear_midi_channel(self.shoop_c_handle)
 
+    def reset_state_tracking(self):
+        if self.available():
+            bindings.reset_midi_channel_state_tracking(self.shoop_c_handle)
+
     def __del__(self):
         if self.available():
             self.destroy()
