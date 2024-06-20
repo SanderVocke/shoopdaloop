@@ -313,6 +313,9 @@ Item {
         }
     }
     function push_out_gains() {
+        if (gain_dB === undefined) {
+            throw new Error("Cannot push undefined gain")
+        }
         audio_out_ports.forEach((p, idx) => {
             if (idx == 0 && out_is_stereo) { push_gain(gain_dB, p, out_balance_gain_factor_l) }
             else if (idx == 1 && out_is_stereo) { push_gain(gain_dB, p, out_balance_gain_factor_r) }
@@ -324,10 +327,16 @@ Item {
         }
     }
     function push_mute() {
-        audio_out_ports.forEach((p) => p.set_muted(mute))
-        midi_out_ports.forEach((p) => p.set_muted(mute))
+        if (mute === undefined) {
+            throw new Error("Cannot push undefined mute")
+        }
+        audio_out_ports.forEach((p) => {if (p) { p.set_muted(mute) } else { logger.warn("Undefined audio out port") }})
+        midi_out_ports.forEach((p) => {if (p) { p.set_muted(mute) } else { logger.warn("Undefined audio out port") }})
     }
     function push_monitor() {
+        if (monitor === undefined) {
+            throw new Error("Cannot push undefined monitor")
+        }
         audio_in_ports
             .filter(p => is_dry(p.descriptor))
             .forEach((p) => {

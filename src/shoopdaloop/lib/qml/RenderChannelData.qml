@@ -6,7 +6,7 @@ import ShoopDaLoop.PythonRenderMidiSequence
 
 Item {
     id: root
-    property var input_data : []
+    property var input_data : null
     property real samples_per_bin : 1.0
     property int samples_offset : 0
     property var channel : null

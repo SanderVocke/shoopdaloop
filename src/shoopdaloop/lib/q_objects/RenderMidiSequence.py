@@ -33,7 +33,7 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
         if isinstance(v, QJSValue):
             v = v.toVariant()
         logger.trace(lambda: "messages changed (have {})".format(len(v)))
-        self._messages = (v if v else [])
+        self._messages = (v.data if v else [])
         self.messagesChanged.emit(self._messages)
         self.parse()
         
@@ -65,6 +65,7 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
     @ShoopSlot()
     def parse(self):
         prev_notes = copy.deepcopy(self._notes)
+        logger.debug(lambda: f'Parse messages: {self._messages}')
         self._notes = msgs_to_notes(self._messages)
         if self._notes != prev_notes:
             logger.trace(lambda: "notes changed (have {})".format(len(self._notes)))

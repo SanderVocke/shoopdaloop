@@ -89,6 +89,7 @@ private:
         uint32_t n_samples() const;
         uint32_t buf_space_for_sample(uint32_t offset) const;
         void set_contents(shoop_shared_ptr<std::vector<Buffer>> buffers);
+        std::vector<SampleT> contiguous_copy(uint32_t max_length) const;
     };
 
     union ProcessingCommandDetails {

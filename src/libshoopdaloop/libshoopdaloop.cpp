@@ -1699,7 +1699,7 @@ const char* get_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain) {
     if (!c) { return nullptr; }
     auto maybe_serializeable = dynamic_cast<SerializeableStateInterface*>(c->chain.get());
     if(maybe_serializeable) {
-        auto str = maybe_serializeable->serialize_state();
+        auto str = maybe_serializeable->serialize_state(10000);
         char * rval = (char*) malloc(str.size() + 1);
         memcpy((void*)rval, str.data(), str.size());
         rval[str.size()] = 0;
