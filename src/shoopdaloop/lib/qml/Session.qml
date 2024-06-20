@@ -274,6 +274,10 @@ Rectangle {
             let our_sample_rate = session_backend.get_sample_rate()
             let incoming_sample_rate = descriptor.sample_rate
 
+            if (!schema_validator.validate_schema(descriptor, "Session object", validator.schema, false)) {
+                return;
+            }
+
             if (our_sample_rate != incoming_sample_rate && !ignore_resample_warning) {
                 confirm_sample_rate_convert_dialog.session_filename = filename
                 confirm_sample_rate_convert_dialog.from = incoming_sample_rate
@@ -281,13 +285,6 @@ Rectangle {
                 registries.state_registry.load_action_finished()
                 confirm_sample_rate_convert_dialog.open()
                 return;
-            }
-
-            try {
-                schema_validator.validate_schema(descriptor, validator.schema)
-            } catch(err) {
-                console.log("Failed session schema validation for loaded session descriptor:\n",
-                            "\nobject:\n", JSON.stringify(descriptor, 0, 2), "\nerror:\n", err.message)
             }
             
             if (our_sample_rate != incoming_sample_rate) {

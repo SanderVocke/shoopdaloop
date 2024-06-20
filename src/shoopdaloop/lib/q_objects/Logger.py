@@ -3,10 +3,12 @@ from PySide6.QtCore import Signal, Property, Slot, QTimer
 from .ShoopPyObject import *
 from ..logging import Logger as BaseLogger
 
+import time
+
 class Logger(ShoopQObject):
     def __init__(self, parent=None):
-        global logger_id
-        global logger_ids_lock
+        self._start = time.time()
+        
         super(Logger, self).__init__(parent)
         self.logger = BaseLogger("Frontend.Unknown")
         self._id = None
@@ -25,6 +27,8 @@ class Logger(ShoopQObject):
     def name(self, l):
         if l and l != self.logger.name():
             self.logger = BaseLogger(l)
+        end = time.time()
+        print(f'Logger created and named in {(end - self._start) * 1000.0}ms')
     
     # instanceIdentifier (for clarity in debugging)
     instanceIdentifierChanged = ShoopSignal(str)

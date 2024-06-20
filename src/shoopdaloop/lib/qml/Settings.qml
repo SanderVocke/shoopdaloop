@@ -17,13 +17,7 @@ QtObject {
     function validate() {
         let dict = to_dict()
         let schema = `${schema_name}.${current_version}`
-        try {
-            schema_validator.validate_schema(dict, schema)
-        } catch (e) {
-            root.logger.error(() => (`Failed to validate ${name} settings against ${schema}: ${e.message}. Config: ${JSON.stringify(dict, 0, 2)}`))
-            return false
-        }
-        return true
+        return schema_validator.validate_schema(dict, `${name} settings`, schema, true)
     }
 
     onContentsChanged: validate()

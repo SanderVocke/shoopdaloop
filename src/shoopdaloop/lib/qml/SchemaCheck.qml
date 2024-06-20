@@ -14,12 +14,6 @@ QtObject {
     
     function maybe_check() {
         if (!enabled) { return; }
-
-        try {
-            schema_validator.validate_schema(descriptor, schema)
-        } catch(err) {
-            root.logger.warning(`Failed session schema validation for object of type ${schema}:\n` +
-                        `\nobject (description "${object_description}"):\n  ${JSON.stringify(descriptor, 0, 2)}\nerror:\n  ${err.message}`)
-        }
+        schema_validator.validate_schema(descriptor, object_description, schema, true)
     }
 }
