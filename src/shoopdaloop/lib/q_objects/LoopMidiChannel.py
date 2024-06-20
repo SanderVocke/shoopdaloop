@@ -103,5 +103,9 @@ class LoopMidiChannel(LoopChannel):
         else:
             self.initializedChanged.connect(lambda: self._backend_obj.load_all_midi_data(data))
     
+    @ShoopSlot()
+    def reset_state_tracking(self):
+        self._backend_obj.reset_state_tracking()
+    
     def get_display_data(self):
         return self.get_recorded_midi_msgs()

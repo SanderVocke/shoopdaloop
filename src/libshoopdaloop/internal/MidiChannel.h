@@ -210,6 +210,9 @@ public:
         std::optional<unsigned> keep_samples_before_start_offset,
         std::optional<unsigned> reverse_start_offset,
         bool thread_safe=true) override;
+    
+    // Forget about any tracked MIDI state
+    void PROC_reset_midi_state_tracking();
 };
 
 extern template class MidiChannel<uint32_t, uint16_t>;

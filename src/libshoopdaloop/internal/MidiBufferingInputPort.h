@@ -8,7 +8,8 @@
 // input source so that they can be passed on as references and sorted
 // downstream.
 class MidiBufferingInputPort : public MidiPort,
-                               protected MidiReadableBufferInterface {
+                               protected MidiReadableBufferInterface,
+                               private ModuleLoggingEnabled<"Backend.MidiBufferingInputPort"> {
 protected:
     struct ReadMessage : public MidiSortableMessageInterface {
         uint32_t time = 0;

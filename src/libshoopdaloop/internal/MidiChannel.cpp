@@ -346,6 +346,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_input_messages(uint32_t n_samples)
         } else {
             // Regardless of whether we record or not, we need to keep the input
             // port state up-to-date.
+            log<log_level_debug_trace>("Basic processing of msg {} of {}", idx, recbuf.first.n_events_total);
             mp_input_midi_state->process_msg(d);
             recbuf.first.n_events_processed++;
         }
@@ -454,6 +455,14 @@ MidiChannel<TimeType, SizeType>::PROC_send_all_sound_off(unsigned frame) {
     }
     PROC_send_message_value(*buf.second,
         frame, 3, (uint8_t*) all_sound_off_data);
+}
+
+template <typename TimeType, typename SizeType>
+void
+MidiChannel<TimeType, SizeType>::PROC_reset_midi_state_tracking() {
+    log<log_level_debug>("Reset state tracking");
+    mp_output_midi_state = shoop_make_shared<MidiStateTracker>(true, true, true);
+    mp_input_midi_state = shoop_make_shared<MidiStateTracker>(true, true, true);
 }
 
 template <typename TimeType, typename SizeType>
@@ -572,6 +581,7 @@ MidiChannel<TimeType, SizeType>::PROC_process_playback(uint32_t our_pos, uint32_
             }
         }
         if (mp_track_state_until_first_msg_playback->valid()) {
+            log<log_level_debug>("playback: skip msg but apply to state @ {}", event->storage_time);
             mp_track_state_until_first_msg_playback->state->process_msg(event->get_data());
         }
         buf.first.n_events_processed++;

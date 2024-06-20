@@ -953,6 +953,18 @@ void clear_midi_channel (shoopdaloop_loop_midi_channel_t *channel) {
   });
 }
 
+void reset_midi_channel_state_tracking(shoopdaloop_loop_midi_channel_t *channel) {
+  return api_impl<void>("reset_midi_channel_state_tracking", [&]() {
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
+        auto _channel = internal_midi_channel(channel);
+        if (!_channel) { return; }
+        _channel->maybe_midi()->PROC_reset_midi_state_tracking();
+    });
+  });
+}
+
 void do_segfault_on_process_thread(shoop_backend_session_t *backend) {
   return api_impl<void>("do_segfault_on_process_thread", [&]() {
     auto _backend = internal_backend_session(backend);
