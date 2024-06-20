@@ -405,6 +405,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::instantiate(
         // Make a plugin instance.
         auto instance = lilv_plugin_instantiate(m_plugin, (double)sample_rate,
                                                 features.data());
+
         if (!instance) {
             throw std::runtime_error("Plugin " + m_plugin_uri +
                                      " failed to instantiate.");
@@ -594,12 +595,15 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::~CarlaLV2ProcessingChain() {
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::deserialize_state(
     std::string str) {
+    std::cout << "AAA" << std::endl;
     while (!is_ready()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+    std::cout << "BBB" << std::endl;
     if (!m_state_iface) {
         throw std::runtime_error("No state interface for Carla chain");
     }
+    std::cout << "CCC" << std::endl;
     m_state_restore_active = true;
     std::thread restore_thread([this, str]() {
         try {
@@ -617,6 +621,8 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::deserialize_state(
         } catch (...) {
             log<log_level_error>("Failed to restore Carla state: unknown exception");
         }
+
+        std::cout << "FFF" << std::endl;
 
         m_state_restore_active = false;
     });
