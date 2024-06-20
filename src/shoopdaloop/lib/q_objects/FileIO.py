@@ -118,12 +118,15 @@ class FileIO(ShoopQObject):
         try:
             lengths = set()
             for d in data:
+                if not isinstance(d, backend_wrappers.ShoopChannelAudioData):
+                    self.logger.error(lambda: 'Cannot save audio: data is not a ShoopChannelAudioData object')
+                    return
                 lengths.add(len(d))
             if len(lengths) > 1:
                 self.logger.error(lambda: 'Cannot save audio: channel lengths are not equal ({})'.format(list(lengths)))
                 return
             # Soundfile wants NcxNs, not NsxNc
-            _data = np.swapaxes(data, 0, 1)
+            _data = np.swapaxes(np.vstack([d.np_array for d in data]), 0, 1)
             sf.write(filename, _data, sample_rate)
         finally:
             self.doneSavingFile.emit()
@@ -355,8 +358,9 @@ class FileIO(ShoopQObject):
 
             target_sample_rate = int(target_sample_rate)
             file_sample_rate = int(file_sample_rate)
-            resampled = data
-            if target_sample_rate != file_sample_rate:
+            if target_sample_rate == file_sample_rate:
+                resampled = data
+            else:
                 self.logger.debug(lambda: "Resampling {} from {} to {}".format(filename, file_sample_rate, target_sample_rate))
                 self.logger.trace(lambda: "Data shape before resample: {}".format(data.shape))
                 target_n_frames = maybe_target_data_length

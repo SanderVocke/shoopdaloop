@@ -369,38 +369,27 @@ class ExternalPortDescriptor:
             self.direction = None
             self.data_type = None
 
-class WrappedCFloatArray:
-    def __init__(self, array, destruct_fn):
-        if array == None:
+class ShoopChannelAudioData:
+    def __init__(self, data=None):
+        if data == None:
             self.ctypes_array = None
             self.raw_data_ptr = None
+            self.backend_obj = None
             self.np_array = numpy.empty(0)
             return      
-        if not isinstance(array, ctypes.c_float * array.__len__()):
-            raise ValueError("array must be a ctypes array of c_float")
-
-        self.ctypes_array = array
-
-        # Get the raw memory address of the ctypes array
-        self.raw_data_ptr = ctypes.cast(array, ctypes.POINTER(ctypes.c_float)).contents.value
-
-        # Create a NumPy shape using the length of the ctypes array
-        array_shape = (array.__len__(),)
-
-        # Create the NumPy array with a format string to match ctypes memory layout
-        # (important for non-native byte order or alignment)
-        format_string = f"{numpy.dtype.char} {array_shape[0]}"
-        self.np_array = numpy.frombuffer(self.raw_data_ptr, dtype=format_string)
-        
-        self._destruct_fn = destruct_fn
+        if not isinstance(data, ctypes.POINTER(bindings.shoop_audio_channel_data_t)):
+            raise ValueError("array must be a backend bindings audio data object, is {}".format(type(data)))
+        if not isinstance(data[0].data, ctypes.POINTER(ctypes.c_float)):
+            raise ValueError("array data must be a ctypes float pointer, is {}".format(type(data[0].data)))
+        self.backend_obj = data
+        self.np_array = numpy.ctypeslib.as_array(self.backend_obj[0].data, shape=(self.backend_obj[0].n_samples,))
     
     def __len__(self):
         return len(self.np_array)
     
     def __del__(self):
-        self.raw_data_ptr = None
         self.np_array = None
-        self._destruct_fn(self.ctypes_array)
+        bindings.destroy_audio_channel_data(self.backend_obj)
 
 def deref_ptr(backend_ptr):
     if not backend_ptr:
@@ -471,11 +460,11 @@ class BackendLoopAudioChannel:
         if self.available():
             import time
             start = time.time()
-            rval = WrappedCFloatArray(bindings.get_audio_channel_data(self.shoop_c_handle), bindings.destroy_audio_channel_data)
+            rval = ShoopChannelAudioData(bindings.get_audio_channel_data(self.shoop_c_handle))
             got = time.time()
             print(f'get data took {(got - start)*1000.0}ms')
             return rval
-        return WrappedCFloatArray(None, lambda _: None)
+        return ShoopChannelAudioData()
     
     def get_state(self):
         if self.available():

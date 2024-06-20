@@ -613,9 +613,9 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::deserialize_state(
                 (LV2_State_Handle)&s, LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE,
                 features);
         } catch (const std::exception &exp) {
-            std::cerr << "Failed to restore Carla state: " << exp.what();
+            log<log_level_error>("Failed to restore Carla state: {}", exp.what());
         } catch (...) {
-            std::cerr << "Failed to restore Carla state (unknown exception).";
+            log<log_level_error>("Failed to restore Carla state: unknown exception");
         }
 
         m_state_restore_active = false;
@@ -624,11 +624,21 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::deserialize_state(
 }
 
 template <typename TimeType, typename SizeType>
-std::string CarlaLV2ProcessingChain<TimeType, SizeType>::serialize_state() {
-    while (!is_ready()) {
+std::string CarlaLV2ProcessingChain<TimeType, SizeType>::serialize_state(uint32_t timeout_ms) {
+    auto start = std::chrono::high_resolution_clock::now();
+    auto timeout_expired = [start, timeout_ms]() {
+        return std::chrono::high_resolution_clock::now() - start >
+               std::chrono::milliseconds(timeout_ms);
+    };
+    while (!is_ready() && !timeout_expired()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+    if (timeout_expired()) {
+        log<log_level_error>("{}: Timeout waiting for Carla chain to be ready", m_human_name);
+        throw std::runtime_error("Timeout waiting for Carla chain to be ready");
+    }
     if (!m_state_iface) {
+        log<log_level_error>("{}: No state interface for Carla chain", m_human_name);
         throw std::runtime_error("No state interface for Carla chain");
     }
     LV2StateString s(this,

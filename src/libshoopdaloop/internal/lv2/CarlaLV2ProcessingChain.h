@@ -166,7 +166,7 @@ public:
     virtual ~CarlaLV2ProcessingChain();
 
     void deserialize_state(std::string str) override;
-    std::string serialize_state() override;
+    std::string serialize_state(uint32_t timeout_ms) override;
 };
 
 extern template class CarlaLV2ProcessingChain<uint32_t, uint16_t>;
