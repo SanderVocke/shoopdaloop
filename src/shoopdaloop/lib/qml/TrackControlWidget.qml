@@ -241,18 +241,23 @@ Item {
     }
     function set_gain(gain) {
         gain_dB = Math.min(Math.max(gain_fader.gainToDb(gain), gain_fader.from), gain_fader.to)
+        push_out_gains()
     }
     function set_balance(balance) {
         output_balance = balance
+        push_out_gains()
     }
     function set_gain_fader(value) {
         gain_fader.value = gain_fader.valueAt(value)
+        push_out_gains()
     }
     function set_input_gain(gain) {
         input_gain_dB = Math.min(Math.max(input_fader.gainToDb(gain), input_fader.from), input_fader.to)
+        push_in_gains()
     }
     function set_input_gain_fader(value) {
         input_fader.value = input_fader.valueAt(value)
+        push_in_gains()
     }
     function convert_gain_to_linear(gain) {
         convert_gain.dB = gain
@@ -279,7 +284,7 @@ Item {
             let vol = Math.max(...gains)
             let weak_factor = Math.min(...gains) / vol
             let weak_is_left = gains[0] < gains[1]
-            let balance = weak_is_left ? -(1.0 - weak_factor) : (1.0 - weak_factor)
+            let balance = weak_is_left ? (1.0 - weak_factor) : -(1.0 - weak_factor)
             return {
                 "gain": vol,
                 "balance": balance
