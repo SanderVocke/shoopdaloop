@@ -118,7 +118,7 @@ class FileIO(ShoopQObject):
         try:
             lengths = set()
             for d in data:
-                if not isinstance(d, backend_wrappers.ShoopChannelAudioData):
+                if not isinstance(d, backend_wrappers.ShoopChannelAudioData) and not isinstance(d, list):
                     self.logger.error(lambda: 'Cannot save audio: data is not a ShoopChannelAudioData object')
                     return
                 lengths.add(len(d))
@@ -126,7 +126,9 @@ class FileIO(ShoopQObject):
                 self.logger.error(lambda: 'Cannot save audio: channel lengths are not equal ({})'.format(list(lengths)))
                 return
             # Soundfile wants NcxNs, not NsxNc
-            _data = np.swapaxes(np.vstack([d.np_array for d in data]), 0, 1)
+            _data = np.hstack(
+                [(np.squeeze(d.np_array) if isinstance(d, backend_wrappers.ShoopChannelAudioData) else np.array(d)).reshape(-1,1) for d in data]
+            )
             sf.write(filename, _data, sample_rate)
         finally:
             self.doneSavingFile.emit()
@@ -136,11 +138,7 @@ class FileIO(ShoopQObject):
         self.save_data_to_soundfile_impl(filename, sample_rate, data)
 
     def save_channels_to_soundfile_impl(self, filename, sample_rate, channels):
-        import time
-        start = time.time()
         datas = [c.get_data() for c in channels]
-        end = time.time()
-        print(f"Got channel data in {(end-start)*1000.0}ms")
         self.save_data_to_soundfile_impl(filename, sample_rate, datas)
         self.logger.info(lambda: "Saved {}-channel audio to {} ({} samples)".format(len(channels), filename, len(datas[0])))
     
@@ -309,10 +307,7 @@ class FileIO(ShoopQObject):
         self.load_midi_to_channels_impl(filename, sample_rate, channels, maybe_set_n_preplay_samples, maybe_set_start_offset, maybe_update_loop_to_datalength)
     
     @ShoopSlot(str, int, list, result=Task)
-    def save_channels_to_soundfile_async(self, filename, sample_rate, channels):
-        import time
-        start = time.time()
-        
+    def save_channels_to_soundfile_async(self, filename, sample_rate, channels):        
         task = Task(parent=self)
         def do_save():
             try:
@@ -322,10 +317,6 @@ class FileIO(ShoopQObject):
         
         t = Thread(target=do_save)
         t.start()
-        
-        end = time.time()
-        
-        print(f"Save async function body completed in {(end-start)*1000.0}ms")
         return task
 
     @ShoopSlot(str, int, list)
@@ -365,9 +356,10 @@ class FileIO(ShoopQObject):
                 self.logger.trace(lambda: "Data shape before resample: {}".format(data.shape))
                 target_n_frames = maybe_target_data_length
                 if target_n_frames is None:
-                    target_n_frames = int(target_sample_rate / file_sample_rate * resampled.shape[0])
+                    target_n_frames = int(target_sample_rate / file_sample_rate * data.shape[0])
                 resampled = backend_wrappers.resample_audio(data, target_n_frames)
-                self.logger.trace(lambda: "Data shape after resample: {}".format(resampled.shape))
+            
+            self.logger.trace(lambda: "Data shape: {}".format(resampled.shape))
 
             if len(channels_to_loop_channels) > len(resampled):
                 self.logger.error(lambda: "Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(resampled)))
@@ -385,7 +377,7 @@ class FileIO(ShoopQObject):
                         channel.set_start_offset(maybe_set_start_offset)
                     if maybe_set_n_preplay_samples != None:
                         channel.set_n_preplay_samples(maybe_set_n_preplay_samples)
-                    self.logger.debug(lambda: "load channel: {} samples, result {}".format(len(data_channel), channel.data_length))  
+                    self.logger.debug(lambda: f"load channel: {len(data_channel)} samples, resulting channel data length {channel.data_length}")  
                     
             if maybe_update_loop_to_datalength != None:
                 maybe_update_loop_to_datalength.set_length(len(resampled[0]))

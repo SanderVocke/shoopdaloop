@@ -176,10 +176,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
                     verify_true(fx.active)
 
                     verify_eq(out1, [0, 0, 0, 0])
@@ -229,10 +229,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
                     let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
@@ -265,10 +265,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
                     verify_true(fx.active)
 
                     verify_eq(out1, [1, 2, 3, 4])
@@ -318,10 +318,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
                     let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
@@ -358,10 +358,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
                     verify_true(!fx.active)
 
                     verify_eq(out1, [5, 6, 7, 8])
@@ -409,10 +409,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
                     let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
@@ -449,10 +449,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
 
                     verify_eq(out1, [6, 8, 10, 12])
                     verify_eq(out2, [12, 10, 8, 6])
@@ -506,10 +506,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
                     let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
@@ -547,10 +547,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
 
                     verify_true(fx.active)
                     verify_eq(out1, [25, 30, 35, 40])
@@ -616,10 +616,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
                     let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
@@ -656,10 +656,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
 
                     verify_true(fx.active)
                     verify_eq(out1, [26, 32, 38, 44])
@@ -720,10 +720,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
                     let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
@@ -761,10 +761,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
 
                     verify_true(fx.active)
                     verify_eq(out1, [25, 30, 35, 40])
@@ -824,10 +824,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
                     let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
@@ -865,10 +865,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
 
                     verify_true(fx.active)
                     verify_eq(out1, [25, 30, 35, 40])
@@ -929,10 +929,10 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let dry1 = dry_channels()[0].get_data()
-                    let dry2 = dry_channels()[1].get_data()
-                    let wet1 = wet_channels()[0].get_data()
-                    let wet2 = wet_channels()[1].get_data()
+                    let dry1 = dry_channels()[0].get_data_list()
+                    let dry2 = dry_channels()[1].get_data_list()
+                    let wet1 = wet_channels()[0].get_data_list()
+                    let wet2 = wet_channels()[1].get_data_list()
                     let midi = midi_channel().get_recorded_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()

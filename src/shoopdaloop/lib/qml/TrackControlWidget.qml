@@ -324,8 +324,8 @@ Item {
         }
     }
     function push_mute() {
-        audio_out_ports.forEach((p) => p.set_muted(mute))
-        midi_out_ports.forEach((p) => p.set_muted(mute))
+        audio_out_ports.forEach((p) => {if (p) { p.set_muted(mute) } else { logger.warn("Undefined audio out port") }})
+        midi_out_ports.forEach((p) => {if (p) { p.set_muted(mute) } else { logger.warn("Undefined audio out port") }})
     }
     function push_monitor() {
         audio_in_ports

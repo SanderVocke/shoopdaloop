@@ -462,7 +462,6 @@ class BackendLoopAudioChannel:
             start = time.time()
             rval = ShoopChannelAudioData(bindings.get_audio_channel_data(self.shoop_c_handle))
             got = time.time()
-            print(f'get data took {(got - start)*1000.0}ms')
             return rval
         return ShoopChannelAudioData()
     
