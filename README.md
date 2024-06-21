@@ -12,7 +12,7 @@ It is designed for both free-form jamming (solo or together) and pre-scripted lo
 
 [Documentation](https://sandervocke.github.io/shoopdaloop/) lives here.
 
-> :warning: **There is no release yet. This is in pre-alpha. Feel free to give this a test drive, but don't expect a finished product.**
+> :warning: **Current releases (<v1.0.0) are development releases. Feel free to give this a test drive, but don't expect a finished product.**
 
 For currently open known issues, check the GitHub Issues page.
 
