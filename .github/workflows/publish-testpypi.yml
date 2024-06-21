@@ -1,4 +1,4 @@
-name: Build and push CI containers
+name: Publish to TestPyPi
 
 on:
   workflow_dispatch:
@@ -21,6 +21,7 @@ jobs:
         ref: refs/tags/${{ inputs.from_tag }}
     - uses: robinraju/release-downloader@v1
       with:
+        repository: SanderVocke/shoopdaloop
         tag: ${{ inputs.from_tag }}
         fileName: "*.whl"
         out-file-path: "wheels"
