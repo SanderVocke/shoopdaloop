@@ -105,7 +105,7 @@ jobs:
         pyinstaller: ${{ matrix.kind.pyinstaller }}
         package_kind: ${{ matrix.kind.package_kind }}
         coverage: ${{ matrix.kind.coverage }}
-        upload_release_assets: ${{ startsWith(github.ref, 'refs/tags/') }}
+        upload_release_assets: ${{ startsWith(github.ref, 'refs/tags/') && 'true' || 'false' }}
     # - name: Setup tmate session
     #   if: failure()
     #   uses: SanderVocke/action-tmate@master

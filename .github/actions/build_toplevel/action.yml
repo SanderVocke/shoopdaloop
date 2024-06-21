@@ -22,6 +22,7 @@ inputs:
   coverage:
     description: "Whether to run coverage"
   upload_release_assets:
+    default: 'false'
     description: "Whether to attempt uploading assets to a tag release."
   
 runs:
@@ -40,13 +41,13 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Download upload URL for release assets
-    if: ${{ inputs.upload_release_assets }}
+    if: ${{ inputs.upload_release_assets == 'true' }}
     uses: actions/download-artifact@v4
     with:
       name: release_upload_assets_url
       path: release_upload_assets_url.txt
   - name: Set upload URL for release assets
-    if: ${{ inputs.upload_release_assets }}
+    if: ${{ inputs.upload_release_assets == 'true' }}
     shell: bash
     run: echo "release_upload_assets_url=$(cat release_upload_assets_url.txt)" | tee -a $GITHUB_ENV
   - name: Prepare
