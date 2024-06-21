@@ -3,7 +3,7 @@ name: Build and test
 on:
   push:
     branches: [ "master" ]
-    tags: "v*.*.*"
+    tags: "*"
   pull_request:
     branches: [ "master" ]
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
   ## Release creation for tag pushes
   ##############################################################
 
-  create_release:
+  maybe_create_release:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout
@@ -81,7 +81,7 @@ jobs:
     container:
       image: ${{ matrix.container }}
       options: ${{ matrix.container_options }}
-    needs: create_release
+    needs: maybe_create_release
     #if: false
     steps:
     - name: Checkout
@@ -226,7 +226,7 @@ jobs:
             build_type: 'Debug'
 
     runs-on: ubuntu-latest
-    needs: create_release
+    needs: maybe_create_release
     #if: false
     steps:
     - name: Checkout
@@ -345,7 +345,7 @@ jobs:
             build_type: 'Debug'
             os: macos-14
     runs-on: ${{ matrix.kind.os }}
-    needs: create_release
+    needs: maybe_create_release
     #if: false
     steps:
     - name: Checkout
@@ -494,7 +494,7 @@ jobs:
             rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
             # cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
     runs-on: ${{ matrix.kind.os}}
-    needs: create_release
+    needs: maybe_create_release
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
