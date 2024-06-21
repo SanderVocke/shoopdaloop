@@ -20,11 +20,12 @@ jobs:
     - uses: actions/checkout@v3
       with:
         ref: refs/tags/${{ inputs.from_tag }}
-    - uses: robinraju/release-downloader@v1
+    - uses: Itsblue/download-release-assets-action@v1
       with:
-        tag: ${{ inputs.from_tag }}
-        fileName: "*.whl"
-        out-file-path: "wheels"
+        repo: SanderVocke/shoopdaloop
+        version: tags/${{ inputs.from_tag }}
+        file: "*.whl"
+        path: "wheels"
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
