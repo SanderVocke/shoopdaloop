@@ -1,0 +1,29 @@
+name: Build and push CI containers
+
+on: workflow_dispatch
+  inputs:
+    from_tag:
+      type: string
+      required: true
+
+permissions:
+  contents: read
+  checks: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        ref: refs/tags/${{ inputs.from_tag }}
+    - uses: robinraju/release-downloader@v1
+      with:
+        tag: ${{ inputs.from_tag }}
+        fileName: "*.whl"
+        out-file-path: "wheels"
+    - name: Publish package distributions to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+          packages-dir: wheels
