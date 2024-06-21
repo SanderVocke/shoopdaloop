@@ -1,10 +1,11 @@
 name: Build and push CI containers
 
-on: workflow_dispatch
-  inputs:
-    from_tag:
-      type: string
-      required: true
+on:
+  workflow_dispatch:
+    inputs:
+      from_tag:
+        type: string
+        required: true
 
 permissions:
   contents: read
