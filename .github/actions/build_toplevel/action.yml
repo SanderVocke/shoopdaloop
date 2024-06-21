@@ -216,7 +216,7 @@ runs:
     id: compress_pdb
     shell: bash
     run: |
-      tar -czf ${{ inputs.name }}_pdb_files.tar.gz ./**/*.pdb ./**/*.PDB
+      find folder_name -name "*.pdb" -o -name "*.PDB" | tar -czf ${{ inputs.name }}_pdb_files.tar.gz -T -
       echo "path=${{ inputs.name }}_pdb_files.tar.gz" | tee -a $GITHUB_OUTPUT
   - name: Upload PDB files (${{ inputs.variant_name }})
     if: ${{ env.release_upload_assets_url && inputs.prepare_kind == 'windows' }}
