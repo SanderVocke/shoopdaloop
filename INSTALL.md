@@ -7,13 +7,14 @@ There are multiple ways to install ShoopDaLoop: from source or from pre-release 
 
 Automatically built packages include:
 
-- Python wheels for Linux/Windows/Mac (`*.whl`). These can be installed with `pip`. The advantage is that they leverage packages installed
-  in your Python distribution (which could pull them in from `pip` or depend on packages already installed via your OS).
+- Python wheels for Linux/Windows/Mac (`*.whl`). These can be installed with `pip`. The advantage is that they leverage packages installed in your Python distribution (which could pull them in from `pip` or depend on packages already installed via your OS).
 - Portable runnable folders (`portable_...`). These include all dependencies in one folder, making them large but reliable. They can be extracted and run directly.
 - Packages per platform:
    - For Linux, there are `rpm`, `deb` and `pacman` binary packages. These are "fat" packages which install `shoopdaloop` into `/opt` along with all dependencies (many of which are sourced from PyPi). If you want to utilize your distro's libraries instead, building from source or using a wheel is needed.
    - For Windows, the package is a `.exe` installer.
    - For Mac, there is a `.dmg` disk image package. Double-click it to mount the image. The app can be started directly from the mounted volume, or copied to the Applications folder for a permanent installation. If MacOS complains that you cannot start due to not being able to check for malicious software, you can go to your Mac's privacy settings screen and make an exception at the bottom.
+ 
+Note that the latest Python wheel packages can also be installed directly from PyPi: `python -m pip install shoopdaloop`.
 
 > :warning: **In ALL cases: install at your own risk. I do not take responsibility for any harm done to your system.** Be aware that these wheels and packages include code from not just this repository, but also:
 >  - several GitHub linked repo's;
