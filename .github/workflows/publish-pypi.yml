@@ -24,7 +24,7 @@ jobs:
       with:
         repo: SanderVocke/shoopdaloop
         version: tags/${{ inputs.from_tag }}
-        file: ".*\.whl"
+        file: ".*whl"
         path: "wheels"
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
