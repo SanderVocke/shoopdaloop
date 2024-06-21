@@ -12,7 +12,7 @@ It is designed for both free-form jamming (solo or together) and pre-scripted lo
 
 [Documentation](https://sandervocke.github.io/shoopdaloop/) lives here.
 
-> :warning: **There is no release yet. This is in pre-alpha. Feel free to give this a test drive, but don't expect a finished product.**
+> :warning: **Current releases (<v1.0.0) are development releases. Feel free to give this a test drive, but don't expect a finished product.**
 
 For currently open known issues, check the GitHub Issues page.
 
@@ -38,7 +38,8 @@ These features are explained in detail in the [docs](https://sandervocke.github.
 
 ShoopDaLoop is in early development. The basics work but not nearly all of its intended functionality is finished yet (see below).
 
-The intent is for the master branch to always work and pass CI tests, but at the moment, some significant bugs will probably come and go. Check the issues list for currently known issues and please add any you encounter yourself.
+The intent is for the master branch to always work and pass CI tests, but at the moment, some significant bugs will probably come and go.
+Development releases are made now and then, but until a v1.0.0 they are seen as a preview and not expected to be very stable.
 
 As such, it obviously has not been used for on-stage performing and definitely shouldn't until after doing some serious testing.
 
@@ -55,7 +56,7 @@ To summarize why ShoopDaLoop exists and what the goals and plans are, a short co
 | Audio+MIDI co-recording     | ✅                        | ❌              | ❌                       | ?                      |
 | Audio dry+wet co-recording  | ✅                        | manual setup     | ✅                      | ?                      |
 | Loop Organization           | Grid                      | Separate loopers | Grid                     | Grid                   |
-| Scenes support              | ✅ (5) | ❌              | ✅ (grid row = scene)    | ?                      |
+| Scenes support              | ✅ (5)                    | ❌              | ✅ (grid row = scene)    | ?                      |
 | Designed for live use       | ✅                        | ✅               | ✅                      | ❌                      |
 | Plugin Host                 | ✅ <sup>(1)</sup>         | ❌               | ❌                      | ✅                      |
 | Song/performance sequencing | ✅ <sup>(4)</sup>         | ❌               | ❌                      | ✅ (not sure of details) |
@@ -79,17 +80,9 @@ Disclaimers:
 
 As seen in the comparison table, ShoopDaLoop is closest to Luppp in what it offers, the main differentiators being built-in MIDI support and the planned features for song construction. And of course, the details of how loops are managed exactly differ between all these tools and are a matter of preference.
 
-# Roadmap
-
-All the basic features needed for a 1.0 release are there. The following items are planned before a first release:
-
-- **Polishing**: Many features are there but some need to be tweaked and improved.
-- **Distribution**: Currently the build process is quite convoluted and error-prone. This will be improved and tested for several repos.
-- **Bugfixing**: Fix the most critical bugs in the list. Improve test coverage.
-
 # Installation
 
-There is no official release. To test-drive ShoopDaLoop, you can choose between building from source or grabbing an (unsupported) pre-release build for your platform. See [INSTALL](INSTALL.md) for details.
+See the Releases page and [INSTALL](INSTALL.md) for details.
 
 # License / Copyright
 

@@ -110,7 +110,7 @@ class LoopChannel(ShoopQQuickItem):
     
     # data length
     dataLengthChanged = ShoopSignal(int)
-    @ShoopProperty(int, notify=dataLengthChanged)
+    @ShoopProperty(int, notify=dataLengthChanged, thread_protection=ThreadProtectionType.AnyThread)
     def data_length(self):
         return self._data_length
     

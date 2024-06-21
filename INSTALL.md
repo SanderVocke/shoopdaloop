@@ -1,31 +1,29 @@
 
 # Installation
 
-There is no release yet, but there are multiple ways to install the latest development ShoopDaLoop from source or from pre-release binaries.
+There are multiple ways to install ShoopDaLoop: from source or from pre-release binaries and packages. For binaries and packages, check the latest release page.
 
 # Packages
 
 Automatically built packages include:
 
-- Python whl's for Linux/Windows/Mac (artifacts `wheel_...`). Installing these with `pip` will pull in dependencies from PyPi.
-- PyInstaller portable runnable folders (artifacts `pyinstaller_...`). These include dependencies. They can be extracted and run directly.
-- Packages per platform (`package_...`):
-   - For Linux, there are `rpm`, `deb` and `pacman` binary packages. These are "fat" packages which install `shoopdaloop` into `/opt` along with all dependencies (many of which are sourced from PyPi). If you want to utilize your distro's libraries instead, building from source is needed.
+- Python wheels for Linux/Windows/Mac (`*.whl`). These can be installed with `pip`. The advantage is that they leverage packages installed in your Python distribution (which could pull them in from `pip` or depend on packages already installed via your OS).
+- Portable runnable folders (`portable_...`). These include all dependencies in one folder, making them large but reliable. They can be extracted and run directly.
+- Packages per platform:
+   - For Linux, there are `rpm`, `deb` and `pacman` binary packages. These are "fat" packages which install `shoopdaloop` into `/opt` along with all dependencies (many of which are sourced from PyPi). If you want to utilize your distro's libraries instead, building from source or using a wheel is needed.
    - For Windows, the package is a `.exe` installer.
    - For Mac, there is a `.dmg` disk image package. Double-click it to mount the image. The app can be started directly from the mounted volume, or copied to the Applications folder for a permanent installation. If MacOS complains that you cannot start due to not being able to check for malicious software, you can go to your Mac's privacy settings screen and make an exception at the bottom.
+ 
+Note that the latest Python wheel packages can also be installed directly from PyPi: `python -m pip install shoopdaloop`.
 
-I keep a pre-release page (see the Releases section from the main GitHub code page), where I keep recent development binaries for easy access to download.
-
-To get other versions: the CI build generates these packages on every commit. Find them under the 'Actions' tab on GitHub, or by clicking the CI cross/checkmark next to any commit in the history. On the Actions page, go to the Summary and scroll down past the warnings/alert messages to get to the artifacts. You need to be logged in (under any GitHub account) to download them. 
-
-> :warning: **For all binary wheels, packages and installers: install at your own risk. I do not take responsibility for any harm done to your system.** Be aware that these wheels and packages include code from not just this repository, but also:
+> :warning: **In ALL cases: install at your own risk. I do not take responsibility for any harm done to your system.** Be aware that these wheels and packages include code from not just this repository, but also:
 >  - several GitHub linked repo's;
 >  - packages pulled in during the CI build from PyPi repositories;
 >  - in case of "fat" packages: system libraries duplicated from the build distro;
 > 
-> All of the above are not created, controlled or thoroughly audited by ShoopDaLoop developers. For maximum control, you can build your own packages and dependencies from source.
+> None of the above are created, controlled or thoroughly audited by me. For maximum control, you can build your own packages and dependencies from source.
 
-There are also plans for an AUR package for Arch, which links against the distro's libraries. For other Linuxes, I do not plan to create and maintain additional packages.
+There are future plans for an AUR package for Arch, which links against the distro's libraries. For other Linuxes, I do not plan to create and maintain additional packages.
 
 ## From source
 
@@ -67,7 +65,11 @@ A develpment install can be done using:
 pip install -e . --no-build-isolation
 ```
 
-This will install into `./.py-build-cmake-cache/editable` with symlinks to the Python and QML source files in this repo. It will also install a link into the system such that `shoopdaloop` can be run system-wide. Note that the installation command should be repeated if anything changes which affects the CMake build (C / C++ files, package metadata version/description).
+This will install into `./.py-build-cmake-cache/editable` with symlinks to the Python and QML source files in this repo. It will also install a link into the system such that `shoopdaloop` can be run system-wide.
+
+In other words, it installs binaries into wherever Python libraries are normally installed, while keeping interpreted scripts (Python, QML) as symlinks, allowing for quick changes.
+
+Note that the installation command should be repeated if anything changes which affects the CMake build (C / C++ files, package metadata version/description).
 
 ### Changing CMake build settings
 
