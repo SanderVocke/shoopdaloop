@@ -35,6 +35,11 @@ jobs:
       with:
         draft: true
         generate_release_notes: true
+        append_body: true
+        body: |
+          ## Installation
+          Choose between Python wheels, portable folder archives and packages/installers per platform.
+          For details, refer to the [full installation instructions](https://github.com/SanderVocke/shoopdaloop/blob/master/INSTALL.md).
     - name: Store asset upload URL
       if: startsWith(github.ref, 'refs/tags/')
       shell: bash
