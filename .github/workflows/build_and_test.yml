@@ -37,6 +37,8 @@ jobs:
         generate_release_notes: true
         append_body: true
         body: |
+          This is a development release. Consider alpha / unstable until v1.0.0.
+
           ## Installation
           Choose between Python wheels, portable folder archives and packages/installers per platform.
           For details, refer to the [full installation instructions](https://github.com/SanderVocke/shoopdaloop/blob/master/INSTALL.md).
