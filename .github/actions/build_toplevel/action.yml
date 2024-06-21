@@ -45,11 +45,11 @@ runs:
     uses: actions/download-artifact@v4
     with:
       name: release_upload_assets_url
-      path: release_upload_assets_url.txt
+      path: release_upload_assets_url
   - name: Set upload URL for release assets
     if: ${{ inputs.upload_release_assets == 'true' }}
     shell: bash
-    run: echo "release_upload_assets_url=$(cat release_upload_assets_url.txt)" | tee -a $GITHUB_ENV
+    run: echo "release_upload_assets_url=$(cat release_upload_assets_url/release_upload_assets_url.txt)" | tee -a $GITHUB_ENV
   - name: Prepare
     id: prepare
     uses: ./.github/actions/prepare_build
