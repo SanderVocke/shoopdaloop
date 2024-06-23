@@ -677,8 +677,6 @@ Item {
         property bool hovered : area.containsMouse
         property string name : root.name
 
-        property var gain_dial: gain_dial ? gain_dial : undefined
-
         signal propagateMousePosition(var point)
         signal propagateMouseExited()
 
@@ -879,6 +877,7 @@ Item {
             anchors.fill: parent
 
             Loader {
+                id: iconitem_loader
                 width: 24
                 height: 24
                 y: 0
@@ -889,6 +888,9 @@ Item {
                 
                 sourceComponent: Item {
                     id: iconitem
+
+                    x: 0
+                    y: 0
 
                     property bool show_next_mode: 
                         statusrect.loop &&
@@ -970,12 +972,12 @@ Item {
                 font.pixelSize: 11
                 verticalAlignment: Text.AlignVCenter
                 horizontalAlignment: Text.AlignLeft
-                anchors.left: iconitem.right
+                anchors.left: iconitem_loader.right
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 anchors.right: parent.right
                 anchors.rightMargin: 6
-                visible: !buttongrid.visible
+                visible: !load_button_grid.item_visible
             }
 
             // Draggy rect for moving the track
@@ -1050,14 +1052,15 @@ Item {
 
             FirstTimeLoader {
                 id: load_button_grid
-                activate: statusrect.hovered || playlivefx.hovered || record_grab.hovered || recordfx.hovered
+                activate: statusrect.hovered
+                property bool item_visible: (item && item.visible)
                 asynchronous: true
 
                 x: 20
                 y: 2
 
                 sourceComponent: Grid {
-                    visible: load_button_grid.activate
+                    visible: statusrect.hovered || playlivefx.hovered || record_grab.hovered || recordfx.hovered
                     columns: 4
                     id: buttongrid
                     property int button_width: 18
@@ -1374,50 +1377,102 @@ Item {
                 }
             }
 
-            Loader {
+            Item {
                 anchors.right: parent.right
                 width: 18
                 height: 18
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.rightMargin: 5
 
-                active: true
-                asynchronous: true
-                
-                sourceComponent: Item {
+                // Display the gain dial always
+                AudioDial {
+                    id: gain_dial
+                    visible: root.descriptor_has_audio && !root.maybe_composite_loop
                     anchors.fill: parent
+                    from: -30.0
+                    to:   20.0
+                    value: 0.0
+                    property real initial_linear_value: root.initial_gain
+                    onInitial_linear_valueChanged: set_from_linear(initial_linear_value)
+                    Component.onCompleted: set_from_linear(initial_linear_value)
 
-                    // Display the gain dial always
+                    LinearDbConversion {
+                        dB_threshold: parent.from
+                        id: convert_gain
+                    }
+
+                    show_value_tooltip: true
+                    value_tooltip_postfix: ' dB'
+
+                    onMoved: {
+                        convert_gain.dB = gain_dial.value
+                        push_gain(convert_gain.linear)
+                    }
+                    function set_from_linear(val) {
+                        convert_gain.linear = val
+                        value = convert_gain.dB
+                    }
+                    function set_as_range_fraction(val) {
+                        value = (val * (to - from)) + from
+                    }
+
+                    handle.width: 4
+                    handle.height: 4
+                    
+                    background: Rectangle {
+                        radius: width / 2.0
+                        width: parent.width
+                        color: '#222222'
+                        border.width: 1
+                        border.color: 'grey'
+                    }
+
+                    label: 'V'
+                    tooltip: 'Loop gain. Double-click to reset.'
+
+                    HoverHandler {
+                        id: gain_dial_hover
+                    }
+                }
+
+                Popup {
+                    property bool visible_in: root.is_stereo && (gain_dial_hover.hovered || gain_dial.pressed || balance_dial_hover.hovered)
+                    Timer {
+                        id: visible_off_timer
+                        interval: 50
+                        repeat: false
+                    }
+                    onVisible_inChanged: { if (!visible_in) { visible_off_timer.restart(); } }
+                    visible: visible_in || visible_off_timer.running
+                    background: Rectangle { 
+                        width: balance_dial.width
+                        height: balance_dial.height
+                        color: Material.background
+                    }
+                    leftInset: 0
+                    rightInset: 0
+                    topInset: 0
+                    bottomInset: 0
+                    padding: 0
+                    margins: 0
+                    x: parent.width + 4
+                    y: 0
+
                     AudioDial {
-                        id: gain_dial
                         visible: root.descriptor_has_audio && !root.maybe_composite_loop
-                        anchors.fill: parent
-                        from: -30.0
-                        to:   20.0
-                        value: 0.0
-                        property real initial_linear_value: root.initial_gain
-                        onInitial_linear_valueChanged: set_from_linear(initial_linear_value)
-                        Component.onCompleted: set_from_linear(initial_linear_value)
+                        id: balance_dial
+                        from: -1.0
+                        to:   1.0
+                        value: root.is_stereo ? root.initial_stereo_balance : 0.0
 
-                        LinearDbConversion {
-                            dB_threshold: parent.from
-                            id: convert_gain
+                        width: gain_dial.width
+                        height: gain_dial.height
+
+                        onMoved: {
+                            push_stereo_balance(value)
                         }
 
                         show_value_tooltip: true
-                        value_tooltip_postfix: ' dB'
-
-                        onMoved: {
-                            convert_gain.dB = gain_dial.value
-                            push_gain(convert_gain.linear)
-                        }
-                        function set_from_linear(val) {
-                            convert_gain.linear = val
-                            value = convert_gain.dB
-                        }
-                        function set_as_range_fraction(val) {
-                            value = (val * (to - from)) + from
-                        }
 
                         handle.width: 4
                         handle.height: 4
@@ -1430,71 +1485,12 @@ Item {
                             border.color: 'grey'
                         }
 
-                        label: 'V'
-                        tooltip: 'Loop gain. Double-click to reset.'
-
                         HoverHandler {
-                            id: gain_dial_hover
+                            id: balance_dial_hover
                         }
-                    }
 
-                    Popup {
-                        property bool visible_in: root.is_stereo && (gain_dial_hover.hovered || gain_dial.pressed || balance_dial_hover.hovered)
-                        Timer {
-                            id: visible_off_timer
-                            interval: 50
-                            repeat: false
-                        }
-                        onVisible_inChanged: { if (!visible_in) { visible_off_timer.restart(); } }
-                        visible: visible_in || visible_off_timer.running
-                        background: Rectangle { 
-                            width: balance_dial.width
-                            height: balance_dial.height
-                            color: Material.background
-                        }
-                        leftInset: 0
-                        rightInset: 0
-                        topInset: 0
-                        bottomInset: 0
-                        padding: 0
-                        margins: 0
-                        x: parent.width + 4
-                        y: 0
-
-                        AudioDial {
-                            visible: root.descriptor_has_audio && !root.maybe_composite_loop
-                            id: balance_dial
-                            from: -1.0
-                            to:   1.0
-                            value: root.is_stereo ? root.initial_stereo_balance : 0.0
-
-                            width: gain_dial.width
-                            height: gain_dial.height
-
-                            onMoved: {
-                                push_stereo_balance(value)
-                            }
-
-                            show_value_tooltip: true
-
-                            handle.width: 4
-                            handle.height: 4
-                            
-                            background: Rectangle {
-                                radius: width / 2.0
-                                width: parent.width
-                                color: '#222222'
-                                border.width: 1
-                                border.color: 'grey'
-                            }
-
-                            HoverHandler {
-                                id: balance_dial_hover
-                            }
-
-                            label: 'B'
-                            tooltip: 'Loop stereo balance. Double-click to reset.'
-                        }
+                        label: 'B'
+                        tooltip: 'Loop stereo balance. Double-click to reset.'
                     }
                 }
             }

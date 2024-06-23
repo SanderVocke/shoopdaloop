@@ -2,7 +2,7 @@
     "type": "object",
     "properties": {
         "schema":       { "const": "session.1" },
-        "app_version":  { "const": "0.1.1" },
+        "app_version":  { "enum": ["0.1.0", "0.1.1"] },
         "sample_rate":  { "type": "integer" },
         "track_groups": {
             "type": "array",

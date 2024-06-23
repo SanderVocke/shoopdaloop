@@ -28,7 +28,6 @@ class Logger(ShoopQObject):
         if l and l != self.logger.name():
             self.logger = BaseLogger(l)
         end = time.time()
-        print(f'Logger created and named in {(end - self._start) * 1000.0}ms')
     
     # instanceIdentifier (for clarity in debugging)
     instanceIdentifierChanged = ShoopSignal(str)
