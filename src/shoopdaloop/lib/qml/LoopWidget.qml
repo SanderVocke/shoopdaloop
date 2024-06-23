@@ -1503,6 +1503,7 @@ Item {
         
         FirstTimeLoader {
             activate: loopprogressrect.loop && loopprogressrect.loop.display_position > 0
+            anchors.fill: parent
 
             sourceComponent: Rectangle {
                 function getRightMargin() {
@@ -1541,6 +1542,13 @@ Item {
 
         FirstTimeLoader {
             id: midi_flash_loader
+            anchors {
+                right: parent.right
+                top: parent.top
+                bottom: parent.bottom
+            }
+            width: 8
+
             property bool flashing:
                     root.maybe_loop ?
                     (root.maybe_loop.display_midi_events_triggered > 0 || root.maybe_loop.display_midi_notes_active > 0) :
@@ -1549,12 +1557,7 @@ Item {
 
             sourceComponent: Rectangle {
                 visible: midi_flash_loader.flashing
-                anchors {
-                    right: parent.right
-                    top: parent.top
-                    bottom: parent.bottom
-                }
-                width: 8
+                anchors.fill: parent
 
                 color: '#00FFFF'
             }
