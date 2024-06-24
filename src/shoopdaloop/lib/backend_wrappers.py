@@ -79,6 +79,9 @@ class FXChainType(Enum):
     Carla_Patchbay_16x = bindings.Carla_Patchbay_16x
     Test2x2x1 = bindings.Test2x2x1
 
+DontWaitForSync = -1
+DontAlignToSyncImmediately = -1
+
 @dataclass
 class FXChainState:
     visible : bool
@@ -366,6 +369,28 @@ class ExternalPortDescriptor:
             self.direction = None
             self.data_type = None
 
+class ShoopChannelAudioData:
+    def __init__(self, data=None):
+        if data == None:
+            self.ctypes_array = None
+            self.raw_data_ptr = None
+            self.backend_obj = None
+            self.np_array = numpy.empty(0)
+            return      
+        if not isinstance(data, ctypes.POINTER(bindings.shoop_audio_channel_data_t)):
+            raise ValueError("array must be a backend bindings audio data object, is {}".format(type(data)))
+        if not isinstance(data[0].data, ctypes.POINTER(ctypes.c_float)):
+            raise ValueError("array data must be a ctypes float pointer, is {}".format(type(data[0].data)))
+        self.backend_obj = data
+        self.np_array = numpy.ctypeslib.as_array(self.backend_obj[0].data, shape=(self.backend_obj[0].n_samples,))
+    
+    def __len__(self):
+        return len(self.np_array)
+    
+    def __del__(self):
+        self.np_array = None
+        bindings.destroy_audio_channel_data(self.backend_obj)
+
 def deref_ptr(backend_ptr):
     if not backend_ptr:
         return None
@@ -433,12 +458,12 @@ class BackendLoopAudioChannel:
     
     def get_data(self) -> List[float]:
         if self.available():
-            r = bindings.get_audio_channel_data(self.shoop_c_handle)
-            if r:
-                data = [float(r[0].data[i]) for i in range(r[0].n_samples)]
-                bindings.destroy_audio_channel_data(r)
-                return data
-        return []
+            import time
+            start = time.time()
+            rval = ShoopChannelAudioData(bindings.get_audio_channel_data(self.shoop_c_handle))
+            got = time.time()
+            return rval
+        return ShoopChannelAudioData()
     
     def get_state(self):
         if self.available():
@@ -566,6 +591,10 @@ class BackendLoopMidiChannel:
         if self.available():
             bindings.clear_midi_channel(self.shoop_c_handle)
 
+    def reset_state_tracking(self):
+        if self.available():
+            bindings.reset_midi_channel_state_tracking(self.shoop_c_handle)
+
     def __del__(self):
         if self.available():
             self.destroy()
@@ -593,17 +622,20 @@ class BackendLoop:
             return rval
         return None
 
-    def transition(self, to_state : Type['LoopMode'],
-                   cycles_delay : int, wait_for_sync : bool):
+    def transition(self,
+                   to_state : Type['LoopMode'],
+                   maybe_cycles_delay : int,
+                   maybe_to_sync_at_cycle : int):
         if self.available():
             bindings.loop_transition(self.shoop_c_handle,
                                     to_state.value,
-                                    cycles_delay,
-                                    wait_for_sync)
+                                    maybe_cycles_delay,
+                                    maybe_to_sync_at_cycle)
     
     # Static version for multiple loops
     def transition_multiple(loops, to_state : Type['LoopMode'],
-                   cycles_delay : int, wait_for_sync : bool):
+                   maybe_cycles_delay : int,
+                   maybe_to_sync_at_cycle : int):
         if len(loops) == 0:
             return
         backend = loops[0]._backend
@@ -615,8 +647,8 @@ class BackendLoop:
             bindings.loops_transition(len(loops),
                                     handles,
                                     to_state.value,
-                                    cycles_delay,
-                                    wait_for_sync)
+                                    maybe_cycles_delay,
+                                    maybe_to_sync_at_cycle)
             del handles
     
     def get_state(self):

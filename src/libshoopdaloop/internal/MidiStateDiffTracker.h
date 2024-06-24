@@ -2,6 +2,7 @@
 #include <boost/container/flat_set.hpp>
 #include "MidiStateTracker.h"
 #include <functional>
+#include "shoop_shared_ptr.h"
 
 enum class StateDiffTrackerAction {
     ScanDiff,
@@ -14,9 +15,9 @@ enum class StateDiffTrackerAction {
 // that are not the same in both state trackers, so that it is not necessary to fully iterate
 // over all state in both trackers to get this information.
 class MidiStateDiffTracker : public MidiStateTracker::Subscriber,
-                             public std::enable_shared_from_this<MidiStateDiffTracker>,
+                             public shoop_enable_shared_from_this<MidiStateDiffTracker>,
                              public ModuleLoggingEnabled<"Backend.MidiStateDiffTracker"> {
-    using SharedTracker = std::shared_ptr<MidiStateTracker>;
+    using SharedTracker = shoop_shared_ptr<MidiStateTracker>;
 
     // Two bytes identify the state, but don't hold its value. (example: two bytes of CC identify the channel and controller in question).
     // Special for notes is that they may be indicated by NoteOn or NoteOff but this distinction does not mean anything here

@@ -1,4 +1,4 @@
-name: Manylinux TMate test session
+name: Debian TMate test session
 
 on: workflow_dispatch
 
@@ -10,7 +10,7 @@ jobs:
   tmate:
     runs-on: ubuntu-latest
     container:
-      image: quay.io/pypa/manylinux_2_28_x86_64:latest
+      image: debian:latest
       options: --user root --workdir /
     steps:
     - name: Checkout

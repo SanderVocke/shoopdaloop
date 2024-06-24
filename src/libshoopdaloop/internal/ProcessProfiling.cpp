@@ -65,7 +65,7 @@ struct ProfilingItemPrivate {
 
 struct ProfilerPrivate {
     std::recursive_mutex m_registry_access;
-    std::map<std::string, std::weak_ptr<ProfilingItem>> m_registry;
+    std::map<std::string, shoop_weak_ptr<ProfilingItem>> m_registry;
 };
 
 void Profiler::next_iteration() {
@@ -127,7 +127,7 @@ ProfilingReport Profiler::report() {
     return rval;
 }
 
-std::shared_ptr<ProfilingItem> Profiler::maybe_get_profiling_item(std::string name) {
+shoop_shared_ptr<ProfilingItem> Profiler::maybe_get_profiling_item(std::string name) {
     if (!g_ProfilingEnabled) { return nullptr; }
 
     std::lock_guard<std::recursive_mutex> g(pvt->m_registry_access);
@@ -140,7 +140,7 @@ std::shared_ptr<ProfilingItem> Profiler::maybe_get_profiling_item(std::string na
     }
 
     auto rr = new ProfilingItem;
-    auto r = std::shared_ptr<ProfilingItem>(rr);
+    auto r = shoop_shared_ptr<ProfilingItem>(rr);
     pvt->m_registry[name] = r;
     return r;
 }

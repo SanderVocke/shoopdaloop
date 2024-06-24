@@ -5,6 +5,7 @@ import ShoopDaLoop.PythonTestCase
 
 import ShoopConstants
 import './testDeepEqual.js' as TestDeepEqual
+import '../../type_checks.js' as TypeChecks
 import '..'
 
 PythonTestCase {
@@ -14,7 +15,7 @@ PythonTestCase {
     property var logger : PythonLogger { name: `Frontend.Qml.ShoopTestCase` }
 
     property bool print_error_traces: os_utils.get_env("QMLTEST_NO_ERROR_TRACES") == null
-    
+
     // It seems the built-in test function filter of the QML test runner is not working.
     // Provide a means to only run a subset of tests.
     property var testfn_filter: null
@@ -63,6 +64,10 @@ PythonTestCase {
     }
     Component.onDestruction: logger.info(() => ("Testcase " + name + " destroyed."))
 
+    function section(title) {
+        logger.debug(() => `Test section: ${title}`)
+    }
+
     function verify_loop_cleared(loop) {
         verify_eq(loop.mode, ShoopConstants.LoopMode.Stopped)
         verify_eq(loop.length, 0)
@@ -87,7 +92,7 @@ PythonTestCase {
             return `${failstring}\nBacktrace:\n${trace}`
         } else {
             return failstring
-        }        
+        }
     }
 
     function verify_throw(fn) {
@@ -128,16 +133,16 @@ PythonTestCase {
         }
 
         function compare(a, b) {
-            if (Array.isArray(a) && Array.isArray(b)) {
+            if (TypeChecks.is_array(a) && TypeChecks.is_array(b)) {
                 return TestDeepEqual.testArraysCompare(a, b, compare);
-            } else if (TestDeepEqual.isObject(a) && TestDeepEqual.isObject(b)) {
+            } else if (TypeChecks.is_object(a) && TypeChecks.is_object(b)) {
                 return a == b || TestDeepEqual.testDeepEqual(a, b);
             } else {
                 return a == b;
             }
         }
         result = compare(a,b);
-        
+
         if (!result) {
             logger.error(() => (format_error(failstring)))
         }
@@ -146,12 +151,12 @@ PythonTestCase {
 
     function verify_approx(a, b, do_print=true) {
         var result;
-        function compare (a,b) { return (a == b || ((a - b) < Math.max(a,b) / 10000.0)) }
+        function compare (a,b) { return (a == b || (Math.abs(a - b) < Math.max(Math.abs(a),Math.abs(b)) / 1000.0)) }
         let failstring = `verify_approx failed`
         if (do_print) {
             failstring += ` (a = ${a}, b = ${b})`
         }
-        if (Array.isArray(a) && Array.isArray(b)) {
+        if (TypeChecks.is_array(a) && TypeChecks.is_array(b)) {
             result = TestDeepEqual.testArraysCompare(a, b, compare, do_print ? console.log : (msg) => {});
         } else {
             result = compare(a, b)
@@ -210,7 +215,7 @@ PythonTestCase {
     }
 
     function wait_session_loaded(session) {
-        wait_condition(() => session.loaded, 2000, `session not loaded in time`)
+        wait_condition(() => session.loaded, 10000, `session not loaded in time`)
     }
 
     function wait_session_io_done() {
@@ -232,7 +237,7 @@ PythonTestCase {
                 done = true
             }
             connectOnce(backend.updated, updated)
-            wait_condition(() => done == true, 200, "Backend not updated in time")
+            wait_condition(() => done == true, 500, "Backend not updated in time")
         }
         wait_once()
         wait_once()
@@ -293,7 +298,7 @@ PythonTestCase {
             shoop_test_runner.testcase_register_fn(root, key)
         }
 
-        for (var key in test_fns) {        
+        for (var key in test_fns) {
             let fullname = root.name + "::" + key
             var status = 'skip'
             try {

@@ -218,7 +218,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::maybe_cleanup_ui() {
 template <typename TimeType, typename SizeType>
 CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     LilvWorld *lilv_world, shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size,
-    std::string human_name, std::shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool)
+    std::string human_name, shoop_shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool)
     : m_internal_buffers_size(carla_constants::max_buffer_size), m_human_name(human_name),
       m_unique_name(human_name + "_" + random_string(6)) {
 
@@ -278,7 +278,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             }
             m_audio_in_lilv_ports.push_back(p);
             m_audio_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
-            auto internal = std::make_shared<_InternalAudioPort>(
+            auto internal = shoop_make_shared<_InternalAudioPort>(
                 sym, m_internal_buffers_size, nullptr);
             m_input_audio_ports.push_back(internal);
         }
@@ -294,7 +294,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
                 lilv_port_get_index(m_plugin, p));
             // This port gets a buffer pool to create a ringbuffer, because other downstream
             // channels may want to grab it
-            auto internal = std::make_shared<_InternalAudioPort>(
+            auto internal = shoop_make_shared<_InternalAudioPort>(
                 sym, m_internal_buffers_size, maybe_buffer_pool);
             m_output_audio_ports.push_back(internal);
         }
@@ -307,12 +307,12 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             }
             m_midi_in_lilv_ports.push_back(p);
             m_midi_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
-            auto internal = std::make_shared<InternalLV2MidiOutputPort>(
+            auto internal = shoop_make_shared<InternalLV2MidiOutputPort>(
                 sym, shoop_port_direction_t::ShoopPortDirection_Output, mc_midi_buf_capacities,
                 m_atom_chunk_type, m_atom_sequence_type, m_midi_event_type);
             m_input_midi_ports.push_back(internal);
             m_generic_input_midi_ports.push_back(
-                std::static_pointer_cast<MidiPort>(internal));
+                shoop_static_pointer_cast<MidiPort>(internal));
         }
         for (auto const &sym : midi_out_port_symbols) {
             auto p = lilv_plugin_get_port_by_symbol(
@@ -405,6 +405,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::instantiate(
         // Make a plugin instance.
         auto instance = lilv_plugin_instantiate(m_plugin, (double)sample_rate,
                                                 features.data());
+
         if (!instance) {
             throw std::runtime_error("Plugin " + m_plugin_uri +
                                      " failed to instantiate.");
@@ -613,9 +614,9 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::deserialize_state(
                 (LV2_State_Handle)&s, LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE,
                 features);
         } catch (const std::exception &exp) {
-            std::cerr << "Failed to restore Carla state: " << exp.what();
+            log<log_level_error>("Failed to restore Carla state: {}", exp.what());
         } catch (...) {
-            std::cerr << "Failed to restore Carla state (unknown exception).";
+            log<log_level_error>("Failed to restore Carla state: unknown exception");
         }
 
         m_state_restore_active = false;
@@ -624,11 +625,21 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::deserialize_state(
 }
 
 template <typename TimeType, typename SizeType>
-std::string CarlaLV2ProcessingChain<TimeType, SizeType>::serialize_state() {
-    while (!is_ready()) {
+std::string CarlaLV2ProcessingChain<TimeType, SizeType>::serialize_state(uint32_t timeout_ms) {
+    auto start = std::chrono::high_resolution_clock::now();
+    auto timeout_expired = [start, timeout_ms]() {
+        return std::chrono::high_resolution_clock::now() - start >
+               std::chrono::milliseconds(timeout_ms);
+    };
+    while (!is_ready() && !timeout_expired()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+    if (timeout_expired()) {
+        log<log_level_error>("{}: Timeout waiting for Carla chain to be ready", m_human_name);
+        throw std::runtime_error("Timeout waiting for Carla chain to be ready");
+    }
     if (!m_state_iface) {
+        log<log_level_error>("{}: No state interface for Carla chain", m_human_name);
         throw std::runtime_error("No state interface for Carla chain");
     }
     LV2StateString s(this,

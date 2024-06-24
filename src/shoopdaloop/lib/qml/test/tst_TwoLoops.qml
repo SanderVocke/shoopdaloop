@@ -59,7 +59,7 @@ ShoopTestFile {
                     clear()
                     testcase.wait_updated(session.backend)
 
-                    sync_loop().transition(ShoopConstants.LoopMode.Recording, 0, true)
+                    sync_loop().transition(ShoopConstants.LoopMode.Recording, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Recording)
                     verify_gt(sync_loop().length, 0)
@@ -72,7 +72,7 @@ ShoopTestFile {
                     check_backend()
 
                     sync_loop().set_length(48000)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, true)
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(sync_loop().length, 48000)
@@ -93,9 +93,9 @@ ShoopTestFile {
                     other_loop().create_backend_loop()
                     other_loop().set_length(100)
 
-                    other_loop().transition(ShoopConstants.LoopMode.Playing, 2, true)
+                    other_loop().transition(ShoopConstants.LoopMode.Playing, 2, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
 

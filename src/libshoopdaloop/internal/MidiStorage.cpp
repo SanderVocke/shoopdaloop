@@ -245,7 +245,7 @@ void MidiStorageBase<TimeType, SizeType>::copy(
 
 template <typename TimeType, typename SizeType>
 MidiStorageCursor<TimeType, SizeType>::MidiStorageCursor(
-    std::shared_ptr<const Storage> _storage)
+    shoop_shared_ptr<const Storage> _storage)
     : m_storage(_storage) {}
 
 template <typename TimeType, typename SizeType>
@@ -326,6 +326,7 @@ void MidiStorageCursor<TimeType, SizeType>::next() {
 
 template <typename TimeType, typename SizeType>
 bool MidiStorageCursor<TimeType, SizeType>::wrapped() const {
+    return false;
 }
 
 template <typename TimeType, typename SizeType>
@@ -337,7 +338,7 @@ CursorFindResult MidiStorageCursor<TimeType, SizeType>::find_time_forward(
     rval.n_processed = 0;
 
     auto print_offset = m_offset.has_value() ? (int)m_offset.value() : (int)-1;
-    log<log_level_debug_trace>("find_time_forward (storage {}, cursor {}, target time {})", fmt::ptr(m_storage), print_offset, time);
+    log<log_level_debug_trace>("find_time_forward (storage {}, cursor {}, target time {})", fmt::ptr(m_storage.get()), print_offset, time);
     if (!valid()) {
         log<log_level_debug_trace>("find_time_forward: not valid, returning");
         return rval;
@@ -385,7 +386,7 @@ typename MidiStorage<TimeType, SizeType>::SharedCursor
 MidiStorage<TimeType, SizeType>::create_cursor() {
     auto maybe_self = MidiStorageBase<TimeType, SizeType>::weak_from_this();
     if (auto self = maybe_self.lock()) {
-        auto rval = std::make_shared<Cursor>(self);
+        auto rval = shoop_make_shared<Cursor>(shoop_static_pointer_cast<const MidiStorageBase<TimeType, SizeType>>(self));
         m_cursors.push_back(rval);
         rval->reset();
         return rval;
@@ -450,7 +451,7 @@ void MidiStorage<TimeType, SizeType>::truncate(TimeType time, TruncateType type)
             }
 
             for (auto &cursor : m_cursors) {
-                std::shared_ptr<Cursor> maybe_shared = cursor.lock();
+                shoop_shared_ptr<Cursor> maybe_shared = cursor.lock();
                 if (maybe_shared) {
                     if (type == TruncateType::TruncateHead) {
                         if (maybe_shared->offset() > this->m_head) {
@@ -476,7 +477,7 @@ void MidiStorage<TimeType, SizeType>::for_each_msg_modify(
     std::function<void(TimeType &t, SizeType &s, uint8_t *data)> cb) {
     auto maybe_self = MidiStorageBase<TimeType, SizeType>::weak_from_this();
     if (auto self = maybe_self.lock()) {
-        auto cursor = std::make_shared<Cursor>(self);
+        auto cursor = shoop_make_shared<Cursor>(shoop_static_pointer_cast<const MidiStorageBase<TimeType, SizeType>>(self));
         for (cursor->reset(); cursor->valid(); cursor->next()) {
             auto *elem = cursor->get();
             cb(elem->storage_time, elem->size, elem->data());

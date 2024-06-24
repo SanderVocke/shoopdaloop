@@ -42,14 +42,20 @@ void MidiBufferingInputPort::PROC_process(uint32_t nframes) {
     if (!get_muted()) {
         auto inbuf = PROC_internal_read_input_data_buffer(nframes);
         bool use_references = inbuf->read_by_reference_supported();
+        auto n_events = inbuf->PROC_get_n_events();
+        if (n_events > 0) {
+            ModuleLoggingEnabled<"Backend.MidiBufferingInputPort">::log<log_level_debug>("Buffer {} input messages", n_events);
+        }
         for(uint32_t i=0; i<inbuf->PROC_get_n_events(); i++) {
             if (use_references) {
                 auto &msg = inbuf->PROC_get_event_reference(i);
+                ModuleLoggingEnabled<"Backend.MidiBufferingInputPort">::log<log_level_debug>("Buffer message reference @ {}", msg.get_time());
                 m_temp_midi_storage.push_back(ReadMessage(msg.get_time(), msg.get_size(), (void*)msg.get_data()));
             } else {
                 uint32_t size, time;
                 const uint8_t *data;
                 inbuf->PROC_get_event_value(i, size, time, data);
+                ModuleLoggingEnabled<"Backend.MidiBufferingInputPort">::log<log_level_debug>("Buffer message value @ {}", time);
                 m_temp_midi_storage.push_back(ReadMessage(time, size, (void*)data));
             }
         }

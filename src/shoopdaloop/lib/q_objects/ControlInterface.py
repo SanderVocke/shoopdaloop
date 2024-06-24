@@ -45,6 +45,7 @@ class ControlInterface(ControlHandler):
     # Pressed
     # Released
     # @shoop_lua_enum_docstring.end
+
     lua_constants = ControlHandler.lua_constants + [
         [ 'KeyEventType_Pressed', KeyEventType.Pressed ],
         [ 'KeyEventType_Released', KeyEventType.Released ],

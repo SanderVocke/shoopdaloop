@@ -100,7 +100,7 @@ end
 --  @shoop_lua_fn_docstring.start
 --  shoop_helpers.default_loop_action(loop_selector, dry)
 --  Perform the "default loop action" on a set of loop coordinates.
---  The default loop action is designed to cycle intuitively from empty to recording, playing and stopping.
+--  The default loop action is designed to cycle intuitively from empty to recording/grabbing, playing and stopping.
 --  If "dry" is set to true, going to playback will go to playing dry through wet instead.
 --  @shoop_lua_fn_docstring.end
 function shoop_helpers.default_loop_action(loops, dry)
@@ -132,8 +132,13 @@ function shoop_helpers.default_loop_action(loops, dry)
             new_mode = shoop_control.constants.LoopMode_Playing
         end
     elseif all_empty then
-        print_debug("Default loop action: Empty -> Recording")
-        new_mode = shoop_control.constants.LoopMode_Recording
+        print_debug("Default loop action: Empty -> Recording / Grab")
+        if shoop_control.get_default_recording_action() == 'record' then
+            new_mode = shoop_control.constants.LoopMode_Recording
+        else
+            shoop_control.loop_trigger_grab(loops)
+            return
+        end
     elseif all_stopped then
         if dry then
             print_debug("Default loop action: Recording -> Playing Dry")

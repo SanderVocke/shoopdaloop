@@ -72,7 +72,7 @@ ShoopTestFile {
                     testcase.wait_condition(() => registries.state_registry.n_loading_actions_active == 0)
                     testcase.wait_updated(session.backend)
 
-                    let loaded = channel().get_data()
+                    let loaded = channel().get_data_list()
                     verify_eq(loaded.length, 12000)
                 },
 
@@ -98,7 +98,7 @@ ShoopTestFile {
                     testcase.wait_condition(() => registries.state_registry.n_loading_actions_active == 0)
                     testcase.wait_updated(session.backend)
 
-                    let loaded = channel().get_data()
+                    let loaded = channel().get_data_list()
                     verify_eq(loaded.length, 13000)
                 },
 
@@ -127,7 +127,7 @@ ShoopTestFile {
                     testcase.wait_condition(() => registries.state_registry.n_loading_actions_active == 0)
                     testcase.wait_updated(session.backend)
 
-                    let datas = loop2_channels().map(m => m.get_data())
+                    let datas = loop2_channels().map(m => m.get_data_list())
                     verify_eq(datas[0].length, 13000)
                     verify_eq(datas[1].length, 13000)
                 },

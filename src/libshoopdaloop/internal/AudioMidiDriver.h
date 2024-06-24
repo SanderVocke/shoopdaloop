@@ -8,6 +8,7 @@
 #include <atomic>
 #include "LoggingEnabled.h"
 #include "AudioPort.h"
+#include "shoop_shared_ptr.h"
 
 enum class ProcessFunctionResult {
     Continue,  // Continue processing next cycle
@@ -35,8 +36,8 @@ public:
 
 class AudioMidiDriver : public WithCommandQueue,
                         private ModuleLoggingEnabled<"Backend.AudioMidiDriver">,
-                        private std::enable_shared_from_this<AudioMidiDriver> {
-    std::shared_ptr<std::set<HasAudioProcessingFunction*>> m_processors;
+                        private shoop_enable_shared_from_this<AudioMidiDriver> {
+    shoop_shared_ptr<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>> m_processors;
     std::atomic<uint32_t> m_xruns = 0;
     std::atomic<uint32_t> m_sample_rate = 0;
     std::atomic<uint32_t> m_buffer_size = 0;
@@ -45,7 +46,7 @@ class AudioMidiDriver : public WithCommandQueue,
     std::atomic<const char*> m_client_name = nullptr;
     std::atomic<bool> m_active = false;
     std::atomic<uint32_t> m_last_processed = 1;
-    std::set<std::shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
+    std::set<shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
 
 protected:
     // Derived class should call these
@@ -65,32 +66,32 @@ protected:
     void PROC_process(uint32_t nframes);
 
 public:
-    void add_processor(HasAudioProcessingFunction &p);
-    void remove_processor(HasAudioProcessingFunction &p);
-    std::set<HasAudioProcessingFunction*> processors() const;
+    void add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p);
+    void remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p);
+    std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> processors() const;
 
     virtual void start(AudioMidiDriverSettingsInterface &settings) = 0;
 
     virtual
-    std::shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
+    shoop_shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        std::shared_ptr<typename AudioPort<audio_sample_t>::BufferPool> buffer_pool
+        shoop_shared_ptr<typename AudioPort<audio_sample_t>::BufferPool> buffer_pool
     ) = 0;
 
     virtual
-    std::shared_ptr<MidiPort> open_midi_port(
+    shoop_shared_ptr<MidiPort> open_midi_port(
         std::string name,
         shoop_port_direction_t direction
     ) = 0;
 
-    std::shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
+    shoop_shared_ptr<shoop_types::_DecoupledMidiPort> open_decoupled_midi_port(
         std::string name,
         shoop_port_direction_t direction
     );
 
     void PROC_process_decoupled_midi_ports(uint32_t nframes);    
-    void unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port);
+    void unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port);
 
     virtual void close() = 0;
 

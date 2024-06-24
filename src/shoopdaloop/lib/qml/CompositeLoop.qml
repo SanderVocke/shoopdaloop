@@ -17,6 +17,8 @@ Item {
     property string obj_id : 'unknown'
     property var loop_widget : null
 
+    onObj_idChanged: py_loop.instanceIdentifier = obj_id
+
     readonly property bool initialized: true
 
     // set internally
@@ -42,8 +44,10 @@ Item {
         iteration: 0
         sync_loop: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
         schedule: root.schedule
+        play_after_record: registries.state_registry.play_after_record_active
+        sync_mode_active: registries.state_registry.sync_active
 
-        onCycled: root.cycled()
+        onCycled: n => root.cycled(n)
         Component.onCompleted: root.recalculate_schedule()
     }
 
@@ -123,10 +127,13 @@ Item {
         instanceIdentifier: obj_id
     }
 
-    signal cycled()
+    signal cycled(int cycle_nr)
 
-    function add_loop(loop, delay, n_cycles=undefined, playlist_idx=0) {
+    function add_loop(loop, delay, n_cycles=undefined, playlist_idx=undefined) {
         root.logger.debug(`Adding loop ${loop.obj_id} to playlist ${playlist_idx} with delay ${delay}, n_cycles override ${n_cycles}`)
+        if (playlist_idx === undefined) {
+            playlist_idx = playlists_in.length
+        }
         while (playlist_idx >= playlists_in.length) {
             playlists_in.push([])
         }
@@ -156,11 +163,17 @@ Item {
                     let elem = elems[h]
                     let loop_widget = registries.objects_registry.value_or(elem.loop_id, undefined)
                     if (!loop_widget) {
-                        root.logger.debug("Could not find " + elem.loop_id) 
+                        root.logger.debug(() => "Could not find " + elem.loop_id) 
                         continue
                     }
                     let loop_start = _it + elem.delay
-                    let loop_cycles =  Math.max(1, elem.n_cycles ? elem.n_cycles : loop_widget.n_cycles)
+                    let loop_cycles =  Math.max(1, 
+                        elem.n_cycles ?
+                            elem.n_cycles :
+                            ((loop_widget.n_cycles > 0 && !ModeHelpers.is_recording_mode(loop_widget.mode)) ?
+                                loop_widget.n_cycles : 1
+                            )
+                    )
                     let loop_end = loop_start + loop_cycles
 
                     elem['start_iteration'] = loop_start
@@ -348,8 +361,8 @@ Item {
 
     property var sync_loop : registries.state_registry.sync_loop
 
-    function transition(mode, delay, wait_for_sync) {
-        py_loop.transition(mode, delay, wait_for_sync)
+    function transition(mode, maybe_delay, maybe_align_to_sync_at) {
+        py_loop.transition(mode, maybe_delay, maybe_align_to_sync_at)
     }
 
     function actual_composition_descriptor() {
@@ -363,5 +376,9 @@ Item {
     function clear() {
         playlists_in = []
         playlists_inChanged()
+    }
+
+    function adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode) {
+        py_loop.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
     }
 }

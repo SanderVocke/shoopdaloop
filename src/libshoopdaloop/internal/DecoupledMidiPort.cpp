@@ -8,14 +8,14 @@
 
 template <typename TimeType, typename SizeType>
 DecoupledMidiPort<TimeType, SizeType>::DecoupledMidiPort(
-    std::shared_ptr<MidiPort> port,
-    std::weak_ptr<AudioMidiDriver> driver,
+    shoop_shared_ptr<MidiPort> port,
+    shoop_weak_ptr<AudioMidiDriver> driver,
     uint32_t queue_size,
     shoop_port_direction_t direction)
     : port(port), ma_queue(queue_size), direction(direction), maybe_driver(driver) {};
 
 template <typename TimeType, typename SizeType>
-std::shared_ptr<MidiPort> const& DecoupledMidiPort<TimeType, SizeType>::get_port() {
+shoop_shared_ptr<MidiPort> const& DecoupledMidiPort<TimeType, SizeType>::get_port() {
     return port;
 }
 
@@ -81,7 +81,7 @@ void DecoupledMidiPort<TimeType, SizeType>::close() {
 }
 
 template <typename TimeType, typename SizeType>
-std::shared_ptr<AudioMidiDriver> DecoupledMidiPort<TimeType, SizeType>::
+shoop_shared_ptr<AudioMidiDriver> DecoupledMidiPort<TimeType, SizeType>::
     get_maybe_driver() const {
     return maybe_driver.lock();
 }

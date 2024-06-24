@@ -112,7 +112,7 @@ ShoopTestFile {
             }
 
             function reset_loop(loopwidget) {
-                loopwidget.transition(ShoopConstants.LoopMode.Stopped, 0, false)
+                loopwidget.transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                 testcase.wait_updated(session.backend)
                 loopwidget.clear(0)
                 session.backend.wait_process()
@@ -131,7 +131,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = false
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -144,8 +144,8 @@ ShoopTestFile {
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
                     let chans = lut.get_audio_output_channels()
-                    let loop1 = chans[0].get_data()
-                    let loop2 = chans[1].get_data()
+                    let loop1 = chans[0].get_data_list()
+                    let loop2 = chans[1].get_data_list()
 
                     verify_eq(out1, [0, 0, 0, 0])
                     verify_eq(out2, [0, 0, 0, 0])
@@ -159,7 +159,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = false
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -199,7 +199,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -212,8 +212,8 @@ ShoopTestFile {
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
                     let chans = lut.get_audio_output_channels()
-                    let loop1 = chans[0].get_data()
-                    let loop2 = chans[1].get_data()
+                    let loop1 = chans[0].get_data_list()
+                    let loop2 = chans[1].get_data_list()
 
                     verify_eq(out1, [1, 2, 3, 4])
                     verify_eq(out2, [4, 3, 2, 1])
@@ -227,7 +227,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -271,7 +271,7 @@ ShoopTestFile {
                     chans[0].load_data([5, 6, 7, 8])
                     chans[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -283,8 +283,8 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let loop1 = chans[0].get_data()
-                    let loop2 = chans[1].get_data()
+                    let loop1 = chans[0].get_data_list()
+                    let loop2 = chans[1].get_data_list()
 
                     verify_eq(out1, [5, 6, 7, 8])
                     verify_eq(out2, [8, 7, 6, 5])
@@ -311,7 +311,7 @@ ShoopTestFile {
                     let chan = lut.get_midi_output_channels()[0]
                     chan.load_all_midi_data(loop)
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     midi_input_port.dummy_clear_queues()
@@ -343,7 +343,7 @@ ShoopTestFile {
                     chans[0].load_data([5, 6, 7, 8])
                     chans[1].load_data([8, 7, 6, 5])
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_data([1, 2, 3, 4])
@@ -355,8 +355,8 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_data(4)
                     let out2 = output_port_2.dummy_dequeue_data(4)
-                    let loop1 = chans[0].get_data()
-                    let loop2 = chans[1].get_data()
+                    let loop1 = chans[0].get_data_list()
+                    let loop2 = chans[1].get_data_list()
 
                     verify_eq(out1, [6, 8, 10, 12])
                     verify_eq(out2, [12, 10, 8, 6])
@@ -388,7 +388,7 @@ ShoopTestFile {
                     let chan = lut.get_midi_output_channels()[0]
                     chan.load_all_midi_data(loop)
                     lut.set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.Playing, 0, false)
+                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     midi_input_port.dummy_clear_queues()

@@ -9,7 +9,7 @@ from .ShoopPyObject import *
 
 from ..logging import Logger
 from ..lua_qobject_interface import lua_passthrough, qt_typename, lua_int, lua_bool, lua_str, lua_float, lua_callable
-from ..backend_wrappers import LoopMode
+from ..backend_wrappers import LoopMode, DontAlignToSyncImmediately, DontWaitForSync
 
 def as_loop_selector(lua_val):
     def iscoords(l):
@@ -76,10 +76,13 @@ def allow_qml_override(func):
         func(self, *args, **kwargs)
         if self.qml_instance:
             try:
-                return self._methods[func.__name__ + "_override"]['call_qml'](*args[0])
+                override_name = func.__name__ + "_override"
+                self.logger.trace(lambda: f"Forward to {override_name}, args {[*args[0]]}")
+                return self._methods[override_name]['call_qml'](*args[0])
             except RuntimeError as e:
-                self.logger.error(lambda: "Failed to call QML override: {}".format(str(e)))
-
+                self.logger.error(lambda: "Failed to call QML override on QML instance {}: {}".format(str(e), self.qml_instance))
+                return None
+        
         self.cache_call([func.__name__, *args[0]])
         raise NotImplementedError(
             "ControlHandler interface {0} not or incorrectly overridden.".format(func.__name__)
@@ -143,7 +146,7 @@ class ControlHandler(ShoopQQuickItem):
         [ 'loop_set_gain_fader', lua_loop_selector, lua_float ],
         [ 'loop_get_balance', lua_loop_selector ],
         [ 'loop_set_balance', lua_loop_selector, lua_float ],
-        [ 'loop_transition', lua_loop_selector, lua_int, lua_int, lua_bool ],
+        [ 'loop_transition', lua_loop_selector, lua_int, lua_int, lua_int ],
         [ 'loop_trigger', lua_loop_selector, lua_int ],
         [ 'loop_record_n', lua_loop_selector, lua_int, lua_int ],
         [ 'loop_record_with_targeted', lua_loop_selector ],
@@ -155,6 +158,7 @@ class ControlHandler(ShoopQQuickItem):
         [ 'loop_clear_all' ],
         [ 'loop_adopt_ringbuffers', lua_loop_selector, lua_int, lua_int, lua_int, lua_int ],
         [ 'loop_trigger_grab', lua_loop_selector ],
+        [ 'loop_compose_add_to_end', lua_loop_selector, lua_loop_selector, lua_bool ],
         [ 'track_get_gain', lua_track_selector ],
         [ 'track_set_gain', lua_track_selector, lua_float ],
         [ 'track_get_gain_fader', lua_track_selector ],
@@ -176,7 +180,9 @@ class ControlHandler(ShoopQQuickItem):
         [ 'set_sync_active', lua_bool ],
         [ 'get_sync_active' ],
         [ 'set_play_after_record', lua_bool ],
-        [ 'get_play_after_record' ]
+        [ 'get_play_after_record' ],
+        [ 'set_default_recording_action', lua_str ],
+        [ 'get_default_recording_action' ]
     ]
 
     def generate_loop_mode_constants():
@@ -194,8 +200,18 @@ class ControlHandler(ShoopQQuickItem):
         for i in list(LoopMode):
             rval.append(['LoopMode_' + i.name, i.value])
         return rval
+
+    # @shoop_lua_enum_docstring.start
+    # shoop_control.constants.Loop_
+    # Special values to pass to loop functions.
+    # DontWaitForSync
+    # DontAlignToSyncImmediately
+    # @shoop_lua_enum_docstring.end
     
-    lua_constants = generate_loop_mode_constants()
+    lua_constants = generate_loop_mode_constants() + [
+        [ 'Loop_DontWaitForSync', DontWaitForSync ],
+        [ 'Loop_DontAlignToSyncImmediately', DontAlignToSyncImmediately ]
+    ]
     
     introspectedQmlInstanceChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=introspectedQmlInstanceChanged)
@@ -208,22 +224,29 @@ class ControlHandler(ShoopQQuickItem):
         if not self._qml_instance:
             self.logger.debug(lambda: f"No QML instance found yet.")
             return
-        for i in range(self._qml_instance.metaObject().methodCount()):
-            method = self._qml_instance.metaObject().method(i)
-            def call_qml(*args, m=method):
-                return_typename = qt_typename(m.returnType())
-                name = str(m.name(), 'ascii')
+        
+        outer_self = self
+
+        class QmlCallable:
+            def __init__(self, instance, method):
+                self.method = method
+                self.instance = instance
+            
+            def __call__(self, *args):
+                return_typename = qt_typename(self.method.returnType())
+                name = str(self.method.name(), 'ascii')
                 if return_typename == 'Void':
-                    self.logger.debug(lambda: "Calling void QML method {}".format(name))
-                    self._qml_instance.metaObject().invokeMethod(
-                        self._qml_instance,
+                    outer_self.logger.debug(lambda: "Calling void QML method {}".format(name))
+                    self.instance.metaObject().invokeMethod(
+                        self.instance,
                         name,
                         Qt.ConnectionType.AutoConnection,
                         *[Q_ARG('QVariant', arg) for arg in args]
                     )
                     return
-                rval = self._qml_instance.metaObject().invokeMethod(
-                    self._qml_instance,
+                outer_self.logger.debug(lambda: "Calling {} QML method {} with args {}".format(return_typename, name, args))                
+                rval = self.instance.metaObject().invokeMethod(
+                    self.instance,
                     name,
                     Qt.ConnectionType.AutoConnection,
                     Q_RETURN_ARG(return_typename),
@@ -231,10 +254,14 @@ class ControlHandler(ShoopQQuickItem):
                 )
                 if isinstance(rval, QJSValue):
                     rval = rval.toVariant()
-                self.logger.debug(lambda: "Result of calling {} QML method {}: {}".format(return_typename, name, str(rval)))
+                outer_self.logger.debug(lambda: "Result of calling {} QML method {}: {}".format(return_typename, name, str(rval)))
                 return rval
+
+        self._methods = {}
+        for i in range(self._qml_instance.metaObject().methodCount()):
+            method = self._qml_instance.metaObject().method(i)
             self._methods[str(method.name(), 'ascii')] = {
-                'call_qml': call_qml
+                'call_qml': QmlCallable(self._qml_instance, method)
             }
         self._introspected_qml_instance = self._qml_instance
         self.introspectedQmlInstanceChanged.emit(self._qml_instance)
@@ -422,8 +449,9 @@ class ControlHandler(ShoopQQuickItem):
     def loop_transition(self, args, lua_engine):
         """
         @shoop_lua_fn_docstring.start
-        shoop_control.loop_transition(loop_selector, mode, cycles_delay, wait_for_sync)
+        shoop_control.loop_transition(loop_selector, mode, maybe_cycles_delay, maybe_align_to_sync_at)
         Transition the given loops.
+        Pass shoop_control.constants.Loop_DontWaitForSync and shoop_control.constants.Loop_DontAlignToSyncImmediately to maybe_cycles_delay and maybe_align_to_sync_at respectively, to disable them.
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -564,6 +592,21 @@ class ControlHandler(ShoopQQuickItem):
         recorded in the current sync loop cycle, 1 means start from the previous cycle, etc.
         go_to_cycle and go_to_mode can control the cycle and mode the loop will have right after adopting.
         cycles_length sets the loop length.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @ShoopSlot(list, 'QVariant')
+    @allow_qml_override
+    def loop_compose_add_to_end(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.loop_compose_add_to_end(loop_selector, loop_selector, parallel)
+        Add a loop to the a composition. The first argument is the singular target loop in which
+        the composition is stored. If empty, a composition is created.
+        The second argument is the loop that should be added.
+        The third argument is whether the addition should be parallel to the existing composition.
+        If false, the loop is added to the end.
         @shoop_lua_fn_docstring.end
         """
         pass
@@ -809,6 +852,28 @@ class ControlHandler(ShoopQQuickItem):
         @shoop_lua_fn_docstring.start
         shoop_control.get_play_after_record() -> bool
         Get the global "play_after_record" control state.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @ShoopSlot(list, 'QVariant')
+    @allow_qml_override
+    def set_default_recording_action(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.set_default_recording_action(val)
+        Set the global "default recording action" control state. Valid values are 'record' or 'grab' - others are ignored.
+        @shoop_lua_fn_docstring.end
+        """
+        pass
+
+    @ShoopSlot(list, 'QVariant', result=str)
+    @allow_qml_override
+    def get_default_recording_action(self, args, lua_engine):
+        """
+        @shoop_lua_fn_docstring.start
+        shoop_control.get_default_recording_action() -> string
+        Get the global "default recording action" control state ('record' or 'grab').
         @shoop_lua_fn_docstring.end
         """
         pass

@@ -79,6 +79,20 @@ Registry {
     }
 
     RegistryLookup {
+        id: lookup_default_recording_action
+        registry: root
+        key: 'default_recording_action'
+    }
+    readonly property string default_recording_action : lookup_default_recording_action.object != null ? lookup_default_recording_action.object : 'record'
+    function toggle_default_recording_action() {
+        replace('default_recording_action', default_recording_action == 'record' ? 'grab' : 'record')
+    }
+    function set_default_recording_action(v) {
+        if (['record', 'grab'].includes(v)) { replace('default_recording_action', v); }
+        else { my_logger.error(() => `Invalid default recording action: ${v}`) }
+    }
+
+    RegistryLookup {
         id: lookup_apply_n_cycles
         registry: root
         key: 'apply_n_cycles'

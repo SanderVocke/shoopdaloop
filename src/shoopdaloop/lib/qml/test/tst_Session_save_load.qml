@@ -239,13 +239,13 @@ ShoopTestFile {
                     mt_loop().clear()
                     testcase.wait_updated(session.backend)
                     
-                    verify_eq(dt_loop_channels()[0].get_data(), [])
-                    verify_eq(dt_loop_channels()[1].get_data(), [])
+                    verify_eq(dt_loop_channels()[0].get_data_list(), [])
+                    verify_eq(dt_loop_channels()[1].get_data_list(), [])
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
-                    verify_eq(dwt_dry_loop_channels()[0].get_data(), [])
-                    verify_eq(dwt_dry_loop_channels()[1].get_data(), [])
-                    verify_eq(dwt_wet_loop_channels()[0].get_data(), [])
-                    verify_eq(dwt_wet_loop_channels()[1].get_data(), [])
+                    verify_eq(dwt_dry_loop_channels()[0].get_data_list(), [])
+                    verify_eq(dwt_dry_loop_channels()[1].get_data_list(), [])
+                    verify_eq(dwt_wet_loop_channels()[0].get_data_list(), [])
+                    verify_eq(dwt_wet_loop_channels()[1].get_data_list(), [])
 
                     session.load_session(filename)
                     testcase.wait_session_loaded(session)
@@ -255,12 +255,12 @@ ShoopTestFile {
                     verify_true(dwt_loop_2().maybe_composite_loop)
                     verify_eq(dt_loop_2().maybe_composite_loop.all_loops, new Set([dt_loop(), dwt_loop()]))
                     verify_eq(dwt_loop_2().maybe_composite_loop.all_loops, new Set())
-                    verify_approx(dt_loop_channels()[0].get_data(), [0.1, 0.2, 0.3, 0.4])
-                    verify_approx(dt_loop_channels()[1].get_data(), [0.4, 0.3, 0.2, 0.1])
-                    verify_approx(dwt_dry_loop_channels()[0].get_data(), [0.5, 0.6, 0.7, 0.8])
-                    verify_approx(dwt_dry_loop_channels()[1].get_data(), [0.8, 0.7, 0.6, 0.5])
-                    verify_approx(dwt_wet_loop_channels()[0].get_data(), [0.9, 0.10, 0.11, 0.12])
-                    verify_approx(dwt_wet_loop_channels()[1].get_data(), [0.12, 0.11, 0.10, 0.9])
+                    verify_approx(dt_loop_channels()[0].get_data_list(), [0.1, 0.2, 0.3, 0.4])
+                    verify_approx(dt_loop_channels()[1].get_data_list(), [0.4, 0.3, 0.2, 0.1])
+                    verify_approx(dwt_dry_loop_channels()[0].get_data_list(), [0.5, 0.6, 0.7, 0.8])
+                    verify_approx(dwt_dry_loop_channels()[1].get_data_list(), [0.8, 0.7, 0.6, 0.5])
+                    verify_approx(dwt_wet_loop_channels()[0].get_data_list(), [0.9, 0.10, 0.11, 0.12])
+                    verify_approx(dwt_wet_loop_channels()[1].get_data_list(), [0.12, 0.11, 0.10, 0.9])
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), midichan)
                 },
 
@@ -343,6 +343,10 @@ ShoopTestFile {
                     dwt().control_widget.set_balance(0.8)
                     testcase.wait_updated(session.backend)
 
+                    verify_approx(dt().control_widget.last_pushed_gain, 0.5)
+                    verify_approx(dt().control_widget.last_pushed_out_stereo_balance, 0.9)
+                    verify_approx(dwt().control_widget.last_pushed_gain, 0.4)
+                    verify_approx(dwt().control_widget.last_pushed_out_stereo_balance, 0.8)
 
                     var filename = file_io.generate_temporary_filename() + '.shl'
                     session.save_session(filename)
@@ -359,6 +363,11 @@ ShoopTestFile {
                     dwt().control_widget.set_gain(1.0)
                     dwt().control_widget.set_balance(0.0)
                     testcase.wait_updated(session.backend)
+
+                    verify_approx(dt().control_widget.last_pushed_gain, 1.0)
+                    verify_approx(dt().control_widget.last_pushed_out_stereo_balance, 0.0)
+                    verify_approx(dwt().control_widget.last_pushed_gain, 1.0)
+                    verify_approx(dwt().control_widget.last_pushed_out_stereo_balance, 0.0)
 
                     session.load_session(filename)
                     testcase.wait_session_loaded(session)

@@ -16,9 +16,9 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - name: Post-build manylinux
-    if: ${{ inputs.variant == 'manylinux_2_28' }}
-    uses: ./.github/actions/post_build_manylinux_2_28
+  - name: Post-build linux
+    if: ${{ inputs.variant == 'linux' }}
+    uses: ./.github/actions/post_build_linux
     with:
       wheel: ${{ inputs.wheel }}
   - name: Post-build MacOS
@@ -32,7 +32,7 @@ runs:
     with:
       wheel: ${{ inputs.wheel }}
   - name: Store debug info
-    shell: bash
+    shell: wrap-shell {0}
     run: |
       mkdir -p debuginfo
       cp -r ${{ inputs.build_dir }}/breakpad_symbols debuginfo/breakpad_symbols

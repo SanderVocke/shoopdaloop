@@ -6,29 +6,32 @@
 
 AudioMidiDriver::AudioMidiDriver() :
   WithCommandQueue(),
-  m_processors(std::make_shared<std::set<HasAudioProcessingFunction*>>()),
+  m_processors(shoop_make_shared<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>>()),
   m_active(false),
   m_client_name("unknown")
 {
 }
 
-void AudioMidiDriver::add_processor(HasAudioProcessingFunction &p) {
+void AudioMidiDriver::add_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) {
     auto old = m_processors;
-    auto _new = std::make_shared<std::set<HasAudioProcessingFunction*>>();
+    auto _new = shoop_make_shared<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>>();
     *_new = *old;
-    _new->insert(&p);
+    _new->push_back(p);
     m_processors = _new;
 }
 
-void AudioMidiDriver::remove_processor(HasAudioProcessingFunction &p) {
+void AudioMidiDriver::remove_processor(shoop_shared_ptr<HasAudioProcessingFunction> p) {
     auto old = m_processors;
-    auto _new = std::make_shared<std::set<HasAudioProcessingFunction*>>();
-    *_new = *old;
-    _new->erase(&p);
+    auto _new = shoop_make_shared<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>>();
+    for (auto _p : *old) {
+        if (auto __p = _p.lock()) {
+            if (__p != p) { _new->push_back(__p); }
+        }
+    }
     m_processors = _new;
 }
 
-std::set<HasAudioProcessingFunction*> AudioMidiDriver::processors() const {
+std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> AudioMidiDriver::processors() const {
     return *m_processors;
 }
 
@@ -36,9 +39,11 @@ void AudioMidiDriver::PROC_process(uint32_t nframes) {
     log<log_level_debug_trace>("AudioMidiDriver::process {}", nframes);
     PROC_handle_command_queue();
     PROC_process_decoupled_midi_ports(nframes);
-    auto lock = m_processors;
-    for(auto &p : *lock) {
-        p->PROC_process(nframes);
+    auto ps_lock = m_processors;
+    for(auto & weak_p : *ps_lock) {
+        if (auto p = weak_p.lock()) {
+            p->PROC_process(nframes);
+        }
     }
     set_last_processed(nframes);
 }
@@ -52,7 +57,7 @@ float AudioMidiDriver::get_dsp_load() {
     return m_dsp_load;
 }
 
-void AudioMidiDriver::unregister_decoupled_midi_port(std::shared_ptr<shoop_types::_DecoupledMidiPort> port) {
+void AudioMidiDriver::unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port) {
     exec_process_thread_command([this, port]() {
         m_decoupled_midi_ports.erase(port);
     });
@@ -138,10 +143,10 @@ void AudioMidiDriver::wait_process() {
     log<log_level_debug_trace>("AudioMidiDriver::wait_process done");
 }
 
-std::shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
+shoop_shared_ptr<shoop_types::_DecoupledMidiPort> AudioMidiDriver::open_decoupled_midi_port(std::string name, shoop_port_direction_t direction) {
     constexpr uint32_t decoupled_midi_port_queue_size = 256;
     auto port = open_midi_port(name, direction);
-    auto decoupled = std::make_shared<shoop_types::_DecoupledMidiPort>(
+    auto decoupled = shoop_make_shared<shoop_types::_DecoupledMidiPort>(
         port,
         weak_from_this(),
         decoupled_midi_port_queue_size,

@@ -187,7 +187,7 @@ void BasicLoop::PROC_process(uint32_t n_samples) {
     PROC_handle_poi();
 }
 
-void BasicLoop::set_sync_source(std::shared_ptr<LoopInterface> const& src, bool thread_safe) {
+void BasicLoop::set_sync_source(shoop_shared_ptr<LoopInterface> const& src, bool thread_safe) {
 
     auto fn = [=, this]() {
         mp_sync_source = src;
@@ -199,9 +199,9 @@ void BasicLoop::set_sync_source(std::shared_ptr<LoopInterface> const& src, bool 
         fn();
     }
 }
-std::shared_ptr<LoopInterface> BasicLoop::get_sync_source(bool thread_safe) {
+shoop_shared_ptr<LoopInterface> BasicLoop::get_sync_source(bool thread_safe) {
     if(thread_safe) {
-        std::shared_ptr<LoopInterface> rval;
+        shoop_shared_ptr<LoopInterface> rval;
         exec_process_thread_command([this, &rval]() { rval = mp_sync_source; });
         return rval;
     }
@@ -330,20 +330,39 @@ void BasicLoop::clear_planned_transitions(bool thread_safe) {
     }
 }
 
-void BasicLoop::plan_transition(shoop_loop_mode_t mode, uint32_t n_cycles_delay, bool wait_for_sync, bool thread_safe) {
+void BasicLoop::plan_transition(
+    shoop_loop_mode_t mode,
+    std::optional<uint32_t> maybe_n_cycles_delay,
+    std::optional<uint32_t> maybe_to_sync_cycle,
+    bool thread_safe) {
     
-    auto fn = [this, mode, wait_for_sync, n_cycles_delay]() {
+    auto fn = [this, mode, maybe_n_cycles_delay, maybe_to_sync_cycle]() {
         bool transitioning_immediately =
             (!mp_sync_source && ma_mode != LoopMode_Playing) ||
-            (!wait_for_sync);
+            (!maybe_n_cycles_delay.has_value()) ||
+            (maybe_to_sync_cycle.has_value());
         if (transitioning_immediately) {
             // Un-synced loops transition immediately from non-playing
             // states.
             PROC_handle_transition(mode);
+            auto sync_source = get_sync_source(false);
+            if (maybe_to_sync_cycle.has_value() && sync_source) {
+                // Sync up to our sync source immediately
+                uint32_t pos =
+                    sync_source->get_position() +
+                    maybe_to_sync_cycle.value() * sync_source->get_length();
+                if (mode == LoopMode_Recording) {
+                    set_position (0, false);
+                    set_length (pos, false);
+                } else {
+                    set_position(pos, false);
+                }
+            }
             mp_planned_states.clear();
             mp_planned_state_countdowns.clear();
         } else {
             uint32_t insertion_point;
+            uint32_t n_cycles_delay = maybe_n_cycles_delay.value_or(0);
             for (insertion_point=0; insertion_point <= mp_planned_state_countdowns.size(); insertion_point++) {
                 if (insertion_point < mp_planned_state_countdowns.size() &&
                     mp_planned_state_countdowns[insertion_point] >= n_cycles_delay) { break; }

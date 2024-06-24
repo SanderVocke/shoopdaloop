@@ -2,6 +2,7 @@
 #include <set>
 #include <vector>
 #include "LoggingEnabled.h"
+#include "shoop_shared_ptr.h"
 
 // If you feed MidiStateTracker a sequence of MIDI messages, it will keep track of current state
 // on the MIDI stream, optionally including:
@@ -38,7 +39,7 @@ private:
     std::vector<uint8_t> m_programs;                       // Track Program values     (16)
     std::vector<uint16_t> m_pitch_wheel;                    // 16 channels
     std::vector<uint8_t> m_channel_pressure;               // 16 channels
-    std::set<std::weak_ptr<Subscriber>, std::owner_less<std::weak_ptr<Subscriber>>> m_subscribers;
+    std::set<shoop_weak_ptr<Subscriber>, std::owner_less<shoop_weak_ptr<Subscriber>>> m_subscribers;
 
     static uint32_t cc_index (uint8_t channel, uint8_t cc);
     static uint32_t note_index(uint8_t channel, uint8_t note);
@@ -76,8 +77,8 @@ public:
 
     bool tracking_anything() const;
 
-    void subscribe(std::shared_ptr<Subscriber> s);
-    void unsubscribe(std::shared_ptr<Subscriber> s);
+    void subscribe(shoop_shared_ptr<Subscriber> s);
+    void unsubscribe(shoop_shared_ptr<Subscriber> s);
 
     // Format the state contained within as a sequence of MIDI messages.
     // No timestamps needed - we only return the message data bytes.

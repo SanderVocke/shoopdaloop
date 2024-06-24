@@ -226,30 +226,30 @@ Item {
     }
 
     // Signals
-    signal cycled
+    signal cycled(int cycle_nr)
 
     // Methods
-    function transition_loops(loops, mode, delay, wait_for_sync) {
+    function transition_loops(loops, mode, maybe_delay, maybe_align_to_sync_at) {
         loops.forEach(loop => {
             // Force to load all loops involved
             loop.create_backend_loop()
         })
         var backend_loops = loops.filter(o => o.maybe_backend_loop).map(o => o.maybe_backend_loop)
         var other_loops = loops.filter(o => o.maybe_loop && !o.maybe_backend_loop).map(o => o.maybe_loop)
-        if (backend_loops.length > 0) { backend_loops[0].transition_multiple(backend_loops, mode, delay, wait_for_sync) }
-        other_loops.forEach(o => o.transition(mode, delay, wait_for_sync))
+        if (backend_loops.length > 0) { backend_loops[0].transition_multiple(backend_loops, mode, maybe_delay, maybe_align_to_sync_at) }
+        other_loops.forEach(o => o.transition(mode, maybe_delay, maybe_align_to_sync_at))
     }
-    function transition(mode, delay, wait_for_sync, include_selected=true) {
+    function transition(mode, maybe_delay, maybe_align_to_sync_at, include_selected=true) {
         // Do the transition for this loop and all selected loops, if any
         var selected_all = include_selected ? selected_loops : new Set()
         
         if (selected_all.has (root)) {
             // If we are part of the selection, transition them all as a group.
             var objects = Array.from(selected_all)
-            transition_loops(objects, mode, delay, wait_for_sync)
+            transition_loops(objects, mode, maybe_delay, maybe_align_to_sync_at)
         } else {
             // If we are not part of the selection, transition ourselves only.
-            transition_loops([root], mode, delay, wait_for_sync)
+            transition_loops([root], mode, maybe_delay, maybe_align_to_sync_at)
         }        
     }
     function trigger_mode_button(mode) {
@@ -278,11 +278,11 @@ Item {
 
     // Apply the given transition to the currently selected loop(s),
     // and stop all other loops in the same track(s)
-    function transition_solo_in_track(mode, delay, sync) {
+    function transition_solo_in_track(mode, maybe_delay, maybe_align_to_sync_at) {
         let r = selected_and_other_loops_in_track()
         // Do the transitions
-        transition_loops(r[1], ShoopConstants.LoopMode.Stopped, delay, sync)
-        transition_loops(r[0], mode, delay, sync)
+        transition_loops(r[1], ShoopConstants.LoopMode.Stopped, maybe_delay, maybe_align_to_sync_at)
+        transition_loops(r[0], mode, maybe_delay, maybe_align_to_sync_at)
     }
 
     function clear(length=0, emit=true) {
@@ -407,16 +407,18 @@ Item {
 
     function record_n(delay_start, n) {
         if (registries.state_registry.solo_active) {
-            root.transition_solo_in_track(ShoopConstants.LoopMode.Recording, delay_start, true)
+            root.transition_solo_in_track(ShoopConstants.LoopMode.Recording, delay_start, ShoopConstants.DontAlignToSyncImmediately)
             root.transition(
                 registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
-                delay_start + n, true
+                delay_start + n,
+                ShoopConstants.DontAlignToSyncImmediately
             )
         } else {
-            root.transition(ShoopConstants.LoopMode.Recording, delay_start, true)
+            root.transition(ShoopConstants.LoopMode.Recording, delay_start, ShoopConstants.DontAlignToSyncImmediately)
             root.transition(
                 registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
-                delay_start + n, true
+                delay_start + n,
+                ShoopConstants.DontAlignToSyncImmediately
             )
         }
     }
@@ -439,9 +441,7 @@ Item {
         if (!root.maybe_loop) {
             create_backend_loop()
         }
-        if (root.maybe_backend_loop) {
-            root.maybe_backend_loop.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
-        }
+        maybe_loop.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
     }
 
     anchors {
@@ -526,29 +526,41 @@ Item {
 
     function on_play_clicked() {
         if (registries.state_registry.solo_active) {
-            root.transition_solo_in_track(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
+            root.transition_solo_in_track(ShoopConstants.LoopMode.Playing,
+                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+                ShoopConstants.DontAlignToSyncImmediately)
         } else {
-            root.transition(ShoopConstants.LoopMode.Playing, root.use_delay, root.sync_active)
+            root.transition(ShoopConstants.LoopMode.Playing,
+                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+                ShoopConstants.DontAlignToSyncImmediately)
         }
     }
 
     function on_playdry_clicked() {
         if (registries.state_registry.solo_active) {
-            root.transition_solo_in_track(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
+            root.transition_solo_in_track(ShoopConstants.LoopMode.PlayingDryThroughWet,
+                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+                ShoopConstants.DontAlignToSyncImmediately)
         } else {
-            root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, root.use_delay, root.sync_active)
+            root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet,
+                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+                ShoopConstants.DontAlignToSyncImmediately)
         }
     }
 
     function on_record_clicked() {
-        if (root.record_kind == 'with_targeted') {
-            root.record_with_targeted();
-        } else if (root.record_kind == 'infinite') {
+        if (root.record_kind == 'infinite' || root.maybe_composite_loop) {
             if (registries.state_registry.solo_active) {
-                root.transition_solo_in_track(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
+                root.transition_solo_in_track(ShoopConstants.LoopMode.Recording,
+                    root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+                    ShoopConstants.DontAlignToSyncImmediately)
             } else {
-                root.transition(ShoopConstants.LoopMode.Recording, root.use_delay, root.sync_active)
+                root.transition(ShoopConstants.LoopMode.Recording,
+                    root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+                    ShoopConstants.DontAlignToSyncImmediately)
             }
+        } else if (root.record_kind == 'with_targeted') {
+            root.record_with_targeted();
         } else {
             root.record_n(0, root.record_kind)
         } 
@@ -563,7 +575,9 @@ Item {
     function on_grab_clicked() {
         let selection = selected_loops.has(root) ? selected_loops : [root]
 
-        root.create_backend_loop()
+        if (!root.maybe_loop) {
+            root.create_backend_loop()
+        }
         if (root.sync_active) {
             let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
             if (root.targeted_loop) {
@@ -580,26 +594,33 @@ Item {
                 root.transition(
                     registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
                     root.delay_for_targeted,
-                    true
+                    ShoopConstants.DontAlignToSyncImmediately
                 )
             } else {
-                root.adopt_ringbuffers(null, root.n_cycles_to_grab, root.n_cycles_to_grab - 1, ShoopConstants.LoopMode.Recording)
+                let goto_cycle =
+                    root.maybe_composite_loop ?
+                        root.maybe_composite_loop.n_cycles - 1 :
+                        root.n_cycles_to_grab - 1
+                root.adopt_ringbuffers(null, root.n_cycles_to_grab, goto_cycle, ShoopConstants.LoopMode.Recording)
                 root.transition(
                     registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
                     0,
-                    true
+                    ShoopConstants.DontAlignToSyncImmediately
                 )
             }
         }
 
         if (registries.state_registry.solo_active) {
             let r = selected_and_other_loops_in_track()
-            root.transition_loops(r[1], ShoopConstants.LoopMode.Stopped, 0, false)
+            root.transition_loops(r[1], ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
         }
     }
 
     function on_stop_clicked() {
-        root.transition(ShoopConstants.LoopMode.Stopped, root.use_delay, root.sync_active)
+        root.transition(
+           ShoopConstants.LoopMode.Stopped,
+           root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
+           ShoopConstants.DontAlignToSyncImmediately)
     }
 
     function on_recordfx_clicked() {
@@ -609,8 +630,8 @@ Item {
                 root.use_delay : // delay to other
                 root.n_multiples_of_sync_length - root.current_cycle - 1 // delay to self
         var prev_mode = statusrect.loop.mode
-        root.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, delay, true)
-        statusrect.loop.transition(prev_mode, delay + n, true)
+        root.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, delay, ShoopConstants.DontAlignToSyncImmediately)
+        statusrect.loop.transition(prev_mode, delay + n, ShoopConstants.DontAlignToSyncImmediately)
     }
 
     property bool initialized : maybe_loop ? (maybe_loop.initialized ? true : false) : false
@@ -857,9 +878,9 @@ Item {
                                             // Add the selected loop to the currently selected composite loop.
                                             // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
                                             if (key_modifiers.control_pressed) {
-                                                selected.maybe_composite_loop.add_loop(root, 0, undefined, selected.maybe_composite_loop.playlists.length)
+                                                selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, undefined)
                                             } else {
-                                                selected.maybe_composite_loop.add_loop(root, 0, undefined)
+                                                selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, 0)
                                             }
                                         }
                                     }
@@ -1066,6 +1087,7 @@ Item {
                                     id : playlivefx
                                     width: buttongrid.button_width
                                     height: buttongrid.button_height
+                                    
                                     IconWithText {
                                         size: parent.width
                                         anchors.centerIn: parent
@@ -1193,8 +1215,16 @@ Item {
                                 SmallButtonWithCustomHover {
                                     id : record_grab
                                     
-                                    // This feature makes no sense for composite loops
-                                    visible: !root.maybe_composite_loop
+                                    // This feature makes no sense for composite script loops,
+                                    // which cannot be treated as a "loop".
+                                    // But for regular composite loops, it makes sense - grab
+                                    // each portion to the correct subloop.
+                                    visible: {
+                                        if (root.maybe_composite_loop) {
+                                            return root.maybe_composite_loop.kind == 'regular'
+                                        }
+                                        return true;
+                                    }
                                     width: buttongrid.button_width
                                     height: buttongrid.button_height
 

@@ -6,6 +6,7 @@ from PySide6.QtQml import QJSValue
 from .ShoopPyObject import *
 
 from ..logging import Logger
+from ..backend_wrappers import ShoopChannelAudioData
 import ctypes
 import math
 
@@ -31,17 +32,16 @@ class Pyramid:
         if not audio_data:
             logger.trace(lambda: 'no audio data')
             self.pyramid = None
+        elif not isinstance(audio_data, ShoopChannelAudioData):
+            logger.trace(lambda: 'audio data is not a ShoopChannelAudioData')
+            self.pyramid = None
         elif not self.backend_create_pyramid:
             logger.trace(lambda: 'no back-end acceleration')
             self.pyramid = None
         else:
             if self.pyramid:
                 self.backend_destroy_pyramid(self.pyramid)
-            array_type = ctypes.c_float * len(audio_data)
-            array = array_type()
-            for i in range(len(audio_data)):
-                array[i] = audio_data[i]
-            self.pyramid = self.backend_create_pyramid(len(audio_data), array, 2048)
+            self.pyramid = self.backend_create_pyramid(len(audio_data), audio_data.backend_obj[0].data, 2048)
             logger.trace(lambda: 'done creating pyramid')
     
     def destroy(self):

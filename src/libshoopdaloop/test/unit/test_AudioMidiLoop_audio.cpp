@@ -11,7 +11,7 @@
 using namespace std::chrono_literals;
 
 TEST_CASE("AudioMidiLoop - Audio - Stop", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 256);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 256);
     AudioMidiLoop loop;
     auto chan = loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
 
@@ -30,12 +30,12 @@ TEST_CASE("AudioMidiLoop - Audio - Stop", "[AudioMidiLoop][audio]") {
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
     auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
@@ -69,7 +69,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record", "[AudioMidiLoop][audio]") {
 };
     
 TEST_CASE("AudioMidiLoop - Audio - Record Beyond Ext. Buf", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 256);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 256);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -83,7 +83,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Beyond Ext. Buf", "[AudioMidiLoop][aud
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record Multiple Target", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -115,7 +115,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Target", "[AudioMidiLoop][aud
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record Multiple Source", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -155,7 +155,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Source", "[AudioMidiLoop][aud
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -211,7 +211,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -257,12 +257,12 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]"
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Playback", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<std::shared_ptr<AudioChannel<int>>> channels =
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2)};
     
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
@@ -301,7 +301,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback", "[AudioMidiLoop][audio]") {
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Playback Multiple Target", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -334,7 +334,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Multiple Target", "[AudioMidiLoop][a
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Playback Shorter Data", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -370,7 +370,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Shorter Data", "[AudioMidiLoop][audi
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -418,7 +418,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -465,12 +465,12 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Replace", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
         { loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
     
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
@@ -510,7 +510,7 @@ TEST_CASE("AudioMidiLoop - Audio - Replace", "[AudioMidiLoop][audio]") {
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Replace Onto Smaller", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -556,12 +556,12 @@ TEST_CASE("AudioMidiLoop - Audio - Replace Onto Smaller", "[AudioMidiLoop][audio
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Play Dry Through Wet", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<std::shared_ptr<AudioChannel<int>>> channels =
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2)};
     
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
@@ -600,12 +600,12 @@ TEST_CASE("AudioMidiLoop - Audio - Play Dry Through Wet", "[AudioMidiLoop][audio
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
         { loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
     
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
@@ -675,14 +675,14 @@ TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
-    auto sync_source = std::make_shared<AudioMidiLoop>();
+    auto sync_source = shoop_make_shared<AudioMidiLoop>();
     sync_source->set_length(100);
     sync_source->plan_transition(LoopMode_Playing);
     REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999)== 100);
 
-    loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
+    loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(sync_source)); // Needed because otherwise will immediately transition
     loop.PROC_update_poi();
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999)== 100);
@@ -690,7 +690,7 @@ TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
     auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
@@ -747,13 +747,13 @@ TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
-    auto pool = std::make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
-    auto loop_ptr = std::make_shared<AudioMidiLoop>();
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto loop_ptr = shoop_make_shared<AudioMidiLoop>();
     auto &loop = *loop_ptr;
-    auto sync_source = std::make_shared<AudioMidiLoop>();
+    auto sync_source = shoop_make_shared<AudioMidiLoop>();
 
     auto process = [&](uint32_t n_samples) {
-        std::set<std::shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
+        std::set<shoop_shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
         process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
     };
 
@@ -761,7 +761,7 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
     sync_source->plan_transition(LoopMode_Playing);
     REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999)== 100);
 
-    loop.set_sync_source(sync_source); // Needed because otherwise will immediately transition
+    loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(sync_source)); // Needed because otherwise will immediately transition
     loop.PROC_update_poi();
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999)== 100);
@@ -769,7 +769,7 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<std::shared_ptr<AudioChannel<int>>> channels = 
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
     auto data = create_audio_buf<int>(256, [](uint32_t position) { return position; });
@@ -825,6 +825,150 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
             } else {
                 REQUIRE(buf[p]== 0); // Dry won't play back at all
             }
+        }
+    }
+};
+
+TEST_CASE("AudioMidiLoop - Audio - Playback and set to sync", "[AudioMidiLoop][audio]") {
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto loop_ptr = shoop_make_shared<AudioMidiLoop>();
+    auto &loop = *loop_ptr;
+    auto sync_source = shoop_make_shared<AudioMidiLoop>();
+
+    auto process = [&](uint32_t n_samples) {
+        std::set<shoop_shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
+        process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
+    };
+
+    sync_source->set_length(30);
+    sync_source->plan_transition(LoopMode_Playing);
+    REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999)== 30);
+
+    loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(sync_source)); // Needed because otherwise will immediately transition
+    loop.PROC_update_poi();
+    loop.PROC_update_trigger_eta();
+    REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999)== 30);
+
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
+        {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
+
+    auto data = create_audio_buf<int>(256, [](uint32_t position) { return position; });
+    for (auto &channel : channels) {
+        channel->load_data(data.data(), 256);
+        channel->set_start_offset(110);
+    }
+    loop.set_length(128);
+
+    std::vector<std::vector<int>> play_bufs = { std::vector<int>(128), std::vector<int>(128), std::vector<int>(128) };
+    for (uint32_t idx=0; idx<3; idx++) {
+        channels[idx]->PROC_set_playback_buffer(play_bufs[idx].data(), play_bufs[idx].size());
+    }
+
+    // Stopped part (1 sync cycle + 10 frames)
+    process(40);
+    CHECK(sync_source->get_position() == 10);
+    CHECK(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+
+    loop.plan_transition(LoopMode_Playing, std::nullopt, 1, false);
+
+    CHECK(sync_source->get_position() == 10);
+    CHECK(loop.get_position() == 40);
+    CHECK(loop.get_mode() == LoopMode_Playing);
+    
+    // Sanity check: play some samples
+    process(4);
+    // Process the channels' queued operations
+    for (auto &channel : channels) {
+        channel->PROC_finalize_process();
+    }
+
+    for (uint32_t idx=0; idx < 3; idx++) {
+        auto &channel = channels[idx];
+        auto &buf = play_bufs[idx];
+        auto chan_mode = channel->get_mode();
+
+        for (uint32_t p=0; p<40; p++) {
+            CHECK(buf[p]== 0);
+        }
+        for (uint32_t p=40; p<44; p++) {
+            CHECK(buf[p] == ((chan_mode == ChannelMode_Dry) ? 0 : p + 110));
+        }
+    }
+};
+
+TEST_CASE("AudioMidiLoop - Audio - Record and set to sync", "[AudioMidiLoop][audio]") {
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto loop_ptr = shoop_make_shared<AudioMidiLoop>();
+    auto &loop = *loop_ptr;
+    auto sync_source = shoop_make_shared<AudioMidiLoop>();
+
+    auto process = [&](uint32_t n_samples) {
+        std::set<shoop_shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
+        process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
+    };
+
+    sync_source->set_length(30);
+    sync_source->plan_transition(LoopMode_Playing);
+    REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999)== 30);
+
+    loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(sync_source)); // Needed because otherwise will immediately transition
+    loop.PROC_update_poi();
+    loop.PROC_update_trigger_eta();
+    REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999)== 30);
+
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
+        {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
+
+    auto data = create_audio_buf<int>(256, [](uint32_t position) { return position; });
+    for (auto &channel : channels) {
+        channel->PROC_set_recording_buffer(data.data(), 256);
+    }
+    loop.set_length(128);
+
+    std::vector<std::vector<int>> play_bufs = { std::vector<int>(128), std::vector<int>(128), std::vector<int>(128) };
+    for (uint32_t idx=0; idx<3; idx++) {
+        channels[idx]->PROC_set_playback_buffer(play_bufs[idx].data(), play_bufs[idx].size());
+    }
+
+    // Stopped part (1 sync cycle + 10 frames)
+    process(40);
+    CHECK(sync_source->get_position() == 10);
+    CHECK(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+
+    loop.plan_transition(LoopMode_Recording, std::nullopt, 1, false);
+
+    CHECK(sync_source->get_position() == 10);
+    CHECK(loop.get_position() == 0);
+    CHECK(loop.get_length() == 40);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    
+    // Sanity check: play some samples
+    process(4);
+    // Process the channels' queued operations
+    for (auto &channel : channels) {
+        channel->PROC_finalize_process();
+    }
+
+    for (uint32_t idx=0; idx < 3; idx++) {
+        auto &channel = channels[idx];
+        auto buf = channels[idx]->get_data(false);
+        auto chan_mode = channel->get_mode();
+
+        REQUIRE(buf.size() == 44);
+
+        for (uint32_t p=0; p<40; p++) {
+            CHECK(buf[p]== 0);
+        }
+        for (uint32_t p=40; p<44; p++) {
+            CHECK(buf[p] == p);
         }
     }
 };

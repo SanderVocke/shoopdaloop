@@ -1,0 +1,32 @@
+name: Publish to PyPi
+
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_tag:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  checks: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        ref: refs/tags/${{ inputs.from_tag }}
+    - uses: Itsblue/download-release-assets-action@v1
+      with:
+        repo: SanderVocke/shoopdaloop
+        version: tags/${{ inputs.from_tag }}
+        file: ".*whl"
+        path: "wheels"
+    - name: Publish package distributions to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+          packages-dir: wheels

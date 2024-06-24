@@ -10,6 +10,7 @@ import mido
 import math
 import glob
 import json
+import inspect
 
 from PySide6.QtCore import QObject, Slot, Signal, QThread, QMetaObject, Qt
 from PySide6.QtQml import QJSValue
@@ -18,6 +19,7 @@ from .Task import Task
 from .Tasks import Tasks
 from .ShoopPyObject import *
 from ..directories import installation_dir, scripts_dir
+from ..recursive_jsvalue_convert import recursively_convert_jsvalue
 
 from shoopdaloop.lib.logging import Logger
 from shoopdaloop.lib.smf import generate_smf, parse_smf
@@ -43,6 +45,10 @@ class FileIO(ShoopQObject):
     ######################
     # SLOTS
     ######################
+
+    @ShoopSlot(int)
+    def wait_blocking(self, delay_ms):
+        time.sleep(0.001 * delay_ms)
     
     @ShoopSlot(result=str)
     def get_current_directory(self):
@@ -102,19 +108,27 @@ class FileIO(ShoopQObject):
     def extract_tarfile(self, filename, target_dir):
         flags = "r:*"
         with tarfile.open(filename, flags) as tar:
-            tar.extractall(target_dir)
+            if 'filter' in inspect.signature(tar.extractall).parameters:
+                tar.extractall(target_dir, filter='fully_trusted')
+            else:
+                tar.extractall(target_dir)
 
     def save_data_to_soundfile_impl(self, filename, sample_rate, data):
         self.startSavingFile.emit()
         try:
             lengths = set()
             for d in data:
+                if not isinstance(d, backend_wrappers.ShoopChannelAudioData) and not isinstance(d, list):
+                    self.logger.error(lambda: 'Cannot save audio: data is not a ShoopChannelAudioData object')
+                    return
                 lengths.add(len(d))
             if len(lengths) > 1:
                 self.logger.error(lambda: 'Cannot save audio: channel lengths are not equal ({})'.format(list(lengths)))
                 return
             # Soundfile wants NcxNs, not NsxNc
-            _data = np.swapaxes(data, 0, 1)
+            _data = np.hstack(
+                [(np.squeeze(d.np_array) if isinstance(d, backend_wrappers.ShoopChannelAudioData) else np.array(d)).reshape(-1,1) for d in data]
+            )
             sf.write(filename, _data, sample_rate)
         finally:
             self.doneSavingFile.emit()
@@ -242,7 +256,7 @@ class FileIO(ShoopQObject):
                     })
             
             if isinstance(channels, QJSValue):
-                channels = channels.toVariant()
+                channels = recursively_convert_jsvalue(channels)
             for channel in channels:
                 channel.load_all_midi_data(backend_msgs)        
                 if maybe_set_start_offset != None:
@@ -293,7 +307,7 @@ class FileIO(ShoopQObject):
         self.load_midi_to_channels_impl(filename, sample_rate, channels, maybe_set_n_preplay_samples, maybe_set_start_offset, maybe_update_loop_to_datalength)
     
     @ShoopSlot(str, int, list, result=Task)
-    def save_channels_to_soundfile_async(self, filename, sample_rate, channels):
+    def save_channels_to_soundfile_async(self, filename, sample_rate, channels):        
         task = Task(parent=self)
         def do_save():
             try:
@@ -335,15 +349,17 @@ class FileIO(ShoopQObject):
 
             target_sample_rate = int(target_sample_rate)
             file_sample_rate = int(file_sample_rate)
-            resampled = data
-            if target_sample_rate != file_sample_rate:
+            if target_sample_rate == file_sample_rate:
+                resampled = data
+            else:
                 self.logger.debug(lambda: "Resampling {} from {} to {}".format(filename, file_sample_rate, target_sample_rate))
                 self.logger.trace(lambda: "Data shape before resample: {}".format(data.shape))
                 target_n_frames = maybe_target_data_length
                 if target_n_frames is None:
-                    target_n_frames = int(target_sample_rate / file_sample_rate * resampled.shape[0])
+                    target_n_frames = int(target_sample_rate / file_sample_rate * data.shape[0])
                 resampled = backend_wrappers.resample_audio(data, target_n_frames)
-                self.logger.trace(lambda: "Data shape after resample: {}".format(resampled.shape))
+            
+            self.logger.trace(lambda: "Data shape: {}".format(resampled.shape))
 
             if len(channels_to_loop_channels) > len(resampled):
                 self.logger.error(lambda: "Need {} channels, but loaded file only has {}".format(len(channels_to_loop_channels), len(resampled)))
@@ -361,7 +377,7 @@ class FileIO(ShoopQObject):
                         channel.set_start_offset(maybe_set_start_offset)
                     if maybe_set_n_preplay_samples != None:
                         channel.set_n_preplay_samples(maybe_set_n_preplay_samples)
-                    self.logger.debug(lambda: "load channel: {} samples, result {}".format(len(data_channel), channel.data_length))  
+                    self.logger.debug(lambda: f"load channel: {len(data_channel)} samples, resulting channel data length {channel.data_length}")  
                     
             if maybe_update_loop_to_datalength != None:
                 maybe_update_loop_to_datalength.set_length(len(resampled[0]))

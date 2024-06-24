@@ -188,8 +188,9 @@ Item {
             model: at_pixels.length
 
             Rectangle {
-                color: '#555555'
+                color: '#0000CC'
                 width: 1
+                height: root.height
                 property var val : major_grid_lines_repeater.at_pixels[index]
                 x: val ? val : 0
             }

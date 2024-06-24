@@ -80,7 +80,7 @@ public:
     using _InternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::_InternalAudioPort;
     using SharedInternalAudioPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedInternalAudioPort;
     using MidiOutputPort = InternalLV2MidiOutputPort;
-    using SharedMidiOutputPort = std::shared_ptr<MidiOutputPort>;
+    using SharedMidiOutputPort = shoop_shared_ptr<MidiOutputPort>;
     using SharedMidiPort = typename ProcessingChainInterface<TimeType, SizeType>::SharedMidiPort;
 
 private:
@@ -107,7 +107,7 @@ private:
     std::atomic<bool> m_active = false;
     std::atomic<bool> m_state_restore_active = false;
     std::atomic<bool> m_busy_making_visible = false;
-    std::shared_ptr<profiling::ProfilingItem> m_maybe_profiling_item = nullptr;
+    shoop_shared_ptr<profiling::ProfilingItem> m_maybe_profiling_item = nullptr;
 
     const LV2UI_Descriptor * m_ui_descriptor = nullptr;
 
@@ -144,7 +144,7 @@ public:
         uint32_t sample_rate,
         uint32_t buffer_size,
         std::string human_name,
-        std::shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool
+        shoop_shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool
     );
 
     void instantiate(uint32_t sample_rate, uint32_t buffer_size);
@@ -166,7 +166,7 @@ public:
     virtual ~CarlaLV2ProcessingChain();
 
     void deserialize_state(std::string str) override;
-    std::string serialize_state() override;
+    std::string serialize_state(uint32_t timeout_ms) override;
 };
 
 extern template class CarlaLV2ProcessingChain<uint32_t, uint16_t>;

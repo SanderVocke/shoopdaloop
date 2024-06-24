@@ -118,6 +118,11 @@ ApplicationWindow {
                     }
                 }
 
+                ItemRow {
+                    label: "min n ringbuffer samples:"
+                    Label { text: object.n_ringbuffer_samples }
+                }
+
                 Loader {
                     active: object.object_schema.match(/audioport.[0-9]/)
                     sourceComponent: ItemRow {

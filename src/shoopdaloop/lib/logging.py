@@ -10,6 +10,12 @@ class Logger:
     def __init__(self, module_name):
         self._name = module_name
         self._backend_handle = get_logger(self._name)
+
+    def should_trace(self):
+        return shoopdaloop_should_log(self._backend_handle, log_level_always_trace)
+    
+    def should_debug(self):
+        return shoopdaloop_should_log(self._backend_handle, log_level_debug)
     
     def resolve_log_msg(self, value, level):
         if not shoopdaloop_should_log(self._backend_handle, level):

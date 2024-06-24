@@ -4,16 +4,17 @@
 #include "MidiPort.h"
 #include <stdint.h>
 #include <vector>
+#include "shoop_shared_ptr.h"
 
 // A MIDI buffer that can written to and read from. It sorts messages
 // during the process step.
 class MidiSortingReadWritePort : public MidiPort {
-    std::shared_ptr<MidiSortingBuffer> m_sorting_buffer = nullptr;
+    shoop_shared_ptr<MidiSortingBuffer> m_sorting_buffer = nullptr;
 public:
     MidiSortingReadWritePort(
         bool track_notes, bool track_controls, bool track_programs
     ) : MidiPort(track_notes, track_controls, track_programs),
-        m_sorting_buffer(std::make_shared<MidiSortingBuffer>()) {}
+        m_sorting_buffer(shoop_make_shared<MidiSortingBuffer>()) {}
     
     virtual ~MidiSortingReadWritePort() {}
 

@@ -66,3 +66,11 @@ class Logger(ShoopQObject):
     def throw_error(self, msg):
         self.logger.error(msg, _id=self._id_to_print)
         raise Exception(msg)
+    
+    @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
+    def should_trace(self):
+        return self.logger.should_trace()
+    
+    @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
+    def should_debug(self):
+        return self.logger.should_debug()

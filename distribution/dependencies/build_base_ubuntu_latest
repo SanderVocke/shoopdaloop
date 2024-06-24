@@ -8,6 +8,9 @@ cmake
 ninja-build
 pkgconf
 lcov
+ruby
+rpm
+libarchive-tools
 
 # libraries
 libglib2.0-0
@@ -16,6 +19,13 @@ jackd2
 libxkbcommon-dev
 libboost-dev
 libjack-jackd2-dev
+
+# libraries for running / coverage
+libportaudio2
+libsndfile1
+lcov
+gcc
+procps
 
 # python
 python3-build

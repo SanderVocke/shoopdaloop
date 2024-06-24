@@ -7,7 +7,7 @@ Item {
     property bool values_only : false
 
     // Only found objects
-    property list<var> objects : []
+    property var objects : []
 
     function update() {
         if (registry) {

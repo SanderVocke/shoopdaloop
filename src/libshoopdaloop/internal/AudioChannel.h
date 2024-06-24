@@ -2,12 +2,11 @@
 #include "ChannelInterface.h"
 #include "ObjectPool.h"
 #include "AudioBuffer.h"
-#include "BufferQueue.h"
 #include "WithCommandQueue.h"
 #include "LoggingEnabled.h"
 #include <stdint.h>
 #include <vector>
-#include <deque>
+#include "shoop_shared_ptr.h"
 
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
@@ -16,14 +15,14 @@ class AudioChannel : public ChannelInterface,
 public:
     typedef AudioBuffer<SampleT> BufferObj;
     typedef ObjectPool<BufferObj> BufferPool;
-    typedef std::shared_ptr<BufferObj> Buffer;
+    typedef shoop_shared_ptr<BufferObj> Buffer;
     
 private:
 
     struct Buffers;
 
     // Members which may be accessed from any thread (ma prefix)
-    std::shared_ptr<BufferPool> ma_buffer_pool = nullptr;
+    shoop_shared_ptr<BufferPool> ma_buffer_pool = nullptr;
     const uint32_t ma_buffer_size;
     std::atomic<int> ma_start_offset = 0;
     std::atomic<uint32_t> ma_pre_play_samples = 0;
@@ -73,11 +72,11 @@ private:
     struct Buffers : private ModuleLoggingEnabled<"Backend.AudioChannel.Buffers"> {
 
         uint32_t buffers_size = 0;
-        std::shared_ptr<std::vector<Buffer>> buffers;
-        std::shared_ptr<BufferPool> pool = nullptr;
+        shoop_shared_ptr<std::vector<Buffer>> buffers;
+        shoop_shared_ptr<BufferPool> pool = nullptr;
 
         Buffers();
-        Buffers(std::shared_ptr<BufferPool> pool, uint32_t initial_max_buffers);
+        Buffers(shoop_shared_ptr<BufferPool> pool, uint32_t initial_max_buffers);
 
         Buffers& operator= (Buffers const& other);
         
@@ -89,7 +88,8 @@ private:
         uint32_t n_buffers() const;
         uint32_t n_samples() const;
         uint32_t buf_space_for_sample(uint32_t offset) const;
-        void set_contents(std::shared_ptr<std::vector<Buffer>> buffers);
+        void set_contents(shoop_shared_ptr<std::vector<Buffer>> buffers);
+        std::vector<SampleT> contiguous_copy(uint32_t max_length) const;
     };
 
     union ProcessingCommandDetails {
@@ -130,7 +130,7 @@ private:
 public:
 
     AudioChannel(
-            std::shared_ptr<BufferPool> buffer_pool,
+            shoop_shared_ptr<BufferPool> buffer_pool,
             uint32_t initial_max_buffers,
             shoop_channel_mode_t mode);
 
@@ -208,7 +208,7 @@ public:
 
     std::optional<uint32_t> get_played_back_sample() const override;
 
-    void adopt_ringbuffer_contents(std::shared_ptr<PortInterface> from_port,
+    void adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port,
                                    std::optional<unsigned> reverse_start_offset,
                                    std::optional<unsigned> keep_samples_before_start_offset,
                                    bool thread_safe=true) override;

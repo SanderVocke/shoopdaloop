@@ -151,6 +151,7 @@ class AudioPort(Port):
                 if idx == None:
                     self.logger.throw_error('Could not find self in FX chain')
                 # Now request our backend object.
+                n_ringbuffer = self.n_ringbuffer_samples
                 if not (self.output_connectability & PortConnectability.Internal.value):
                     self._backend_obj = self.backend.get_backend_session_obj().get_fx_chain_audio_input_port(
                         maybe_fx_chain.get_backend_obj(),
@@ -162,6 +163,7 @@ class AudioPort(Port):
                         idx
                     )
                 self.push_state()
+                self.set_min_n_ringbuffer_samples (n_ringbuffer)
 
     def maybe_initialize_external(self, name_hint, input_connectability, output_connectability):
         if self._backend_obj:

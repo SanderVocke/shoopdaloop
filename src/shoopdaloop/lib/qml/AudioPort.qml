@@ -70,7 +70,7 @@ PythonAudioPort {
         reg_entry.close()
         close()
     }
-    property list<string> name_parts : descriptor.name_parts
+    property var name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
     gain : descriptor.gain
     muted : descriptor.muted

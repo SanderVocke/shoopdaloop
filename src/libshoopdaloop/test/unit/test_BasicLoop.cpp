@@ -45,8 +45,8 @@ TEST_CASE("BasicLoop - Record", "[BasicLoop]") {
 
 TEST_CASE("BasicLoop - Planned Transition", "[BasicLoop]") {
     BasicLoop loop;
-    auto other = std::make_shared<BasicLoop>();
-    loop.set_sync_source(other);
+    auto other = shoop_make_shared<BasicLoop>();
+    loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(other));
     loop.set_mode(LoopMode_Recording, false);
     loop.set_length(10, false);
     loop.PROC_update_poi();
@@ -64,8 +64,8 @@ TEST_CASE("BasicLoop - Planned Transition", "[BasicLoop]") {
 
 TEST_CASE("BasicLoop - Planned Transition delayed", "[BasicLoop]") {
     BasicLoop loop;
-    auto other = std::make_shared<BasicLoop>();
-    loop.set_sync_source(other);
+    auto other = shoop_make_shared<BasicLoop>();
+    loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(other));
     loop.set_mode(LoopMode_Recording, false);
     loop.set_length(10, false);
     loop.PROC_update_poi();
@@ -89,8 +89,8 @@ TEST_CASE("BasicLoop - Planned Transition delayed", "[BasicLoop]") {
 
 TEST_CASE("BasicLoop - Planned Transitions delayed", "[BasicLoop]") {
     BasicLoop loop;
-    auto other = std::make_shared<BasicLoop>();
-    loop.set_sync_source(other);
+    auto other = shoop_make_shared<BasicLoop>();
+    loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(other));
     loop.set_mode(LoopMode_Recording, false);
     loop.set_length(10, false);
     loop.PROC_update_poi();
@@ -127,8 +127,8 @@ TEST_CASE("BasicLoop - Planned Transitions delayed", "[BasicLoop]") {
 
 TEST_CASE("BasicLoop - Planned Transitions Cancellation 1", "[BasicLoop]") {
     BasicLoop loop;
-    auto other = std::make_shared<BasicLoop>();
-    loop.set_sync_source(other);
+    auto other = shoop_make_shared<BasicLoop>();
+    loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(other));
     loop.set_mode(LoopMode_Recording, false);
     loop.set_length(10, false);
     loop.PROC_update_poi();

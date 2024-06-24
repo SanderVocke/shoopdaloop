@@ -21,48 +21,48 @@
 struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirectLoopTestChain"> {
 
     shoop_backend_session_t *api_backend_session;
-    std::shared_ptr<BackendSession> int_backend_session;
+    shoop_shared_ptr<BackendSession> int_backend_session;
 
     shoop_audio_driver_t *api_driver;
-    std::shared_ptr<shoop_types::_DummyAudioMidiDriver> int_driver;
+    shoop_shared_ptr<shoop_types::_DummyAudioMidiDriver> int_driver;
 
     shoopdaloop_audio_port_t *api_input_port;
-    std::shared_ptr<GraphPort> int_input_port;
+    shoop_shared_ptr<GraphPort> int_input_port;
     DummyAudioPort* int_dummy_input_port;
 
     shoopdaloop_audio_port_t *api_output_port;
-    std::shared_ptr<GraphPort> int_output_port;
+    shoop_shared_ptr<GraphPort> int_output_port;
     DummyAudioPort* int_dummy_output_port;
 
     shoopdaloop_midi_port_t *api_midi_input_port;
-    std::shared_ptr<GraphPort> int_midi_input_port;
+    shoop_shared_ptr<GraphPort> int_midi_input_port;
     DummyMidiPort* int_dummy_midi_input_port;
 
     shoopdaloop_midi_port_t *api_midi_output_port;
-    std::shared_ptr<GraphPort> int_midi_output_port;
+    shoop_shared_ptr<GraphPort> int_midi_output_port;
     DummyMidiPort* int_dummy_midi_output_port;
 
     shoopdaloop_loop_t *api_loop;
-    std::shared_ptr<GraphLoop> int_loop;
+    shoop_shared_ptr<GraphLoop> int_loop;
 
     shoopdaloop_loop_t *api_sync_loop;
-    std::shared_ptr<GraphLoop> int_sync_loop;
+    shoop_shared_ptr<GraphLoop> int_sync_loop;
 
-    std::shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
+    shoop_shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
 
     shoopdaloop_loop_audio_channel_t *api_audio_chan;
     shoopdaloop_loop_midi_channel_t *api_midi_chan;
-    std::shared_ptr<GraphLoopChannel> int_audio_chan_node;
-    std::shared_ptr<GraphLoopChannel> int_midi_chan_node;
-    std::shared_ptr<shoop_types::LoopAudioChannel> int_audio_chan;
-    std::shared_ptr<shoop_types::LoopMidiChannel> int_midi_chan;
+    shoop_shared_ptr<GraphLoopChannel> int_audio_chan_node;
+    shoop_shared_ptr<GraphLoopChannel> int_midi_chan_node;
+    shoop_shared_ptr<shoop_types::LoopAudioChannel> int_audio_chan;
+    shoop_shared_ptr<shoop_types::LoopMidiChannel> int_midi_chan;
 
     SingleDirectLoopTestChain() {
         api_backend_session = create_backend_session();
         int_backend_session = internal_backend_session(api_backend_session);
 
         api_driver = create_audio_driver(Dummy);
-        int_driver = std::dynamic_pointer_cast<_DummyAudioMidiDriver>(internal_audio_driver(api_driver));
+        int_driver = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(internal_audio_driver(api_driver));
 
         auto settings = DummyAudioMidiDriverSettings{};
         int_driver->start(settings);
@@ -96,8 +96,8 @@ struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirec
         // Note: need to wait for channels to really appear
         int_driver->wait_process();
 
-        int_audio_chan = std::dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_audio_chan_node->channel);
-        int_midi_chan = std::dynamic_pointer_cast<shoop_types::LoopMidiChannel>(int_midi_chan_node->channel);
+        int_audio_chan = shoop_dynamic_pointer_cast<shoop_types::LoopAudioChannel>(int_audio_chan_node->channel);
+        int_midi_chan = shoop_dynamic_pointer_cast<shoop_types::LoopMidiChannel>(int_midi_chan_node->channel);
         
         if(!int_audio_chan) { throw std::runtime_error("audio channel is null"); }
         if(!int_midi_chan) { throw std::runtime_error("midi channel is null"); }
@@ -151,7 +151,7 @@ TEST_CASE("Chain - Direct playback MIDI basic", "[chain][midi]") {
     load_midi_channel_data(tst.api_midi_chan, sequence);
     destroy_midi_sequence(sequence);
     set_loop_length(tst.api_loop, 30);
-    loop_transition(tst.api_loop, LoopMode_Playing, 0, false);
+    loop_transition(tst.api_loop, LoopMode_Playing, -1, -1);
 
     tst.int_dummy_midi_output_port->request_data(50);
     tst.int_driver->controlled_mode_request_samples(30);
@@ -200,7 +200,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - one cycle", "[chain][audio]")
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
     tst.int_sync_loop->loop->set_length(3, true);
-    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, -1, -1);
 
     tst.int_driver->controlled_mode_request_samples(7); // Two cycles and 1 sample
     tst.int_driver->controlled_mode_run_request();
@@ -228,7 +228,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - current cycle", "[chain][audi
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
     tst.int_sync_loop->loop->set_length(3, true);
-    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, -1, -1);
 
     tst.int_driver->controlled_mode_request_samples(8); // Two cycles and 2 samples
     tst.int_driver->controlled_mode_run_request();
@@ -256,7 +256,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - prev cycle", "[chain][audio]"
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
     tst.int_sync_loop->loop->set_length(2, true);
-    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, -1, -1);
 
     tst.int_driver->controlled_mode_request_samples(7); // Three cycles and 1 sample
     tst.int_driver->controlled_mode_run_request();
@@ -284,7 +284,7 @@ TEST_CASE("Chain - Direct adopt audio ringbuffer - prev 2 cycles", "[chain][audi
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
     tst.int_sync_loop->loop->set_length(2, true);
-    loop_transition(tst.api_sync_loop, LoopMode_Playing, 0, 0);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, -1, -1);
 
     tst.int_driver->controlled_mode_request_samples(7); // Three cycles and 1 sample
     tst.int_driver->controlled_mode_run_request();

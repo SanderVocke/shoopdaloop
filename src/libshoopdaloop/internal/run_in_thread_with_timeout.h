@@ -5,7 +5,6 @@
 #include <functional>
 #include <stdexcept>
 
-#include <iostream>
 
 // Note: "unsafe" is in the name because detaching a thread during program termination
 // might not clean up resources properly.

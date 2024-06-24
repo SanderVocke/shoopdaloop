@@ -12,15 +12,30 @@ Global Controls
 
    The global controls bar.
 
-The global controls, from left to right, are: **menu**, **stop all**, **sync mode**, **solo mode**, **auto-play recorded**, **clear all** and **record cycles**. Hovering over these buttons shows their function in a tooltip.
-Some of these are *togglbable*. These can be clicked to toggle them, and also have a keyboard mapping to momentarily invert them.
+The global controls groups and their contents, from left to right, are:
+
+* **menu**
+* **action buttons**:
+     * **stop all**
+     * **deselect all**
+     * **clear multiple**
+* **controls**:
+     * **default record action**
+     * **auto-play recorded**
+     * **sync mode**
+     * **solo mode**
+     * **record cycles**
+
+Hovering over any of these buttons shows their function in a tooltip.
+Some of these are *toggleable*. These can be clicked to toggle them, and some also have a keyboard mapping to momentarily invert them.
 
 Some details:
 
-* **sync mode**: *togglable* (``Ctrl`` key). Affects the timing of loop triggers. If sync is not active (exclamation symbol), loop triggers such as play, stop, record execute immediately. If sync is active (hourglass symbol), such commands happen at the first upcoming restart of the **sync loop**.
-* **solo mode**: *togglable* (``Shift`` key). If active (highlighted), commands such as play and record will stop all other loops in the same track(s).
-* **auto-play recorded**: *togglable* (``Alt`` key). If active (highlighted), the default trigger after recording a loop is to play it back. That includes the behavior when doing a default trigger on a loop (spacebar / MIDI controller), but also affects what happens after triggering a fixed-length recording (playback or stop). It also affects the **grab** button (explained below).
-* **record cycles**: Numeric control. Change by typing or pressing the number keys on the keyboard. Setting to 0 sets it to *infinite*. This affects recording commands. If set to *infinite*, triggering a recording will record the loop until another trigger is given. However, if set to a specific number, the recording will last N sync loop cycles before going to playback/stop. This also affects the **grab** button (explained below).
+* **default record action**: *toggleable* (no mapped key). Chooses the preferred method of recording ("record" or "grab"). This affects default behavior or some buttons / MIDI inputs (such as the spacebar).
+* **auto-play recorded**: *toggleable* (``Alt`` key). If active (highlighted), the default trigger after recording a loop is to play it back. That includes the behavior when doing a default trigger on a loop (spacebar / MIDI controller), but also affects what happens after triggering a fixed-length recording (playback or stop). It also affects the **grab** button (explained below).
+* **sync mode**: *toggleable* (``Ctrl`` key). Affects the timing of loop triggers. If sync is not active (exclamation symbol), loop triggers such as play, stop, record execute immediately. If sync is active (hourglass symbol), such commands happen at the first upcoming restart of the **sync loop**.
+* **solo mode**: *toggleable* (``Shift`` key). If active (highlighted), commands such as play and record will stop all other loops in the same track(s).
+* **record cycles**: Numeric control. Change by pressing the number keys on the keyboard at any time, or clicking the +/- controls. Setting to 0 sets it to *infinite*. This affects recording commands. If set to *infinite*, triggering a recording will record the loop until another trigger is given. However, if set to a specific number, the recording will last N sync loop cycles before going to playback/stop. This also affects the **grab** button (explained below).
 
 Loop Controls
 ^^^^^^^^^^^^^
@@ -61,6 +76,7 @@ For this, the global controls are used:
 * When **sync mode** is off (immediate), the behavior slightly changes. The currently playing sync loop cycle will be included in the grab. Because the cycle is not yet finished, the loop will also immediately go into "record" mode to record the remainder, and then automatically go to playback/stop afterward. This is useful if you want the playback to start seamlessly - after all, when grabbing in hindsight, you only hear the playback after grabbing.
 * Grabbing works nicely together with **loop targeting**. If you have targeted another loop (details below), grab will behave as if that loop was the sync loop. In other words: if you target a loop that is playing back, play a second part together with it, and then grab afterward, your recording will line up with the targeted loop.
 
+Grabbing also works on composite loops, in which case the behavior is slightly different - see below in the composite loop section for details.
 
 Selecting and Targeting
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -118,8 +134,34 @@ Playing back a composite loop will play the loops as sequenced. Empty sub-loops 
 Recording
 """""""""
 
-In order to record a composite loop, the sub-loops must already have contents so their lengths can be determined. That means you will first need to record the subloops separately or manually set their lenghts.
+Pressing "record" on the composite loop will re-record the subloops in sequence.
 
-When this is the case, pressing "record" on the composite loop will re-record the subloops in sequence.
+Loops are recorded based on their current length. For empty loops, the application assumes that they will be **n cycles** long (referring to the global **n cycles control**).
 
 Note that there is a special case if the same subloop is sequenced multiple times. It will not re-record multiple times. Instead, after re-recording it the first time, additional occurrences in the sequence are skipped with the subloop idle.
+
+Grabbing
+""""""""
+
+A composite loop can also be grabbed. Instead of grabbing audio data into the composite loop, instead this will cause the child loops to each grab their portion.
+
+This can be a powerful tool for structuring your looping session. Let's illustrate with an example.
+
+Say you've reserved your 1st and 2nd rows of loops in the session for two different "scenes" (or sections of the song). And let's say these two scenes need different basslines, which you want to record in one go.
+
+One thing you could do is define a composite loop which is a sequence of the bass loops in scene 1 and 2 (e.g. by using Alt+click while the composite slot is selected).
+
+Now, you can play your two basslines directly after one another on the instrument without touching a thing, then use Grab on the composite loop. Each bassline will be grabbed into its respective slot instantly, and the sequence of these two basslines will start playing if **play after record** is enabled.
+
+Generally speaking, grabbing on composite loops does what you would expect given the behavior described in the loop controls section. But there are some differences for composite loops:
+
+* Grabbing a composite loop does not respect the global **n cycles** control or the **targeted loop** for synchronization and length of the grab. Instead:
+  
+  * The total length of the grab is always the already calculated composite loop length. Child loops which do not have an explicit length are assumed to be **n cycles** (global control) sync cycle long.
+  * The alignment of the grab is as follows:
+
+    * If the global **sync control** is active, the last completed sync cycle is mapped to the last cycle of the composite loop.
+    * If the global **sync control** is inactive, the currently running sync cycle is mapped to the last cycle of the composite loop. The remainder of the current sync cycle will keep recording into the last part.
+
+Note that only regular composite loops can be grabbed.
+

@@ -1,4 +1,5 @@
 #include "AudioChannel.h"
+#include "AudioPort.h"
 #include "types.h"
 #include "channel_mode_helpers.h"
 #include <boost/lockfree/policies.hpp>
@@ -6,15 +7,11 @@
 #include <cstring>
 #include <memory>
 #include <stdexcept>
-#include <thread>
 #include <vector>
 #include <optional>
-#include <iostream>
-#include <chrono>
 #include <boost/lockfree/spsc_queue.hpp>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
-#include "AudioPort.h"
 
 using namespace std::chrono_literals;
 using namespace logging;
@@ -32,10 +29,10 @@ inline void AudioChannel<SampleT>::trace_print_data(std::string msg, SampleT *da
 }
 
 template <typename SampleT>
-AudioChannel<SampleT>::Buffers::Buffers(std::shared_ptr<BufferPool> pool,
+AudioChannel<SampleT>::Buffers::Buffers(shoop_shared_ptr<BufferPool> pool,
                                         uint32_t initial_max_buffers)
     : pool(pool), buffers_size(pool->object_size()) {
-    buffers = std::make_shared<std::vector<Buffer>>();
+    buffers = shoop_make_shared<std::vector<Buffer>>();
     buffers->reserve(initial_max_buffers);
     reset();
 }
@@ -45,12 +42,25 @@ template <typename SampleT> void AudioChannel<SampleT>::Buffers::reset() {
     buffers->push_back(get_new_buffer());
 }
 
-template <typename SampleT> void AudioChannel<SampleT>::Buffers::set_contents(std::shared_ptr<std::vector<Buffer>> contents) {
+template <typename SampleT> void AudioChannel<SampleT>::Buffers::set_contents(shoop_shared_ptr<std::vector<Buffer>> contents) {
     buffers = contents;
 }
 
+template <typename SampleT> std::vector<SampleT> AudioChannel<SampleT>::Buffers::contiguous_copy(uint32_t max_length) const {
+    std::vector<SampleT> rval;
+    uint32_t remaining = std::min(n_samples(), max_length);
+    rval.reserve(remaining);
+    for (auto &buf : *buffers) {
+        auto data = buf->data();
+        uint32_t step = std::min((size_t) remaining, buf->size());
+        rval.insert(rval.end(), data, data + step);
+        remaining -= step;
+    }
+    return rval;
+}
+
 template <typename SampleT> AudioChannel<SampleT>::Buffers::Buffers() {
-    buffers = std::make_shared<std::vector<Buffer>>();
+    buffers = shoop_make_shared<std::vector<Buffer>>();
 }
 
 template <typename SampleT>
@@ -82,7 +92,7 @@ bool AudioChannel<SampleT>::Buffers::ensure_available(uint32_t offset,
 template <typename SampleT>
 typename AudioChannel<SampleT>::Buffer
 AudioChannel<SampleT>::Buffers::create_new_buffer() const {
-    return std::make_shared<BufferObj>(buffers_size);
+    return shoop_make_shared<BufferObj>(buffers_size);
 }
 
 template <typename SampleT>
@@ -135,7 +145,7 @@ void AudioChannel<SampleT>::throw_if_commands_queued() const {
 
 template <typename SampleT>
 AudioChannel<SampleT>::AudioChannel(
-    std::shared_ptr<BufferPool> buffer_pool, uint32_t initial_max_buffers,
+    shoop_shared_ptr<BufferPool> buffer_pool, uint32_t initial_max_buffers,
     shoop_channel_mode_t mode)
     : WithCommandQueue(50), ma_buffer_pool(buffer_pool),
       ma_buffers_data_length(0), mp_prerecord_buffers_data_length(0),
@@ -349,7 +359,7 @@ void AudioChannel<SampleT>::PROC_finalize_process() {
 
 template <typename SampleT>
 void AudioChannel<SampleT>::adopt_ringbuffer_contents(
-    std::shared_ptr<PortInterface> from_port,
+    shoop_shared_ptr<PortInterface> from_port,
     std::optional<unsigned> reverse_start_offset,
     std::optional<unsigned> keep_samples_before_start_offset,
     bool thread_safe)
@@ -359,7 +369,7 @@ void AudioChannel<SampleT>::adopt_ringbuffer_contents(
     } else {
         log<log_level_debug>("queue adopt ringbuffer @ begin");
     }
-    auto audioport = std::dynamic_pointer_cast<AudioPort<SampleT>>(from_port);
+    auto audioport = shoop_dynamic_pointer_cast<AudioPort<SampleT>>(from_port);
     if (!audioport) {
         log<log_level_error>("Cannot adopt ringbuffer from non-audio port");
         return;
@@ -367,6 +377,7 @@ void AudioChannel<SampleT>::adopt_ringbuffer_contents(
 
     auto fn = [audioport, reverse_start_offset, keep_samples_before_start_offset, this]() {
         auto data = audioport->PROC_get_ringbuffer_contents();
+        auto ori_len = data.n_samples;
         int so = reverse_start_offset.has_value() ? (int)data.n_samples - (int)reverse_start_offset.value() : 0;
         // Remove data as allowed
         if (keep_samples_before_start_offset.has_value()) {
@@ -379,9 +390,9 @@ void AudioChannel<SampleT>::adopt_ringbuffer_contents(
         }
 
         mp_buffers.set_contents(data.data);
-        log<log_level_debug_trace>("adopting ringbuffer @ reverse offset {}", so);
         set_start_offset(so);
         PROC_set_length(data.n_samples);
+        log<log_level_debug_trace>("adopted ringbuffer: {} of {} samples stored, start offset {}", data.n_samples, ori_len, so);
         data_changed();
     };
 
@@ -404,7 +415,7 @@ void AudioChannel<SampleT>::load_data(SampleT *samples, uint32_t len,
 
     for (uint32_t idx = 0; idx < buffers.n_buffers(); idx++) {
         auto &buf = buffers.buffers->at(idx);
-        buf = std::make_shared<AudioBuffer<SampleT>>(ma_buffer_size);
+        buf = shoop_make_shared<AudioBuffer<SampleT>>(ma_buffer_size);
         uint32_t already_copied = idx * ma_buffer_size;
         uint32_t n_elems = std::min(ma_buffer_size, len - already_copied);
         memcpy(buf->data(), samples + (idx * ma_buffer_size),
@@ -441,10 +452,7 @@ std::vector<SampleT> AudioChannel<SampleT>::get_data(bool thread_safe) {
         cmd();
     }
 
-    std::vector<SampleT> rval(length);
-    for (uint32_t idx = 0; idx < length; idx++) {
-        rval[idx] = buffers.at(idx);
-    }
+    std::vector<SampleT> rval = buffers.contiguous_copy(length);
     return rval;
 }
 

@@ -39,7 +39,7 @@ void GraphLoop::delete_midi_channel_idx(uint32_t idx, bool thread_safe) {
     get_backend().set_graph_node_changes_pending();
 }
 
-void GraphLoop::delete_audio_channel(std::shared_ptr<GraphLoopChannel> chan, bool thread_safe) {
+void GraphLoop::delete_audio_channel(shoop_shared_ptr<GraphLoopChannel> chan, bool thread_safe) {
     auto r = std::find_if(mp_audio_channels.begin(), mp_audio_channels.end(), [chan](auto const& e) { return chan->channel.get() == e->channel.get(); });
     if (r == mp_audio_channels.end()) {
         throw std::runtime_error("Attempting to delete non-existent audio channel.");
@@ -49,7 +49,7 @@ void GraphLoop::delete_audio_channel(std::shared_ptr<GraphLoopChannel> chan, boo
     get_backend().set_graph_node_changes_pending();
 }
 
-void GraphLoop::delete_midi_channel(std::shared_ptr<GraphLoopChannel> chan, bool thread_safe) {
+void GraphLoop::delete_midi_channel(shoop_shared_ptr<GraphLoopChannel> chan, bool thread_safe) {
     auto r = std::find_if(mp_midi_channels.begin(), mp_midi_channels.end(), [chan](auto const& e) { return chan->channel.get() == e->channel.get(); });
     if (r == mp_midi_channels.end()) {
         throw std::runtime_error("Attempting to delete non-existent midi channel.");
@@ -78,11 +78,11 @@ BackendSession &GraphLoop::get_backend() {
     return *b;
 }
 
-void GraphLoop::graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const& nodes, uint32_t nframes) {
-    process_loops<std::set<std::shared_ptr<GraphNode>>::iterator>(
+void GraphLoop::graph_node_co_process(std::set<shoop_shared_ptr<GraphNode>> const& nodes, uint32_t nframes) {
+    process_loops<std::set<shoop_shared_ptr<GraphNode>>::iterator>(
         nodes.begin(), nodes.end(), nframes,
-        [](std::set<std::shared_ptr<GraphNode>>::iterator &node_it) -> LoopInterface* {
-            std::shared_ptr<GraphLoop> l = graph_node_parent_as<GraphLoop, HasGraphNode>(**node_it);
+        [](std::set<shoop_shared_ptr<GraphNode>>::iterator &node_it) -> LoopInterface* {
+            shoop_shared_ptr<GraphLoop> l = graph_node_parent_as<GraphLoop, HasGraphNode>(**node_it);
             if (l) {
                 return l->loop.get();
             }
@@ -91,8 +91,8 @@ void GraphLoop::graph_node_co_process(std::set<std::shared_ptr<GraphNode>> const
 }
 
 void GraphLoop::graph_node_process(uint32_t nframes) {
-    std::array<std::shared_ptr<GraphLoop>, 1> loops;
-    loops[0] = static_pointer_cast<GraphLoop>(shared_from_this());
+    std::array<shoop_shared_ptr<GraphLoop>, 1> loops;
+    loops[0] = shoop_static_pointer_cast<GraphLoop>(shared_from_this());
     process_loops<decltype(loops)::iterator>(
         loops.begin(), loops.end(), nframes,
         [](decltype(loops)::iterator &node) -> LoopInterface* {
@@ -141,14 +141,8 @@ void GraphLoop::PROC_adopt_ringbuffer_contents(
         samples_length = std::min(samples_length, reverse_start_offset.value());
     }
 
+    loop->set_length(samples_length, false);
     if (go_to_mode != LoopMode_Unknown) {
-        loop->set_length(samples_length, false);
-        loop->set_mode(go_to_mode, false);
-        unsigned cycle_start = sync_len * go_to_cycle.value_or(0);
-        loop->set_length(samples_length, false);
-        loop->set_position(cycle_start + sync_pos, false);
-        loop->PROC_update_poi();
-    } else {
-        loop->set_length(samples_length, false);
+        loop->plan_transition(go_to_mode, std::nullopt, go_to_cycle.value_or(0), false);
     }
 }
