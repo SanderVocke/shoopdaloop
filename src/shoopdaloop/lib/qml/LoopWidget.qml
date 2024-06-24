@@ -677,6 +677,8 @@ Item {
         property bool hovered : area.containsMouse
         property string name : root.name
 
+        property alias gain_dial: gain_dial
+
         signal propagateMousePosition(var point)
         signal propagateMouseExited()
 
