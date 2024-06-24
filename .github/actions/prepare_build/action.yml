@@ -18,6 +18,9 @@ runs:
   - name: Prepare linux
     if: ${{ inputs.variant == 'linux' }}
     uses: ./.github/actions/prepare_build_linux
+  - name: Prepare ubuntu-latest
+    if: ${{ inputs.variant == 'ubuntu_latest' }}
+    uses: ./.github/actions/prepare_build_ubuntu_latest
   - name: Prepare MacOS
     if: ${{ inputs.variant == 'macos' }}
     uses: ./.github/actions/prepare_build_macos

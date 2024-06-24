@@ -21,6 +21,9 @@ inputs:
     description: "Kind of package to build"
   coverage:
     description: "Whether to run coverage"
+  upload_artifacts:
+    description: "Whether to upload artifacts"
+    default: 'true'
   upload_release_assets:
     default: 'false'
     description: "Whether to attempt uploading assets to a tag release."
@@ -128,25 +131,25 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Upload wheel (${{ inputs.variant_name }})
-    if: ${{ !env.ACT }}
+    if: ${{ inputs.upload_artifacts == 'true' }}
     uses: actions/upload-artifact@v4
     with:
       name: wheel_${{ inputs.name }}
       path: ${{ steps.find.outputs.name }}
   - name: Upload debug info (${{ inputs.variant_name }})
-    if: ${{ !env.ACT }}
+    if: ${{ inputs.upload_artifacts == 'true' }}
     uses: actions/upload-artifact@v4
     with:
       name: breakpad_debuginfo_${{ inputs.name }}
       path: debuginfo
   - name: Upload PyInstaller (${{ inputs.variant_name }})
-    if: ${{ inputs.pyinstaller }}
+    if: ${{ inputs.pyinstaller && inputs.upload_artifacts == 'true' }}
     uses: actions/upload-artifact@v4
     with:
       name: pyinstaller_${{ inputs.name }}
       path: ${{ steps.pyinstaller.outputs.distribution }}
   - name: Upload MacOS app bundle
-    if: ${{ inputs.appbundle }}
+    if: ${{ inputs.appbundle && inputs.upload_artifacts == 'true' }}
     uses: actions/upload-artifact@v4
     with:
       name: appbundle_${{ inputs.name }}
@@ -157,7 +160,7 @@ runs:
     run: |
       echo "$(realpath build/cp*/)" | tee ori_build_dir.txt
   - name: Upload info context for coverage analysis
-    if: ${{ inputs.coverage }}
+    if: ${{ inputs.coverage && inputs.upload_artifacts == 'true' }}
     uses: actions/upload-artifact@v4
     with:
       name: coverage_context
@@ -165,7 +168,7 @@ runs:
         ./**/*.gcno
         ori_build_dir.txt
   - name: Upload .PDB files
-    if: ${{ inputs.prepare_kind == 'windows' }}
+    if: ${{ inputs.prepare_kind == 'windows' && inputs.upload_artifacts == 'true' }}
     uses: actions/upload-artifact@v4
     with:
       name: pdb_${{ inputs.name }}
