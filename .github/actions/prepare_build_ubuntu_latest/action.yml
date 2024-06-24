@@ -11,4 +11,5 @@ runs:
        sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(distribution/dependencies/get_dependencies.sh build_base_ubuntu_latest)
        PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --upgrade pip build auditwheel patchelf
   - name: TMate failure session
+    if: ${{ failure() }}
     uses: SanderVocke/action-tmate@master
