@@ -953,6 +953,18 @@ void clear_midi_channel (shoopdaloop_loop_midi_channel_t *channel) {
   });
 }
 
+void reset_midi_channel_state_tracking(shoopdaloop_loop_midi_channel_t *channel) {
+  return api_impl<void>("reset_midi_channel_state_tracking", [&]() {
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
+        auto _channel = internal_midi_channel(channel);
+        if (!_channel) { return; }
+        _channel->maybe_midi()->PROC_reset_midi_state_tracking();
+    });
+  });
+}
+
 void do_segfault_on_process_thread(shoop_backend_session_t *backend) {
   return api_impl<void>("do_segfault_on_process_thread", [&]() {
     auto _backend = internal_backend_session(backend);
@@ -1687,7 +1699,7 @@ const char* get_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain) {
     if (!c) { return nullptr; }
     auto maybe_serializeable = dynamic_cast<SerializeableStateInterface*>(c->chain.get());
     if(maybe_serializeable) {
-        auto str = maybe_serializeable->serialize_state();
+        auto str = maybe_serializeable->serialize_state(10000);
         char * rval = (char*) malloc(str.size() + 1);
         memcpy((void*)rval, str.data(), str.size());
         rval[str.size()] = 0;

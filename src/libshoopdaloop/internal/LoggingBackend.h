@@ -81,7 +81,7 @@ constexpr std::array<const char*, log_level_error+1> level_indicators = {
     "[\033[32minfo\033[0m] ",  // green
     "[\033[33mwarning\033[0m] ",  // yellow
     "[\033[31merror\033[0m] ",  // red
-};               
+};
 
 template<typename Name, typename Level>
 bool should_log_impl(Name name, Level level) {

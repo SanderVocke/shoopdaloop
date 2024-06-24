@@ -46,6 +46,19 @@ template <typename SampleT> void AudioChannel<SampleT>::Buffers::set_contents(sh
     buffers = contents;
 }
 
+template <typename SampleT> std::vector<SampleT> AudioChannel<SampleT>::Buffers::contiguous_copy(uint32_t max_length) const {
+    std::vector<SampleT> rval;
+    uint32_t remaining = std::min(n_samples(), max_length);
+    rval.reserve(remaining);
+    for (auto &buf : *buffers) {
+        auto data = buf->data();
+        uint32_t step = std::min((size_t) remaining, buf->size());
+        rval.insert(rval.end(), data, data + step);
+        remaining -= step;
+    }
+    return rval;
+}
+
 template <typename SampleT> AudioChannel<SampleT>::Buffers::Buffers() {
     buffers = shoop_make_shared<std::vector<Buffer>>();
 }
@@ -439,10 +452,7 @@ std::vector<SampleT> AudioChannel<SampleT>::get_data(bool thread_safe) {
         cmd();
     }
 
-    std::vector<SampleT> rval(length);
-    for (uint32_t idx = 0; idx < length; idx++) {
-        rval[idx] = buffers.at(idx);
-    }
+    std::vector<SampleT> rval = buffers.contiguous_copy(length);
     return rval;
 }
 

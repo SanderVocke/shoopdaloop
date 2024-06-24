@@ -15,9 +15,9 @@ outputs:
 runs:
   using: "composite"
   steps:
-  - name: Prepare manylinux
-    if: ${{ inputs.variant == 'manylinux_2_28' }}
-    uses: ./.github/actions/prepare_build_manylinux_2_28
+  - name: Prepare linux
+    if: ${{ inputs.variant == 'linux' }}
+    uses: ./.github/actions/prepare_build_linux
   - name: Prepare ubuntu-latest
     if: ${{ inputs.variant == 'ubuntu_latest' }}
     uses: ./.github/actions/prepare_build_ubuntu_latest
@@ -29,6 +29,6 @@ runs:
     uses: ./.github/actions/prepare_build_windows
   - name: Collect information
     id: collect
-    shell: bash
+    shell: wrap-shell {0}
     run: |
       echo "prepend_build_cmd=$(cat prepend_build_cmd.txt)" | tee -a $GITHUB_OUTPUT

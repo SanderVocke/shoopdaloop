@@ -542,7 +542,7 @@ Item {
                                     id: all_chain_states
                                 }
 
-                                property list<var> fx_states: all_chain_states.objects
+                                property var fx_states: all_chain_states.objects
                                     .filter(v => v.title != "")
 
                                 Repeater {

@@ -49,6 +49,8 @@ def run_qml_tests(args):
     parser.add_argument('--list', '-l', action='store_true', help="Don't run but list all found test functions.")
     parser.add_argument('--filter', '-f', default=None, help='Regex filter for testcases.')
     parser.add_argument('--junit-xml', '-j', default=None, help='ShoopPortDirection_Output file for JUnit XML report.')
+    parser.add_argument('-d', '--qml-debug', metavar='PORT', type=int, help='Start QML debugging on PORT')
+    parser.add_argument('-w', '--debug-wait', action='store_true', help='With QML debugging enabled, will wait until debugger connects.')
     args = parser.parse_args(args=args)
 
     qoverage_collector_factory = QoverageCollectorFactory()
@@ -87,7 +89,9 @@ def run_qml_tests(args):
         'ShoopDaLoop QML Tests',
         None,
         global_args,
-        additional_root_context
+        additional_root_context,
+        args.qml_debug,
+        args.debug_wait
     )
 
     app.exit_handler_called.connect(lambda: sys.exit(1))

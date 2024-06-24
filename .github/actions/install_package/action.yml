@@ -3,6 +3,13 @@
 inputs:
   package:
     description: "package file / directory"
+  python:
+    description: "python command to use"
+  coverage:
+    description: "Whether to gather code coverage"
+  sudo:
+    description: "whether sudo is needed to install software"
+    default: 'false'
 
 outputs:
   shoopdaloop:
@@ -17,12 +24,16 @@ outputs:
   test_runner:
     description: "path to back-end testrunner, if any"
     value: ${{ steps.get_cmd.outputs.test_runner }}
+  python:
+    description: "updated python command to use"
+    value: ${{ steps.get_cmd.outputs.python }}
 
 runs:
   using: "composite"
-  steps:
+  steps:  
+
   - name: Determine package kind
-    shell: bash
+    shell: wrap-shell {0}
     id: get_type
     run: |
        if [ ! -f ${{ inputs.package }} ]; then
@@ -41,101 +52,136 @@ runs:
           fi
        fi
        echo "type=$type" | tee -a $GITHUB_OUTPUT
-  
-  # Windows (InnoSetup) (no pytest and test_runner included)
-  - name: Install tools for InnoSetup
-    if: ${{ steps.get_type.outputs.type == 'exe' }}
-    uses: MinoruSekine/setup-scoop@v3
-  - name: Install InnoSetup .exe by extracting
-    if: ${{ steps.get_type.outputs.type == 'exe' }}
-    shell: bash
+
+  - name: Sudo command
+    shell: wrap-shell {0}
     run: |
-      scoop install innounp
-      innounp -x -dextracted ${{ inputs.package }}
-      "extracted/{app}/shoopdaloop.exe" --info
-      echo "cmd=extracted/{app}/shoopdaloop.exe" | tee -a $GITHUB_ENV
-      echo "install_dir=extracted/{app}" | tee -a $GITHUB_ENV
+       echo "maybe_sudo=${{ (inputs.sudo == 'true') && 'sudo' || '' }}" | tee -a $GITHUB_ENV
+  
+  - name: Install InnoSetup installer
+    if: ${{ steps.get_type.outputs.type == 'exe' }}
+    shell: wrap-shell {0}
+    run: |
+      WINDOWS_SETUP_PATH=$(cygpath -w $(realpath ${{ inputs.package }}))
+      INSTALL_CMD="$WINDOWS_SETUP_PATH /VERYSILENT /CURRENTUSER /DIR=\"$(cygpath -w $(pwd)/installed)\""
+      echo "PowerShell installation command: $INSTALL_CMD"
+      powershell -Command "echo \"Run in powershell: $INSTALL_CMD\" ; $INSTALL_CMD"
+      SHOOPDALOOP_EXE=$(pwd)/installed/shoopdaloop.exe
+      SHOOPDALOOP_DIR=$(dirname "$SHOOPDALOOP_EXE")
+      echo "ShoopDaLoop executable installed to: $SHOOPDALOOP_EXE"
+      echo "Installed at: $SHOOPDALOOP_DIR"
+      echo "cmd=\\\"$SHOOPDALOOP_EXE\\\"" | tee -a $GITHUB_ENV
+      echo "install_dir=\\\"$SHOOPDALOOP_DIR\\\"" | tee -a $GITHUB_ENV
+      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
 
   # Python wheel
+  - name: Coverage on
+    if: ${{ inputs.coverage }}
+    shell: wrap-shell {0}
+    run: echo "coverage_part=-m coverage run --source=shoopdaloop" | tee -a $GITHUB_ENV
+  - name: Coverage off
+    if: ${{ ! inputs.coverage }}
+    shell: wrap-shell {0}
+    run: echo "coverage_part=" | tee -a $GITHUB_ENV
   - name: Install wheel
     if: ${{ steps.get_type.outputs.type == 'whl' }}
-    shell: bash
+    shell: wrap-shell {0}
     run: |
-      ${{ matrix.kind.pip }} install --upgrade pip
-      ${{ matrix.kind.pip }} install --force-reinstall ${{ inputs.package }}
-      ${{ matrix.kind.python }} -m shoopdaloop --info
-      export INSTALLDIR="$(${{ matrix.kind.python }} -m shoopdaloop --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})"
-      echo "cmd=${{ matrix.kind.python }} -m shoopdaloop" | tee -a $GITHUB_ENV
+      ${{ inputs.python }} -m venv test_venv
+      if [[ "${{ runner.os }}" == "Windows" ]]; then
+        export VENV_PYTHON=./test_venv/Scripts/python.exe
+      else
+        export VENV_PYTHON=./test_venv/bin/python
+      fi
+      export VENV_PIP="${VENV_PYTHON} -m pip"
+      $VENV_PIP install --upgrade pip pytest coverage
+      # Bug: this should work automatically
+      if [[ "${{ runner.os }}" == "Windows" ]]; then
+        $VENV_PIP install pywin32
+      fi
+      $VENV_PIP install --force-reinstall ${{ inputs.package }}
+      export SHOOPDALOOP="${VENV_PYTHON} ${{ env.coverage_part }} -m shoopdaloop"
+      $VENV_PYTHON -m shoopdaloop --info
+      export INSTALLDIR="$($SHOOPDALOOP --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})"
+      echo "cmd=$SHOOPDALOOP" | tee -a $GITHUB_ENV
       echo "install_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "pytest_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "test_runner=$INSTALLDIR/test_runner" | tee -a $GITHUB_ENV
+      echo "python=$VENV_PYTHON" | tee -a $GITHUB_ENV
 
   # Pacman
   - name: Install Pacman
     if: ${{ steps.get_type.outputs.type == 'pacman' }}
-    shell: bash
+    shell: wrap-shell {0}
     run: |
-      pacman -Uv --noconfirm ${{ inputs.package }}
-      pacman -Q shoopdaloop
-      pacman -Ql shoopdaloop
+      ${{ env.maybe_sudo }} pacman -Uv --noconfirm ${{ inputs.package }}
+      ${{ env.maybe_sudo }} pacman -Q shoopdaloop
+      ${{ env.maybe_sudo }} pacman -Ql shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
   
   # Debian
   - name: Install deb
     if: ${{ steps.get_type.outputs.type == 'deb' }}
-    shell: bash
+    shell: wrap-shell {0}
     run: |
-      DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical dpkg --debug=10 -i ${{ inputs.package }}
-      dpkg -l shoopdaloop
-      dpkg-query -L shoopdaloop
+      DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical ${{ env.maybe_sudo }} dpkg --debug=10 -i ${{ inputs.package }}
+      ${{ env.maybe_sudo }} dpkg -l shoopdaloop
+      ${{ env.maybe_sudo }} dpkg-query -L shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
   
   # RPM
   - name: Install rpm
     if: ${{ steps.get_type.outputs.type == 'rpm' }}
-    shell: bash
+    shell: wrap-shell {0}
     run: |
-      dnf -y install ${{ inputs.package }}
-      dnf list installed shoopdaloop
+      ${{ env.maybe_sudo }} dnf -y install ${{ inputs.package }}
+      ${{ env.maybe_sudo }} dnf list installed shoopdaloop
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
 
   # PyInstaller portable folder
   - name: Install PyIntaller portable folder (just determine contents)
     if: ${{ steps.get_type.outputs.type == 'pyinstaller' }}
-    shell: bash
+    shell: wrap-shell {0}
     run: |
       chmod a+x ${{ inputs.package }}/shoopdaloop
       echo "cmd=${{ inputs.package }}/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=${{ inputs.package }}" | tee -a $GITHUB_ENV
+      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
 
   # MacOS App Bundle folder
   - name: Install MacOS App Bundle folder
     if: ${{ steps.get_type.outputs.type == 'appbundle' }}
-    shell: bash
+    shell: wrap-shell {0}
     run: |
       chmod a+x ${{ inputs.package }}/Contents/MacOS/shoopdaloop
       echo "cmd=${{ inputs.package }}/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=${{ inputs.package }}/Contents/MacOS" | tee -a $GITHUB_ENV
+      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
   
   # MacOS .dmg installer
   - name: Install MacOS .dmg
     if: ${{ steps.get_type.outputs.type == 'dmg' }}
-    shell: bash
+    shell: wrap-shell {0}
     run: |
       hdiutil attach ${{ inputs.package }}
       echo "cmd=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS" | tee -a $GITHUB_ENV
+      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
 
   # Final step: gather env to outputs
   - name: Get command
     id: get_cmd
-    shell: bash
+    shell: wrap-shell {0}
     run: |
       echo "cmd=${{ env.cmd }}" | tee -a $GITHUB_OUTPUT
       echo "install_dir=${{ env.install_dir }}" | tee -a $GITHUB_OUTPUT
       echo "pytest_dir=${{ env.pytest_dir }}" | tee -a $GITHUB_OUTPUT
       echo "test_runner=${{ env.test_runner }}" | tee -a $GITHUB_OUTPUT
+      echo "python=${{ env.python }}" | tee -a $GITHUB_OUTPUT
       

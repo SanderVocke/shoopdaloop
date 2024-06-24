@@ -121,8 +121,8 @@ Dialog {
         onAutoconnect_input_regexesChanged: midi_settings.contents.autoconnect_input_regexes = autoconnect_input_regexes
         onAutoconnect_output_regexesChanged: midi_settings.contents.autoconnect_output_regexes = autoconnect_output_regexes
 
-        property list<string> autoconnect_input_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_input_regexes : []
-        property list<string> autoconnect_output_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_output_regexes : []
+        property var autoconnect_input_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_input_regexes : []
+        property var autoconnect_output_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_output_regexes : []
 
         RegisterInRegistry {
             registry: registries.state_registry
@@ -378,7 +378,7 @@ Dialog {
 
     component ScriptSettingsUi : Item {
         id: script_ui
-        property list<var> known_scripts: script_settings.contents ? script_settings.contents.known_scripts : []
+        property var known_scripts: script_settings.contents ? script_settings.contents.known_scripts : []
 
         signal updateKnownScripts(var known_scripts)
 

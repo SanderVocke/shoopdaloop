@@ -36,13 +36,13 @@ class Application(ShoopQApplication):
                  nsm=False
                  ):
         super(Application, self).__init__([])
-        
+
         self._quitting = False
-        
+
         pkg_version = None
         with open(installation_dir() + '/version.txt', 'r') as f:
             pkg_version = f.read().strip()
-        
+
         self.setApplicationName('ShoopDaLoop')
         self.setApplicationVersion(pkg_version)
         self.setOrganizationName('ShoopDaLoop')
@@ -55,7 +55,7 @@ class Application(ShoopQApplication):
         if hasattr(signal, 'SIGQUIT'):
             signal.signal(signal.SIGQUIT, self.exit_signal_handler)
         signal.signal(signal.SIGTERM, self.exit_signal_handler)
-        
+
         self.nsmtimer = QTimer(parent=self)
         self.nsmtimer.start(100)
         self.nsmtimer.timeout.connect(self.tick)
@@ -64,19 +64,18 @@ class Application(ShoopQApplication):
             mode = QQmlDebuggingEnabler.StartMode.WaitForClient if qml_debug_wait else QQmlDebuggingEnabler.StartMode.DoNotWaitForClient
             self.logger.info(lambda: "Enabling QML debugging on port {}. Wait on connection: {}.".format(qml_debug_port, qml_debug_wait))
             dbg = QQmlDebuggingEnabler(True)
-            QQmlDebuggingEnabler.startTcpDebugServer(qml_debug_port)
+            QQmlDebuggingEnabler.startTcpDebugServer(qml_debug_port, mode)
 
         register_shoopdaloop_qml_classes()
         self.global_args = global_args
         self.additional_root_context = additional_root_context
         self.additional_root_context['application'] = self
-        
-        self.installEventFilter(self)
+
         self.engine = None
-        
+
         if main_qml:
             self.reload_qml(main_qml)
-        
+
             def start_nsm():
                 if have_nsm:
                     try:
@@ -91,13 +90,13 @@ class Application(ShoopQApplication):
                         self.title = self.nsm_client.ourClientNameUnderNSM
                     except NSMNotRunningError as e:
                         pass
-        
+
             if nsm:
                 if len(self.engine.rootObjects()) > 0:
                     self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
-        
+
         self.setWindowIcon(QIcon(os.path.join(installation_dir(), 'resources', 'iconset', 'icon_128x128.png')))
-    
+
     def unload_qml(self):
         if self.engine:
             self.logger.debug("Unloading QML.")
@@ -111,14 +110,19 @@ class Application(ShoopQApplication):
                     obj.deleteLater()
             self.engine.deleteLater()
             self.engine = None
-    
+
     def load_qml(self, filename, quit_on_quit=True):
+        def maybe_install_event_filter(obj):
+            if obj and isinstance(obj, QQuickWindow):
+                self.logger.debug("Window created, installing event filter")
+                obj.installEventFilter(self)
         self.engine = QQmlApplicationEngine(parent=self)
         crash_handling.register_js_engine(self.engine)
         self.engine.destroyed.connect(lambda: self.logger.debug("QML engine being destroyed."))
+        self.engine.objectCreated.connect(lambda obj, _: maybe_install_event_filter(obj))
         self.engine.addImportPath(os.path.join(scripts_dir(), 'lib', 'qml'))
         self.engine.addImportPath(os.path.join(installation_dir(), 'lib', 'qml', 'generated'))
-        
+
         if quit_on_quit:
             self.engine.quit.connect(self.do_quit)
         self.aboutToQuit.connect(self.do_quit)
@@ -126,15 +130,15 @@ class Application(ShoopQApplication):
         self.engine.setOutputWarningsToStandardError(False)
         self.engine.objectCreated.connect(self.onQmlObjectCreated)
         self.engine.warnings.connect(self.onQmlWarnings)
-        
+
         self.root_context_items = create_and_populate_root_context(self.engine, self.global_args, self.additional_root_context)
-        
+
         self.engine.load(filename)
-    
+
     def reload_qml(self, filename, quit_on_quit=True):
         self.unload_qml()
-        self.load_qml(filename, quit_on_quit)        
-    
+        self.load_qml(filename, quit_on_quit)
+
     def exit(self):
         if self.nsm_client:
             self.logger.debug(lambda: "Requesting exit from NSM.")
@@ -142,10 +146,10 @@ class Application(ShoopQApplication):
         else:
             self.logger.debug(lambda: "Exiting.")
             self.do_quit()
-    
+
     # Ensure that we forward any terminating signals to our child
     # processes
-    def exit_signal_handler(self, sig, frame): 
+    def exit_signal_handler(self, sig, frame):
         self.logger.info(lambda: f'Exiting due to signal {sig}.')
         if sig == signal.SIGTERM or ('SIGQUIT' in dir(signal) and sig == signal.SIGQUIT):
             # on these more "severe" signals, unregister our signal handler.
@@ -153,14 +157,14 @@ class Application(ShoopQApplication):
             # more strictly.
             signal.signal(sig, signal.SIG_DFL)
         self.exit_handler()
-    
+
     def exit_handler(self):
         if self.engine:
             QMetaObject.invokeMethod(self.engine, 'quit')
             self.exit_handler_called.emit()
-    
+
     # The following ensures the Python interpreter has a chance to run, which
-    # would not happen otherwise once the Qt event loop starts - and this 
+    # would not happen otherwise once the Qt event loop starts - and this
     # is necessary for allowing the signal handlers to do their job.
     # It's a hack but it works...
     # NOTE: later added NSM react as another goal for this task.
@@ -178,7 +182,7 @@ class Application(ShoopQApplication):
 
     def really_exit(self, retcode):
         super(Application, self).exit(retcode)
-    
+
     def nsm_save_session(self, path):
         self.logger.info(lambda: "NSM: save session {}".format(path))
         session = self.engine.rootObjects()[0].findChild(QObject, 'session')
@@ -190,7 +194,7 @@ class Application(ShoopQApplication):
         else:
             self.logger.error(lambda: "No active session object found, ignoring save session.")
         self.logger.info(lambda: "NSM: save session finished.")
-    
+
     def nsm_load_session(self, path):
         self.logger.info(lambda: "NSM: load session {}".format(path))
         session = self.engine.rootObjects()[0].findChild(QObject, 'session')
@@ -215,30 +219,30 @@ class Application(ShoopQApplication):
         else:
             self.logger.info(lambda: "NSM: create session {}".format(path))
             self.nsm_save_session(path)
-    
+
     def nsm_exit_handler(self):
         self.logger.info(lambda: 'Exiting due to NSM request.')
         self.exit_handler()
         self.logger.info(lambda: "Exiting.")
         sys.exit(0)
-    
+
     def exec(self):
         return super(Application, self).exec()
-    
+
     def eventFilter(self, source, event):
         if event.type() in [QEvent.KeyPress, QEvent.KeyRelease]:
             self.root_context_items['key_modifiers'].process(event)
         return False
-    
+
     @ShoopSlot('QVariant', 'QVariant')
     def onQmlObjectCreated(self, obj, url):
         if obj:
             self.logger.debug(lambda: "Created QML object: {}".format(url))
         else:
             self.logger.error(lambda: "Failed to create QML object: {}".format(url))
-    
+
     @ShoopSlot('QVariant')
-    def onQmlWarnings(self, warnings):            
+    def onQmlWarnings(self, warnings):
         for warning in warnings:
             msgtype = warning.messageType()
             msg = warning.toString()
@@ -250,7 +254,7 @@ class Application(ShoopQApplication):
                 self.logger.info(lambda: msg)
             else:
                 self.logger.error(lambda: msg)
-    
+
     @ShoopSlot(int)
     def wait(self, ms):
         end = time.time() + ms * 0.001
@@ -271,5 +275,5 @@ class Application(ShoopQApplication):
                 terminate_all_backends()
                 QTimer.singleShot(1, lambda: self.quit())
                 self.exec()
-    
-        
+
+

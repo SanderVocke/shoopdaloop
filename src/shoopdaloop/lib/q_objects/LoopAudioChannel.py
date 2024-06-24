@@ -60,11 +60,16 @@ class LoopAudioChannel(LoopChannel):
         else:
             self.initializedChanged.connect(lambda: self._backend_obj.load_data(data))
     
-    @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
+    @ShoopSlot(result='QVariant', thread_protection=ThreadProtectionType.AnyThread)
     def get_data(self):
         if not self._backend_obj:
             self.logger.throw_error("Attempting to get data of an invalid audio channel.")
         return self._backend_obj.get_data()
+    
+    @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
+    def get_data_list(self):
+        raw = self.get_data()
+        return [float(x) for x in raw.np_array]
     
     @ShoopSlot(float)
     def set_gain(self, gain):

@@ -12,17 +12,32 @@ LuaControlInterface {
 
     property PythonLogger logger : PythonLogger { name: "Frontend.Qml.SessionControlInterface" }
 
-    property list<var> selected_loop_idxs : session.selected_loops ? Array.from(session.selected_loops).map((l) => [l.track_idx, l.idx_in_track]) : []
+    property var selected_loop_idxs : session.selected_loops ? Array.from(session.selected_loops).map((l) => [l.track_idx, l.idx_in_track]) : []
     property var targeted_loop_idx: session.targeted_loop ? [session.targeted_loop.track_idx, session.targeted_loop.idx_in_track] : null
 
     function select_loops(loop_selector) {
         var rval = []
         if (loop_selector.length == 0) {
             rval = []
-        } else if (Array.isArray(loop_selector)) {
+        } else if (typeof loop_selector == 'function') {
+            // Form callback:  (loop) => true/false
+            for(var t=0; t<session.main_tracks.length; t++) {
+                // Track loops
+                let track = session.main_tracks[t]
+                for(var l=0; l<track.loops.length; l++) {
+                    let loop = track.loops[l]
+                    if(loop_selector(loop)) { rval.push(loop) }
+                }
+            }
+            // Sync track loops
+            for(var l=0; l<session.sync_track.loops.length; l++) {
+                let loop = session.sync_track.loops[l]
+                if(loop_selector(loop)) { rval.push(loop) }
+            }
+        } else if (loop_selector.length !== undefined) {
             if (loop_selector.length == 0) { rval = [] }
             else {
-                if (Array.isArray(loop_selector[0])) {
+                if (loop_selector[0] && loop_selector[0].length !== undefined) {
                     // form [[x, y], [x, y], ...]
                     rval = loop_selector.map((coords) => {
                         if (coords[0] >= 0 && coords[0] < session.main_tracks.length &&
@@ -50,21 +65,6 @@ LuaControlInterface {
                     rval = []
                 }
             }
-        } else {
-            // Form callback:  (loop) => true/false
-            for(var t=0; t<session.main_tracks.length; t++) {
-                // Track loops
-                let track = session.main_tracks[t]
-                for(var l=0; l<track.loops.length; l++) {
-                    let loop = track.loops[l]
-                    if(loop_selector(loop)) { rval.push(loop) }
-                }
-            }
-            // Sync track loops
-            for(var l=0; l<session.sync_track.loops.length; l++) {
-                let loop = session.sync_track.loops[l]
-                if(loop_selector(loop)) { rval.push(loop) }
-            }
         }
         logger.debug(() => (`Selected loops for selector ${JSON.stringify(loop_selector)}: ${JSON.stringify(rval.map(l => l ? l.obj_id : null))}.`))
         return rval
@@ -89,7 +89,10 @@ LuaControlInterface {
                 return null
             }
         }
-        if (Array.isArray(track_selector)) {
+        if (typeof track_selector == 'function') {
+            // Form [track_select_fn]
+            rval = session.main_tracks.filter((t) => track_selector(t))
+        } else if (track_selector.length !== undefined) {
             if (track_selector.length == 0) { rval = [] }
             else {
                 // Form [track_idx1, track_idx2, ...]
@@ -99,10 +102,7 @@ LuaControlInterface {
             }
         } else if (Number.isInteger(track_selector)) {
             return select_track(track_selector)
-        } else {
-            // Form [track_select_fn]
-            rval = session.main_tracks.filter((t) => track_selector(t))
-        }
+        } 
         logger.debug(() => (`Selected ${rval.length} target track(s).`))
         return rval
     }
@@ -462,7 +462,7 @@ LuaControlInterface {
         model: lookup_loops.objects
         Item {
             property var mapped_item: lookup_loops.objects[index]
-            property list<int> coords: [mapped_item.track_idx, mapped_item.idx_in_track]
+            property var coords: [mapped_item.track_idx, mapped_item.idx_in_track]
             function send_event() {
                 let event = {
                     'mode': mapped_item.mode,

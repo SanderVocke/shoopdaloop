@@ -13,8 +13,8 @@ Item {
     property list<var> model : []
     default property Component delegate : Item {}
 
-    property list<var> unsorted_instances : []
-    property list<var> sorted_instances : []
+    property var unsorted_instances : []
+    property var sorted_instances : []
 
     signal aboutToAdd(var model_elem, int index)
 
