@@ -7,6 +7,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <stdio.h>
 #include <vector>
 #include <fmt/format.h>
@@ -413,7 +414,7 @@ void MidiStorage<TimeType, SizeType>::truncate(TimeType time, TruncateType type)
     auto prev_n_events = this->m_n_events;
 
     if (type == TruncateType::TruncateHead &&
-        this->unsafe_at(this->m_head_start)->storage_time > time)
+        this->unsafe_at(this->m_head_start)->storage_time <= time)
     {
             this->template log<log_level_debug_trace>("truncate: head already in range");
             return;
@@ -478,9 +479,16 @@ void MidiStorage<TimeType, SizeType>::for_each_msg_modify(
     auto maybe_self = MidiStorageBase<TimeType, SizeType>::weak_from_this();
     if (auto self = maybe_self.lock()) {
         auto cursor = shoop_make_shared<Cursor>(shoop_static_pointer_cast<const MidiStorageBase<TimeType, SizeType>>(self));
-        for (cursor->reset(); cursor->valid(); cursor->next()) {
+        cursor->reset();
+        auto *first_elem = cursor->get();
+        decltype(first_elem) prev_elem = nullptr;
+        for (; cursor->valid(); cursor->next()) {
             auto *elem = cursor->get();
+            if (elem >= first_elem && prev_elem && ((prev_elem < first_elem) || (elem < prev_elem))) {
+                throw std::runtime_error ("Message iterator looped back to start");
+            }
             cb(elem->storage_time, elem->size, elem->data());
+            prev_elem = elem;
         }
         cursor = nullptr;
     } else {
