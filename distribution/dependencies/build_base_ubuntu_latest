@@ -1,0 +1,48 @@
+# Dependencies needed in order to build a .whl.
+# Assumption is that PyPi packages are used wherever possible.
+
+# build stuff
+build-essential
+git
+cmake
+ninja-build
+pkgconf
+lcov
+ruby
+rpm
+libarchive-tools
+
+# libraries
+libglib2.0-0
+libdbus-1-3
+jackd2
+libxkbcommon-dev
+libboost-dev
+libjack-jackd2-dev
+
+# libraries for running / coverage
+libportaudio2
+libsndfile1
+lcov
+gcc
+procps
+
+# python
+python3-build
+python3-venv
+python3-virtualenv
+python3-pytest
+python3-pip
+python3-coverage
+
+# not sure why exactly these are needed
+libgl1-mesa-dev
+libvulkan-dev
+
+# scripting stuff
+procps
+wget
+curl
+
+# for Github Actions
+nodejs
