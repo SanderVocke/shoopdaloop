@@ -7,5 +7,6 @@ runs:
   - name: Install dependencies
     shell: bash
     run: |
+       sudo DEBIAN_FRONTEND=noninteractive apt-get update
        sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(distribution/dependencies/get_dependencies.sh build_base_ubuntu_latest)
        PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --upgrade pip build auditwheel patchelf
