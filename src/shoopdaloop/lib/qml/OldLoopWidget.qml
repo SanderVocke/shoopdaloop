@@ -29,12 +29,7 @@ Item {
         logger.debug(() => (`Loop @ (${track_idx},${idx_in_track})`))
     }
 
-    // property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LoopWidget" }
-    property alias logger: logger
-    PythonLogger {
-        id: logger
-        name: "Frontend.Qml.LoopWidget"
-    }
+    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LoopWidget" }
 
     readonly property string obj_id: initial_descriptor.id
     property string name: initial_descriptor.name
@@ -656,18 +651,8 @@ Item {
             right: parent.right
         }
 
-        FirstTimeLoader {
-            activate: false
-            id: context_menu_loader
-
-            function popup() {
-                activate = true
-                item.popup()
-            }
-
-            sourceComponent: ContextMenu {
-                id: contextmenu
-            }
+        ContextMenu {
+            id: contextmenu
         }
     }
 
@@ -730,133 +715,113 @@ Item {
             }
         }
 
-        FirstTimeLoader {
-            id: load_peak_meter_l
-            activate: root.is_stereo
-
+        ProgressBar {
+            id: peak_meter_l
+            visible: root.is_stereo
             anchors {
                 left: parent.left
                 right: parent.horizontalCenter
                 bottom: parent.bottom
                 margins: 2
             }
+            height: 3
 
-            sourceComponent: ProgressBar {
-                id: peak_meter_l
-                visible: load_peak_meter_l.activate
-                anchors.fill: parent
-                height: 3
+            AudioLevelMeterModel {
+                id: output_peak_meter_l
+                max_dt: 0.1
+                input: (root.maybe_loop && root.maybe_loop.display_peaks && root.maybe_loop.display_peaks.length >= 1) ? root.maybe_loop.display_peaks[0] : 0.0
+            }
 
-                AudioLevelMeterModel {
-                    id: output_peak_meter_l
-                    max_dt: 0.1
-                    input: (root.maybe_loop && root.maybe_loop.display_peaks && root.maybe_loop.display_peaks.length >= 1) ? root.maybe_loop.display_peaks[0] : 0.0
-                }
+            from: -50.0
+            to: 0.0
+            value: output_peak_meter_l.value
 
-                from: -50.0
-                to: 0.0
-                value: output_peak_meter_l.value
+            background: Item { anchors.fill: peak_meter_l }
+            contentItem: Item {
+                implicitWidth: peak_meter_l.width
+                implicitHeight: peak_meter_l.height
 
-                background: Item { anchors.fill: peak_meter_l }
-                contentItem: Item {
-                    implicitWidth: peak_meter_l.width
-                    implicitHeight: peak_meter_l.height
-
-                    Rectangle {
-                        width: peak_meter_l.visualPosition * peak_meter_l.width
-                        height: peak_meter_l.height
-                        color: Material.accent
-                        x: peak_meter_l.width - width
-                    }
+                Rectangle {
+                    width: peak_meter_l.visualPosition * peak_meter_l.width
+                    height: peak_meter_l.height
+                    color: Material.accent
+                    x: peak_meter_l.width - width
                 }
             }
         }
 
-        FirstTimeLoader {
-            id: load_peak_meter_r
-            activate: root.is_stereo
-
+        ProgressBar {
+            id: peak_meter_r
+            visible: root.is_stereo
             anchors {
                 left: parent.horizontalCenter
                 right: parent.right
                 bottom: parent.bottom
                 margins: 2
             }
+            height: 3
 
-            sourceComponent: ProgressBar {
-                id: peak_meter_r
-                visible: load_peak_meter_r.activate
-                anchors.fill: load_peak_meter_r
-                height: 3
+            AudioLevelMeterModel {
+                id: output_peak_meter_r
+                max_dt: 0.1
+                input: (root.maybe_loop && root.maybe_loop.display_peaks && root.maybe_loop.display_peaks.length >= 2) ? root.maybe_loop.display_peaks[1] : 0.0
+            }
 
-                AudioLevelMeterModel {
-                    id: output_peak_meter_r
-                    max_dt: 0.1
-                    input: (root.maybe_loop && root.maybe_loop.display_peaks && root.maybe_loop.display_peaks.length >= 2) ? root.maybe_loop.display_peaks[1] : 0.0
-                }
+            from: -50.0
+            to: 0.0
+            value: output_peak_meter_r.value
 
-                from: -50.0
-                to: 0.0
-                value: output_peak_meter_r.value
+            background: Item { anchors.fill: peak_meter_r }
+            contentItem: Item {
+                implicitWidth: peak_meter_r.width
+                implicitHeight: peak_meter_r.height
 
-                background: Item { anchors.fill: peak_meter_r }
-                contentItem: Item {
-                    implicitWidth: peak_meter_r.width
-                    implicitHeight: peak_meter_r.height
-
-                    Rectangle {
-                        width: peak_meter_r.visualPosition * peak_meter_r.width
-                        height: peak_meter_r.height
-                        color: Material.accent
-                    }
+                Rectangle {
+                    width: peak_meter_r.visualPosition * peak_meter_r.width
+                    height: peak_meter_r.height
+                    color: Material.accent
                 }
             }
         }
 
-        FirstTimeLoader {
-            id: load_peak_meter_overall
-            activate: !root.is_stereo
-
+        ProgressBar {
+            id: peak_meter_overall
+            visible: !root.is_stereo
             anchors {
-                left: load_peak_meter_l.left
-                right: load_peak_meter_r.right
-                bottom: load_peak_meter_l.bottom
-                top: load_peak_meter_l.top
+                left: peak_meter_l.left
+                right: peak_meter_r.right
+                bottom: peak_meter_l.bottom
+                top: peak_meter_l.top
+            }
+            height: 3
+
+            AudioLevelMeterModel {
+                id: output_peak_meter_overall
+                max_dt: 0.1
+                input: (root.maybe_loop && root.maybe_loop.display_peaks && root.maybe_loop.display_peaks.length > 0) ? Math.max(...root.maybe_loop.display_peaks) : 0.0
             }
 
-            ProgressBar {
-                id: peak_meter_overall
-                visible: load_peak_meter_overall.activate
-                anchors.fill: load_peak_meter_overall
-                height: 3
+            from: -30.0
+            to: 0.0
+            value: output_peak_meter_overall.value
 
-                AudioLevelMeterModel {
-                    id: output_peak_meter_overall
-                    max_dt: 0.1
-                    input: (root.maybe_loop && root.maybe_loop.display_peaks && root.maybe_loop.display_peaks.length > 0) ? Math.max(...root.maybe_loop.display_peaks) : 0.0
-                }
+            background: Item { anchors.fill: peak_meter_overall }
+            contentItem: Item {
+                implicitWidth: peak_meter_overall.width
+                implicitHeight: peak_meter_overall.height
 
-                from: -30.0
-                to: 0.0
-                value: output_peak_meter_overall.value
-
-                background: Item { anchors.fill: peak_meter_overall }
-                contentItem: Item {
-                    implicitWidth: peak_meter_overall.width
-                    implicitHeight: peak_meter_overall.height
-
-                    Rectangle {
-                        width: peak_meter_overall.visualPosition * peak_meter_overall.width
-                        height: peak_meter_overall.height
-                        color: Material.accent
-                    }
+                Rectangle {
+                    width: peak_meter_overall.visualPosition * peak_meter_overall.width
+                    height: peak_meter_overall.height
+                    color: Material.accent
                 }
             }
         }
 
-        FirstTimeLoader {
-            id: load_star
-            activate: root.is_sync
+        MaterialDesignIcon {
+            size: 10
+            name: 'star'
+            color: "yellow"
 
             anchors {
                 left: parent.left
@@ -865,106 +830,90 @@ Item {
                 topMargin: 2
             }
 
-            sourceComponent: MaterialDesignIcon {
-                size: 10
-                name: 'star'
-                color: "yellow"
-                anchors.fill: load_star
-                visible: load_star.activate
-            }
+            visible: root.is_sync
         }
 
         Item {
             id: loopitem
             anchors.fill: parent
 
-            Loader {
-                id: iconitem_loader
+            Item {
+                id: iconitem
                 width: 24
                 height: 24
                 y: 0
                 x: 0
 
-                active: true
-                asynchronous: true
-                
-                sourceComponent: Item {
-                    id: iconitem
+                property bool show_next_mode: 
+                    statusrect.loop &&
+                        statusrect.loop.next_mode != null &&
+                        statusrect.loop.next_transition_delay != null &&
+                        statusrect.loop.next_transition_delay >= 0 &&
+                        statusrect.loop.mode != statusrect.loop.next_mode
 
-                    x: 0
+                LoopStateIcon {
+                    id: loopstateicon
+                    mode: statusrect.loop ? statusrect.loop.mode : ShoopConstants.LoopMode.Unknown
+                    show_timer_instead: parent.show_next_mode
+                    visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.loop.next_transition_delay == 0)
+                    connected: true
+                    is_regular_composite: root.maybe_composite_loop ? root.maybe_composite_loop.kind == 'regular' : false
+                    is_script_composite: root.maybe_composite_loop ? root.maybe_composite_loop.kind == 'script' : false
+                    size: iconitem.height
                     y: 0
-
-                    property bool show_next_mode: 
-                        statusrect.loop &&
-                            statusrect.loop.next_mode != null &&
-                            statusrect.loop.next_transition_delay != null &&
-                            statusrect.loop.next_transition_delay >= 0 &&
-                            statusrect.loop.mode != statusrect.loop.next_mode
-
-                    LoopStateIcon {
-                        id: loopstateicon
-                        mode: statusrect.loop ? statusrect.loop.mode : ShoopConstants.LoopMode.Unknown
-                        show_timer_instead: parent.show_next_mode
-                        visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.loop.next_transition_delay == 0)
-                        connected: true
-                        is_regular_composite: root.maybe_composite_loop ? root.maybe_composite_loop.kind == 'regular' : false
-                        is_script_composite: root.maybe_composite_loop ? root.maybe_composite_loop.kind == 'script' : false
-                        size: iconitem.height
-                        y: 0
-                        anchors.horizontalCenter: iconitem.horizontalCenter
-                        muted: false
-                        empty: !statusrect.loop || statusrect.loop.length == 0
-                        onDoubleClicked: (event) => {
-                                if (!key_modifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
-                            }
-                        onClicked: (event) => {
-                            if (event.button === Qt.LeftButton) { 
-                                if (key_modifiers.alt_pressed) {
-                                    if (root.selected_loops.size == 1) {
-                                        let selected = Array.from(root.selected_loops)[0]
-                                        if (selected != root) {
-                                            selected.create_composite_loop()
-                                            if (selected.maybe_composite_loop) {
-                                                // Add the selected loop to the currently selected composite loop.
-                                                // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
-                                                if (key_modifiers.control_pressed) {
-                                                    selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, undefined)
-                                                } else {
-                                                    selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, 0)
-                                                }
+                    anchors.horizontalCenter: iconitem.horizontalCenter
+                    muted: false
+                    empty: !statusrect.loop || statusrect.loop.length == 0
+                    onDoubleClicked: (event) => {
+                            if (!key_modifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
+                        }
+                    onClicked: (event) => {
+                        if (event.button === Qt.LeftButton) { 
+                            if (key_modifiers.alt_pressed) {
+                                if (root.selected_loops.size == 1) {
+                                    let selected = Array.from(root.selected_loops)[0]
+                                    if (selected != root) {
+                                        selected.create_composite_loop()
+                                        if (selected.maybe_composite_loop) {
+                                            // Add the selected loop to the currently selected composite loop.
+                                            // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
+                                            if (key_modifiers.control_pressed) {
+                                                selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, undefined)
+                                            } else {
+                                                selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, 0)
                                             }
                                         }
                                     }
-                                } else if (root.targeted) { root.untarget(); root.deselect() }
-                                else { root.toggle_selected(!key_modifiers.control_pressed) }
-                            }
-                            else if (event.button === Qt.RightButton) { context_menu_loader.popup() }
+                                }
+                            } else if (root.targeted) { root.untarget(); root.deselect() }
+                            else { root.toggle_selected(!key_modifiers.control_pressed) }
                         }
+                        else if (event.button === Qt.RightButton) { contextmenu.popup() }
                     }
-                    LoopStateIcon {
-                        id: loopnextstateicon
-                        mode: parent.show_next_mode ?
-                            statusrect.loop.next_mode : ShoopConstants.LoopMode.Unknown
-                        show_timer_instead: false
-                        is_regular_composite: false
-                        is_script_composite: false
-                        connected: true
-                        size: iconitem.height * 0.65
-                        y: 0
-                        anchors.right : loopstateicon.right
-                        anchors.bottom : loopstateicon.bottom
-                        visible: parent.show_next_mode
-                        onClicked: (event) => loopstateicon.clicked(event)
-                    }
-                    Text {
-                        text: statusrect.loop ? (statusrect.loop.next_transition_delay + 1).toString(): ''
-                        visible: parent.show_next_mode && statusrect.loop.next_transition_delay > 0
-                        anchors.fill: loopstateicon
-                        color: Material.foreground
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        font.bold: true
-                    }
+                }
+                LoopStateIcon {
+                    id: loopnextstateicon
+                    mode: parent.show_next_mode ?
+                        statusrect.loop.next_mode : ShoopConstants.LoopMode.Unknown
+                    show_timer_instead: false
+                    is_regular_composite: false
+                    is_script_composite: false
+                    connected: true
+                    size: iconitem.height * 0.65
+                    y: 0
+                    anchors.right : loopstateicon.right
+                    anchors.bottom : loopstateicon.bottom
+                    visible: parent.show_next_mode
+                    onClicked: (event) => loopstateicon.clicked(event)
+                }
+                Text {
+                    text: statusrect.loop ? (statusrect.loop.next_transition_delay + 1).toString(): ''
+                    visible: parent.show_next_mode && statusrect.loop.next_transition_delay > 0
+                    anchors.fill: loopstateicon
+                    color: Material.foreground
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    font.bold: true
                 }
             }
 
@@ -974,12 +923,12 @@ Item {
                 font.pixelSize: 11
                 verticalAlignment: Text.AlignVCenter
                 horizontalAlignment: Text.AlignLeft
-                anchors.left: iconitem_loader.right
+                anchors.left: iconitem.right
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 anchors.right: parent.right
                 anchors.rightMargin: 6
-                visible: !load_button_grid.item_visible
+                visible: !buttongrid.visible
             }
 
             // Draggy rect for moving the track
@@ -1052,329 +1001,321 @@ Item {
                 onPressed: movable.resetCoords()
             }
 
-            FirstTimeLoader {
-                id: load_button_grid
-                activate: statusrect.hovered
-                property bool item_visible: (item && item.visible)
-                asynchronous: true
-
+            Grid {
+                visible: statusrect.hovered || playlivefx.hovered || record_grab.hovered || recordfx.hovered
                 x: 20
                 y: 2
+                columns: 4
+                id: buttongrid
+                property int button_width: 18
+                property int button_height: 22
+                spacing: 1
 
-                sourceComponent: Grid {
-                    visible: statusrect.hovered || playlivefx.hovered || record_grab.hovered || recordfx.hovered
-                    columns: 4
-                    id: buttongrid
-                    property int button_width: 18
-                    property int button_height: 22
-                    spacing: 1
+                SmallButtonWithCustomHover {
+                    id : play
+                    width: buttongrid.button_width
+                    height: buttongrid.button_height
 
-                    SmallButtonWithCustomHover {
-                        id : play
-                        width: buttongrid.button_width
-                        height: buttongrid.button_height
-
-                        IconWithText {
-                            size: parent.width
-                            anchors.centerIn: parent
-                            name: 'play'
-                            color: root.is_script ? 'white' : 'green'
-                            text_color: Material.foreground
-                            text: {
-                                var rval = ''
-                                if (root.delay_for_targeted != undefined)  { rval += '>' }
-                                if (registries.state_registry.solo_active) { rval += 'S' }
-                                return rval
-                            }
-                            font.pixelSize: size / 2.0
+                    IconWithText {
+                        size: parent.width
+                        anchors.centerIn: parent
+                        name: 'play'
+                        color: root.is_script ? 'white' : 'green'
+                        text_color: Material.foreground
+                        text: {
+                            var rval = ''
+                            if (root.delay_for_targeted != undefined)  { rval += '>' }
+                            if (registries.state_registry.solo_active) { rval += 'S' }
+                            return rval
                         }
+                        font.pixelSize: size / 2.0
+                    }
 
-                        onClicked: root.on_play_clicked()
+                    onClicked: root.on_play_clicked()
 
-                        ToolTip.delay: 1000
-                        ToolTip.timeout: 5000
-                        ToolTip.visible: hovered
-                        ToolTip.text: 'Play wet recording' +
-                            (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
-                            (registries.state_registry.solo_active ? ' (solo in track)' : '') +
-                            (root.delay_for_targeted != undefined  ? ' (with targeted loop)' : '')
-                            + '.'
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 5000
+                    ToolTip.visible: hovered
+                    ToolTip.text: 'Play wet recording' +
+                        (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                        (registries.state_registry.solo_active ? ' (solo in track)' : '') +
+                        (root.delay_for_targeted != undefined  ? ' (with targeted loop)' : '')
+                        + '.'
 
-                        Connections {
-                            target: statusrect
-                            function onPropagateMousePosition(pt) { play.onMousePosition(pt) }
-                            function onPropagateMouseExited() { play.onMouseExited() }
-                        }
+                    Connections {
+                        target: statusrect
+                        function onPropagateMousePosition(pt) { play.onMousePosition(pt) }
+                        function onPropagateMouseExited() { play.onMouseExited() }
+                    }
 
-                        Popup {
-                            background: Item{}
-                            visible: !root.is_script && (play.hovered || ma.containsMouse)
-                            leftInset: 0
-                            rightInset: 0
-                            topInset: 0
-                            bottomInset: 0
-                            padding: 0
-                            margins: 0
+                    Popup {
+                        background: Item{}
+                        visible: !root.is_script && (play.hovered || ma.containsMouse)
+                        leftInset: 0
+                        rightInset: 0
+                        topInset: 0
+                        bottomInset: 0
+                        padding: 0
+                        margins: 0
 
-                            x: 0
-                            y: play.height
+                        x: 0
+                        y: play.height
 
-                            Rectangle {
-                                width: playlivefx.width
-                                height: playlivefx.height
-                                color: statusrect.color
-                                clip: true
+                        Rectangle {
+                            width: playlivefx.width
+                            height: playlivefx.height
+                            color: statusrect.color
+                            clip: true
 
-                                MouseArea {
-                                    id: ma
-                                    x: 0
-                                    y: 0
-                                    width: parent.width
-                                    height: parent.height
-                                    hoverEnabled: true
+                            MouseArea {
+                                id: ma
+                                x: 0
+                                y: 0
+                                width: parent.width
+                                height: parent.height
+                                hoverEnabled: true
 
-                                    onPositionChanged: (mouse) => { 
-                                        var p = mapToGlobal(mouse.x, mouse.y)
-                                        playlivefx.onMousePosition(p)
-                                    }
-                                    onExited: { playlivefx.onMouseExited() }
+                                onPositionChanged: (mouse) => { 
+                                    var p = mapToGlobal(mouse.x, mouse.y)
+                                    playlivefx.onMousePosition(p)
                                 }
+                                onExited: { playlivefx.onMouseExited() }
+                            }
 
-                                Column {
-                                    SmallButtonWithCustomHover {
-                                        id : playlivefx
-                                        width: buttongrid.button_width
-                                        height: buttongrid.button_height
-                                        
-                                        IconWithText {
-                                            size: parent.width
-                                            anchors.centerIn: parent
-                                            name: 'play'
-                                            color: 'orange'
-                                            text_color: Material.foreground
-                                            text: {
-                                                var rval = ''
-                                                if (root.delay_for_targeted != undefined)  { rval += '>' }
-                                                if (registries.state_registry.solo_active) { rval += 'S' }
-                                                return rval
-                                            }
-                                            font.pixelSize: size / 2.0
+                            Column {
+                                SmallButtonWithCustomHover {
+                                    id : playlivefx
+                                    width: buttongrid.button_width
+                                    height: buttongrid.button_height
+                                    
+                                    IconWithText {
+                                        size: parent.width
+                                        anchors.centerIn: parent
+                                        name: 'play'
+                                        color: 'orange'
+                                        text_color: Material.foreground
+                                        text: {
+                                            var rval = ''
+                                            if (root.delay_for_targeted != undefined)  { rval += '>' }
+                                            if (registries.state_registry.solo_active) { rval += 'S' }
+                                            return rval
                                         }
-
-                                        onClicked: root.on_playdry_clicked()
-
-                                        ToolTip.delay: 1000
-                                        ToolTip.timeout: 5000
-                                        ToolTip.visible: hovered
-                                        ToolTip.text: "Play dry recording through live effects" +
-                                            (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
-                                            (registries.state_registry.solo_active ? ' (solo in track)' : '') +
-                                            (root.delay_for_targeted != undefined  ? ' (with targeted loop)' : '') +
-                                            + '.'
+                                        font.pixelSize: size / 2.0
                                     }
+
+                                    onClicked: root.on_playdry_clicked()
+
+                                    ToolTip.delay: 1000
+                                    ToolTip.timeout: 5000
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Play dry recording through live effects" +
+                                        (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                                        (registries.state_registry.solo_active ? ' (solo in track)' : '') +
+                                        (root.delay_for_targeted != undefined  ? ' (with targeted loop)' : '') +
+                                        + '.'
                                 }
                             }
                         }
                     }
+                }
 
-                    SmallButtonWithCustomHover {
-                        id : record
-                        width: buttongrid.button_width
-                        height: buttongrid.button_height
+                SmallButtonWithCustomHover {
+                    id : record
+                    width: buttongrid.button_width
+                    height: buttongrid.button_height
 
-                        visible: !root.is_script
+                    visible: !root.is_script
 
-                        IconWithText {
-                            id: record_icon
-                            size: parent.width
-                            anchors.centerIn: parent
-                            name: 'record'
-                            color: 'red'
-                            text_color: Material.foreground
-                            text: {
-                                var rval = root.record_kind == 'with_targeted' ? '><' :
-                                        root.record_kind == 'infinite' ? '' :
-                                        root.record_kind.toString() // integer
-                                if (registries.state_registry.solo_active) { rval += 'S' }
-                                return rval
-                            }
-                            font.pixelSize: size / 2.0
-
-                            // If play-after-record is active, render a half-green icon
-                            Item {
-                                //clipping box that cuts the underlying icon
-                                anchors.fill: parent
-                                anchors.leftMargin: parent.width / 2 + 1
-                                clip: true
-
-                                MaterialDesignIcon {
-                                    anchors.right: parent.right
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    size: record_icon.size
-                                    name: 'record'
-                                    color: 'green'
-                                    visible: registries.state_registry.play_after_record_active
-                                }
-                            }
+                    IconWithText {
+                        id: record_icon
+                        size: parent.width
+                        anchors.centerIn: parent
+                        name: 'record'
+                        color: 'red'
+                        text_color: Material.foreground
+                        text: {
+                            var rval = root.record_kind == 'with_targeted' ? '><' :
+                                       root.record_kind == 'infinite' ? '' :
+                                       root.record_kind.toString() // integer
+                            if (registries.state_registry.solo_active) { rval += 'S' }
+                            return rval
                         }
+                        font.pixelSize: size / 2.0
 
-                        onClicked: root.on_record_clicked()
+                        // If play-after-record is active, render a half-green icon
+                        Item {
+                            //clipping box that cuts the underlying icon
+                            anchors.fill: parent
+                            anchors.leftMargin: parent.width / 2 + 1
+                            clip: true
 
-                        ToolTip.delay: 1000
-                        ToolTip.timeout: 5000
-                        ToolTip.visible: hovered
-                        ToolTip.text: "Record" +
-                                            (registries.state_registry.play_after_record_active ? ', then play' : ', then stop') +
-                                            (root.record_kind == 'infinite' ? ' (until stopped)' : (root.record_kind == 'with_targeted' ? ' (with targeted loop)' : ` (${root.record_kind} cycles)`)) +
-                                            (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
-                                            (registries.state_registry.solo_active ? ' (solo in track)' : '')
-                                            + '.'
-                        Connections {
-                            target: statusrect
-                            function onPropagateMousePosition(pt) { record.onMousePosition(pt) }
-                            function onPropagateMouseExited() { record.onMouseExited() }
-                        }
-
-                        Popup {
-                            background: Item{}
-                            visible: !root.is_script && (record.hovered || ma_.containsMouse)
-                            leftInset: 0
-                            rightInset: 0
-                            topInset: 0
-                            bottomInset: 0
-                            padding: 0
-                            margins: 0
-
-                            x: 0
-                            y: play.height
-
-                            Rectangle {
-                                width: record_grab.width
-                                height: (record_grab.visible ? record_grab.height : 0) + recordfx.height
-                                color: statusrect.color
-
-                                MouseArea {
-                                    id: ma_
-                                    x: 0
-                                    y: 0
-                                    width: parent.width
-                                    height: parent.height
-                                    hoverEnabled: true
-
-                                    onPositionChanged: (mouse) => { 
-                                        var p = mapToGlobal(mouse.x, mouse.y)
-                                        record_grab.onMousePosition(p)
-                                        recordfx.onMousePosition(p)
-                                    }
-                                    onExited: { record_grab.onMouseExited(); recordfx.onMouseExited() }
-                                }
-
-                                Column {
-                                    SmallButtonWithCustomHover {
-                                        id : record_grab
-                                        
-                                        // This feature makes no sense for composite script loops,
-                                        // which cannot be treated as a "loop".
-                                        // But for regular composite loops, it makes sense - grab
-                                        // each portion to the correct subloop.
-                                        visible: {
-                                            if (root.maybe_composite_loop) {
-                                                return root.maybe_composite_loop.kind == 'regular'
-                                            }
-                                            return true;
-                                        }
-                                        width: buttongrid.button_width
-                                        height: buttongrid.button_height
-
-                                        IconWithText {
-                                            size: parent.width
-                                            anchors.centerIn: parent
-                                            name: 'arrow-collapse-down'
-                                            color: 'red'
-                                            text_color: Material.foreground
-                                            text: root.n_cycles_to_grab.toString()
-                                            font.pixelSize: size / 2.0
-
-                                            // If play-after-record is active, render a half-green icon
-                                            Item {
-                                                //clipping box that cuts the underlying icon
-                                                anchors.fill: parent
-                                                anchors.topMargin: parent.height / 2 
-                                                clip: true
-
-                                                MaterialDesignIcon {
-                                                    anchors.bottom: parent.bottom
-                                                    anchors.horizontalCenter: parent.horizontalCenter
-                                                    size: record_icon.size
-                                                    name: 'arrow-collapse-down'
-                                                    color: 'green'
-                                                    visible: registries.state_registry.play_after_record_active
-                                                }
-                                            }
-                                        }
-
-                                        onClicked: root.on_grab_clicked()
-
-                                        ToolTip.delay: 1000
-                                        ToolTip.timeout: 5000
-                                        ToolTip.visible: hovered
-                                        ToolTip.text: "Grab always-on recording" +
-                                            (registries.state_registry.play_after_record_active ? ' and play immediately' : '') +
-                                            ((registries.state_registry.solo_active && registries.state_registry.play_after_record_active) ? ' (solo in track)' : '')
-                                            + '.'
-                                    }
-                                
-                                    SmallButtonWithCustomHover {
-                                        id : recordfx
-                                        width: buttongrid.button_width
-                                        height: buttongrid.button_height
-                                        IconWithText {
-                                            size: parent.width
-                                            anchors.centerIn: parent
-                                            name: 'record'
-                                            color: 'orange'
-                                            text_color: Material.foreground
-                                            text: root.delay_for_targeted != undefined ? ">" : ""
-                                            font.pixelSize: size / 2.0
-                                        }
-                                        onClicked: root.on_recordfx_clicked()
-
-                                        ToolTip.delay: 1000
-                                        ToolTip.timeout: 5000
-                                        ToolTip.visible: hovered
-                                        ToolTip.text: "Trigger FX re-record. This will play the full dry loop once with live FX, recording the result for wet playback."
-                                    }
-                                }
+                            MaterialDesignIcon {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                size: record_icon.size
+                                name: 'record'
+                                color: 'green'
+                                visible: registries.state_registry.play_after_record_active
                             }
                         }
                     }
 
-                    SmallButtonWithCustomHover {
-                        id : stop
-                        width: buttongrid.button_width
-                        height: buttongrid.button_height
-                        IconWithText {
-                            size: parent.width
-                            anchors.centerIn: parent
-                            name: 'stop'
-                            color: Material.foreground
-                            text_color: Material.foreground
-                            text: root.delay_for_targeted != undefined ? ">" : ""
-                            font.pixelSize: size / 2.0
+                    onClicked: root.on_record_clicked()
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 5000
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Record" +
+                                        (registries.state_registry.play_after_record_active ? ', then play' : ', then stop') +
+                                        (root.record_kind == 'infinite' ? ' (until stopped)' : (root.record_kind == 'with_targeted' ? ' (with targeted loop)' : ` (${root.record_kind} cycles)`)) +
+                                        (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                                        (registries.state_registry.solo_active ? ' (solo in track)' : '')
+                                        + '.'
+                    Connections {
+                        target: statusrect
+                        function onPropagateMousePosition(pt) { record.onMousePosition(pt) }
+                        function onPropagateMouseExited() { record.onMouseExited() }
+                    }
+
+                    Popup {
+                        background: Item{}
+                        visible: !root.is_script && (record.hovered || ma_.containsMouse)
+                        leftInset: 0
+                        rightInset: 0
+                        topInset: 0
+                        bottomInset: 0
+                        padding: 0
+                        margins: 0
+
+                        x: 0
+                        y: play.height
+
+                        Rectangle {
+                            width: record_grab.width
+                            height: (record_grab.visible ? record_grab.height : 0) + recordfx.height
+                            color: statusrect.color
+
+                            MouseArea {
+                                id: ma_
+                                x: 0
+                                y: 0
+                                width: parent.width
+                                height: parent.height
+                                hoverEnabled: true
+
+                                onPositionChanged: (mouse) => { 
+                                    var p = mapToGlobal(mouse.x, mouse.y)
+                                    record_grab.onMousePosition(p)
+                                    recordfx.onMousePosition(p)
+                                }
+                                onExited: { record_grab.onMouseExited(); recordfx.onMouseExited() }
+                            }
+
+                            Column {
+                                SmallButtonWithCustomHover {
+                                    id : record_grab
+                                    
+                                    // This feature makes no sense for composite script loops,
+                                    // which cannot be treated as a "loop".
+                                    // But for regular composite loops, it makes sense - grab
+                                    // each portion to the correct subloop.
+                                    visible: {
+                                        if (root.maybe_composite_loop) {
+                                            return root.maybe_composite_loop.kind == 'regular'
+                                        }
+                                        return true;
+                                    }
+                                    width: buttongrid.button_width
+                                    height: buttongrid.button_height
+
+                                    IconWithText {
+                                        size: parent.width
+                                        anchors.centerIn: parent
+                                        name: 'arrow-collapse-down'
+                                        color: 'red'
+                                        text_color: Material.foreground
+                                        text: root.n_cycles_to_grab.toString()
+                                        font.pixelSize: size / 2.0
+
+                                        // If play-after-record is active, render a half-green icon
+                                        Item {
+                                            //clipping box that cuts the underlying icon
+                                            anchors.fill: parent
+                                            anchors.topMargin: parent.height / 2 
+                                            clip: true
+
+                                            MaterialDesignIcon {
+                                                anchors.bottom: parent.bottom
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                size: record_icon.size
+                                                name: 'arrow-collapse-down'
+                                                color: 'green'
+                                                visible: registries.state_registry.play_after_record_active
+                                            }
+                                        }
+                                    }
+
+                                    onClicked: root.on_grab_clicked()
+
+                                    ToolTip.delay: 1000
+                                    ToolTip.timeout: 5000
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Grab always-on recording" +
+                                        (registries.state_registry.play_after_record_active ? ' and play immediately' : '') +
+                                        ((registries.state_registry.solo_active && registries.state_registry.play_after_record_active) ? ' (solo in track)' : '')
+                                        + '.'
+                                }
+                            
+                                SmallButtonWithCustomHover {
+                                    id : recordfx
+                                    width: buttongrid.button_width
+                                    height: buttongrid.button_height
+                                    IconWithText {
+                                        size: parent.width
+                                        anchors.centerIn: parent
+                                        name: 'record'
+                                        color: 'orange'
+                                        text_color: Material.foreground
+                                        text: root.delay_for_targeted != undefined ? ">" : ""
+                                        font.pixelSize: size / 2.0
+                                    }
+                                    onClicked: root.on_recordfx_clicked()
+
+                                    ToolTip.delay: 1000
+                                    ToolTip.timeout: 5000
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Trigger FX re-record. This will play the full dry loop once with live FX, recording the result for wet playback."
+                                }
+                            }
                         }
+                    }
+                }
 
-                        onClicked: root.on_stop_clicked()
+                SmallButtonWithCustomHover {
+                    id : stop
+                    width: buttongrid.button_width
+                    height: buttongrid.button_height
+                    IconWithText {
+                        size: parent.width
+                        anchors.centerIn: parent
+                        name: 'stop'
+                        color: Material.foreground
+                        text_color: Material.foreground
+                        text: root.delay_for_targeted != undefined ? ">" : ""
+                        font.pixelSize: size / 2.0
+                    }
 
-                        ToolTip.delay: 1000
-                        ToolTip.timeout: 5000
-                        ToolTip.visible: hovered
-                        ToolTip.text: "Stop."
+                    onClicked: root.on_stop_clicked()
 
-                        Connections {
-                            target: statusrect
-                            function onPropagateMousePosition(pt) { stop.onMousePosition(pt) }
-                            function onPropagateMouseExited() { stop.onMouseExited() }
-                        }
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 5000
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Stop."
+
+                    Connections {
+                        target: statusrect
+                        function onPropagateMousePosition(pt) { stop.onMousePosition(pt) }
+                        function onPropagateMouseExited() { stop.onMouseExited() }
                     }
                 }
             }
@@ -1502,48 +1443,45 @@ Item {
     component LoopProgressRect : Item {
         id: loopprogressrect
         property var loop
-        
-        FirstTimeLoader {
-            activate: loopprogressrect.loop && loopprogressrect.loop.display_position > 0
-            anchors.fill: parent
 
-            sourceComponent: Rectangle {
-                function getRightMargin() {
-                    var st = loopprogressrect.loop
-                    if(st && st.length && st.length > 0) {
-                        return (1.0 - (st.display_position / st.length)) * parent.width
-                    }
-                    return parent.width
+        Rectangle {
+            function getRightMargin() {
+                var st = loopprogressrect.loop
+                if(st && st.length && st.length > 0) {
+                    return (1.0 - (st.display_position / st.length)) * parent.width
+                }
+                return parent.width
+            }
+
+            anchors {
+                fill: parent
+                rightMargin: getRightMargin()
+            }
+            color: {
+                var default_color = '#444444'
+                if (!loopprogressrect.loop) {
+                    return default_color;
                 }
 
-                anchors {
-                    fill: parent
-                    rightMargin: getRightMargin()
-                }
-                color: {
-                    var default_color = '#444444'
-                    if (!loopprogressrect.loop) {
-                        return default_color;
-                    }
-
-                    switch(loopprogressrect.loop.mode) {
-                    case ShoopConstants.LoopMode.Playing:
-                        return '#004400';
-                    case ShoopConstants.LoopMode.PlayingDryThroughWet:
-                        return '#333300';
-                    case ShoopConstants.LoopMode.Recording:
-                        return '#660000';
-                    case ShoopConstants.LoopMode.RecordingDryIntoWet:
-                        return '#663300';
-                    default:
-                        return default_color;
-                    }
+                switch(loopprogressrect.loop.mode) {
+                case ShoopConstants.LoopMode.Playing:
+                    return '#004400';
+                case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                    return '#333300';
+                case ShoopConstants.LoopMode.Recording:
+                    return '#660000';
+                case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                    return '#663300';
+                default:
+                    return default_color;
                 }
             }
         }
 
-        FirstTimeLoader {
-            id: midi_flash_loader
+        Rectangle {
+            visible: root.maybe_loop ?
+                (root.maybe_loop.display_midi_events_triggered > 0 || root.maybe_loop.display_midi_notes_active > 0) :
+                false
             anchors {
                 right: parent.right
                 top: parent.top
@@ -1551,18 +1489,7 @@ Item {
             }
             width: 8
 
-            property bool flashing:
-                    root.maybe_loop ?
-                    (root.maybe_loop.display_midi_events_triggered > 0 || root.maybe_loop.display_midi_notes_active > 0) :
-                    false
-            activate: flashing
-
-            sourceComponent: Rectangle {
-                visible: midi_flash_loader.flashing
-                anchors.fill: parent
-
-                color: '#00FFFF'
-            }
+            color: '#00FFFF'
         }
     }
 
@@ -1672,22 +1599,16 @@ Item {
             id: ma
         }
 
-        DynamicToolTip {
+        ToolTip {
             delay: 1000
             visible: ma.containsMouse
             text: description
         }
     }
 
-    component ContextMenu: FirstTimeLoader {
-        property bool opened: active ? menu.opened : false
-        visible: active ? menu.visible : false
-        activate: false
-
-        function popup () {
-            active = true
-            menu.popup()
-        }
+    component ContextMenu: Item {
+        property alias opened: menu.opened
+        visible: menu.visible
 
         ClickTrackDialog {
             id: clicktrackdialog
@@ -2114,5 +2035,8 @@ Item {
             onRejected: doLoad(false)
         }
 
+        function popup () {
+            menu.popup()
+        }
     }
 }

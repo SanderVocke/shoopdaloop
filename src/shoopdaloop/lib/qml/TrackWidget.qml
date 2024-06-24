@@ -66,6 +66,9 @@ Item {
         new_loops.forEach((l) => {
             l.parent = loops_column
         })
+        if (new_loops.length > 0) {
+            loops_column.update_coords()
+        }
         incubating_loops = []
         root.loops_loaded = true
     }
@@ -614,7 +617,6 @@ Item {
                         }
 
                         // Note: loops injected here
-                        onChildrenChanged: update_coords()
                         function update_coords() {
                             // Update loop indexes
                             var idx=0
