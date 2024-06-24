@@ -96,6 +96,7 @@ jobs:
         cmake_build_type: "Debug"
         prepare_kind: 'ubuntu_latest'
         python: python
+        upload_artifacts: 'false'
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
