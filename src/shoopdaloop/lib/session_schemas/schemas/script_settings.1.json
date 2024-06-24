@@ -19,9 +19,7 @@
                     }
                 }
             },
-            "required": [
-                "known_scripts"
-            ]
+            "required": []
         }
     },
     "required": ["schema", "configuration"]

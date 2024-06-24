@@ -21,11 +21,7 @@
                     "required": [ "schema" ]
                 }
             },
-            "required": [
-                "autoconnect_input_regexes",
-                "autoconnect_output_regexes",
-                "midi_control_configuration"
-            ]
+            "required": []
         }
     },
     "required": ["schema", "configuration"]

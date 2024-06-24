@@ -1,6 +1,8 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
+import QtWayland.Compositor
+import ShoopDaLoop.PythonLogger
 import QtQuick.Layouts
 
 Item {
@@ -10,6 +12,8 @@ Item {
     property real min_height: 50
     property alias pane_y_offset : details_tabbar.height
 
+    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.DetailsPane" }
+
     // The details for items are structured as:
     // [ { 'title': str, 'item': item, 'autoselect': bool  } ]
     // They are passed in in two categories:
@@ -17,6 +21,20 @@ Item {
     // - user items are open until the user closes them.
     property var temporary_items : []
     property var user_items: []
+    property var builtin_itmes: carla_window_items
+
+    RegistryLookup {
+        id: lookup_carla_wayland_wrapper
+        registry: registries.state_registry
+        key: 'carla_wayland_wrapper'
+    }
+    property alias carla_wayland_wrapper : lookup_carla_wayland_wrapper.object
+
+    property var carla_window_items: carla_wayland_wrapper && carla_wayland_wrapper.shellSurfaces ? carla_wayland_wrapper.shellSurfaces.map(s => ({
+        'title': s.title ? s.title : 'Untitled Wayland Window',
+        'item': s,
+        'autoselect': false
+    })) : []
 
     property var sync_track
     property var main_tracks : []
@@ -28,6 +46,9 @@ Item {
         })
         temporary_items.forEach(t => {
             rval.push({'title': t.title, 'item': t.item, 'autoselect': t.autoselect, 'closeable': false})
+        })
+        builtin_itmes.forEach(b => {
+            rval.push({'title': b.title, 'item': b.item, 'autoselect': b.autoselect, 'closeable': false})
         })
         if (rval.length == 0) {
             rval.push({'title': '...', 'item': 'empty-placeholder', 'autoselect': true, 'closeable': false})
@@ -104,6 +125,9 @@ Item {
                             (maybe_loop && details_item.mapped_item.item.maybe_backend_loop) ?
                             details_item.mapped_item.item : null
 
+                        onMapped_itemChanged: {
+                            root.logger.debug(`Mapped item changed to ${mapped_item.item}`)
+                        }
                         property var maybe_loop_with_composite :
                             (maybe_loop && details_item.mapped_item.item.maybe_composite_loop) ?
                             details_item.mapped_item.item : null
@@ -177,6 +201,51 @@ Item {
 
                                     sync_track : root.sync_track
                                     main_tracks : root.main_tracks
+                                }
+                            }
+                        }
+
+                        Loader {
+                            id: surface_loader
+
+                            anchors {
+                                left: parent.left
+                                right: parent.right
+                                leftMargin: 5
+                                rightMargin: 5
+                            }
+                            height: contentrect.height
+
+                            active: (details_item.mapped_item.item instanceof WlShellSurface) ||
+                                    (details_item.mapped_item.item instanceof IviSurface) ||
+                                    (details_item.mapped_item.item instanceof XdgSurface)
+                            
+                            sourceComponent: Component {
+                                ShellSurfaceItem {
+                                    width: contentrect.width
+                                    height: contentrect.height
+                                    shellSurface: details_item.mapped_item.item
+                                    onSurfaceDestroyed: {
+                                        //root.carla_wayland_wrapper.removeShellSurface(shellSurface)
+                                        surface_loader.active = false
+                                    }
+                                    autoCreatePopupItems: true
+
+                                    function update_size() {
+                                        if (shellSurface instanceof WlShellSurface) {
+                                            shellSurface.sendConfigure(Qt.size(width, height), 0)
+                                        } else if (shellSurface instanceof XdgSurface) {
+                                            shellSurface.toplevel.sendConfigure(Qt.size(width, height), [])
+                                        }
+                                    }
+
+                                    onWidthChanged: update_size()
+                                    onHeightChanged: update_size()
+
+                                    Component.onCompleted: {
+                                        update_size()
+                                        root.logger.debug(`Accepted Wayland surface. Size: ${width}x${height}.`)
+                                    }
                                 }
                             }
                         }
