@@ -6,7 +6,7 @@ import "../generate_session.js" as GenerateSession
 
 import ShoopDaLoop.PythonLogger
 
-ScrollView {
+FocusReleasingScrollView {
     ScrollBar.horizontal.policy: ScrollBar.horizontal.size < 1.0 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
     ScrollBar.vertical.policy: ScrollBar.AlwaysOff
     ScrollBar.horizontal.height: 10
@@ -134,7 +134,7 @@ ScrollView {
     Component.onCompleted: initialize()
     function reload() { initialize() }
 
-    ScrollView {
+    FocusReleasingScrollView {
         id: tracks_view
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
         ScrollBar.vertical.policy: ScrollBar.vertical.size < 1.0 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff;
