@@ -136,7 +136,7 @@ Dialog {
                         font.pixelSize: connections.font_size
                         anchors.right: parent.horizontalCenter
                         anchors.bottom: parent.bottom
-                        transform: Rotation { origin.x: label.width; origin.y: label.height; angle: 25}
+                        transform: Rotation { origin.x: label.width; origin.y: label.height; angle: 35}
                     }
                 }
             }

@@ -15,6 +15,7 @@ Item {
     signal loadSession(string filename)
     signal processThreadSegfault()
     signal processThreadAbort()
+    signal openConnections()
 
     property bool loading_session : false
     property bool saving_session : false
@@ -46,6 +47,10 @@ Item {
             Menu {
                 id: mainmenu
 
+                ShoopMenuItem {
+                    text: "Connections"
+                    onClicked: { root.openConnections() }
+                }
                 ShoopMenuItem {
                     text: "Save session"
                     onClicked: { savesessiondialog.open() }
