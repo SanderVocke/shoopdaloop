@@ -36,6 +36,9 @@
 -- -  C key:      Clear the selected loop(s).
 -- -  0-9 keys:   Set the amount of sync loop cycles to apply future actions for.
 --                0 disables this - all actions will be open-ended.
+--                Most numbers higher than 10 can also be achieved by e.g. first
+--                pressing and holding '1' and then also pressing '2' to set it
+--                to '12'.
 --
 -- Note that for the loop-transitioning keys in the list above, whether the loop
 -- transitions instantly or in sync with the sync loop depends on the global
@@ -93,9 +96,40 @@ local handle_default_loop_action = function()
     shoop_helpers.default_loop_action(shoop_control.loop_get_which_selected())
 end
 
---  Handle number keypress
-local handle_number_key = function(number, modifiers)
-    shoop_control.set_apply_n_cycles(number)
+--  Handle number keypresses
+--  The behavior intended is that by e.g. pressing "1", holding it,
+--  then also pressing "2" will result in the n_cycles setting being
+--  set to "12".
+local pressed_numbers_state = {}
+local update_n_cycles = function()
+    local result = 0
+    for idx, value in ipairs(pressed_numbers_state) do
+        result = result + (10 ^ (#pressed_numbers_state - idx)) * value
+    end
+    shoop_control.set_apply_n_cycles(result)
+end
+local handle_number_pressed = function(number, modifiers)
+    --  Remove other instances of same number from the list,
+    --  then add to the end and update
+    local new_table = {}
+    for _, value in ipairs(pressed_numbers_state) do
+        if value ~= number then
+        table.insert(new_table, value)
+        end
+    end
+    table.insert(new_table, number)
+    pressed_numbers_state = new_table
+    update_n_cycles()
+end
+local handle_number_released = function(number, modifiers)
+    --  Remove all instances of the number from the table.
+    local new_table = {}
+    for _, value in ipairs(pressed_numbers_state) do
+        if value ~= number then
+        table.insert(new_table, value)
+        end
+    end
+    pressed_numbers_state = new_table
 end
 
 local handle_loop_action = function(mode)
@@ -144,7 +178,12 @@ local handle_keyboard = function(event_type, key, modifiers)
         elseif key == shoop_control.constants.Key_Escape then
             shoop_control.loop_select({}, true)
         elseif as_number ~= nil then
-            handle_number_key(as_number, modifiers)
+            handle_number_pressed(as_number, modifiers)
+        end
+    elseif event_type == shoop_control.constants.KeyEventType_Released then
+        local as_number = as_number_key(key)
+        if as_number ~= nil then
+            handle_number_released(as_number, modifiers)
         end
     end
 end
