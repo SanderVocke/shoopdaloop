@@ -78,7 +78,7 @@ Item {
             bottom: parent.bottom
         }
 
-        ScrollView {
+        FocusReleasingScrollView {
             anchors.fill: parent
             ScrollBar.vertical.policy: ScrollBar.AsNeeded
             ScrollBar.horizontal.policy: ScrollBar.AsNeeded

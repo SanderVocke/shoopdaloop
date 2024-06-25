@@ -425,6 +425,12 @@ Item {
             value: registries.state_registry.apply_n_cycles
             from: -1
 
+            editable: true
+            valueFromText: function(text, locale) { 
+                release_focus_notifier.notify()
+                return Number.fromLocaleString(locale, text);
+            }
+
             onValueModified: {
                 if (value != registries.state_registry.apply_n_cycles) {
                     registries.state_registry.set_apply_n_cycles(value)
