@@ -10,7 +10,7 @@ ShoopTestCase {
     Timer {
         id: timer
         running: session && session.loaded && additional_when_condition
-        interval: 100
+        interval: 2000
         repeat: false
         property bool done : false
         onTriggered: done = true
