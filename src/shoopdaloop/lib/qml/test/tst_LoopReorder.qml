@@ -55,13 +55,11 @@ ShoopTestFile {
 
                     let ori_loops = get_loop_ids()
 
-                    track_widget().move_loop(get_loop(0), 2)
+                    track_widget().move_loop(get_loop(0), 3)
                     testcase.wait_updated(session.backend)
                     verify_eq(get_loop_ids(),
                         [ori_loops[1], ori_loops[2], ori_loops[0]])
-                    
-                    console.log(get_loop_ids())
-                    console.log(get_loop(1).obj_id)
+
                     track_widget().move_loop(get_loop(1), 0)
                     testcase.wait_updated(session.backend)
                     verify_eq(get_loop_ids(),
