@@ -380,6 +380,25 @@ Item {
     readonly property var midi_out_ports : midi_ports.filter(p => p && is_out(p.descriptor))
     readonly property var midi_send_ports : midi_ports.filter(p => p && is_send(p.descriptor))
 
+    function move_loop (loop, new_idx) {
+        if (!root.loops.includes(loop)) {
+            throw new Error("Loop not in track")
+        }
+        root.logger.debug(() => `Moving loop ${loop} to index ${new_idx}`)
+        let src_loop_idx = loop.idx_in_track
+        var new_indices = Array.from({ length: root.loops.length }, (v, i) => i).filter(i => i != src_loop_idx)
+        var _new_idx = new_idx
+        if (loop.idx_in_track < new_idx) {
+            _new_idx -= 1
+        }
+        new_indices.splice(_new_idx, 0, src_loop_idx)
+        root.loops = new_indices.map(i => root.loops[i])
+
+        for (var i=0; i<root.loops.length; i++) {
+            root.loops[i].idx_in_track = i
+        }
+    }
+
     Loader {
         id: fx_chain_loader
         active: root.fx_chain_descriptor != undefined
@@ -648,18 +667,8 @@ Item {
 
                             onDropped: (event) => {
                                 let src_loop = drag.source
-                                let src_loop_idx = src_loop.idx_in_track
-                                let loops = root.loops
-                                var new_loops = []
-                                for (var i=0; i<loops.length+1; i++) {
-                                    if (i == index) {
-                                        new_loops.push(src_loop)
-                                    }
-                                    if (i != src_loop_idx && i < loops.length) {
-                                        new_loops.push(loops[i])
-                                    }
-                                }
-                                root.loops = new_loops
+                                let new_index = index
+                                root.move_loop(src_loop, new_index)
                             }
 
                             y : {
