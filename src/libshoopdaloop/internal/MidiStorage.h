@@ -11,6 +11,7 @@
 // be stored directly following it in the buffer.
 // Some convenience functions are added for total size calculation and
 // access to the data "member".
+#pragma pack(push, 1)
 template<typename TimeType, typename SizeType>
 struct MidiStorageElem : public MidiSortableMessageInterface {
     uint8_t is_filler = 0; // If nonzero, this byte in the buffer is filler and should be skipped.
@@ -29,6 +30,7 @@ struct MidiStorageElem : public MidiSortableMessageInterface {
                 uint32_t &time_out,
                 const uint8_t* &data_out) const override;
 };
+#pragma pack(pop)
 
 template<typename TimeType, typename SizeType>
 class MidiStorageCursor;
@@ -71,6 +73,11 @@ public:
     void copy(MidiStorageBase<TimeType, SizeType> &to) const;
 };
 
+struct CursorFindResult {
+    uint32_t n_processed;
+    bool found_valid_elem;
+};
+
 template<typename TimeType, typename SizeType>
 class MidiStorageCursor : protected ModuleLoggingEnabled<"Backend.MidiChannel.Storage.Cursor"> {
 public:
@@ -107,7 +114,7 @@ public:
     // boundary
     bool wrapped() const;
 
-    uint32_t find_time_forward(uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback = nullptr);
+    CursorFindResult find_time_forward(uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback = nullptr);
 };
 
 template<typename TimeType, typename SizeType>
@@ -116,6 +123,11 @@ public:
     using Elem = MidiStorageElem<TimeType, SizeType>;
     using Cursor = MidiStorageCursor<TimeType, SizeType>;
     using SharedCursor = shoop_shared_ptr<Cursor>;
+
+    enum class TruncateType {
+        TruncateHead,
+        TruncateTail
+    };
 
 private:
     std::vector<shoop_weak_ptr<Cursor>> m_cursors;
@@ -127,7 +139,9 @@ public:
     SharedCursor create_cursor();
 
     void clear();
-    void truncate(TimeType time);
+    void truncate(TimeType time, TruncateType type);
+
+    void for_each_msg_modify(std::function<void(TimeType &t, SizeType &s, uint8_t* data)> cb);
     void for_each_msg(std::function<void(TimeType t, SizeType s, uint8_t* data)> cb);
 
     bool append(TimeType time, SizeType size,  const uint8_t* data, bool allow_replace=false) override;
