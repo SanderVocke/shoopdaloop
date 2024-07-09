@@ -95,8 +95,8 @@ inline Msg note_off_msg (uint32_t time, uint8_t channel, uint8_t note, uint8_t v
 
 TEST_CASE("AudioMidiLoop - Midi - Stop", "[AudioMidiLoop][midi]") {
     AudioMidiLoop loop;
-    loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
-    auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
+    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    auto &channel = *loop.midi_channel(0);
 
     REQUIRE(loop.get_mode() == LoopMode_Stopped);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
@@ -113,8 +113,8 @@ TEST_CASE("AudioMidiLoop - Midi - Stop", "[AudioMidiLoop][midi]") {
 
 TEST_CASE("AudioMidiLoop - Midi - Record", "[AudioMidiLoop][midi]") {
     AudioMidiLoop loop;
-    loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
-    auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
+    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    auto &channel = *loop.midi_channel(0);
 
     REQUIRE(loop.get_mode() == LoopMode_Stopped);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
@@ -153,9 +153,9 @@ TEST_CASE("AudioMidiLoop - Midi - Record", "[AudioMidiLoop][midi]") {
 
 TEST_CASE("AudioMidiLoop - Midi - Record Append Out-of-order", "[AudioMidiLoop][midi]") {
     AudioMidiLoop loop;
-    loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
-    auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
-    using Message = MidiChannel<uint32_t, uint16_t>::Message;
+    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    auto &channel = *loop.midi_channel(0);
+    using Message = MidiChannel::Message;
 
     loop.set_mode(LoopMode_Recording, false);
     loop.set_length(100);
@@ -187,8 +187,8 @@ TEST_CASE("AudioMidiLoop - Midi - Record Append Out-of-order", "[AudioMidiLoop][
 
 TEST_CASE("AudioMidiLoop - Midi - Record multiple source buffers", "[AudioMidiLoop][midi]") {
     AudioMidiLoop loop;
-    loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
-    auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
+    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    auto &channel = *loop.midi_channel(0);
 
     REQUIRE(loop.get_mode() == LoopMode_Stopped);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
@@ -270,10 +270,10 @@ TEST_CASE("AudioMidiLoop - Midi - Record multiple source buffers", "[AudioMidiLo
 
 TEST_CASE("AudioMidiLoop - Midi - Record onto longer buffer", "[AudioMidiLoop][midi]") {
     AudioMidiLoop loop;
-    loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
-    auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
-    using Message = MidiChannel<uint32_t, uint16_t>::Message;
-    MidiChannel<uint32_t, uint16_t>::Contents contents;
+    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    auto &channel = *loop.midi_channel(0);
+    using Message = MidiChannel::Message;
+    MidiChannel::Contents contents;
     contents.recorded_msgs = {
         Message(0,  1, { 0x01 }),
         Message(10, 1, { 0x02 }),
@@ -318,10 +318,10 @@ TEST_CASE("AudioMidiLoop - Midi - Record onto longer buffer", "[AudioMidiLoop][m
 
 TEST_CASE("AudioMidiLoop - Midi - Playback", "[AudioMidiLoop][midi]") {
     AudioMidiLoop loop;
-    loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
-    auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
-    using Message = MidiChannel<uint32_t, uint16_t>::Message;
-    MidiChannel<uint32_t, uint16_t>::Contents contents;
+    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    auto &channel = *loop.midi_channel(0);
+    using Message = MidiChannel::Message;
+    MidiChannel::Contents contents;
     contents.recorded_msgs = {
         Message(0,  1, { 0x01 }),
         Message(10, 1, { 0x02 }),
@@ -372,8 +372,8 @@ TEST_CASE("AudioMidiLoop - Midi - Prerecord", "[AudioMidiLoop][midi]") {
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 100);
 
-    loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
-    auto &chan = *loop.midi_channel<uint32_t, uint16_t>(0);
+    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    auto &chan = *loop.midi_channel(0);
 
     auto source_buf = MidiTestBuffer();
     source_buf.read.push_back(Msg(1 , 3, { 0x01, 0x02, 0x03 }));
@@ -444,10 +444,10 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
     loop.PROC_update_trigger_eta();
     REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 100);
 
-    auto chan = loop.add_midi_channel<uint32_t, uint16_t>(100000, ChannelMode_Direct, false);
+    auto chan = loop.add_midi_channel(100000, ChannelMode_Direct, false);
 
-    using Message = MidiChannel<uint32_t, uint16_t>::Message;
-    MidiChannel<uint32_t, uint16_t>::Contents contents;
+    using Message = MidiChannel::Message;
+    MidiChannel::Contents contents;
     for(uint32_t idx=0; idx<256; idx++) {
         contents.recorded_msgs.push_back(
             Message {
@@ -680,9 +680,9 @@ TEST_CASE("AudioMidiLoop - Midi - CC State tracking", "[AudioMidiLoop][midi]") {
         GENERATE(pb_from_first_sample, pb_from_40th_to_50th);
 
     AudioMidiLoop loop;
-    loop.add_midi_channel<uint32_t, uint16_t>(100000, ChannelMode_Direct, false);
-    auto &chan = *loop.midi_channel<uint32_t, uint16_t>(0);
-    using Message = MidiChannel<uint32_t, uint16_t>::Message;
+    loop.add_midi_channel(100000, ChannelMode_Direct, false);
+    auto &chan = *loop.midi_channel(0);
+    using Message = MidiChannel::Message;
 
     // Set up a sequence where notes are played every 10 ticks,
     // with a linearly changing pitch wheel.
@@ -789,8 +789,8 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     // playback a Note On when the loop starts, such that the note is not "lost".
 
     AudioMidiLoop loop;
-    loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
-    auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
+    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    auto &channel = *loop.midi_channel(0);
 
     REQUIRE(loop.get_mode() == LoopMode_Stopped);
     REQUIRE(loop.PROC_get_next_poi().has_value() == false);
@@ -918,8 +918,8 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
         process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
     };
 
-    loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
-    auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
+    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    auto &channel = *loop.midi_channel(0);
 
     REQUIRE(loop.get_mode() == LoopMode_Stopped);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
@@ -1056,8 +1056,8 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
         process_loops<decltype(loops)::iterator>(loops.begin(), loops.end(), n_samples);
     };
 
-    loop.add_midi_channel<uint32_t, uint16_t>(512, ChannelMode_Direct, false);
-    auto &channel = *loop.midi_channel<uint32_t, uint16_t>(0);
+    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    auto &channel = *loop.midi_channel(0);
 
     REQUIRE(loop.get_mode() == LoopMode_Stopped);
     REQUIRE(loop.PROC_get_next_poi() == std::nullopt);

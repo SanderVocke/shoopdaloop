@@ -30,12 +30,11 @@ shoop_shared_ptr<AudioChannel<SampleT>> AudioMidiLoop::add_audio_channel(
     return channel;
 }
 
-template <typename TimeType, typename SizeType>
-shoop_shared_ptr<MidiChannel<TimeType, SizeType>>
+shoop_shared_ptr<MidiChannel>
 AudioMidiLoop::add_midi_channel(uint32_t data_size, shoop_channel_mode_t mode,
                                 bool thread_safe)
 {
-    auto channel = shoop_make_shared<MidiChannel<TimeType, SizeType>>(
+    auto channel = shoop_make_shared<MidiChannel>(
         data_size, mode);
     auto fn = [this, &channel]() {
         mp_midi_channels.push_back(
@@ -51,8 +50,7 @@ AudioMidiLoop::add_midi_channel(uint32_t data_size, shoop_channel_mode_t mode,
     return channel;
 }
 
-template <typename TimeType, typename SizeType>
-shoop_shared_ptr<MidiChannel<TimeType, SizeType>>
+shoop_shared_ptr<MidiChannel>
 AudioMidiLoop::midi_channel(uint32_t idx, bool thread_safe) {
     shoop_shared_ptr<ChannelInterface> iface;
     if (thread_safe) {
@@ -63,7 +61,7 @@ AudioMidiLoop::midi_channel(uint32_t idx, bool thread_safe) {
     }
 
     auto maybe_r =
-        shoop_dynamic_pointer_cast<MidiChannel<TimeType, SizeType>>(iface);
+        shoop_dynamic_pointer_cast<MidiChannel>(iface);
     if (!maybe_r) {
         throw std::runtime_error("Midi channel " + std::to_string(idx) +
                                  " is not of the requested channel type.");
@@ -206,29 +204,3 @@ template shoop_shared_ptr<AudioChannel<float>>
 AudioMidiLoop::audio_channel(uint32_t idx, bool thread_safe);
 template shoop_shared_ptr<AudioChannel<int>>
 AudioMidiLoop::audio_channel(uint32_t idx, bool thread_safe);
-
-template shoop_shared_ptr<MidiChannel<uint32_t, uint16_t>>
-AudioMidiLoop::midi_channel<uint32_t, uint16_t>(uint32_t idx, bool thread_safe);
-template shoop_shared_ptr<MidiChannel<uint32_t, uint32_t>>
-AudioMidiLoop::midi_channel<uint32_t, uint32_t>(uint32_t idx, bool thread_safe);
-template shoop_shared_ptr<MidiChannel<uint16_t, uint16_t>>
-AudioMidiLoop::midi_channel<uint16_t, uint16_t>(uint32_t idx, bool thread_safe);
-template shoop_shared_ptr<MidiChannel<uint16_t, uint32_t>>
-AudioMidiLoop::midi_channel<uint16_t, uint32_t>(uint32_t idx, bool thread_safe);
-
-template shoop_shared_ptr<MidiChannel<uint32_t, uint16_t>>
-AudioMidiLoop::add_midi_channel<uint32_t, uint16_t>(uint32_t data_size,
-                                                    shoop_channel_mode_t mode,
-                                                    bool thread_safe);
-template shoop_shared_ptr<MidiChannel<uint32_t, uint32_t>>
-AudioMidiLoop::add_midi_channel<uint32_t, uint32_t>(uint32_t data_size,
-                                                    shoop_channel_mode_t mode,
-                                                    bool thread_safe);
-template shoop_shared_ptr<MidiChannel<uint16_t, uint16_t>>
-AudioMidiLoop::add_midi_channel<uint16_t, uint16_t>(uint32_t data_size,
-                                                    shoop_channel_mode_t mode,
-                                                    bool thread_safe);
-template shoop_shared_ptr<MidiChannel<uint16_t, uint32_t>>
-AudioMidiLoop::add_midi_channel<uint16_t, uint32_t>(uint32_t data_size,
-                                                    shoop_channel_mode_t mode,
-                                                    bool thread_safe);

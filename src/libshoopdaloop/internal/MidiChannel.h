@@ -10,14 +10,13 @@
 #include <stdint.h>
 #include "shoop_shared_ptr.h"
 
-template<typename TimeType, typename SizeType>
 class MidiChannel : public ChannelInterface,
                     private WithCommandQueue,
                     private ModuleLoggingEnabled<"Backend.MidiChannel"> {
 public:
-    using Storage = MidiStorage<TimeType, SizeType>;
+    using Storage = MidiStorage;
     using StorageCursor = typename Storage::Cursor;
-    using Message = MidiMessage<TimeType, SizeType>;
+    using Message = MidiMessage<uint32_t, uint16_t>;
 
 private:
 
@@ -120,7 +119,7 @@ public:
     ~MidiChannel();
 
     // NOTE: only use on process thread
-    MidiChannel<TimeType, SizeType>& operator= (MidiChannel<TimeType, SizeType> const& other);
+    MidiChannel& operator= (MidiChannel const& other);
 
     unsigned get_data_seq_nr() const override;
 
@@ -214,8 +213,3 @@ public:
     // Forget about any tracked MIDI state
     void PROC_reset_midi_state_tracking();
 };
-
-extern template class MidiChannel<uint32_t, uint16_t>;
-extern template class MidiChannel<uint32_t, uint32_t>;
-extern template class MidiChannel<uint16_t, uint16_t>;
-extern template class MidiChannel<uint16_t, uint32_t>;

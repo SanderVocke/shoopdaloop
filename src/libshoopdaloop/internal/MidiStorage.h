@@ -1,25 +1,22 @@
 #pragma once
-#include "MidiPort.h"
 #include "LoggingEnabled.h"
 #include <vector>
 #include <functional>
 #include "shoop_shared_ptr.h"
+#include "MidiBufferInterfaces.h"
 
-// We need a variable-sized struct that also supports interface inheritance.
+// We need a contiguously stored struct that also supports interface inheritance.
 // This cannot really be done in C++, so instead we just make a fixed-size
 // struct that is designed with the knowledge that its data bytes will always
 // be stored directly following it in the buffer.
-// Some convenience functions are added for total size calculation and
-// access to the data "member".
 #pragma pack(push, 1)
-template<typename TimeType, typename SizeType>
 struct MidiStorageElem : public MidiSortableMessageInterface {
     uint8_t is_filler = 0; // If nonzero, this byte in the buffer is filler and should be skipped.
                            // This can happen e.g. around the buffer boundaries when used as a ringbuffer.
                            // Messages are always kept contiguous.
-    TimeType storage_time = 0; // Overall time in the loop storage
-    TimeType proc_time = 0;    // time w.r.t. some reference point (position in this process iteration)
-    SizeType size = 0;
+    uint32_t storage_time = 0; // Overall time in the loop storage
+    uint16_t proc_time = 0;    // time w.r.t. some reference point (position in this process iteration)
+    uint16_t size = 0;
 
     static uint32_t total_size_of(uint32_t size);
     uint8_t* data() const;
@@ -32,16 +29,13 @@ struct MidiStorageElem : public MidiSortableMessageInterface {
 };
 #pragma pack(pop)
 
-template<typename TimeType, typename SizeType>
 class MidiStorageCursor;
 
-template<typename TimeType, typename SizeType>
-class MidiStorageBase : public shoop_enable_shared_from_this<MidiStorageBase<TimeType, SizeType>>,
+class MidiStorageBase : public shoop_enable_shared_from_this<MidiStorageBase>,
                         protected ModuleLoggingEnabled<"Backend.MidiChannel.Storage"> {
 public:
-    using Elem = MidiStorageElem<TimeType, SizeType>;
-    Elem dummy_elem; // Prevents incomplete template type in log_level_debug build
-    friend class MidiStorageCursor<TimeType, SizeType>;
+    friend class MidiStorageCursor;
+    using Elem = MidiStorageElem;
 
 protected:
     std::vector<uint8_t> m_data;
@@ -52,10 +46,10 @@ protected:
     static constexpr uint32_t n_starting_cursors = 10;
 
     bool valid_elem_at(uint32_t offset) const;
-    std::optional<uint32_t> maybe_next_elem_offset(Elem *e) const;
-    Elem *unsafe_at(uint32_t offset) const;
+    std::optional<uint32_t> maybe_next_elem_offset(Elem* elem) const;
     uint32_t bytes_size() const;
-    void store_unsafe(uint32_t offset, TimeType t, SizeType s, const uint8_t* d);
+    void store_unsafe(uint32_t offset, uint32_t t, uint16_t s, const uint8_t* d);
+    Elem *unsafe_at(uint32_t offset) const;
 
 public:
     MidiStorageBase(uint32_t data_size);
@@ -68,9 +62,9 @@ public:
     uint32_t bytes_free() const;
     uint32_t n_events() const;
 
-    virtual bool append(TimeType time, SizeType size,  const uint8_t* data, bool allow_replace=false);
-    bool prepend(TimeType time, SizeType size, const uint8_t* data);
-    void copy(MidiStorageBase<TimeType, SizeType> &to) const;
+    virtual bool append(uint32_t time, uint16_t size,  const uint8_t* data, bool allow_replace=false);
+    bool prepend(uint32_t time, uint16_t size, const uint8_t* data);
+    void copy(MidiStorageBase &to) const;
 };
 
 struct CursorFindResult {
@@ -78,12 +72,10 @@ struct CursorFindResult {
     bool found_valid_elem;
 };
 
-template<typename TimeType, typename SizeType>
 class MidiStorageCursor : protected ModuleLoggingEnabled<"Backend.MidiChannel.Storage.Cursor"> {
 public:
-    using Storage = MidiStorageBase<TimeType, SizeType>;
-    using Elem = MidiStorageElem<TimeType, SizeType>;
-    Elem dummy_elem; // Prevents incomplete template type in log_level_debug build
+    using Storage = MidiStorageBase;
+    using Elem = MidiStorageElem;
 
 private:
     std::optional<uint32_t> m_offset = std::nullopt;
@@ -117,11 +109,10 @@ public:
     CursorFindResult find_time_forward(uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback = nullptr);
 };
 
-template<typename TimeType, typename SizeType>
-class MidiStorage : public MidiStorageBase<TimeType, SizeType> {
+class MidiStorage : public MidiStorageBase {
 public:
-    using Elem = MidiStorageElem<TimeType, SizeType>;
-    using Cursor = MidiStorageCursor<TimeType, SizeType>;
+    using Elem = MidiStorageElem;
+    using Cursor = MidiStorageCursor;
     using SharedCursor = shoop_shared_ptr<Cursor>;
 
     enum class TruncateType {
@@ -139,27 +130,10 @@ public:
     SharedCursor create_cursor();
 
     void clear();
-    void truncate(TimeType time, TruncateType type);
+    void truncate(uint32_t time, TruncateType type);
 
-    void for_each_msg_modify(std::function<void(TimeType &t, SizeType &s, uint8_t* data)> cb);
-    void for_each_msg(std::function<void(TimeType t, SizeType s, uint8_t* data)> cb);
+    void for_each_msg_modify(std::function<void(uint32_t &t, uint16_t &s, uint8_t* data)> cb);
+    void for_each_msg(std::function<void(uint32_t t, uint16_t s, uint8_t* data)> cb);
 
-    bool append(TimeType time, SizeType size,  const uint8_t* data, bool allow_replace=false) override;
+    bool append(uint32_t time, uint16_t size,  const uint8_t* data, bool allow_replace=false) override;
 };
-
-extern template class MidiStorageElem<uint32_t, uint16_t>;
-extern template class MidiStorageElem<uint32_t, uint32_t>;
-extern template class MidiStorageElem<uint16_t, uint16_t>;
-extern template class MidiStorageElem<uint16_t, uint32_t>;
-extern template class MidiStorageCursor<uint32_t, uint16_t>;
-extern template class MidiStorageCursor<uint32_t, uint32_t>;
-extern template class MidiStorageCursor<uint16_t, uint16_t>;
-extern template class MidiStorageCursor<uint16_t, uint32_t>;
-extern template class MidiStorageBase<uint32_t, uint16_t>;
-extern template class MidiStorageBase<uint32_t, uint32_t>;
-extern template class MidiStorageBase<uint16_t, uint16_t>;
-extern template class MidiStorageBase<uint16_t, uint32_t>;
-extern template class MidiStorage<uint32_t, uint16_t>;
-extern template class MidiStorage<uint32_t, uint32_t>;
-extern template class MidiStorage<uint16_t, uint16_t>;
-extern template class MidiStorage<uint16_t, uint32_t>;

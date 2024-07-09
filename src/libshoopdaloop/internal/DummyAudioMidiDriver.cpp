@@ -251,6 +251,7 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
     }
     n_processed_last_round = 0;
     current_buf_frames = nframes;
+    MidiPort::PROC_prepare(nframes);
 }
 
 void DummyMidiPort::PROC_process(uint32_t nframes) {

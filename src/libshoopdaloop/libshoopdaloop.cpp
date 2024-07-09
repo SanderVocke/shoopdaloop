@@ -491,7 +491,7 @@ shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, sho
     auto &backend = loop_info->get_backend();
     auto r = backend.add_loop_channel(loop_info, nullptr);
     backend.queue_process_thread_command([loop_info, mode, r]() {
-        auto chan = loop_info->loop->add_midi_channel<Time, Size>(midi_storage_size, mode, false);
+        auto chan = loop_info->loop->add_midi_channel(midi_storage_size, mode, false);
         r->channel = shoop_static_pointer_cast<ChannelInterface>(chan);
         loop_info->mp_midi_channels.push_back(r);
         logging::log<"Backend.API", log_level_debug>(std::nullopt, std::nullopt, "add_midi_channel: executed on process thread");
@@ -1202,8 +1202,10 @@ shoopdaloop_midi_port_t *open_driver_midi_port (shoop_backend_session_t *backend
     auto _backend = internal_backend_session(backend);
     auto _driver = internal_audio_driver(driver);
     if (!_backend || !_driver) { return nullptr; }
-    logging::log<"Backend.API", log_level_warning>(std::nullopt, std::nullopt, "implement opening midi ringbuffer");
     auto port = _driver->open_midi_port(name_hint, direction);
+    if (min_always_on_ringbuffer_samples > 0) {
+      port->set_ringbuffer_n_samples(min_always_on_ringbuffer_samples);
+    }
     auto pi = _backend->add_midi_port(port);
     return external_midi_port(shoop_static_pointer_cast<GraphPort>(pi));
   }, nullptr);
@@ -1213,11 +1215,8 @@ shoopdaloop_midi_port_t *open_internal_midi_port (shoop_backend_session_t *backe
   return api_impl<shoopdaloop_midi_port_t*>("open_internal_midi_port", [&]() -> shoopdaloop_midi_port_t* {
     auto _backend = internal_backend_session(backend);
     if (!_backend) { return nullptr; }
-    logging::log<"Backend.API", log_level_warning>(std::nullopt, std::nullopt, "implement opening midi ringbuffer");
     auto port = nullptr;
     throw std::runtime_error("Creating internal MIDI ports not yet supported");
-    auto pi = _backend->add_audio_port(port);
-    return external_midi_port(shoop_static_pointer_cast<GraphPort>(pi));
   }, (shoopdaloop_midi_port_t*) nullptr);
 }
 

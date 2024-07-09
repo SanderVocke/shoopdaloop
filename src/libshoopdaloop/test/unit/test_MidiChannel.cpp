@@ -41,13 +41,13 @@ namespace Catch {
     };
 }
 
-TEST_CASE("MidiChannel - Indifinite size", "[MidiChannel]") {
-    using Msg = MidiMessage<uint32_t, uint32_t>;
-    using Storage = MidiStorage<uint32_t, uint32_t>;
-    using Channel = MidiChannel<uint32_t, uint32_t>;
+TEST_CASE("MidiChannel - Indefinite size", "[MidiChannel]") {
+    using Msg = MidiMessage<uint32_t, uint16_t>;
+    using Storage = MidiStorage;
+    using Channel = MidiChannel;
     using Contents = Channel::Contents;
 
-    auto c = shoop_make_shared<MidiChannel<uint32_t, uint32_t>>(1, ChannelMode_Direct);
+    auto c = shoop_make_shared<MidiChannel>(1, ChannelMode_Direct);
 
     const std::vector<Msg> data = {
         Msg(0, 3, {0, 1, 2}),

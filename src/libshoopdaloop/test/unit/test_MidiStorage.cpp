@@ -46,7 +46,7 @@ namespace Catch {
 
 TEST_CASE("MidiStorage - Round-trip", "[MidiStorage]") {
     using Msg = MidiMessage<uint32_t, uint32_t>;
-    using Storage = MidiStorage<uint32_t, uint32_t>;
+    using Storage = MidiStorage;
 
     std::vector<Msg> in = {
         Msg(0, 3, {0, 1, 2}),
@@ -82,7 +82,7 @@ TEST_CASE("MidiStorage - Round-trip", "[MidiStorage]") {
 
 TEST_CASE("MidiStorage - prepend", "[MidiStorage]") {
     using Msg = MidiMessage<uint32_t, uint32_t>;
-    using Storage = MidiStorage<uint32_t, uint32_t>;
+    using Storage = MidiStorage;
 
     std::vector<Msg> in = {
         Msg(10, 3, {0, 1, 2}),
@@ -129,7 +129,7 @@ TEST_CASE("MidiStorage - prepend", "[MidiStorage]") {
 
 TEST_CASE("MidiStorage - replace append", "[MidiStorage]") {
     using Msg = MidiMessage<uint32_t, uint32_t>;
-    using Storage = MidiStorage<uint32_t, uint32_t>;
+    using Storage = MidiStorage;
 
     std::vector<Msg> in = {
         Msg(0, 3, {0, 1, 2}),
@@ -178,7 +178,7 @@ TEST_CASE("MidiStorage - replace append", "[MidiStorage]") {
 
 TEST_CASE("MidiStorage - replace multiple append", "[MidiStorage]") {
     using Msg = MidiMessage<uint32_t, uint32_t>;
-    using Storage = MidiStorage<uint32_t, uint32_t>;
+    using Storage = MidiStorage;
 
     std::vector<Msg> in = {
         Msg(0, 3, {0, 1, 2}),

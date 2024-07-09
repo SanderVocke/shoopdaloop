@@ -7,6 +7,7 @@
 #include <atomic>
 #include "MidiStateTracker.h"
 #include "MidiBufferInterfaces.h"
+#include "MidiRingbuffer.h"
 #include "LoggingBackend.h"
 #include "shoop_shared_ptr.h"
 
@@ -18,6 +19,7 @@ class MidiPort : public virtual PortInterface, private ModuleLoggingEnabled<"Bac
     std::atomic<MidiWriteableBufferInterface *> ma_internal_write_output_data_to_buffer = nullptr;
     std::atomic<bool> ma_muted = false;
     shoop_shared_ptr<MidiStateTracker> m_maybe_midi_state;
+    shoop_shared_ptr<MidiRingbuffer> m_midi_ringbuffer;
     std::atomic<uint32_t> n_input_events = 0;
     std::atomic<uint32_t> n_output_events = 0;
 public:
@@ -56,6 +58,7 @@ public:
 
     void set_ringbuffer_n_samples(unsigned n) override;
     unsigned get_ringbuffer_n_samples() const override;
+    void PROC_snapshot_ringbuffer_into(MidiStorage &s) const;
 
     MidiPort(
         bool track_notes,

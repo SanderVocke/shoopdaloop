@@ -46,7 +46,7 @@ namespace Catch {
 
 TEST_CASE("MidiRingbuffer - Put and increment", "[MidiRingbuffer]") {
     using Msg = MidiMessage<uint32_t, uint32_t>;
-    using Ringbuffer = MidiRingbuffer<uint32_t, uint32_t>;
+    using Ringbuffer = MidiRingbuffer;
     using Storage = Ringbuffer::Storage;
 
     auto b = std::make_shared<Ringbuffer>(200);
@@ -99,7 +99,7 @@ TEST_CASE("MidiRingbuffer - Put and increment", "[MidiRingbuffer]") {
 
 TEST_CASE("MidiRingbuffer - Put and truncate", "[MidiRingbuffer]") {
     using Msg = MidiMessage<uint32_t, uint32_t>;
-    using Ringbuffer = MidiRingbuffer<uint32_t, uint32_t>;
+    using Ringbuffer = MidiRingbuffer;
     using Storage = Ringbuffer::Storage;
 
     auto b = std::make_shared<Ringbuffer>(200);
@@ -153,7 +153,7 @@ TEST_CASE("MidiRingbuffer - Put and truncate", "[MidiRingbuffer]") {
 
 TEST_CASE("MidiRingbuffer - Put and wrap", "[MidiRingbuffer]") {
     using Msg = MidiMessage<uint32_t, uint32_t>;
-    using Ringbuffer = MidiRingbuffer<uint32_t, uint32_t>;
+    using Ringbuffer = MidiRingbuffer;
     using Storage = Ringbuffer::Storage;
 
     constexpr size_t elem_size = sizeof(Storage::Elem);
@@ -217,7 +217,7 @@ TEST_CASE("MidiRingbuffer - Put and wrap", "[MidiRingbuffer]") {
 
 TEST_CASE("MidiRingbuffer - Put and wrap then truncate", "[MidiRingbuffer]") {
     using Msg = MidiMessage<uint32_t, uint32_t>;
-    using Ringbuffer = MidiRingbuffer<uint32_t, uint32_t>;
+    using Ringbuffer = MidiRingbuffer;
     using Storage = Ringbuffer::Storage;
 
     constexpr size_t elem_size = sizeof(Storage::Elem);
