@@ -1,6 +1,7 @@
 #include "MidiChannel.h"
 #include "MidiMessage.h"
 
+#include <sstream>
 #include <catch2/catch_test_macros.hpp>
 
 namespace Catch {
