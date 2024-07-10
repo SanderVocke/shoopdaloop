@@ -299,14 +299,22 @@ bool MidiStorageCursor::wrapped() const {
 CursorFindResult MidiStorageCursor::find_time_forward(
     uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback)
 {
+    auto print_offset = m_offset.has_value() ? (int)m_offset.value() : (int)-1;
+    log<log_level_debug_trace>("find_time_forward (storage {}, cursor {}, target time {})", fmt::ptr(m_storage.get()), print_offset, time);
+    return find_fn_forward([time](Elem *e) { return e->storage_time >= time; }, maybe_skip_msg_callback);
+}
+
+CursorFindResult MidiStorageCursor::find_fn_forward(
+    std::function<bool(Elem *)> fn, std::function<void(Elem *)> maybe_skip_msg_callback)
+{
     CursorFindResult rval;
     rval.found_valid_elem = false;
     rval.n_processed = 0;
 
     auto print_offset = m_offset.has_value() ? (int)m_offset.value() : (int)-1;
-    log<log_level_debug_trace>("find_time_forward (storage {}, cursor {}, target time {})", fmt::ptr(m_storage.get()), print_offset, time);
+    log<log_level_debug_trace>("find_fn_forward (storage {}, cursor {})", fmt::ptr(m_storage.get()), print_offset);
     if (!valid()) {
-        log<log_level_debug_trace>("find_time_forward: not valid, returning");
+        log<log_level_debug_trace>("find_fn_forward: not valid, returning");
         return rval;
     }
     std::optional<uint32_t> prev = m_offset;
@@ -325,9 +333,9 @@ CursorFindResult MidiStorageCursor::find_time_forward(
                 maybe_skip_msg_callback(elem);
             }
         }
-        if (next_elem->storage_time >= time) {
+        if (fn(next_elem)) {
             // Found
-            log<log_level_debug_trace>("find_time_forward to {} done, next msg @ {}", time, next_elem->storage_time);
+            log<log_level_debug_trace>("find_fn_forward done, next msg @ {}", next_elem->storage_time);
             m_offset = next_offset;
             m_prev_offset = prev;
             rval.found_valid_elem = true;
@@ -337,7 +345,7 @@ CursorFindResult MidiStorageCursor::find_time_forward(
 
     // If we reached here, we reached the end. Reset to an invalid
     // cursor.
-    log<log_level_debug_trace>("find_time_forward to {}: none found", time);
+    log<log_level_debug_trace>("find_fn_forward: none found");
     return rval;
 }
 
@@ -370,37 +378,47 @@ void MidiStorage::clear() {
     MidiStorageBase::clear();
 }
 
-void MidiStorage::truncate(uint32_t time, TruncateType type) {
+void MidiStorage::truncate(uint32_t time, TruncateSide type) {
     ModuleLoggingEnabled<"Backend.MidiChannel.Storage">::log<log_level_debug_trace>("truncate to {}", time);
-    auto prev_n_events = this->m_n_events;
+    if (type == TruncateSide::TruncateTail) {
+        return truncate_fn([time](uint32_t t, uint16_t size, const uint8_t* data){ return t < time; }, type);
+    } else if (type == TruncateSide::TruncateHead) {
+        return truncate_fn([time](uint32_t t, uint16_t size, const uint8_t* data){ return t > time; }, type);
+    }
+}
 
-    if (type == TruncateType::TruncateHead &&
-        this->unsafe_at(this->m_head_start)->storage_time <= time)
+void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8_t*)> fn, TruncateSide type) {
+    ModuleLoggingEnabled<"Backend.MidiChannel.Storage">::log<log_level_debug_trace>("truncate to function");
+    auto prev_n_events = this->m_n_events;
+    auto _fn = [fn](Elem* e) {
+        return !fn(e->storage_time, e->size, e->data());
+    };
+
+    if (type == TruncateSide::TruncateHead && _fn(this->unsafe_at(this->m_head_start)))
     {
-            this->template log<log_level_debug_trace>("truncate: head already in range");
+            this->template log<log_level_debug_trace>("truncate: head unchanged");
             return;
     }
 
-    if (type == TruncateType::TruncateTail &&
-        this->unsafe_at(this->m_tail)->storage_time > time)
+    if (type == TruncateSide::TruncateTail && _fn(this->unsafe_at(this->m_tail)))
     {
-            this->template log<log_level_debug_trace>("truncate: tail already in range");
+            this->template log<log_level_debug_trace>("truncate: tail unchanged");
             return;
     }
 
     if (this->m_n_events > 0) {
         auto cursor = create_cursor();
         if (cursor->valid()) {
-            auto find_result = cursor->find_time_forward(time);
+            auto find_result = cursor->find_fn_forward(_fn);
 
-            if (type == TruncateType::TruncateHead) {
+            if (type == TruncateSide::TruncateHead) {
                 uint32_t new_head = cursor->offset().value();
                 auto new_n = find_result.n_processed;
                 this->template log<log_level_debug_trace>("truncate head: {} -> {}, n msgs {} -> {}", this->m_head, new_head, this->m_n_events, new_n);
                 this->m_n_events = new_n;
                 this->m_head = cursor->offset().value();
                 this->m_head_start = cursor->prev_offset().value_or(0);
-            } else if (type == TruncateType::TruncateTail) {
+            } else if (type == TruncateSide::TruncateTail) {
                 uint32_t new_tail = find_result.found_valid_elem ? cursor->offset().value() : this->m_head;
                 auto new_n = this->m_n_events - find_result.n_processed;
                 this->template log<log_level_debug_trace>("truncate tail: {} -> {}, n msgs {} -> {}", this->m_tail, new_tail, this->m_n_events, new_n);
@@ -415,12 +433,12 @@ void MidiStorage::truncate(uint32_t time, TruncateType type) {
             for (auto &cursor : m_cursors) {
                 shoop_shared_ptr<Cursor> maybe_shared = cursor.lock();
                 if (maybe_shared) {
-                    if (type == TruncateType::TruncateHead) {
+                    if (type == TruncateSide::TruncateHead) {
                         if (maybe_shared->offset() > this->m_head) {
                             maybe_shared->overwrite(this->m_head,
                                                     this->m_head_start);
                         }
-                    } else if (type == TruncateType::TruncateTail) {
+                    } else if (type == TruncateSide::TruncateTail) {
                         if (maybe_shared->offset() < this->m_tail || !find_result.found_valid_elem) {
                             maybe_shared->invalidate();
                         }

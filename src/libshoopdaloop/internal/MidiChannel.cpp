@@ -162,7 +162,7 @@ void
 MidiChannel::PROC_set_length_impl(Storage &storage, std::atomic<uint32_t> &storage_length,
                           uint32_t length) {
     if (storage_length != length) {
-        storage.truncate(length, Storage::TruncateType::TruncateHead);
+        storage.truncate(length, Storage::TruncateSide::TruncateHead);
         storage_length = length;
         data_changed();
     }

@@ -1,4 +1,3 @@
-#include <catch2/catch_test_macros.hpp>
 #include "DummyAudioMidiDriver.h"
 #include "CustomProcessingChain.h"
 #include "AudioMidiLoop.h"
@@ -7,9 +6,9 @@
 #include "ObjectPool.h"
 #include "AudioBuffer.h"
 #include "GraphPort.h"
-#include "catch2/catch_approx.hpp"
 #include "helpers.h"
 #include "types.h"
+#include <limits>
 #include <memory>
 #include "libshoopdaloop_test_if.h"
 #include "libshoopdaloop.h"
@@ -17,6 +16,9 @@
 #include <iostream>
 #include <thread>
 #include "LoggingEnabled.h"
+
+#include <catch2/catch_test_macros.hpp>
+#include "catch2/catch_approx.hpp"
 
 struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirectLoopTestChain"> {
 
@@ -138,6 +140,13 @@ inline shoop_audio_channel_data_t to_api_data(std::vector<float> &vec) {
     return rval;
 }
 
+template<typename Msg>
+inline Msg at_time(Msg const& m, uint32_t time) {
+    auto _m = m;
+    _m.time = time;
+    return _m;
+}
+
 TEST_CASE("Chain - Direct playback MIDI basic", "[chain][midi]") {
     SingleDirectLoopTestChain tst;
     
@@ -213,8 +222,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - no sync loop - 0 samples", "[c
     adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
     tst.int_driver->controlled_mode_run_request();
 
-    // Since the sync loop is empty, the fallback behavior here should be that the
-    // whole ringbuffer is adopted and start offset is 0.
+    // The ringbuffer size is 0 by default, so all messages should be discarded
     auto n_ringbuffer_samples = tst.int_dummy_input_port->get_ringbuffer_n_samples();
     auto contents = tst.int_midi_chan->retrieve_contents(false);
     CHECK(contents.recorded_msgs.size() == 0);
@@ -222,7 +230,12 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - no sync loop - 0 samples", "[c
 
 TEST_CASE("Chain - Direct adopt MIDI ringbuffer - no sync loop", "[chain][midi]") {
     SingleDirectLoopTestChain tst;
-    tst.int_dummy_midi_input_port->set_ringbuffer_n_samples(20);
+    const size_t n_ringbuffer_samples = 20;
+    tst.int_dummy_midi_input_port->set_ringbuffer_n_samples(n_ringbuffer_samples);
+
+    // Process some samples in stopped mode
+    tst.int_driver->controlled_mode_request_samples(8);
+    tst.int_driver->controlled_mode_run_request();
 
     // Queue some messages
     std::vector<shoop_types::_MidiMessage> msgs = {
@@ -243,9 +256,61 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - no sync loop", "[chain][midi]"
 
     // Since the sync loop is empty, the fallback behavior here should be that the
     // whole ringbuffer is adopted and start offset is 0.
-    auto n_ringbuffer_samples = tst.int_dummy_input_port->get_ringbuffer_n_samples();
+    // That means that the messages are at the very end.
+    auto const t_base = n_ringbuffer_samples - 8;
     auto contents = tst.int_midi_chan->retrieve_contents(false);
+
+    CHECK(tst.int_dummy_midi_input_port->get_ringbuffer_n_samples() == n_ringbuffer_samples);
     CHECK(contents.recorded_msgs.size() == 2);
+    CHECK(contents.recorded_msgs[0] == at_time(msgs[0], t_base + 0));
+    CHECK(contents.recorded_msgs[1] == at_time(msgs[1], t_base + 5));
+};
+
+TEST_CASE("Chain - Direct adopt MIDI ringbuffer - no sync loop - integer time overflow", "[chain][midi]") {
+    SingleDirectLoopTestChain tst;
+    const size_t n_ringbuffer_samples = 20;
+    tst.int_dummy_midi_input_port->set_ringbuffer_n_samples(n_ringbuffer_samples);
+
+    tst.int_driver->controlled_mode_request_samples(8);
+    tst.int_driver->controlled_mode_run_request();
+
+    // Process samples such that the midi ringbuffer is exactly 4 samples removed
+    // from having integer overflow on its time values.
+    auto const target = std::numeric_limits<uint32_t>::max() - 4;
+    auto ringbuffer = MidiPortTestHelper::get_ringbuffer(*tst.int_dummy_midi_input_port);
+    while (ringbuffer->get_current_end_time() < target) {
+        auto const end_time = ringbuffer->get_current_end_time();
+        auto const process = std::min(512, (int)(target - end_time));
+        ringbuffer->next_buffer(process);
+    }
+
+    // Queue some messages
+    std::vector<shoop_types::_MidiMessage> msgs = {
+        create_noteOn <shoop_types::_MidiMessage>(0, 1,  10, 10),
+        create_noteOff<shoop_types::_MidiMessage>(6, 10, 10, 20),
+        create_noteOn <shoop_types::_MidiMessage>(9, 2,  1,  1 )
+    };
+    for (auto &msg : msgs) {
+        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.time, msg.data.data());
+    }
+    // Process 8 samples in stopped mode
+    tst.int_driver->controlled_mode_request_samples(8);
+    tst.int_driver->controlled_mode_run_request();
+
+    // Grab the ringbuffer
+    adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
+    tst.int_driver->controlled_mode_run_request();
+
+    // Since the sync loop is empty, the fallback behavior here should be that the
+    // whole ringbuffer is adopted and start offset is 0.
+    // That means that the messages are at the very end.
+    auto const t_base = n_ringbuffer_samples - 8;
+    auto contents = tst.int_midi_chan->retrieve_contents(false);
+
+    CHECK(tst.int_dummy_midi_input_port->get_ringbuffer_n_samples() == n_ringbuffer_samples);
+    CHECK(contents.recorded_msgs.size() == 2);
+    CHECK(contents.recorded_msgs[0] == at_time(msgs[0], t_base + 0));
+    CHECK(contents.recorded_msgs[1] == at_time(msgs[1], t_base + 6));
 };
 
 TEST_CASE("Chain - Direct adopt audio ringbuffer - one cycle", "[chain][audio]") {

@@ -1,17 +1,19 @@
 #pragma once
-#include <sstream>
-#include <vector>
-#include <stdio.h>
-#include <functional>
 #include "LoopInterface.h"
 #include "MidiBufferInterfaces.h"
 #include "MidiPort.h"
 #include "MidiMessage.h"
-#include <cstring>
 #include "LoggingBackend.h"
 #include "midi_helpers.h"
 #include "types.h"
 #include "libshoopdaloop.h"
+
+#include <sstream>
+#include <vector>
+#include <stdio.h>
+#include <functional>
+#include <cstring>
+
 #include <catch2/catch_test_macros.hpp>
 
 template<typename S>
@@ -160,4 +162,42 @@ inline std::string stringify_msg(MidiSortableMessageInterface &m) {
 
 inline void CHECK_MSGS_EQUAL(MidiSortableMessageInterface &a, MidiSortableMessageInterface &b) {
     CHECK(stringify_msg(a) == stringify_msg(b));
+}
+
+namespace Catch {
+    template<>
+    struct StringMaker<std::vector<uint8_t>> {
+        static std::string convert(const std::vector<uint8_t>& vec) {
+            std::ostringstream oss;
+            oss << "[";
+            for (size_t i=0; i<vec.size(); i++) {
+                if (i>0) { oss << ", "; }
+                oss << (int)vec[i];
+            }
+            oss << "]";
+            return oss.str();
+        }
+    };
+
+    template<>
+    struct StringMaker<MidiMessage<uint32_t, uint16_t>> {
+        static std::string convert(const MidiMessage<uint32_t, uint16_t>& e) {
+            std::ostringstream oss;
+            oss << "{ t:" << e.time << ", s:" << e.size << ", d:" << StringMaker<std::vector<uint8_t>>::convert(e.data) << " }";
+            return oss.str();
+        }
+    };
+
+    template<>
+    struct StringMaker<std::vector<MidiMessage<uint32_t, uint16_t>>> {
+        static std::string convert(const std::vector<MidiMessage<uint32_t, uint16_t>>& vec) {
+            std::ostringstream oss;
+            oss << "[\n";
+            for (auto &e : vec) {
+                oss << "  " << StringMaker<MidiMessage<uint32_t, uint16_t>>::convert(e) << "\n";
+            }
+            oss << "]";
+            return oss.str();
+        }
+    };
 }

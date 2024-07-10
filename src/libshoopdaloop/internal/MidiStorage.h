@@ -106,7 +106,11 @@ public:
     // boundary
     bool wrapped() const;
 
+    // Iterate to the next message until the given time (or later) or end of buffer is reached.
     CursorFindResult find_time_forward(uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback = nullptr);
+
+    // Iterate to the next message until the given function returns true or end of buffer is reached.
+    CursorFindResult find_fn_forward(std::function<bool(Elem *)> fn, std::function<void(Elem *)> maybe_skip_msg_callback = nullptr);
 };
 
 class MidiStorage : public MidiStorageBase {
@@ -115,9 +119,9 @@ public:
     using Cursor = MidiStorageCursor;
     using SharedCursor = shoop_shared_ptr<Cursor>;
 
-    enum class TruncateType {
-        TruncateHead,
-        TruncateTail
+    enum class TruncateSide {
+        TruncateHead, // Remove all messages with time > t from the head
+        TruncateTail, // Remove all messages with time < t from the tail
     };
 
 private:
@@ -130,7 +134,12 @@ public:
     SharedCursor create_cursor();
 
     void clear();
-    void truncate(uint32_t time, TruncateType type);
+
+    // Truncate to a certain point in time
+    void truncate(uint32_t time, TruncateSide side);
+
+    // Truncate away any msg for which the given function returns true
+    void truncate_fn(std::function<bool(uint32_t time, uint16_t size, const uint8_t* data)> fn, TruncateSide side);
 
     void for_each_msg_modify(std::function<void(uint32_t &t, uint16_t &s, uint8_t* data)> cb);
     void for_each_msg(std::function<void(uint32_t t, uint16_t s, uint8_t* data)> cb);

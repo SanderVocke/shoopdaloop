@@ -18,6 +18,8 @@ public:
     void set_n_samples(uint32_t n);
 
     uint32_t get_n_samples() const;
+    uint32_t get_current_start_time() const;
+    uint32_t get_current_end_time() const;
 
     // Increment the current time. Also truncates the tail such that out-of-range data is erased.
     void next_buffer(uint32_t n_frames);
@@ -25,7 +27,7 @@ public:
     bool put(uint32_t frame_in_current_buffer, uint16_t size,  const uint8_t* data);
 
     // Copy the current state of the ringbuffer to the target storage.
-    // Returns the current head time as context for the timestamps in the
-    // storage.
-    uint32_t snapshot(MidiStorage &target) const;
+    // The timestamps of the messages are modified such that they are relative
+    // to the current start point of the buffer.
+    void snapshot(MidiStorage &target) const;
 };

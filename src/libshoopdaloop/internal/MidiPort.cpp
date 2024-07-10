@@ -167,10 +167,11 @@ MidiPort::MidiPort(
 MidiPort::~MidiPort() {};
 
 void MidiPort::set_ringbuffer_n_samples(unsigned n) {
+    if (n > 0 && !m_midi_ringbuffer) {
+        m_midi_ringbuffer = shoop_make_shared<MidiRingbuffer>(shoop_constants::midi_storage_size);
+    }
     if (m_midi_ringbuffer) {
         m_midi_ringbuffer->set_n_samples(n);
-    } else if (n > 0) {
-        m_midi_ringbuffer = shoop_make_shared<MidiRingbuffer>(shoop_constants::midi_storage_size);
     }
 }
 

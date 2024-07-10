@@ -11,6 +11,8 @@
 #include "LoggingBackend.h"
 #include "shoop_shared_ptr.h"
 
+struct MidiPortTestHelper;
+
 class MidiPort : public virtual PortInterface, private ModuleLoggingEnabled<"Backend.MidiPort"> {
     std::atomic<MidiWriteableBufferInterface *> ma_write_data_into_port_buffer = nullptr;
     std::atomic<MidiReadWriteBufferInterface *> ma_processing_buffer = nullptr;
@@ -23,6 +25,7 @@ class MidiPort : public virtual PortInterface, private ModuleLoggingEnabled<"Bac
     std::atomic<uint32_t> n_input_events = 0;
     std::atomic<uint32_t> n_output_events = 0;
 public:
+    friend class MidiPortTestHelper;
 
     // Midi ports can have buffering or not. Multiple buffers are defined, although they
     // don't have to exist (nullptr) or can point to the same buffer.
@@ -66,4 +69,10 @@ public:
         bool track_programs
     );
     virtual ~MidiPort();
+};
+
+struct MidiPortTestHelper {
+    static shoop_shared_ptr<MidiRingbuffer> &get_ringbuffer(MidiPort &port) {
+        return port.m_midi_ringbuffer;
+    }
 };
