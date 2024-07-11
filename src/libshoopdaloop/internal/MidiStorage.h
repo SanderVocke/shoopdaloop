@@ -32,7 +32,7 @@ struct MidiStorageElem : public MidiSortableMessageInterface {
 class MidiStorageCursor;
 
 class MidiStorageBase : public shoop_enable_shared_from_this<MidiStorageBase>,
-                        protected ModuleLoggingEnabled<"Backend.MidiChannel.Storage"> {
+                        protected ModuleLoggingEnabled<"Backend.MidiStorage"> {
 public:
     friend class MidiStorageCursor;
     using Elem = MidiStorageElem;
@@ -72,7 +72,7 @@ struct CursorFindResult {
     bool found_valid_elem;
 };
 
-class MidiStorageCursor : protected ModuleLoggingEnabled<"Backend.MidiChannel.Storage.Cursor"> {
+class MidiStorageCursor : protected ModuleLoggingEnabled<"Backend.MidiStorage"> {
 public:
     using Storage = MidiStorageBase;
     using Elem = MidiStorageElem;

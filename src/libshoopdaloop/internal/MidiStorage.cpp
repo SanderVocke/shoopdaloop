@@ -379,7 +379,7 @@ void MidiStorage::clear() {
 }
 
 void MidiStorage::truncate(uint32_t time, TruncateSide type) {
-    ModuleLoggingEnabled<"Backend.MidiChannel.Storage">::log<log_level_debug_trace>("truncate to {}", time);
+    ModuleLoggingEnabled<"Backend.MidiStorage">::log<log_level_debug_trace>("truncate to {}", time);
     if (type == TruncateSide::TruncateTail) {
         return truncate_fn([time](uint32_t t, uint16_t size, const uint8_t* data){ return t < time; }, type);
     } else if (type == TruncateSide::TruncateHead) {
@@ -388,7 +388,7 @@ void MidiStorage::truncate(uint32_t time, TruncateSide type) {
 }
 
 void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8_t*)> fn, TruncateSide type) {
-    ModuleLoggingEnabled<"Backend.MidiChannel.Storage">::log<log_level_debug_trace>("truncate to function");
+    ModuleLoggingEnabled<"Backend.MidiStorage">::log<log_level_debug_trace>("truncate to function");
     auto prev_n_events = this->m_n_events;
     auto _fn = [fn](Elem* e) {
         return !fn(e->storage_time, e->size, e->data());
@@ -449,7 +449,7 @@ void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8
             this->template log<log_level_error>("truncate: couldn't make valid cursor");
         }
     }
-    ModuleLoggingEnabled<"Backend.MidiChannel.Storage">::log<log_level_debug_trace>("truncate: was {}, now {} msgs", prev_n_events, this->m_n_events);
+    ModuleLoggingEnabled<"Backend.MidiStorage">::log<log_level_debug_trace>("truncate: was {}, now {} msgs", prev_n_events, this->m_n_events);
 }
 
 void MidiStorage::for_each_msg_modify(

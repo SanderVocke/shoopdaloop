@@ -55,11 +55,14 @@ bool MidiRingbuffer::put(uint32_t frame_in_current_buffer, uint16_t size, const 
     return rval;
 }
 
-void MidiRingbuffer::snapshot(MidiStorage &target) const {
+void MidiRingbuffer::snapshot(MidiStorage &target, std::optional<uint32_t> start_offset_from_end) const {
     Storage::copy(target);
-    auto time_offset = get_current_start_time();
-    target.for_each_msg_modify([time_offset](uint32_t &t, uint16_t &s, uint8_t *d) {
-        t -= time_offset;
+    auto const end = current_buffer_end_time.load();
+    auto const start_from_end = start_offset_from_end.value_or(n_samples.load());
+    const uint32_t min_message_time = end - std::min(end, start_from_end);
+    target.truncate(min_message_time, Storage::TruncateSide::TruncateTail);
+    target.for_each_msg_modify([min_message_time](uint32_t &t, uint16_t &s, uint8_t *d) {
+        t -= min_message_time;
     });
 }
 

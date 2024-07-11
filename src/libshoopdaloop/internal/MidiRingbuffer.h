@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MidiStorage.h"
+#include <optional>
 
 class MidiRingbuffer : public MidiStorage {
 public:
@@ -27,7 +28,9 @@ public:
     bool put(uint32_t frame_in_current_buffer, uint16_t size,  const uint8_t* data);
 
     // Copy the current state of the ringbuffer to the target storage.
-    // The timestamps of the messages are modified such that they are relative
-    // to the current start point of the buffer.
-    void snapshot(MidiStorage &target) const;
+    // The timestamps on the messages in "target" are set such that
+    // the time at "start_offset_from_end" before the current buffer end
+    // is considered zero. If not given, the buffer length is used.
+    // All messages before that point are truncated away.
+    void snapshot(MidiStorage &target, std::optional<uint32_t> start_offset_from_end = std::nullopt) const;
 };
