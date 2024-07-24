@@ -732,32 +732,17 @@ MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port
     }
 
     auto fn = [midiport, reverse_start_offset, keep_samples_before_start_offset, this]() {
-        // auto data = midiport->PROC_get_ringbuffer_contents();
-        // auto ori_len = data.n_samples;
-        // int so = reverse_start_offset.has_value() ? (int)data.n_samples - (int)reverse_start_offset.value() : 0;
-        // // Remove data as allowed
-        // if (keep_samples_before_start_offset.has_value()) {
-        //     unsigned keep = keep_samples_before_start_offset.value();
-        //     while(so > (int)(keep + data.buffer_size)) {
-        //         so -= data.buffer_size;
-        //         data.n_samples -= data.buffer_size;
-        //         data.data->erase(data.data->begin());
-        //     }
-        // }
-
-        // mp_buffers.set_contents(data.data);
-        // set_start_offset(so);
-        // PROC_set_length(data.n_samples);
-
-        // FIXME
         midiport->PROC_snapshot_ringbuffer_into(*mp_storage);
+        auto buflen = midiport->get_ringbuffer_n_samples();
+        if(reverse_start_offset.has_value()) {
+            set_start_offset((int)buflen - (int)reverse_start_offset.value());
+        }
         auto n = mp_storage->n_events();
-        log<log_level_warning>("adopted midi with reverse so {}, keep {} - yielded {} messages, so {}",
+        log<log_level_debug_trace>("adopted midi with reverse so {}, keep {} - yielded {} messages, so {}",
              reverse_start_offset.value_or(99999),
              keep_samples_before_start_offset.value_or(99999),
              n,
              get_start_offset());
-        log<log_level_debug_trace>("adopted ringbuffer with {} messages", n);
         data_changed();
     };
 
