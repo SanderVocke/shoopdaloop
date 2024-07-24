@@ -38,14 +38,14 @@ template<typename Channel, typename S>
 void for_channel_elems(Channel &chan, std::function<void(uint32_t,S const&)> fn,
                    int start=0, int n=-1) {
     if(n < 0) { n = chan.get_length() - start; }
-    
+
     auto elems = chan.get_data(false);
     for(uint32_t idx=start; idx < (start+n); idx++) {
         fn(idx, elems[idx]);
     }
 }
 
-typedef MidiMessage<uint32_t, uint32_t> Msg;
+typedef MidiMessage<uint32_t, uint16_t> Msg;
 class MidiTestBuffer : public MidiReadableBufferInterface,
                        public MidiWriteableBufferInterface {
 public:

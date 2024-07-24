@@ -18,7 +18,7 @@ struct MidiStorageElem : public MidiSortableMessageInterface {
     uint16_t proc_time = 0;    // time w.r.t. some reference point (position in this process iteration)
     uint16_t size = 0;
 
-    static uint32_t total_size_of(uint32_t size);
+    static uint32_t total_size_of(uint32_t data_bytes);
     uint8_t* data() const;
     const uint8_t* get_data() const override;
     uint32_t get_time() const override;
@@ -139,7 +139,7 @@ public:
     void truncate(uint32_t time, TruncateSide side);
 
     // Truncate away any msg for which the given function returns true
-    void truncate_fn(std::function<bool(uint32_t time, uint16_t size, const uint8_t* data)> fn, TruncateSide side);
+    void truncate_fn(std::function<bool(uint32_t time, uint16_t size, const uint8_t* data)> should_truncate_fn, TruncateSide side);
 
     void for_each_msg_modify(std::function<void(uint32_t &t, uint16_t &s, uint8_t* data)> cb);
     void for_each_msg(std::function<void(uint32_t t, uint16_t s, uint8_t* data)> cb);

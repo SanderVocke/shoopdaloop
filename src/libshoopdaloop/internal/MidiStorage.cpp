@@ -14,8 +14,8 @@
 
 using namespace logging;
 
-uint32_t MidiStorageElem::total_size_of(uint32_t size) {
-    return sizeof(MidiStorageElem) + size;
+uint32_t MidiStorageElem::total_size_of(uint32_t data_bytes) {
+    return sizeof(MidiStorageElem) + data_bytes;
 }
 
 uint8_t *MidiStorageElem::data() const {
@@ -121,7 +121,7 @@ uint32_t MidiStorageBase::n_events() const {
 bool MidiStorageBase::append(uint32_t time, uint16_t size,
                              const uint8_t *data, bool allow_replace) {
     log<log_level_debug_trace>("append: time {}, size {}", time, size);
-    
+
     uint32_t sz = Elem::total_size_of(size);
     if (sz > bytes_free() && !allow_replace) {
         log<log_level_warning>("Ignoring store of MIDI message: buffer full.");
@@ -301,7 +301,9 @@ CursorFindResult MidiStorageCursor::find_time_forward(
 {
     auto print_offset = m_offset.has_value() ? (int)m_offset.value() : (int)-1;
     log<log_level_debug_trace>("find_time_forward (storage {}, cursor {}, target time {})", fmt::ptr(m_storage.get()), print_offset, time);
-    return find_fn_forward([time](Elem *e) { return e->storage_time >= time; }, maybe_skip_msg_callback);
+    return find_fn_forward([time](Elem *e) {
+        return e->storage_time >= time;
+    }, maybe_skip_msg_callback);
 }
 
 CursorFindResult MidiStorageCursor::find_fn_forward(
@@ -387,20 +389,20 @@ void MidiStorage::truncate(uint32_t time, TruncateSide type) {
     }
 }
 
-void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8_t*)> fn, TruncateSide type) {
+void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8_t*)> should_truncate_fn, TruncateSide type) {
     ModuleLoggingEnabled<"Backend.MidiStorage">::log<log_level_debug_trace>("truncate to function");
     auto prev_n_events = this->m_n_events;
-    auto _fn = [fn](Elem* e) {
-        return !fn(e->storage_time, e->size, e->data());
+    auto _should_truncate_fn = [this, type, should_truncate_fn](Elem* e) {
+        return should_truncate_fn(e->storage_time, e->size, e->data());
     };
 
-    if (type == TruncateSide::TruncateHead && _fn(this->unsafe_at(this->m_head_start)))
+    if (type == TruncateSide::TruncateHead && !_should_truncate_fn(this->unsafe_at(this->m_head_start)))
     {
             this->template log<log_level_debug_trace>("truncate: head unchanged");
             return;
     }
 
-    if (type == TruncateSide::TruncateTail && _fn(this->unsafe_at(this->m_tail)))
+    if (type == TruncateSide::TruncateTail && !_should_truncate_fn(this->unsafe_at(this->m_tail)))
     {
             this->template log<log_level_debug_trace>("truncate: tail unchanged");
             return;
@@ -409,7 +411,11 @@ void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8
     if (this->m_n_events > 0) {
         auto cursor = create_cursor();
         if (cursor->valid()) {
-            auto find_result = cursor->find_fn_forward(_fn);
+            auto find_result = cursor->find_fn_forward([this, type, _should_truncate_fn](Elem* e) {
+                return type == TruncateSide::TruncateHead ?
+                     _should_truncate_fn(e) :
+                    !_should_truncate_fn(e);
+            });
 
             if (type == TruncateSide::TruncateHead) {
                 uint32_t new_head = cursor->offset().value();

@@ -4,7 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-TEST_CASE("MidiChannel - Indefinite size", "[MidiChannel]") {
+TEST_CASE("MidiChannel - Set Contents - Indefinite size", "[MidiChannel]") {
     using Msg = MidiMessage<uint32_t, uint16_t>;
     using Storage = MidiStorage;
     using Channel = MidiChannel;

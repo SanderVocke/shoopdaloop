@@ -17,6 +17,7 @@
 #include "midi_helpers.h"
 #include "LoggingEnabled.h"
 #include <boost/stacktrace.hpp>
+#include "LoggingBackend.h"
 
 using namespace std::chrono_literals;
 
@@ -98,17 +99,17 @@ TEST_CASE("AudioMidiLoop - Midi - Stop", "[AudioMidiLoop][midi]") {
     loop.add_midi_channel(512, ChannelMode_Direct, false);
     auto &channel = *loop.midi_channel(0);
 
-    REQUIRE(loop.get_mode() == LoopMode_Stopped);
-    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
-    REQUIRE(loop.get_length() == 0);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+    CHECK(loop.PROC_get_next_poi() == std::nullopt);
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
 
     loop.PROC_process(1000);
 
-    REQUIRE(loop.get_mode() == LoopMode_Stopped);
-    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
-    REQUIRE(loop.get_length() == 0);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+    CHECK(loop.PROC_get_next_poi() == std::nullopt);
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Record", "[AudioMidiLoop][midi]") {
@@ -116,37 +117,37 @@ TEST_CASE("AudioMidiLoop - Midi - Record", "[AudioMidiLoop][midi]") {
     loop.add_midi_channel(512, ChannelMode_Direct, false);
     auto &channel = *loop.midi_channel(0);
 
-    REQUIRE(loop.get_mode() == LoopMode_Stopped);
-    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
-    REQUIRE(loop.get_length() == 0);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+    CHECK(loop.PROC_get_next_poi() == std::nullopt);
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
 
     auto source_buf = MidiTestBuffer();
     source_buf.read.push_back(Msg(10, 3, { 0x01, 0x02, 0x03 }));
     source_buf.read.push_back(Msg(19, 2, { 0x01, 0x02 }));
     source_buf.read.push_back(Msg(20, 1, { 0x01 }));
-    
+
     loop.plan_transition(LoopMode_Recording);
     channel.PROC_set_recording_buffer(&source_buf, 512);
     loop.PROC_trigger();
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi() == 512); // end of buffer
-    REQUIRE(loop.get_length() == 0);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi() == 512); // end of buffer
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
 
     loop.PROC_process(20);
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi() == 492); // end of buffer
-    REQUIRE(loop.get_length() == 20);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi() == 492); // end of buffer
+    CHECK(loop.get_length() == 20);
+    CHECK(loop.get_position() == 0);
 
     uint32_t length = loop.get_length();
     auto msgs = channel.retrieve_contents(false).recorded_msgs;
-    REQUIRE(length == 20);
-    REQUIRE(msgs.size() == 2);
+    CHECK(length == 20);
+    CHECK(msgs.size() == 2);
     check_msgs_equal(msgs.at(0), source_buf.read.at(0));
     check_msgs_equal(msgs.at(1), source_buf.read.at(1));
 };
@@ -165,22 +166,22 @@ TEST_CASE("AudioMidiLoop - Midi - Record Append Out-of-order", "[AudioMidiLoop][
     source_buf.read.push_back(Msg(11, 1,  { 0x01 }));
     channel.PROC_set_recording_buffer(&source_buf, 512);
     loop.PROC_update_poi();
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi() == 512);
-    REQUIRE(loop.get_length() == 100);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi() == 512);
+    CHECK(loop.get_length() == 100);
+    CHECK(loop.get_position() == 0);
 
     loop.PROC_process(20);
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi() == 492); // end of buffer
-    REQUIRE(loop.get_length() == 120);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi() == 492); // end of buffer
+    CHECK(loop.get_length() == 120);
+    CHECK(loop.get_position() == 0);
 
     uint32_t length = loop.get_length();
     auto msgs = channel.retrieve_contents(false).recorded_msgs;
-    REQUIRE(msgs.size() == 2);
-    REQUIRE(length == 120);
+    CHECK(msgs.size() == 2);
+    CHECK(length == 120);
     check_msgs_equal(msgs.at(0), with_time(source_buf.read.at(0), 110));
     check_msgs_equal(msgs.at(1), with_time(source_buf.read.at(2), 111));
 };
@@ -190,10 +191,10 @@ TEST_CASE("AudioMidiLoop - Midi - Record multiple source buffers", "[AudioMidiLo
     loop.add_midi_channel(512, ChannelMode_Direct, false);
     auto &channel = *loop.midi_channel(0);
 
-    REQUIRE(loop.get_mode() == LoopMode_Stopped);
-    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
-    REQUIRE(loop.get_length() == 0);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+    CHECK(loop.PROC_get_next_poi() == std::nullopt);
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
 
     std::vector<MidiTestBuffer> source_bufs = { MidiTestBuffer(), MidiTestBuffer(), MidiTestBuffer() };
     source_bufs[0].read.push_back(Msg(10, 3, { 0x01, 0x02, 0x03 }));
@@ -206,57 +207,57 @@ TEST_CASE("AudioMidiLoop - Midi - Record multiple source buffers", "[AudioMidiLo
     source_bufs[2].read.push_back(Msg(30-21-9, 2, { 0x01, 0x02 }));
     source_bufs[2].read.push_back(Msg(31-21-9, 1, { 0x01 }));
     source_bufs[2].read.push_back(Msg(40-21-9, 1, { 0x01 }));
-    
+
     loop.plan_transition(LoopMode_Recording);
     channel.PROC_set_recording_buffer(&source_bufs[0], 21);
     loop.PROC_trigger();
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 21); // end of buffer
-    REQUIRE(loop.get_length() == 0);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi().value_or(999) == 21); // end of buffer
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
 
     loop.PROC_process(21);
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 0); // end of buffer
-    REQUIRE(loop.get_length() == 21);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi().value_or(999) == 0); // end of buffer
+    CHECK(loop.get_length() == 21);
+    CHECK(loop.get_position() == 0);
 
     channel.PROC_set_recording_buffer(&source_bufs[1], 9);
     loop.PROC_update_poi();
-    
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 9); // end of buffer
-    REQUIRE(loop.get_length() == 21);
-    REQUIRE(loop.get_position() == 0);
+
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi().value_or(999) == 9); // end of buffer
+    CHECK(loop.get_length() == 21);
+    CHECK(loop.get_position() == 0);
 
     loop.PROC_process(9);
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 0); // end of buffer
-    REQUIRE(loop.get_length() == 30);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi().value_or(999) == 0); // end of buffer
+    CHECK(loop.get_length() == 30);
+    CHECK(loop.get_position() == 0);
 
     channel.PROC_set_recording_buffer(&source_bufs[2], 100);
     loop.PROC_update_poi();
-    
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 100); // end of buffer
-    REQUIRE(loop.get_length() == 30);
-    REQUIRE(loop.get_position() == 0);
+
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi().value_or(999) == 100); // end of buffer
+    CHECK(loop.get_length() == 30);
+    CHECK(loop.get_position() == 0);
 
     // Purposefully do not process the last message
     loop.PROC_process(5);
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 95); // end of buffer
-    REQUIRE(loop.get_length() == 35);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi().value_or(999) == 95); // end of buffer
+    CHECK(loop.get_length() == 35);
+    CHECK(loop.get_position() == 0);
 
     auto msgs = channel.retrieve_contents(false).recorded_msgs;
-    REQUIRE(msgs.size() == 9);
+    CHECK(msgs.size() == 9);
     check_msgs_equal(msgs.at(0), source_bufs[0].read.at(0));
     check_msgs_equal(msgs.at(1), source_bufs[0].read.at(1));
     check_msgs_equal(msgs.at(2), source_bufs[0].read.at(2));
@@ -268,9 +269,16 @@ TEST_CASE("AudioMidiLoop - Midi - Record multiple source buffers", "[AudioMidiLo
     check_msgs_equal(msgs.at(8), source_bufs[2].read.at(2), 30);
 };
 
+template<typename Msg>
+inline Msg at_time(Msg const& m, uint32_t time) {
+    auto _m = m;
+    _m.time = time;
+    return _m;
+}
+
 TEST_CASE("AudioMidiLoop - Midi - Record onto longer buffer", "[AudioMidiLoop][midi]") {
     AudioMidiLoop loop;
-    loop.add_midi_channel(512, ChannelMode_Direct, false);
+    loop.add_midi_channel(1024, ChannelMode_Direct, false);
     auto &channel = *loop.midi_channel(0);
     using Message = MidiChannel::Message;
     MidiChannel::Contents contents;
@@ -278,42 +286,50 @@ TEST_CASE("AudioMidiLoop - Midi - Record onto longer buffer", "[AudioMidiLoop][m
         Message(0,  1, { 0x01 }),
         Message(10, 1, { 0x02 }),
         Message(21, 1, { 0x03 }),
-        Message(30, 1, { 0x02 }),
-        Message(50, 1, { 0x03 }),
+        Message(30, 1, { 0x04 }),
+        Message(50, 1, { 0x05 }),
     };
     channel.set_contents(contents, 100, false);
     loop.set_mode(LoopMode_Recording, false);
     loop.set_length(25, false);
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi() == 0);
-    REQUIRE(loop.get_length() == 25);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi() == 0);
+    CHECK(loop.get_length() == 25);
+    CHECK(loop.get_position() == 0);
 
     auto source_buf = MidiTestBuffer();
     source_buf.read.push_back(Msg(1, 3, { 0x01, 0x02, 0x03 }));
     source_buf.read.push_back(Msg(2, 2, { 0x01, 0x02 }));
     source_buf.read.push_back(Msg(3, 1, { 0x01 }));
+
     channel.PROC_set_recording_buffer(&source_buf, 512);
-    
+
     loop.PROC_trigger();
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi() == 512); // end of buffer
-    REQUIRE(loop.get_length() == 25);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi() == 512); // end of buffer
+    CHECK(loop.get_length() == 25);
+    CHECK(loop.get_position() == 0);
 
     loop.PROC_process(20);
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi() == 492); // end of buffer
-    REQUIRE(loop.get_length() == 45);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi() == 492); // end of buffer
+    CHECK(loop.get_length() == 45);
+    CHECK(loop.get_position() == 0);
+
     auto msgs = channel.retrieve_contents(false).recorded_msgs;
-    REQUIRE(msgs.size() == 6);
-    for (uint32_t i=0; i<3; i++) { check_msgs_equal(msgs.at(i), contents.recorded_msgs.at(i)); }
-    for (uint32_t i=3; i<6; i++) { check_msgs_equal(msgs.at(i), source_buf.read.at(i-3), 25); }
+    std::vector<Message> expect = {
+        contents.recorded_msgs[0],
+        contents.recorded_msgs[1],
+        contents.recorded_msgs[2],
+        at_time(source_buf.read[0], 26),
+        at_time(source_buf.read[1], 27),
+        at_time(source_buf.read[2], 28),
+    };
+    CHECK(msgs == expect);
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Playback", "[AudioMidiLoop][midi]") {
@@ -330,32 +346,32 @@ TEST_CASE("AudioMidiLoop - Midi - Playback", "[AudioMidiLoop][midi]") {
     channel.set_contents(contents, 100, false);
     loop.set_length(100);
 
-    REQUIRE(loop.get_mode() == LoopMode_Stopped);
-    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
-    REQUIRE(loop.get_length() == 100);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+    CHECK(loop.PROC_get_next_poi() == std::nullopt);
+    CHECK(loop.get_length() == 100);
+    CHECK(loop.get_position() == 0);
 
     auto play_buf = MidiTestBuffer();
-    
+
     loop.plan_transition(LoopMode_Playing);
     channel.PROC_set_playback_buffer(&play_buf, 512);
     loop.PROC_trigger();
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == LoopMode_Playing);
-    REQUIRE(loop.PROC_get_next_poi() == 100); // end of loop
-    REQUIRE(loop.get_length() == 100);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Playing);
+    CHECK(loop.PROC_get_next_poi() == 100); // end of loop
+    CHECK(loop.get_length() == 100);
+    CHECK(loop.get_position() == 0);
 
     loop.PROC_process(20);
 
-    REQUIRE(loop.get_mode() == LoopMode_Playing);
-    REQUIRE(loop.PROC_get_next_poi() == 80); // end of loop
-    REQUIRE(loop.get_length() == 100);
-    REQUIRE(loop.get_position() == 20);
+    CHECK(loop.get_mode() == LoopMode_Playing);
+    CHECK(loop.PROC_get_next_poi() == 80); // end of loop
+    CHECK(loop.get_length() == 100);
+    CHECK(loop.get_position() == 20);
 
     auto msgs = play_buf.written;
-    REQUIRE(msgs.size() == 2);
+    CHECK(msgs.size() == 2);
     check_msgs_equal(msgs.at(0), contents.recorded_msgs.at(0));
     check_msgs_equal(msgs.at(1), contents.recorded_msgs.at(1));
 };
@@ -365,12 +381,12 @@ TEST_CASE("AudioMidiLoop - Midi - Prerecord", "[AudioMidiLoop][midi]") {
     auto sync_source = shoop_make_shared<AudioMidiLoop>();
     sync_source->set_length(100);
     sync_source->plan_transition(LoopMode_Playing);
-    REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 100);
+    CHECK(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 100);
 
     loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(sync_source)); // Needed because otherwise will immediately transition
     loop.PROC_update_poi();
     loop.PROC_update_trigger_eta();
-    REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 100);
+    CHECK(loop.PROC_predicted_next_trigger_eta().value_or(999) == 100);
 
     loop.add_midi_channel(512, ChannelMode_Direct, false);
     auto &chan = *loop.midi_channel(0);
@@ -385,35 +401,35 @@ TEST_CASE("AudioMidiLoop - Midi - Prerecord", "[AudioMidiLoop][midi]") {
     chan.PROC_set_recording_buffer(&source_buf, 512);
     loop.PROC_update_poi();
 
-    REQUIRE(loop.get_mode() == LoopMode_Stopped);
-    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 512); // end of buffer
-    REQUIRE(loop.get_length() == 0);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+    CHECK(loop.PROC_get_next_poi().value_or(999) == 512); // end of buffer
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
 
     loop.PROC_process(20);
     chan.PROC_finalize_process();
 
     // By now, we are still stopped but the channels should have pre-recorded since recording is planned.
-    REQUIRE(loop.get_mode() == LoopMode_Stopped);
-    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 492); // end of buffer
-    REQUIRE(loop.get_length() == 0);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+    CHECK(loop.PROC_get_next_poi().value_or(999) == 492); // end of buffer
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
 
     loop.PROC_trigger();
     loop.PROC_update_poi();
     loop.PROC_process(20);
     chan.PROC_finalize_process();
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 472); // end of buffer
-    REQUIRE(loop.get_length() == 20);
-    REQUIRE(loop.get_position() == 0);
-    REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 80);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi().value_or(999) == 472); // end of buffer
+    CHECK(loop.get_length() == 20);
+    CHECK(loop.get_position() == 0);
+    CHECK(loop.PROC_predicted_next_trigger_eta().value_or(999) == 80);
 
     // Due to prerecord, should have captured all the messages.
     auto msgs = chan.retrieve_contents(false).recorded_msgs;
-    REQUIRE(msgs.size() == 4);
-    REQUIRE(chan.get_start_offset() == 20);
+    CHECK(msgs.size() == 4);
+    CHECK(chan.get_start_offset() == 20);
     check_msgs_equal(msgs.at(0), source_buf.read.at(0));
     check_msgs_equal(msgs.at(1), source_buf.read.at(1));
     check_msgs_equal(msgs.at(2), source_buf.read.at(2));
@@ -422,7 +438,7 @@ TEST_CASE("AudioMidiLoop - Midi - Prerecord", "[AudioMidiLoop][midi]") {
     sync_source->PROC_process(60);
     loop.PROC_update_poi();
     loop.PROC_update_trigger_eta();
-    REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 40);
+    CHECK(loop.PROC_predicted_next_trigger_eta().value_or(999) == 40);
 };
 
 TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
@@ -437,12 +453,12 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
 
     sync_source->set_length(100);
     sync_source->plan_transition(LoopMode_Playing);
-    REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 100);
+    CHECK(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 100);
 
     loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(sync_source)); // Needed because otherwise will immediately transition
     loop.PROC_update_poi();
     loop.PROC_update_trigger_eta();
-    REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 100);
+    CHECK(loop.PROC_predicted_next_trigger_eta().value_or(999) == 100);
 
     auto chan = loop.add_midi_channel(100000, ChannelMode_Direct, false);
 
@@ -459,7 +475,7 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
                     (unsigned char)(idx % 128)
                 }
             }
-        ); 
+        );
     }
 
     chan->set_contents(contents, 256);
@@ -474,21 +490,21 @@ TEST_CASE("AudioMidiLoop - Midi - Preplay", "[AudioMidiLoop][midi]") {
     // Pre-play part
     process(99);
 
-    REQUIRE(sync_source->get_mode() == LoopMode_Playing);
-    REQUIRE(loop.get_mode() == LoopMode_Stopped);
+    CHECK(sync_source->get_mode() == LoopMode_Playing);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
 
     process(1);
 
     sync_source->PROC_handle_poi();
     loop.PROC_handle_sync();
-    REQUIRE(sync_source->get_mode() == LoopMode_Playing);
-    REQUIRE(loop.get_mode() == LoopMode_Playing);
+    CHECK(sync_source->get_mode() == LoopMode_Playing);
+    CHECK(loop.get_mode() == LoopMode_Playing);
 
     // Play part
     process(28);
 
-    REQUIRE(sync_source->get_mode() == LoopMode_Playing);
-    REQUIRE(loop.get_mode() == LoopMode_Playing);
+    CHECK(sync_source->get_mode() == LoopMode_Playing);
+    CHECK(loop.get_mode() == LoopMode_Playing);
 
     // Process the channels' queued operations
     chan->PROC_finalize_process();
@@ -711,13 +727,13 @@ TEST_CASE("AudioMidiLoop - Midi - CC State tracking", "[AudioMidiLoop][midi]") {
     loop.plan_transition(LoopMode_Recording);
     loop.PROC_trigger();
     loop.PROC_update_poi();
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.get_mode() == LoopMode_Recording);
     for (auto &buf: input_buffers) {
         chan.PROC_set_recording_buffer(&buf, 10);
         loop.PROC_update_poi();
         loop.PROC_process(10);
     }
-    REQUIRE(loop.get_length() == 100);
+    CHECK(loop.get_length() == 100);
 
     // Now, stop recording but also make some changes on the input.
     loop.plan_transition(LoopMode_Stopped, 0, false, false);
@@ -728,12 +744,12 @@ TEST_CASE("AudioMidiLoop - Midi - CC State tracking", "[AudioMidiLoop][midi]") {
     another.read.push_back(pitch_wheel_msg(0, 10, 100));
     // Also press the hold pedal
     another.read.push_back(hold_pedal_msg(0, 1, true));
-    REQUIRE(loop.get_mode() == LoopMode_Stopped);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
     chan.PROC_set_recording_buffer(&another, 10);
     loop.PROC_update_poi();
     loop.PROC_process(10);
 
-    REQUIRE(loop.get_length() == 100);
+    CHECK(loop.get_length() == 100);
 
     // Now, play back the first 10 samples.
     MidiTestBuffer play_buf;
@@ -746,8 +762,8 @@ TEST_CASE("AudioMidiLoop - Midi - CC State tracking", "[AudioMidiLoop][midi]") {
     loop.PROC_update_poi();
     loop.PROC_process(n_samples);
 
-    REQUIRE(loop.get_position() == testdata.playback_to);
-    REQUIRE(loop.get_mode() == LoopMode_Playing);
+    CHECK(loop.get_position() == testdata.playback_to);
+    CHECK(loop.get_mode() == LoopMode_Playing);
 
     // In terms of pitch wheel changes, we expect:
     // - first a message to revert the pitch back to the original state (0),
@@ -770,7 +786,7 @@ TEST_CASE("AudioMidiLoop - Midi - CC State tracking", "[AudioMidiLoop][midi]") {
             return msg.size == 3 && channel(msg.data.data()) == 10;
         }
     );
-    check_msg_vectors_equal(channel_10, testdata.expect_channel_10, 
+    check_msg_vectors_equal(channel_10, testdata.expect_channel_10,
     "(samples " + std::to_string(testdata.playback_from) + " -> " + std::to_string(testdata.playback_to) + ")"
     );
 
@@ -792,10 +808,10 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     loop.add_midi_channel(512, ChannelMode_Direct, false);
     auto &channel = *loop.midi_channel(0);
 
-    REQUIRE(loop.get_mode() == LoopMode_Stopped);
-    REQUIRE(loop.PROC_get_next_poi().has_value() == false);
-    REQUIRE(loop.get_length() == 0);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+    CHECK(loop.PROC_get_next_poi().has_value() == false);
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
 
     auto source_buf = MidiTestBuffer();
     source_buf.read.push_back(note_on_msg(10, 0, 100, 90)); // Note On, @ t=10, note 100, vel. 90, chan 0
@@ -805,31 +821,31 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     channel.PROC_set_recording_buffer(&source_buf, 512);
 
     // Nothing recorded, but the noteOn should be caught by MIDI channel state tracking
-    REQUIRE(loop.PROC_get_next_poi().has_value() == false); // sanity check
+    CHECK(loop.PROC_get_next_poi().has_value() == false); // sanity check
     loop.PROC_process(12);
 
     // Start recording
     loop.plan_transition(LoopMode_Recording, 0, false, false);
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 500); // end of buffer
-    REQUIRE(loop.get_length() == 0);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi().value_or(999) == 500); // end of buffer
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
 
     // NoteOff and 2nd note on+off should be recorded
-    REQUIRE(loop.PROC_get_next_poi().value_or(0) > 10); // sanity check
+    CHECK(loop.PROC_get_next_poi().value_or(0) > 10); // sanity check
     loop.PROC_process(30);
 
-    REQUIRE(loop.get_mode() == LoopMode_Recording);
-    REQUIRE(loop.PROC_get_next_poi().value_or(999) == 470); // end of buffer
-    REQUIRE(loop.get_length() == 30);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Recording);
+    CHECK(loop.PROC_get_next_poi().value_or(999) == 470); // end of buffer
+    CHECK(loop.get_length() == 30);
+    CHECK(loop.get_position() == 0);
 
     CHECK(channel.retrieve_contents(false).recorded_msgs.size() == 3);
 
     // Stop for a while
     loop.plan_transition(LoopMode_Stopped, 0, false, false);
-    REQUIRE(loop.PROC_get_next_poi().has_value() == false); // sanity check
+    CHECK(loop.PROC_get_next_poi().has_value() == false); // sanity check
     loop.PROC_process(50);
 
     // Start playback and play.
@@ -840,11 +856,11 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
     channel.PROC_set_playback_buffer(&playback_buf, 512);
     loop.plan_transition(LoopMode_Playing, 0, false, false);
 
-    REQUIRE(loop.PROC_get_next_poi().value_or(0) >= 10); // sanity check
+    CHECK(loop.PROC_get_next_poi().value_or(0) >= 10); // sanity check
     loop.PROC_process(30);
-    
+
     auto msgs = playback_buf.written;
-    REQUIRE(msgs.size() == 4);
+    CHECK(msgs.size() == 4);
 
     CHECK((int)msgs[0].data[0] == 0x90); // NoteOn
     CHECK((int)msgs[0].data[1] == 100);
@@ -868,11 +884,11 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started before loop boundar
 
     // Play another loop to make sure it works twice in a row
     playback_buf.written.clear();
-    REQUIRE(loop.PROC_get_next_poi().value_or(0) >= 10); // sanity check
+    CHECK(loop.PROC_get_next_poi().value_or(0) >= 10); // sanity check
     loop.PROC_process(30);
-    
+
     msgs = playback_buf.written;
-    REQUIRE(msgs.size() == 5);
+    CHECK(msgs.size() == 5);
 
     CHECK(msgs[0].data[0] == 0xB0); // All sound off
 
@@ -906,12 +922,12 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     auto sync_source = shoop_make_shared<AudioMidiLoop>();
     sync_source->set_length(10);
     sync_source->plan_transition(LoopMode_Playing);
-    REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 10);
+    CHECK(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 10);
 
     loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(sync_source)); // Needed because otherwise will immediately transition
     loop.PROC_update_poi();
     loop.PROC_update_trigger_eta();
-    REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 10);
+    CHECK(loop.PROC_predicted_next_trigger_eta().value_or(999) == 10);
 
     auto process = [&](uint32_t n_samples) {
         std::set<shoop_shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
@@ -921,10 +937,10 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
     loop.add_midi_channel(512, ChannelMode_Direct, false);
     auto &channel = *loop.midi_channel(0);
 
-    REQUIRE(loop.get_mode() == LoopMode_Stopped);
-    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
-    REQUIRE(loop.get_length() == 0);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+    CHECK(loop.PROC_get_next_poi() == std::nullopt);
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
 
     auto source_buf = MidiTestBuffer();
     source_buf.read.push_back(note_on_msg(5, 0, 100, 90)); // Note On, @ t=5, note 100, vel. 90, chan 0
@@ -972,7 +988,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note started during pre-play", "
 
     // Stop for a while
     loop.plan_transition(LoopMode_Stopped, std::nullopt, std::nullopt, false);
-    REQUIRE(loop.PROC_get_next_poi() == std::nullopt); // sanity check
+    CHECK(loop.PROC_get_next_poi() == std::nullopt); // sanity check
     process(50);
 
     // Plan playback
@@ -1044,12 +1060,12 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
     auto sync_source = shoop_make_shared<AudioMidiLoop>();
     sync_source->set_length(10);
     sync_source->plan_transition(LoopMode_Playing);
-    REQUIRE(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 10);
+    CHECK(sync_source->PROC_predicted_next_trigger_eta().value_or(999) == 10);
 
     loop.set_sync_source(shoop_static_pointer_cast<LoopInterface>(sync_source)); // Needed because otherwise will immediately transition
     loop.PROC_update_poi();
     loop.PROC_update_trigger_eta();
-    REQUIRE(loop.PROC_predicted_next_trigger_eta().value_or(999) == 10);
+    CHECK(loop.PROC_predicted_next_trigger_eta().value_or(999) == 10);
 
     auto process = [&](uint32_t n_samples) {
         std::set<shoop_shared_ptr<AudioMidiLoop>> loops ({loop_ptr, sync_source});
@@ -1059,10 +1075,10 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
     loop.add_midi_channel(512, ChannelMode_Direct, false);
     auto &channel = *loop.midi_channel(0);
 
-    REQUIRE(loop.get_mode() == LoopMode_Stopped);
-    REQUIRE(loop.PROC_get_next_poi() == std::nullopt);
-    REQUIRE(loop.get_length() == 0);
-    REQUIRE(loop.get_position() == 0);
+    CHECK(loop.get_mode() == LoopMode_Stopped);
+    CHECK(loop.PROC_get_next_poi() == std::nullopt);
+    CHECK(loop.get_length() == 0);
+    CHECK(loop.get_position() == 0);
 
     auto source_buf = MidiTestBuffer();
     source_buf.read.push_back(note_on_msg(5, 0, 100, 90)); // Note On, @ t=5, note 100, vel. 90, chan 0
@@ -1107,7 +1123,7 @@ TEST_CASE("AudioMidiLoop - Midi - Corner Case - note pre-recorded but no preplay
 
     // Stop for a while
     loop.plan_transition(LoopMode_Stopped, std::nullopt, std::nullopt, false);
-    REQUIRE(loop.PROC_get_next_poi() == std::nullopt); // sanity check
+    CHECK(loop.PROC_get_next_poi() == std::nullopt); // sanity check
     process(50);
 
     // Plan playback

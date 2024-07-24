@@ -61,7 +61,7 @@ MidiChannel::TrackedState::start_tracking_from_with_state(shoop_shared_ptr<MidiS
 {
     auto tmp_diff = shoop_make_shared<MidiStateDiffTracker>();
     tmp_diff->reset(to_track, starting_state, StateDiffTrackerAction::ScanDiff);
-    
+
     start_tracking_from(to_track);
     diff->reset(to_track, state, StateDiffTrackerAction::ClearDiff);
     diff->set_diff(tmp_diff->get_diff());
@@ -639,13 +639,20 @@ MidiChannel::retrieve_contents(bool thread_safe) {
 void
 MidiChannel::set_contents(Contents contents, uint32_t length_samples,
                   bool thread_safe) {
-    auto s = shoop_make_shared<Storage>(mp_storage->bytes_capacity());
     size_t n_state_msgs = contents.starting_state_msg_datas.size();
 
     shoop_shared_ptr<MidiStateTracker> new_start_state = shoop_make_shared<MidiStateTracker>(true, true, true);
     for (auto const &data : contents.starting_state_msg_datas) {
         new_start_state->process_msg(data.data());
     }
+
+    // Calculate the needed storage size
+    size_t min_storage_size = 1;
+    for (auto const &elem : contents.recorded_msgs) {
+        min_storage_size += MidiStorageElem::total_size_of (elem.data.size());
+    }
+    size_t new_storage_size = std::max((size_t)mp_storage->bytes_capacity(), min_storage_size);
+    auto s = shoop_make_shared<Storage>(new_storage_size);
 
     for (auto const &elem : contents.recorded_msgs) {
         s->append(elem.time, elem.size, elem.data.data());
@@ -745,6 +752,11 @@ MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port
         // FIXME
         midiport->PROC_snapshot_ringbuffer_into(*mp_storage);
         auto n = mp_storage->n_events();
+        log<log_level_warning>("adopted midi with reverse so {}, keep {} - yielded {} messages, so {}",
+             reverse_start_offset.value_or(99999),
+             keep_samples_before_start_offset.value_or(99999),
+             n,
+             get_start_offset());
         log<log_level_debug_trace>("adopted ringbuffer with {} messages", n);
         data_changed();
     };
