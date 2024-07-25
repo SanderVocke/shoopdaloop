@@ -647,6 +647,7 @@ Item {
     property var midi_channels : (maybe_loop && maybe_loop.midi_channels) ? maybe_loop.midi_channels : []
    
     property bool sync_active : registries.state_registry.sync_active
+    onSync_activeChanged: root.logger.debug(() => (`Sync active: ${sync_active}`))
 
     // UI
     StatusRect {
