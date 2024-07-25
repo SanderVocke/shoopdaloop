@@ -107,6 +107,15 @@ inline Message create_noteOff(uint32_t time, uint8_t channel, uint8_t note, uint
 }
 
 template<typename Message>
+inline Message create_cc(uint32_t time, uint8_t channel, uint8_t cc_num, uint8_t value) {
+    Message rval;
+    rval.time = time;
+    rval.data = cc(channel, cc_num, value);
+    rval.size = rval.data.size();
+    return rval;
+}
+
+template<typename Message>
 inline shoop_midi_sequence_t *convert_midi_msgs_to_api(std::vector<Message> &msgs) {
     auto sequence = alloc_midi_sequence(msgs.size());
     sequence->length_samples = msgs.back().time + 1;

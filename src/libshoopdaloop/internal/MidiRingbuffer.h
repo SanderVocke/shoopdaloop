@@ -23,9 +23,10 @@ public:
     uint32_t get_current_end_time() const;
 
     // Increment the current time. Also truncates the tail such that out-of-range data is erased.
-    void next_buffer(uint32_t n_frames);
+    void next_buffer(uint32_t n_frames, DroppedMsgCallback dropped_msg_cb = nullptr);
 
-    bool put(uint32_t frame_in_current_buffer, uint16_t size,  const uint8_t* data);
+    // Put a message at the head of the ringbuffer.
+    bool put(uint32_t frame_in_current_buffer, uint16_t size,  const uint8_t* data, DroppedMsgCallback dropped_msg_cb = nullptr);
 
     // Copy the current state of the ringbuffer to the target storage.
     // The timestamps on the messages in "target" are set such that

@@ -28,73 +28,6 @@ uint32_t MidiChannel::ExternalBufState::events_left() const {
     return n_events_total - n_events_processed;
 }
 
-MidiChannel::TrackedState::TrackedState(bool notes,
-                                                            bool controls,
-                                                            bool programs)
-    : m_valid(false),
-      state(shoop_make_shared<MidiStateTracker>(notes, controls, programs)),
-      diff(shoop_make_shared<MidiStateDiffTracker>()) {}
-
-typename MidiChannel::TrackedState &
-MidiChannel::TrackedState::operator=(
-    TrackedState const &other) {
-    // We want to track the same source state, yet copy
-    // the cached state contents from the other tracker
-    // so that the diffs may diverge.
-    m_valid = other.m_valid;
-    state->copy_relevant_state(*other.state);
-    diff->set_diff(other.diff->get_diff());
-    diff->reset(other.diff->a(), state, StateDiffTrackerAction::None);
-    return *this;
-}
-
-void
-MidiChannel::TrackedState::start_tracking_from(shoop_shared_ptr<MidiStateTracker> &t) {
-    state->copy_relevant_state(*t);
-    diff->reset(t, state, StateDiffTrackerAction::ClearDiff);
-    m_valid = true;
-}
-
-void
-MidiChannel::TrackedState::start_tracking_from_with_state(shoop_shared_ptr<MidiStateTracker> &to_track,
-                                            shoop_shared_ptr<MidiStateTracker> const& starting_state)
-{
-    auto tmp_diff = shoop_make_shared<MidiStateDiffTracker>();
-    tmp_diff->reset(to_track, starting_state, StateDiffTrackerAction::ScanDiff);
-
-    start_tracking_from(to_track);
-    diff->reset(to_track, state, StateDiffTrackerAction::ClearDiff);
-    diff->set_diff(tmp_diff->get_diff());
-    state->copy_relevant_state(*starting_state);
-
-    m_valid = true;
-}
-
-void
-MidiChannel::TrackedState::reset() {
-    if (state) {
-        state->clear();
-    }
-    if (diff) {
-        diff->reset();
-    }
-    m_valid = false;
-}
-
-bool
-MidiChannel::TrackedState::valid() const { return m_valid; }
-
-void
-MidiChannel::TrackedState::set_valid(bool v) { m_valid = v; }
-
-void
-MidiChannel::TrackedState::resolve_to_output(
-    std::function<void(uint32_t size, uint8_t *data)> send_cb, bool ccs, bool notes, bool programs) {
-    if (m_valid) {
-        diff->resolve_to_a(send_cb, notes, ccs, programs);
-    }
-}
-
 MidiChannel::MidiChannel(uint32_t data_size, shoop_channel_mode_t mode)
     : WithCommandQueue(50),
       mp_playback_target_buffer(std::make_pair(ExternalBufState(), nullptr)),
@@ -106,9 +39,9 @@ MidiChannel::MidiChannel(uint32_t data_size, shoop_channel_mode_t mode)
           shoop_make_shared<MidiStateTracker>(true, true, true)),
       mp_input_midi_state(
           shoop_make_shared<MidiStateTracker>(true, true, true)),
-      mp_recording_start_state_tracker(shoop_make_shared<TrackedState>(true, true, true)),
-      mp_track_state_until_first_msg_playback(shoop_make_shared<TrackedState>(true, true, true)),
-      mp_temp_prerecording_start_state_tracker(shoop_make_shared<TrackedState>(true, true, true)),
+      mp_recording_start_state_tracker(shoop_make_shared<TrackedRelativeMidiState>(true, true, true)),
+      mp_track_state_until_first_msg_playback(shoop_make_shared<TrackedRelativeMidiState>(true, true, true)),
+      mp_temp_prerecording_start_state_tracker(shoop_make_shared<TrackedRelativeMidiState>(true, true, true)),
       ma_n_events_triggered(0), ma_start_offset(0), ma_data_seq_nr(0),
       ma_pre_play_samples(0), mp_prev_pos_after(0), mp_prev_process_flags(0),
       ma_last_played_back_sample(0), ma_prerecord_data_length(0) {
@@ -333,7 +266,7 @@ MidiChannel::PROC_process_input_messages(uint32_t n_samples) {
 void
 MidiChannel::PROC_process_record(Storage &storage,
                          std::atomic<uint32_t> &storage_data_length,
-                         TrackedState &track_start_state, uint32_t record_from,
+                         TrackedRelativeMidiState &track_start_state, uint32_t record_from,
                          uint32_t n_samples) {
     log<log_level_debug_trace>("record {} frames", n_samples);
 
@@ -743,6 +676,17 @@ MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port
              keep_samples_before_start_offset.value_or(99999),
              n,
              get_start_offset());
+        
+        if (auto const& state = midiport->maybe_ringbuffer_tail_state_tracker()) {
+            // What was the ringbuffer tail state should now become the recorded messages
+            // start state of this channel.
+            log<log_level_debug_trace>("adopting ringbuffer state tracker");
+            auto start_state = shoop_make_shared<MidiStateTracker>(true, true, true);
+            start_state->copy_relevant_state(*state);
+            mp_recording_start_state_tracker->
+                start_tracking_from_with_state(mp_input_midi_state, start_state);
+        }
+
         data_changed();
     };
 

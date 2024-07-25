@@ -1,5 +1,7 @@
 #include "MidiPort.h"
+#include "MidiStateTracker.h"
 #include "shoop_globals.h"
+#include "shoop_shared_ptr.h"
 #include "types.h"
 
 MidiWriteableBufferInterface *MidiPort::PROC_get_write_data_into_port_buffer  (uint32_t n_frames) { return nullptr; }
@@ -42,6 +44,10 @@ shoop_shared_ptr<MidiStateTracker> &MidiPort::maybe_midi_state_tracker() {
     return m_maybe_midi_state;
 }
 
+shoop_shared_ptr<MidiStateTracker> &MidiPort::maybe_ringbuffer_tail_state_tracker() {
+    return m_ringbuffer_tail_state;
+}
+
 void MidiPort::PROC_prepare(uint32_t nframes) {
     ma_write_data_into_port_buffer = PROC_get_write_data_into_port_buffer(nframes);
     ma_read_output_data_buffer = PROC_get_read_output_data_buffer(nframes);
@@ -77,7 +83,10 @@ void MidiPort::PROC_process(uint32_t nframes) {
                         procbuf;
     uint32_t n_in_events;
     if (m_midi_ringbuffer) {
-        m_midi_ringbuffer->next_buffer(nframes);
+        m_midi_ringbuffer->next_buffer(nframes,
+            [this](uint32_t time, uint16_t size, const uint8_t *data) {
+                m_ringbuffer_tail_state->process_msg(data);
+            });
     }
     if (count_in_buf) {
         n_in_events = count_in_buf->PROC_get_n_events();
@@ -146,7 +155,10 @@ void MidiPort::PROC_process(uint32_t nframes) {
                 m_maybe_midi_state->process_msg(msg.get_data());
             }
             if (m_midi_ringbuffer) {
-                m_midi_ringbuffer->put(msg.get_time(), msg.get_size(), msg.get_data());
+                m_midi_ringbuffer->put(msg.get_time(), msg.get_size(), msg.get_data(),
+                [this](uint32_t time, uint16_t size, const uint8_t *data) {
+                    m_ringbuffer_tail_state->process_msg(data);
+                });
             }
         }
     }
@@ -162,6 +174,9 @@ MidiPort::MidiPort(
             track_notes, track_controls, track_programs
         );
     }
+    m_ringbuffer_tail_state = shoop_make_shared<MidiStateTracker>(
+        track_notes, track_controls, track_programs
+    );
 }
 
 MidiPort::~MidiPort() {};

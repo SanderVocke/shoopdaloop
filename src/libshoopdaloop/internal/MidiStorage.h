@@ -5,6 +5,8 @@
 #include "shoop_shared_ptr.h"
 #include "MidiBufferInterfaces.h"
 
+typedef std::function<void(uint32_t time, uint16_t size, const uint8_t* data)> DroppedMsgCallback;
+
 // We need a contiguously stored struct that also supports interface inheritance.
 // This cannot really be done in C++, so instead we just make a fixed-size
 // struct that is designed with the knowledge that its data bytes will always
@@ -62,7 +64,9 @@ public:
     uint32_t bytes_free() const;
     uint32_t n_events() const;
 
-    virtual bool append(uint32_t time, uint16_t size,  const uint8_t* data, bool allow_replace=false);
+    virtual bool append(uint32_t time, uint16_t size,  const uint8_t* data,
+                        bool allow_replace=false,
+                        DroppedMsgCallback dropped_msg_cb=nullptr);
     bool prepend(uint32_t time, uint16_t size, const uint8_t* data);
     void copy(MidiStorageBase &to) const;
 };
@@ -136,13 +140,16 @@ public:
     void clear();
 
     // Truncate to a certain point in time
-    void truncate(uint32_t time, TruncateSide side);
+    void truncate(uint32_t time, TruncateSide side, DroppedMsgCallback dropped_msg_cb=nullptr);
 
     // Truncate away any msg for which the given function returns true
-    void truncate_fn(std::function<bool(uint32_t time, uint16_t size, const uint8_t* data)> should_truncate_fn, TruncateSide side);
+    void truncate_fn(std::function<bool(uint32_t time, uint16_t size, const uint8_t* data)> should_truncate_fn,
+                     TruncateSide side, DroppedMsgCallback dropped_msg_cb=nullptr);
 
     void for_each_msg_modify(std::function<void(uint32_t &t, uint16_t &s, uint8_t* data)> cb);
     void for_each_msg(std::function<void(uint32_t t, uint16_t s, uint8_t* data)> cb);
 
-    bool append(uint32_t time, uint16_t size,  const uint8_t* data, bool allow_replace=false) override;
+    bool append(uint32_t time, uint16_t size, const uint8_t* data,
+                bool allow_replace=false,
+                DroppedMsgCallback dropped_msg_cb=nullptr) override;
 };

@@ -1,4 +1,5 @@
 #include "MidiRingbuffer.h"
+#include "MidiStorage.h"
 #include "types.h"
 #include <algorithm>
 #include <cstdint>
@@ -20,7 +21,7 @@ uint32_t MidiRingbuffer::get_n_samples() const {
     return n_samples.load();
 }
 
-void MidiRingbuffer::next_buffer(uint32_t n_frames) {
+void MidiRingbuffer::next_buffer(uint32_t n_frames, DroppedMsgCallback dropped_msg_cb) {
     uint32_t old_end = current_buffer_end_time.load();
     uint32_t new_end = old_end + n_frames;  // Note: may overflow
 
@@ -37,19 +38,20 @@ void MidiRingbuffer::next_buffer(uint32_t n_frames) {
         old_end += shift;
     }
 
-    Storage::truncate(new_end - std::min(n_samples.load(), new_end), Storage::TruncateSide::TruncateTail);
+    Storage::truncate(new_end - std::min(n_samples.load(), new_end),
+                      Storage::TruncateSide::TruncateTail, dropped_msg_cb);
     Storage::template log<log_level_debug_trace>("MidiRingbuffer - next buffer: {} -> {}", old_end, new_end);
     current_buffer_start_time = old_end;
     current_buffer_end_time = new_end;
 }
 
-bool MidiRingbuffer::put(uint32_t frame_in_current_buffer, uint16_t size, const uint8_t* data) {
+bool MidiRingbuffer::put(uint32_t frame_in_current_buffer, uint16_t size, const uint8_t* data, DroppedMsgCallback dropped_msg_cb) {
     uint32_t time = current_buffer_start_time + frame_in_current_buffer;
     if (time > current_buffer_end_time) {
         Storage::template log<log_level_error>("MidiRingbuffer::put: time is out of range");
         return false;
     }
-    auto rval = Storage::append(time, size, data, true);
+    auto rval = Storage::append(time, size, data, true, dropped_msg_cb);
     auto n = Storage::n_events();
     Storage::template log<log_level_debug_trace>("MidiRingbuffer - put at time: {}, # msgs is {}", time, n);
     return rval;

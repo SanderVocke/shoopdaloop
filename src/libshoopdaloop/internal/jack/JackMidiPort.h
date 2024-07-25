@@ -92,7 +92,7 @@ public:
         jack_client_t *client,
         shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker
     ) : GenericJackMidiPort<API>(name, ShoopPortDirection_Output, client, all_ports_tracker),
-        MidiSortingReadWritePort(true, false, false),
+        MidiSortingReadWritePort(true, true, true),
         m_write_buffer(JackMidiWriteBuffer{}) {}
 
     MidiReadableBufferInterface *PROC_internal_read_input_data_buffer (uint32_t nframes) override { return nullptr; }

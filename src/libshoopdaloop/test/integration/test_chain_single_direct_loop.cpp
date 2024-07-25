@@ -393,6 +393,112 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - one cycle", "[chain][midi]") {
     CHECK(contents.recorded_msgs == expect);
 };
 
+TEST_CASE("Chain - Direct adopt MIDI ringbuffer - one cycle with state restore", "[chain][midi]") {
+    SingleDirectLoopTestChain tst;
+    const size_t n_ringbuffer_samples = 20;
+    tst.int_dummy_midi_input_port->set_ringbuffer_n_samples(n_ringbuffer_samples);
+    tst.int_sync_loop->loop->set_length(4, true);
+    loop_transition(tst.api_sync_loop, LoopMode_Playing, -1, -1);
+
+    // Play some note on's and set some control values.
+    std::vector<shoop_types::_MidiMessage> prearm_msgs = {
+        create_noteOn <shoop_types::_MidiMessage>(0, 0,  10, 10), // note 10 played
+        create_noteOn <shoop_types::_MidiMessage>(0, 0,  20, 20), // note 20 played
+        create_noteOn <shoop_types::_MidiMessage>(0, 0,  30, 30), // note 30 played
+        create_cc     <shoop_types::_MidiMessage>(0, 0,  30, 40),  // CC 30 set to 40
+        create_cc     <shoop_types::_MidiMessage>(0, 0,  70, 80),  // CC 70 set to 80
+        create_cc     <shoop_types::_MidiMessage>(0, 0,  90, 100), // CC 90 set to 100
+    };
+    for (auto &msg : prearm_msgs) {
+        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.time, msg.data.data());
+    }
+    // Run these changes all the way through the ringbuffer. They should now be tracked.
+    tst.int_driver->controlled_mode_request_samples(n_ringbuffer_samples * 2);
+    tst.int_driver->controlled_mode_run_request();
+
+    // Process additional ringbuffer samples such that the midi ringbuffer is exactly 6 samples removed
+    // from having integer overflow on its time values.
+    auto const target = std::numeric_limits<uint32_t>::max() - 6;
+    auto ringbuffer = MidiPortTestHelper::get_ringbuffer(*tst.int_dummy_midi_input_port);
+    while (ringbuffer->get_current_end_time() < target) {
+        auto const end_time = ringbuffer->get_current_end_time();
+        auto const process = std::min(512, (int)(target - end_time));
+        ringbuffer->next_buffer(process);
+    }
+
+    // Queue some messages which affect the tracked state during recording.
+    std::vector<shoop_types::_MidiMessage> msgs = {
+        // note: cycle R should be recorded
+        create_noteOff <shoop_types::_MidiMessage>(0, 0,  10, 10), // note 10 off in 1st frame of cycle R - 1
+        create_cc      <shoop_types::_MidiMessage>(3, 0,  30, 20), // CC 30 to 20 in 4th frame of cycle R - 1
+        create_noteOff <shoop_types::_MidiMessage>(4, 0,  20, 20), // note 20 off in 1st frame of cycle R
+        create_cc      <shoop_types::_MidiMessage>(7, 0,  70, 60), // cc 70 to 60 in 4th frame of cycle R
+        create_noteOff <shoop_types::_MidiMessage>(8, 0,  30, 30), // note 30 off in 1st frame of cycle R + 1
+        create_cc      <shoop_types::_MidiMessage>(9, 0,  90, 80), // cc 90 to 80 in 2nd frame of cycle R + 1
+    };
+    for (auto &msg : msgs) {
+        tst.int_dummy_midi_input_port->queue_msg(msg.size, msg.time, msg.data.data());
+    }
+    // Process 8 samples in stopped mode
+    tst.int_driver->controlled_mode_request_samples(10); // Process cycles R-1, R, 2 frames of R+1
+    tst.int_driver->controlled_mode_run_request();
+
+    // Grab the ringbuffer
+    adopt_ringbuffer_contents(tst.api_loop, 1, 1, 0, LoopMode_Unknown);
+    tst.int_driver->controlled_mode_run_request();
+
+    // We should now have captured the messages from cycle R.
+    auto const so = tst.int_midi_chan->get_start_offset();
+    auto contents = tst.int_midi_chan->retrieve_contents(false);
+    CHECK(tst.int_dummy_midi_input_port->get_ringbuffer_n_samples() == n_ringbuffer_samples);
+    CHECK(so == 14);
+    std::vector<shoop_types::_MidiMessage> expect = {
+        at_time(msgs[0], so - 4),
+        at_time(msgs[1], so - 1),
+        at_time(msgs[2], so + 0),
+        at_time(msgs[3], so + 3),
+        at_time(msgs[4], so + 4),
+        at_time(msgs[5], so + 5)
+    };
+    CHECK(contents.recorded_msgs == expect);
+
+    // Now play the recording back. The channel should first restore the state from the prearm messages
+    // before playing back the recorded ones.
+    loop_transition(tst.api_loop, LoopMode_Playing, -1, -1);
+    tst.int_dummy_midi_output_port->request_data(4);
+    tst.int_driver->controlled_mode_request_samples(4);
+    tst.int_driver->controlled_mode_run_request();
+
+    auto result_data = tst.int_dummy_midi_output_port->get_written_requested_msgs();
+    // Split the result into the state-restoring part and the playback part.
+    size_t sz = result_data.size();
+    std::vector<shoop_types::_MidiMessage> state_restore, playback;
+    for(size_t i=0; i<sz; i++) {
+        if (i >= (sz - 2)) {
+            playback.push_back(result_data[i]);
+        } else {
+            state_restore.push_back(result_data[i]);
+        }
+    }
+    std::vector<shoop_types::_MidiMessage> expect_playback = {
+        at_time(msgs[2], 0),
+        at_time(msgs[3], 3)
+    };
+    CHECK(playback == expect_playback);
+    
+    // Check the state restore messages regardless of their order.
+    // We expect:
+    //    - note 20 on
+    //    - note 30 on
+    //    - CC 70 to 80
+    //    - CC 90 to 100
+    CHECK(state_restore.size() == 4);
+    CHECK(std::find(state_restore.begin(), state_restore.end(), prearm_msgs[1]) != state_restore.end());
+    CHECK(std::find(state_restore.begin(), state_restore.end(), prearm_msgs[2]) != state_restore.end());
+    CHECK(std::find(state_restore.begin(), state_restore.end(), prearm_msgs[4]) != state_restore.end());
+    CHECK(std::find(state_restore.begin(), state_restore.end(), prearm_msgs[5]) != state_restore.end());
+};
+
 TEST_CASE("Chain - Direct adopt audio ringbuffer - current cycle", "[chain][audio]") {
     SingleDirectLoopTestChain tst;
 

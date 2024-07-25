@@ -119,7 +119,8 @@ uint32_t MidiStorageBase::n_events() const {
 }
 
 bool MidiStorageBase::append(uint32_t time, uint16_t size,
-                             const uint8_t *data, bool allow_replace) {
+                             const uint8_t *data, bool allow_replace,
+                             DroppedMsgCallback dropped_msg_cb) {
     log<log_level_debug_trace>("append: time {}, size {}", time, size);
 
     uint32_t sz = Elem::total_size_of(size);
@@ -142,6 +143,10 @@ bool MidiStorageBase::append(uint32_t time, uint16_t size,
     while(new_head_nowrap > m_tail_nowrap) {
         auto n = maybe_next_elem_offset(unsafe_at(m_tail));
         if (n.has_value()) {
+            if (dropped_msg_cb) {
+                auto dropped_msg = unsafe_at(m_tail);
+                dropped_msg_cb(dropped_msg->storage_time, dropped_msg->size, dropped_msg->data());
+            }
             auto shift_amount = (n.value() > m_tail) ? n.value() - m_tail : (n.value() + m_data.size()) - m_tail;
             m_tail = (m_tail + shift_amount) % m_data.size();
             m_tail_nowrap += shift_amount;
@@ -165,10 +170,11 @@ bool MidiStorageBase::append(uint32_t time, uint16_t size,
 }
 
 bool MidiStorage::append(uint32_t time, uint16_t size,
-                         const uint8_t *data, bool allow_replace)
+                         const uint8_t *data, bool allow_replace,
+                         DroppedMsgCallback dropped_msg_cb)
 {
     auto tail = MidiStorageBase::m_tail;
-    auto rval = MidiStorageBase::append(time, size, data, allow_replace);
+    auto rval = MidiStorageBase::append(time, size, data, allow_replace, dropped_msg_cb);
     if (rval && MidiStorageBase::m_tail != tail) {
         for (auto &c: m_cursors) {
             if(auto cc = c.lock()) {
@@ -380,16 +386,17 @@ void MidiStorage::clear() {
     MidiStorageBase::clear();
 }
 
-void MidiStorage::truncate(uint32_t time, TruncateSide type) {
+void MidiStorage::truncate(uint32_t time, TruncateSide type, DroppedMsgCallback dropped_msg_cb) {
     ModuleLoggingEnabled<"Backend.MidiStorage">::log<log_level_debug_trace>("truncate to {}", time);
     if (type == TruncateSide::TruncateTail) {
-        return truncate_fn([time](uint32_t t, uint16_t size, const uint8_t* data){ return t < time; }, type);
+        return truncate_fn([time](uint32_t t, uint16_t size, const uint8_t* data){ return t < time; }, type, dropped_msg_cb);
     } else if (type == TruncateSide::TruncateHead) {
-        return truncate_fn([time](uint32_t t, uint16_t size, const uint8_t* data){ return t > time; }, type);
+        return truncate_fn([time](uint32_t t, uint16_t size, const uint8_t* data){ return t > time; }, type, dropped_msg_cb);
     }
 }
 
-void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8_t*)> should_truncate_fn, TruncateSide type) {
+void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8_t*)> should_truncate_fn,
+                  TruncateSide type, DroppedMsgCallback dropped_msg_cb) {
     ModuleLoggingEnabled<"Backend.MidiStorage">::log<log_level_debug_trace>("truncate to function");
     auto prev_n_events = this->m_n_events;
     auto _should_truncate_fn = [this, type, should_truncate_fn](Elem* e) {
@@ -411,10 +418,18 @@ void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8
     if (this->m_n_events > 0) {
         auto cursor = create_cursor();
         if (cursor->valid()) {
-            auto find_result = cursor->find_fn_forward([this, type, _should_truncate_fn](Elem* e) {
-                return type == TruncateSide::TruncateHead ?
+            auto find_result = cursor->find_fn_forward([this, type, _should_truncate_fn, dropped_msg_cb](Elem* e) {
+                // Iterate over messages which will be dropped (if truncating tail)
+                // or remain (if truncating head)
+                auto stop = (type == TruncateSide::TruncateHead) ?
                      _should_truncate_fn(e) :
                     !_should_truncate_fn(e);
+                if (!stop && dropped_msg_cb && type == TruncateSide::TruncateTail) {
+                    if (dropped_msg_cb) {
+                        dropped_msg_cb(e->storage_time, e->size, e->data());
+                    }
+                }
+                return stop;
             });
 
             if (type == TruncateSide::TruncateHead) {
@@ -424,6 +439,14 @@ void MidiStorage::truncate_fn(std::function<bool(uint32_t, uint16_t, const uint8
                 this->m_n_events = new_n;
                 this->m_head = cursor->offset().value();
                 this->m_head_start = cursor->prev_offset().value_or(0);
+                // The rest of the messages will be dropped, so send them to the callback
+                // if needed.
+                if (dropped_msg_cb) {
+                    for (cursor->next(); cursor->valid(); cursor->next()) {
+                        auto *elem = cursor->get();
+                        dropped_msg_cb(elem->storage_time, elem->size, elem->data());
+                    }
+                }
             } else if (type == TruncateSide::TruncateTail) {
                 uint32_t new_tail = find_result.found_valid_elem ? cursor->offset().value() : this->m_head;
                 auto new_n = this->m_n_events - find_result.n_processed;

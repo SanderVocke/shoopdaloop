@@ -112,7 +112,7 @@ class DummyMidiPort : public virtual MidiPort,
                       public MidiWriteableBufferInterface,
                       private ModuleLoggingEnabled<"Backend.DummyMidiPort"> {
 public:
-    using StoredMessage = MidiMessage<uint32_t, uint32_t>;
+    using StoredMessage = MidiMessage<uint32_t, uint16_t>;
     
 private:
 

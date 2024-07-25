@@ -190,7 +190,7 @@ bool DummyMidiPort::write_by_reference_supported() const { return true; }
 bool DummyMidiPort::write_by_value_supported() const { return true; }
 
 DummyMidiPort::DummyMidiPort(std::string name, shoop_port_direction_t direction, shoop_weak_ptr<DummyExternalConnections> external_connections)
-    : MidiPort(true, false, false), DummyPort(name, direction, PortDataType::Midi, external_connections) {
+    : MidiPort(true, true, true), DummyPort(name, direction, PortDataType::Midi, external_connections) {
 }
 
 unsigned DummyMidiPort::input_connectability() const {
