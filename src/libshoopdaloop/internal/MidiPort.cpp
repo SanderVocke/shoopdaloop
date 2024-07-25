@@ -79,6 +79,15 @@ void MidiPort::PROC_process(uint32_t nframes) {
     auto procbuf_outbuf = static_cast<MidiWriteableBufferInterface*>(procbuf);
     bool processed_state = false;
 
+    auto put_in_ringbuf = [this](auto t, auto s, auto d) {
+        if (m_midi_ringbuffer) {
+            m_midi_ringbuffer->put(t, s, d,
+            [this](uint32_t time, uint16_t size, const uint8_t *data) {
+                m_ringbuffer_tail_state->process_msg(data);
+            });
+        }
+    };
+
     auto count_in_buf = read_in_buf ? read_in_buf :
                         procbuf;
     uint32_t n_in_events;
@@ -102,19 +111,21 @@ void MidiPort::PROC_process(uint32_t nframes) {
             // Determine whether processing buffer is separate from our input buffer.
             // If so, we need to move data into the processing buffer manually.
             const bool write_into_procbuf = procbuf && procbuf_inbuf && procbuf_inbuf != read_in_buf;
+            uint32_t size, time;
 
             if (read_in_buf->read_by_reference_supported()) {
                 auto &msg = read_in_buf->PROC_get_event_reference(i);
-                uint32_t size, time;
                 msg.get(size, time, data);
                 if (write_into_procbuf) { procbuf->PROC_write_event_reference(msg); }
             } else {
-                uint32_t size, time;
                 read_in_buf->PROC_get_event_value(i, size, time, data);
                 if (write_into_procbuf) { procbuf->PROC_write_event_value(size, time, data); }
             }
             if(m_maybe_midi_state) {
                 m_maybe_midi_state->process_msg(data);
+            }
+            if (m_midi_ringbuffer) {
+                put_in_ringbuf(time, size, data);
             }
         }
         log<log_level_debug_trace>("processed state changes");
@@ -141,6 +152,9 @@ void MidiPort::PROC_process(uint32_t nframes) {
                     if (!processed_state && m_maybe_midi_state) {
                         m_maybe_midi_state->process_msg(msg.get_data());
                     }
+                    if (!processed_state && m_midi_ringbuffer) {
+                        put_in_ringbuf(msg.get_time(), msg.get_size(), msg.get_data());
+                    }
                 }
                 log<log_level_debug_trace>("processed state changes");
                 processed_state = true;
@@ -155,10 +169,7 @@ void MidiPort::PROC_process(uint32_t nframes) {
                 m_maybe_midi_state->process_msg(msg.get_data());
             }
             if (m_midi_ringbuffer) {
-                m_midi_ringbuffer->put(msg.get_time(), msg.get_size(), msg.get_data(),
-                [this](uint32_t time, uint16_t size, const uint8_t *data) {
-                    m_ringbuffer_tail_state->process_msg(data);
-                });
+                put_in_ringbuf(msg.get_time(), msg.get_size(), msg.get_data());
             }
         }
     }

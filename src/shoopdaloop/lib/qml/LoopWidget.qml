@@ -245,6 +245,8 @@ Item {
         other_loops.forEach(o => o.transition(mode, maybe_delay, maybe_align_to_sync_at))
     }
     function transition(mode, maybe_delay, maybe_align_to_sync_at, include_selected=true) {
+        root.logger.debug(() => (`Transitioning to ${mode} with delay ${maybe_delay} and align to sync at ${maybe_align_to_sync_at}`))
+
         // Do the transition for this loop and all selected loops, if any
         var selected_all = include_selected ? selected_loops : new Set()
         

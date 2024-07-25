@@ -671,8 +671,9 @@ MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port
             set_start_offset((int)buflen - (int)reverse_start_offset.value());
         }
         auto n = mp_storage->n_events();
-        log<log_level_debug_trace>("adopted midi with reverse so {}, keep {} - yielded {} messages, so {}",
+        log<log_level_debug_trace>("adopted midi with reverse so {}, ringbuffer len {}, keep {} - yielded {} messages, so {}",
              reverse_start_offset.value_or(99999),
+             midiport->get_ringbuffer_n_samples(),
              keep_samples_before_start_offset.value_or(99999),
              n,
              get_start_offset());

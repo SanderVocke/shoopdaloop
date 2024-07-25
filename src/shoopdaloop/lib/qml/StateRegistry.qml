@@ -47,6 +47,7 @@ Registry {
         key: 'sync_loop'
     }
     property alias sync_loop : lookup_sync_loop.object
+    onSync_loopChanged: my_logger.debug(() => (`Sync loop: ${sync_loop}`))
 
     RegistryLookup {
         id: lookup_sync_active
@@ -57,6 +58,7 @@ Registry {
     function set_sync_active(val) {
         replace('sync_active', val)
     }
+    onSync_activeChanged: my_logger.debug(() => (`Sync active: ${sync_active}`))
 
     RegistryLookup {
         id: lookup_solo_active
@@ -67,6 +69,7 @@ Registry {
     function set_solo_active(val) {
         replace('solo_active', val)
     }
+    onSolo_activeChanged: my_logger.debug(() => (`Solo active: ${solo_active}`))
 
     RegistryLookup {
         id: lookup_play_after_record_active
@@ -77,6 +80,7 @@ Registry {
     function set_play_after_record_active(val) {
         replace('play_after_record_active', val)
     }
+    onPlay_after_record_activeChanged: my_logger.debug(() => (`Play after record active: ${play_after_record_active}`))
 
     RegistryLookup {
         id: lookup_default_recording_action
@@ -91,6 +95,7 @@ Registry {
         if (['record', 'grab'].includes(v)) { replace('default_recording_action', v); }
         else { my_logger.error(() => `Invalid default recording action: ${v}`) }
     }
+    onDefault_recording_actionChanged: my_logger.debug(() => (`Default recording action: ${default_recording_action}`))
 
     RegistryLookup {
         id: lookup_apply_n_cycles
@@ -101,6 +106,7 @@ Registry {
     function set_apply_n_cycles(val) {
         replace('apply_n_cycles', Math.max(val, 0))
     }
+    onApply_n_cyclesChanged: my_logger.debug(() => (`Apply N cycles: ${apply_n_cycles}`))
 
     RegistryLookup {
         id: lookup_details_open
@@ -111,6 +117,7 @@ Registry {
     function set_details_open(val) {
         replace('details_open', val)
     }
+    onDetails_openChanged: my_logger.debug(() => (`Details open: ${details_open}`))
 
     RegistryLookup {
         id: lookup_targeted_loop
@@ -122,6 +129,7 @@ Registry {
         replace('targeted_loop', maybe_loop)
     }
     function untarget_loop() { set_targeted_loop(null) }
+    onTargeted_loopChanged: my_logger.debug(() => (`Targeted loop: ${targeted_loop}`))
 
     onN_saving_actions_activeChanged: my_logger.debug(() => ('N saving actions active: ' + n_saving_actions_active))
     onN_loading_actions_activeChanged: my_logger.debug(() => ('N loading actions active: ' + n_loading_actions_active))

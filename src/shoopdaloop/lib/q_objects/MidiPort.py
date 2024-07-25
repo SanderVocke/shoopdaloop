@@ -162,12 +162,14 @@ class MidiPort(Port):
                 if idx == None:
                     raise Exception('Could not find self in FX chain')
                 # Now request our backend object.
+                n_ringbuffer = self.n_ringbuffer_samples
                 if not (self.output_connectability & PortConnectability.Internal.value):
                     self._backend_obj = self.backend.get_backend_session_obj().get_fx_chain_midi_input_port(
                         maybe_fx_chain.get_backend_obj(),
                         idx
                     )
                     self.push_state()
+                    self.set_min_n_ringbuffer_samples (n_ringbuffer)
                 else:
                     raise Exception('Input ports (FX outputs) of MIDI type not supported')
 

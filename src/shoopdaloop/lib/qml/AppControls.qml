@@ -2,6 +2,7 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import Qt.labs.platform as LabsPlatform
+import ShoopDaLoop.PythonLogger
 
 import ShoopConstants
 
@@ -23,6 +24,18 @@ Item {
     property alias solo_active : solo_active_button.solo_active
     property alias play_after_record_active : play_after_record_active_button.play_after_record_active
     property var backend : null
+
+    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.AppControls" }
+
+    onSync_activeChanged: {
+        logger.debug("Sync active changed to " + sync_active)
+    }
+    onSolo_activeChanged: {
+        logger.debug("Solo active changed to " + solo_active)
+    }
+    onPlay_after_record_activeChanged: {
+        logger.debug("Play after record active changed to " + play_after_record_active)
+    }
 
     property bool settings_io_enabled: false
 
