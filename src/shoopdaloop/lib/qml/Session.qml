@@ -274,6 +274,10 @@ Rectangle {
             let our_sample_rate = session_backend.get_sample_rate()
             let incoming_sample_rate = descriptor.sample_rate
 
+            if (!schema_validator.validate_schema(descriptor, "Session object", validator.schema, false)) {
+                return;
+            }
+
             if (our_sample_rate != incoming_sample_rate && !ignore_resample_warning) {
                 confirm_sample_rate_convert_dialog.session_filename = filename
                 confirm_sample_rate_convert_dialog.from = incoming_sample_rate
@@ -281,13 +285,6 @@ Rectangle {
                 registries.state_registry.load_action_finished()
                 confirm_sample_rate_convert_dialog.open()
                 return;
-            }
-
-            try {
-                schema_validator.validate_schema(descriptor, validator.schema)
-            } catch(err) {
-                console.log("Failed session schema validation for loaded session descriptor:\n",
-                            "\nobject:\n", JSON.stringify(descriptor, 0, 2), "\nerror:\n", err.message)
             }
             
             if (our_sample_rate != incoming_sample_rate) {
@@ -478,6 +475,7 @@ Rectangle {
             onSaveSession: (filename) => root.save_session(filename)
             onProcessThreadSegfault: session_backend.segfault_on_process_thread()
             onProcessThreadAbort: session_backend.abort_on_process_thread()
+            onOpenConnections: connections_dialog.open()
         }
 
         Item {
@@ -514,6 +512,25 @@ Rectangle {
             }
 
             initial_track_descriptors: root.main_track_descriptors
+
+            ConnectionsDialog {
+                id: connections_dialog
+                title: "All Connections"
+
+                function flatten(arr) {
+                    return arr.reduce((acc, current) => {
+                        return acc.concat(Array.isArray(current) ? flatten(current) : current);
+                    }, []);
+                }
+
+                audio_in_ports : flatten(tracks_widget.tracks.map(t => t.audio_in_ports))
+                audio_out_ports : flatten(tracks_widget.tracks.map(t => t.audio_out_ports))
+                audio_send_ports: flatten(tracks_widget.tracks.map(t => t.audio_send_ports))
+                audio_return_ports: flatten(tracks_widget.tracks.map(t => t.audio_return_ports))
+                midi_in_ports : flatten(tracks_widget.tracks.map(t => t.midi_in_ports))
+                midi_out_ports : flatten(tracks_widget.tracks.map(t => t.midi_out_ports))
+                midi_send_ports: flatten(tracks_widget.tracks.map(t => t.midi_send_ports))
+            }
         }
 
         ResizeableItem {

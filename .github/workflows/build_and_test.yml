@@ -686,7 +686,12 @@ jobs:
       shell: wrap-shell {0}
       run: |
         tree crashdumps
-        cp -r debuginfo crashdumps/debuginfo
+        if [ -e debuginfo ]; then
+          cp -r debuginfo crashdumps/debuginfo
+          echo "found_debuginfo=true" | tee -a $GITHUB_ENV
+        fi
+        mkdir -p debuginfo/breakpad_symbols
+        mkdir -p crashdumps/debuginfo
         for dump in $(find crashdumps -name "*.dmp"); do
           echo ""
           echo "================================================="
@@ -710,7 +715,7 @@ jobs:
       with:
         node-version: 19
     - name: Upload BugSplat debug symbols
-      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
+      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 && env.found_debuginfo == 'true' }}
       uses: SanderVocke/symbol-upload@test_action
       with:
         clientId: "${{ secrets.BUGSPLAT_CLIENT_ID }}"

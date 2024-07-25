@@ -9,6 +9,8 @@ from .ShoopPyObject import *
 from ..session_schemas.session_schemas import validate_session_object
 import json
 from ..logging import *
+import threading
+import copy
 
 # Wraps a back-end port.
 class SchemaValidator(ShoopQObject):
@@ -20,11 +22,29 @@ class SchemaValidator(ShoopQObject):
     ## SLOTS
     ###########
 
-    # Validate a schema. Throws if wrong.
-    @ShoopSlot('QVariant', str)
-    def validate_schema(self, obj, schemaname):
+    # Validate a schema asynchronously.
+    @ShoopSlot('QVariant', str, str, bool, result=bool)
+    def validate_schema(self, obj, obj_desc, schemaname, asynchronous):
         _obj = obj
         if isinstance(obj, QJSValue):
             _obj = obj.toVariant()
-        self.logger.trace(lambda: "Validating against {}: {}".format(schemaname, json.dumps(_obj, indent=2)))
-        validate_session_object(_obj, schemaname)
+            
+        if type(_obj) not in [list, dict]:
+            self.logger.error(lambda: f"Cannot validate a non-list/dict object: {type(_obj)}")
+            
+        cpy = copy.deepcopy(_obj)
+        obj_desc_copy = copy.deepcopy(obj_desc)
+        schemaname_copy = copy.deepcopy(schemaname)
+        def validate_fn(obj=cpy, obj_desc=obj_desc_copy, schemaname=schemaname_copy):
+            try:
+                self.logger.trace(lambda: f"Validating against {schemaname}: {json.dumps(obj, indent=2)}")
+                validate_session_object(obj, schemaname)
+                return True
+            except Exception as e:
+                self.logger.error(lambda: f"Error validating {obj_desc} against {schemaname}: {e}")
+                return False
+        
+        if asynchronous:
+            threading.Thread(target=validate_fn).start()
+            return True
+        return validate_fn()

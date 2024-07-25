@@ -15,6 +15,7 @@ Item {
     signal loadSession(string filename)
     signal processThreadSegfault()
     signal processThreadAbort()
+    signal openConnections()
 
     property bool loading_session : false
     property bool saving_session : false
@@ -46,6 +47,10 @@ Item {
             Menu {
                 id: mainmenu
 
+                ShoopMenuItem {
+                    text: "Connections"
+                    onClicked: { root.openConnections() }
+                }
                 ShoopMenuItem {
                     text: "Save session"
                     onClicked: { savesessiondialog.open() }
@@ -424,6 +429,12 @@ Item {
 
             value: registries.state_registry.apply_n_cycles
             from: -1
+
+            editable: true
+            valueFromText: function(text, locale) { 
+                release_focus_notifier.notify()
+                return Number.fromLocaleString(locale, text);
+            }
 
             onValueModified: {
                 if (value != registries.state_registry.apply_n_cycles) {
