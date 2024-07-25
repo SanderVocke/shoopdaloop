@@ -371,7 +371,7 @@ void AudioChannel<SampleT>::adopt_ringbuffer_contents(
     }
     auto audioport = shoop_dynamic_pointer_cast<AudioPort<SampleT>>(from_port);
     if (!audioport) {
-        log<log_level_error>("Cannot adopt ringbuffer from non-audio port");
+        log<log_level_error>("Cannot adopt audio ringbuffer from non-audio port");
         return;
     }
 

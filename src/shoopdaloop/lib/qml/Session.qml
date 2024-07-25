@@ -523,13 +523,15 @@ Rectangle {
                     }, []);
                 }
 
-                audio_in_ports : flatten(tracks_widget.tracks.map(t => t.audio_in_ports))
-                audio_out_ports : flatten(tracks_widget.tracks.map(t => t.audio_out_ports))
-                audio_send_ports: flatten(tracks_widget.tracks.map(t => t.audio_send_ports))
-                audio_return_ports: flatten(tracks_widget.tracks.map(t => t.audio_return_ports))
-                midi_in_ports : flatten(tracks_widget.tracks.map(t => t.midi_in_ports))
-                midi_out_ports : flatten(tracks_widget.tracks.map(t => t.midi_out_ports))
-                midi_send_ports: flatten(tracks_widget.tracks.map(t => t.midi_send_ports))
+                property var tracks: [sync_loop_loader.track_widget].concat(tracks_widget.tracks)
+
+                audio_in_ports : flatten(tracks.map(t => t.audio_in_ports))
+                audio_out_ports : flatten(tracks.map(t => t.audio_out_ports))
+                audio_send_ports: flatten(tracks.map(t => t.audio_send_ports))
+                audio_return_ports: flatten(tracks.map(t => t.audio_return_ports))
+                midi_in_ports : flatten(tracks.map(t => t.midi_in_ports))
+                midi_out_ports : flatten(tracks.map(t => t.midi_out_ports))
+                midi_send_ports: flatten(tracks.map(t => t.midi_send_ports))
             }
         }
 

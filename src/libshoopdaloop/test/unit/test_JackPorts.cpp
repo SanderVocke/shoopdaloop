@@ -1,11 +1,13 @@
 #include "JackAudioMidiDriver.h"
 #include "MidiMessage.h"
 #include "AudioPort.h"
+#include "MidiStorage.h"
 #include "catch2/catch_approx.hpp"
 #include <catch2/catch_test_macros.hpp>
 #include <jack/midiport.h>
 #include <memory>
 #include "helpers.h"
+#include "shoop_shared_ptr.h"
 
 std::unique_ptr<JackTestAudioMidiDriver> open_test_driver() {
     JackTestApi::internal_reset_api();
@@ -389,6 +391,44 @@ TEST_CASE("Ports - Jack Midi In - Note Tracker", "[JackPorts][ports][midi]") {
     port->PROC_process(1);
     CHECK(port->get_n_input_notes_active() == 0);
 }
+
+TEST_CASE("Ports - Jack Midi In - get ringbuffer data", "[JackPorts][ports][midi]") {
+    auto driver = open_test_driver();
+    auto port = driver->open_midi_port("test", ShoopPortDirection_Input);
+    port->set_ringbuffer_n_samples(1024);
+    auto &internal_port = JackTestApi::internal_port_data((jack_port_t*)port->maybe_driver_handle());
+    using Msg = MidiMessage<uint32_t, uint32_t>;
+
+    CHECK(port->get_n_input_notes_active() == 0);
+
+    std::vector<Msg> in = {
+        create_noteOn<Msg>(0, 0, 100, 127),
+        create_noteOn<Msg>(0, 0, 110, 127),
+        create_noteOff<Msg>(0, 0, 100, 127),
+        create_noteOff<Msg>(0, 0, 110, 127)
+    };
+
+    internal_port.midi_buffer = in;
+    port->PROC_prepare(1);
+    port->PROC_process(1);
+
+    auto s = shoop_make_shared<MidiStorage>(2048);
+    port->PROC_snapshot_ringbuffer_into(*s);
+    std::vector<Msg> out;
+    auto cursor = s->create_cursor();
+    while (cursor->valid()) {
+        auto elem = cursor->get();
+        out.push_back(Msg(
+            elem->storage_time,
+            elem->size,
+            std::vector<uint8_t>(elem->data(), elem->data() + elem->size)
+        ));
+        cursor->next();
+        if(cursor->is_at_start()) { break; }
+    }
+
+    CHECK(out == in);
+};
 
 TEST_CASE("Ports - Jack Midi Out - Properties", "[JackPorts][ports][midi]") {
     auto driver = open_test_driver();

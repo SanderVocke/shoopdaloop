@@ -2,6 +2,7 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import Qt.labs.platform as LabsPlatform
+import ShoopDaLoop.PythonLogger
 
 import ShoopConstants
 
@@ -23,6 +24,18 @@ Item {
     property alias solo_active : solo_active_button.solo_active
     property alias play_after_record_active : play_after_record_active_button.play_after_record_active
     property var backend : null
+
+    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.AppControls" }
+
+    onSync_activeChanged: {
+        logger.debug("Sync active changed to " + sync_active)
+    }
+    onSolo_activeChanged: {
+        logger.debug("Solo active changed to " + solo_active)
+    }
+    onPlay_after_record_activeChanged: {
+        logger.debug("Play after record active changed to " + play_after_record_active)
+    }
 
     property bool settings_io_enabled: false
 
@@ -339,13 +352,13 @@ Item {
             id: play_after_record_active_button
             height: 40
             width: 30
-            property bool play_after_record_active_base: registries.state_registry.play_after_record_active
-            onClicked: registries.state_registry.set_play_after_record_active(!play_after_record_active_base)
-            property bool play_after_record_active : {
-                var rval = play_after_record_active_base
-                if (key_modifiers.alt_pressed) { rval = !rval }
-                return rval
-            }
+
+            property bool inverted : key_modifiers.alt_pressed
+            property bool state : true
+            property bool play_after_record_active : inverted ? !state : state
+
+            onPlay_after_record_activeChanged: registries.state_registry.set_play_after_record_active(play_after_record_active)
+            Component.onCompleted: registries.state_registry.set_play_after_record_active(play_after_record_active)
 
             highlighted : play_after_record_active
 
@@ -380,13 +393,13 @@ Item {
             id: sync_active_button
             height: 40
             width: 30
-            property bool sync_active_base: registries.state_registry.sync_active
-            onClicked: registries.state_registry.set_sync_active(!sync_active_base)
-            property bool sync_active : {
-                var rval = sync_active_base
-                if (key_modifiers.control_pressed) { rval = !rval }
-                return rval
-            }
+            
+            property bool inverted : key_modifiers.control_pressed
+            property bool state : true
+            property bool sync_active : inverted ? !state : state
+
+            onSync_activeChanged: registries.state_registry.set_sync_active(sync_active)
+            Component.onCompleted: registries.state_registry.set_sync_active(sync_active)
 
             highlighted : sync_active
 
@@ -403,13 +416,13 @@ Item {
             id: solo_active_button
             height: 40
             width: 30
-            property bool solo_active_base: registries.state_registry.solo_active
-            onClicked: registries.state_registry.set_solo_active(!solo_active_base)
-            property bool solo_active : {
-                var rval = solo_active_base
-                if (key_modifiers.shift_pressed) { rval = !rval }
-                return rval
-            }
+
+            property bool inverted : key_modifiers.shift_pressed
+            property bool state : false
+            property bool solo_active : inverted ? !state : state
+
+            onSolo_activeChanged: registries.state_registry.set_solo_active(solo_active)
+            Component.onCompleted: registries.state_registry.set_solo_active(solo_active)
 
             highlighted : solo_active
 
@@ -449,12 +462,6 @@ Item {
                 text: "If set, recording actions will run for the specified fixed amount of cycles."
             }
         }
-    }
-
-    RegistryLookup {
-        id: registry_lookup
-        registry: registries.state_registry
-        key: 'midi_control_port'
     }
 
     SettingsDialog {

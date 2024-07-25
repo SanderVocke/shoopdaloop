@@ -1,17 +1,19 @@
 #pragma once
-#include <sstream>
-#include <vector>
-#include <stdio.h>
-#include <functional>
 #include "LoopInterface.h"
 #include "MidiBufferInterfaces.h"
 #include "MidiPort.h"
 #include "MidiMessage.h"
-#include <cstring>
 #include "LoggingBackend.h"
 #include "midi_helpers.h"
 #include "types.h"
 #include "libshoopdaloop.h"
+
+#include <sstream>
+#include <vector>
+#include <stdio.h>
+#include <functional>
+#include <cstring>
+
 #include <catch2/catch_test_macros.hpp>
 
 template<typename S>
@@ -36,14 +38,14 @@ template<typename Channel, typename S>
 void for_channel_elems(Channel &chan, std::function<void(uint32_t,S const&)> fn,
                    int start=0, int n=-1) {
     if(n < 0) { n = chan.get_length() - start; }
-    
+
     auto elems = chan.get_data(false);
     for(uint32_t idx=start; idx < (start+n); idx++) {
         fn(idx, elems[idx]);
     }
 }
 
-typedef MidiMessage<uint32_t, uint32_t> Msg;
+typedef MidiMessage<uint32_t, uint16_t> Msg;
 class MidiTestBuffer : public MidiReadableBufferInterface,
                        public MidiWriteableBufferInterface {
 public:
@@ -105,6 +107,15 @@ inline Message create_noteOff(uint32_t time, uint8_t channel, uint8_t note, uint
 }
 
 template<typename Message>
+inline Message create_cc(uint32_t time, uint8_t channel, uint8_t cc_num, uint8_t value) {
+    Message rval;
+    rval.time = time;
+    rval.data = cc(channel, cc_num, value);
+    rval.size = rval.data.size();
+    return rval;
+}
+
+template<typename Message>
 inline shoop_midi_sequence_t *convert_midi_msgs_to_api(std::vector<Message> &msgs) {
     auto sequence = alloc_midi_sequence(msgs.size());
     sequence->length_samples = msgs.back().time + 1;
@@ -160,4 +171,42 @@ inline std::string stringify_msg(MidiSortableMessageInterface &m) {
 
 inline void CHECK_MSGS_EQUAL(MidiSortableMessageInterface &a, MidiSortableMessageInterface &b) {
     CHECK(stringify_msg(a) == stringify_msg(b));
+}
+
+namespace Catch {
+    template<>
+    struct StringMaker<std::vector<uint8_t>> {
+        static std::string convert(const std::vector<uint8_t>& vec) {
+            std::ostringstream oss;
+            oss << "[";
+            for (size_t i=0; i<vec.size(); i++) {
+                if (i>0) { oss << ", "; }
+                oss << (int)vec[i];
+            }
+            oss << "]";
+            return oss.str();
+        }
+    };
+
+    template<>
+    struct StringMaker<MidiMessage<uint32_t, uint16_t>> {
+        static std::string convert(const MidiMessage<uint32_t, uint16_t>& e) {
+            std::ostringstream oss;
+            oss << "{ t:" << e.time << ", s:" << e.size << ", d:" << StringMaker<std::vector<uint8_t>>::convert(e.data) << " }";
+            return oss.str();
+        }
+    };
+
+    template<>
+    struct StringMaker<std::vector<MidiMessage<uint32_t, uint16_t>>> {
+        static std::string convert(const std::vector<MidiMessage<uint32_t, uint16_t>>& vec) {
+            std::ostringstream oss;
+            oss << "[\n";
+            for (auto &e : vec) {
+                oss << "  " << StringMaker<MidiMessage<uint32_t, uint16_t>>::convert(e) << "\n";
+            }
+            oss << "]";
+            return oss.str();
+        }
+    };
 }

@@ -8,7 +8,9 @@ set(TEST_RUNNER_SOURCES
     unit/test_DummyPorts.cpp
     unit/test_InternalAudioPort.cpp
     unit/test_BufferQueue.cpp
+    unit/test_MidiChannel.cpp
     unit/test_MidiStorage.cpp
+    unit/test_MidiRingbuffer.cpp
     integration/test_libshoopdaloop_if.cpp
     integration/test_synced_BasicLoops.cpp
     integration/test_chain_single_direct_loop.cpp
