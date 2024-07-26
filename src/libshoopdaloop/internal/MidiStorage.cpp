@@ -86,7 +86,7 @@ void MidiStorageBase::store_unsafe(uint32_t offset,
     auto const total_size = Elem::total_size_of(s);
     log<log_level_debug_trace>("store unsafe: offset {}, time {}, size {}, stored size {}, filler {}", offset, t, s, total_size, n_filler);
     memcpy((void *)to, (void *)&elem, meta_size);
-    void *data_ptr = (void*)to + meta_size;
+    void *data_ptr = (void*)((uint8_t*)to + meta_size);
     memcpy(data_ptr, d, data_size);
     to->offset_to_next = total_size + n_filler;
 }
