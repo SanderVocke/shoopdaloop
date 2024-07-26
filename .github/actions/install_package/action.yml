@@ -114,6 +114,7 @@ runs:
     if: ${{ steps.get_type.outputs.type == 'pacman' }}
     shell: wrap-shell {0}
     run: |
+      ${{ env.maybe_sudo }} pacman -Syy --noconfirm
       ${{ env.maybe_sudo }} pacman -Uv --noconfirm ${{ inputs.package }}
       ${{ env.maybe_sudo }} pacman -Q shoopdaloop
       ${{ env.maybe_sudo }} pacman -Ql shoopdaloop
