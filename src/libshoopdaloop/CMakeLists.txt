@@ -30,14 +30,14 @@ if(ENABLE_ASAN)
         set(ASAN_DSO ${CMAKE_MATCH_1})
         message("Found that libasan.so is a linker script pointing to ${ASAN_DSO}.")
       endif()
+      set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
+      set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
+      get_filename_component(ASAN_DSO_REALPATH ${ASAN_DSO} REALPATH)
+      install(FILES ${ASAN_DSO_REALPATH}
+              EXCLUDE_FROM_ALL
+              COMPONENT package_install
+              DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
     endif()
-    set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
-    set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
-    get_filename_component(ASAN_DSO_REALPATH ${ASAN_DSO} REALPATH)
-    install(FILES ${ASAN_DSO_REALPATH}
-            EXCLUDE_FROM_ALL
-            COMPONENT package_install
-            DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
 endif()
 option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling" ON)
 if(ENABLE_PROCESS_PROFILING)
