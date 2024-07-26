@@ -49,25 +49,25 @@ Note however that having automated testing with high coverage is among the proje
 
 To summarize why ShoopDaLoop exists and what the goals and plans are, a short comparison table with similar open-source software gives a good picture. Of course, the devil is in the details: the other listed software is great and in many ways different and better. The aim here is not to take away from them in any way.
 
-|                             | ShoopDaLoop               | SooperLooper     | Luppp                  | Ardour                   |
-|-----------------------------|---------------------------|------------------|------------------------|--------------------------|
-| OS                          | Linux <sup>(2)</sup>      | Linux, Mac       | Linux                    | Linux, Mac, Windows    |
-| MIDI looping                | ✅                        | ❌              | ❌                       | ✅                      |
-| Audio+MIDI co-recording     | ✅                        | ❌              | ❌                       | ?                      |
-| Audio dry+wet co-recording  | ✅                        | manual setup     | ✅                      | ?                      |
-| Loop Organization           | Grid                      | Separate loopers | Grid                     | Grid                   |
-| Scenes support              | ✅ (5)                    | ❌              | ✅ (grid row = scene)    | ?                      |
-| Designed for live use       | ✅                        | ✅               | ✅                      | ❌                      |
-| Plugin Host                 | ✅ <sup>(1)</sup>         | ❌               | ❌                      | ✅                      |
-| Song/performance sequencing | ✅ <sup>(4)</sup>         | ❌               | ❌                      | ✅ (not sure of details) |
+|                             | ShoopDaLoop                        | SooperLooper     | Luppp                  | Ardour                   |
+|-----------------------------|------------------------------------|------------------|------------------------|--------------------------|
+| OS                          | Linux, Mac, Windows <sup>(2)</sup> | Linux, Mac       | Linux                    | Linux, Mac, Windows    |
+| MIDI looping                | ✅                                 | ❌              | ❌                       | ✅                      |
+| Audio+MIDI co-recording     | ✅                                 | ❌              | ❌                       | ?                      |
+| Audio dry+wet co-recording  | ✅                                 | manual setup     | ✅                      | ?                      |
+| Loop Organization           | Grid                                | Separate loopers | Grid                     | Grid                   |
+| Scenes support              | ✅ (5)                             | ❌              | ✅ (grid row = scene)    | ?                      |
+| Designed for live use       | ✅                                 | ✅               | ✅                      | ❌                      |
+| Plugin Host                 | ✅ <sup>(1)</sup>                  | ❌               | ❌                      | ✅                      |
+| Song/performance sequencing | ✅ <sup>(4)</sup>                  | ❌               | ❌                      | ✅ (not sure of details) |
 | MIDI controller support     | ✅ (learn / script) <sup>(6)</sup> | ✅ (MIDI learn)  | ✅ (not sure of method) | ✅ (not sure of method) |
-| NSM Session Management      | ✅                        | ✅               | ✅                      | ✅                      |
-| Overdubbing                 | ❌ (planned)              | ✅               | ✅                      | ?                      |
-| Plugin scripts              | ✅ <sup>(3)</sup>         | ❌               | ❌                      | ✅                     |
-| Transport/tempo system      | None (trigger on sync loop) | None             | JACK transport / MIDI beats | ? |
+| NSM Session Management      | ✅                                 | ✅               | ✅                      | ✅                      |
+| Overdubbing                 | ❌ (planned)                       | ✅               | ✅                      | ?                      |
+| Plugin scripts              | ✅ <sup>(3)</sup>                  | ❌               | ❌                      | ✅                     |
+| Transport/tempo system      | None (trigger on sync loop)        | None             | JACK transport / MIDI beats | ? |
 
 (1): ShoopDaLoop has built-in support to host Carla through LV2, relying on Carla as a proxy to support other plugin types such as VST(3).<br>
-(2): Focus is on Linux for now until it is reasonably feature-complete. Windows and Mac builds already available, but not useful yet due to lacking audio and plugin support.<br>
+(2): Windows and Mac work, although the only supported back-end is JACK audio, which is non-standard on Windows / Mac. <br>
 (3): ShoopDaLoop plug-in scripts are written in LUA. Currently the main goal is to support deep MIDI controller integrations and custom keyboard control scripts and opening/managing additional MIDI control ports. Future goals could be integration with the future song/performance sequencer or integration with the outside world by e.g. network.<br>
 (4): ShooDaLoop supports "composite loops", allowing you to combine sequences of loops into other loops hierarchically. Through this method, complex sequences and simple songs can be constructed.<br>
 (5): See (4): composite loops can be used as scenes.<br>
