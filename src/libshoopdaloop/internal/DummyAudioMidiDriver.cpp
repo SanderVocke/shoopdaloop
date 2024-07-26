@@ -86,13 +86,13 @@ DummyAudioPort::~DummyAudioPort() { DummyPort::close(); }
 
 void DummyAudioPort::PROC_process(uint32_t n_frames) {
     AudioPort<audio_sample_t>::PROC_process(n_frames);
-    
+
     auto buf = PROC_get_buffer(n_frames);
     uint32_t to_store = std::min(n_frames, m_n_requested_samples.load());
     if (to_store > 0) {
         log<log_level_debug>("Buffering {} samples ({} total)", to_store, m_retained_samples.size() + to_store);
         if (should_log<log_level_debug_trace>()) {
-            std::array<audio_sample_t, 16> arr;
+            std::array<audio_sample_t, 16> arr {};
             std::copy(buf, buf+std::min(to_store, (uint32_t)16), arr.begin());
             log<log_level_debug_trace>("--> first 16 buffered samples: {}", arr);
         }
@@ -182,7 +182,7 @@ void DummyMidiPort::PROC_write_event_reference(
 {
     uint32_t t = m.get_time();
     ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Write midi message reference @ {}", t);
-    PROC_write_event_value(m.get_size(), m.get_time(), m.get_data());    
+    PROC_write_event_value(m.get_size(), m.get_time(), m.get_data());
 }
 
 bool DummyMidiPort::write_by_reference_supported() const { return true; }
@@ -536,7 +536,7 @@ void DummyExternalConnections::add_external_mock_port(std::string name, shoop_po
 
 void DummyExternalConnections::remove_external_mock_port(std::string name) {
     auto new_end = std::remove_if(m_external_mock_ports.begin(), m_external_mock_ports.end(), [name](auto &a) { return a.name == name; });
-    
+
     if(!(new_end == m_external_mock_ports.end())) {
         m_external_mock_ports.erase(new_end, m_external_mock_ports.end());
         // Remove connections also

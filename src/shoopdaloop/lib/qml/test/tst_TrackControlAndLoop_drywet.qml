@@ -59,7 +59,7 @@ ShoopTestFile {
             function midi_channel() {
                 return lut.get_midi_channels()[0]
             }
-            
+
             function tut_control() {
                 return tut.control_widget
             }
@@ -601,7 +601,6 @@ ShoopTestFile {
                         0,
                         0
                     ]
-                    console.log(JSON.stringify(synthed), JSON.stringify(synthed_chan))
 
                     midi_input_port.dummy_clear_queues()
 

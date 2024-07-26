@@ -55,7 +55,7 @@ MidiStorageBase::maybe_next_elem_offset(Elem *e) const {
     }
     uint32_t m_data_offset = (uint8_t *)e - (uint8_t *)m_data.data();
     uint32_t next_m_data_offset =
-        (m_data_offset + Elem::total_size_of(e->size)) % m_data.size();
+        (m_data_offset + e->offset_to_next) % m_data.size();
 
     if (!valid_elem_at(next_m_data_offset)) {
         return std::nullopt;
@@ -75,14 +75,20 @@ uint32_t MidiStorageBase::bytes_size() const {
 
 void MidiStorageBase::store_unsafe(uint32_t offset,
                                     uint32_t t, uint16_t s,
-                                    const uint8_t *d) {
-    static Elem elem;
+                                    const uint8_t *d,
+                                    uint16_t n_filler) {
+    Elem elem;
     elem.size = s;
     elem.proc_time = elem.storage_time = t;
-    uint8_t *to = &(m_data.at(offset));
-    memcpy((void *)to, (void *)&elem, sizeof(Elem));
-    void *data_ptr = to + sizeof(Elem);
-    memcpy(data_ptr, d, s);
+    Elem *to = (Elem*)&(m_data.at(offset));
+    auto const data_size = (size_t)s;
+    auto const meta_size = Elem::total_size_of(0);
+    auto const total_size = Elem::total_size_of(s);
+    log<log_level_debug_trace>("store unsafe: offset {}, time {}, size {}, stored size {}, filler {}", offset, t, s, total_size, n_filler);
+    memcpy((void *)to, (void *)&elem, meta_size);
+    void *data_ptr = (void*)((uint8_t*)to + meta_size);
+    memcpy(data_ptr, d, data_size);
+    to->offset_to_next = total_size + n_filler;
 }
 
 MidiStorageBase::MidiStorageBase(uint32_t data_size)
@@ -135,37 +141,73 @@ bool MidiStorageBase::append(uint32_t time, uint16_t size,
     }
 
     int new_head_nowrap = (int)(m_head + sz);
-    int m_tail_nowrap = (m_tail < m_head) ? (int)(m_tail + bytes_capacity()) : (int)m_tail;
-    auto new_n_events = m_n_events + 1;
+    int m_next_tail_nowrap = (m_tail < m_head) ? (int)(m_tail + bytes_capacity()) : (int)m_tail;
+    auto new_n_events = m_n_events;
 
     // if we are crossing our own tail, remove message(s) from the tail side
     uint32_t n_removed = 0;
-    while(new_head_nowrap > m_tail_nowrap) {
+    while(new_head_nowrap > m_next_tail_nowrap) {
         auto n = maybe_next_elem_offset(unsafe_at(m_tail));
         if (n.has_value()) {
+            auto const next_offset = n.value();
             if (dropped_msg_cb) {
                 auto dropped_msg = unsafe_at(m_tail);
                 dropped_msg_cb(dropped_msg->storage_time, dropped_msg->size, dropped_msg->data());
             }
-            auto shift_amount = (n.value() > m_tail) ? n.value() - m_tail : (n.value() + m_data.size()) - m_tail;
+            auto shift_amount = (next_offset > m_tail) ?
+                                 next_offset - m_tail :
+                                (next_offset + m_data.size()) - m_tail;
             m_tail = (m_tail + shift_amount) % m_data.size();
-            m_tail_nowrap += shift_amount;
+            m_next_tail_nowrap += shift_amount;
             new_n_events -= 1;
             n_removed += 1;
         } else {
             break;
         }
     }
-    if (n_removed > 0) {
-        log<log_level_debug_trace>("append: removed {} messages to make space", n_removed);
+
+    // It could be that even though we freed up enough bytes, the free bytes
+    // are spanning the boundary of the buffer. To handle this case, add filler
+    // to our current head such that the next element will appear at the buffer
+    // start, and re-do the procedure.
+    auto const new_head = new_head_nowrap % m_data.size();
+    if (new_head > 0 && new_head < m_head) {
+        auto const prev_free = bytes_free();
+        log<log_level_debug_trace>("append: freed up space crosses buffer boundary, adding filler");
+        auto const new_offset_to_next = m_data.size() - m_head_start;
+        auto const prev_offset_to_next = unsafe_at(m_head_start)->offset_to_next;
+        unsafe_at(m_head_start)->offset_to_next = new_offset_to_next;
+        m_head = 0;
+        while (sz >= m_tail) {
+            log<log_level_debug_trace>("append: removing additional message to make space after adding filler");
+            // Adding filler caused us to cross our tail, remove one element.
+            if (dropped_msg_cb) {
+                auto dropped_msg = unsafe_at(m_tail);
+                dropped_msg_cb(dropped_msg->storage_time, dropped_msg->size, dropped_msg->data());
+            }
+            m_tail = (m_tail + unsafe_at(m_tail)->offset_to_next) % m_data.size();
+            n_removed += 1;
+            new_n_events -= 1;
+            // FIXME test
+        }
+        if (n_removed > 0) {
+            log<log_level_debug_trace>("append: removed {} messages to make space", n_removed);
+        }
+
+        m_n_events = new_n_events;
+        return append(time, size, data, allow_replace, dropped_msg_cb);
     }
 
     m_head_start = m_head;
     m_head = new_head_nowrap % m_data.size();
+
+    store_unsafe(m_head_start, time, size, data, 0);
+    new_n_events += 1;
     m_n_events = new_n_events;
 
-    store_unsafe(m_head_start, time, size, data);
-
+    if (n_removed > 0) {
+        log<log_level_debug_trace>("append: removed {} messages to make space", n_removed);
+    }
     return true;
 }
 
@@ -189,6 +231,7 @@ bool MidiStorageBase::prepend(uint32_t time, uint16_t size,
                               const uint8_t *data) {
     uint32_t sz = Elem::total_size_of(size);
     if (sz > bytes_free()) {
+        log<log_level_debug_trace>("Prepend: buffer full");
         return false;
     }
     if (m_n_events > 0 && unsafe_at(m_tail)->get_time() < time) {
@@ -198,20 +241,30 @@ bool MidiStorageBase::prepend(uint32_t time, uint16_t size,
     }
 
     int new_tail = (int)m_tail - (int)sz;
-    m_tail =
-        new_tail < 0 ? (uint32_t)(new_tail + m_data.size()) : (uint32_t)new_tail;
+    uint16_t n_filler = 0;
+    if (new_tail < 0) {
+        new_tail = m_data.size() - (int)sz;
+        if (new_tail < 0) {
+            log<log_level_debug_trace>("Message too big to prepend");
+            return false;
+        }
+        auto const new_offset = (m_data.size() - new_tail) + m_tail;
+        n_filler = new_offset - sz;
+        if((sz + n_filler) > bytes_free()) {
+            log<log_level_debug_trace>("Prepend: buffer full (filler)");
+            return false;
+        }
+    }
+    m_tail = (uint32_t) new_tail;
     m_n_events++;
-
-    store_unsafe(m_tail, time, size, data);
+    store_unsafe(m_tail, time, size, data, n_filler);
 
     return true;
 }
 
 void MidiStorageBase::copy(
     MidiStorageBase &to) const {
-    if (to.m_data.size() < m_data.size()) {
-        to.m_data.resize(m_data.size());
-    }
+    to.m_data.resize(m_data.size());
     if (m_head >= m_tail) {
         memcpy((void *)(to.m_data.data()), (void *)&(m_data.at(m_tail)),
                m_head - m_tail);
@@ -266,7 +319,7 @@ void MidiStorageCursor::reset() {
         log<log_level_debug_trace>("reset: no events, invalidating");
         invalidate();
     } else {
-        log<log_level_debug_trace>("reset: resetting to tail");
+        log<log_level_debug_trace>("reset: resetting to tail {}", m_storage->m_tail);
         m_offset = m_storage->m_tail;
         m_prev_offset = std::nullopt;
     }
@@ -291,6 +344,7 @@ MidiStorageCursor::get_prev() const {
 void MidiStorageCursor::next() {
     auto next_offset = m_storage->maybe_next_elem_offset(get());
     if (next_offset.has_value()) {
+        log<log_level_debug_trace>("cursor moving to next: {}", next_offset.value());
         m_prev_offset = m_offset;
         m_offset = next_offset;
     } else {
