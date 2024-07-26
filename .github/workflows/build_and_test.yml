@@ -484,32 +484,38 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: windows_release
-          #   os: windows-2022
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container_image: null
-          #   prepare: 'windows'
-          #   build_type: 'Release'
-          #   pyinstaller: true
-          #   package_kind: innosetup
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          #   upload_release_assets: true
-          # - name: windows_debug
-          #   os: windows-2022
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container_image: null
-          #   prepare: 'windows'
-          #   build_type: 'Debug'
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          - name: windows_release
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            build_type: 'Release'
+            pyinstaller: true
+            package_kind: innosetup
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+            upload_release_assets: true
+          - name: windows_debug
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            build_type: 'Debug'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           - name: windows_asan
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            build_type: 'Debug'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
             # Note: ASAN build does not have a test because it is not trivial to deploy
             # an asan-built program on another system. The build is here to ensure the
             # build process still works. To use ASAN, compile like this natively.
-            build_type: 'Debug'
             cmake_opts: '"ENABLE_ASAN" = "On"'
-    runs-on: ${{ matrix.kind.os}}
+    runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
     container:
       image: ${{ matrix.kind.container_image }}
