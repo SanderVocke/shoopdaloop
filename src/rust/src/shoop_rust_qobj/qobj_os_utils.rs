@@ -7,7 +7,6 @@ pub mod qobject {
 
     unsafe extern "RustQt" {
         #[qobject]
-        // #[qml_element]
         type OSUtils = super::OSUtilsRust;
     }
 
@@ -54,7 +53,29 @@ impl qobject::OSUtils {
     pub fn get_env_var(self: &qobject::OSUtils, var: &QString) -> QString {
         match env::var(var.to_string()) {
             Ok (value) => return QString::from(&value),
-            Err(_value) => return QString::from(""),
+            Err(_value) => return QString::default(),
         }
     }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_invalid_env_var() {
+        let os_utils = OSUtilsRust::default();
+        assert!(os_utils.get_env_var(&QString::from("DEADBEEF")).is_null());
+    }
+
+    // #[test]
+    // fn test_valid_env_var() {
+    //     let os_utils = OSUtilsRust::default();
+    //     let home = env::var("HOME").unwrap();
+    //     assert_eq!(
+    //         os_utils.get_env_var(&QString::from("HOME")),
+    //         home
+    //     );
+    // }
 }
