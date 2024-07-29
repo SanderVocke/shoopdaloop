@@ -34,3 +34,6 @@
 [submodule "third_party/zita-resampler"]
 	path = third_party/zita-resampler
 	url = https://github.com/SanderVocke/zita-resampler.git
+[submodule "src/third_party/corrosion"]
+	path = src/third_party/corrosion
+	url = https://github.com/corrosion-rs/corrosion.git

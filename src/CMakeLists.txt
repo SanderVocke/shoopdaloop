@@ -65,7 +65,10 @@ add_subdirectory(third_party/Catch2)
 set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
 
 add_subdirectory(libshoopdaloop)
-  
+
+add_subdirectory("third_party/corrosion")
+add_subdirectory(rust)
+
 # Generate and install version.txt and description.txt
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/version.txt
@@ -86,7 +89,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR
     EXCLUDE_FROM_ALL
     COMPONENT package_install
     DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
-  
+
 
 # Include app test scripts
 install(FILES ${CMAKE_SOURCE_DIR}/../scripts/repeat_run_app.py

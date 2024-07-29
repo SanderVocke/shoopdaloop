@@ -95,16 +95,4 @@ void shoop_init_crashhandling(const char* dump_dir) {
     shoop_init_crashhandling_with_cb(dump_dir, (CrashedCallback)nullptr);
 }
 
-void shoop_test_crash_segfault() {
-    volatile int* a = (int*)(NULL); *a = 1;
-}
-
-void shoop_test_crash_exception() {
-    throw std::runtime_error("ShoopDaLoop test crash (Exception)");
-}
-
-void shoop_test_crash_abort() {
-    abort();
-}
-
 }
