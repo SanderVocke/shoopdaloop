@@ -1,5 +1,5 @@
 [package]
-name = "shoop_rs"
+name = "shoop_rs_macros"
 version = "0.2.0"
 authors = [
     "Sander Vocke <sandervocke@gmail.com>"
@@ -8,12 +8,8 @@ edition = "2021"
 license = "TODO"
 
 [lib]
-crate-type = ["staticlib"]
+proc-macro = true
 
 [dependencies]
-cxx = "1.0.95"
-cxx-qt = "0.6"
-cxx-qt-lib = "0.6"
-
-[build-dependencies]
-cxx-qt-build = "0.6"
+quote = "*"
+syn = "*"
