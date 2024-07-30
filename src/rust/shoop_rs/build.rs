@@ -9,7 +9,8 @@ fn main() {
         .qml_module(QmlModule {
             uri: "shoopdaloop",
             rust_files: &[
-                "src/shoop_rust_qobj/qobj_os_utils.rs"
+                // "src/shoop_rs_qobj/qobj_os_utils.rs",
+                "src/shoop_rs_macros_tests/shoop_rs_macros_test.rs",
             ],
             qml_files: &[] as &[&'static str],
             ..Default::default()

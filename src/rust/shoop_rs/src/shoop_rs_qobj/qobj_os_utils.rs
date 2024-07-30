@@ -1,5 +1,3 @@
-use shoop_rs_macros::*;
-
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -32,6 +30,11 @@ pub mod qobject {
         #[rust_name = "make_unique_osutils"]
         fn make_unique() -> UniquePtr<OSUtils>;
     }
+
+    unsafe extern "C++" {
+        include!("cxx-shoop/is_called_from_qobj_thread.h");
+        fn is_called_from_qobj_thread(object : &OSUtils) -> bool;
+    }
 }
 
 use std::env;
@@ -42,7 +45,6 @@ pub struct OSUtilsRust {}
 
 #[allow(unreachable_code)]
 impl qobject::OSUtils {
-    #[log_entry_exit]
     pub fn cause_abort(self: &qobject::OSUtils) {
         println!("OSUtils: triggering abort.");
         std::process::abort();
@@ -61,7 +63,6 @@ impl qobject::OSUtils {
         panic!("");
     }
 
-    #[log_entry_exit]
     pub fn get_env_var(self: &qobject::OSUtils, var: &QString) -> QString {
         match env::var(var.to_string()) {
             Ok (value) => return QString::from(&value),
