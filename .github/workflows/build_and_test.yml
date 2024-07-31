@@ -620,12 +620,12 @@ jobs:
     needs:
       - build_linux
       - test_linux
-      - build_linux_arm
-      - test_linux_arm
-      - build_macos
-      - test_macos
-      - build_windows
-      - test_windows
+      # - build_linux_arm
+      # - test_linux_arm
+      # - build_macos
+      # - test_macos
+      # - build_windows
+      # - test_windows
     if: ${{ always() }}
     container:
       image: archlinux:latest
