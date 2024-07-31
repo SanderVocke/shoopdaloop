@@ -4,7 +4,9 @@ description: Prepare Linux for building Shoopdaloop wheels
 runs:
   using: "composite"
   steps:
-  - name: Dummy
+  - name: Prepare Rust
+    uses: actions-rust-lang/setup-rust-toolchain@v1
+  - name: Install packages, set Qt CMake prefix
     shell: wrap-shell {0}
     run: |
       python3 -m pip install --upgrade pip build auditwheel patchelf
