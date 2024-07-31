@@ -1,0 +1,16 @@
+{
+    "type": "object",
+    "properties": {
+        "schema": { "const": "general_settings.1" },
+        "configuration": {
+            "type": "object",
+            "properties": {
+                "embed_carla": {
+                    "type": "boolean"
+                }
+            },
+            "required": []
+        }
+    },
+    "required": ["schema", "configuration"]
+}

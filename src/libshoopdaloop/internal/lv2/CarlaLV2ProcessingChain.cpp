@@ -446,6 +446,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::show() {
             log<log_level_debug>("Joined UI thread.");
         }
         m_ui_thread = std::thread([this]() {
+            static bool shown = false;
             log<log_level_debug>("UI thread started.");
             maybe_cleanup_ui();
             LV2_Feature instance_access_feature{
@@ -477,6 +478,18 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::show() {
                     if (!m_ui_widget) {
                         break;
                     }
+                    bool should_show = m_visible.load();
+                    if (should_show != shown) {
+                        if (should_show) {
+                            log<log_level_debug>("Showing Carla UI");
+                            m_ui_widget->show(m_ui_widget);
+                        } else {
+                            log<log_level_debug>("Hiding Carla UI");
+                            m_ui_widget->hide(m_ui_widget);
+                        }
+                        shown = should_show;
+                    }
+                    log<log_level_debug>("Running Carla UI");
                     m_ui_widget->run(m_ui_widget);
                 }
                 while (t < std::chrono::high_resolution_clock::now()) {
@@ -486,6 +499,8 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::show() {
             }
         });
     }
+    log<log_level_debug>("Queue show Carla UI");
+    m_visible = true;
 }
 
 template <typename TimeType, typename SizeType>
