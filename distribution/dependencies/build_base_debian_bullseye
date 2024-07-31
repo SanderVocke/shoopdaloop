@@ -51,3 +51,4 @@ nodejs
 rustc
 cargo
 qt6-base-dev
+qt6-declarative-dev
