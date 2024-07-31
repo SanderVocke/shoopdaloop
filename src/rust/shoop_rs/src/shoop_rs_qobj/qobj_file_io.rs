@@ -1,5 +1,5 @@
 #[cxx_qt::bridge]
-pub mod qobject {
+pub mod qobj_file_io {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -47,7 +47,7 @@ pub mod qobject {
 pub struct FileIORust {}
 
 
-use qobject::*;
+use qobj_file_io::*;
 use std::thread;
 use std::time::Duration;
 use std::env;
@@ -72,7 +72,7 @@ impl FileIO {
 
 #[cfg(test)]
 mod tests {
-    use super::qobject::make_unique_fileio;
+    use super::qobj_file_io::make_unique_fileio;
 
     #[test]
     fn test_dummy() {

@@ -48,7 +48,6 @@ curl
 nodejs
 
 # Rust + Qt to link against
-rustc
-cargo
+rustup
 qt6-base-dev
 qt6-declarative-dev

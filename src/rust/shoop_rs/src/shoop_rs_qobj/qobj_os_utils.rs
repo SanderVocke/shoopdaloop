@@ -1,5 +1,5 @@
 #[cxx_qt::bridge]
-pub mod qobject {
+pub mod qobj_os_utils {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -39,18 +39,18 @@ pub mod qobject {
 
 use std::env;
 use cxx_qt_lib::QString;
-
+use qobj_os_utils::*;
 #[derive(Default)]
 pub struct OSUtilsRust {}
 
 #[allow(unreachable_code)]
-impl qobject::OSUtils {
-    pub fn cause_abort(self: &qobject::OSUtils) {
+impl OSUtils {
+    pub fn cause_abort(self: &OSUtils) {
         println!("OSUtils: triggering abort.");
         std::process::abort();
     }
 
-    pub fn cause_segfault(self: &qobject::OSUtils) {
+    pub fn cause_segfault(self: &OSUtils) {
         println!("OSUtils: triggering segfault.");
         unsafe {
             let ptr: *const i32 = std::ptr::null();
@@ -58,12 +58,12 @@ impl qobject::OSUtils {
         }
     }
 
-    pub fn cause_panic(self: &qobject::OSUtils) {
+    pub fn cause_panic(self: &OSUtils) {
         println!("OSUtils: triggering panic.");
         panic!("");
     }
 
-    pub fn get_env_var(self: &qobject::OSUtils, var: &QString) -> QString {
+    pub fn get_env_var(self: &OSUtils, var: &QString) -> QString {
         match env::var(var.to_string()) {
             Ok (value) => return QString::from(&value),
             Err(_value) => return QString::default(),
@@ -75,7 +75,6 @@ impl qobject::OSUtils {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::qobject::make_unique_osutils;
     use std::env;
 
     #[test]
