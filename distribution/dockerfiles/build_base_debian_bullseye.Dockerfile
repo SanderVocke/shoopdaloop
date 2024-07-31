@@ -13,4 +13,4 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
 
 RUN gem install fpm
 
-RUN rustup default stable
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -c 'sh /dev/stdin "$@"' _ -v -y
