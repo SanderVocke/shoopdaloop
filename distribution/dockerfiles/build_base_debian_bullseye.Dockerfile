@@ -14,4 +14,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
 RUN gem install fpm
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -c 'sh /dev/stdin "$@"' _ -v -y && \
-    . $HOME/.cargo/env
+    ln -s /root/.cargo/bin/cargo /usr/local/bin/cargo && \
+    ln -s /root/.cargo/bin/rustc /usr/local/bin/rustc && \
+    ln -s /root/.cargo/bin/rustup /usr/local/bin/rustup
