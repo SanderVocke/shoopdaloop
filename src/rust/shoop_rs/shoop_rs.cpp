@@ -1,6 +1,5 @@
-#include "cxx-qt-gen/qobject.cxxqt.h"
+#include "cxx-qt-gen/qobj_os_utils.cxxqt.h"
 #include <QQmlEngine>
-#include <memory>
 
 // Singleton instances
 std::unique_ptr<OSUtils> g_os_utils;
