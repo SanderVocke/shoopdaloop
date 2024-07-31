@@ -47,6 +47,7 @@ curl
 # for Github Actions
 nodejs
 
-# Rust
+# Rust + Qt to link against
 rustc
 cargo
+qt6-base-dev
