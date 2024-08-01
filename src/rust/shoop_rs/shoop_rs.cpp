@@ -2,6 +2,7 @@
 #include "cxx-qt-gen/qobj_os_utils.cxxqt.h"
 
 #include <QQmlEngine>
+#include <iostream>
 
 #ifdef _WIN32
   #define SHOOP_RUST_EXPORT __declspec(dllexport)
@@ -12,6 +13,8 @@
 extern "C" {
 
 SHOOP_RUST_EXPORT void register_qml_types_and_singletons() {
+    std::cout << "Shoop_RS: Registering ShoopDaLoop.Rust\n";
+
     qmlRegisterType<OSUtils>("ShoopDaLoop.Rust", 1, 0, "ShoopOSUtils");
     qmlRegisterSingletonType<OSUtils>("ShoopDaLoop.Rust", 1, 0, "ShoopOSUtils", [](QQmlEngine*, QJSEngine*) { return new OSUtils(); });
 
