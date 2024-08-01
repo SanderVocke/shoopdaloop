@@ -466,8 +466,14 @@ mod tests {
 
         let obj = make_unique_fileio();
         let result = obj.glob(QString::from(&format!("{folder}/*", folder = folder.path().to_str().unwrap())));
-        assert_eq!(result.size(), 2);
-        assert_eq!(result.at(0).to_string(), format!("{folder}/test1", folder = folder.path().to_str().unwrap()));
-        assert_eq!(result.at(1).to_string(), format!("{folder}/test2", folder = folder.path().to_str().unwrap()));
+        assert_eq!(result.len(), 3);
+        assert_eq!(result.get(0).unwrap().to_string(), format!("{folder}/test1", folder = folder.path().to_str().unwrap()));
+        assert_eq!(result.get(1).unwrap().to_string(), format!("{folder}/test2", folder = folder.path().to_str().unwrap()));
+        assert_eq!(result.get(2).unwrap().to_string(), format!("{folder}/testfolder", folder = folder.path().to_str().unwrap()));
+
+        let other_result = obj.glob(QString::from(&format!("{folder}/**/test1", folder = folder.path().to_str().unwrap())));
+        assert_eq!(other_result.len(), 2);
+        assert_eq!(other_result.get(0).unwrap().to_string(), format!("{folder}/test1", folder = folder.path().to_str().unwrap()));
+        assert_eq!(other_result.get(1).unwrap().to_string(), format!("{folder}/testfolder/test1", folder = folder.path().to_str().unwrap()));
     }
 }
