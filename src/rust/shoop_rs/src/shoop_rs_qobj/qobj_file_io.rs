@@ -371,7 +371,14 @@ mod tests {
 
     #[test]
     fn test_get_current_directory() {
-        panic!("Not implemented");
+        use std::env;
+        let obj = make_unique_fileio();
+        let prev = env::current_dir().unwrap();
+        let dir = obj.create_temporary_folder();
+        env::set_current_dir(dir.to_string()).unwrap();
+        let current = obj.get_current_directory();
+        env::set_current_dir(&prev).unwrap();
+        assert_eq!(current.to_string(), dir.to_string());
     }
 
     #[test]
@@ -440,7 +447,10 @@ mod tests {
 
     #[test]
     fn test_realpath() {
-        panic!("Not implemented");
+        let obj = make_unique_fileio();
+        let folder = obj.create_temporary_folder();
+        let extended = format!("{folder}/a/..");
+        assert_eq!(obj.realpath(QString::from(&extended)).to_string(), folder.to_string());
     }
 
     #[test]
