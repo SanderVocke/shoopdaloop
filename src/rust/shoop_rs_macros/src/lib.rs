@@ -15,7 +15,7 @@ fn thread_check(_args : TokenStream, input : TokenStream, should_match : bool) -
 
     let expanded : TokenStream = quote! {
         #fn_sig {
-            if #should_match != is_called_from_qobj_thread(self) {
+            if #should_match != self.am_i_on_object_thread() {
                 let msg = format!("Method '{}' was called from {} thread while not allowed",
                                     stringify!(#identifier),
                                     if #should_match { "other" } else { "object's own" });

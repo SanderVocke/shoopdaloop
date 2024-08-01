@@ -31,10 +31,10 @@ pub mod qobj_os_utils {
         fn make_unique() -> UniquePtr<OSUtils>;
     }
 
-    unsafe extern "C++" {
-        include!("cxx-shoop/is_called_from_qobj_thread.h");
-        fn is_called_from_qobj_thread(object : &OSUtils) -> bool;
-    }
+    // unsafe extern "C++" {
+    //     include!("cxx-shoop/am_i_on_object_thread.h");
+    //     fn am_i_on_object_thread(object : &OSUtils) -> bool;
+    // }
 }
 
 use std::env;

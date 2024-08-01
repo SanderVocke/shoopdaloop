@@ -36,11 +36,6 @@ pub mod qobj_file_io {
         #[rust_name = "make_unique_fileio"]
         fn make_unique() -> UniquePtr<FileIO>;
     }
-
-    unsafe extern "C++" {
-        include!("cxx-shoop/is_called_from_qobj_thread.h");
-        fn is_called_from_qobj_thread(object : &FileIO) -> bool;
-    }
 }
 
 #[derive(Default)]

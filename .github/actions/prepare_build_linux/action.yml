@@ -6,6 +6,9 @@ runs:
   steps:
   - name: Prepare Rust
     uses: actions-rust-lang/setup-rust-toolchain@v1
+  - name: Install Nextest
+    shell: wrap-shell {0}
+    run: cargo install cargo-nextest
   - name: Install packages, set Qt CMake prefix
     shell: wrap-shell {0}
     run: |

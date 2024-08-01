@@ -1,9 +1,14 @@
 use shoop_rs_macros::*;
 
 #[cxx_qt::bridge]
-pub mod qobject {
+pub mod shoop_rs_macros_test {
+    unsafe extern "C++" {
+        include!("cxx-shoop/ShoopQObject.h");
+    }
+
     unsafe extern "RustQt" {
         #[qobject]
+        #[base="ShoopQObject"]
         type TestObj = super::TestObjRust;
     }
 
@@ -19,6 +24,9 @@ pub mod qobject {
 
         #[qinvokable]
         fn other_thread_only_mut(self: Pin<&mut TestObj>);
+
+        #[inherit]
+        fn am_i_on_object_thread(self: &TestObj) -> bool;
     }
 
     unsafe extern "C++" {
@@ -27,31 +35,26 @@ pub mod qobject {
         #[rust_name = "make_unique_testobj"]
         fn make_unique() -> UniquePtr<TestObj>;
     }
-
-    unsafe extern "C++" {
-        include!("cxx-shoop/is_called_from_qobj_thread.h");
-        fn is_called_from_qobj_thread(object : Pin<&mut TestObj>) -> bool;
-    }
 }
 
 #[derive(Default)]
 pub struct TestObjRust {}
-use qobject::is_called_from_qobj_thread;
+use shoop_rs_macros_test::*;
 use std::pin::Pin;
 
 #[allow(unreachable_code)]
-impl qobject::TestObj {
+impl TestObj {
     #[deny_calls_not_on_object_thread]
-    pub fn own_thread_only_mut(self: Pin<&mut qobject::TestObj>) {}
+    pub fn own_thread_only_mut(self: Pin<&mut TestObj>) {}
 
     #[deny_calls_on_object_thread]
-    pub fn other_thread_only_mut(self: Pin<&mut qobject::TestObj>) {}
+    pub fn other_thread_only_mut(self: Pin<&mut TestObj>) {}
 }
 
 
 #[cfg(test)]
 mod tests {
-    use super::qobject::*;
+    use super::*;
     use std::thread;
     use std::mem;
     use std::panic;
