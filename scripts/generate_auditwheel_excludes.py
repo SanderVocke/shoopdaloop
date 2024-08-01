@@ -88,4 +88,4 @@ for file in sys.argv[2:]:
     final_ignore_set = {i for i in ignore_set if i not in non_ignore_set}
     all_ignores = all_ignores.union(final_ignore_set)
 
-print(','.join([re.sub(r'\.so\..*', '.so', e) for e in all_ignores]))
+print(','.join([re.sub(r'\.so\..*', '.so', e) for e in all_ignores]).replace('\n', '').replace('\r', '').strip())

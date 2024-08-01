@@ -449,12 +449,25 @@ mod tests {
     fn test_realpath() {
         let obj = make_unique_fileio();
         let folder = obj.create_temporary_folder();
-        let extended = format!("{folder}/a/..");
+        let base = obj.basename(folder.clone());
+        let extended = format!("{folder}/../{base}");
         assert_eq!(obj.realpath(QString::from(&extended)).to_string(), folder.to_string());
+        assert!(obj.delete_recursive(folder));
     }
 
     #[test]
     fn test_glob() {
-        panic!("Not implemented");
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::create_dir(folder.path().join("testfolder")).unwrap();
+        std::fs::write(folder.path().join("test1"), "test").unwrap();
+        std::fs::write(folder.path().join("test2"), "test").unwrap();
+        std::fs::write(folder.path().join("testfolder").join("test1"), "test").unwrap();
+        std::fs::write(folder.path().join("testfolder").join("test2"), "test").unwrap();
+
+        let obj = make_unique_fileio();
+        let result = obj.glob(QString::from(&format!("{folder}/*", folder = folder.path().to_str().unwrap())));
+        assert_eq!(result.size(), 2);
+        assert_eq!(result.at(0).to_string(), format!("{folder}/test1", folder = folder.path().to_str().unwrap()));
+        assert_eq!(result.at(1).to_string(), format!("{folder}/test2", folder = folder.path().to_str().unwrap()));
     }
 }
