@@ -330,58 +330,58 @@ jobs:
   # # ## MacOS
   # # ##############################################################
 
-  # build_macos:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         - name: macos_release
-  #           build_type: 'Release'
-  #           appbundle: true
-  #           package_kind: dmg
-  #           os: macos-12
-  #           upload_release_assets: true
-  #         - name: macos_debug
-  #           build_type: 'Debug'
-  #           os: macos-12
-  #         - name: macos_release_arm
-  #           build_type: 'Release'
-  #           appbundle: true
-  #           package_kind: dmg
-  #           os: macos-14
-  #           upload_release_assets: true
-  #         - name: macos_debug_arm
-  #           build_type: 'Debug'
-  #           os: macos-14
-  #   runs-on: ${{ matrix.kind.os }}
-  #   needs: maybe_create_release
-  #   #if: false
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #     with:
-  #       submodules: recursive
-  #   - name: Setup Shell Wrapper
-  #     uses: sandervocke/setup-shell-wrapper@v1
-  #   - name: Use regular shell
-  #     shell: bash
-  #     run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
-  #   - name: Build
-  #     uses: ./.github/actions/build_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       cmake_build_type: ${{ matrix.kind.build_type }}
-  #       cmake_opts: ${{ matrix.kind.cmake_opts }}
-  #       prepare_kind: 'macos'
-  #       python: python3.9
-  #       pyinstaller: ${{ matrix.kind.pyinstaller }}
-  #       appbundle: ${{ matrix.kind.appbundle }}
-  #       package_kind: ${{ matrix.kind.package_kind }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
-  #       # Also remove the double dot if any.
-  #       rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
-  #       upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+  build_macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          # - name: macos_release
+          #   build_type: 'Release'
+          #   appbundle: true
+          #   package_kind: dmg
+          #   os: macos-12
+          #   upload_release_assets: true
+          - name: macos_debug
+            build_type: 'Debug'
+            os: macos-12
+          # - name: macos_release_arm
+          #   build_type: 'Release'
+          #   appbundle: true
+          #   package_kind: dmg
+          #   os: macos-14
+          #   upload_release_assets: true
+          # - name: macos_debug_arm
+          #   build_type: 'Debug'
+          #   os: macos-14
+    runs-on: ${{ matrix.kind.os }}
+    needs: maybe_create_release
+    #if: false
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Setup Shell Wrapper
+      uses: sandervocke/setup-shell-wrapper@v1
+    - name: Use regular shell
+      shell: bash
+      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - name: Build
+      uses: ./.github/actions/build_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: 'macos'
+        python: python3.9
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        appbundle: ${{ matrix.kind.appbundle }}
+        package_kind: ${{ matrix.kind.package_kind }}
+        coverage: ${{ matrix.kind.coverage }}
+        # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+        # Also remove the double dot if any.
+        rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
 
   # test_macos:
   #   strategy:
@@ -478,60 +478,59 @@ jobs:
   # # ## Windows
   # # ##############################################################
 
-  # build_windows:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         - name: windows_release
-  #           os: windows-2022
-  #           python: python.exe
-  #           pip: python.exe -m pip
-  #           container_image: null
-  #           prepare: 'windows'
-  #           build_type: 'Release'
-  #           pyinstaller: true
-  #           package_kind: innosetup
-  #           rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-  #           upload_release_assets: true
-  #         - name: windows_debug
-  #           os: windows-2022
-  #           python: python.exe
-  #           pip: python.exe -m pip
-  #           container_image: null
-  #           prepare: 'windows'
-  #           build_type: 'Debug'
-  #           rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-  #           # cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
-  #   runs-on: ${{ matrix.kind.os}}
-  #   needs: maybe_create_release
-  #   container:
-  #     image: ${{ matrix.kind.container_image }}
-  #     options: --user root --workdir /
-  #   #if: false
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #     with:
-  #       submodules: recursive
-  #   - name: Setup Shell Wrapper
-  #     uses: sandervocke/setup-shell-wrapper@v1
-  #   - name: Use regular shell
-  #     shell: bash
-  #     run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
-  #   - name: Build
-  #     uses: ./.github/actions/build_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       cmake_build_type: ${{ matrix.kind.build_type }}
-  #       cmake_opts: ${{ matrix.kind.cmake_opts }}
-  #       prepare_kind: ${{ matrix.kind.prepare }}
-  #       python: ${{ matrix.kind.python }}
-  #       rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
-  #       pyinstaller: ${{ matrix.kind.pyinstaller }}
-  #       package_kind: ${{ matrix.kind.package_kind }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+  build_windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          # - name: windows_release
+          #   os: windows-2022
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container_image: null
+          #   prepare: 'windows'
+          #   build_type: 'Release'
+          #   pyinstaller: true
+          #   package_kind: innosetup
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          #   upload_release_assets: true
+          - name: windows_debug
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            build_type: 'Debug'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+            # cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
+    runs-on: ${{ matrix.kind.os}}
+    needs: maybe_create_release
+    container:
+      image: ${{ matrix.kind.container_image }}
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Setup Shell Wrapper
+      uses: sandervocke/setup-shell-wrapper@v1
+    - name: Use regular shell
+      shell: bash
+      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - name: Build
+      uses: ./.github/actions/build_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: ${{ matrix.kind.prepare }}
+        python: ${{ matrix.kind.python }}
+        rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        package_kind: ${{ matrix.kind.package_kind }}
+        coverage: ${{ matrix.kind.coverage }}
+        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
 
   # test_windows:
   #   strategy:

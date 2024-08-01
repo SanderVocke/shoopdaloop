@@ -102,7 +102,7 @@ impl FileIO {
         let file_name = file_name.to_string();
         let data = data.to_string();
         let result = std::fs::write(&file_name, data);
-        println!("Wrote to file: {}", file_name);
+        debug!("wrote file: {}", file_name);
         match result {
             Ok(_) => return true,
             Err(_) => return false,
@@ -111,7 +111,8 @@ impl FileIO {
 
     pub fn read_file(self : &FileIO, file_name : QString) -> QString {
         let file_name = file_name.to_string();
-        let result = std::fs::read_to_string(file_name);
+        let result = std::fs::read_to_string(&file_name);
+        debug!("read file: {}", file_name);
         match result {
             Ok(data) => return QString::from(data.as_str()),
             Err(_) => return QString::default(),
@@ -124,8 +125,11 @@ impl FileIO {
         match file {
             Ok(f) => {
                 let path = f.path().to_owned();
-                f.keep();
-                return QString::from(path.to_str().unwrap());
+                let result = f.keep();
+                return match result {
+                    Ok(_) => QString::from(path.to_str().unwrap()),
+                    Err(_) => QString::default(),
+                }
             },
             Err(_) => return QString::default(),
         }
@@ -137,7 +141,7 @@ impl FileIO {
         match temp_file {
             Ok(f) => {
                 let path = f.path().to_owned();
-                f.close();
+                f.close().expect("Unable to close temporary file");
                 return QString::from(path.to_str().unwrap());
             },
             Err(_) => return QString::default(),

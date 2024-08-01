@@ -15,6 +15,16 @@ outputs:
 runs:
   using: "composite"
   steps:
+  - name: Prepare Rust
+    uses: actions-rust-lang/setup-rust-toolchain@v1
+  - name: Install Qt
+    uses: jurplel/install-qt-action@v4
+    with:
+      cache: true
+      version: 6.6.3
+  - name: Env for Qt
+    shell: wrap-shell {0}
+    run: echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6" > prepend_build_cmd.txt
   - name: Prepare linux
     if: ${{ inputs.variant == 'linux' }}
     uses: ./.github/actions/prepare_build_linux

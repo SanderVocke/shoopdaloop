@@ -87,7 +87,7 @@ ShoopTestFile {
                         
                     actual = session.actual_session_descriptor(false, '', null)
 
-                    ShoopFileIO.delete_file(filename)
+                    ShoopFileIO.deleteFile(filename)
 
                     verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
                 }

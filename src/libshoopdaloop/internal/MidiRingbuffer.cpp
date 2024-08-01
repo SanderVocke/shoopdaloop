@@ -12,7 +12,7 @@ MidiRingbuffer::MidiRingbuffer(uint32_t data_size)
 {}
 
 void MidiRingbuffer::set_n_samples(uint32_t n) {
-    Storage::template log<log_level_warning>("MidiRingbuffer - set_n_samples: {}", n);
+    Storage::template log<log_level_debug>("MidiRingbuffer - set_n_samples: {}", n);
     n_samples = n;
     auto end = current_buffer_end_time.load();
     Storage::truncate(end - std::min((uint32_t) end, n), Storage::TruncateSide::TruncateTail);
