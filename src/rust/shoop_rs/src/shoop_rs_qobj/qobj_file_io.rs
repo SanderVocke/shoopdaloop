@@ -1,8 +1,13 @@
+use log::*;
+
 #[cxx_qt::bridge]
 pub mod qobj_file_io {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+
+        include!("cxx-qt-lib/qlist.h");
+        type QList_QString = cxx_qt_lib::QList<QString>;
     }
 
     unsafe extern "RustQt" {
@@ -11,23 +16,53 @@ pub mod qobj_file_io {
     }
 
     unsafe extern "RustQt" {
-        #[qsignal]
-        fn startSavingFile(self : Pin<&mut FileIO>);
-
-        #[qsignal]
-        fn doneSavingFile(self : Pin<&mut FileIO>);
-
-        #[qsignal]
-        fn startLoadingFile(self : Pin<&mut FileIO>);
-
-        #[qsignal]
-        fn doneLoadingFile(self : Pin<&mut FileIO>);
-
         #[qinvokable]
         fn wait_blocking(self : &FileIO, delay_ms : u64);
 
         #[qinvokable]
         fn get_current_directory(self : &FileIO) -> QString;
+
+        #[qinvokable]
+        fn write_file(self : &FileIO, file_name : QString, data : QString) -> bool;
+
+        #[qinvokable]
+        fn read_file(self : &FileIO, file_name : QString) -> QString;
+
+        #[qinvokable]
+        fn create_temporary_file(self : &FileIO) -> QString;
+
+        #[qinvokable]
+        fn generate_temporary_filename(self : &FileIO) -> QString;
+
+        #[qinvokable]
+        fn create_temporary_folder(self : &FileIO) -> QString;
+
+        #[qinvokable]
+        fn delete_recursive(self : &FileIO, path : QString) -> bool;
+
+        #[qinvokable]
+        fn delete_file(self : &FileIO, file_name : QString) -> bool;
+
+        #[qinvokable]
+        fn extract_tarfile(self : &FileIO, tarfile : QString, destination : QString) -> bool;
+
+        #[qinvokable]
+        fn make_tarfile(self : &FileIO, tarfile : QString, source : QString) -> bool;
+
+        #[qinvokable]
+        fn basename(self : &FileIO, path : QString) -> QString;
+
+        #[qinvokable]
+        fn is_absolute(self : &FileIO, path : QString) -> bool;
+
+        #[qinvokable]
+        fn realpath(self : &FileIO, path : QString) -> QString;
+
+        #[qinvokable]
+        fn exists(self : &FileIO, path : QString) -> bool;
+
+        #[qinvokable]
+        fn glob(self : &FileIO, pattern : QString) -> QList_QString;
     }
 
     unsafe extern "C++" {
@@ -57,20 +92,288 @@ impl FileIO {
         return match env::current_dir() {
             Ok(p) => match p.to_str() {
                     Some (pp) => return QString::from(pp),
-                    None => QString::default(),
+                    _ => QString::default(),
                 },
             Err(_) => QString::default()
         }
+    }
+
+    pub fn write_file(self : &FileIO, file_name : QString, data : QString) -> bool {
+        let file_name = file_name.to_string();
+        let data = data.to_string();
+        let result = std::fs::write(&file_name, data);
+        println!("Wrote to file: {}", file_name);
+        match result {
+            Ok(_) => return true,
+            Err(_) => return false,
+        }
+    }
+
+    pub fn read_file(self : &FileIO, file_name : QString) -> QString {
+        let file_name = file_name.to_string();
+        let result = std::fs::read_to_string(file_name);
+        match result {
+            Ok(data) => return QString::from(data.as_str()),
+            Err(_) => return QString::default(),
+        }
+    }
+
+    pub fn create_temporary_file(self : &FileIO) -> QString {
+        use tempfile::NamedTempFile;
+        let file = NamedTempFile::new();
+        match file {
+            Ok(f) => {
+                let path = f.path().to_owned();
+                f.keep();
+                return QString::from(path.to_str().unwrap());
+            },
+            Err(_) => return QString::default(),
+        }
+    }
+
+    pub fn generate_temporary_filename(self : &FileIO) -> QString {
+        use tempfile::NamedTempFile;
+        let temp_file = NamedTempFile::new();
+        match temp_file {
+            Ok(f) => {
+                let path = f.path().to_owned();
+                f.close();
+                return QString::from(path.to_str().unwrap());
+            },
+            Err(_) => return QString::default(),
+        }
+    }
+
+    pub fn create_temporary_folder(self : &FileIO) -> QString {
+        use tempfile::tempdir;
+        let temp_dir = tempdir();
+        match temp_dir {
+            Ok(d) => {
+                return QString::from(
+                    d.into_path().to_str().unwrap()
+                );
+            },
+            Err(_) => return QString::default(),
+        }
+    }
+
+    pub fn delete_recursive(self : &FileIO, path : QString) -> bool {
+        use std::path::Path;
+        use std::fs;
+        let path = path.to_string();
+        let path = Path::new(&path);
+        println!("Deleting: {}", path.display());
+        if path.is_dir() {
+            let result = fs::remove_dir_all(path);
+            match result {
+                Ok(_) => return true,
+                Err(_) => return false,
+            }
+        } else if path.is_file() {
+            let result = fs::remove_file(path);
+            match result {
+                Ok(_) => return true,
+                Err(_) => return false,
+            }
+        } else {
+            return false;
+        }
+    }
+
+    pub fn delete_file(self : &FileIO, file_name : QString) -> bool {
+        use std::fs;
+        let file_name = file_name.to_string();
+        let result = fs::remove_file(file_name);
+        match result {
+            Ok(_) => return true,
+            Err(_) => return false,
+        }
+    }
+
+    pub fn extract_tarfile(self : &FileIO, tarfile : QString, destination : QString) -> bool {
+        use std::fs::File;
+        use tar::Archive;
+        let tarfile = tarfile.to_string();
+        let destination = destination.to_string();
+        let file = File::open(tarfile);
+        match file {
+            Ok(f) => {
+                let mut archive = Archive::new(f);
+                let result = archive.unpack(destination);
+                match result {
+                    Ok(_) => return true,
+                    Err(_) => return false,
+                }
+            },
+            Err(_) => return false,
+        }
+    }
+
+    pub fn make_tarfile(self : &FileIO, tarfile : QString, source : QString) -> bool {
+        use std::fs::File;
+        use tar::Builder;
+        let tarfile = tarfile.to_string();
+        let source = source.to_string();
+        let file = File::create(tarfile);
+        match file {
+            Ok(f) => {
+                let mut archive = Builder::new(f);
+                let result = archive.append_dir_all(".", source);
+                match result {
+                    Ok(_) => return true,
+                    Err(_) => return false,
+                }
+            },
+            Err(_) => return false,
+        }
+    }
+
+    pub fn basename(self : &FileIO, path : QString) -> QString {
+        use std::path::Path;
+        let path = path.to_string();
+        let path = Path::new(&path);
+        let result = path.file_name();
+        match result {
+            Some(f) => return QString::from(f.to_str().unwrap()),
+            _ => return QString::default(),
+        }
+    }
+
+    pub fn is_absolute(self : &FileIO, path : QString) -> bool {
+        use std::path::Path;
+        let path = path.to_string();
+        let path = Path::new(&path);
+        return path.is_absolute();
+    }
+
+    pub fn realpath(self : &FileIO, path : QString) -> QString {
+        use std::fs;
+        let path = path.to_string();
+        let result = fs::canonicalize(path);
+        match result {
+            Ok(p) => return QString::from(p.to_str().unwrap()),
+            Err(_) => return QString::default(),
+        }
+    }
+
+    pub fn exists(self : &FileIO, path : QString) -> bool {
+        use std::path::Path;
+        let p = path.to_string();
+        let pp = Path::new(&p);
+        return pp.exists();
+    }
+
+    pub fn glob(self : &FileIO, pattern : QString) -> QList_QString {
+        use glob::glob;
+        let pattern = pattern.to_string();
+        let mut paths = QList_QString::default();
+        let result = glob(&pattern);
+        match result {
+            Ok(g) => {
+                for entry in g {
+                    match entry {
+                        Ok(p) => {
+                            let p = p.to_str().unwrap();
+                            paths.append(QString::from(p));
+                        },
+                        Err(_) => {},
+                    }
+                }
+            },
+            Err(_) => {},
+        }
+        return paths;
     }
 }
 
 
 #[cfg(test)]
 mod tests {
-    use super::qobj_file_io::make_unique_fileio;
+    use super::*;
 
     #[test]
-    fn test_dummy() {
+    fn test_wait_blocking() {
+        use std::time::SystemTime;
         let obj = make_unique_fileio();
+        let start = SystemTime::now();
+        obj.wait_blocking(10);
+        let end = SystemTime::now();
+        let diff = end.duration_since(start).unwrap().as_millis();
+        assert!(diff >= 10);
+    }
+
+    #[test]
+    fn test_get_current_directory() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_write_file() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_read_file() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_create_temporary_file() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_generate_temporary_filename() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_create_temporary_folder() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_delete_recursive() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_delete_file() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_extract_tarfile() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_make_tarfile() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_basename() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_is_absolute() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_realpath() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_exists() {
+        panic!("Not implemented");
+    }
+
+    #[test]
+    fn test_glob() {
+        panic!("Not implemented");
     }
 }

@@ -43,7 +43,17 @@ Development releases are made now and then, but until a v1.0.0 they are seen as 
 
 As such, it obviously has not been used for on-stage performing and definitely shouldn't until after doing some serious testing.
 
-Note however that having automated testing with high coverage is among the project goals.
+# Roadmap
+
+The basic features that would be needed for a 1.0.0 release are already there. However, the version won´t go to 1.0.0 until ShoopDaLoop is considered stable for live performing.
+
+The current architecture combines Python with a C++ back-end and QML GUI elements. This works and has resulted in a very fast pace of feature development, but in particular Python and PySide can easily cause issues in object lifetimes (garbage collection combined with Qt objects) and performance (the GIL).
+
+Therefore a process has started to gradually replace Python modules by Rust. Eventually, when all Python is removed from the codebase, the back-end engine will also migrate from C++ to Rust.
+
+A prerequisite for a 1.0.0 version is that this process is complete and the codebase is only Rust + QML (+ Lua for user scripts).
+
+Of course, in the meantime new features will also be added.
 
 # Comparison table
 

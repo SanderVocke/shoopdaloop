@@ -192,22 +192,31 @@ Rectangle {
         root.logger.debug(() => `saving session to: ${filename}`)
         registries.state_registry.reset_saving_loading()
         registries.state_registry.save_action_started()
-        var tempdir = file_io.create_temporary_folder()
+        var tempdir = ShoopFileIO.createTemporaryFolder()
+        if (tempdir == null) {
+            throw new Error("Failed to create temporary folder")
+        }
+        console.log("temp dir: " + tempdir)
         var tasks = tasks_factory.create_tasks_obj(root)
         var session_filename = tempdir + '/session.json'
 
         // TODO make this step asynchronous
         var descriptor = actual_session_descriptor(true, tempdir, tasks)
-        file_io.write_file(session_filename, JSON.stringify(descriptor, null, 2))
+        if(!ShoopFileIO.writeFile(session_filename, JSON.stringify(descriptor, null, 2))) {
+            throw new Error(`Failed to write session file ${session_filename}`)
+        }
 
         tasks.when_finished(() => {
             try {
                 // TODO make this step asynchronous
-                file_io.make_tarfile(filename, tempdir, false)
+                console.log("temp dir: " + tempdir)
+                if (!ShoopFileIO.makeTarfile(filename, tempdir)) {
+                    throw new Error(`Failed to create tarfile ${filename}`)
+                }
                 root.logger.info(() => ("Session written to: " + filename))
             } finally {
                 registries.state_registry.save_action_finished()
-                file_io.delete_recursive(tempdir)
+                ShoopFileIO.deleteRecursive(tempdir)
                 tasks.parent = null
                 tasks.destroy(30)
             }
@@ -260,16 +269,16 @@ Rectangle {
         root.logger.debug(() => `loading session: ${filename}`)
         registries.state_registry.reset_saving_loading()
         registries.state_registry.load_action_started()
-        var tempdir = file_io.create_temporary_folder()
+        var tempdir = ShoopFileIO.createTemporaryFolder()
 
         try {
             var tasks = tasks_factory.create_tasks_obj(root)
 
-            file_io.extract_tarfile(filename, tempdir)
-            root.logger.debug(() => (`Extracted files: ${JSON.stringify(file_io.glob(tempdir + '/*', true), null, 2)}`))
+            ShoopFileIO.extractTarfile(filename, tempdir)
+            root.logger.debug(() => (`Extracted files: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*', true), null, 2)}`))
 
             var session_filename = tempdir + '/session.json'
-            var session_file_contents = file_io.read_file(session_filename)
+            var session_file_contents = ShoopFileIO.readFile(session_filename)
             var descriptor = JSON.parse(session_file_contents)
             let our_sample_rate = session_backend.get_sample_rate()
             let incoming_sample_rate = descriptor.sample_rate
@@ -301,7 +310,7 @@ Rectangle {
 
                 tasks.when_finished(() => {
                     try {
-                        file_io.delete_recursive(tempdir)
+                        ShoopFileIO.deleteRecursive(tempdir)
                     } finally {
                         root.logger.info(() => ("Session loaded from: " + filename))
                         registries.state_registry.load_action_finished()
@@ -324,7 +333,7 @@ Rectangle {
                 connectOnce(root.loadedChanged, finish_fn)
             }
         } catch(e) {
-            file_io.delete_recursive(tempdir)
+            ShoopFileIO.deleteRecursive(tempdir)
             throw e;
         }
     }
