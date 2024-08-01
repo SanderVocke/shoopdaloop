@@ -410,13 +410,21 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_tarfile() {
-        panic!("Not implemented");
-    }
-
-    #[test]
-    fn test_make_tarfile() {
-        panic!("Not implemented");
+    fn test_make_and_extract_tarfile_roundtrip() {
+        let obj = make_unique_fileio();
+        let dir = obj.create_temporary_folder();
+        let filename_a = format!("{dir}/a");
+        let filename_b = format!("{dir}/b");
+        assert!(obj.write_file(QString::from(&filename_a), QString::from("test_a")));
+        assert!(obj.write_file(QString::from(&filename_b), QString::from("test_b")));
+        let tarfile = obj.generate_temporary_filename();
+        assert!(obj.make_tarfile(tarfile.clone(), dir));
+        let destination = obj.create_temporary_folder();
+        assert!(obj.extract_tarfile(tarfile, destination.clone()));
+        let rfa = format!("{destination.clone()}/a");
+        let rfb = format!("{destination}/b");
+        assert_eq!(obj.read_file(QString::from(&rfa)).to_string(), "test_a");
+        assert_eq!(obj.read_file(QString::from(&rfb)).to_string(), "test_b");
     }
 
     #[test]
