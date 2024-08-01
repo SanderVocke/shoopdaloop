@@ -63,11 +63,11 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: linux_release
-          #   build_type: 'Release'
-          #   pyinstaller: true
-          #   package_kind: linuxes
-          #   upload_release_assets: true
+          - name: linux_release
+            build_type: 'Release'
+            pyinstaller: true
+            package_kind: linuxes
+            upload_release_assets: true
           - name: linux_debug
             build_type: 'Debug'
           # - name: linux_asan
