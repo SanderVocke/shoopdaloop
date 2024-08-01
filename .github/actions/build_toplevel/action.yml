@@ -86,6 +86,7 @@ runs:
       variant: ${{ inputs.prepare_kind }}
       wheel: ${{ steps.buildwheel.outputs.wheel_filename }}
       build_dir: ${{ steps.buildwheel.outputs.build_dir }}
+      python: ${{ inputs.python }}
   - name: Find wheel
     shell: wrap-shell {0}
     id: find
