@@ -17,14 +17,25 @@ runs:
   steps:
   - name: Prepare Rust
     uses: actions-rust-lang/setup-rust-toolchain@v1
-  - name: Install Qt
+
+  - name: Install Qt (Windows)
     uses: jurplel/install-qt-action@v4
+    if: ${{ inputs.variant == 'windows' }}
     with:
       cache: true
       version: 6.6.3
+      arch: win64_mingw
+  - name: Install Qt
+    uses: jurplel/install-qt-action@v4
+    if: ${{ inputs.variant != 'windows' }}
+    with:
+      cache: true
+      version: 6.6.3
+      install-deps: false
   - name: Env for Qt
     shell: wrap-shell {0}
     run: echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6" > prepend_build_cmd.txt
+
   - name: Prepare linux
     if: ${{ inputs.variant == 'linux' }}
     uses: ./.github/actions/prepare_build_linux

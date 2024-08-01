@@ -16,7 +16,6 @@ else()
 endif()
 set(ENV{PATH} "${QMAKE_PATH}${PATH_SEPARATOR}$ENV{PATH}")
 
-message(STATUS $ENV{PATH})
 execute_process(
     COMMAND qmake --version
 )
