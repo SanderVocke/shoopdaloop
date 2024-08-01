@@ -375,38 +375,31 @@ mod tests {
     }
 
     #[test]
-    fn test_write_file() {
-        panic!("Not implemented");
+    fn test_delete_folder_and_exists() {
+        let obj = make_unique_fileio();
+        let name = obj.create_temporary_folder();
+        assert_eq!(obj.exists(name.clone()), true);
+        assert!(obj.delete_recursive(name.clone()));
+        assert_eq!(obj.exists(name), false);
     }
 
     #[test]
-    fn test_read_file() {
-        panic!("Not implemented");
+    fn test_delete_file_and_exists() {
+        let obj = make_unique_fileio();
+        let filename = obj.create_temporary_file();
+        assert!(obj.write_file(filename.clone(), QString::from("test")));
+        assert_eq!(obj.exists(filename.clone()), true);
+        assert!(obj.delete_file(filename.clone()));
+        assert_eq!(obj.exists(filename), false);
     }
 
     #[test]
-    fn test_create_temporary_file() {
-        panic!("Not implemented");
-    }
-
-    #[test]
-    fn test_generate_temporary_filename() {
-        panic!("Not implemented");
-    }
-
-    #[test]
-    fn test_create_temporary_folder() {
-        panic!("Not implemented");
-    }
-
-    #[test]
-    fn test_delete_recursive() {
-        panic!("Not implemented");
-    }
-
-    #[test]
-    fn test_delete_file() {
-        panic!("Not implemented");
+    fn test_write_read_file_roundtrip() {
+        let obj = make_unique_fileio();
+        let filename = obj.create_temporary_file();
+        assert!(obj.write_file(filename.clone(), QString::from("test")));
+        assert_eq!(obj.read_file(filename.clone()).to_string(), "test");
+        assert!(obj.delete_file(filename));
     }
 
     #[test]
@@ -418,32 +411,35 @@ mod tests {
         assert!(obj.write_file(QString::from(&filename_a), QString::from("test_a")));
         assert!(obj.write_file(QString::from(&filename_b), QString::from("test_b")));
         let tarfile = obj.generate_temporary_filename();
-        assert!(obj.make_tarfile(tarfile.clone(), dir));
+        assert!(obj.make_tarfile(tarfile.clone(), dir.clone()));
         let destination = obj.create_temporary_folder();
-        assert!(obj.extract_tarfile(tarfile, destination.clone()));
-        let rfa = format!("{destination.clone()}/a");
+        assert!(obj.extract_tarfile(tarfile.clone(), destination.clone()));
+        let rfa = format!("{destination}/a");
         let rfb = format!("{destination}/b");
         assert_eq!(obj.read_file(QString::from(&rfa)).to_string(), "test_a");
         assert_eq!(obj.read_file(QString::from(&rfb)).to_string(), "test_b");
+        assert!(obj.delete_recursive(dir));
+        assert!(obj.delete_recursive(destination));
+        assert!(obj.delete_file(tarfile));
     }
 
     #[test]
     fn test_basename() {
-        panic!("Not implemented");
+        assert_eq!(make_unique_fileio().basename(QString::from("/a/b/c")), QString::from("c"));
     }
 
     #[test]
-    fn test_is_absolute() {
-        panic!("Not implemented");
+    fn test_is_absolute_no() {
+        assert_eq!(make_unique_fileio().is_absolute(QString::from("a/b/c")), false);
+    }
+
+    #[test]
+    fn test_is_absolute_yes() {
+        assert_eq!(make_unique_fileio().is_absolute(QString::from("/a/b/c")), true);
     }
 
     #[test]
     fn test_realpath() {
-        panic!("Not implemented");
-    }
-
-    #[test]
-    fn test_exists() {
         panic!("Not implemented");
     }
 
