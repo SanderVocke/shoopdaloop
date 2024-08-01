@@ -43,10 +43,7 @@ libvulkan-dev
 procps
 wget
 curl
+file
 
 # for Github Actions
 nodejs
-
-# Qt to link against
-qt6-base-dev
-qt6-declarative-dev

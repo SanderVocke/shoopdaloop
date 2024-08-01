@@ -85,6 +85,7 @@ use std::env;
 #[allow(unreachable_code)]
 impl FileIO {
     pub fn wait_blocking(self : &FileIO, delay_ms : u64) {
+        debug!("waiting for {} ms", delay_ms);
         thread::sleep(Duration::from_millis(delay_ms));
     }
 
@@ -94,7 +95,10 @@ impl FileIO {
                     Some (pp) => return QString::from(pp),
                     _ => QString::default(),
                 },
-            Err(_) => QString::default()
+            Err(_) => {
+                error!("failed to get current directory");
+                QString::default()
+            }
         }
     }
 
@@ -102,20 +106,30 @@ impl FileIO {
         let file_name = file_name.to_string();
         let data = data.to_string();
         let result = std::fs::write(&file_name, data);
-        debug!("wrote file: {}", file_name);
         match result {
-            Ok(_) => return true,
-            Err(_) => return false,
+            Ok(_) => {
+                debug!("wrote file: {}", file_name);
+                return true;
+            },
+            Err(_) => {
+                error!("failed to write file: {}", file_name);
+                return false;
+            },
         }
     }
 
     pub fn read_file(self : &FileIO, file_name : QString) -> QString {
         let file_name = file_name.to_string();
         let result = std::fs::read_to_string(&file_name);
-        debug!("read file: {}", file_name);
         match result {
-            Ok(data) => return QString::from(data.as_str()),
-            Err(_) => return QString::default(),
+            Ok(data) => {
+                debug!("read file: {}", file_name);
+                return QString::from(data.as_str());
+            },
+            Err(_) => {
+                error!("failed to read file: {}", file_name);
+                return QString::default();
+            }
         }
     }
 
@@ -125,13 +139,18 @@ impl FileIO {
         match file {
             Ok(f) => {
                 let path = f.path().to_owned();
+                let ppath = path.to_str().unwrap();
+                debug!("created temporary file: {}", ppath);
                 let result = f.keep();
                 return match result {
-                    Ok(_) => QString::from(path.to_str().unwrap()),
+                    Ok(_) => QString::from(ppath),
                     Err(_) => QString::default(),
                 }
             },
-            Err(_) => return QString::default(),
+            Err(_) => {
+                error!("failed to create temporary file");
+                return QString::default();
+            }
         }
     }
 
@@ -141,10 +160,15 @@ impl FileIO {
         match temp_file {
             Ok(f) => {
                 let path = f.path().to_owned();
+                let ppath = path.to_str().unwrap();
                 f.close().expect("Unable to close temporary file");
-                return QString::from(path.to_str().unwrap());
+                debug!("generated temporary filename: {}", ppath);
+                return QString::from(ppath);
             },
-            Err(_) => return QString::default(),
+            Err(_) => {
+                error!("failed to generate temporary filename");
+                return QString::default();
+            }
         }
     }
 
@@ -153,11 +177,15 @@ impl FileIO {
         let temp_dir = tempdir();
         match temp_dir {
             Ok(d) => {
-                return QString::from(
-                    d.into_path().to_str().unwrap()
-                );
+                let path = d.into_path().to_owned();
+                let ppath = path.to_str().unwrap();
+                debug!("created temporary folder: {}", ppath);
+                return QString::from(ppath);
             },
-            Err(_) => return QString::default(),
+            Err(_) => {
+                error!("failed to create temporary folder");
+                return QString::default();
+            }
         }
     }
 
@@ -166,18 +194,29 @@ impl FileIO {
         use std::fs;
         let path = path.to_string();
         let path = Path::new(&path);
-        println!("Deleting: {}", path.display());
         if path.is_dir() {
             let result = fs::remove_dir_all(path);
             match result {
-                Ok(_) => return true,
-                Err(_) => return false,
+                Ok(_) => {
+                    debug!("deleted dir recursive: {}", path.display());
+                    return true;
+                },
+                Err(_) => {
+                    error!("failed to delete dir recursive: {}", path.display());
+                    return false;
+                },
             }
         } else if path.is_file() {
             let result = fs::remove_file(path);
             match result {
-                Ok(_) => return true,
-                Err(_) => return false,
+                Ok(_) => {
+                    debug!("deleted file: {}", path.display());
+                    return true;
+                },
+                Err(_) => {
+                    error!("failed to delete file: {}", path.display());
+                    return false;
+                },
             }
         } else {
             return false;
@@ -187,10 +226,16 @@ impl FileIO {
     pub fn delete_file(self : &FileIO, file_name : QString) -> bool {
         use std::fs;
         let file_name = file_name.to_string();
-        let result = fs::remove_file(file_name);
+        let result = fs::remove_file(&file_name);
         match result {
-            Ok(_) => return true,
-            Err(_) => return false,
+            Ok(_) => {
+                debug!("deleted file: {}", file_name);
+                return true;
+            },
+            Err(_) => {
+                error!("failed to delete file: {}", file_name);
+                return false;
+            },
         }
     }
 
@@ -199,14 +244,20 @@ impl FileIO {
         use tar::Archive;
         let tarfile = tarfile.to_string();
         let destination = destination.to_string();
-        let file = File::open(tarfile);
+        let file = File::open(&tarfile);
         match file {
             Ok(f) => {
                 let mut archive = Archive::new(f);
-                let result = archive.unpack(destination);
+                let result = archive.unpack(&destination);
                 match result {
-                    Ok(_) => return true,
-                    Err(_) => return false,
+                    Ok(_) => {
+                        debug!("extracted tarfile: {} into {}", tarfile, destination);
+                        return true;
+                    },
+                    Err(_) => {
+                        error!("failed to extract tarfile: {} into {}", tarfile, destination);
+                        return false;
+                    },
                 }
             },
             Err(_) => return false,
@@ -218,17 +269,26 @@ impl FileIO {
         use tar::Builder;
         let tarfile = tarfile.to_string();
         let source = source.to_string();
-        let file = File::create(tarfile);
+        let file = File::create(&tarfile);
         match file {
             Ok(f) => {
                 let mut archive = Builder::new(f);
-                let result = archive.append_dir_all(".", source);
+                let result = archive.append_dir_all(".", &source);
                 match result {
-                    Ok(_) => return true,
-                    Err(_) => return false,
+                    Ok(_) => {
+                        debug!("created tarfile: {} from {}", tarfile, source);
+                        return true;
+                    },
+                    Err(_) => {
+                        error!("failed to create tarfile: {} from {}", tarfile, source);
+                        return false;
+                    },
                 }
             },
-            Err(_) => return false,
+            Err(_) => {
+                error!("failed to create tarfile: {} from {}", tarfile, source);
+                return false;
+            },
         }
     }
 
@@ -253,10 +313,13 @@ impl FileIO {
     pub fn realpath(self : &FileIO, path : QString) -> QString {
         use std::fs;
         let path = path.to_string();
-        let result = fs::canonicalize(path);
+        let result = fs::canonicalize(&path);
         match result {
             Ok(p) => return QString::from(p.to_str().unwrap()),
-            Err(_) => return QString::default(),
+            Err(_) => {
+                error!("failed to get realpath of: {}", path);
+                return QString::default();
+            },
         }
     }
 
