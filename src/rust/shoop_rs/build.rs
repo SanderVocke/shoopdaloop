@@ -6,8 +6,8 @@ fn main() {
         .qml_module(QmlModule {
             uri: "shoopdaloop",
             rust_files: &[
-                "src/shoop_rs_qobj/qobj_os_utils.rs",
-                "src/shoop_rs_qobj/qobj_file_io.rs",
+                "src/qobj/qobj_os_utils.rs",
+                "src/qobj/qobj_file_io.rs",
 
                 "src/shoop_rs_macros_tests/shoop_rs_macros_test.rs",
             ],

@@ -11,14 +11,15 @@ license = "TODO"
 crate-type = ["cdylib"]
 
 [dependencies]
-cxx = "1.0.95"
+cxx = "1.0"
 cxx-qt = "0.6"
 cxx-qt-lib = "0.6"
-tempfile = "3.2.0"
+tempfile = "3.2"
 tar = "0.4"
 glob = "0.3"
 log = "0.4"
 fern = "0.6"
+humantime = "2.1"
 shoop_rs_macros = { path = "../shoop_rs_macros" }
 
 [build-dependencies]

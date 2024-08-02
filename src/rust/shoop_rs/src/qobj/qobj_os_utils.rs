@@ -1,3 +1,5 @@
+use log::*;
+
 #[cxx_qt::bridge]
 pub mod qobj_os_utils {
     unsafe extern "C++" {
@@ -59,12 +61,12 @@ pub struct OSUtilsRust {}
 #[allow(unreachable_code)]
 impl OSUtils {
     pub fn cause_abort(self: &OSUtils) {
-        println!("OSUtils: triggering abort.");
+        warn!("Triggering abort.");
         std::process::abort();
     }
 
     pub fn cause_segfault(self: &OSUtils) {
-        println!("OSUtils: triggering segfault.");
+        warn!("Triggering segfault.");
         unsafe {
             let ptr: *const i32 = std::ptr::null();
             println!("{}", *ptr);
@@ -72,8 +74,8 @@ impl OSUtils {
     }
 
     pub fn cause_panic(self: &OSUtils) {
-        println!("OSUtils: triggering panic.");
-        panic!("");
+        warn!("Triggering panic.");
+        panic!("Manually triggered panic");
     }
 
     pub fn get_env_var(self: &OSUtils, var: &QString) -> QString {
