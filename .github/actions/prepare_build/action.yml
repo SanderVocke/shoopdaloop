@@ -17,13 +17,18 @@ runs:
   steps:
   - name: Prepare Rust (Windows)
     if: ${{ inputs.variant == 'windows' }}
-    uses: actions-rust-lang/setup-rust-toolchain@v1
+    uses: actions-rs/toolchain@v1
     with:
        target: x86_64-pc-windows-gnu
+       default: true
+       override: true
 
   - name: Prepare Rust
     if: ${{ inputs.variant != 'windows' }}
-    uses: actions-rust-lang/setup-rust-toolchain@v1
+    uses: actions-rs/toolchain@v1
+    with:
+       default: true
+       override: true
 
   - name: Install Qt (Windows)
     uses: jurplel/install-qt-action@v4
