@@ -20,6 +20,10 @@ runs:
     uses: dtolnay/rust-toolchain@stable
     with:
        targets: x86_64-pc-windows-gnu
+  - name: Set rust arch (Windows)
+    if: ${{ inputs.variant == 'windows' }}
+    shell: wrap-shell {0}
+    run: rustup set default-host x86_64-pc-windows-gnu
 
   - name: Prepare Rust
     if: ${{ inputs.variant != 'windows' }}
