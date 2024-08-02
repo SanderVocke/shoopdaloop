@@ -71,6 +71,15 @@ pub mod qobj_file_io {
         #[rust_name = "make_unique_fileio"]
         fn make_unique() -> UniquePtr<FileIO>;
     }
+
+    unsafe extern "C++" {
+        include!("cxx-shoop/register_qml_types.h");
+
+        #[rust_name = "register_qml_singleton_file_io"]
+        fn register_qml_singleton(module_name : &String,
+                                  version_major : i64, version_minor : i64,
+                                  type_name : &String);
+    }
 }
 
 #[derive(Default)]
@@ -78,6 +87,7 @@ pub struct FileIORust {}
 
 
 use qobj_file_io::*;
+pub use qobj_file_io::register_qml_singleton_file_io;
 use std::thread;
 use std::time::Duration;
 use std::env;

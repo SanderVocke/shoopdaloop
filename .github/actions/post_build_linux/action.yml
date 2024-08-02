@@ -5,20 +5,11 @@ inputs:
   wheel:
     required: true
     type: string
-  python:
-    required: true
-    type: string
-    
+
 runs:
   using: "composite"
   steps:
   - name: Auditwheel repair
     shell: wrap-shell {0}
     run: |
-      unzip -d /tmp/analyze_wheel ${{ inputs.wheel }}
-      ELF_FILES=$(find /tmp/analyze_wheel -type f -exec file {} \; | grep ELF | awk -F: '{print $1}' | tr '\n' ' ')
-      EXCLUDE_QT_DEPENDENCIES=$(${{ inputs.python }} scripts/generate_auditwheel_excludes.py ".*Qt6.*" $ELF_FILES)
-      echo "Excluding: $EXCLUDE_QT_DEPENDENCIES"
-      AUDITWHEEL_CMD="auditwheel repair --exclude $EXCLUDE_QT_DEPENDENCIES --plat manylinux_2_31_${{ matrix.manylinux_arch }} --only-plat -w final_wheel ${{ inputs.wheel }}"
-      echo "Running: $AUDITWHEEL_CMD"
-      $AUDITWHEEL_CMD
+      auditwheel repair --exclude libQt6Gui.so.6 --exclude libQt6Core.so.6 --exclude libQt6Network.so.6 --exclude libQt6Qml.so.6 --plat manylinux_2_31_${{ matrix.manylinux_arch }} --only-plat -w final_wheel ${{ inputs.wheel }}

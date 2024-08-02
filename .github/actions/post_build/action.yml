@@ -12,9 +12,6 @@ inputs:
   build_dir:
     required: true
     type: string
-  python:
-    required: true
-    type: string
 
 runs:
   using: "composite"
@@ -24,7 +21,6 @@ runs:
     uses: ./.github/actions/post_build_linux
     with:
       wheel: ${{ inputs.wheel }}
-      python: ${{ inputs.python }}
   - name: Post-build MacOS
     if: ${{ inputs.variant == 'macos' }}
     uses: ./.github/actions/post_build_macos

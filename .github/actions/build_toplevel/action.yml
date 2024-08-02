@@ -80,8 +80,8 @@ runs:
       windows: ${{ inputs.prepare_kind == 'windows' && 'true' || 'false' }}
       rename_wheel_sed: ${{ inputs.rename_wheel_sed }}
   - name: Upload wheel pre-audit (${{ inputs.variant_name }})
-    if: ${{ inputs.upload_artifacts == 'true'}}
-    #if: false
+    #if: ${{ inputs.upload_artifacts == 'true'}}
+    if: false
     uses: actions/upload-artifact@v4
     with:
       name: wheel_preaudit_${{ inputs.name }}
@@ -93,7 +93,6 @@ runs:
       variant: ${{ inputs.prepare_kind }}
       wheel: ${{ steps.buildwheel.outputs.wheel_filename }}
       build_dir: ${{ steps.buildwheel.outputs.build_dir }}
-      python: ${{ inputs.python }}
   - name: Find wheel
     shell: wrap-shell {0}
     id: find
