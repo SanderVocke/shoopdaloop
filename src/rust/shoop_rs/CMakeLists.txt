@@ -26,35 +26,7 @@ message(STATUS "Result: ${result}")
 set(CRATE shoop_rs)
 corrosion_import_crate(MANIFEST_PATH Cargo.toml CRATES ${CRATE})
 
-# The Rust library's build script needs to be told where to output the
-# generated headers so CMake can find them.
-set(CXXQT_EXPORT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cxxqt")
-corrosion_set_env_vars(
-    ${CRATE}
-    "CXXQT_EXPORT_DIR=${CXXQT_EXPORT_DIR}"
-    "QMAKE=${QMAKE}"
-)
-
-add_library(shoop_rs_lib INTERFACE)
-target_include_directories(shoop_rs_lib INTERFACE "${CXXQT_EXPORT_DIR}/${CRATE}")
-target_link_libraries(
-    shoop_rs_lib
-    INTERFACE
-    # WHOLE_ARCHIVE is needed for the generated QML plugin to register on startup,
-    # otherwise the linker will discard the static variables that initialize it.
-    "$<LINK_LIBRARY:WHOLE_ARCHIVE,${CRATE}-static>"
-    Qt::Core
-    Qt::Gui
-    Qt::Qml
-    Qt::QuickControls2
-)
-
-# The final shared lib links the static lib and type registration call.
-add_library(shoop_rs_dynlib SHARED shoop_rs.cpp)
-target_link_libraries(shoop_rs_dynlib PRIVATE shoop_rs_lib)
-target_include_directories(shoop_rs_dynlib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/cxx")
-
-install(TARGETS shoop_rs_dynlib
-        EXCLUDE_FROM_ALL
+get_target_property(SHOOP_RS_SHARED shoop_rs INTERFACE_LINK_LIBRARIES)
+install(FILES $<TARGET_PROPERTY:${SHOOP_RS_SHARED},IMPORTED_LOCATION>
         COMPONENT package_install
         DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})

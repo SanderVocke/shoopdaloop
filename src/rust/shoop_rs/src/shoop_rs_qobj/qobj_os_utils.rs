@@ -31,15 +31,28 @@ pub mod qobj_os_utils {
         fn make_unique() -> UniquePtr<OSUtils>;
     }
 
-    // unsafe extern "C++" {
-    //     include!("cxx-shoop/am_i_on_object_thread.h");
-    //     fn am_i_on_object_thread(object : &OSUtils) -> bool;
-    // }
+    unsafe extern "C++" {
+        include!("cxx-shoop/register_qml_type.h");
+
+        #[rust_name = "register_qml_singleton_osutils"]
+        fn register_qml_singleton(inference_example: &OSUtils,
+                                  module_name : &mut String,
+                                  version_major : i64, version_minor : i64,
+                                  type_name : &mut String);
+    }
 }
 
 use std::env;
 use cxx_qt_lib::QString;
 use qobj_os_utils::*;
+
+pub fn register_qml_singleton(module_name : &str, type_name : &str) {
+    let obj = make_unique_osutils();
+    let mut mdl = String::from(module_name);
+    let mut tp = String::from(type_name);
+    register_qml_singleton_osutils(obj.as_ref().unwrap(), &mut mdl, 1, 0, &mut tp);
+}
+
 #[derive(Default)]
 pub struct OSUtilsRust {}
 

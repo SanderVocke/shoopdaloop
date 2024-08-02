@@ -1,0 +1,177 @@
+2024-08-02 09:54:12,659 - aqt.main - INFO - installer 139970480209920 aqtinstall(aqt) v3.1.17 on Python 3.10.12 [CPython GCC 11.4.0]
+2024-08-02 09:54:12,660 - aqt.helper - DEBUG - helper 139970480209920 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/Updates.xml.sha256
+2024-08-02 09:54:13,449 - aqt.helper - DEBUG - helper 140571527364608 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qtbase-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z.sha256
+2024-08-02 09:54:13,458 - aqt.helper - DEBUG - helper 140710253109248 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qtsvg-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z.sha256
+2024-08-02 09:54:13,459 - aqt.helper - DEBUG - helper 140138768113664 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qtdeclarative-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z.sha256
+2024-08-02 09:54:13,461 - aqt.helper - DEBUG - helper 139876182003712 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qttools-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z.sha256
+2024-08-02 09:54:13,640 - aqt.helper - INFO - helper 140138768113664 Downloading qtdeclarative...
+2024-08-02 09:54:13,640 - aqt.installer - DEBUG - installer 140138768113664 Download URL: https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qtdeclarative-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z
+2024-08-02 09:54:13,650 - aqt.helper - INFO - helper 140710253109248 Downloading qtsvg...
+2024-08-02 09:54:13,656 - aqt.helper - INFO - helper 140571527364608 Downloading qtbase...
+2024-08-02 09:54:13,650 - aqt.installer - DEBUG - installer 140710253109248 Download URL: https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qtsvg-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z
+2024-08-02 09:54:13,657 - aqt.helper - INFO - helper 139876182003712 Downloading qttools...
+2024-08-02 09:54:13,658 - aqt.installer - DEBUG - installer 139876182003712 Download URL: https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qttools-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z
+2024-08-02 09:54:13,657 - aqt.installer - DEBUG - installer 140571527364608 Download URL: https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qtbase-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z
+2024-08-02 09:54:13,834 - aqt.helper - DEBUG - helper 140138768113664 Asked to redirect(302) to: https://ftp.nluug.nl/languages/qt/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qtdeclarative-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z
+2024-08-02 09:54:13,834 - aqt.helper - INFO - helper 140138768113664 Redirected: ftp.nluug.nl
+2024-08-02 09:54:13,840 - aqt.helper - DEBUG - helper 140710253109248 Asked to redirect(302) to: https://ftp.nluug.nl/languages/qt/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qtsvg-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z
+2024-08-02 09:54:13,841 - aqt.helper - INFO - helper 140710253109248 Redirected: ftp.nluug.nl
+2024-08-02 09:54:13,847 - aqt.helper - DEBUG - helper 140571527364608 Asked to redirect(302) to: https://ftp.nluug.nl/languages/qt/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qtbase-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z
+2024-08-02 09:54:13,847 - aqt.helper - INFO - helper 140571527364608 Redirected: ftp.nluug.nl
+2024-08-02 09:54:13,857 - aqt.helper - DEBUG - helper 139876182003712 Asked to redirect(302) to: https://ftp.nluug.nl/languages/qt/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qttools-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z
+2024-08-02 09:54:13,857 - aqt.helper - INFO - helper 139876182003712 Redirected: ftp.nluug.nl
+2024-08-02 09:54:14,254 - aqt.installer - INFO - installer 140710253109248 Finished installation of qtsvg-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z in 0.79795046
+2024-08-02 09:54:14,270 - aqt.helper - DEBUG - helper 140710253109248 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qttranslations-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z.sha256
+2024-08-02 09:54:14,473 - aqt.helper - INFO - helper 140710253109248 Downloading qttranslations...
+2024-08-02 09:54:14,474 - aqt.installer - DEBUG - installer 140710253109248 Download URL: https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qttranslations-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z
+2024-08-02 09:54:14,660 - aqt.helper - DEBUG - helper 140710253109248 Asked to redirect(302) to: https://ftp.nluug.nl/languages/qt/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qttranslations-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z
+2024-08-02 09:54:14,660 - aqt.helper - INFO - helper 140710253109248 Redirected: ftp.nluug.nl
+2024-08-02 09:54:15,578 - aqt.installer - INFO - installer 140710253109248 Finished installation of qttranslations-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z in 1.31008539
+2024-08-02 09:54:15,594 - aqt.helper - DEBUG - helper 140710253109248 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qtwayland-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z.sha256
+2024-08-02 09:54:15,865 - aqt.helper - INFO - helper 140710253109248 Downloading qtwayland...
+2024-08-02 09:54:15,866 - aqt.installer - DEBUG - installer 140710253109248 Download URL: https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qtwayland-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z
+2024-08-02 09:54:16,104 - aqt.helper - DEBUG - helper 140710253109248 Asked to redirect(302) to: https://ftp.nluug.nl/languages/qt/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846qtwayland-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z
+2024-08-02 09:54:16,104 - aqt.helper - INFO - helper 140710253109248 Redirected: ftp.nluug.nl
+2024-08-02 09:54:16,681 - aqt.installer - INFO - installer 140710253109248 Finished installation of qtwayland-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z in 1.08800767
+2024-08-02 09:54:16,697 - aqt.helper - DEBUG - helper 140710253109248 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846icu-linux-Rhel7.2-x64.7z.sha256
+2024-08-02 09:54:16,899 - aqt.helper - INFO - helper 140710253109248 Downloading icu...
+2024-08-02 09:54:16,899 - aqt.installer - DEBUG - installer 140710253109248 Download URL: https://download.qt.io/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846icu-linux-Rhel7.2-x64.7z
+2024-08-02 09:54:17,125 - aqt.helper - DEBUG - helper 140710253109248 Asked to redirect(302) to: https://ftp.nluug.nl/languages/qt/online/qtsdkrepository/linux_x64/desktop/qt6_663/qt.qt6.663.gcc_64/6.6.3-0-202403191846icu-linux-Rhel7.2-x64.7z
+2024-08-02 09:54:17,125 - aqt.helper - INFO - helper 140710253109248 Redirected: ftp.nluug.nl
+2024-08-02 09:54:18,219 - aqt.installer - INFO - installer 140571527364608 Finished installation of qtbase-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z in 4.77185455
+2024-08-02 09:54:18,886 - aqt.installer - INFO - installer 140710253109248 Finished installation of icu-linux-Rhel7.2-x64.7z in 2.19032395
+2024-08-02 09:54:19,487 - aqt.installer - INFO - installer 139876182003712 Finished installation of qttools-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z in 6.02682108
+2024-08-02 09:54:28,587 - aqt.installer - INFO - installer 140138768113664 Finished installation of qtdeclarative-Linux-RHEL_8_8-GCC-Linux-RHEL_8_8-X86_64.7z in 15.12873563
+2024-08-02 09:54:28,684 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/bin/qmake
+2024-08-02 09:54:28,687 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Designer.pc
+2024-08-02 09:54:28,687 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Concurrent.pc
+2024-08-02 09:54:28,687 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickLayouts.pc
+2024-08-02 09:54:28,688 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6DBus.pc
+2024-08-02 09:54:28,688 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6UiPlugin.pc
+2024-08-02 09:54:28,688 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickControls2Imagine.pc
+2024-08-02 09:54:28,688 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickControls2.pc
+2024-08-02 09:54:28,688 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QmlModels.pc
+2024-08-02 09:54:28,688 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickControls2Impl.pc
+2024-08-02 09:54:28,688 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6PrintSupport.pc
+2024-08-02 09:54:28,688 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickTest.pc
+2024-08-02 09:54:28,688 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Test.pc
+2024-08-02 09:54:28,689 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickControls2BasicStyleImpl.pc
+2024-08-02 09:54:28,689 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QmlCompiler.pc
+2024-08-02 09:54:28,689 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6LabsSharedImage.pc
+2024-08-02 09:54:28,689 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Network.pc
+2024-08-02 09:54:28,689 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Qml.pc
+2024-08-02 09:54:28,689 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QDocCatchGeneratorsPrivate.pc
+2024-08-02 09:54:28,689 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6LabsQmlModels.pc
+2024-08-02 09:54:28,689 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickControls2FusionStyleImpl.pc
+2024-08-02 09:54:28,690 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Quick.pc
+2024-08-02 09:54:28,690 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickControls2ImagineStyleImpl.pc
+2024-08-02 09:54:28,690 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Svg.pc
+2024-08-02 09:54:28,690 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6WaylandClient.pc
+2024-08-02 09:54:28,690 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickDialogs2QuickImpl.pc
+2024-08-02 09:54:28,690 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Gui.pc
+2024-08-02 09:54:28,690 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QmlIntegration.pc
+2024-08-02 09:54:28,690 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QmlXmlListModel.pc
+2024-08-02 09:54:28,691 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6LabsSettings.pc
+2024-08-02 09:54:28,691 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickTemplates2.pc
+2024-08-02 09:54:28,691 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickControls2UniversalStyleImpl.pc
+2024-08-02 09:54:28,691 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickControls2MaterialStyleImpl.pc
+2024-08-02 09:54:28,691 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QmlLocalStorage.pc
+2024-08-02 09:54:28,691 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickControls2Basic.pc
+2024-08-02 09:54:28,691 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6LabsFolderListModel.pc
+2024-08-02 09:54:28,691 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Sql.pc
+2024-08-02 09:54:28,691 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickControls2Material.pc
+2024-08-02 09:54:28,691 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickControls2Fusion.pc
+2024-08-02 09:54:28,691 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6OpenGLWidgets.pc
+2024-08-02 09:54:28,692 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Core.pc
+2024-08-02 09:54:28,692 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickDialogs2Utils.pc
+2024-08-02 09:54:28,693 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QmlCore.pc
+2024-08-02 09:54:28,693 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6LabsAnimation.pc
+2024-08-02 09:54:28,693 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Xml.pc
+2024-08-02 09:54:28,693 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickWidgets.pc
+2024-08-02 09:54:28,694 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6LabsWavefrontMesh.pc
+2024-08-02 09:54:28,694 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Platform.pc
+2024-08-02 09:54:28,694 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QDocCatchConversionsPrivate.pc
+2024-08-02 09:54:28,694 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickDialogs2.pc
+2024-08-02 09:54:28,694 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6SvgWidgets.pc
+2024-08-02 09:54:28,694 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Help.pc
+2024-08-02 09:54:28,694 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QuickControls2Universal.pc
+2024-08-02 09:54:28,695 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Widgets.pc
+2024-08-02 09:54:28,695 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6OpenGL.pc
+2024-08-02 09:54:28,695 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6UiTools.pc
+2024-08-02 09:54:28,695 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6Linguist.pc
+2024-08-02 09:54:28,695 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/pkgconfig/Qt6QmlWorkerScript.pc
+2024-08-02 09:54:28,696 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6OpenGLWidgets.prl
+2024-08-02 09:54:28,696 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickDialogs2.prl
+2024-08-02 09:54:28,696 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Qml.prl
+2024-08-02 09:54:28,696 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControls2MaterialStyleImpl.prl
+2024-08-02 09:54:28,696 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Svg.prl
+2024-08-02 09:54:28,697 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6DBus.prl
+2024-08-02 09:54:28,697 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6PacketProtocol.prl
+2024-08-02 09:54:28,697 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControls2BasicStyleImpl.prl
+2024-08-02 09:54:28,697 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6LabsWavefrontMesh.prl
+2024-08-02 09:54:28,697 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6LabsQmlModels.prl
+2024-08-02 09:54:28,697 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6EglFsKmsSupport.prl
+2024-08-02 09:54:28,697 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6LabsAnimation.prl
+2024-08-02 09:54:28,698 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControls2UniversalStyleImpl.prl
+2024-08-02 09:54:28,698 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Network.prl
+2024-08-02 09:54:28,698 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6KmsSupport.prl
+2024-08-02 09:54:28,698 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QmlXmlListModel.prl
+2024-08-02 09:54:28,698 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6LabsSettings.prl
+2024-08-02 09:54:28,698 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6XcbQpa.prl
+2024-08-02 09:54:28,698 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6EglFSDeviceIntegration.prl
+2024-08-02 09:54:28,698 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Concurrent.prl
+2024-08-02 09:54:28,698 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QmlLS.prl
+2024-08-02 09:54:28,699 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickShapes.prl
+2024-08-02 09:54:28,699 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6WaylandEglClientHwIntegration.prl
+2024-08-02 09:54:28,699 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QmlLocalStorage.prl
+2024-08-02 09:54:28,699 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControls2Material.prl
+2024-08-02 09:54:28,699 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickDialogs2Utils.prl
+2024-08-02 09:54:28,699 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControls2Impl.prl
+2024-08-02 09:54:28,699 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControls2FusionStyleImpl.prl
+2024-08-02 09:54:28,699 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6WlShellIntegration.prl
+2024-08-02 09:54:28,699 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Xml.prl
+2024-08-02 09:54:28,700 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickDialogs2QuickImpl.prl
+2024-08-02 09:54:28,700 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QmlDom.prl
+2024-08-02 09:54:28,700 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Designer.prl
+2024-08-02 09:54:28,700 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QmlToolingSettings.prl
+2024-08-02 09:54:28,700 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QmlCore.prl
+2024-08-02 09:54:28,700 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QmlDebug.prl
+2024-08-02 09:54:28,701 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6ExampleIcons.prl
+2024-08-02 09:54:28,701 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControls2ImagineStyleImpl.prl
+2024-08-02 09:54:28,701 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickParticles.prl
+2024-08-02 09:54:28,701 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickWidgets.prl
+2024-08-02 09:54:28,701 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickLayouts.prl
+2024-08-02 09:54:28,703 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickTemplates2.prl
+2024-08-02 09:54:28,704 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControls2Basic.prl
+2024-08-02 09:54:28,704 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6SvgWidgets.prl
+2024-08-02 09:54:28,704 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Sql.prl
+2024-08-02 09:54:28,704 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Test.prl
+2024-08-02 09:54:28,704 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Gui.prl
+2024-08-02 09:54:28,705 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6PrintSupport.prl
+2024-08-02 09:54:28,705 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QmlWorkerScript.prl
+2024-08-02 09:54:28,705 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControls2Universal.prl
+2024-08-02 09:54:28,705 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Quick.prl
+2024-08-02 09:54:28,705 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QmlTypeRegistrar.prl
+2024-08-02 09:54:28,705 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6WaylandClient.prl
+2024-08-02 09:54:28,706 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QmlCompiler.prl
+2024-08-02 09:54:28,706 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControls2.prl
+2024-08-02 09:54:28,706 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6UiTools.prl
+2024-08-02 09:54:28,706 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6OpenGL.prl
+2024-08-02 09:54:28,706 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Widgets.prl
+2024-08-02 09:54:28,706 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6DesignerComponents.prl
+2024-08-02 09:54:28,706 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickTestUtils.prl
+2024-08-02 09:54:28,706 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QmlModels.prl
+2024-08-02 09:54:28,706 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControlsTestUtils.prl
+2024-08-02 09:54:28,706 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickEffects.prl
+2024-08-02 09:54:28,707 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6InputSupport.prl
+2024-08-02 09:54:28,707 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControls2Imagine.prl
+2024-08-02 09:54:28,707 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6FbSupport.prl
+2024-08-02 09:54:28,707 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6LabsFolderListModel.prl
+2024-08-02 09:54:28,707 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Core.prl
+2024-08-02 09:54:28,707 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickControls2Fusion.prl
+2024-08-02 09:54:28,707 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6LabsSharedImage.prl
+2024-08-02 09:54:28,707 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6QuickTest.prl
+2024-08-02 09:54:28,708 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6DeviceDiscoverySupport.prl
+2024-08-02 09:54:28,708 - aqt.updater - INFO - updater 139970480209920 Patching /home/sander/.qt-installs/6.6.3/gcc_64/lib/libQt6Help.prl
+2024-08-02 09:54:28,708 - aqt.main - INFO - installer 139970480209920 Finished installation
+2024-08-02 09:54:28,708 - aqt.main - INFO - installer 139970480209920 Time elapsed: 16.04844186 second

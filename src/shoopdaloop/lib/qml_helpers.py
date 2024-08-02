@@ -121,14 +121,11 @@ def register_shoopdaloop_qml_classes():
 
     qmlRegisterSingletonType("ShoopConstants", 1, 0, "ShoopConstants", create_constants_instance)
 
-    print("Calling Rust to register QML types and singletons")
     import ctypes
-    rustlib = ctypes.CDLL(installation_dir() + '/libshoop_rs_dynlib.so')
-    rustlib.register_qml_types_and_singletons.argtypes = []
-    rustlib.register_qml_types_and_singletons.restype = None
-    rustlib.register_qml_types_and_singletons()
-    print(rustlib.register_qml_types_and_singletons)
-    print("Rust call done")
+    rustlib = ctypes.CDLL(installation_dir() + '/libshoop_rs.so')
+    rustlib.shoop_rust_init.argtypes = []
+    rustlib.shoop_rust_init.restype = None
+    rustlib.shoop_rust_init()
 
     # install_qt_message_handler()
 
