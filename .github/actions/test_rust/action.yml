@@ -11,6 +11,9 @@ inputs:
   test_runner:
     type: string
     required: true
+  python:
+    type: string
+    required: true
 
 runs:
   using: "composite"
@@ -26,16 +29,29 @@ runs:
     id: runcmdprefix
     run: |
       if [[ "$RUNNER_OS" == "macOS" ]]; then
-        echo "run_cmd_prefix=${{ inputs.run_cmd_prefix }} DYLD_FALLBACK_LIBRARY_PATH=$(dirname ${{ inputs.test_runner }})" | tee -a $GITHUB_OUTPUT
+        echo "run_cmd_prefix=${{ inputs.run_cmd_prefix }} DYLD_FALLBACK_LIBRARY_PATH=$(dirname ${{ inputs.test_runner }})" | tee -a $GITHUB_ENV
       else
-        echo "run_cmd_prefix=${{ inputs.run_cmd_prefix }}" | tee -a $GITHUB_OUTPUT
+        echo "run_cmd_prefix=${{ inputs.run_cmd_prefix }}" | tee -a $GITHUB_ENV
+      fi
+  
+  - name: Find Qt libs
+    shell: wrap-shell {0}
+    run: |
+      PYSIDE_LOCATION=$(${{ inputs.python }} -m pip show PySide6 | grep Location | cut -d ' ' -f 2)
+      echo "PYSIDE_LOCATION=$PYSIDE_LOCATION"
+      QT_LIB_DIR=$(find $PYSIDE_LOCATION -name "libQt6Core.*" | xargs dirname)
+      echo "QT_LIB_DIR=$QT_LIB_DIR"
+      if [[ "$RUNNER_OS" == "macOS" ]]; then
+        echo "run_cmd_prefix=${{ env.run_cmd_prefix }} DYLD_FALLBACK_LIBRARY_PATH=$QT_LIB_DIR" | tee -a $GITHUB_ENV
+      else
+        echo "run_cmd_prefix=${{ env.run_cmd_prefix }} LD_LIBRARY_PATH=$QT_LIB_DIR" | tee -a $GITHUB_ENV
       fi
 
   - name: run the testrunner (${{ inputs.variant_name }})
     shell: wrap-shell {0}
     run: |
       mkdir -p reports
-      ${{ steps.runcmdprefix.outputs.run_cmd_prefix }} ${{ inputs.test_runner }}
+      ${{ env.run_cmd_prefix }} ${{ inputs.test_runner }}
       # echo "Back-end test results file: $(ls -la ${{ env.results_xml }})"
 
   # - name: Publish Back-end Test Report
