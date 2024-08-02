@@ -3,13 +3,15 @@ use std::time::SystemTime;
 use humantime;
 
 pub fn init_logging() -> Result<(), fern::InitError> {
+    let colors = fern::colors::ColoredLevelConfig::new()
+        .info(fern::colors::Color::Green);
     fern::Dispatch::new()
-        .format(|out, message, record| {
+        .format(move |out, message, record| {
             out.finish(format_args!(
-                "[{} {} {}] {}",
+                "[{}] [{}] [{}] {}",
                 humantime::format_rfc3339_seconds(SystemTime::now()),
-                record.level(),
                 record.target(),
+                colors.color(record.level()),
                 message
             ))
         })
