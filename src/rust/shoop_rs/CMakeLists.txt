@@ -32,8 +32,7 @@ install(FILES $<TARGET_PROPERTY:${SHOOP_RS_SHARED},IMPORTED_LOCATION>
         DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
 
 
-# Find the test executable built by the corrosion target.
-# Copy it to the desired filename.
+# Build Cargo test executable and include in the installation.
 set(TEST_EXECUTABLE "${CMAKE_CURRENT_BINARY_DIR}/shoop_rs_testrunner${EXEC_SUFFIX}")
 add_custom_command(
     OUTPUT ${TEST_EXECUTABLE}
