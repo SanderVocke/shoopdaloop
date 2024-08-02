@@ -15,7 +15,14 @@ outputs:
 runs:
   using: "composite"
   steps:
+  - name: Prepare Rust (Windows)
+    if: ${{ inputs.variant == 'windows' }}
+    uses: actions-rust-lang/setup-rust-toolchain@v1
+    with:
+       target: x86_64-pc-windows-gnu
+
   - name: Prepare Rust
+    if: ${{ inputs.variant != 'windows' }}
     uses: actions-rust-lang/setup-rust-toolchain@v1
 
   - name: Install Qt (Windows)
