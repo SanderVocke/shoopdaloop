@@ -1,4 +1,5 @@
-use log::*;
+use crate::logging::macros::*;
+const SHOOP_LOG_UNIT : &str = "Backend.FileIO";
 
 #[cxx_qt::bridge]
 pub mod qobj_file_io {
