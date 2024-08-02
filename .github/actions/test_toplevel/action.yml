@@ -125,7 +125,7 @@ runs:
       printf "\n\n\n\n\n\n"
   - name: Test rust
     if: ${{ (success() || failure()) && steps.install_package.outputs.rust_test_runner }}
-    uses: ./.github/actions/test_backend
+    uses: ./.github/actions/test_rust
     with:
       variant_name: ${{ inputs.name }}
       # note: build step generates run_cmd_prefix output
