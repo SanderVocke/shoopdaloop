@@ -26,7 +26,7 @@ excluded_binaries = [
     'libjack.so.*',    # JACK client library should always come from the system
     'libxkbcommon.*',  # TODO: figure out root-cause, having libxkbcommon but not libxkbcommon-x11 in the package caused a segfault on Arch
     'libstdc\+\+.*',   # MESA won't roll with old c++ std libraries. See discussion @ https://github.com/pyinstaller/pyinstaller/issues/6993
-    'libQt6.*,         # Qt6 libraries will already be included through the PySide6 hook.
+    'libQt6.*',        # Qt6 libraries will already be included through the PySide6 hook.
 ]
 added_binaries = [
     'libcrypt.so.1',  # This is in Pyinstaller's default blacklist apparently. Arch does need it
