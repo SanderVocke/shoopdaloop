@@ -37,7 +37,7 @@ runs:
   - name: Find Qt libs
     shell: wrap-shell {0}
     run: |
-      PYSIDE_LOCATION=$(${{ inputs.python }} -m pip show PySide6_Essentials | grep Location | cut -d ' ' -f 2)
+      PYSIDE_LOCATION=$(${{ inputs.python }} -m pip show pyside6-essentials | grep Location | cut -d ' ' -f 2)/PySide6
       echo "PYSIDE_LOCATION=$PYSIDE_LOCATION"
       QT_LIB_DIR=$(find $PYSIDE_LOCATION -name "libQt6Core.*" | xargs dirname)
       echo "QT_LIB_DIR=$QT_LIB_DIR"
