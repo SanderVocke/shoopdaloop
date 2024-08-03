@@ -132,7 +132,7 @@ runs:
       # for usage with shared ASAN library.
       run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ inputs.run_cmd_prefix }}
       test_runner: ${{ steps.install_package.outputs.rust_test_runner }}
-      python: ${{ inputs.python }}
+      python: ${{ steps.install_package.outputs.python }}
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
