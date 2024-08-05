@@ -23,7 +23,9 @@ runs:
   - name: Set rust arch (Windows)
     if: ${{ inputs.variant == 'windows' }}
     shell: wrap-shell {0}
-    run: rustup set default-host x86_64-pc-windows-gnu
+    run: |
+      rustup set default-host x86_64-pc-windows-gnu
+      rustc +stable --version --verbose
 
   - name: Prepare Rust
     if: ${{ inputs.variant != 'windows' }}
