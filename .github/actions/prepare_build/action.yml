@@ -20,10 +20,16 @@ runs:
     uses: dtolnay/rust-toolchain@stable
     with:
        targets: x86_64-pc-windows-gnu
+  - name: More Rust (Windows)
+    if: ${{ inputs.variant == 'windows' }}
+    shell: wrap-shell {0}
+    run: |
+      rustup toolchain install stable-gnu
+      rustup set default-host x86_64-pc-windows-gnu
   - name: Prepare Rust (non-Windows)
     if: ${{ inputs.variant != 'windows' }}
     uses: dtolnay/rust-toolchain@stable
-  - name: Rust info
+  - name: Rust further steps and info
     if: ${{ inputs.variant == 'windows' }}
     shell: wrap-shell {0}
     run: |
@@ -31,13 +37,6 @@ runs:
       rustc +stable --version --verbose
       echo "==== Rust toolchain list ===="
       rustup toolchain list
-      echo "==== Rust target list ===="
-      rustup target list
-  - name: Set rust arch (Windows)
-    if: ${{ inputs.variant == 'windows' }}
-    shell: wrap-shell {0}
-    run: |
-      rustup set default-host x86_64-pc-windows-gnu
 
   - name: Install Qt (Windows)
     uses: jurplel/install-qt-action@v4
