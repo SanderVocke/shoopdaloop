@@ -25,11 +25,19 @@ runs:
     shell: wrap-shell {0}
     run: |
       rustup set default-host x86_64-pc-windows-gnu
-      rustc +stable --version --verbose
 
   - name: Prepare Rust
     if: ${{ inputs.variant != 'windows' }}
     uses: dtolnay/rust-toolchain@stable
+
+  - name: Rust info
+    if: ${{ inputs.variant == 'windows' }}
+    shell: wrap-shell {0}
+    run: |
+      rustup set default-host x86_64-pc-windows-gnu
+      rustc +stable --version --verbose
+      rustup toolchain list
+      rustup target list
 
   - name: Install Qt (Windows)
     uses: jurplel/install-qt-action@v4
