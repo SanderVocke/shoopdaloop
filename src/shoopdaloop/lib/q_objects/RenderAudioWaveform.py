@@ -1,13 +1,10 @@
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QLine
-from PySide6.QtQuick import QQuickItem, QQuickPaintedItem
-from PySide6.QtGui import QPen, QPainter, QColor
-from PySide6.QtQml import QJSValue
+from PySide6.QtCore import QLine
+from PySide6.QtGui import QPen, QColor
 
 from .ShoopPyObject import *
 
 from ..logging import Logger
 from ..backend_wrappers import ShoopChannelAudioData
-import ctypes
 import math
 
 from shoopdaloop.lib.init_dynlibs import init_dynlibs

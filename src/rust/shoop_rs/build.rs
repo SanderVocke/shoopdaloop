@@ -22,6 +22,6 @@ fn main() {
             cc.file("src/cxx/cxx-shoop/ShoopQObject.cpp");
             cc.file("src/cxx/cxx-shoop/shoop_rust_callable.cpp");
         })
-        .qobject_header("src/cxx/cxx-shoop/ShoopQObject.h")
+        .qobject_header("src/cxx/shoop/qt/ShoopQObject.h")
         .build();
 }
