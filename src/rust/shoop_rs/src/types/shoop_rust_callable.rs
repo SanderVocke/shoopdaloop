@@ -35,7 +35,7 @@ pub mod ffi {
         fn qvariantCanConvertShoopRustCallable(variant: &QVariant) -> bool;
 
         #[rust_name = "register_metatype_shoop_rust_callable"]
-        fn registerMetatypeShoopRustCallable(name : &String);
+        fn registerMetatypeShoopRustCallable(name : &mut String);
     }
 
     #[namespace = "rust::cxxqtlib1::qvariant"]
@@ -50,6 +50,7 @@ pub mod ffi {
     }
 }
 
-pub fn register_metatype(name : &String) {
-    ffi::register_metatype_shoop_rust_callable(name);
+pub fn register_metatype(name : &str) {
+    let mut str = String::from(name);
+    ffi::register_metatype_shoop_rust_callable(&mut str);
 }

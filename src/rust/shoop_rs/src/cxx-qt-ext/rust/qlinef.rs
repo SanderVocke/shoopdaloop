@@ -5,7 +5,7 @@ use std::fmt;
 mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-shoop-ext/qlinef.h");
-        type QLineF = crate::QLineF;
+        type QLineF = ::qlinef::QLineF;
     }
 
     #[namespace = "rust::cxx_shoop_ext"]
@@ -127,3 +127,5 @@ unsafe impl ExternType for QLineF {
     type Id = type_id!("QLineF");
     type Kind = cxx::kind::Trivial;
 }
+
+impl QListElement for QLineF {}

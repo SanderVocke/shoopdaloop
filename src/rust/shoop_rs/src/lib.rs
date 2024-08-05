@@ -15,8 +15,7 @@ fn register_qml_types_and_singletons() {
 
 fn register_metatypes() {
     use types::*;
-    let shoop_rust_callable_name = String::from("ShoopRustCallable");
-    shoop_rust_callable::register_metatype(&shoop_rust_callable_name);
+    shoop_rust_callable::register_metatype("ShoopRustCallable");
 }
 
 #[no_mangle]

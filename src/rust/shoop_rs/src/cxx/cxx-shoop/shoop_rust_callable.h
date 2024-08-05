@@ -11,7 +11,7 @@ struct ShoopRustCallable
 Q_DECLARE_METATYPE(ShoopRustCallable);
 
 bool
-qvariantCanConvertShoopRustCallable(const QVariant& variant);
+qvariantCanConvertShoopRustCallable(QVariant const& variant);
 
 void
-registerMetatypeShoopRustCallable(const ::rust::String & name);
+registerMetatypeShoopRustCallable(::rust::String & name);

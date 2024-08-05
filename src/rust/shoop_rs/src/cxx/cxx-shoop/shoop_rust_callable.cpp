@@ -7,7 +7,7 @@ qvariantCanConvertShoopRustCallable(const QVariant& variant)
 }
 
 void
-registerMetatypeShoopRustCallable(const ::rust::String & name)
+registerMetatypeShoopRustCallable(::rust::String & name)
 {
   qRegisterMetaType<ShoopRustCallable>(name.c_str());
 }
