@@ -27,8 +27,11 @@ runs:
     if: ${{ inputs.variant == 'windows' }}
     shell: wrap-shell {0}
     run: |
+      echo "==== Rust version ===="
       rustc +stable --version --verbose
+      echo "==== Rust toolchain list ===="
       rustup toolchain list
+      echo "==== Rust target list ===="
       rustup target list
   - name: Set rust arch (Windows)
     if: ${{ inputs.variant == 'windows' }}

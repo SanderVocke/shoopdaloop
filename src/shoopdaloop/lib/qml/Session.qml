@@ -23,7 +23,7 @@ Rectangle {
     // The actual descriptor can be retrieved with actual_session_descriptor().
     property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, null, [], [], [], [])
     property var backend_type : global_args.backend_type
-    
+
     property alias driver_setting_overrides : session_backend.driver_setting_overrides
 
     ExecuteNextCycle {
@@ -87,7 +87,7 @@ Rectangle {
     property alias loops : lookup_loops.objects
     function test_grab_screens_and_quit(output_folder) {
         // We are supposed to take screenshots of application windows, output them
-        // and exit.        
+        // and exit.
         test_screen_grab_trigger.output_folder = output_folder
         test_screen_grab_trigger.trigger()
     }
@@ -105,7 +105,7 @@ Rectangle {
                 'tracks': tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)
             }
         ]
-        
+
         return GenerateSession.generate_session(
             app_metadata.version_string,
             session_backend.get_sample_rate(),
@@ -295,7 +295,7 @@ Rectangle {
                 confirm_sample_rate_convert_dialog.open()
                 return;
             }
-            
+
             if (our_sample_rate != incoming_sample_rate) {
                 descriptor = GenerateSession.convert_session_descriptor_sample_rate(descriptor, incoming_sample_rate, our_sample_rate)
             }
@@ -415,7 +415,7 @@ Rectangle {
 
         onClicked: forceActiveFocus()
         Connections {
-            target: release_focus_notifier
+            target: ShoopReleaseFocusNotifier
             function onFocusReleased() {
                 session_focus_item.forceActiveFocus()
             }
@@ -439,7 +439,7 @@ Rectangle {
             name_hint: "control"
             direction: ShoopConstants.PortDirection.Input
             lua_engine: midi_control.lua_engine
-            
+
             RegistryLookup {
                 id: lookup_autoconnect
                 registry: registries.state_registry
@@ -551,7 +551,7 @@ Rectangle {
             visible: open
 
             property real active_height: 200
-            
+
             onOpenChanged: {
                 if (open) {
                     height = pane_area.active_height
@@ -683,7 +683,7 @@ Rectangle {
                         }
 
                         initial_descriptor: sync_loop_loader.initial_descriptor
-                        
+
                         onLoadedChanged: sync_loop_loader.loaded = loaded
                         name_editable: false
                         sync_loop_layout: true
@@ -692,7 +692,7 @@ Rectangle {
 
                     TrackControlWidget {
                         id: sync_loop_control_widget
-                        
+
                         anchors {
                             left: parent.left
                             right: parent.right
@@ -778,14 +778,14 @@ Rectangle {
                     value: session_backend.dsp_load
                 }
 
-                Label { 
+                Label {
                     text: "Xruns: " + session_backend.xruns.toString()
                 }
 
                 ExtendedButton {
                     tooltip: "Reset reported Xruns to 0."
                     id: reset_xruns
-                    Label { 
+                    Label {
                         text: "Reset"
                         anchors {
                             horizontalCenter: parent.horizontalCenter

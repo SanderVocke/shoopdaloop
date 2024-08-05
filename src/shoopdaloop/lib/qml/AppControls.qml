@@ -446,7 +446,7 @@ Item {
 
             editable: true
             valueFromText: function(text, locale) {
-                release_focus_notifier.notify()
+                ShoopReleaseFocusNotifier.notify()
                 return Number.fromLocaleString(locale, text);
             }
 

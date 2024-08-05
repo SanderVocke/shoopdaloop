@@ -10,6 +10,6 @@ ScrollView {
         y: 0
         width: Math.max(root.contentWidth, root.width)
         height: Math.max(root.contentHeight, root.height)
-        onClicked: release_focus_notifier.notify()
+        onClicked: ShoopReleaseFocusNotifier.notify()
     }
 }

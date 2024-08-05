@@ -1,4 +1,5 @@
-use log::*;
+use crate::logging::macros::*;
+const SHOOP_LOG_UNIT : &str = "Frontend.OSUtils";
 
 #[cxx_qt::bridge]
 pub mod qobj_os_utils {

@@ -8,6 +8,7 @@ fn main() {
             rust_files: &[
                 "src/qobj/qobj_os_utils.rs",
                 "src/qobj/qobj_file_io.rs",
+                "src/qobj/qobj_release_focus_notifier.rs",
 
                 "src/shoop_rs_macros_tests/shoop_rs_macros_test.rs",
             ],
