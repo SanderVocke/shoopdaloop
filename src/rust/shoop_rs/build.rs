@@ -6,6 +6,8 @@ fn main() {
         .qml_module(QmlModule {
             uri: "shoopdaloop",
             rust_files: &[
+                // "src/types/shoop_rust_callable.rs",
+
                 "src/qobj/qobj_os_utils.rs",
                 "src/qobj/qobj_file_io.rs",
                 "src/qobj/qobj_release_focus_notifier.rs",
@@ -18,6 +20,7 @@ fn main() {
         .cc_builder(|cc| {
             cc.include("src/cxx");
             cc.file("src/cxx/cxx-shoop/ShoopQObject.cpp");
+            cc.file("src/cxx/cxx-shoop/shoop_rust_callable.cpp");
         })
         .qobject_header("src/cxx/cxx-shoop/ShoopQObject.h")
         .build();
