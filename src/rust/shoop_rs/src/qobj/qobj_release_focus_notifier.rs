@@ -1,6 +1,8 @@
 use crate::logging::macros::*;
 const SHOOP_LOG_UNIT : &str = "Frontend.ReleaseFocusNotifier";
 
+use std::pin::Pin;
+
 #[cxx_qt::bridge]
 pub mod qobj_release_focus_notifier {
     unsafe extern "RustQt" {

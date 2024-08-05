@@ -1,6 +1,7 @@
 #pragma once
 #include <QQmlEngine>
 #include <string>
+#include "rust/cxx.h"
 
 template<typename T>
 inline void register_qml_type(
