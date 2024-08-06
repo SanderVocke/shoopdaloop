@@ -22,7 +22,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAK
 if (WIN32)
   set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pdb")
   if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    add_compile_options("/Zi")
+    add_compile_options("/Z7")
+    add_compile_options("/FS")
     add_link_options("/DEBUG")
     add_link_options("/OPT:REF")
     add_link_options("/OPT:ICF")
@@ -63,6 +64,8 @@ set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_subdirectory(third_party/fmt)
 add_subdirectory(third_party/Catch2)
 set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
+
+include(CompilerCaching)
 
 add_subdirectory(libshoopdaloop)
 

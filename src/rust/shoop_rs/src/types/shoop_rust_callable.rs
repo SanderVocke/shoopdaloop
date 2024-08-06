@@ -38,7 +38,6 @@ pub mod ffi {
         fn registerMetatypeShoopRustCallable(name : &mut String);
     }
 
-    #[namespace = "rust::cxxqtlib1::qvariant"]
     unsafe extern "C++" {
         include!("cxx-qt-lib/qvariant.h");
 

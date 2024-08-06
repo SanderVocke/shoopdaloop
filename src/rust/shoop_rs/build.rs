@@ -19,8 +19,10 @@ fn main() {
         })
         .cc_builder(|cc| {
             cc.include("src/cxx");
+            cc.include("src/cxx_qt_ext/include");
             cc.file("src/cxx/cxx-shoop/ShoopQObject.cpp");
             cc.file("src/cxx/cxx-shoop/shoop_rust_callable.cpp");
+            cc.file("src/cxx_qt_ext/cxx/qlinef.cpp");
         })
         .qobject_header("src/cxx/cxx-shoop/ShoopQObject.h")
         .build();

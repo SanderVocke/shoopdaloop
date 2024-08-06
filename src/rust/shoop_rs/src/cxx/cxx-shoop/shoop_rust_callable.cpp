@@ -1,13 +1,13 @@
 #include "shoop_rust_callable.h"
 
 bool
-qvariantCanConvertShoopRustCallable(const QVariant& variant)
+qvariant_can_convert_shoop_rust_callable(const QVariant& variant)
 {
   return variant.canConvert<ShoopRustCallable>();
 }
 
 void
-registerMetatypeShoopRustCallable(::rust::String & name)
+register_metatype_shoop_rust_callable(::rust::String & name)
 {
   qRegisterMetaType<ShoopRustCallable>(name.c_str());
 }

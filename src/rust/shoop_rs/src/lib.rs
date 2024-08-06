@@ -1,6 +1,7 @@
 pub mod logging;
 pub mod qobj;
 pub mod types;
+pub mod cxx_qt_ext;
 
 pub mod shoop_rs_macros_tests;
 
