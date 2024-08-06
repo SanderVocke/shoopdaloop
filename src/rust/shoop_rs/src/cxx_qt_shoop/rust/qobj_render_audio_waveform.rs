@@ -64,33 +64,33 @@ pub mod ffi {
         #[qproperty(i64, samples_offset)]
         #[qproperty(f64, samples_per_bin)]
         #[qproperty(QList_f32, input_data)]
-        type RenderWaveform = super::RenderWaveformRust;
+        type RenderAudioWaveform = super::RenderAudioWaveformRust;
 
         #[qinvokable]
         #[cxx_override]
-        unsafe fn paint(self: Pin<&mut RenderWaveform>, painter: *mut QPainter);
+        unsafe fn paint(self: Pin<&mut RenderAudioWaveform>, painter: *mut QPainter);
 
         #[inherit]
-        fn size(self: &RenderWaveform) -> QSizeF;
+        fn size(self: &RenderAudioWaveform) -> QSizeF;
 
         #[inherit]
-        fn update(self: Pin<&mut RenderWaveform>);
+        fn update(self: Pin<&mut RenderAudioWaveform>);
     }
 
-    impl cxx_qt::Constructor<()> for RenderWaveform {}
+    impl cxx_qt::Constructor<()> for RenderAudioWaveform {}
 
     unsafe extern "C++" {
         include!("cxx-qt-shoop/make_unique.h");
 
         #[rust_name = "make_unique_renderaudiowaveform"]
-        fn make_unique() -> UniquePtr<RenderWaveform>;
+        fn make_unique() -> UniquePtr<RenderAudioWaveform>;
     }
 
     unsafe extern "C++" {
         include!("cxx-qt-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_type_renderaudiowaveform"]
-        fn register_qml_type(inference_example: &RenderWaveform,
+        fn register_qml_type(inference_example: &RenderAudioWaveform,
                                   module_name : &mut String,
                                   version_major : i64, version_minor : i64,
                                   type_name : &mut String);
@@ -109,16 +109,16 @@ pub fn register_qml_type(module_name : &str, type_name : &str) {
 }
 
 
-pub struct RenderWaveformRust {
+pub struct RenderAudioWaveformRust {
     pyramid : audio_power_pyramid::AudioPowerPyramidData,
     samples_offset : i64,
     samples_per_bin : f64,
     input_data : QList_f32,
 }
 
-impl Default for RenderWaveformRust {
-    fn default() -> RenderWaveformRust {
-        RenderWaveformRust {
+impl Default for RenderAudioWaveformRust {
+    fn default() -> RenderAudioWaveformRust {
+        RenderAudioWaveformRust {
             pyramid : audio_power_pyramid::AudioPowerPyramidData::default(),
             samples_offset : 0,
             samples_per_bin : 1_f64,
@@ -127,7 +127,7 @@ impl Default for RenderWaveformRust {
     }
 }
 
-impl ffi::RenderWaveform {
+impl ffi::RenderAudioWaveform {
     pub unsafe fn paint(self: Pin<&mut Self>, painter: *mut ffi::QPainter) {
         trace!("paint (offset {}, scale {})", self.samples_offset, self.samples_per_bin);
         let p : &AudioPowerPyramidData = &self.pyramid;
@@ -207,6 +207,6 @@ impl ffi::RenderWaveform {
     }
 }
 
-impl cxx_qt::Initialize for RenderWaveform {
+impl cxx_qt::Initialize for RenderAudioWaveform {
     fn initialize(self: core::pin::Pin<&mut Self>) {}
 }
