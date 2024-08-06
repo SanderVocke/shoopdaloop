@@ -1,6 +1,8 @@
 use cxx::{type_id, ExternType};
+use cxx_qt;
+use std::pin::Pin;
 
-#[cxx::bridge]
+#[cxx_qt::bridge(cxx_file_stem="qpen")]
 mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qpen.h");
@@ -10,33 +12,43 @@ mod ffi {
 
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qpen.h");
+        
+        #[rust_name = "qpen_set_color"]
+        fn qpenSetColor(pen : Pin<&mut QPen>, color : &QColor);
+    }
 
-        #[rust_name = "qpen_default"]
-        fn qpenDefault() -> QPen;
+    unsafe extern "C++" {
+        include!("cxx-qt-shoop/make_raw.h");
 
-        #[rust_name = "qpen_from_color"]
-        fn qpenFromColor(color : &QColor) -> QPen;
+        #[rust_name = "qpen_make_raw"]
+        unsafe fn make_raw() -> *mut QPen;
+    }
+
+    extern "RustQt" {
+        #[qobject]
+        type DummyQPen = super::DummyQPenRust;
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
+pub struct DummyQPenRust {}
+
 #[repr(C)]
 pub struct QPen {
 }
 
 impl QPen {
-    pub fn from_color(color : &ffi::QColor) -> Self {
-        ffi::qpen_from_color(color)
+    pub fn set_color(pen : Pin<&mut QPen>, color : &ffi::QColor) {
+        ffi::qpen_set_color(pen, color);
     }
-}
 
-impl Default for QPen {
-    fn default() -> Self {
-        ffi::qpen_default()
+    pub fn make_boxed() -> Box<QPen> {
+        let raw = unsafe { ffi::qpen_make_raw() };
+        unsafe { Box::from_raw(raw) }.into()
     }
 }
 
 unsafe impl ExternType for QPen {
     type Id = type_id!("QPen");
-    type Kind = cxx::kind::Trivial;
+    type Kind = cxx::kind::Opaque;
 }

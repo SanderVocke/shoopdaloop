@@ -38,6 +38,7 @@ pub mod ffi {
         fn registerMetatypeShoopRustCallable(name : &mut String);
     }
 
+    #[namespace = "rust::cxxqtlib1::qvariant"]
     unsafe extern "C++" {
         include!("cxx-qt-lib/qvariant.h");
 
@@ -47,7 +48,15 @@ pub mod ffi {
         #[rust_name = "qvariant_value_or_default_shoop_rust_callable"]
         fn qvariantValueOrDefault(variant: &QVariant) -> ShoopRustCallable;
     }
+
+    extern "RustQt" {
+        #[qobject]
+        type DummyRenderAudioWaveform = super::DummyRenderAudioWaveformRust;
+    }
 }
+
+#[derive(Default)]
+pub struct DummyRenderAudioWaveformRust {}
 
 pub fn register_metatype(name : &str) {
     let mut str = String::from(name);

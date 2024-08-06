@@ -6,12 +6,13 @@
 
 struct ShoopRustCallable
 {
-    ::rust::Box<::rust::Fn<void()>> callable;
+    //::rust::Box<::rust::Fn<void()>> callable;
+    int hello;
 };
 Q_DECLARE_METATYPE(ShoopRustCallable);
 
 bool
-qvariant_can_convert_shoop_rust_callable(QVariant const& variant);
+qvariantCanConvertShoopRustCallable(QVariant const& variant);
 
 void
-register_metatype_shoop_rust_callable(::rust::String & name);
+registerMetatypeShoopRustCallable(::rust::String & name);

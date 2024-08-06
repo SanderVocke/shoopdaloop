@@ -5,7 +5,7 @@ use std::fmt;
 #[cxx_qt::bridge(cxx_file_stem="qlinef")]
 mod ffi {
     unsafe extern "C++" {
-        include!("cxx-qt-lib/qlinef.h");
+        include!("cxx-qt-lib-shoop/qlinef.h");
         type QLineF = super::QLineF;
         include!("cxx-qt-lib/qpointf.h");
         type QPointF = cxx_qt_lib::QPointF;
@@ -116,7 +116,7 @@ mod ffi {
         fn clear(list : &mut QList_QLineF);
 
         #[rust_name = "clone_qlist_qlinef"]
-        fn construct(list : &QList_QLineF) -> QList_QLineF;
+        fn clone(list : &QList_QLineF) -> QList_QLineF;
 
         #[rust_name = "contains_qlist_qlinef"]
         fn contains(list : &QList_QLineF, line : &QLineF) -> bool;
@@ -127,7 +127,15 @@ mod ffi {
         #[rust_name = "drop_qlist_qlinef"]
         fn drop(list : &mut QList_QLineF);
     }
+
+    extern "RustQt" {
+        #[qobject]
+        type DummyQLineF = super::DummyQLineFRust;
+    }
 }
+
+#[derive(Default)]
+pub struct DummyQLineFRust {}
 
 #[derive(Debug, Clone, PartialEq)]
 #[repr(C)]

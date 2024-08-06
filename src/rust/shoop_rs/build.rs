@@ -6,6 +6,10 @@ fn main() {
         .qml_module(QmlModule {
             uri: "shoopdaloop",
             rust_files: &[
+                "src/cxx_qt_lib_shoop/rust/qlinef.rs",
+                "src/cxx_qt_lib_shoop/rust/qpen.rs",
+
+                "src/cxx_qt_shoop/rust/shoop_rust_callable.rs",
                 "src/cxx_qt_shoop/rust/qobj_os_utils.rs",
                 "src/cxx_qt_shoop/rust/qobj_file_io.rs",
                 "src/cxx_qt_shoop/rust/qobj_release_focus_notifier.rs",

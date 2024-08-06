@@ -193,7 +193,8 @@ impl ffi::RenderAudioWaveform {
             (0.7*255.0) as i32,
             0, 0
         );
-        let pen = QPen::from_color(&color);
+        let mut pen = QPen::make_boxed();
+        QPen::set_color(Pin::new_unchecked(pen.as_mut()), &color);
         let mut_painter = painter.as_mut().unwrap();
         let mut p : Pin<&mut QPainter> = Pin::new_unchecked(mut_painter);
         p.as_mut().set_pen(&pen);
