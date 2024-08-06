@@ -2,7 +2,7 @@ use cxx_qt_lib::{QListElement, QPointF};
 use cxx::{type_id, ExternType};
 use std::fmt;
 
-#[cxx::bridge]
+#[cxx_qt::bridge(cxx_file_stem="qlinef")]
 mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qlinef.h");

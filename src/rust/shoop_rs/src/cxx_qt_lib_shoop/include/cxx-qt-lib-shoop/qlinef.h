@@ -3,6 +3,8 @@
 #include <QtCore/QLineF>
 #include <QtCore/QList>
 
+using QList_QLineF = QList<QLineF>;
+
 void clear(QList<QLineF> &list);
 
 QList<QLineF> clone(QList<QLineF> const& list);

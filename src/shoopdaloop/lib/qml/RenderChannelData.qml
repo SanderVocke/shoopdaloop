@@ -1,7 +1,6 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonRenderAudioWaveform
 import ShoopDaLoop.PythonRenderMidiSequence
 
 Item {
@@ -14,7 +13,7 @@ Item {
     property bool is_audio : root.channel && root.channel.descriptor.type == "audio"
     property bool is_midi : root.channel && root.channel.descriptor.type == "midi"
 
-    PythonRenderAudioWaveform {
+    ShoopRenderAudioWaveform {
         input_data: is_audio ? root.input_data : null
         samples_per_bin: root.samples_per_bin
         samples_offset: root.samples_offset
