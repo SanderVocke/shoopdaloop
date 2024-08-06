@@ -3,7 +3,7 @@ use shoop_rs_macros::*;
 #[cxx_qt::bridge]
 pub mod shoop_rs_macros_test {
     unsafe extern "C++" {
-        include!("cxx-shoop/ShoopQObject.h");
+        include!("cxx-qt-shoop/ShoopQObject.h");
     }
 
     unsafe extern "RustQt" {
@@ -30,7 +30,7 @@ pub mod shoop_rs_macros_test {
     }
 
     unsafe extern "C++" {
-        include!("cxx-shoop/make_unique.h");
+        include!("cxx-qt-shoop/make_unique.h");
 
         #[rust_name = "make_unique_testobj"]
         fn make_unique() -> UniquePtr<TestObj>;

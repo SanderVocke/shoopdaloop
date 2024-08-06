@@ -110,7 +110,7 @@ mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-shoop-ext/qlinef.h");
+        include!("cxx-qt-lib-shoop/qlinef.h");
 
         #[rust_name = "clear_qlist_qlinef"]
         fn clear(list : &mut QList_QLineF);

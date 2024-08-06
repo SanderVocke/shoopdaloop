@@ -28,14 +28,14 @@ pub mod qobj_os_utils {
     }
 
     unsafe extern "C++" {
-        include!("cxx-shoop/make_unique.h");
+        include!("cxx-qt-shoop/make_unique.h");
 
         #[rust_name = "make_unique_osutils"]
         fn make_unique() -> UniquePtr<OSUtils>;
     }
 
     unsafe extern "C++" {
-        include!("cxx-shoop/register_qml_type.h");
+        include!("cxx-qt-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_singleton_osutils"]
         fn register_qml_singleton(inference_example: &OSUtils,

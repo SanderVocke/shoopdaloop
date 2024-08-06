@@ -19,14 +19,14 @@ pub mod qobj_release_focus_notifier {
     }
 
     unsafe extern "C++" {
-        include!("cxx-shoop/make_unique.h");
+        include!("cxx-qt-shoop/make_unique.h");
 
         #[rust_name = "make_unique_releasefocusnotifier"]
         fn make_unique() -> UniquePtr<ReleaseFocusNotifier>;
     }
 
     unsafe extern "C++" {
-        include!("cxx-shoop/register_qml_type.h");
+        include!("cxx-qt-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_singleton_releasefocusnotifier"]
         fn register_qml_singleton(inference_example: &ReleaseFocusNotifier,

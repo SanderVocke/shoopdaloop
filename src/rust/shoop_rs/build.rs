@@ -6,11 +6,9 @@ fn main() {
         .qml_module(QmlModule {
             uri: "shoopdaloop",
             rust_files: &[
-                // "src/types/shoop_rust_callable.rs",
-
-                "src/qobj/qobj_os_utils.rs",
-                "src/qobj/qobj_file_io.rs",
-                "src/qobj/qobj_release_focus_notifier.rs",
+                "src/cxx_qt_shoop/rust/qobj_os_utils.rs",
+                "src/cxx_qt_shoop/rust/qobj_file_io.rs",
+                "src/cxx_qt_shoop/rust/qobj_release_focus_notifier.rs",
 
                 "src/shoop_rs_macros_tests/shoop_rs_macros_test.rs",
             ],
@@ -18,12 +16,13 @@ fn main() {
             ..Default::default()
         })
         .cc_builder(|cc| {
-            cc.include("src/cxx");
-            cc.include("src/cxx_qt_ext/include");
-            cc.file("src/cxx/cxx-shoop/ShoopQObject.cpp");
-            cc.file("src/cxx/cxx-shoop/shoop_rust_callable.cpp");
-            cc.file("src/cxx_qt_ext/cxx/qlinef.cpp");
+            cc.include("src/cxx_qt_shoop/include");
+            cc.file("src/cxx_qt_shoop/cxx/ShoopQObject.cpp");
+            cc.file("src/cxx_qt_shoop/cxx/shoop_rust_callable.cpp");
+
+            cc.include("src/cxx_qt_lib_shoop/include");
+            cc.file("src/cxx_qt_lib_shoop/cxx/qlinef.cpp");
         })
-        .qobject_header("src/cxx/cxx-shoop/ShoopQObject.h")
+        .qobject_header("src/cxx_qt_shoop/include/cxx-qt-shoop/ShoopQObject.h")
         .build();
 }

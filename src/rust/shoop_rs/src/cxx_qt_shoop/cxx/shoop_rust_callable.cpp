@@ -1,4 +1,4 @@
-#include "shoop_rust_callable.h"
+#include "cxx-qt-shoop/shoop_rust_callable.h"
 
 bool
 qvariant_can_convert_shoop_rust_callable(const QVariant& variant)

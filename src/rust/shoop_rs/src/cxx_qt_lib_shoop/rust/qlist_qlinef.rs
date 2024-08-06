@@ -1,7 +1,7 @@
 #[cxx::bridge]
 pub mod ffi {
     unsafe extern "C++" {
-        include!("cxx-qt-shoop-ext/qlinef.h");
+        include!("cxx-qt-lib-shoop/qlinef.h");
         type QLineF = crate::cxx_qt_ext::qlinef::QLineF;
 
         include!("cxx-qt-lib/qlist.h");

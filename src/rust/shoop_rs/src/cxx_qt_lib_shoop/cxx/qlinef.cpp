@@ -1,4 +1,4 @@
-#include "cxx-qt-shoop-ext/qlinef.h"
+#include "cxx-qt-lib-shoop/qlinef.h"
 
 void clear(QList<QLineF> &list) {
     list.clear();

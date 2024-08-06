@@ -13,7 +13,7 @@ pub mod qobject {
 
     unsafe extern "C++" {
         include!(<QtCore/QLineF>);
-        type QLineF = crate::cxx_qt_ext::qlinef::QLineF;
+        type QLineF = crate::cxx_qt_lib_shoop::qlinef::QLineF;
     }
 
     unsafe extern "C++" {
@@ -23,7 +23,7 @@ pub mod qobject {
 
     unsafe extern "C++" {
         include!("cxx-qt-lib/qlist.h");
-        type QList_QLineF = crate::cxx_qt_ext::qlinef::QList_QLineF;
+        type QList_QLineF = crate::cxx_qt_lib_shoop::qlinef::QList_QLineF;
     }
 
     // QPainter API

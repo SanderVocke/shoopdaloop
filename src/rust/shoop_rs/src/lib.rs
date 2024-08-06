@@ -1,12 +1,12 @@
 pub mod logging;
-pub mod qobj;
 pub mod types;
-pub mod cxx_qt_ext;
+pub mod cxx_qt_shoop;
+pub mod cxx_qt_lib_shoop;
 
 pub mod shoop_rs_macros_tests;
 
 fn register_qml_types_and_singletons() {
-    use qobj::*;
+    use cxx_qt_shoop::*;
 
     let mdl = String::from("ShoopDaLoop.Rust");
     qobj_file_io::register_qml_singleton (&mdl, "ShoopFileIO");
