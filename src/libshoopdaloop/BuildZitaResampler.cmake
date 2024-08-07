@@ -41,12 +41,14 @@ target_include_directories(zita INTERFACE ${ZITA_TOPLEVEL_INCLUDE_DIR})
 if(WIN32)
   # Link to the dll stub
   find_library(PTHREAD_WIN32_LIB
+               HINTS ${PTHREADS4W_PATH}
                pthreadVC3.lib
                REQUIRED)
   target_link_libraries(zita INTERFACE ${PTHREAD_WIN32_LIB})
 
   # Find the DLL
   find_file(PTHREAD_WIN32_DLL
+               HINTS ${PTHREADS4W_PATH}
                pthreadVC3.dll
                REQUIRED)
   # Install it into our package
