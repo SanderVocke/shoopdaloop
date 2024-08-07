@@ -6,6 +6,14 @@ import ShoopDaLoop.PythonRenderMidiSequence
 Item {
     id: root
     property var input_data : null
+    property list<double> input_audio_data : {
+        var rval = [];
+        if (input_data && is_audio) {
+            rval = Array.from(input_data);
+            console.log("audio input data has", rval.length, "values")
+        }
+        return rval
+    }
     property real samples_per_bin : 1.0
     property int samples_offset : 0
     property var channel : null
@@ -14,7 +22,7 @@ Item {
     property bool is_midi : root.channel && root.channel.descriptor.type == "midi"
 
     ShoopRenderAudioWaveform {
-        inputData: is_audio ? root.input_data : null
+        inputData: input_audio_data
         samplesPerBin: root.samples_per_bin
         samplesOffset: root.samples_offset
         width: root.width

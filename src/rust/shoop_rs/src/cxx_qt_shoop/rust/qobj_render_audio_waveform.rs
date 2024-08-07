@@ -18,7 +18,7 @@ pub mod ffi {
         type QSizeF = cxx_qt_lib::QSizeF;
 
         include!("cxx-qt-lib/qlist.h");
-        type QList_f32 = cxx_qt_lib::QList<f32>;
+        type QList_f64 = cxx_qt_lib::QList<f64>;
     }
 
     unsafe extern "C++" {
@@ -63,7 +63,7 @@ pub mod ffi {
         #[base = "QQuickPaintedItem"]
         #[qproperty(i64, samples_offset)]
         #[qproperty(f64, samples_per_bin)]
-        #[qproperty(QList_f32, input_data)]
+        #[qproperty(QList_f64, input_data)]
         type RenderAudioWaveform = super::RenderAudioWaveformRust;
 
         #[qinvokable]
@@ -75,6 +75,13 @@ pub mod ffi {
 
         #[inherit]
         fn update(self: Pin<&mut RenderAudioWaveform>);
+
+        #[qinvokable]
+        unsafe fn preprocess(self: Pin<&mut RenderAudioWaveform>);
+
+        #[inherit]
+        #[qsignal]
+        fn width_changed(self: Pin<&mut RenderAudioWaveform>);
     }
 
     impl cxx_qt::Constructor<()> for RenderAudioWaveform {}
@@ -98,6 +105,7 @@ pub mod ffi {
 }
 
 use core::pin::Pin;
+use std::sync::Mutex;
 use crate::audio_power_pyramid;
 use ffi::*;
 
@@ -110,27 +118,39 @@ pub fn register_qml_type(module_name : &str, type_name : &str) {
 
 
 pub struct RenderAudioWaveformRust {
-    pyramid : audio_power_pyramid::AudioPowerPyramidData,
+    pyramid : Mutex<audio_power_pyramid::AudioPowerPyramidData>,
     samples_offset : i64,
     samples_per_bin : f64,
-    input_data : QList_f32,
+    input_data : QList_f64,
 }
 
 impl Default for RenderAudioWaveformRust {
     fn default() -> RenderAudioWaveformRust {
         RenderAudioWaveformRust {
-            pyramid : audio_power_pyramid::AudioPowerPyramidData::default(),
+            pyramid : audio_power_pyramid::AudioPowerPyramidData::default().into(),
             samples_offset : 0,
             samples_per_bin : 1_f64,
-            input_data : QList_f32::default(),
+            input_data : QList_f64::default(),
         }
     }
 }
 
 impl ffi::RenderAudioWaveform {
+    pub fn preprocess(self: Pin<&mut Self>) {
+        {
+            let s : &RenderAudioWaveformRust = self.cxx_qt_ffi_rust();
+            let mut p = s.pyramid.lock().unwrap();
+            info!("Input data has {} values", s.input_data.len());
+            *p = audio_power_pyramid::create_audio_power_pyramid(
+                s.input_data.iter().copied(), 2048);
+        }
+        self.update();
+    }
+
     pub unsafe fn paint(self: Pin<&mut Self>, painter: *mut ffi::QPainter) {
         trace!("paint (offset {}, scale {})", self.samples_offset, self.samples_per_bin);
-        let p : &AudioPowerPyramidData = &self.pyramid;
+        let s : &RenderAudioWaveformRust = self.cxx_qt_ffi_rust();
+        let p = s.pyramid.lock().unwrap();
 
         // Skip if no pyramid
         if p.levels.len() == 0 {
@@ -204,10 +224,14 @@ impl ffi::RenderAudioWaveform {
             (0.5*self.size().height()) as i32,
             self.size().width() as i32,
             (0.5*self.size().height()) as i32);
-
     }
 }
 
 impl cxx_qt::Initialize for RenderAudioWaveform {
-    fn initialize(self: core::pin::Pin<&mut Self>) {}
+    fn initialize(mut self: Pin<&mut Self>) {
+        self.as_mut().on_input_data_changed(|qobject| { qobject.preprocess(); }).release();
+        self.as_mut().on_samples_offset_changed(|qobject| qobject.update()).release();
+        self.as_mut().on_samples_per_bin_changed(|qobject| qobject.update()).release();
+        self.as_mut().on_width_changed(|q_object| q_object.update()).release();
+    }
 }

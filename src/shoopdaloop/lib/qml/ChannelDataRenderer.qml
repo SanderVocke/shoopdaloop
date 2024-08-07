@@ -77,7 +77,7 @@ Item {
                 }
             }
 
-        
+
         }
 
         Rectangle {
@@ -205,10 +205,13 @@ Item {
             x: ((root.played_back_sample || 0) - render.samples_offset) / render.samples_per_bin
             y: 0
         }
-        
+
         RenderChannelData {
             id: render
-            input_data: fetcher && fetcher.channel_data && root.visible ? fetcher.channel_data : null
+            input_data:
+                fetcher && fetcher.channel_data && root.visible ?
+                    (fetcher.channel_float_data ? fetcher.channel_float_data : fetcher.channel_data)
+                    : null
             channel: root.channel
             samples_per_bin: root.samples_per_pixel
             samples_offset: root.samples_offset
