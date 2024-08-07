@@ -19,14 +19,15 @@ runs:
     if: ${{ inputs.variant == 'windows' }}
     uses: dtolnay/rust-toolchain@stable
     with:
-       targets: x86_64-pc-windows-gnu
-  - name: More Rust (Windows)
-    if: ${{ inputs.variant == 'windows' }}
-    shell: wrap-shell {0}
-    run: |
-      rustup toolchain install stable-gnu
-      rustup set default-host x86_64-pc-windows-gnu
-      rustup default stable-x86_64-pc-windows-gnu
+       targets: x86_64-pc-windows-msvc
+      #  targets: x86_64-pc-windows-gnu
+  # - name: More Rust (Windows)
+  #   if: ${{ inputs.variant == 'windows' }}
+  #   shell: wrap-shell {0}
+  #   run: |
+  #     rustup toolchain install stable-gnu
+  #     rustup set default-host x86_64-pc-windows-gnu
+  #     rustup default stable-x86_64-pc-windows-gnu
   - name: Prepare Rust (non-Windows)
     if: ${{ inputs.variant != 'windows' }}
     uses: dtolnay/rust-toolchain@stable
@@ -45,7 +46,8 @@ runs:
     with:
       cache: true
       version: 6.6.3
-      arch: win64_mingw
+      arch: win64_msvc2019_64
+      # arch: win64_mingw
       setup-python: false
   - name: Install Qt
     uses: jurplel/install-qt-action@v4

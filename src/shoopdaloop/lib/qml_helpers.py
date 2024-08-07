@@ -117,18 +117,6 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(CompositeLoop, 'CompositeLoop')
 
     qmlRegisterSingletonType("ShoopConstants", 1, 0, "ShoopConstants", create_constants_instance)
-import platform
-
-def get_os():
-    system = platform.system()
-    if system == "Windows":
-        return "Windows"
-    elif system == "Darwin":
-        return "macOS"
-    elif system == "Linux":
-        return "Linux"
-    else:
-        return "Unknown"
 
     import ctypes
     dylib_name = (
