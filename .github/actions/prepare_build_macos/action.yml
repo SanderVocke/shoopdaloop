@@ -32,6 +32,7 @@ runs:
       ln -s ../lib/QtCore.framework/Headers QtCore
       ln -s ../lib/QtGui.framework/Headers QtGui
       ln -s ../lib/QtQml.framework/Headers QtQml
+      ln -s ../lib/QtNetwork.framework/Headers QtNetwork
   - name: Set outputs
     shell: wrap-shell {0}
     run: |
