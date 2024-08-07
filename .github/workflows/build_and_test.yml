@@ -341,18 +341,18 @@ jobs:
           #   package_kind: dmg
           #   os: macos-12
           #   upload_release_assets: true
-          - name: macos_debug
-            build_type: 'Debug'
-            os: macos-12
+          # - name: macos_debug
+          #   build_type: 'Debug'
+          #   os: macos-12
           # - name: macos_release_arm
           #   build_type: 'Release'
           #   appbundle: true
           #   package_kind: dmg
           #   os: macos-14
           #   upload_release_assets: true
-          # - name: macos_debug_arm
-          #   build_type: 'Debug'
-          #   os: macos-14
+          - name: macos_debug_arm
+            build_type: 'Debug'
+            os: macos-14
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
     #if: false
