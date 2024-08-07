@@ -122,6 +122,9 @@ target_link_libraries(shoopdaloop_internals PRIVATE
   fmt::fmt
   zita
   )
+if (DEFINED PTHREADS4W_PATH)
+  target_include_directories(shoopdaloop_internals PRIVATE ${PTHREADS4W_PATH})
+endif()
 if (UNIX)
     target_link_libraries(shoopdaloop_internals PUBLIC dl)
 endif()
