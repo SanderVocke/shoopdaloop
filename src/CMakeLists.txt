@@ -53,6 +53,11 @@ if(HAVE_LV2)
   add_compile_definitions(SHOOP_HAVE_LV2)
 endif()
 
+set(PTHREADS4W_PATH $ENV{PTHREADS4W_PATH} CACHE PATH "Path to PThreads4W, needed on Windows")
+if(DEFINED PTHREADS4W_PATH)
+  message(STATUS "PThreads4W path (Windows): ${PTHREADS4W_PATH}")
+endif()
+
 if (APPLE)
   message(STATUS "MacOS architectures included: ${CMAKE_OSX_ARCHITECTURES}")
 endif()
