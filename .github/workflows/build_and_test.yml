@@ -386,79 +386,79 @@ jobs:
     #   if: failure()
     #   uses: SanderVocke/action-tmate@master
 
-  # test_macos:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         - name: release_whl_macos12
-  #           python: python3
-  #           python_pip_args: -m pip
-  #           python_pytest_args: -m pytest
-  #           container: null
-  #           os: macos-12
-  #           package: wheel_macos_release
-  #           qpa_platform: offscreen
-  #         - name: release_whl_macos13
-  #           python: python3
-  #           python_pip_args: -m pip
-  #           python_pytest_args: -m pytest
-  #           container: null
-  #           os: macos-13
-  #           package: wheel_macos_release
-  #           qpa_platform: offscreen
-  #         - name: release_whl_macos14
-  #           python: python3
-  #           python_pip_args: -m pip
-  #           python_pytest_args: -m pytest
-  #           container: null
-  #           os: macos-14
-  #           package: wheel_macos_release_arm
-  #           qpa_platform: offscreen
-  #         - name: debug_whl_macos14
-  #           python: python3
-  #           python_pip_args: -m pip
-  #           python_pytest_args: -m pytest
-  #           container: null
-  #           os: macos-14
-  #           package: wheel_macos_debug_arm
-  #           qpa_platform: offscreen
-  #         - name: release_dmg_macos14
-  #           python: python3
-  #           python_pip_args: -m pip
-  #           python_pytest_args: -m pytest
-  #           container: null
-  #           os: macos-14
-  #           package: package_macos_release_arm
-  #           qpa_platform: offscreen
-  #   runs-on: ${{ matrix.kind.os }}
-  #   needs: build_macos
-  #   #if: false
-  #   container:
-  #     image: ${{ matrix.kind.container }}
-  #     options: --user root --workdir / # Note: this gets disregarded if container is null
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #   - name: Setup Shell Wrapper
-  #     uses: sandervocke/setup-shell-wrapper@v1
-  #   - name: Use regular shell
-  #     shell: bash
-  #     run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
-  #   - name: Test
-  #     uses: ./.github/actions/test_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       package: ${{ matrix.kind.package }}
-  #       asan: ${{ matrix.kind.asan }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       python_pip_args: ${{ matrix.kind.python_pip_args }}
-  #       python: ${{ matrix.kind.python }}
-  #       run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-  #       python_pytest_args: ${{ matrix.kind.python_pytest_args }}
-  #       qpa_platform: ${{ matrix.kind.qpa_platform }}
-  #       pyinstaller: ${{ matrix.kind.pyinstaller }}
-  #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
+  test_macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          # - name: release_whl_macos12
+          #   python: python3
+          #   python_pip_args: -m pip
+          #   python_pytest_args: -m pytest
+          #   container: null
+          #   os: macos-12
+          #   package: wheel_macos_release
+          #   qpa_platform: offscreen
+          # - name: release_whl_macos13
+          #   python: python3
+          #   python_pip_args: -m pip
+          #   python_pytest_args: -m pytest
+          #   container: null
+          #   os: macos-13
+          #   package: wheel_macos_release
+          #   qpa_platform: offscreen
+          # - name: release_whl_macos14
+          #   python: python3
+          #   python_pip_args: -m pip
+          #   python_pytest_args: -m pytest
+          #   container: null
+          #   os: macos-14
+          #   package: wheel_macos_release_arm
+          #   qpa_platform: offscreen
+          - name: debug_whl_macos14
+            python: python3
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
+            container: null
+            os: macos-14
+            package: wheel_macos_debug_arm
+            qpa_platform: offscreen
+          # - name: release_dmg_macos14
+          #   python: python3
+          #   python_pip_args: -m pip
+          #   python_pytest_args: -m pytest
+          #   container: null
+          #   os: macos-14
+          #   package: package_macos_release_arm
+          #   qpa_platform: offscreen
+    runs-on: ${{ matrix.kind.os }}
+    needs: build_macos
+    #if: false
+    container:
+      image: ${{ matrix.kind.container }}
+      options: --user root --workdir / # Note: this gets disregarded if container is null
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Setup Shell Wrapper
+      uses: sandervocke/setup-shell-wrapper@v1
+    - name: Use regular shell
+      shell: bash
+      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - name: Test
+      uses: ./.github/actions/test_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        package: ${{ matrix.kind.package }}
+        asan: ${{ matrix.kind.asan }}
+        coverage: ${{ matrix.kind.coverage }}
+        python_pip_args: ${{ matrix.kind.python_pip_args }}
+        python: ${{ matrix.kind.python }}
+        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
+        python_pytest_args: ${{ matrix.kind.python_pytest_args }}
+        qpa_platform: ${{ matrix.kind.qpa_platform }}
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
 
 
 
@@ -538,66 +538,66 @@ jobs:
     #   if: failure()
     #   uses: SanderVocke/action-tmate@master
 
-  # test_windows:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         - name: release_windows
-  #           python: python.exe
-  #           python_pip_args: -m pip
-  #           python_pytest_args: -m pytest
-  #           container: null
-  #           os: windows-2022
-  #           package: wheel_windows_release
-  #           qpa_platform: offscreen
-  #           pathconvert: "| cygpath -u -f -"
-  #         - name: release_windows_innosetup
-  #           python: python.exe
-  #           python_pip_args: -m pip
-  #           python_pytest_args: -m pytest
-  #           container: null
-  #           os: windows-2022
-  #           package: package_windows_release
-  #           qpa_platform: offscreen
-  #           pathconvert: "| cygpath -u -f -"
-  #         - name: debug_windows
-  #           python: python.exe
-  #           python_pip_args: -m pip
-  #           python_pytest_args: -m pytest
-  #           container: null
-  #           os: windows-2022
-  #           package: wheel_windows_debug
-  #           qpa_platform: offscreen
-  #           pathconvert: "| cygpath -u -f -"
-  #   runs-on: ${{ matrix.kind.os }}
-  #   needs: build_windows
-  #   #if: false
-  #   container:
-  #     image: ${{ matrix.kind.container }}
-  #     options: --user root --workdir / # Note: this gets disregarded if container is null
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #   - name: Setup Shell Wrapper
-  #     uses: sandervocke/setup-shell-wrapper@v1
-  #   - name: Use regular shell
-  #     shell: bash
-  #     run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
-  #   - name: Test
-  #     uses: ./.github/actions/test_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       package: ${{ matrix.kind.package }}
-  #       asan: ${{ matrix.kind.asan }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       python_pip_args: ${{ matrix.kind.python_pip_args }}
-  #       python: ${{ matrix.kind.python }}
-  #       run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-  #       python_pytest_args: ${{ matrix.kind.python_pytest_args }}
-  #       qpa_platform: ${{ matrix.kind.qpa_platform }}
-  #       pyinstaller: ${{ matrix.kind.pyinstaller }}
-  #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
+  test_windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          # - name: release_windows
+          #   python: python.exe
+          #   python_pip_args: -m pip
+          #   python_pytest_args: -m pytest
+          #   container: null
+          #   os: windows-2022
+          #   package: wheel_windows_release
+          #   qpa_platform: offscreen
+          #   pathconvert: "| cygpath -u -f -"
+          # - name: release_windows_innosetup
+          #   python: python.exe
+          #   python_pip_args: -m pip
+          #   python_pytest_args: -m pytest
+          #   container: null
+          #   os: windows-2022
+          #   package: package_windows_release
+          #   qpa_platform: offscreen
+          #   pathconvert: "| cygpath -u -f -"
+          - name: debug_windows
+            python: python.exe
+            python_pip_args: -m pip
+            python_pytest_args: -m pytest
+            container: null
+            os: windows-2022
+            package: wheel_windows_debug
+            qpa_platform: offscreen
+            pathconvert: "| cygpath -u -f -"
+    runs-on: ${{ matrix.kind.os }}
+    needs: build_windows
+    #if: false
+    container:
+      image: ${{ matrix.kind.container }}
+      options: --user root --workdir / # Note: this gets disregarded if container is null
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Setup Shell Wrapper
+      uses: sandervocke/setup-shell-wrapper@v1
+    - name: Use regular shell
+      shell: bash
+      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - name: Test
+      uses: ./.github/actions/test_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        package: ${{ matrix.kind.package }}
+        asan: ${{ matrix.kind.asan }}
+        coverage: ${{ matrix.kind.coverage }}
+        python_pip_args: ${{ matrix.kind.python_pip_args }}
+        python: ${{ matrix.kind.python }}
+        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
+        python_pytest_args: ${{ matrix.kind.python_pytest_args }}
+        qpa_platform: ${{ matrix.kind.qpa_platform }}
+        pyinstaller: ${{ matrix.kind.pyinstaller }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
 
 
 
