@@ -1,7 +1,7 @@
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.6.3 EXACT COMPONENTS Core Gui Qml QuickControls2 QmlImportScanner REQUIRED)
-include_directories(${Qt6_INCLUDE_DIRS})
+qt_standard_project_setup()
 find_package(Corrosion QUIET)
 
 set(QMAKE_PATH ${Qt6_DIR}/../../../bin)
