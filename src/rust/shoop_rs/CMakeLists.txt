@@ -1,7 +1,6 @@
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.6.3 EXACT COMPONENTS Core Gui Qml QuickControls2 QmlImportScanner REQUIRED)
-qt_standard_project_setup()
 find_package(Corrosion QUIET)
 
 set(QMAKE_PATH ${Qt6_DIR}/../../../bin)
@@ -20,9 +19,6 @@ set(ENV{PATH} "${QMAKE_PATH}${PATH_SEPARATOR}$ENV{PATH}")
 execute_process(
     COMMAND qmake --version
 )
-
-# Print the results to the CMake output
-message(STATUS "Result: ${result}")
 
 set(CRATE shoop_rs)
 corrosion_import_crate(MANIFEST_PATH Cargo.toml CRATES ${CRATE})

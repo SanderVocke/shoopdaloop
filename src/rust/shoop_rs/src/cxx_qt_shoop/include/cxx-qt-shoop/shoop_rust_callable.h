@@ -6,8 +6,7 @@
 
 struct ShoopRustCallable
 {
-    //::rust::Box<::rust::Fn<void()>> callable;
-    int hello;
+    ::rust::Box<::rust::Fn<void()>> callable;
 };
 Q_DECLARE_METATYPE(ShoopRustCallable);
 
