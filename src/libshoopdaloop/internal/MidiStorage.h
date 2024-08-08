@@ -13,12 +13,12 @@ typedef std::function<void(uint32_t time, uint16_t size, const uint8_t* data)> D
 // be stored directly following it in the buffer.
 #pragma pack(push, 1)
 struct MidiStorageElem : public MidiSortableMessageInterface {
-    uint8_t is_filler = 0; // If nonzero, this byte in the buffer is filler and should be skipped.
-                           // This can happen e.g. around the buffer boundaries when used as a ringbuffer.
-                           // Messages are always kept contiguous.
-    uint32_t storage_time = 0; // Overall time in the loop storage
-    uint16_t proc_time = 0;    // time w.r.t. some reference point (position in this process iteration)
-    uint16_t size = 0;
+    uint32_t storage_time = 0;    // Overall time in the loop storage
+    uint16_t proc_time = 0;       // time w.r.t. some reference point (position in this process iteration)
+    uint16_t size = 0;            // Size of the data portion
+    uint16_t offset_to_next = 0;  // Amount of bytes to the start of the next element.
+                                  // May be higher than the size of this structure in order
+                                  // to have some filler around the buffer boundaries for aligment.
 
     static uint32_t total_size_of(uint32_t data_bytes);
     uint8_t* data() const;
@@ -50,7 +50,7 @@ protected:
     bool valid_elem_at(uint32_t offset) const;
     std::optional<uint32_t> maybe_next_elem_offset(Elem* elem) const;
     uint32_t bytes_size() const;
-    void store_unsafe(uint32_t offset, uint32_t t, uint16_t s, const uint8_t* d);
+    void store_unsafe(uint32_t offset, uint32_t t, uint16_t s, const uint8_t* d, uint16_t n_filler);
     Elem *unsafe_at(uint32_t offset) const;
 
 public:

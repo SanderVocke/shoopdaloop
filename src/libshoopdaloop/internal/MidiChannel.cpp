@@ -665,27 +665,44 @@ MidiChannel::adopt_ringbuffer_contents(shoop_shared_ptr<PortInterface> from_port
     }
 
     auto fn = [midiport, reverse_start_offset, keep_samples_before_start_offset, this]() {
+        shoop_shared_ptr<MidiStateTracker> maybe_start_tracking_state = nullptr;
+        if (auto const& state = midiport->maybe_ringbuffer_tail_state_tracker()) {
+            // What was the ringbuffer tail state should now become the recorded messages
+            // start state of this channel.
+            log<log_level_debug_trace>("adopting ringbuffer state tracker");
+            maybe_start_tracking_state = shoop_make_shared<MidiStateTracker>(true, true, true);
+            maybe_start_tracking_state->copy_relevant_state(*state);
+        }
+
         midiport->PROC_snapshot_ringbuffer_into(*mp_storage);
         auto buflen = midiport->get_ringbuffer_n_samples();
         if(reverse_start_offset.has_value()) {
             set_start_offset((int)buflen - (int)reverse_start_offset.value());
         }
+        if(keep_samples_before_start_offset.has_value()) {
+            auto so = ma_start_offset.load();
+            mp_storage->truncate(
+                so - std::min((int)so, (int)keep_samples_before_start_offset.value()),
+                MidiStorage::TruncateSide::TruncateTail,
+                [this, maybe_start_tracking_state](uint32_t time, uint16_t size, const uint8_t* data) {
+                    if (maybe_start_tracking_state) {
+                        maybe_start_tracking_state->process_msg(data);
+                    }
+                });
+        }
+
         auto n = mp_storage->n_events();
+
         log<log_level_debug_trace>("adopted midi with reverse so {}, ringbuffer len {}, keep {} - yielded {} messages, so {}",
              reverse_start_offset.value_or(99999),
              midiport->get_ringbuffer_n_samples(),
              keep_samples_before_start_offset.value_or(99999),
              n,
              get_start_offset());
-        
-        if (auto const& state = midiport->maybe_ringbuffer_tail_state_tracker()) {
-            // What was the ringbuffer tail state should now become the recorded messages
-            // start state of this channel.
-            log<log_level_debug_trace>("adopting ringbuffer state tracker");
-            auto start_state = shoop_make_shared<MidiStateTracker>(true, true, true);
-            start_state->copy_relevant_state(*state);
+
+        if (maybe_start_tracking_state) {
             mp_recording_start_state_tracker->
-                start_tracking_from_with_state(mp_input_midi_state, start_state);
+                start_tracking_from_with_state(mp_input_midi_state, maybe_start_tracking_state);
         }
 
         data_changed();

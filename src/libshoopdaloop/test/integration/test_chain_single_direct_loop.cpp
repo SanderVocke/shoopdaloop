@@ -485,7 +485,7 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - one cycle with state restore",
         at_time(msgs[3], 3)
     };
     CHECK(playback == expect_playback);
-    
+
     // Check the state restore messages regardless of their order.
     // We expect:
     //    - note 20 on
@@ -546,7 +546,9 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - current cycle", "[chain][midi]
 
     // Queue some messages
     std::vector<shoop_types::_MidiMessage> msgs = {
-        // note: cycle R should be recorded
+        // note: cycle R should be recorded.
+        // messages from cycle R - 1 should be kept but before the start offset.
+        // messages from cycle R - 2 should be truncated away.
         create_noteOn <shoop_types::_MidiMessage>(0, 1,  10, 10), // 1st frame of cycle R - 2
         create_noteOff<shoop_types::_MidiMessage>(3, 10, 10, 20), // 4th frame of cycle R - 2
         create_noteOn <shoop_types::_MidiMessage>(4, 2,  20, 20), // 1st frame of cycle R - 1
@@ -570,8 +572,6 @@ TEST_CASE("Chain - Direct adopt MIDI ringbuffer - current cycle", "[chain][midi]
     CHECK(tst.int_dummy_midi_input_port->get_ringbuffer_n_samples() == n_ringbuffer_samples);
     CHECK(so == 18);
     std::vector<shoop_types::_MidiMessage> expect = {
-        at_time(msgs[0], so - 8),
-        at_time(msgs[1], so - 5),
         at_time(msgs[2], so - 4),
         at_time(msgs[3], so - 1),
         at_time(msgs[4], so)
