@@ -1,3 +1,4 @@
-mod intialize;
-pub use intialize::init_logging;
+mod setup;
+pub use setup::init_logging;
 pub mod macros;
+pub mod units;

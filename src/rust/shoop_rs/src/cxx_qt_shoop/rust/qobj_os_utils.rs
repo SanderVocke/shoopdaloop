@@ -1,5 +1,5 @@
 use crate::logging::macros::*;
-const SHOOP_LOG_UNIT : &str = "Frontend.OSUtils";
+shoop_log_unit!("Frontend.OSUtils");
 
 #[cxx_qt::bridge]
 pub mod qobj_os_utils {
@@ -81,8 +81,14 @@ impl OSUtils {
 
     pub fn get_env_var(self: &OSUtils, var: &QString) -> QString {
         match env::var(var.to_string()) {
-            Ok (value) => return QString::from(&value),
-            Err(_value) => return QString::default(),
+            Ok (value) => {
+                debug!("Read env var {}: {}", var.to_string(), value);
+                return QString::from(&value)
+            },
+            Err(_value) => {
+                debug!("Failed to read env var {}", var.to_string());
+                return QString::default()
+            },
         }
     }
 }

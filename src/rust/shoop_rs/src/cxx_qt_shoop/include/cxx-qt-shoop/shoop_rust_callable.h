@@ -6,9 +6,12 @@
 
 struct ShoopRustCallable
 {
-    // ::rust::Box<::rust::Fn<void()>> callable;
-    int hello;
+    ::rust::Fn<QVariant(::rust::Slice<const QVariant>)> call;
 };
+static_assert(
+    ::rust::IsRelocatable<::ShoopRustCallable>::value,
+    "ShoopRustCallable must be relocatable");
+
 Q_DECLARE_METATYPE(ShoopRustCallable);
 
 bool

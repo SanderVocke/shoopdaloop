@@ -2,8 +2,7 @@ use cxx_qt_lib::QColor;
 use ffi::QList_QLineF;
 use crate::audio_power_pyramid::*;
 use crate::logging::macros::*;
-
-const SHOOP_LOG_UNIT : &str = "Frontend.RenderAudioWaveform";
+shoop_log_unit!("Frontend.RenderAudioWaveform");
 
 #[cxx_qt::bridge(cxx_file_stem="qobj_render_audio_waveform")]
 pub mod ffi {
@@ -140,7 +139,7 @@ impl ffi::RenderAudioWaveform {
         {
             let s : &RenderAudioWaveformRust = self.cxx_qt_ffi_rust();
             let mut p = s.pyramid.lock().unwrap();
-            info!("Input data has {} values", s.input_data.len());
+            debug!("Preprocessing input data with {} values", s.input_data.len());
             *p = audio_power_pyramid::create_audio_power_pyramid(
                 s.input_data.iter().copied(), 2048);
         }

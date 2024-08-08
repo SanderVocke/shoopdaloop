@@ -23,3 +23,11 @@ pub(crate) use shoop_info as info;
 pub(crate) use shoop_debug as debug;
 #[allow(unused_imports)]
 pub(crate) use shoop_trace as trace;
+
+#[allow(unused_macros)]
+macro_rules! shoop_log_unit {
+    ( $name:tt ) => {
+        pub const SHOOP_LOG_UNIT : &str = $name;
+    }
+}
+pub(crate) use shoop_log_unit;

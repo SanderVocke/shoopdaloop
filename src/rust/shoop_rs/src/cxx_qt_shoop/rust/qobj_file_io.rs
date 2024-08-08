@@ -1,5 +1,5 @@
 use crate::logging::macros::*;
-const SHOOP_LOG_UNIT : &str = "Frontend.FileIO";
+shoop_log_unit!("Frontend.FileIO");
 
 #[cxx_qt::bridge]
 pub mod qobj_file_io {
