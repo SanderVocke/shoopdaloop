@@ -3,6 +3,8 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Dialogs
 
+import ShoopDaLoop.Rust
+
 import ".."
 import "../../generate_session.js" as GenerateSession
 

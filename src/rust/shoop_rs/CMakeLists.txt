@@ -1,0 +1,45 @@
+set(CMAKE_AUTOMOC ON)
+
+find_package(Qt6 6.6.3 EXACT COMPONENTS Core Gui Qml QuickControls2 QmlImportScanner REQUIRED)
+find_package(Corrosion QUIET)
+
+set(QMAKE_PATH ${Qt6_DIR}/../../../bin)
+set(QMAKE ${QMAKE_PATH}/qmake)
+message(STATUS "Found Qt at ${Qt6_DIR}. QMake: ${QMAKE}. Include dirs: ${Qt6_INCLUDE_DIRS}")
+set_target_properties(Qt::qmake PROPERTIES IMPORTED_LOCATION ${QMAKE})
+set_target_properties(Qt6::qmake PROPERTIES IMPORTED_LOCATION ${QMAKE})
+list(PREPEND CMAKE_PROGRAM_PATH ${QMAKE_PATH})
+if("${CMAKE_HOST_SYSTEM}" MATCHES ".*Windows.*")
+    set(PATH_SEPARATOR "\\;")
+else()
+    set(PATH_SEPARATOR ":")
+endif()
+set(ENV{PATH} "${QMAKE_PATH}${PATH_SEPARATOR}$ENV{PATH}")
+
+execute_process(
+    COMMAND qmake --version
+)
+
+set(CRATE shoop_rs)
+corrosion_import_crate(MANIFEST_PATH Cargo.toml CRATES ${CRATE})
+
+get_target_property(SHOOP_RS_SHARED shoop_rs INTERFACE_LINK_LIBRARIES)
+install(FILES $<TARGET_PROPERTY:${SHOOP_RS_SHARED},IMPORTED_LOCATION>
+        COMPONENT package_install
+        DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
+
+
+# Build Cargo test executable and include in the installation.
+set(TEST_EXECUTABLE "${CMAKE_CURRENT_BINARY_DIR}/shoop_rs_testrunner${EXEC_SUFFIX}")
+add_custom_command(
+    OUTPUT ${TEST_EXECUTABLE}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMAND cmake -E env CARGO_TARGET_DIR="${CMAKE_CURRENT_BINARY_DIR}/test_target" cargo build --tests
+    COMMAND ${GLOB_CMD} executable do_copy ${TEST_EXECUTABLE} "${CMAKE_CURRENT_BINARY_DIR}/test_target/**/shoop_rs-*"
+    COMMENT "Finding shoop_rs_testrunner."
+)
+add_custom_target(build_shoop_rs_testrunner ALL DEPENDS shoop_rs ${TEST_EXECUTABLE})
+install(PROGRAMS ${TEST_EXECUTABLE}
+        EXCLUDE_FROM_ALL
+        COMPONENT package_install
+        DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})

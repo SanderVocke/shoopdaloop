@@ -366,7 +366,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Recording, // c
                                 50, 0, 0, 0, 150,
                                 100, 150, 0, 0, 400)
-                    
+
                     process(100) // middle of 3rd step (delay)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
@@ -376,7 +376,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Recording, // c
                                 50, 0, 0, 0, 250,
                                 100, 200, 0, 0, 400)
-                    
+
                     process(100) // middle of 4th step (record 2nd loop)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
@@ -460,7 +460,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Playing,
                                 50, 0, 0, 0, 150,
                                 100, 200, 100, 0, 400)
-                    
+
                     process(100) // middle of 3rd step (1st loop plays from the top)
 
                     verify_states(ShoopConstants.LoopMode.Playing,
@@ -470,7 +470,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Playing,
                                 50, 50, 0, 0, 250,
                                 100, 200, 100, 0, 400)
-                    
+
                     process(100) // middle of 4th step (1st loop continues playing, 2nd loop starts playing)
 
                     verify_states(ShoopConstants.LoopMode.Playing,
@@ -480,7 +480,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Playing,
                                 50, 150, 50, 0, 350,
                                 100, 200, 100, 0, 400)
-                    
+
                 },
 
                 'test_script': () => {
@@ -540,7 +540,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Playing,   // c
                                 50, 0, 0, 0, 150,
                                 100, 100, 50, 0, 400)
-                    
+
                     process(100) // middle of 3rd step (play l1)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
@@ -550,7 +550,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Playing,   // c
                                 50, 50, 0, 0, 250,
                                 100, 100, 100, 0, 400)
-                    
+
                     process(100) // middle of 4th step (play l2)
 
                     verify_states(ShoopConstants.LoopMode.Playing, // sync
@@ -704,7 +704,7 @@ ShoopTestFile {
                     // We started the process helper to process. Now, freeze the GUI
                     // while the loops continue in the background.
                     let d = 1000 * process_helper.total_duration * 2 // * 2 for overrun
-                    file_io.wait_blocking(d)
+                    ShoopFileIO.waitBlocking(d)
                     process_helper.wait()
 
                     testcase.wait_updated(session.backend)
@@ -782,7 +782,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 ShoopConstants.LoopMode.Playing,
                                 50, 150, 150, 0, 150)
-                    
+
                     process(100) // middle of 3rd step.
 
                     // A script would normally have stopped now. But because a composite
@@ -863,7 +863,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,
                                 ShoopConstants.LoopMode.Playing,
                                 50, 150, 150, 0, 150)
-                    
+
                     process(100) // middle of 3rd step.
                     // A composite would normally have looped now. But because a script is
                     // controlling it, it should stop it after 1 iteration.
@@ -1201,7 +1201,7 @@ ShoopTestFile {
                                   ShoopConstants.LoopMode.Stopped, // l2
                                   ShoopConstants.LoopMode.Playing, // c
                                   50, 150, 0, 0, 150)
-                    
+
                     // trigger the composite loop to start in the last cycle.
                     // the transition should be immediate
                     c().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, 5)
@@ -1270,7 +1270,7 @@ ShoopTestFile {
                                   ShoopConstants.LoopMode.Recording, // c
                                   50, 0, 0, 0, 150,
                                   100, 100, 50, 0, 200)
-                    
+
                     process(100) // first cycle of next composite iteration
 
                     verify_states(ShoopConstants.LoopMode.Playing,   // s
@@ -1337,7 +1337,7 @@ ShoopTestFile {
                                   ShoopConstants.LoopMode.Recording, // c
                                   50, 0, 0, 0, 150,
                                   100, 100, 50, 0, 200)
-                    
+
                     process(100) // first cycle of next composite iteration
 
                     verify_states(ShoopConstants.LoopMode.Playing,   // s
@@ -1375,7 +1375,7 @@ ShoopTestFile {
                     })
 
                     testcase.wait_updated(session.backend)
-                    
+
                     c().on_grab_clicked()
 
                     testcase.wait_updated(session.backend)
@@ -1426,7 +1426,7 @@ ShoopTestFile {
                     })
 
                     testcase.wait_updated(session.backend)
-                    
+
                     c().on_grab_clicked()
 
                     testcase.wait_updated(session.backend)
@@ -1481,7 +1481,7 @@ ShoopTestFile {
                     })
 
                     testcase.wait_updated(session.backend)
-                    
+
                     c().on_grab_clicked()
 
                     testcase.wait_updated(session.backend)
@@ -1536,7 +1536,7 @@ ShoopTestFile {
                     })
 
                     testcase.wait_updated(session.backend)
-                    
+
                     c().on_grab_clicked()
 
                     testcase.wait_updated(session.backend)
@@ -1596,7 +1596,7 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    testcase.section('grab')                    
+                    testcase.section('grab')
                     c().on_grab_clicked()
 
                     testcase.wait_updated(session.backend)
@@ -1633,7 +1633,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Stopped,   // c
                                 50, 0, 0, 0, 0,
                                 100, 100, 100, 0, 200)
-                    
+
                     {
                         let c1 = l0().get_audio_channels()[0]
                         let c2 = l1().get_audio_channels()[0]
@@ -1678,7 +1678,7 @@ ShoopTestFile {
                     })
 
                     testcase.wait_updated(session.backend)
-                    
+
                     c().on_grab_clicked()
 
                     testcase.wait_updated(session.backend)
@@ -1711,7 +1711,7 @@ ShoopTestFile {
                                 ShoopConstants.LoopMode.Playing,   // c
                                 50, 50, 0, 0, 50,
                                 100, 100, 100, 0, 200)
-                    
+
                     {
                         let c1 = l0().get_audio_channels()[0]
                         let c2 = l1().get_audio_channels()[0]

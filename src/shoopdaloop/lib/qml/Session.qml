@@ -23,7 +23,7 @@ Rectangle {
     // The actual descriptor can be retrieved with actual_session_descriptor().
     property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, null, [], [], [], [])
     property var backend_type : global_args.backend_type
-    
+
     property alias driver_setting_overrides : session_backend.driver_setting_overrides
 
     ExecuteNextCycle {
@@ -87,7 +87,7 @@ Rectangle {
     property alias loops : lookup_loops.objects
     function test_grab_screens_and_quit(output_folder) {
         // We are supposed to take screenshots of application windows, output them
-        // and exit.        
+        // and exit.
         test_screen_grab_trigger.output_folder = output_folder
         test_screen_grab_trigger.trigger()
     }
@@ -105,7 +105,7 @@ Rectangle {
                 'tracks': tracks_widget.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to)
             }
         ]
-        
+
         return GenerateSession.generate_session(
             app_metadata.version_string,
             session_backend.get_sample_rate(),
@@ -192,22 +192,31 @@ Rectangle {
         root.logger.debug(() => `saving session to: ${filename}`)
         registries.state_registry.reset_saving_loading()
         registries.state_registry.save_action_started()
-        var tempdir = file_io.create_temporary_folder()
+        var tempdir = ShoopFileIO.createTemporaryFolder()
+        if (tempdir == null) {
+            throw new Error("Failed to create temporary folder")
+        }
+        console.log("temp dir: " + tempdir)
         var tasks = tasks_factory.create_tasks_obj(root)
         var session_filename = tempdir + '/session.json'
 
         // TODO make this step asynchronous
         var descriptor = actual_session_descriptor(true, tempdir, tasks)
-        file_io.write_file(session_filename, JSON.stringify(descriptor, null, 2))
+        if(!ShoopFileIO.writeFile(session_filename, JSON.stringify(descriptor, null, 2))) {
+            throw new Error(`Failed to write session file ${session_filename}`)
+        }
 
         tasks.when_finished(() => {
             try {
                 // TODO make this step asynchronous
-                file_io.make_tarfile(filename, tempdir, false)
+                console.log("temp dir: " + tempdir)
+                if (!ShoopFileIO.makeTarfile(filename, tempdir)) {
+                    throw new Error(`Failed to create tarfile ${filename}`)
+                }
                 root.logger.info(() => ("Session written to: " + filename))
             } finally {
                 registries.state_registry.save_action_finished()
-                file_io.delete_recursive(tempdir)
+                ShoopFileIO.deleteRecursive(tempdir)
                 tasks.parent = null
                 tasks.destroy(30)
             }
@@ -260,16 +269,16 @@ Rectangle {
         root.logger.debug(() => `loading session: ${filename}`)
         registries.state_registry.reset_saving_loading()
         registries.state_registry.load_action_started()
-        var tempdir = file_io.create_temporary_folder()
+        var tempdir = ShoopFileIO.createTemporaryFolder()
 
         try {
             var tasks = tasks_factory.create_tasks_obj(root)
 
-            file_io.extract_tarfile(filename, tempdir)
-            root.logger.debug(() => (`Extracted files: ${JSON.stringify(file_io.glob(tempdir + '/*', true), null, 2)}`))
+            ShoopFileIO.extractTarfile(filename, tempdir)
+            root.logger.debug(() => (`Extracted files: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*', true), null, 2)}`))
 
             var session_filename = tempdir + '/session.json'
-            var session_file_contents = file_io.read_file(session_filename)
+            var session_file_contents = ShoopFileIO.readFile(session_filename)
             var descriptor = JSON.parse(session_file_contents)
             let our_sample_rate = session_backend.get_sample_rate()
             let incoming_sample_rate = descriptor.sample_rate
@@ -286,7 +295,7 @@ Rectangle {
                 confirm_sample_rate_convert_dialog.open()
                 return;
             }
-            
+
             if (our_sample_rate != incoming_sample_rate) {
                 descriptor = GenerateSession.convert_session_descriptor_sample_rate(descriptor, incoming_sample_rate, our_sample_rate)
             }
@@ -301,7 +310,7 @@ Rectangle {
 
                 tasks.when_finished(() => {
                     try {
-                        file_io.delete_recursive(tempdir)
+                        ShoopFileIO.deleteRecursive(tempdir)
                     } finally {
                         root.logger.info(() => ("Session loaded from: " + filename))
                         registries.state_registry.load_action_finished()
@@ -324,7 +333,7 @@ Rectangle {
                 connectOnce(root.loadedChanged, finish_fn)
             }
         } catch(e) {
-            file_io.delete_recursive(tempdir)
+            ShoopFileIO.deleteRecursive(tempdir)
             throw e;
         }
     }
@@ -406,7 +415,7 @@ Rectangle {
 
         onClicked: forceActiveFocus()
         Connections {
-            target: release_focus_notifier
+            target: ShoopReleaseFocusNotifier
             function onFocusReleased() {
                 session_focus_item.forceActiveFocus()
             }
@@ -430,7 +439,7 @@ Rectangle {
             name_hint: "control"
             direction: ShoopConstants.PortDirection.Input
             lua_engine: midi_control.lua_engine
-            
+
             RegistryLookup {
                 id: lookup_autoconnect
                 registry: registries.state_registry
@@ -542,7 +551,7 @@ Rectangle {
             visible: open
 
             property real active_height: 200
-            
+
             onOpenChanged: {
                 if (open) {
                     height = pane_area.active_height
@@ -674,7 +683,7 @@ Rectangle {
                         }
 
                         initial_descriptor: sync_loop_loader.initial_descriptor
-                        
+
                         onLoadedChanged: sync_loop_loader.loaded = loaded
                         name_editable: false
                         sync_loop_layout: true
@@ -683,7 +692,7 @@ Rectangle {
 
                     TrackControlWidget {
                         id: sync_loop_control_widget
-                        
+
                         anchors {
                             left: parent.left
                             right: parent.right
@@ -769,14 +778,14 @@ Rectangle {
                     value: session_backend.dsp_load
                 }
 
-                Label { 
+                Label {
                     text: "Xruns: " + session_backend.xruns.toString()
                 }
 
                 ExtendedButton {
                     tooltip: "Reset reported Xruns to 0."
                     id: reset_xruns
-                    Label { 
+                    Label {
                         text: "Reset"
                         anchors {
                             horizontalCenter: parent.horizontalCenter

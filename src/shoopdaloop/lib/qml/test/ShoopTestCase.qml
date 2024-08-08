@@ -2,6 +2,7 @@ import QtQuick 6.6
 import QtTest 1.0
 import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.PythonTestCase
+import ShoopDaLoop.Rust
 
 import ShoopConstants
 import './testDeepEqual.js' as TestDeepEqual
@@ -14,7 +15,7 @@ PythonTestCase {
     property string filename : 'UnknownTestFile'
     property var logger : PythonLogger { name: `Frontend.Qml.ShoopTestCase` }
 
-    property bool print_error_traces: os_utils.get_env("QMLTEST_NO_ERROR_TRACES") == null
+    property bool print_error_traces: ShoopOSUtils.getEnvVar("QMLTEST_NO_ERROR_TRACES") == null
 
     // It seems the built-in test function filter of the QML test runner is not working.
     // Provide a means to only run a subset of tests.

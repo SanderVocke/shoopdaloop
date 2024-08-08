@@ -29,7 +29,7 @@ inputs:
   do_qml_tests:
     description: "Whether to do the QML test step."
     default: 'true'
-  
+
 runs:
   using: "composite"
   steps:
@@ -87,7 +87,7 @@ runs:
     run: |
       mkdir -p crashdumps
   - name: Install Python modules
-    shell: wrap-shell {0}      
+    shell: wrap-shell {0}
     run: |
       PIP_BREAK_SYSTEM_PACKAGES=1 ${{ inputs.python }} ${{ inputs.python_pip_args }} install pytest coverage pipx
   - name: Install Qoverage
@@ -116,6 +116,23 @@ runs:
       # for usage with shared ASAN library.
       run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=backend_lcov ${{ inputs.run_cmd_prefix }}
       test_runner: ${{ steps.install_package.outputs.test_runner }}
+  - shell: wrap-shell {0}
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Rust test"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
+  - name: Test rust
+    if: ${{ (success() || failure()) && steps.install_package.outputs.rust_test_runner }}
+    uses: ./.github/actions/test_rust
+    with:
+      variant_name: ${{ inputs.name }}
+      # note: build step generates run_cmd_prefix output
+      # for usage with shared ASAN library.
+      run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ inputs.run_cmd_prefix }}
+      test_runner: ${{ steps.install_package.outputs.rust_test_runner }}
+      python: ${{ steps.install_package.outputs.python }}
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"

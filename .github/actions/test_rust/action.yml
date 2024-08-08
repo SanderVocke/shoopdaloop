@@ -1,0 +1,65 @@
+name: Rust tests
+description: Unit tests for libshoopdaloop
+
+inputs:
+  variant_name:
+    required: true
+    type: string
+  run_cmd_prefix:
+    type: string
+    description: "Command-line prefix to use when running the test runner"
+  test_runner:
+    type: string
+    required: true
+  python:
+    type: string
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+  # - name: prepare
+  #   shell: wrap-shell {0}
+  #   run: |
+  #     mkdir -p reports
+  #     echo "results_xml=reports/test_runner_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
+
+  - name: Expand prefix for Mac
+    shell: wrap-shell {0}
+    id: runcmdprefix
+    run: |
+      if [[ "$RUNNER_OS" == "macOS" ]]; then
+        echo "run_cmd_prefix=${{ inputs.run_cmd_prefix }} DYLD_FALLBACK_LIBRARY_PATH=$(dirname ${{ inputs.test_runner }})" | tee -a $GITHUB_ENV
+      else
+        echo "run_cmd_prefix=${{ inputs.run_cmd_prefix }}" | tee -a $GITHUB_ENV
+      fi
+  
+  - name: Find Qt libs
+    shell: wrap-shell {0}
+    run: |
+      PYSIDE_LOCATION=$(${{ inputs.python }} -m pip show pyside6-essentials | grep Location | cut -d ' ' -f 2)/PySide6
+      echo "PYSIDE_LOCATION=$PYSIDE_LOCATION"
+      QT_LIB_DIR=$(find $PYSIDE_LOCATION -name "libQt6Core.*" | xargs dirname)
+      echo "QT_LIB_DIR=$QT_LIB_DIR"
+      if [[ "$RUNNER_OS" == "macOS" ]]; then
+        echo "run_cmd_prefix=${{ env.run_cmd_prefix }} DYLD_FALLBACK_LIBRARY_PATH=$QT_LIB_DIR" | tee -a $GITHUB_ENV
+      else
+        echo "run_cmd_prefix=${{ env.run_cmd_prefix }} LD_LIBRARY_PATH=$QT_LIB_DIR" | tee -a $GITHUB_ENV
+      fi
+
+  - name: run the testrunner (${{ inputs.variant_name }})
+    shell: wrap-shell {0}
+    run: |
+      mkdir -p reports
+      ${{ env.run_cmd_prefix }} ${{ inputs.test_runner }}
+      # echo "Back-end test results file: $(ls -la ${{ env.results_xml }})"
+
+  # - name: Publish Back-end Test Report
+  #   if: ${{ !env.ACT && (success() || failure()) }}
+  #   uses: mikepenz/action-junit-report@v3
+  #   with:
+  #     report_paths: ${{ env.results_xml }}
+  #     include_passed: false
+  #     check_name: 'backend test (${{ inputs.variant_name }})'
+  #     annotate_only: true
+
