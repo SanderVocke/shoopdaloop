@@ -31,7 +31,7 @@ if("${SCCACHE_PROGRAM}" STREQUAL "SCCACHE_PROGRAM-NOTFOUND")
   message(STATUS "Could NOT find sccache")
 else()
   message(STATUS "Found sccache: ${SCCACHE_PROGRAM}")
-  option(SCCACHE "Use sccache for compiler caching to speed up rebuilds." ON)
+  option(SCCACHE "Use sccache for compiler caching to speed up rebuilds." OFF)
 endif()
 
 if(SCCACHE)
