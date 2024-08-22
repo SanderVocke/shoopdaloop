@@ -31,7 +31,7 @@ fn main() {
     }
 
     // Create a venv in OUT_DIR
-    let venv_dir = Path::new(&out_dir).join("build_venv");
+    let venv_dir = Path::new(&out_dir).join("shoopdaloop_env");
     Command::new(&host_python).args(
         &["-m", "venv", venv_dir.to_str().expect("Could not get venv path")]
     ).status().unwrap();
@@ -51,7 +51,9 @@ fn main() {
     println!("Setting PYO3_PYTHON to {}", venv_python.to_str().unwrap());
     env::set_var("PYO3_PYTHON", venv_python.to_str().unwrap());
 
-    // println!("cargo::rustc-link-search=native={}", out_dir);
-    // println!("cargo::rustc-link-lib=static=hello");
-    // println!("cargo::rerun-if-changed=src/hello.c");
+    // Set RPATH
+    println!("cargo:rustc-link-arg=-Wl,-rpath,./shoop_lib");
+
+    // Rebuild if changed
+    println!("cargo:rerun-if-changed=build.rs");
 }
