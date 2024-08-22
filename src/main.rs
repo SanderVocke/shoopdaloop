@@ -35,7 +35,7 @@ fn main() -> PyResult<()> {
         let result = shoop
             .getattr("main")?
             .call0()?;
-        
-        Ok(())
+
+        std::process::exit(result.extract::<i32>()?);
     })
 }
