@@ -315,7 +315,7 @@ Item {
             if (chan.id == prev_chan.id) { throw new Error("Did not find loop ID in channel ID") }
             channel_descriptors.push(chan)
         }
-        var name = "(" + (root.loops.length).toString() + ")"
+        var name = "(" + (root.loops.length + 1).toString() + ")"
         var loop_descriptor = GenerateSession.generate_loop(id, name, 0, false, channel_descriptors)
 
         root.add_loop({
@@ -643,6 +643,7 @@ Item {
                                 let c = children[i]
                                 if (c instanceof LoopWidget) {
                                     c.idx_in_track = idx;
+                                    c.track_idx = root.track_idx;
                                     idx++;
                                 }
                             }
