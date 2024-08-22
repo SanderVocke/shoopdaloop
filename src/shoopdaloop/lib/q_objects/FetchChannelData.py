@@ -29,22 +29,23 @@ class FetchChannelData(ShoopQQuickItem):
         super(FetchChannelData, self).__init__(parent)
         self._channel = None
         self._data = None
+        self._float_data = []
         self._dirty = True
         self._active = False
         self._fetching = False
         self._requested_sequence_nr = 1
         self._retrieved_sequence_nr = 0
         self._loop = None
-        self._data_as_qimage = None        
+        self._data_as_qimage = None
         self.logger = Logger('Frontend.FetchChannelData')
-        
+
         self._fetch_timer = QTimer()
         self._fetch_timer.interval = 100
         self._fetch_timer.singleShot = True
         self._fetch_timer.timeout.connect(self.tick)
         self._fetch_timer.start()
         self.tick()
-    
+
     ######################
     # PROPERTIES
     ######################
@@ -74,7 +75,7 @@ class FetchChannelData(ShoopQQuickItem):
                 self.channel_data = None
                 self.dirty = True
                 self.maybe_start_fetch()
-    
+
     # channel_data
     # set automatically. Will hold the most recently
     # fetched data handle.
@@ -87,7 +88,21 @@ class FetchChannelData(ShoopQQuickItem):
         if l != self._data:
             self._data = l
             self.channelDataChanged.emit(l)
-    
+
+    # channel_float_data
+    # set automatically. Will hold the most recently
+    # fetched data handle as a list of floats, if
+    # applicable.
+    channelFloatDataChanged = ShoopSignal('QList<float>')
+    @ShoopProperty('QVariant', notify=channelFloatDataChanged)
+    def channel_float_data(self):
+        return self._float_data
+    @channel_float_data.setter
+    def channel_float_data(self, l):
+        if l != self._float_data:
+            self._float_data = l
+            self.channelFloatDataChanged.emit(l)
+
     # dirty
     # the dirty flag is automatically set based on
     # the incoming dirty status of the back-end.
@@ -104,7 +119,7 @@ class FetchChannelData(ShoopQQuickItem):
             self.dirtyChanged.emit(l)
             if l:
                 self.maybe_start_fetch()
-    
+
     # active
     # if active is false, data will never be fetched.
     activeChanged = ShoopSignal(bool)
@@ -118,7 +133,7 @@ class FetchChannelData(ShoopQQuickItem):
             self.activeChanged.emit(l)
             if l:
                 self.maybe_start_fetch()
-    
+
     # fetching
     # set automatically. Indicates whether data is
     # currently being fetched.
@@ -131,7 +146,7 @@ class FetchChannelData(ShoopQQuickItem):
         if l != self._fetching:
             self._fetching = l
             self.fetchingChanged.emit(l)
-    
+
     # data_as_qimage
     # if the data was a list of floats, this provides
     # a QImage of 8192 elems wide, ARGB32 format,
@@ -145,7 +160,7 @@ class FetchChannelData(ShoopQQuickItem):
         if l != self._data_as_qimage:
             self._data_as_qimage = l
             self.dataAsQImageChanged.emit(l)
-    
+
     ######################
     # INTERNAL FUNCTIONS
     ######################
@@ -153,7 +168,7 @@ class FetchChannelData(ShoopQQuickItem):
     @ShoopSlot(bool)
     def set_dirty(self, dirty):
         self.dirty = dirty
-        
+
     @ShoopSlot('QVariant')
     def set_loop(self, loop):
         self.loop = loop
@@ -161,21 +176,27 @@ class FetchChannelData(ShoopQQuickItem):
     @ShoopSlot('QVariant', int)
     def fetch_finished(self, data, seq_nr):
         if seq_nr >= self._requested_sequence_nr:
+            print(f'finished fetching data: {data} with {data.data}')
+            if isinstance(data.data, ShoopChannelAudioData):
+                print(f'channel float data set')
+                self.channel_float_data = [float(e) for e in data.data.np_array]
+            else:
+                self.channel_float_data = []
             self.channel_data = data
             self._retrieved_sequence_nr = seq_nr
         self.fetching = False
-        self._fetch_timer.start()        
+        self._fetch_timer.start()
 
     @ShoopSlot()
     def maybe_start_fetch(self, *args):
         # Queue a request by incrementing sequence number
         self._requested_sequence_nr += 1
         self.start_timer()
-        
+
     @ShoopSlot()
     def start_timer(self):
         self._fetch_timer.start()
-        
+
     @ShoopSlot()
     def tick(self):
         if not self.channel or not self.channel.isValid() or not self.dirty or not self.active or \
@@ -184,8 +205,8 @@ class FetchChannelData(ShoopQQuickItem):
            self._retrieved_sequence_nr >= self._requested_sequence_nr:
             self._fetch_timer.start() # Try again soon
             return
-        
-        self._fetch_timer.stop()        
+
+        self._fetch_timer.stop()
         self.fetching = True
         self.channel.clear_data_dirty()
 

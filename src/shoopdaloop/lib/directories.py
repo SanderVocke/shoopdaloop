@@ -13,7 +13,7 @@ try:
 except:
     # If we could not find version.txt, we are probably in an editable install
     # where it is not generated. We need to find the installation directory,
-    # which is not directly possible but we can try the site folder.    
+    # which is not directly possible but we can try the site folder.
     import shoopdaloop
     try_dir = os.path.dirname(shoopdaloop.__file__)
     if os.path.exists(os.path.join(try_dir, 'version.txt')):

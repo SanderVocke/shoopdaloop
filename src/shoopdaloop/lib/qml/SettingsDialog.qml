@@ -363,10 +363,10 @@ Dialog {
 
         Component.onCompleted: {
             let builtins_dir = file_io.get_scripts_directory() + '/lib/lua/builtins'
-            let builtins = file_io.glob(builtins_dir + '/**/*.lua', true)
+            let builtins = ShoopFileIO.glob(builtins_dir + '/**/*.lua')
             let default_run = ['keyboard.lua']
             for (let builtin of builtins) {
-                let builtin_name = file_io.basename(builtin)
+                let builtin_name = ShoopFileIO.basename(builtin)
                 var found = false
                 for (let script of contents.known_scripts) {
                     if (script.path_or_filename == builtin || script.path_or_filename == builtin_name) {
@@ -404,18 +404,18 @@ Dialog {
         property alias script_manager: lookup_script_manager.object
 
         function builtins_path() {
-            return file_io.realpath(file_io.get_scripts_directory() + '/lib/lua/builtins')
+            return ShoopFileIO.realpath(file_io.get_scripts_directory() + '/lib/lua/builtins')
         }
 
         function full_path(script_name) {
             var fullpath = script_name
-            if (!file_io.is_absolute(fullpath)) {
+            if (!ShoopFileIO.isAbsolute(fullpath)) {
                 fullpath = builtins_path() + '/' + fullpath
             }
-            if (!file_io.exists(fullpath)) {
+            if (!ShoopFileIO.exists(fullpath)) {
                 return null
             }
-            return file_io.realpath(fullpath)
+            return ShoopFileIO.realpath(fullpath)
         }
 
         function status(script_name) {
@@ -542,7 +542,7 @@ Dialog {
                             Label {
                                 property var mapped_item
                                 property int index
-                                text: file_io.basename(mapped_item.path_or_filename)
+                                text: ShoopFileIO.basename(mapped_item.path_or_filename)
                             }
                         }
 
@@ -645,7 +645,7 @@ Dialog {
                                     }
                                     onClicked: {
                                         var window = script_doc_dialog_factory.createObject(root.parent, {
-                                            script_name: file_io.basename(mapped_item.path_or_filename),
+                                            script_name: ShoopFileIO.basename(mapped_item.path_or_filename),
                                             docstring: maybe_docstring,
                                             visible: true
                                         })

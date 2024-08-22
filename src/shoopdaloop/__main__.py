@@ -12,7 +12,7 @@ import platform
 
 def main():
     from shoopdaloop.lib.logging import Logger
-    logger = Logger("Frontend.Main")    
+    logger = Logger("Frontend.Main")
     try:
         from shoopdaloop.lib.backend_wrappers import AudioDriverType
         mains = [ os.path.basename(p).replace('.qml','') for p in glob.glob('{}/lib/qml/applications/*.qml'.format(installation_dir())) ]
@@ -24,8 +24,8 @@ def main():
                 bare_args.append(current_args)
                 current_args = []
             else:
-                current_args.append(a)   
-        bare_args.append(current_args)             
+                current_args.append(a)
+        bare_args.append(current_args)
 
         parser = argparse.ArgumentParser(
             prog="ShoopDaLoop",
@@ -44,9 +44,9 @@ def main():
         dev_group.add_argument('--quit-after', type=float, default=-1.0, help='For debugging: quit X seconds after app is fully loaded.')
         dev_group.add_argument('--monkey-tester', action='store_true', help='Start the monkey tester, which will randomly, rapidly perform actions on the session.')
         dev_group.add_argument('--qml-self-test', action='store_true', help='Run QML tests and exit. Pass additional args to the tester after "--".')
-        
+
         args = parser.parse_args(bare_args[0])
-        
+
         from shoopdaloop.lib.q_objects.Application import Application
         from shoopdaloop.lib.crash_handling import init_crash_handling
         init_crash_handling()
@@ -58,7 +58,7 @@ def main():
         if platform.system() == 'Windows':
             myappid = 'shoopdaloop.shoopdaloop' # arbitrary string
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-            
+
         if args.qml_self_test:
             import shoopdaloop.qml_tests
             result = shoopdaloop.qml_tests.run_qml_tests(bare_args[1] if len(bare_args) > 1 else [])
@@ -72,7 +72,7 @@ def main():
             print('Installed @ {}'.format(installation_dir()))
             print('Scripts @ {}'.format(scripts_dir()))
             sys.exit(0)
-        
+
         global_args = {
             'backend_type': args.backend.value,
             'load_session_on_startup': args.session_filename,
@@ -81,7 +81,7 @@ def main():
             'quit_after': args.quit_after,
             'monkey_tester': bool(args.monkey_tester)
         }
-    
+
         app = Application(
             'ShoopDaLoop',
             '{}/lib/qml/applications/{}.qml'.format(scripts_dir(), args.main),

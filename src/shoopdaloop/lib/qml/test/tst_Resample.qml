@@ -58,7 +58,7 @@ ShoopTestFile {
                         data[i] = Math.sin(i / data.length * 100)
                     }
 
-                    var filename = file_io.generate_temporary_filename() + '.wav'
+                    var filename = ShoopFileIO.generateTemporaryFilename() + '.wav'
                     file_io.save_data_to_soundfile(filename, 24000, [data])
 
                     testcase.wait_updated(session.backend)
@@ -84,7 +84,7 @@ ShoopTestFile {
                         data[i] = Math.sin(i / data.length * 100)
                     }
 
-                    var filename = file_io.generate_temporary_filename() + '.wav'
+                    var filename = ShoopFileIO.generateTemporaryFilename() + '.wav'
                     file_io.save_data_to_soundfile(filename, 24000, [data])
 
                     testcase.wait_updated(session.backend)
@@ -112,7 +112,7 @@ ShoopTestFile {
                     }
                     let _data = [data, data]
 
-                    var filename = file_io.generate_temporary_filename() + '.wav'
+                    var filename = ShoopFileIO.generateTemporaryFilename() + '.wav'
                     file_io.save_data_to_soundfile(filename, 24000, _data)
 
                     testcase.wait_updated(session.backend)

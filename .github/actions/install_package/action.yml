@@ -24,13 +24,16 @@ outputs:
   test_runner:
     description: "path to back-end testrunner, if any"
     value: ${{ steps.get_cmd.outputs.test_runner }}
+  rust_test_runner:
+    description: "path to Rust testrunner, if any"
+    value: ${{ steps.get_cmd.outputs.rust_test_runner }}
   python:
     description: "updated python command to use"
     value: ${{ steps.get_cmd.outputs.python }}
 
 runs:
   using: "composite"
-  steps:  
+  steps:
 
   - name: Determine package kind
     shell: wrap-shell {0}
@@ -57,7 +60,7 @@ runs:
     shell: wrap-shell {0}
     run: |
        echo "maybe_sudo=${{ (inputs.sudo == 'true') && 'sudo' || '' }}" | tee -a $GITHUB_ENV
-  
+
   - name: Install InnoSetup installer
     if: ${{ steps.get_type.outputs.type == 'exe' }}
     shell: wrap-shell {0}
@@ -107,6 +110,7 @@ runs:
       echo "install_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "pytest_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "test_runner=$INSTALLDIR/test_runner" | tee -a $GITHUB_ENV
+      echo "rust_test_runner=$INSTALLDIR/shoop_rs_frontend_testrunner" | tee -a $GITHUB_ENV
       echo "python=$VENV_PYTHON" | tee -a $GITHUB_ENV
 
   # Pacman
@@ -121,7 +125,7 @@ runs:
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
       echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
-  
+
   # Debian
   - name: Install deb
     if: ${{ steps.get_type.outputs.type == 'deb' }}
@@ -133,7 +137,7 @@ runs:
       echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
       echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
-  
+
   # RPM
   - name: Install rpm
     if: ${{ steps.get_type.outputs.type == 'rpm' }}
@@ -164,7 +168,7 @@ runs:
       echo "cmd=${{ inputs.package }}/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=${{ inputs.package }}/Contents/MacOS" | tee -a $GITHUB_ENV
       echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
-  
+
   # MacOS .dmg installer
   - name: Install MacOS .dmg
     if: ${{ steps.get_type.outputs.type == 'dmg' }}
@@ -184,5 +188,6 @@ runs:
       echo "install_dir=${{ env.install_dir }}" | tee -a $GITHUB_OUTPUT
       echo "pytest_dir=${{ env.pytest_dir }}" | tee -a $GITHUB_OUTPUT
       echo "test_runner=${{ env.test_runner }}" | tee -a $GITHUB_OUTPUT
+      echo "rust_test_runner=${{ env.rust_test_runner }}" | tee -a $GITHUB_OUTPUT
       echo "python=${{ env.python }}" | tee -a $GITHUB_OUTPUT
-      
+

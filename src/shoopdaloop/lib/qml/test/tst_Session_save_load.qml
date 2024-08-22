@@ -161,7 +161,7 @@ ShoopTestFile {
                     ]
                     mt_midi_channels()[0].load_all_midi_data(midichan)
                     testcase.wait_updated(session.backend)
-                    var filename = file_io.generate_temporary_filename() + '.mid'
+                    var filename = ShoopFileIO.generateTemporaryFilename() + '.mid'
                     file_io.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
 
                     mt_loop().clear()
@@ -189,7 +189,7 @@ ShoopTestFile {
                     ]
                     mt_midi_channels()[0].load_all_midi_data(midichan)
                     testcase.wait_updated(session.backend)
-                    var filename = file_io.generate_temporary_filename() + '.smf'
+                    var filename = ShoopFileIO.generateTemporaryFilename() + '.smf'
                     file_io.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
 
                     mt_loop().clear()
@@ -230,7 +230,7 @@ ShoopTestFile {
                     dwt_loop().set_length(4)
                     testcase.wait_updated(session.backend)
 
-                    var filename = file_io.generate_temporary_filename() + '.shl'
+                    var filename = ShoopFileIO.generateTemporaryFilename() + '.shl'
                     session.save_session(filename)
 
                     testcase.wait_session_io_done()
@@ -295,7 +295,7 @@ ShoopTestFile {
                     dwt_loop().set_length(12)
                     testcase.wait_updated(session.backend)
 
-                    var filename = file_io.generate_temporary_filename() + '.shl'
+                    var filename = ShoopFileIO.generateTemporaryFilename() + '.shl'
                     session.save_session(filename)
 
                     testcase.wait_session_io_done()
@@ -348,7 +348,7 @@ ShoopTestFile {
                     verify_approx(dwt().control_widget.last_pushed_gain, 0.4)
                     verify_approx(dwt().control_widget.last_pushed_out_stereo_balance, 0.8)
 
-                    var filename = file_io.generate_temporary_filename() + '.shl'
+                    var filename = ShoopFileIO.generateTemporaryFilename() + '.shl'
                     session.save_session(filename)
 
                     testcase.wait_session_io_done()

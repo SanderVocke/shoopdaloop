@@ -46,15 +46,13 @@ class Backend(ShoopQQuickItem):
         self.lock = threading.Lock()
         self._last_processed = self._new_last_processed = 1
         self._n_updates_pending = 0
-        
+
         self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
-        
-        self.setObjectName("ShoopBackend")
-        
+
         global all_active_backend_objs
         all_active_backend_objs.add(self)
-    
+
     updated = ShoopSignal()
 
     ######################
@@ -70,12 +68,12 @@ class Backend(ShoopQQuickItem):
         if u != self._update_interval_ms:
             self._update_interval_ms = u
             self.init_timer()
-    
-    initializedChanged = ShoopSignal(bool)
+
+    initializedChanged = ShoopSignal()
     @ShoopProperty(bool, notify=initializedChanged)
     def initialized(self):
         return self._initialized
-    
+
     actualBackendTypeChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=actualBackendTypeChanged)
     def actual_backend_type(self):
@@ -86,7 +84,7 @@ class Backend(ShoopQQuickItem):
             self._actual_driver_type = n
             self.logger.instanceIdentifier = AudioDriverType(n).name
             self.actualBackendTypeChanged.emit(n)
-    
+
     clientNameHintChanged = ShoopSignal(str)
     @ShoopProperty(str, notify=clientNameHintChanged)
     def client_name_hint(self):
@@ -109,7 +107,7 @@ class Backend(ShoopQQuickItem):
             self.logger.throw_error("Back-end driver type can only be set once.")
         self._driver_type = AudioDriverType(n)
         self.maybe_init()
-    
+
     xrunsChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=xrunsChanged)
     def xruns(self):
@@ -119,7 +117,7 @@ class Backend(ShoopQQuickItem):
         if self._xruns != n:
             self._xruns = n
             self.xrunsChanged.emit(n)
-    
+
     lastProcessedChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=lastProcessedChanged)
     def last_processed(self):
@@ -129,7 +127,7 @@ class Backend(ShoopQQuickItem):
         if self._last_processed != n:
             self._last_processed = n
             self.lastProcessedChanged.emit(n)
-    
+
     dspLoadChanged = ShoopSignal(float)
     @ShoopProperty(float, notify=dspLoadChanged)
     def dsp_load(self):
@@ -139,7 +137,7 @@ class Backend(ShoopQQuickItem):
         if self._dsp_load != n:
             self._dsp_load = n
             self.dspLoadChanged.emit(n)
-    
+
     driverSettingOverridesChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=driverSettingOverridesChanged)
     def driver_setting_overrides(self):
@@ -154,7 +152,7 @@ class Backend(ShoopQQuickItem):
             self._driver_setting_overrides = n
             self.driverSettingOverridesChanged.emit(n)
             self.maybe_init()
-    
+
     ###########
     ## SLOTS
     ###########
@@ -163,7 +161,7 @@ class Backend(ShoopQQuickItem):
     def registerBackendObject(self, obj):
         with self.lock:
             self._backend_child_objects.add(weakref.ref(obj))
-    
+
     @ShoopSlot('QVariant')
     def unregisterBackendObject(self, obj):
         with self.lock:
@@ -206,14 +204,14 @@ class Backend(ShoopQQuickItem):
         if not self._initialized:
             return
         driver_state = self._backend_driver_obj.get_state()
-        
+
         # Set the Python state directly and queue an update on the GUI thread
         self._new_dsp_load = driver_state.dsp_load
         self._new_xruns = min(2**31-1, self._xruns + driver_state.xruns)
         self._new_actual_backend_type = self._driver_type.value
         self._new_last_processed = driver_state.last_processed
         self._n_updates_pending += 1
-        
+
         # Some objects have an update function which can run outside of the
         # GUI thread, allowing them to continue working if the GUI thread
         # hangs. Trigger those updates here.
@@ -222,9 +220,9 @@ class Backend(ShoopQQuickItem):
                 _obj = obj()
                 if _obj and hasattr(_obj, 'updateOnOtherThread'):
                     _obj.updateOnOtherThread()
-        
+
         self._signal_sender.do_emit()
-    
+
     @ShoopSlot(result=int)
     def get_sample_rate(self):
         if not self._backend_driver_obj:
@@ -233,7 +231,7 @@ class Backend(ShoopQQuickItem):
             traceback.print_stack()
             return 1
         return self._backend_driver_obj.get_sample_rate()
-    
+
     @ShoopSlot(result=int)
     def get_buffer_size(self):
         return self._backend_driver_obj.get_buffer_size()
@@ -258,32 +256,32 @@ class Backend(ShoopQQuickItem):
             self._backend_driver_obj.destroy()
         self._initialized = False
         self._closed = True
-    
+
     # Get the wrapped back-end object.
     @ShoopSlot(result='QVariant')
     def get_backend_driver_obj(self):
         return self._backend_driver_obj
-    
+
     @ShoopSlot(result='QVariant')
     def get_backend_session_obj(self):
         return self._backend_session_obj
-    
+
     @ShoopSlot()
     def dummy_enter_controlled_mode(self):
         self._backend_driver_obj.dummy_enter_controlled_mode()
-    
+
     @ShoopSlot()
     def dummy_enter_automatic_mode(self):
         self._backend_driver_obj.dummy_enter_automatic_mode()
-    
+
     @ShoopSlot(result=bool)
     def dummy_is_controlled(self):
         self._backend_driver_obj.dummy_is_controlled()
-    
+
     @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
     def dummy_request_controlled_frames(self, n):
         self._backend_driver_obj.dummy_request_controlled_frames(n)
-        
+
     @ShoopSlot(result=int)
     def dummy_n_requested_frames(self):
         return self._backend_driver_obj.dummy_n_requested_frames()
@@ -291,23 +289,23 @@ class Backend(ShoopQQuickItem):
     @ShoopSlot()
     def dummy_run_requested_frames(self):
         self._backend_driver_obj.dummy_run_requested_frames()
-    
+
     @ShoopSlot(str, int, int)
     def dummy_add_external_mock_port(self, name, direction, data_type):
         return self._backend_driver_obj.dummy_add_external_mock_port(name, direction, data_type)
-    
+
     @ShoopSlot(str)
     def dummy_remove_external_mock_port(self, name):
         return self._backend_driver_obj.dummy_remove_external_mock_port(name)
-    
+
     @ShoopSlot()
     def dummy_remove_all_external_mock_ports(self):
         return self._backend_driver_obj.dummy_remove_all_external_mock_ports()
-    
+
     @ShoopSlot(thread_protection = False)
     def wait_process(self):
         self._backend_driver_obj.wait_process()
-    
+
     @ShoopSlot()
     def maybe_init(self):
         if not self._initialized and \
@@ -323,7 +321,7 @@ class Backend(ShoopQQuickItem):
             self.logger.trace(lambda: "Already initialized")
         else:
             self.logger.debug(lambda: "Not initializing yet")
-    
+
     @ShoopSlot(result='QVariant')
     def get_profiling_report(self):
         def report_item_to_dict(item):
@@ -346,11 +344,11 @@ class Backend(ShoopQQuickItem):
     @ShoopSlot(int, result=bool)
     def backend_type_is_supported(self, type):
         return audio_driver_type_supported(AudioDriverType(type))
-    
+
     @ShoopSlot(str, int, result='QVariant')
     def open_driver_audio_port(self, name_hint, direction, min_n_ringbuffer_samples):
         return backend_open_driver_audio_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction, min_n_ringbuffer_samples)
-    
+
     @ShoopSlot(str, int, result='QVariant')
     def open_driver_midi_port(self, name_hint, direction, min_n_ringbuffer_samples):
         return backend_open_driver_midi_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction, min_n_ringbuffer_samples)
@@ -359,16 +357,22 @@ class Backend(ShoopQQuickItem):
     def segfault_on_process_thread(self):
         if (self._backend_session_obj):
             self._backend_session_obj.segfault_on_process_thread()
-    
+
     @ShoopSlot()
     def abort_on_process_thread(self):
         if (self._backend_session_obj):
             self._backend_session_obj.abort_on_process_thread()
-    
+
     @ShoopSlot(str, int, int)
     def find_external_ports(self, maybe_name_regex, port_direction, data_type):
         return self._backend_driver_obj.find_external_ports(maybe_name_regex, port_direction, data_type)
-    
+
+    @ShoopSlot(str, int, int, result="QList<QVariant>")
+    def findExternalPorts(self, maybe_name_regex, port_direction, data_type):
+        rval = [v.to_basic_dict() for v in self.find_external_ports(maybe_name_regex, port_direction, data_type)]
+        self.logger.debug(lambda: f"findExternalPorts: {json.dumps(rval)}")
+        return rval
+
     ################
     ## INTERNAL METHODS
     ################
@@ -379,7 +383,7 @@ class Backend(ShoopQQuickItem):
             self.logger.throw_error("May not initialize more than one back-end at a time.")
         self._backend_session_obj = BackendSession.create()
         self._backend_driver_obj = AudioDriver.create(self._driver_type)
-        
+
         if not self._backend_session_obj:
             self.logger.throw_error("Failed to initialize back-end session.")
         if not self._backend_driver_obj:
@@ -403,19 +407,19 @@ class Backend(ShoopQQuickItem):
             self._backend_driver_obj.start_jack(settings)
         else:
             raise Exception("Unsupported back-end driver type.")
-        
+
         self._backend_session_obj.set_audio_driver(self._backend_driver_obj)
         self._backend_driver_obj.wait_process()
         self._backend_driver_obj.get_state() # TODO: this has implicit side-effect
 
         if not self._backend_driver_obj.active():
             raise Exception("Failed to initialize back-end driver.")
-        
+
         self.logger.debug(lambda: "Initialized")
         self._initialized = True
-        self.initializedChanged.emit(True)
+        self.initializedChanged.emit()
         self.init_timer()
-    
+
     def init_timer(self):
         if not self._timer:
             self._timer = QTimer()
@@ -427,7 +431,7 @@ class Backend(ShoopQQuickItem):
             'start',
             Q_ARG(int, self._update_interval_ms)
         )
-    
+
 def close_all_backends():
     global all_active_backend_objs
     a = copy.copy(all_active_backend_objs)

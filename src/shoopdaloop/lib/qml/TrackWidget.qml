@@ -16,7 +16,7 @@ Item {
     function setWidth(width) {
         width_adjuster.x = width - width_adjuster.width
     }
-    
+
     anchors {
         top: parent ? parent.top : undefined
         bottom: parent ? parent.bottom : undefined
@@ -116,7 +116,7 @@ Item {
             loops[i].qml_close();
         }
     }
-    
+
     readonly property int num_slots : loops.length
     property string name: initial_descriptor.name
     property int max_slots
@@ -481,7 +481,7 @@ Item {
                         text: root.name
                         onEditingFinished: () => {
                                             focus = false
-                                            release_focus_notifier.notify()
+                                            ShoopReleaseFocusNotifier.notify()
                                             root.name = text
                                         }
                     }
@@ -495,7 +495,7 @@ Item {
                             anchors.centerIn: parent
                         }
                     }
-        
+
                     ExtendedButton {
                         tooltip: "Track options."
                         id: menubutton
@@ -608,7 +608,7 @@ Item {
 
                         onClicked: { if (root.maybe_fx_chain != undefined) { root.maybe_fx_chain.set_ui_visible(!root.maybe_fx_chain.ui_visible) } }
                     }
-                    
+
                 }
 
                 Item {
@@ -629,7 +629,7 @@ Item {
                         spacing: 2
                         id: loops_column
                         height: childrenRect.height
-                        
+
                         anchors {
                             left: parent.left
                             right: parent.right
@@ -698,7 +698,7 @@ Item {
                 ExtendedButton {
                     tooltip: "Add a loop to track(s)."
                     visible: !root.sync_loop_layout
-                    
+
                     anchors {
                         left: parent.left
                         right: parent.right

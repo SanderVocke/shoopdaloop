@@ -43,6 +43,8 @@ libvulkan-dev
 procps
 wget
 curl
+file
+pax-utils
 
 # for Github Actions
 nodejs

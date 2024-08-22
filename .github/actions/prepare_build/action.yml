@@ -5,7 +5,7 @@ description: Prepare for building Shoopdaloop wheels
 inputs:
   variant:
     required: true
-    type: string
+    description: "platform variant"
 
 outputs:
   prepend_build_cmd:
@@ -15,6 +15,51 @@ outputs:
 runs:
   using: "composite"
   steps:
+  - name: Prepare Rust (Windows)
+    if: ${{ inputs.variant == 'windows' }}
+    uses: dtolnay/rust-toolchain@stable
+    with:
+       targets: x86_64-pc-windows-msvc
+      #  targets: x86_64-pc-windows-gnu
+  # - name: More Rust (Windows)
+  #   if: ${{ inputs.variant == 'windows' }}
+  #   shell: wrap-shell {0}
+  #   run: |
+  #     rustup toolchain install stable-gnu
+  #     rustup set default-host x86_64-pc-windows-gnu
+  #     rustup default stable-x86_64-pc-windows-gnu
+  - name: Prepare Rust (non-Windows)
+    if: ${{ inputs.variant != 'windows' }}
+    uses: dtolnay/rust-toolchain@stable
+  - name: Rust info
+    if: ${{ inputs.variant == 'windows' }}
+    shell: wrap-shell {0}
+    run: |
+      echo "==== Rust version ===="
+      rustc +stable --version --verbose
+      echo "==== Rust toolchain list ===="
+      rustup toolchain list
+
+  - name: Install Qt (Windows)
+    uses: jurplel/install-qt-action@v4
+    if: ${{ inputs.variant == 'windows' }}
+    with:
+      cache: true
+      version: 6.6.3
+      arch: win64_msvc2019_64
+      setup-python: false
+  - name: Install Qt
+    uses: jurplel/install-qt-action@v4
+    if: ${{ inputs.variant != 'windows' }}
+    with:
+      cache: true
+      version: 6.6.3
+      install-deps: false
+      setup-python: false
+  - name: Env for Qt
+    shell: wrap-shell {0}
+    run: echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6" > prepend_build_cmd.txt
+
   - name: Prepare linux
     if: ${{ inputs.variant == 'linux' }}
     uses: ./.github/actions/prepare_build_linux
@@ -27,6 +72,17 @@ runs:
   - name: Prepare Windows
     if: ${{ inputs.variant == 'windows' }}
     uses: ./.github/actions/prepare_build_windows
+
+  - name: Run sccache-cache only on non-release runs
+    if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
+    uses: mozilla-actions/sccache-action@v0.0.5
+  - name: Set Rust caching env vars only on non-release runs
+    shell: wrap-shell {0}
+    if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
+    run: |
+      echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+      echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+
   - name: Collect information
     id: collect
     shell: wrap-shell {0}

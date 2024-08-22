@@ -34,7 +34,7 @@ def crashed_callback(filename):
             f.write('\n\n')
     except Exception as e:
         pass
-    
+
     try:
         with open(more_info_filename, 'a') as f:
             f.write("=====================================\n")
@@ -65,8 +65,8 @@ def crashed_callback(filename):
                     else:
                         failed_to_get_stack_engs.append(eng)
                 else:
-                    other_thread_engs.append(eng)                
-        
+                    other_thread_engs.append(eng)
+
         if (len(js_stacks) + len(failed_to_get_stack_engs) + len(other_thread_engs)) > 0:
             with open(more_info_filename, 'a') as f:
                 f.write("=====================================\n")
@@ -83,9 +83,9 @@ def crashed_callback(filename):
                     f.write(f'JS engine {idx} is on the crashing thread, but failed to get a stack.\n\n')
     except Exception as e:
         pass
-    
+
     print("  - Done.")
-    
+
 c_crashed_callback = None
 
 def init_crash_handling():
@@ -107,18 +107,6 @@ def init_crash_handling():
     logger.debug("Initialized Breakpad crash handler @ {}.".format(td))
     if(faulthandler.is_enabled()):
         logger.warning("Python built-in fault handling is enabled. This may prevent generation of dump files from back-end faults.")
-
-def test_exception():
-    import shoopdaloop.shoop_crashhandling
-    shoopdaloop.shoop_crashhandling.shoop_test_crash_exception()
-
-def test_segfault():
-    import shoopdaloop.shoop_crashhandling
-    shoopdaloop.shoop_crashhandling.shoop_test_crash_segfault()
-
-def test_abort():
-    import shoopdaloop.shoop_crashhandling
-    shoopdaloop.shoop_crashhandling.shoop_test_crash_abort()
 
 def register_js_engine(eng):
     global g_active_js_engines

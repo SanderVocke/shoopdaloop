@@ -25,6 +25,15 @@ runs:
     uses: ./.github/actions/install_boost_headers
     with:
       dir: includes
+  - name: Symlink Qt include folders
+    shell: wrap-shell {0}
+    run: |
+      cd $QT_ROOT_DIR/include
+      ln -s ../lib/QtCore.framework/Headers QtCore
+      ln -s ../lib/QtGui.framework/Headers QtGui
+      ln -s ../lib/QtQml.framework/Headers QtQml
+      ln -s ../lib/QtNetwork.framework/Headers QtNetwork
+      ln -s ../lib/QtQuick.framework/Headers QtQuick
   - name: Set outputs
     shell: wrap-shell {0}
     run: |

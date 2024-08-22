@@ -3,6 +3,7 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import Qt.labs.platform as LabsPlatform
 import ShoopDaLoop.PythonLogger
+import ShoopDaLoop.Rust
 
 import ShoopConstants
 
@@ -101,23 +102,23 @@ Item {
                         }
 
                         ShoopMenuItem {
-                            text: "Test throw exception (UI thread)"
+                            text: "Test thread panic (UI thread)"
                             onClicked: {
-                                os_utils.test_exception()
+                                ShoopOSUtils.causePanic()
                             }
                         }
 
                         ShoopMenuItem {
                             text: "Test segfault (UI thread)"
                             onClicked: {
-                                os_utils.test_segfault()
+                                ShoopOSUtils.causeSegfault()
                             }
                         }
 
                         ShoopMenuItem {
                             text: "Test abort (UI thread)"
                             onClicked: {
-                                os_utils.test_abort()
+                                ShoopOSUtils.causeAbort()
                             }
                         }
 
@@ -395,7 +396,7 @@ Item {
             height: 40
             width: 30
             onClicked: state = !state
-            
+
             property bool inverted : key_modifiers.control_pressed
             property bool state : true
             property bool sync_active : inverted ? !state : state
@@ -447,8 +448,8 @@ Item {
             from: -1
 
             editable: true
-            valueFromText: function(text, locale) { 
-                release_focus_notifier.notify()
+            valueFromText: function(text, locale) {
+                ShoopReleaseFocusNotifier.notify()
                 return Number.fromLocaleString(locale, text);
             }
 
@@ -458,7 +459,7 @@ Item {
                     value = Qt.binding(() => registries.state_registry.apply_n_cycles)
                 }
             }
-            
+
             textFromValue: (value) => (value == 0) ? '∞' : value.toString()
 
             ControlTooltip {

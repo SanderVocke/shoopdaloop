@@ -2,7 +2,7 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 import os
 
 datas = collect_data_files(
-    'shoopdaloop', 
+    'shoopdaloop',
     include_py_files=False,
     includes=[
         '**/*',
@@ -12,7 +12,7 @@ datas = collect_data_files(
         '**/*.cpp',
         '**/example',
         '**/*.py',
-        '**/*.pyc'        
+        '**/*.pyc'
     ])
 
 # Manually add a few files
@@ -21,8 +21,7 @@ basepath = os.path.dirname(version_txt_path)
 
 datas += [
     (basepath + '/libshoopdaloop_bindings.py', 'shoopdaloop'),
-    (basepath + '/shoop_crashhandling.py', 'shoopdaloop'),
-    (basepath + '/shoop_accelerate.py', 'shoopdaloop')
+    (basepath + '/shoop_crashhandling.py', 'shoopdaloop')
 ]
 
 binaries = collect_dynamic_libs(

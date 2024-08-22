@@ -18,6 +18,7 @@ if have_nsm:
     from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
 from ..qml_helpers import *
+from ..shoop_rust import shoop_rust_init
 from ..backend_wrappers import terminate_all_backends
 
 from ..logging import *
@@ -66,6 +67,7 @@ class Application(ShoopQApplication):
             dbg = QQmlDebuggingEnabler(True)
             QQmlDebuggingEnabler.startTcpDebugServer(qml_debug_port, mode)
 
+        shoop_rust_init()
         register_shoopdaloop_qml_classes()
         self.global_args = global_args
         self.additional_root_context = additional_root_context

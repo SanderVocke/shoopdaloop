@@ -12,7 +12,7 @@ import '../qml_url_to_filename.js' as UrlToFilename
 // The loop widget allows manipulating a single loop within a track.
 Item {
     id: root
-    
+
     property var all_loops_in_track
     property var maybe_fx_chain
 
@@ -165,13 +165,13 @@ Item {
     }
 
     function init() {
-        if (is_sync) { 
+        if (is_sync) {
             root.logger.debug("Initializing back-end for sync loop")
             create_backend_loop()
         } else if (initial_descriptor && 'composition' in initial_descriptor) {
             root.logger.debug(() => (`${obj_id} has composition, creating composite loop.`))
             create_composite_loop(initial_descriptor.composition)
-        } 
+        }
         loaded = true
     }
 
@@ -249,7 +249,7 @@ Item {
 
         // Do the transition for this loop and all selected loops, if any
         var selected_all = include_selected ? selected_loops : new Set()
-        
+
         if (selected_all.has (root)) {
             // If we are part of the selection, transition them all as a group.
             var objects = Array.from(selected_all)
@@ -257,7 +257,7 @@ Item {
         } else {
             // If we are not part of the selection, transition ourselves only.
             transition_loops([root], mode, maybe_delay, maybe_align_to_sync_at)
-        }        
+        }
     }
     function trigger_mode_button(mode) {
         if (mode == ShoopConstants.LoopMode.Stopped) { root.on_stop_clicked() }
@@ -465,7 +465,7 @@ Item {
     readonly property int mode : maybe_loop ? maybe_loop.mode : ShoopConstants.LoopMode.Stopped
     readonly property int next_mode : maybe_loop ? maybe_loop.next_mode : ShoopConstants.LoopMode.Stopped
     readonly property int next_transition_delay : maybe_loop ? maybe_loop.next_transition_delay : -1
-    
+
     Component {
         id: backend_loop_factory
         BackendLoopWithChannels {
@@ -570,7 +570,7 @@ Item {
             root.record_with_targeted();
         } else {
             root.record_n(0, root.record_kind)
-        } 
+        }
     }
 
     readonly property int n_cycles_to_grab : {
@@ -632,8 +632,8 @@ Item {
 
     function on_recordfx_clicked() {
         var n = root.n_multiples_of_sync_length
-        var delay = 
-            root.delay_for_targeted != undefined ? 
+        var delay =
+            root.delay_for_targeted != undefined ?
                 root.use_delay : // delay to other
                 root.n_multiples_of_sync_length - root.current_cycle - 1 // delay to self
         var prev_mode = statusrect.loop.mode
@@ -645,7 +645,7 @@ Item {
     property var channels: (maybe_loop && maybe_loop.channels) ? maybe_loop.channels : []
     property var audio_channels : (maybe_loop && maybe_loop.audio_channels) ? maybe_loop.audio_channels : []
     property var midi_channels : (maybe_loop && maybe_loop.midi_channels) ? maybe_loop.midi_channels : []
-   
+
     property bool sync_active : registries.state_registry.sync_active
     onSync_activeChanged: root.logger.debug(() => (`Sync active: ${sync_active}`))
 
@@ -890,14 +890,14 @@ Item {
 
                 active: true
                 asynchronous: true
-                
+
                 sourceComponent: Item {
                     id: iconitem
 
                     x: 0
                     y: 0
 
-                    property bool show_next_mode: 
+                    property bool show_next_mode:
                         statusrect.loop &&
                             statusrect.loop.next_mode != null &&
                             statusrect.loop.next_transition_delay != null &&
@@ -921,7 +921,7 @@ Item {
                                 if (!key_modifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
                             }
                         onClicked: (event) => {
-                            if (event.button === Qt.LeftButton) { 
+                            if (event.button === Qt.LeftButton) {
                                 if (key_modifiers.alt_pressed) {
                                     if (root.selected_loops.size == 1) {
                                         let selected = Array.from(root.selected_loops)[0]
@@ -1136,7 +1136,7 @@ Item {
                                     height: parent.height
                                     hoverEnabled: true
 
-                                    onPositionChanged: (mouse) => { 
+                                    onPositionChanged: (mouse) => {
                                         var p = mapToGlobal(mouse.x, mouse.y)
                                         playlivefx.onMousePosition(p)
                                     }
@@ -1148,7 +1148,7 @@ Item {
                                         id : playlivefx
                                         width: buttongrid.button_width
                                         height: buttongrid.button_height
-                                        
+
                                         IconWithText {
                                             size: parent.width
                                             anchors.centerIn: parent
@@ -1264,7 +1264,7 @@ Item {
                                     height: parent.height
                                     hoverEnabled: true
 
-                                    onPositionChanged: (mouse) => { 
+                                    onPositionChanged: (mouse) => {
                                         var p = mapToGlobal(mouse.x, mouse.y)
                                         record_grab.onMousePosition(p)
                                         recordfx.onMousePosition(p)
@@ -1275,7 +1275,7 @@ Item {
                                 Column {
                                     SmallButtonWithCustomHover {
                                         id : record_grab
-                                        
+
                                         // This feature makes no sense for composite script loops,
                                         // which cannot be treated as a "loop".
                                         // But for regular composite loops, it makes sense - grab
@@ -1302,7 +1302,7 @@ Item {
                                             Item {
                                                 //clipping box that cuts the underlying icon
                                                 anchors.fill: parent
-                                                anchors.topMargin: parent.height / 2 
+                                                anchors.topMargin: parent.height / 2
                                                 clip: true
 
                                                 MaterialDesignIcon {
@@ -1326,7 +1326,7 @@ Item {
                                             ((registries.state_registry.solo_active && registries.state_registry.play_after_record_active) ? ' (solo in track)' : '')
                                             + '.'
                                     }
-                                
+
                                     SmallButtonWithCustomHover {
                                         id : recordfx
                                         width: buttongrid.button_width
@@ -1423,7 +1423,7 @@ Item {
 
                     handle.width: 4
                     handle.height: 4
-                    
+
                     background: Rectangle {
                         radius: width / 2.0
                         width: parent.width
@@ -1449,7 +1449,7 @@ Item {
                     }
                     onVisible_inChanged: { if (!visible_in) { visible_off_timer.restart(); } }
                     visible: visible_in || visible_off_timer.running
-                    background: Rectangle { 
+                    background: Rectangle {
                         width: balance_dial.width
                         height: balance_dial.height
                         color: Material.background
@@ -1481,7 +1481,7 @@ Item {
 
                         handle.width: 4
                         handle.height: 4
-                        
+
                         background: Rectangle {
                             radius: width / 2.0
                             width: parent.width
@@ -1505,7 +1505,7 @@ Item {
     component LoopProgressRect : Item {
         id: loopprogressrect
         property var loop
-        
+
         FirstTimeLoader {
             activate: loopprogressrect.loop && loopprogressrect.loop.display_position > 0
             anchors.fill: parent
@@ -1740,7 +1740,7 @@ Item {
                         onEditingFinished: {
                             root.name = text
                             focus = false
-                            release_focus_notifier.notify()
+                            ShoopReleaseFocusNotifier.notify()
                         }
                     }
                 }
@@ -1816,7 +1816,7 @@ Item {
                     var channel_states = root.channels
                         .filter(c => c.recording_fx_chain_state_id != undefined)
                         .map(c => c.recording_fx_chain_state_id);
-                    return channel_states.length > 0 ? 
+                    return channel_states.length > 0 ?
                         registries.fx_chain_states_registry.maybe_get(channel_states[0], undefined)
                         : undefined
                 }
@@ -1897,7 +1897,7 @@ Item {
             })
             property var channels: []
             onAccepted: {
-                if (!root.maybe_backend_loop) { 
+                if (!root.maybe_backend_loop) {
                     root.logger.error(() => ("Cannot save: loop not loaded"))
                     return;
                 }
@@ -1913,7 +1913,7 @@ Item {
                     throw e;
                 }
             }
-            
+
         }
 
         ShoopFileDialog {
@@ -1923,7 +1923,7 @@ Item {
             nameFilters: ["MIDI files (*.mid)", "Sample-accurate Shoop MIDI (*.smf)"]
             property var channel: null
             onAccepted: {
-                if (!root.maybe_backend_loop) { 
+                if (!root.maybe_backend_loop) {
                     root.logger.error(() => ("Cannot save: loop not loaded"))
                     return;
                 }
@@ -1932,7 +1932,7 @@ Item {
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                 file_io.save_channel_to_midi_async(filename, samplerate, channel)
             }
-            
+
         }
 
         ShoopFileDialog {
@@ -1951,7 +1951,7 @@ Item {
                 loadoptionsdialog.update()
                 loadoptionsdialog.open()
             }
-            
+
         }
 
         Dialog {
@@ -1960,7 +1960,7 @@ Item {
             parent: Overlay.overlay
             x: (parent.width - width) / 2
             y: (parent.height - height) / 2
-            
+
             modal: true
             property string filename: ''
             property var channels_to_load : []
@@ -1999,14 +1999,14 @@ Item {
             }
 
             // TODO: there has to be a better way
-            Timer {                                                                                                                                                                                 
+            Timer {
                 interval: 100
                 running: loadoptionsdialog.opened
                 onTriggered: loadoptionsdialog.update()
             }
 
             onAccepted: {
-                if (!root.maybe_backend_loop) { 
+                if (!root.maybe_backend_loop) {
                     root.logger.error(() => ("Cannot load: loop not loaded"))
                     return;
                 }

@@ -19,7 +19,7 @@
 
 
 class DummyPort;
-struct DummyExternalConnections : private ModuleLoggingEnabled<"Backend.DummyAudioMidiDriver"> {
+struct DummyExternalConnections : private ModuleLoggingEnabled<"Backend.DummyExternalConnections"> {
     std::vector<std::pair<DummyPort*, std::string>> m_external_connections;
     std::vector<ExternalPortDescriptor> m_external_mock_ports;
 

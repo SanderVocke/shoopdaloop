@@ -581,6 +581,7 @@ void DummyExternalConnections::disconnect(DummyPort* port, std::string external_
 }
 
 PortExternalConnectionStatus DummyExternalConnections::connection_status_of(const DummyPort* port) {
+    log<log_level_debug>("getting connection status of {}", port->name());
     PortExternalConnectionStatus rval;
     for (auto &conn : m_external_connections) {
         rval[conn.second] = conn.first == port;

@@ -1,0 +1,15 @@
+[package]
+name = "shoop_rs_test"
+version = "0.2.0"
+authors = [
+    "Sander Vocke <sandervocke@gmail.com>"
+]
+edition = "2021"
+license = "TODO"
+
+[[bin]]
+name = "shoop_rs_test"
+path = "src/main.rs"
+
+[dependencies]
+shoop_rs_frontend = { path = "../shoop_rs_frontend" }

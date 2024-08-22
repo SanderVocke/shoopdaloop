@@ -17,7 +17,7 @@ def signal_handler(signum, frame):
 
 def run_qml_tests(args):
     global exit_text
-    
+
     import os
     import glob
     import atexit
@@ -97,16 +97,16 @@ def run_qml_tests(args):
     app.exit_handler_called.connect(lambda: sys.exit(1))
 
     for file in test_files:
-        filename = os.path.basename(file)    
+        filename = os.path.basename(file)
         print()
         logger.info('===== Test file: {} ====='.format(filename))
-        
-        app.reload_qml(file, False)    
-        
+
+        app.reload_qml(file, False)
+
         while not runner.done:
             app.processEvents()
             time.sleep(0.001)
-        
+
         app.unload_qml()
         app.wait(50)
 
@@ -154,7 +154,7 @@ def run_qml_tests(args):
         maybe_skip_string = '''
 
     Skipped cases: {}
-    '''.format(json.dumps(skipped_cases, indent=2))    
+    '''.format(json.dumps(skipped_cases, indent=2))
 
     # TODO: this is nasty, but it's a quick hack to get the test results to show up last
     set_global_logging_level(log_level_error)
@@ -202,7 +202,7 @@ def run_qml_tests(args):
                     testcase.appendChild(failure_elem)
                 else:
                     raise Exception('Unknown result: {}'.format(fn_result))
-        
+
         print("Writing JUnit XML to {}".format(args.junit_xml))
         root.writexml(open(args.junit_xml, 'w'), indent='  ', addindent='  ', newl='\n')
 

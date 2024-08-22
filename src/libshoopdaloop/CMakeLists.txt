@@ -108,7 +108,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/../third_party/nlohmann_json)
 
 add_subdirectory(test)
-add_subdirectory(accelerate)
 
 add_library(shoopdaloop_internals STATIC libshoopdaloop.cpp ${INTERNAL_SOURCES})
 set_target_properties(shoopdaloop_internals PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -123,6 +122,9 @@ target_link_libraries(shoopdaloop_internals PRIVATE
   fmt::fmt
   zita
   )
+if (DEFINED PTHREADS4W_PATH)
+  target_include_directories(shoopdaloop_internals PRIVATE ${PTHREADS4W_PATH})
+endif()
 if (UNIX)
     target_link_libraries(shoopdaloop_internals PUBLIC dl)
 endif()

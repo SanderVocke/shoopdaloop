@@ -9,6 +9,8 @@ import os
 import glob
 import re
 import importlib
+import ctypes
+import platform
 
 from .directories import *
 
@@ -31,15 +33,12 @@ from .q_objects.Logger import Logger
 from .q_objects.ControlHandler import ControlHandler
 from .q_objects.LuaEngine import LuaEngine
 from .q_objects.DictTreeModel import DictTreeModelFactory
-from .q_objects.ReleaseFocusNotifier import ReleaseFocusNotifier
 from .q_objects.ControlInterface import ControlInterface
 from .q_objects.MidiControlPort import MidiControlPort
 from .q_objects.SettingsIO import SettingsIO
 from .q_objects.TestScreenGrabber import TestScreenGrabber
-from .q_objects.RenderAudioWaveform import RenderAudioWaveform
 from .q_objects.RenderMidiSequence import RenderMidiSequence
 from .q_objects.TestCase import TestCase
-from .q_objects.OSUtils import OSUtils
 from .q_objects.DummyProcessHelper import DummyProcessHelper
 from .q_objects.CompositeLoop import CompositeLoop
 
@@ -66,9 +65,9 @@ import time
 #     #     fn = qt_logger.error
 #     # else:
 #     #     fn = qt_logger.debug
-    
+
 #     #fn("%s: %s (%s:%d, %s)" % (mode, message, context.file, context.line, context.file))
-            
+
 def install_qt_message_handler():
     global qt_message_handler_installed
     global qt_logger
@@ -108,19 +107,16 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(LuaEngine, 'LuaEngine')
     register_qml_class(DictTreeModelFactory, 'DictTreeModelFactory')
     register_qml_class(ControlHandler, 'ControlHandler')
-    register_qml_class(ReleaseFocusNotifier, 'ReleaseFocusNotifier')
     register_qml_class(ControlInterface, 'ControlInterface')
     register_qml_class(MidiControlPort, 'MidiControlPort')
     register_qml_class(SettingsIO, 'SettingsIO')
     register_qml_class(TestScreenGrabber, 'TestScreenGrabber')
-    register_qml_class(RenderAudioWaveform, 'RenderAudioWaveform')
     register_qml_class(RenderMidiSequence, 'RenderMidiSequence')
     register_qml_class(TestCase, 'TestCase')
     register_qml_class(DummyProcessHelper, 'DummyProcessHelper')
     register_qml_class(CompositeLoop, 'CompositeLoop')
 
     qmlRegisterSingletonType("ShoopConstants", 1, 0, "ShoopConstants", create_constants_instance)
-    
     # install_qt_message_handler()
 
 def create_and_populate_root_context(engine, global_args, additional_items={}):
@@ -131,11 +127,11 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         if comp.status() != QQmlComponent.Ready:
             raise Exception('Failed to load {}: {}'.format(path, str(comp.errorString())))
         return comp
-    
+
     # Constants definition for Javascript side
     constants = create_js_constants(engine)
     engine.registerModule("shoop_js_constants", constants)
-    
+
     # QML instantiations
     registries_comp = create_component(scripts_dir() + '/lib/qml/AppRegistries.qml')
     registries = registries_comp.create()
@@ -148,12 +144,10 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         'app_metadata': ApplicationMetadata(parent=engine),
         'default_logger': Logger(),
         'tree_model_factory': DictTreeModelFactory(parent=engine),
-        'release_focus_notifier': ReleaseFocusNotifier(parent=engine),
         'global_args': global_args,
         'settings_io': SettingsIO(parent=engine),
         'registries': registries,
-        'screen_grabber': TestScreenGrabber(weak_engine=weakref.ref(engine), parent=engine),
-        'os_utils': OSUtils(parent=engine)
+        'screen_grabber': TestScreenGrabber(weak_engine=weakref.ref(engine), parent=engine)
     }
 
     for key, item in additional_items.items():
@@ -165,6 +159,6 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
 
     for key, item in items.items():
         engine.rootContext().setContextProperty(key, item)
-    
+
     return items
 

@@ -3,6 +3,7 @@ import QtQuick 6.6
 import ShoopConstants
 
 PythonBackend {
+    objectName: "shoop_backend_wrapper"
     Component.onCompleted: {
         maybe_init()
     }

@@ -368,6 +368,13 @@ class ExternalPortDescriptor:
             self.name = None
             self.direction = None
             self.data_type = None
+    
+    def to_basic_dict(self):
+        return {
+            'name': self.name,
+            'direction': int(self.direction),
+            'data_type': int(self.data_type)
+        }
 
 class ShoopChannelAudioData:
     def __init__(self, data=None):

@@ -22,7 +22,8 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAK
 if (WIN32)
   set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pdb")
   if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    add_compile_options("/Zi")
+    add_compile_options("/Z7")
+    add_compile_options("/FS")
     add_link_options("/DEBUG")
     add_link_options("/OPT:REF")
     add_link_options("/OPT:ICF")
@@ -52,6 +53,11 @@ if(HAVE_LV2)
   add_compile_definitions(SHOOP_HAVE_LV2)
 endif()
 
+set(PTHREADS4W_PATH $ENV{PTHREADS4W_PATH} CACHE PATH "Path to PThreads4W, needed on Windows")
+if(DEFINED PTHREADS4W_PATH)
+  message(STATUS "PThreads4W path (Windows): ${PTHREADS4W_PATH}")
+endif()
+
 if (APPLE)
   message(STATUS "MacOS architectures included: ${CMAKE_OSX_ARCHITECTURES}")
 endif()
@@ -64,8 +70,15 @@ add_subdirectory(third_party/fmt)
 add_subdirectory(third_party/Catch2)
 set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
 
+include(CompilerCaching)
+
 add_subdirectory(libshoopdaloop)
-  
+
+add_subdirectory("third_party/corrosion")
+add_subdirectory(rust)
+
+add_dependencies(shoop_rs_frontend shoopdaloop)
+
 # Generate and install version.txt and description.txt
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/version.txt
@@ -86,7 +99,7 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR
     EXCLUDE_FROM_ALL
     COMPONENT package_install
     DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
-  
+
 
 # Include app test scripts
 install(FILES ${CMAKE_SOURCE_DIR}/../scripts/repeat_run_app.py

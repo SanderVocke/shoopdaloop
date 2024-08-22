@@ -33,7 +33,7 @@ class FindParentBackend(ShoopQQuickItem):
         if l and l != self._backend:
             self._backend = l
             self.logger.trace(lambda: f'Backend -> {l}')
-            self._backend.initializedChanged.connect(lambda v: self.backendInitializedChanged.emit(v))
+            self._backend.initializedChanged.connect(lambda: self.backendInitializedChanged.emit(self._backend.initialized))
             self.backendChanged.emit(l)
     
     # backend_initialized
