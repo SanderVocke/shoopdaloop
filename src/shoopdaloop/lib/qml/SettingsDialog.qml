@@ -119,7 +119,6 @@ Dialog {
         id: midi_settings_ui
 
         onAutoconnect_input_regexesChanged: midi_settings.contents.autoconnect_input_regexes = autoconnect_input_regexes
-        }
         onAutoconnect_output_regexesChanged: midi_settings.contents.autoconnect_output_regexes = autoconnect_output_regexes
 
         property var autoconnect_input_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_input_regexes : []

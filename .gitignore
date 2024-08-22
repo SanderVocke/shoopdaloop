@@ -14,3 +14,6 @@ dist
 .pytest_cache
 py-build-cmake.local.toml
 py-build-cmake.cross.toml
+Cargo.lock
+target
+

@@ -203,7 +203,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::ui_closed_fn() {
 template <typename TimeType, typename SizeType>
 void CarlaLV2ProcessingChain<TimeType, SizeType>::maybe_cleanup_ui() {
     {
-        std::cout << "Start cleanup!\n";
+        log<log_level_debug>("Cleaning up Carla UI.");
         std::lock_guard<std::recursive_mutex> lock(m_ui_mutex);
         if (m_ui_handle) {
             m_ui_descriptor->cleanup(m_ui_handle);
@@ -211,7 +211,6 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::maybe_cleanup_ui() {
         m_ui_handle = nullptr;
         m_ui_widget = nullptr;
         m_visible = false;
-        std::cout << "Finish cleanup!\n";
     }
 }
 
