@@ -23,6 +23,9 @@ class AutoConnect(FindParentBackend):
         self._timer.setInterval(1000)
         self._timer.timeout.connect(self.update)
         self._timer.start()
+        
+        self.internalPortChanged.connect(lambda: self.logger.debug(lambda: f"internal port -> {self._internal_port}"))
+        self.toRegexChanged.connect(lambda: self.logger.debug(lambda: f"to regex -> {self._to_regex}"))
     
     ######################
     ## SIGNALS
@@ -80,7 +83,7 @@ class AutoConnect(FindParentBackend):
             my_connections = internal_port.get_connections_state() if internal_port else {}
             data_type = internal_port.get_data_type()
 
-            if self._to_regex is not None:
+            if self._to_regex is not None and self._to_regex != "":
                 external_candidates = self._backend.find_external_ports(self._to_regex, PortDirection.Any.value, data_type)
             
             for c in external_candidates:

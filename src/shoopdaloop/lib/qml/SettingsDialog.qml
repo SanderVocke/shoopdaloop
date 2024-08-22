@@ -119,6 +119,7 @@ Dialog {
         id: midi_settings_ui
 
         onAutoconnect_input_regexesChanged: midi_settings.contents.autoconnect_input_regexes = autoconnect_input_regexes
+        }
         onAutoconnect_output_regexesChanged: midi_settings.contents.autoconnect_output_regexes = autoconnect_output_regexes
 
         property var autoconnect_input_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_input_regexes : []
@@ -212,7 +213,10 @@ Dialog {
                                     ShoopTextField {
                                         property string controlledState: midi_settings_ui.autoconnect_input_regexes[index]
                                         onControlledStateChanged: () => { text = controlledState }
-                                        onTextChanged: () => { midi_settings_ui.autoconnect_input_regexes[index] = text }
+                                        onEditingFinished: () => {
+                                            midi_settings_ui.autoconnect_input_regexes[index] = text
+                                            midi_settings_ui.autoconnect_input_regexesChanged()
+                                        }
                                         Component.onCompleted: () => { text = controlledState }
                                         width: 190
                                     }
@@ -228,6 +232,7 @@ Dialog {
                                         }
                                         onClicked: {
                                             midi_settings_ui.autoconnect_input_regexes.splice(index, 1)
+                                            midi_settings_ui.autoconnect_input_regexesChanged()
                                         }
                                     }
                                 }
@@ -268,7 +273,10 @@ Dialog {
                                     ShoopTextField {
                                         property string controlledState: midi_settings_ui.autoconnect_output_regexes[index]
                                         onControlledStateChanged: () => { text = controlledState }
-                                        onTextChanged: () => { midi_settings_ui.autoconnect_output_regexes[index] = text }
+                                        onEditingFinished: () => {
+                                            midi_settings_ui.autoconnect_output_regexes[index] = text
+                                            midi_settings_ui.autoconnect_output_regexesChanged()
+                                        }
                                         Component.onCompleted: () => { text = controlledState }
                                         width: 190
                                     }
@@ -284,6 +292,7 @@ Dialog {
                                         }
                                         onClicked: {
                                             midi_settings.autoconnect_output_regexes.splice(index, 1)
+                                            midi_settings.autoconnect_output_regexesChanged()
                                         }
                                     }
                                 }
