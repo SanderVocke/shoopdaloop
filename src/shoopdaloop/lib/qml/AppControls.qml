@@ -352,6 +352,7 @@ Item {
             id: play_after_record_active_button
             height: 40
             width: 30
+            onClicked: state = !state
 
             property bool inverted : key_modifiers.alt_pressed
             property bool state : true
@@ -393,6 +394,7 @@ Item {
             id: sync_active_button
             height: 40
             width: 30
+            onClicked: state = !state
             
             property bool inverted : key_modifiers.control_pressed
             property bool state : true
@@ -416,6 +418,7 @@ Item {
             id: solo_active_button
             height: 40
             width: 30
+            onClicked: state = !state
 
             property bool inverted : key_modifiers.shift_pressed
             property bool state : false
