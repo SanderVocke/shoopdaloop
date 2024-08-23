@@ -41,6 +41,4 @@ target_include_directories(test_runner
 target_compile_definitions(test_runner PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG_TRACE)
 target_compile_definitions(test_runner PUBLIC -DBOOST_UT_DISABLE_MODULE)
 install(TARGETS test_runner
-        EXCLUDE_FROM_ALL
-        COMPONENT package_install
-        DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
+        DESTINATION .)

@@ -2,6 +2,8 @@ use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
     CxxQtBuilder::new()
+        .qt_module("Quick")
+        .qt_module("Gui")
         .qt_module("Network")
         .qt_module("Test")
         .qml_module(QmlModule {
@@ -46,7 +48,5 @@ fn main() {
             cc.file("src/cxx_qt_lib_shoop/cxx/qpen.cpp");
         })
         .qobject_header("src/cxx_qt_shoop/include/cxx-qt-shoop/ShoopQObject.h")
-        .qt_module("Quick")
-        .qt_module("Gui")
         .build();
 }

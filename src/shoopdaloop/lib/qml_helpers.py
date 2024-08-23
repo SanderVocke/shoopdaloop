@@ -75,10 +75,8 @@ def install_qt_message_handler():
         QtCore.qInstallMessageHandler(qt_msg_handler)
         qt_message_handler_installed = True
 
-# Read version from the version.txt file (will be present when packaged)
-pkg_version = None
-with open(installation_dir() + '/version.txt', 'r') as f:
-    pkg_version = f.read().strip()
+import shoop_app_info
+pkg_version = shoop_app_info.version
 
 def register_qml_class(t, name):
     qmlRegisterType(t, "ShoopDaLoop.Python" + name, 1, 0, "Python" + name)

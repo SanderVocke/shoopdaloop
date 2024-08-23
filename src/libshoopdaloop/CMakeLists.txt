@@ -35,9 +35,7 @@ if(ENABLE_ASAN)
     set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
     get_filename_component(ASAN_DSO_REALPATH ${ASAN_DSO} REALPATH)
     install(FILES ${ASAN_DSO_REALPATH}
-            EXCLUDE_FROM_ALL
-            COMPONENT package_install
-            DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
+            DESTINATION .)
 endif()
 option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling" ON)
 if(ENABLE_PROCESS_PROFILING)
@@ -158,9 +156,7 @@ elseif(APPLE)
 endif()
 
 install(TARGETS shoopdaloop
-        EXCLUDE_FROM_ALL
-        COMPONENT package_install
-        DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
+        DESTINATION .)
 
 if (OVERRIDE_COMPILE_LOG_LEVEL STREQUAL "")
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -196,6 +192,4 @@ if (WIN32)
 endif()
 
 install(FILES ${GENERATED_BINDINGS_PY}
-    EXCLUDE_FROM_ALL
-    COMPONENT package_install
-    DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
+    DESTINATION .)

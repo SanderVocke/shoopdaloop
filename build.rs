@@ -2,27 +2,38 @@ use std::process::Command;
 use std::env;
 use std::path::{Path, PathBuf};
 use glob::glob;
+use cmake::Config;
 
 fn main() {
-    let out_dir = env::var("OUT_DIR").unwrap();
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let src_dir = env::current_dir().unwrap();
     let host_python = env::var("PYTHON").unwrap_or(String::from("python"));
+    let shoop_lib_dir = out_dir.join("shoop_lib");
+    println!("Using Python: {}", host_python);
+
+    // Build back-end via CMake and install into our output directory
+    let _ = std::fs::remove_dir_all(&shoop_lib_dir);
+    println!("Building back-end...");
+    let _ = Config::new("src")
+        .out_dir(out_dir.join("cmake_build"))
+        .configure_arg(format!("-DCMAKE_INSTALL_PREFIX={}/shoop_lib",out_dir.to_str().unwrap()))
+        .build();
 
     // Build ShoopDaLoop wheel
-    let skip_rebuild = env::var("SHOOP_SKIP_REBUILD").is_ok();
-    if !skip_rebuild {
-        Command::new(&host_python)
-            .args(
-                &["-m", "build", "--wheel", src_dir.to_str().expect("Couldn't get source dir")]
-            )
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .current_dir(src_dir.clone())
-            .status().unwrap();
-    }
+    println!("Building wheel...");
+    Command::new(&host_python)
+        .args(
+            &["-m", "build",
+            "--outdir", out_dir.to_str().expect("Couldn't get out dir"),
+            "--wheel", src_dir.to_str().expect("Couldn't get source dir")]
+        )
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .current_dir(src_dir.clone())
+        .status().unwrap();
     let wheel : PathBuf;
     {
-        let whl_pattern = format!("{}/dist/*.whl", src_dir.to_str().unwrap());
+        let whl_pattern = format!("{}/*.whl", out_dir.to_str().unwrap());
         let mut whl_glob = glob(&whl_pattern).unwrap();
         wheel = whl_glob.next()
                 .expect(format!("No wheel found @ {}", whl_pattern).as_str())
@@ -31,21 +42,41 @@ fn main() {
     }
 
     // Create a venv in OUT_DIR
-    let venv_dir = Path::new(&out_dir).join("shoopdaloop_env");
+    println!("Creating venv...");
+    let venv_dir = Path::new(&out_dir).join("shoop_pyenv");
     Command::new(&host_python).args(
         &["-m", "venv", venv_dir.to_str().expect("Could not get venv path")]
     ).status().unwrap();
     let venv_python = venv_dir.join("bin").join("python");
 
     // Install ShoopDaLoop wheel in venv
+    println!("Installing into venv...");
     Command::new(&venv_python)
         .args(
-            &["-m", "pip", "install", wheel.to_str().expect("Could not get wheel path")]
+            &["-m", "pip", "install", "--force-reinstall", wheel.to_str().expect("Could not get wheel path")]
         )
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
         .status().unwrap();
-    println!("Installed ShoopDaLoop wheel in venv");
+    let site_packages_dir : PathBuf;
+    {
+        let pattern = format!("{}/**/site-packages", venv_dir.to_str().unwrap());
+        let mut sp_glob = glob(&pattern).unwrap();
+        site_packages_dir = sp_glob.next()
+                .expect(format!("No site-packages dir found @ {}", pattern).as_str())
+                .unwrap();
+    }
+    let shoop_package_dir = site_packages_dir.join("shoopdaloop");
+
+    // Copy additional generated Python code in
+    std::fs::copy(
+        shoop_lib_dir.join("libshoopdaloop_bindings.py"),
+        &shoop_package_dir.join("libshoopdaloop_bindings.py")
+    ).unwrap();
+    std::fs::copy(
+        shoop_lib_dir.join("shoop_crashhandling.py"),
+        &shoop_package_dir.join("shoop_crashhandling.py")
+    ).unwrap();
 
     // Tell PyO3 where to find our venv Python
     println!("Setting PYO3_PYTHON to {}", venv_python.to_str().unwrap());
@@ -56,4 +87,12 @@ fn main() {
 
     // Rebuild if changed
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src/shoopdaloop");
+
+    println!("build.rs finished.");
+
+    println!("cargo:rustc-link-search=native=/home/sander/.qt-installs/6.6.3/gcc_64/lib");
+    println!("cargo:rustc-link-lib=Qt6Core");
+    println!("cargo:rustc-link-lib=Qt6Gui");
+    println!("cargo:rustc-link-lib=Qt6Quick");
 }

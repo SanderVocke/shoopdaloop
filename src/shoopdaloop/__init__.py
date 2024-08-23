@@ -63,10 +63,8 @@ def main():
             sys.exit(result)
 
         if args.info:
-            version=None
-            with open(installation_dir() + '/version.txt', 'r') as f:
-                version = f.read()
-            print('ShoopDaLoop {}'.format(version.strip()))
+            import shoop_app_info
+            print('ShoopDaLoop {}'.format(shoop_app_info.version))
             print('Installed @ {}'.format(installation_dir()))
             print('Scripts @ {}'.format(scripts_dir()))
             sys.exit(0)

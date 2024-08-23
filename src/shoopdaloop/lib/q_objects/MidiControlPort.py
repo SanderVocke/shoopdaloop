@@ -13,6 +13,8 @@ from ..backend_wrappers import *
 from ..midi_helpers import *
 from ..shoop_rust import shoop_rust_create_autoconnect
 
+import shiboken6
+
 from ..lua_qobject_interface import create_lua_qobject_interface, lua_int
 class MidiControlPort(FindParentBackend):
 
@@ -201,7 +203,7 @@ class MidiControlPort(FindParentBackend):
             self._backend_obj.connect_external_port(name)
         else:
             self.logger.error(lambda: "Attempted to connect uninitialized port {}".format(self._name_hint))
-    
+
     @ShoopSlot(str, result=bool)
     def connectExternalPort(self, name):
         self.connect_external_port(name)
@@ -282,7 +284,7 @@ class MidiControlPort(FindParentBackend):
             for regex in self._autoconnect_regexes:
                 if not shoop_rust_create_autoconnect:
                     raise Exception("No construction function available for AutoConnect")
-                inst = shoop_rust_create_autoconnect()
+                inst = shiboken6.wrapInstance(ctypes.c_void_p(shoop_rust_create_autoconnect()), QObject)
                 if not isinstance(inst, QObject):
                     raise Exception("Created AutoConnect is not a QObject")
                 inst.setParent(self)
@@ -303,15 +305,15 @@ class MidiControlPort(FindParentBackend):
                 inst.connect(SIGNAL("connected()"), lambda s=self: s.connected.emit())
 
                 self._autoconnecters.append(inst)
-                
+
             self.logger.trace(lambda: f"# Autoconnecters: {len(self._autoconnecters)}")
-            
+
             for autoconn in self._autoconnecters:
                 meta = autoconn.metaObject()
                 method_idx = meta.indexOfMethod('update')
                 method = meta.method(method_idx)
                 method.invoke(autoconn)
-            
+
             self.logger.trace(lambda: f"Autoconnecters updated")
 
     @ShoopSlot()

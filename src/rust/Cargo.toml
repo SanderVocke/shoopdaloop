@@ -7,5 +7,4 @@ members = [
     "shoop_rs_common",
     "shoop_rs_frontend",
     "shoop_rs_macros",
-    "shoop_rs_test",
 ]

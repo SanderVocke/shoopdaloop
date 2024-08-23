@@ -66,18 +66,18 @@ set(CTYPESGEN_COMMAND ctypesgen)
 
 set(PREV_SETTING ${CMAKE_POSITION_INDEPENDENT_CODE})
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-add_subdirectory(third_party/fmt)
-add_subdirectory(third_party/Catch2)
+add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/Catch2 EXCLUDE_FROM_ALL)
 set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
 
 include(CompilerCaching)
 
 add_subdirectory(libshoopdaloop)
 
-add_subdirectory("third_party/corrosion")
-add_subdirectory(rust)
+# add_subdirectory("third_party/corrosion")
+# add_subdirectory(rust)
 
-add_dependencies(shoop_rs_frontend shoopdaloop)
+# add_dependencies(shoop_rs_frontend shoopdaloop)
 
 # Generate and install version.txt and description.txt
 add_custom_command(
@@ -96,19 +96,12 @@ add_custom_command(
 add_custom_target(description_txt ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/description.txt)
 
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR}/description.txt
-    EXCLUDE_FROM_ALL
-    COMPONENT package_install
-    DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
-
-
+        DESTINATION .)
 # Include app test scripts
 install(FILES ${CMAKE_SOURCE_DIR}/../scripts/repeat_run_app.py
-        EXCLUDE_FROM_ALL
-        COMPONENT package_install
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
-        DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/scripts)
+        DESTINATION scripts)
 install(FILES ${CMAKE_SOURCE_DIR}/../scripts/run_and_generate_coverage.sh
         EXCLUDE_FROM_ALL
-        COMPONENT package_install
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
-        DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME}/scripts)
+        DESTINATION scripts)

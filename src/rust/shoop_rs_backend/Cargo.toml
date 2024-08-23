@@ -1,11 +1,6 @@
 [package]
 name = "shoop_rs_backend"
-version = "0.2.0"
-authors = [
-    "Sander Vocke <sandervocke@gmail.com>"
-]
 edition = "2021"
-license = "TODO"
 
 [lib]
 

@@ -3,6 +3,9 @@ use std::env;
 use std::path::{Path, PathBuf};
 use glob::glob;
 
+// Include generated source for remembering the OUT_DIR at build time.
+const SHOOP_BUILD_OUT_DIR : &str = env!("OUT_DIR");
+
 fn recursive_dir_cpy (src: &Path, dst: &Path) -> std::io::Result<()> {
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
@@ -30,7 +33,7 @@ fn main() {
         println!("  the target directory should not exist, but its parent should.");
         std::process::exit(1);
     };
-    
+
     let bad_usage = |msg : _| {
         println!("Bad usage: {}", msg);
         usage();
@@ -53,20 +56,7 @@ fn main() {
         bad_usage("Target directory parent doesn't exist".to_string());
     }
 
-    println!("Finding assets...");
-    let output = Command::new(&exe_path)
-        .args(
-            &["--shoop-build-print-out-dir"]
-        )
-        .output()
-        .expect("Failed to determine assets directory");
-    if !output.status.success() {
-        println!("Failed to determine assets directory");
-        std::process::exit(1);
-    }
-    let binding = String::from_utf8(output.stdout).unwrap();
-    let build_out_dir = binding.trim();
-    println!("Found assets directory: {}", build_out_dir);
+    println!("Assets directory: {}", SHOOP_BUILD_OUT_DIR);
 
     println!("Creating target directory...");
     std::fs::create_dir(target_dir).unwrap();
@@ -75,7 +65,7 @@ fn main() {
     std::fs::copy(exe_path, target_dir.join("AppRun")).unwrap();
 
     println!("Copying assets...");
-    let from_base = PathBuf::from(build_out_dir).join("shoopdaloop_env");
+    let from_base = PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_pyenv");
     let from : PathBuf;
     {
         let pattern = format!("{}/**/site-packages", from_base.to_str().unwrap());

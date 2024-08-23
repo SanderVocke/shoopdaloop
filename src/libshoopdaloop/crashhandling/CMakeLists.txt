@@ -29,10 +29,6 @@ add_custom_target(
   )
 
 install(TARGETS shoop_crashhandling
-        EXCLUDE_FROM_ALL
-        COMPONENT package_install
-        DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
+        DESTINATION .)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/shoop_crashhandling.py
-        EXCLUDE_FROM_ALL
-        COMPONENT package_install
-        DESTINATION ${PY_BUILD_CMAKE_MODULE_NAME})
+        DESTINATION .)

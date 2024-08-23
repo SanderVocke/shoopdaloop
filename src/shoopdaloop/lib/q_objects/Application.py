@@ -40,9 +40,8 @@ class Application(ShoopQApplication):
 
         self._quitting = False
 
-        pkg_version = None
-        with open(installation_dir() + '/version.txt', 'r') as f:
-            pkg_version = f.read().strip()
+        import shoop_app_info
+        pkg_version = shoop_app_info.version
 
         self.setApplicationName('ShoopDaLoop')
         self.setApplicationVersion(pkg_version)
