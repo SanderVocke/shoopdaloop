@@ -35,10 +35,10 @@ TEST_CASE("AudioMidiLoop - Audio - Record", "[AudioMidiLoop][audio]") {
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
-    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
+    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; });
     loop.plan_transition(LoopMode_Recording);
     for (auto &c: channels) { c->PROC_set_recording_buffer(source_buf.data(), source_buf.size()); }
     loop.PROC_trigger();
@@ -58,7 +58,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record", "[AudioMidiLoop][audio]") {
     REQUIRE(loop.get_position()== 0);
     for (auto &channel : channels) {
         for_channel_elems<AudioChannel<int>, int>(
-            *channel, 
+            *channel,
             [](uint32_t position, int const& val) {
                 REQUIRE(val== position);
             },
@@ -67,13 +67,13 @@ TEST_CASE("AudioMidiLoop - Audio - Record", "[AudioMidiLoop][audio]") {
         );
     }
 };
-    
+
 TEST_CASE("AudioMidiLoop - Audio - Record Beyond Ext. Buf", "[AudioMidiLoop][audio]") {
     auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 256);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
-    
+
     channel.PROC_set_recording_buffer(nullptr, 0);
     loop.plan_transition(LoopMode_Recording);
     loop.PROC_trigger();
@@ -88,7 +88,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Target", "[AudioMidiLoop][aud
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
 
-    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
+    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; });
     loop.plan_transition(LoopMode_Recording);
     channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
     loop.PROC_trigger();
@@ -107,7 +107,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Target", "[AudioMidiLoop][aud
     REQUIRE(loop.get_length()== 512);
     REQUIRE(loop.get_position()== 0);
     for_channel_elems<AudioChannel<int>, int>(
-        channel, 
+        channel,
         [](uint32_t position, int const& val) {
             REQUIRE(val== position);
         }
@@ -147,7 +147,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Source", "[AudioMidiLoop][aud
     REQUIRE(loop.get_length()== 512);
     REQUIRE(loop.get_position()== 0);
     for_channel_elems<AudioChannel<int>, int>(
-        channel, 
+        channel,
         [](uint32_t position, int const& val) {
             REQUIRE(val== position);
         }
@@ -165,7 +165,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]
     loop.PROC_trigger();
     loop.set_length(128);
 
-    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
+    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; });
     channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
     loop.PROC_update_poi();
 
@@ -183,7 +183,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]
     REQUIRE(loop.get_position()== 0);
     // First 64 elements should be unchanged after record
     for_channel_elems<AudioChannel<int>, int>(
-        channel, 
+        channel,
         [](uint32_t position, int const& val) {
             REQUIRE(val== -((int)position));
         },
@@ -192,7 +192,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]
     );
     // The missing "data gap" should be filled with zeroes
     for_channel_elems<AudioChannel<int>, int>(
-        channel, 
+        channel,
         [](uint32_t position, int const& val) {
             REQUIRE(val== 0);
         },
@@ -201,7 +201,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]
     );
     // The new recording should be appended at the end.
     for_channel_elems<AudioChannel<int>, int>(
-        channel, 
+        channel,
         [](uint32_t position, int const& val) {
             REQUIRE(val== position-128);
         },
@@ -221,7 +221,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]"
     loop.PROC_trigger();
     loop.set_length(64);
 
-    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
+    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; });
     channel.PROC_set_recording_buffer(source_buf.data(), source_buf.size());
     loop.PROC_update_poi();
 
@@ -239,7 +239,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]"
     REQUIRE(loop.get_position()== 0);
     // First 64 elements should be unchanged after record
     for_channel_elems<AudioChannel<int>, int>(
-        channel, 
+        channel,
         [](uint32_t position, int const& val) {
             REQUIRE(val== -((int)position));
         },
@@ -248,7 +248,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]"
     );
     // The next samples should have been overwritten by the recording.
     for_channel_elems<AudioChannel<int>, int>(
-        channel, 
+        channel,
         [](uint32_t position, int const& val) {
             REQUIRE(val== position-64);
         },
@@ -264,7 +264,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback", "[AudioMidiLoop][audio]") {
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
     std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2)};
-    
+
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
     for (auto &channel : channels) { channel->load_data(data.data(), 64, false); }
     loop.set_length(64);
@@ -294,10 +294,10 @@ TEST_CASE("AudioMidiLoop - Audio - Playback", "[AudioMidiLoop][audio]") {
     }
     for(uint32_t idx=0; idx<20; idx++) {
         REQUIRE(play_bufs[1][idx]== 0); // Dry loop idle
-    }  
+    }
     for(uint32_t idx=0; idx<20; idx++) {
         REQUIRE(play_bufs[2][idx]== data[idx]); // Wet loop playing
-    }      
+    }
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Playback Multiple Target", "[AudioMidiLoop][audio]") {
@@ -305,7 +305,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Multiple Target", "[AudioMidiLoop][a
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
-    
+
     auto data = create_audio_buf<int>(512, [](uint32_t position) { return position; });
     channel.load_data(data.data(), 512, false);
 
@@ -320,7 +320,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Multiple Target", "[AudioMidiLoop][a
 
     auto play_buf = std::vector<int>(512);
     for(uint32_t processed = 0; processed < 512; processed+=64) {
-        
+
         channel.PROC_set_playback_buffer(play_buf.data()+processed, 64);
         loop.PROC_update_poi();
         REQUIRE(loop.PROC_get_next_poi() == 64); // end of buffer
@@ -338,7 +338,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Shorter Data", "[AudioMidiLoop][audi
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
-    
+
     auto data = create_audio_buf<int>(32, [](uint32_t position) { return position; });
     channel.load_data(data.data(), 32, false);
     loop.set_length(64);
@@ -374,7 +374,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
-    
+
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
     channel.load_data(data.data(), 64, false);
     loop.set_length(64);
@@ -399,7 +399,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
     REQUIRE(loop.PROC_get_next_poi() == 48); // end of buffer
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 0);
-    
+
     loop.PROC_process(48);
     loop.PROC_handle_poi();
     channel.PROC_finalize_process();
@@ -408,7 +408,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
     REQUIRE(loop.PROC_get_next_poi() == 0); // end of buffer
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 48);
-    
+
     for(uint32_t idx=0; idx<(64-48); idx++) {
         REQUIRE(play_buf[idx]== data[idx+48]);
     }
@@ -422,7 +422,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
-    
+
     auto data = create_audio_buf<int>(128, [](uint32_t position) { return position; });
     channel.load_data(data.data(), 128, false);
     loop.set_length(64);
@@ -446,7 +446,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][
     REQUIRE(loop.PROC_get_next_poi() == 48); // end of buffer
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 0);
-    
+
     loop.PROC_process(48);
     loop.PROC_handle_poi();
     channel.PROC_finalize_process();
@@ -455,7 +455,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][
     REQUIRE(loop.PROC_get_next_poi() == 0); // end of buffer
     REQUIRE(loop.get_length()== 64);
     REQUIRE(loop.get_position()== 48);
-    
+
     for(uint32_t idx=0; idx<(64-48); idx++) {
         REQUIRE(play_buf[idx]== data[idx+48]);
     }
@@ -470,9 +470,9 @@ TEST_CASE("AudioMidiLoop - Audio - Replace", "[AudioMidiLoop][audio]") {
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         { loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
-    
+
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
     for (auto &channel : channels) { channel->load_data(data.data(), 64, false); }
     loop.set_length(64);
@@ -496,7 +496,7 @@ TEST_CASE("AudioMidiLoop - Audio - Replace", "[AudioMidiLoop][audio]") {
     REQUIRE(loop.get_position()== 16+32);
     for (auto &channel : channels) {
         for_channel_elems<AudioChannel<int>, int>(
-            *channel, 
+            *channel,
             [&](uint32_t position, int const& val) {
                 if(position < 16 || position >= (16+32)) {
                     //untouched
@@ -514,7 +514,7 @@ TEST_CASE("AudioMidiLoop - Audio - Replace Onto Smaller", "[AudioMidiLoop][audio
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
-    
+
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
     channel.load_data(data.data(), 64, false);
     loop.set_length(64);
@@ -540,7 +540,7 @@ TEST_CASE("AudioMidiLoop - Audio - Replace Onto Smaller", "[AudioMidiLoop][audio
     REQUIRE(loop.get_length()== 64); // Wrapped around
     REQUIRE(loop.get_position()== 16);
     for_channel_elems<AudioChannel<int>, int>(
-        channel, 
+        channel,
         [&](uint32_t position, int const& val) {
             if(position < 16) {
                 // last part of replace
@@ -563,7 +563,7 @@ TEST_CASE("AudioMidiLoop - Audio - Play Dry Through Wet", "[AudioMidiLoop][audio
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
     std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2)};
-    
+
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
     for (auto &channel : channels) { channel->load_data(data.data(), 64, false); }
     loop.set_length(64);
@@ -593,10 +593,10 @@ TEST_CASE("AudioMidiLoop - Audio - Play Dry Through Wet", "[AudioMidiLoop][audio
     }
     for(uint32_t idx=0; idx<20; idx++) {
         REQUIRE(play_bufs[1][idx]== data[idx]); // Dry loop playing
-    }  
+    }
     for(uint32_t idx=0; idx<20; idx++) {
         REQUIRE(play_bufs[2][idx]== 0); // Wet loop idle
-    }      
+    }
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]") {
@@ -605,9 +605,9 @@ TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         { loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
-    
+
     auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
     for (auto &channel : channels) { channel->load_data(data.data(), 64, false); }
     loop.set_length(64);
@@ -635,7 +635,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]
     REQUIRE(loop.get_position()== 16+32);
     // ChannelMode_Direct channel does replacement
     for_channel_elems<AudioChannel<int>, int>(
-        *channels[0], 
+        *channels[0],
         [&](uint32_t position, int const& val) {
             if(position < 16 || position >= (16+32)) {
                 //untouched
@@ -646,10 +646,10 @@ TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]
             }
         });
     for(auto &elem : output_bufs[0]) { REQUIRE(elem== 0); }
-    
+
     // Dry channel does playback
     for_channel_elems<AudioChannel<int>, int>(
-        *channels[1], 
+        *channels[1],
         [&](uint32_t position, int const& val) {
             //untouched
             REQUIRE(val== data[position]);
@@ -657,11 +657,11 @@ TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]
     for(uint32_t idx=0; idx<32; idx++) {
         REQUIRE(output_bufs[1][idx]== idx+16);
     }
-    
+
 
     // Wet channel is replacing
     for_channel_elems<AudioChannel<int>, int>(
-        *channels[2], 
+        *channels[2],
         [&](uint32_t position, int const& val) {
             if(position < 16 || position >= (16+32)) {
                 //untouched
@@ -690,10 +690,10 @@ TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
-    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; }); 
+    auto source_buf = create_audio_buf<int>(512, [](uint32_t position) { return position; });
     loop.plan_transition(LoopMode_Recording); // Not triggered yet
     for (auto &c: channels) { c->PROC_set_recording_buffer(source_buf.data(), source_buf.size()); }
     loop.PROC_update_poi();
@@ -731,7 +731,7 @@ TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
         CHECK(channel->get_start_offset()== 20);
         CHECK(channel->get_length() == 40);
         for_channel_elems<AudioChannel<int>, int>(
-            *channel, 
+            *channel,
             [](uint32_t position, int const& val) {
                 CHECK(val == position);
             },
@@ -769,7 +769,7 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
     auto data = create_audio_buf<int>(256, [](uint32_t position) { return position; });
@@ -852,7 +852,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback and set to sync", "[AudioMidiLoop][a
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
     auto data = create_audio_buf<int>(256, [](uint32_t position) { return position; });
@@ -878,7 +878,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback and set to sync", "[AudioMidiLoop][a
     CHECK(sync_source->get_position() == 10);
     CHECK(loop.get_position() == 40);
     CHECK(loop.get_mode() == LoopMode_Playing);
-    
+
     // Sanity check: play some samples
     process(4);
     // Process the channels' queued operations
@@ -923,7 +923,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record and set to sync", "[AudioMidiLoop][aud
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Wet, false);
-    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels = 
+    std::vector<shoop_shared_ptr<AudioChannel<int>>> channels =
         {loop.audio_channel<int>(0), loop.audio_channel<int>(1), loop.audio_channel<int>(2) };
 
     auto data = create_audio_buf<int>(256, [](uint32_t position) { return position; });
@@ -949,7 +949,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record and set to sync", "[AudioMidiLoop][aud
     CHECK(loop.get_position() == 0);
     CHECK(loop.get_length() == 40);
     CHECK(loop.get_mode() == LoopMode_Recording);
-    
+
     // Sanity check: play some samples
     process(4);
     // Process the channels' queued operations
@@ -970,5 +970,42 @@ TEST_CASE("AudioMidiLoop - Audio - Record and set to sync", "[AudioMidiLoop][aud
         for (uint32_t p=40; p<44; p++) {
             CHECK(buf[p] == p);
         }
+    }
+};
+
+TEST_CASE("AudioMidiLoop - Audio - Mute and Unmute", "[AudioMidiLoop][audio]") {
+    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    AudioMidiLoop loop;
+    loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
+    auto &channel = *loop.audio_channel<int>(0);
+
+    auto data = create_audio_buf<int>(64, [](uint32_t position) { return position; });
+    channel.load_data(data.data(), 64, false);
+    loop.set_length(64);
+    auto play_buf = std::vector<int>(64);
+
+    loop.plan_transition(LoopMode_Playing);
+    channel.PROC_set_playback_buffer(play_buf.data(), play_buf.size());
+    loop.PROC_trigger();
+    loop.PROC_update_poi();
+
+    // Mute the loop
+    loop.set_muted(true);
+    loop.PROC_process(64);
+    channel.PROC_finalize_process();
+
+    // Check that all samples are zero when muted
+    for(uint32_t idx=0; idx<64; idx++) {
+        REQUIRE(play_buf[idx] == 0);
+    }
+
+    // Unmute the loop
+    loop.set_muted(false);
+    loop.PROC_process(64);
+    channel.PROC_finalize_process();
+
+    // Check that samples are played correctly when unmuted
+    for(uint32_t idx=0; idx<64; idx++) {
+        REQUIRE(play_buf[idx] == data[idx]);
     }
 };
