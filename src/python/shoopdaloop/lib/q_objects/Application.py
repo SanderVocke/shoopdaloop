@@ -18,7 +18,7 @@ if have_nsm:
     from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
 from ..qml_helpers import *
-from ..shoop_rust import shoop_rust_init
+from shoop_rust import shoop_rust_init
 from ..backend_wrappers import terminate_all_backends
 
 from ..logging import *

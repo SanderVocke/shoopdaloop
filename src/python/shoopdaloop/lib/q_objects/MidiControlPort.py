@@ -11,7 +11,7 @@ from ..findFirstParent import findFirstParent
 
 from ..backend_wrappers import *
 from ..midi_helpers import *
-from ..shoop_rust import shoop_rust_create_autoconnect
+from shoop_rust import shoop_rust_create_autoconnect
 
 import shiboken6
 
