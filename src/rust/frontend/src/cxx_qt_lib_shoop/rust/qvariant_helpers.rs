@@ -1,4 +1,3 @@
-use cxx::{type_id, ExternType};
 use cxx_qt;
 
 #[cxx_qt::bridge(cxx_file_stem="qvariant_helpers")]

@@ -5,7 +5,7 @@ use std::any::{Any, type_name};
 
 pub fn try_as_hashmap_into<T>(list : &QMap<QMapPair_QString_QVariant>) -> Result<HashMap<String, T>, anyhow::Error>
 where
-    T : TryFrom<QVariant> + std::any::Any,
+    T : TryFrom<QVariant> + Any,
 {
     list.iter().map(|p : (&QString, &QVariant)| -> Result<(String, T), anyhow::Error> {
         let key = p.0.to_string();
@@ -20,7 +20,7 @@ where
 
 pub fn try_as_hashmap_convertto<T>(list : &QMap<QMapPair_QString_QVariant>) -> Result<HashMap<String, T>, anyhow::Error>
 where
-    T : QVariantValue + std::any::Any,
+    T : QVariantValue + Any,
 {
     list.iter().map(|p : (&QString, &QVariant)| -> Result<(String, T), anyhow::Error> {
         let key = p.0.to_string();

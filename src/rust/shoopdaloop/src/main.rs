@@ -1,8 +1,5 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyList, PyString};
 use std::env;
-use std::path::PathBuf;
-use glob::glob;
 
 use shoopdaloop::shoopdaloop_main;
 use shoopdaloop::add_lib_search_path::add_lib_search_path;

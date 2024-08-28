@@ -1,8 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyString};
 use std::env;
-use std::path::{PathBuf, Path};
-use glob::glob;
+use std::path::Path;
 
 pub mod shoop_app_info;
 pub mod add_lib_search_path;

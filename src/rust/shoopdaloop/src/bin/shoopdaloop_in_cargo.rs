@@ -1,5 +1,4 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyList, PyString};
 use std::env;
 use std::path::PathBuf;
 use glob::glob;

@@ -1,7 +1,5 @@
 use pyo3::prelude::*;
-use std::path::Path;
 use frontend;
-use std::ffi::c_void;
 
 #[pyfunction]
 fn shoop_rust_init() {

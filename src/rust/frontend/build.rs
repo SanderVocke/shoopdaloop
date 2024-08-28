@@ -1,11 +1,8 @@
-use cxx_qt_build::{CxxQtBuilder, QmlModule, Interface};
+use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
-    // let interface = Interface::default()
-    //     .export_include_prefixes([]);
     CxxQtBuilder
         ::new()
-        // ::library(interface)
         .qt_module("Quick")
         .qt_module("Gui")
         .qt_module("Network")
