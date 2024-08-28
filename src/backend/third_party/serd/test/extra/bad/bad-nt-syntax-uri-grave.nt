@@ -1,2 +1,0 @@
-# Bad IRI : grave.
-<http://example/`oops`> <http://example/p> <http://example/o> .

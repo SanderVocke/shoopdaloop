@@ -1,9 +1,0 @@
-@prefix eg: <http://example.org/> .
-
-(
-	"apple"
-	"banana"
-	"cherry"
-)
-	eg:with eg:someProperties ;
-	a eg:ExampleList .

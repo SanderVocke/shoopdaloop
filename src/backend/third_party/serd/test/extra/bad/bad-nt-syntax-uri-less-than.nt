@@ -1,2 +1,0 @@
-# Bad IRI : less-than.
-<http://example/<oops>> <http://example/p> <http://example/o> .

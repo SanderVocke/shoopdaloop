@@ -1,8 +1,0 @@
-@prefix eg: <http://example.org/eg#> .
-
-eg:s
-	eg:p [
-		a eg:FirstThing
-	] , [
-		a eg:SecondThing
-	] .

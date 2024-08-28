@@ -1,9 +1,0 @@
-@prefix eg: <http://example.org/eg#> .
-
-eg:a
-	eg:b [
-		eg:c (
-			"apple"
-			"banana"
-		)
-	] .

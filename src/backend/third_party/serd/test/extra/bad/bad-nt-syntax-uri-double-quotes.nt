@@ -1,2 +1,0 @@
-# Bad IRI : double quotes.
-<http://example/"quoted"> <http://example/p> <http://example/o> .

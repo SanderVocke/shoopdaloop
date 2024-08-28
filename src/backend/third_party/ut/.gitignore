@@ -1,5 +1,0 @@
-build*
-/CMakeSettings.json
-/.vs
-/checks.json
-/.vscode

@@ -1,6 +1,0 @@
-<http://example.org/eg#s>
-	<http://example.org/eg#p> "\b first" ,
-		"last \b" ,
-		"""long
-\b
-""" .
