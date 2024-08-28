@@ -23,11 +23,11 @@ regex = "1"
 # cxx-qt-lib = { path = "../../../../cxx-qt/crates/cxx-qt-lib" }
 cxx-qt = { git = "https://github.com/SanderVocke/cxx-qt.git", rev = "b475b382410b0dc009ac56fd4c28c12bcf83853e" }
 cxx-qt-lib = { git = "https://github.com/SanderVocke/cxx-qt.git", rev = "b475b382410b0dc009ac56fd4c28c12bcf83853e" }
-shoop_rs_macros = { path = "../shoop_rs_macros" }
-shoop_rs_backend = { path = "../shoop_rs_backend" }
-shoop_rs_common = { path = "../shoop_rs_common" }
+macros = { path = "../macros" }
+backend = { path = "../backend" }
+common = { path = "../common" }
 
 [build-dependencies]
 # cxx-qt-build = { path = "../../../../cxx-qt/crates/cxx-qt-build" }
 cxx-qt-build = { git = "https://github.com/SanderVocke/cxx-qt.git", rev = "b475b382410b0dc009ac56fd4c28c12bcf83853e" }
-shoop_rs_macros = { path = "../shoop_rs_macros" }
+macros = { path = "../macros" }

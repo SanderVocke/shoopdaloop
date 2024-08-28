@@ -1,0 +1,20 @@
+[package]
+name = "shoopdaloop"
+version = "0.2.0"
+description = "Live looping application with DAW elements"
+authors = [
+    "Sander Vocke <sandervocke@gmail.com>"
+]
+edition = "2021"
+license-file = "LICENSE"
+
+[lib]
+
+[dependencies]
+pyo3 = "0.22"
+glob = "0.3"
+frontend = { path = "../frontend" }
+
+[build-dependencies]
+glob = "0.3"
+cmake = "0.1"
