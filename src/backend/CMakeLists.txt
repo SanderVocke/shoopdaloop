@@ -11,8 +11,8 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(PYTHON_CMD ${Python3_EXECUTABLE})
-set(GLOB_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../scripts/do_glob.py")
-set(RUN_WITH_ENV_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../scripts/run_with_env_from_files.py")
+set(GLOB_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../../scripts/do_glob.py")
+set(RUN_WITH_ENV_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../../scripts/run_with_env_from_files.py")
 
 find_package(Threads REQUIRED)
 
@@ -161,9 +161,9 @@ if (HAVE_LV2)
   include (${CMAKE_CURRENT_SOURCE_DIR}/BuildLV2Projects.cmake)
   file(GLOB LV2_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2/*.cpp)
   list(APPEND INTERNAL_SOURCES ${LV2_SOURCES}
-       ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf/lv2_evbuf.c)
+       ${CMAKE_SOURCE_DIR}/third_party/lv2_evbuf/lv2_evbuf.c)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2
-                      ${CMAKE_SOURCE_DIR/../third_party/lv2_evbuf})
+                      ${CMAKE_SOURCE_DIR/third_party/lv2_evbuf})
 endif()
 if (BACKEND_JACK)
   file(GLOB JACK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/jack/*.cpp)
@@ -177,7 +177,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/BuildZitaResampler.cmake)
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-include_directories(${CMAKE_SOURCE_DIR}/../third_party/nlohmann_json)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/nlohmann_json)
 
 add_subdirectory(test)
 
@@ -185,7 +185,7 @@ add_library(shoopdaloop_internals STATIC libshoopdaloop.cpp ${INTERNAL_SOURCES})
 set_target_properties(shoopdaloop_internals PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(shoopdaloop_internals
                         PRIVATE
-                        ${CMAKE_SOURCE_DIR}/../third_party/base64/include
+                        ${CMAKE_SOURCE_DIR}/third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
                         ${Boost_INCLUDE_DIR}
                         )
@@ -203,9 +203,9 @@ endif()
 if (HAVE_LV2)
   target_include_directories(shoopdaloop_internals
                           PRIVATE
-                          ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
+                          ${CMAKE_SOURCE_DIR}/third_party/lv2_evbuf
                           ${LV2_INCLUDE_DIRS}
-                          ${CMAKE_SOURCE_DIR}/../third_party/lv2_external_ui
+                          ${CMAKE_SOURCE_DIR}/third_party/lv2_external_ui
                           )
   add_dependencies(shoopdaloop_internals lilv_proj)
 endif()
@@ -268,22 +268,17 @@ endif()
 install(FILES ${GENERATED_BINDINGS_PY}
     DESTINATION .)
 
-# add_subdirectory("third_party/corrosion")
-# add_subdirectory(rust)
-
-# add_dependencies(shoop_rs_frontend shoopdaloop)
-
 # Generate and install version.txt and description.txt
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/version.txt
-  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../pyproject.toml project::version > version.txt
+  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../python/pyproject.toml project::version > version.txt
   COMMENT "Generating version.txt"
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 add_custom_target(version_txt ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/version.txt)
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/description.txt
-  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../pyproject.toml project::description > description.txt
+  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../python/pyproject.toml project::description > description.txt
   COMMENT "Generating description.txt"
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
@@ -292,10 +287,10 @@ add_custom_target(description_txt ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/descri
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR}/description.txt
         DESTINATION .)
 # Include app test scripts
-install(FILES ${CMAKE_SOURCE_DIR}/../scripts/repeat_run_app.py
+install(FILES ${CMAKE_SOURCE_DIR}/../../scripts/repeat_run_app.py
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
         DESTINATION scripts)
-install(FILES ${CMAKE_SOURCE_DIR}/../scripts/run_and_generate_coverage.sh
+install(FILES ${CMAKE_SOURCE_DIR}/../../scripts/run_and_generate_coverage.sh
         EXCLUDE_FROM_ALL
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
         DESTINATION scripts)

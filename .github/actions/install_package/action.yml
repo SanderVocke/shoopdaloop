@@ -110,7 +110,7 @@ runs:
       echo "install_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "pytest_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
       echo "test_runner=$INSTALLDIR/test_runner" | tee -a $GITHUB_ENV
-      echo "rust_test_runner=$INSTALLDIR/shoop_rs_frontend_testrunner" | tee -a $GITHUB_ENV
+      echo "rust_test_runner=$INSTALLDIR/rust_frontend_testrunner" | tee -a $GITHUB_ENV
       echo "python=$VENV_PYTHON" | tee -a $GITHUB_ENV
 
   # Pacman

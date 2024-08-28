@@ -1,12 +1,12 @@
 [package]
-name = "shoop_rs_backend"
+name = "backend"
 edition = "2021"
 
 [lib]
 
 [dependencies]
 anyhow = "1.0"
-shoop_rs_common = { path = "../shoop_rs_common" }
+common = { path = "../common" }
 
 [build-dependencies]
 bindgen = "0.70.1"

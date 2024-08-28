@@ -48,7 +48,7 @@ else()
 endif()
 
 ExternalProject_Add(lv2_proj
-  SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/lv2
+  SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/lv2
   BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/lv2_build
   CONFIGURE_COMMAND
     ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
@@ -60,7 +60,7 @@ ExternalProject_Add(lv2_proj
 )
 
 ExternalProject_Add(serd_proj
-  SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/serd
+  SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/serd
   BINARY_DIR ${SERD_BUILD_DIR}
   CONFIGURE_COMMAND
     ${MESON_ENV} ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Dtests=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
@@ -74,7 +74,7 @@ ExternalProject_Add(serd_proj
 )
 
 ExternalProject_Add(sord_proj
-  SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/sord
+  SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/sord
   BINARY_DIR ${SORD_BUILD_DIR}
   CONFIGURE_COMMAND
     ${MESON_ENV} ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Dtests=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
@@ -88,7 +88,7 @@ ExternalProject_Add(sord_proj
 )
 
 ExternalProject_Add(sratom_proj
-  SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/sratom
+  SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/sratom
   BINARY_DIR ${SRATOM_BUILD_DIR}
   CONFIGURE_COMMAND
     ${MESON_ENV} ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Dtests=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
@@ -102,7 +102,7 @@ ExternalProject_Add(sratom_proj
 )
 
 ExternalProject_Add(lilv_proj
-  SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/lilv
+  SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/lilv
   BINARY_DIR ${LILV_BUILD_DIR}
   CONFIGURE_COMMAND
     ${MESON_ENV} ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Dtests=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>

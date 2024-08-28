@@ -1,5 +1,5 @@
 [package]
-name = "shoop_rs_macros"
+name = "macros"
 edition = "2021"
 
 [lib]

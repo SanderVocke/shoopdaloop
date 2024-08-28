@@ -1,7 +1,7 @@
 [package]
-name = "shoop_rs_frontend"
+name = "frontend"
 edition = "2021"
-links = "shoop_rs_frontend"
+links = "frontend"
 
 [lib]
 crate-type = ["lib"]

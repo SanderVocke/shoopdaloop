@@ -1,6 +1,6 @@
 include(ExternalProject)
 
-set(BREAKPAD_SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/breakpad)
+set(BREAKPAD_SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/breakpad)
 set(BREAKPAD_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/breakpad_build)
 set(BREAKPAD_TOPLEVEL_INCLUDE_DIR ${BREAKPAD_SOURCE_DIR}/src)
 set(BREAKPAD_BUILD_TARGETS breakpad breakpad_common dump_syms minidump_stackwalk)
@@ -59,7 +59,7 @@ set(BREAKPAD_DUMP_SYMS ${BREAKPAD_DUMP_SYMS} PARENT_SCOPE)
 # use this function on any target you want to generate symbols for.
 function(create_breakpad_symbols_dump TARGET)
   add_custom_command(TARGET ${TARGET} POST_BUILD
-    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/create_breakpad_symbols.py ${BREAKPAD_DUMP_SYMS} $<TARGET_FILE:${TARGET}> ${BREAKPAD_SYMBOLS_DIR}
+    COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/create_breakpad_symbols.py ${BREAKPAD_DUMP_SYMS} $<TARGET_FILE:${TARGET}> ${BREAKPAD_SYMBOLS_DIR}
     WORKING_DIRECTORY ${BREAKPAD_SYMBOLS_DIR}
     COMMENT "Dumping breakpad symbols for ${TARGET}"
   )

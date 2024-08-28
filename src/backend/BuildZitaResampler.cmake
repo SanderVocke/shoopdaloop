@@ -1,6 +1,6 @@
 include(ExternalProject)
 
-set(ZITA_SOURCE_DIR ${CMAKE_SOURCE_DIR}/../third_party/zita-resampler)
+set(ZITA_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zita-resampler)
 set(ZITA_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/zita-resampler-build)
 set(ZITA_TOPLEVEL_INCLUDE_DIR ${ZITA_SOURCE_DIR}/source)
 set(ZITA_BUILD_TARGETS zita-resampler)

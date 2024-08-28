@@ -1,17 +1,17 @@
 use pyo3::prelude::*;
 use std::path::Path;
-use shoop_rs_frontend;
+use frontend;
 use std::ffi::c_void;
 
 #[pyfunction]
 fn shoop_rust_init() {
-    shoop_rs_frontend::init::shoop_rust_init();
+    frontend::init::shoop_rust_init();
 }
 
 #[pyfunction]
 fn shoop_rust_create_autoconnect() -> u64 {
     unsafe {
-        shoop_rs_frontend::init::shoop_rust_create_autoconnect() as usize as u64
+        frontend::init::shoop_rust_create_autoconnect() as usize as u64
     }
 }
 

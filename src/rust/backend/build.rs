@@ -4,7 +4,7 @@ use std::env;
 // For now, Rust "back-end" is just a set of C bindings to the
 // C++ back-end.
 fn main() {
-    let header_path = "../../libshoopdaloop/libshoopdaloop.h";
+    let header_path = "../../backend/libshoopdaloop.h";
     let lib_path =
         PathBuf::from(env::var("LIBSHOOPDALOOP_DIR").unwrap_or(String::from("../../libshoopdaloop")));
     let gen_lib_path = "src/codegen/libshoopdaloop.rs";

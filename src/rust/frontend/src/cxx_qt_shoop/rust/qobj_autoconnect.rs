@@ -9,7 +9,7 @@ use crate::cxx_qt_shoop::qobj_autoconnect_bridge::*;
 use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::*;
 
 use crate::cxx_qt_shoop::type_external_port_descriptor::ExternalPortDescriptor;
-use shoop_rs_backend::{PortDataType, PortDirection};
+use backend::{PortDataType, PortDirection};
 use std::pin::Pin;
 use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem, qquickitem_to_qobject_mut};
 use crate::cxx_qt_lib_shoop::qobject::AsQObject;

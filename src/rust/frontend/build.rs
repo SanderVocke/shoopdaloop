@@ -34,8 +34,6 @@ fn main() {
                 "src/cxx_qt_shoop/rust/test/qobj_generic_test_item_bridge.rs",
                 "src/cxx_qt_shoop/rust/test/qobj_test_backend_wrapper_bridge.rs",
                 "src/cxx_qt_shoop/rust/test/qobj_test_port_bridge.rs",
-
-                "src/shoop_rs_macros_tests/shoop_rs_macros_test.rs"
             ],
             qml_files: &[] as &[&'static str],
             ..Default::default()

@@ -4,7 +4,7 @@ mod test_init {
 
     #[ctor]
     fn global_setup() {
-        crate::logging::init_logging().expect("Unable to initialize shoop_rs_frontend logging for tests");
+        crate::logging::init_logging().expect("Unable to initialize frontend logging for tests");
     }
 }
 
@@ -15,7 +15,5 @@ pub mod logging;
 
 pub mod cxx_qt_shoop;
 pub mod cxx_qt_lib_shoop;
-
-pub mod shoop_rs_macros_tests;
 
 mod tests;
