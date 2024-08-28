@@ -1,0 +1,36 @@
+.\" # Copyright 2022 David Robillard <d@drobilla.net>
+.\" # SPDX-License-Identifier: ISC
+
+.TH LV2BENCH 1 "08 Jul 2022"
+
+.SH NAME
+.B lv2bench \- benchmark all installed and supported LV2 plugins
+.SH SYNOPSIS
+.B lv2bench [OPTIONS] [PLUGIN_URI]
+
+.SH OPTIONS
+.TP
+\fB\-b BLOCK_SIZE\fR
+Block size in audio frames
+
+.TP
+\fB\-f\fR, \fB\-\-full\fR
+Full plottable output
+
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Display help and exit
+
+.TP
+\fB\-n FRAMES\fR
+Total number of audio frames to process
+
+.TP
+\fB\-\-version\fR
+Display version information and exit
+
+.SH "SEE ALSO"
+.BR lv2ls(1)
+
+.SH AUTHOR
+lv2bench was written by David Robillard <d@drobilla.net>

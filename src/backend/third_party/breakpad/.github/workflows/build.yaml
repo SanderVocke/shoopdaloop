@@ -1,0 +1,49 @@
+name: Build
+on: [push, workflow_dispatch]
+env:
+  TERM: xterm-256color
+  GTEST_COLOR: 1
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Build - Ubuntu
+            runs-on: ubuntu-latest
+            compiler: clang
+            cxx-compiler: clang++
+
+          - name: Build - macOS
+            runs-on: macos-latest
+            cmake-args: -D CMAKE_OSX_DEPLOYMENT_TARGET=10.13
+
+          - name: Build - Windows
+            runs-on: windows-latest
+            cmake-args: -D CMAKE_GENERATOR_PLATFORM=x64 -D CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+
+    steps:
+    - name: Setup environment
+      if: runner.os == 'Windows'
+      run: git config --global core.autocrlf false
+
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Install packages (Ubuntu)
+      if: runner.os == 'Linux'
+      run: sudo apt-get install -y ninja-build
+
+    - name: Compiling source code
+      run: |
+        cmake -S . -B build ${{ matrix.cmake-args }} -D BUILD_SHARED_LIBS=OFF -D CMAKE_BUILD_TYPE=Debug
+        cmake --build build --config Debug
+      env:
+        CC: ${{ matrix.compiler }}
+        CXX: ${{ matrix.cxx-compiler }}
+
+    - name: Run tests
+      run: ctest --verbose -C Debug --output-on-failure
+      working-directory: build

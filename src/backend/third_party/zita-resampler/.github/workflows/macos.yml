@@ -1,0 +1,17 @@
+name: MacOS make
+
+on:
+  push:
+    branches: [ development ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: cmake
+      run: cmake .
+    - name: make
+      run: make

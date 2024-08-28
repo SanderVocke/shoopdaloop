@@ -1,0 +1,301 @@
+cmake_minimum_required(VERSION 3.22)
+set(CMAKE_OSX_ARCHITECTURES "${ARCHS_STANDARD}") # Enables a universal build on MacOS where possible
+project(shoopdaloop)
+
+# Set up language settings
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+set(CMAKE_CXX_EXTENSIONS NO)
+set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(PYTHON_CMD ${Python3_EXECUTABLE})
+set(GLOB_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../scripts/do_glob.py")
+set(RUN_WITH_ENV_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../scripts/run_with_env_from_files.py")
+
+find_package(Threads REQUIRED)
+
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
+
+# Ensure PDB file generation
+if (WIN32)
+  set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pdb")
+  if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    add_compile_options("/Z7")
+    add_compile_options("/FS")
+    add_link_options("/DEBUG")
+    add_link_options("/OPT:REF")
+    add_link_options("/OPT:ICF")
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-g -gcodeview)
+    add_link_options(-fuse-ld=lld -g -Wl,--pdb=)
+  endif()
+
+  # Prevent access violations in STL mutex functions due to mixed
+  # runtime DLLs in PyInstaller distribution
+  add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+endif()
+
+option(ENABLE_COVERAGE "Enable code coverage" OFF)
+if(ENABLE_COVERAGE)
+  include (CodeCoverage)
+  append_coverage_compiler_flags()
+endif()
+
+option(BACKEND_JACK "Enable JACK audio backend" ON)
+if(BACKEND_JACK)
+  add_compile_definitions(SHOOP_HAVE_BACKEND_JACK)
+endif()
+
+option(HAVE_LV2 "Enable LV2 plugin hosting" ON)
+if(HAVE_LV2)
+  add_compile_definitions(SHOOP_HAVE_LV2)
+endif()
+
+set(PTHREADS4W_PATH $ENV{PTHREADS4W_PATH} CACHE PATH "Path to PThreads4W, needed on Windows")
+if(DEFINED PTHREADS4W_PATH)
+  message(STATUS "PThreads4W path (Windows): ${PTHREADS4W_PATH}")
+endif()
+
+if (APPLE)
+  message(STATUS "MacOS architectures included: ${CMAKE_OSX_ARCHITECTURES}")
+endif()
+
+set(CTYPESGEN_COMMAND ctypesgen)
+
+set(PREV_SETTING ${CMAKE_POSITION_INDEPENDENT_CODE})
+set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
+add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/Catch2 EXCLUDE_FROM_ALL)
+set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
+
+include(CompilerCaching)
+
+set(RUN_CMD_PREFIX "")
+
+# Options
+option(ENABLE_PERFTOOLS "Link to pprof profiling library")
+if(ENABLE_PERFTOOLS)
+    add_compile_definitions(ENABLE_PERFTOOLS)
+    find_package(Gperftools REQUIRED COMPONENTS profiler)
+    link_libraries(${GPERFTOOLS_LIBRARIES})
+    include_directories(${GPERFTOOLS_INCLUDES})
+endif()
+option(ENABLE_ASAN "Enable address sanitizer" OFF)
+if(ENABLE_ASAN)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        add_compile_options(-fsanitize=address -shared-libasan)
+        add_link_options(-fsanitize=address -shared-libasan)
+        execute_process(COMMAND clang -print-file-name=libclang_rt.asan-x86_64.so OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE ASAN_DSO)
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        add_compile_options(-fsanitize=address)
+        add_link_options(-fsanitize=address)
+        execute_process(COMMAND gcc -print-file-name=libasan.so OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE ASAN_DSO)
+    else()
+        message(FATAL_ERROR "Address sanitizer is only supported on Clang and GCC")
+    endif()
+    if (EXISTS ${ASAN_DSO})
+      file(READ ${ASAN_DSO} ASAN_DSO_CONTENT)
+      string(FIND "${ASAN_DSO_CONTENT}" "GNU ld script" FOUND_LD_SCRIPT)
+      if(NOT ${FOUND_LD_SCRIPT} EQUAL -1)
+        # Pointed to a linker script, find the actual lib
+        string(REGEX MATCH ".*INPUT[ ]*\\([ ]*([^\)^ ]+)[ ]*\\).*" FOUND_ASAN_SO ${ASAN_DSO_CONTENT})
+        set(ASAN_DSO ${CMAKE_MATCH_1})
+        message("Found that libasan.so is a linker script pointing to ${ASAN_DSO}.")
+      endif()
+    endif()
+    set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
+    set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
+    get_filename_component(ASAN_DSO_REALPATH ${ASAN_DSO} REALPATH)
+    install(FILES ${ASAN_DSO_REALPATH}
+            DESTINATION .)
+endif()
+option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling" ON)
+if(ENABLE_PROCESS_PROFILING)
+    add_compile_options(-DSHOOP_PROFILING)
+endif()
+set(OVERRIDE_COMPILE_LOG_LEVEL "" CACHE STRING "If set, overrides the compile-time log level filter. Valid options are LOG_LEVEL_[TRACE, DEBUG, INFO, WARNING, ERROR].")
+option(ENABLE_TRACKED_SHARED_PTRS "Enable tracked shared pointers for debugging")
+if(ENABLE_TRACKED_SHARED_PTRS)
+    message("Using tracked shared pointers for debugging.")
+    add_compile_options(-DUSE_TRACKED_SHARED_PTRS)
+endif()
+
+# Needed for windows to get backtraces from Boost
+if (WIN32)
+add_compile_definitions(BOOST_STACKTRACE_USE_WINDBG)
+link_libraries(dbgeng.lib)
+elseif (APPLE)
+add_compile_definitions(_GNU_SOURCE)
+endif ()
+
+# Find pkgs
+find_package(Boost REQUIRED)
+
+if (BACKEND_JACK)
+  # Generate a wrapper for libjack which allows dynamic loading using dlopen
+  find_package(Jack REQUIRED)
+  add_compile_definitions(SHOOP_HAVE_BACKEND_JACK)
+endif()
+
+# Generate the run cmd prefix so that it can be referred to after the build (e.g. when running tests)
+add_custom_command(
+  OUTPUT ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
+  COMMAND echo ${RUN_CMD_PREFIX} > ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
+  COMMENT "Storing run cmd prefix (${RUN_CMD_PREFIX}) into ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt"
+)
+add_custom_target(
+  run_cmd_prefix_file
+  ALL
+  DEPENDS ${CMAKE_BINARY_DIR}/run_cmd_prefix.txt
+)
+
+set(EXTERNAL_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external_deps)
+
+add_subdirectory(crashhandling)
+
+# Backend lib
+file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
+if (HAVE_LV2)
+  include (${CMAKE_CURRENT_SOURCE_DIR}/BuildLV2Projects.cmake)
+  file(GLOB LV2_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2/*.cpp)
+  list(APPEND INTERNAL_SOURCES ${LV2_SOURCES}
+       ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf/lv2_evbuf.c)
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2
+                      ${CMAKE_SOURCE_DIR/../third_party/lv2_evbuf})
+endif()
+if (BACKEND_JACK)
+  file(GLOB JACK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/jack/*.cpp)
+  list(APPEND INTERNAL_SOURCES ${JACK_SOURCES})
+  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
+endif()
+
+# build libzita-resampler
+include(${CMAKE_CURRENT_SOURCE_DIR}/BuildZitaResampler.cmake)
+
+# Includes
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/../third_party/nlohmann_json)
+
+add_subdirectory(test)
+
+add_library(shoopdaloop_internals STATIC libshoopdaloop.cpp ${INTERNAL_SOURCES})
+set_target_properties(shoopdaloop_internals PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(shoopdaloop_internals
+                        PRIVATE
+                        ${CMAKE_SOURCE_DIR}/../third_party/base64/include
+                        ${CMAKE_CURRENT_BINARY_DIR}
+                        ${Boost_INCLUDE_DIR}
+                        )
+target_link_libraries(shoopdaloop_internals PRIVATE
+  Threads::Threads
+  fmt::fmt
+  zita
+  )
+if (DEFINED PTHREADS4W_PATH)
+  target_include_directories(shoopdaloop_internals PRIVATE ${PTHREADS4W_PATH})
+endif()
+if (UNIX)
+    target_link_libraries(shoopdaloop_internals PUBLIC dl)
+endif()
+if (HAVE_LV2)
+  target_include_directories(shoopdaloop_internals
+                          PRIVATE
+                          ${CMAKE_SOURCE_DIR}/../third_party/lv2_evbuf
+                          ${LV2_INCLUDE_DIRS}
+                          ${CMAKE_SOURCE_DIR}/../third_party/lv2_external_ui
+                          )
+  add_dependencies(shoopdaloop_internals lilv_proj)
+endif()
+if (BACKEND_JACK)
+  target_include_directories(shoopdaloop_internals PRIVATE ${JACK_INCLUDE_DIRS})
+endif()
+
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "#include \"libshoopdaloop.h\"")
+add_library(shoopdaloop SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
+target_link_libraries(shoopdaloop PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_internals>")
+create_breakpad_symbols_dump(shoopdaloop)
+
+if(UNIX)
+  set_target_properties(shoopdaloop PROPERTIES
+    INSTALL_RPATH "$ORIGIN/"  # Load .so's from same directory
+  )
+elseif(APPLE)
+  set_target_properties(shoopdaloop PROPERTIES
+      BUILD_WITH_INSTALL_RPATH TRUE
+      INSTALL_RPATH "@loader_path/"  # Load dylibs from same directory
+  )
+endif()
+
+install(TARGETS shoopdaloop
+        DESTINATION .)
+
+if (OVERRIDE_COMPILE_LOG_LEVEL STREQUAL "")
+  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message("Building in debug mode. Using compile time log level for back-end: LOG_LEVEL_DEBUG_TRACE")
+    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG_TRACE)
+  else()
+    message("Building in non-debug mode. Disabling trace messages. Using compile time log level for back-end: LOG_LEVEL_ALWAYS_TRACE")
+    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_ALWAYS_TRACE)
+  endif()
+else()
+  message(WARNING "Using overridden compile time log level for back-end: ${OVERRIDE_COMPILE_LOG_LEVEL}")
+  target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=${OVERRIDE_COMPILE_LOG_LEVEL})
+endif()
+
+# Generate libshoopdaloop Python bindings into source dir
+set(GENERATED_BINDINGS_PY ${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop_bindings.py)
+add_custom_command(
+  OUTPUT ${GENERATED_BINDINGS_PY}
+  COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 ${CTYPESGEN_COMMAND} --no-macro-warnings -lshoopdaloop ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/types.h -o ${GENERATED_BINDINGS_PY}
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.cpp shoopdaloop
+  COMMENT "Generating C bindings for libshoopdaloop."
+  )
+add_custom_target(
+  c_bindings
+  ALL
+  DEPENDS ${GENERATED_BINDINGS_PY}
+  )
+
+# Generate javascript copy of enums into source dir
+set(PATH_SEP ":")
+if (WIN32)
+  set(PATH_SEP $<SEMICOLON>)
+endif()
+
+install(FILES ${GENERATED_BINDINGS_PY}
+    DESTINATION .)
+
+# add_subdirectory("third_party/corrosion")
+# add_subdirectory(rust)
+
+# add_dependencies(shoop_rs_frontend shoopdaloop)
+
+# Generate and install version.txt and description.txt
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/version.txt
+  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../pyproject.toml project::version > version.txt
+  COMMENT "Generating version.txt"
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+add_custom_target(version_txt ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/version.txt)
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/description.txt
+  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../pyproject.toml project::description > description.txt
+  COMMENT "Generating description.txt"
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+add_custom_target(description_txt ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/description.txt)
+
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR}/description.txt
+        DESTINATION .)
+# Include app test scripts
+install(FILES ${CMAKE_SOURCE_DIR}/../scripts/repeat_run_app.py
+        PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
+        DESTINATION scripts)
+install(FILES ${CMAKE_SOURCE_DIR}/../scripts/run_and_generate_coverage.sh
+        EXCLUDE_FROM_ALL
+        PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
+        DESTINATION scripts)

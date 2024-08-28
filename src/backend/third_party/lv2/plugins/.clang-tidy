@@ -1,0 +1,14 @@
+# Copyright 2020-2023 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+Checks: >
+  -*-narrowing-conversions,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-suspicious-realloc-usage,
+  -cert-err33-c,
+  -hicpp-signed-bitwise,
+  -llvm-header-guard,
+  -misc-unused-parameters,
+  -readability-function-cognitive-complexity,
+InheritParentConfig: true
