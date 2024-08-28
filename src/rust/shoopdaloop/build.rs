@@ -9,12 +9,14 @@ fn main() {
     let src_dir = env::current_dir().unwrap();
     let host_python = env::var("PYTHON").unwrap_or(String::from("python"));
     let shoop_lib_dir = out_dir.join("shoop_lib");
+    let cmake_backend_dir = "../../backend";
+    let python_dir = "../../python";
     println!("Using Python: {}", host_python);
 
     // Build back-end via CMake and install into our output directory
     let _ = std::fs::remove_dir_all(&shoop_lib_dir);
     println!("Building back-end...");
-    let _ = Config::new("src")
+    let _ = Config::new(cmake_backend_dir)
         .out_dir(out_dir.join("cmake_build"))
         .configure_arg(format!("-DCMAKE_INSTALL_PREFIX={}/shoop_lib",out_dir.to_str().unwrap()))
         .build();
@@ -25,7 +27,8 @@ fn main() {
         .args(
             &["-m", "build",
             "--outdir", out_dir.to_str().expect("Couldn't get out dir"),
-            "--wheel", src_dir.to_str().expect("Couldn't get source dir")]
+            "--wheel",
+            python_dir]
         )
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())

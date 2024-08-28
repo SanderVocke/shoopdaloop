@@ -9,4 +9,4 @@ anyhow = "1.0"
 shoop_rs_common = { path = "../shoop_rs_common" }
 
 [build-dependencies]
-bindgen = "0.69"
+bindgen = "0.70.1"
