@@ -6,7 +6,7 @@ use crate::cxx_qt_shoop::qobj_render_audio_waveform_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_render_audio_waveform_bridge::*;
 use core::pin::Pin;
 use crate::audio_power_pyramid;
-use cxx_qt_lib::QColor;
+use cxx_qt_lib::{QColor, QLine};
 use crate::audio_power_pyramid::*;
 
 pub fn register_qml_type(module_name : &str, type_name : &str) {
@@ -94,17 +94,18 @@ impl ffi::RenderAudioWaveform {
             (0.7*255.0) as i32,
             0, 0
         );
-        let mut pen = QPen::make_boxed();
-        QPen::set_color(Pin::new_unchecked(pen.as_mut()), &color);
+        let mut pen = QPen::default();
+        pen.set_color(&color);
         let mut_painter = painter.as_mut().unwrap();
         let mut p : Pin<&mut QPainter> = Pin::new_unchecked(mut_painter);
         p.as_mut().set_pen(&pen);
-        p.as_mut().draw_lines(&lines);
-        p.draw_line(
-            0,
+        p.as_mut().draw_linefs(&lines);
+        let mut center_line = QLine::default();
+        center_line.set_line(0,
             (0.5*self.size().height()) as i32,
             self.size().width() as i32,
             (0.5*self.size().height()) as i32);
+        p.draw_line(&center_line);
     }
 }
 

@@ -15,41 +15,19 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qlist.h");
         type QList_f64 = cxx_qt_lib::QList<f64>;
-    }
 
-    unsafe extern "C++" {
-        include!(<QtCore/QLineF>);
-        type QLineF = crate::cxx_qt_lib_shoop::qlinef::QLineF;
-    }
+        include!("cxx-qt-lib/qlinef.h");
+        type QLineF = cxx_qt_lib::QLineF;
 
-    unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qpen.h");
-        type QPen = crate::cxx_qt_lib_shoop::qpen::QPen;
-    }
+        include!("cxx-qt-lib/qpen.h");
+        type QPen = cxx_qt_lib::QPen;
 
-    unsafe extern "C++" {
         include!("cxx-qt-lib/qlist.h");
-        include!("cxx-qt-lib-shoop/qlinef.h");
-        type QList_QLineF = crate::cxx_qt_lib_shoop::qlinef::QList_QLineF;
-    }
+        type QList_QLineF = cxx_qt_lib::QList<cxx_qt_lib::QLineF>;
 
-    unsafe extern "C++" {
-        type QPainter;
-        include!("cxx-qt-lib/qlist.h");
-        include!("cxx-qt-lib-shoop/qlinef.h");
-        include!(<QtGui/QPainter>);
+        include!("cxx-qt-lib/qpainter.h");
+        type QPainter = cxx_qt_lib::QPainter;
 
-        #[rust_name = "set_pen"]
-        fn setPen(self : Pin<&mut QPainter>, pen : &QPen);
-
-        #[rust_name = "draw_lines"]
-        fn drawLines(self : Pin<&mut QPainter>, points : &QList_QLineF);
-
-        #[rust_name = "draw_line"]
-        fn drawLine(self : Pin<&mut QPainter>, x1 : i32, y1 : i32, x2 : i32, y2 : i32);
-    }
-
-    unsafe extern "C++" {
         include!(<QtQuick/QQuickPaintedItem>);
     }
 

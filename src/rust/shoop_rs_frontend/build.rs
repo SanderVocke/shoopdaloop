@@ -1,7 +1,11 @@
-use cxx_qt_build::{CxxQtBuilder, QmlModule};
+use cxx_qt_build::{CxxQtBuilder, QmlModule, Interface};
 
 fn main() {
-    CxxQtBuilder::new()
+    // let interface = Interface::default()
+    //     .export_include_prefixes([]);
+    CxxQtBuilder
+        ::new()
+        // ::library(interface)
         .qt_module("Quick")
         .qt_module("Gui")
         .qt_module("Network")
@@ -10,9 +14,7 @@ fn main() {
             uri: "shoopdaloop",
             rust_files: &[
                 "src/cxx_qt_lib_shoop/rust/qjsonobject.rs",
-                "src/cxx_qt_lib_shoop/rust/qlinef.rs",
                 "src/cxx_qt_lib_shoop/rust/qobject.rs",
-                "src/cxx_qt_lib_shoop/rust/qpen.rs",
                 "src/cxx_qt_lib_shoop/rust/qquickitem.rs",
                 "src/cxx_qt_lib_shoop/rust/qsignalspy.rs",
                 "src/cxx_qt_lib_shoop/rust/qtimer.rs",
@@ -44,8 +46,6 @@ fn main() {
             cc.file("src/cxx_qt_shoop/cxx/shoop_rust_callable.cpp");
 
             cc.include("src/cxx_qt_lib_shoop/include");
-            cc.file("src/cxx_qt_lib_shoop/cxx/qlinef.cpp");
-            cc.file("src/cxx_qt_lib_shoop/cxx/qpen.cpp");
         })
         .qobject_header("src/cxx_qt_shoop/include/cxx-qt-shoop/ShoopQObject.h")
         .build();
