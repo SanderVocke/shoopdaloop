@@ -7,3 +7,5 @@ Fix the build pipelines
 Make sure debug information is dumped and saved correctly
 
 PYTHONPATH separator in shoopdaloop_dev.rs is linux-only
+
+Make own PySide and Qt (or aqtinstall) for packaging in
