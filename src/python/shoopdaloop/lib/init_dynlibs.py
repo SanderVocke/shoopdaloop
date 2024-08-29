@@ -5,8 +5,8 @@ def init_dynlibs():
         # We may have indirect DLL dependencies to DLLs that are packaged
         # with ShoopDaLoop. Add the package directory to our DLL search
         # path.
-        import shoop_app_info
+        from shoop_app_info import shoop_dynlib_dir
         import win32api
 
-        d = shoop_app_info.dynlib_dir
+        d = shoop_dynlib_dir
         win32api.SetDllDirectory(d)

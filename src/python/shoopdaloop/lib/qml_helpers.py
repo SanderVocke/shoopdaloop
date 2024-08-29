@@ -12,7 +12,8 @@ import importlib
 import ctypes
 import platform
 
-import shoop_app_info
+from shoop_app_info import shoop_version, shoop_qml_dir
+pkg_version = shoop_version
 
 from .q_objects.AudioPort import AudioPort
 from .q_objects.MidiPort import MidiPort
@@ -75,9 +76,6 @@ def install_qt_message_handler():
         QtCore.qInstallMessageHandler(qt_msg_handler)
         qt_message_handler_installed = True
 
-import shoop_app_info
-pkg_version = shoop_app_info.version
-
 def register_qml_class(t, name):
     qmlRegisterType(t, "ShoopDaLoop.Python" + name, 1, 0, "Python" + name)
 
@@ -131,7 +129,7 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
     engine.registerModule("shoop_js_constants", constants)
 
     # QML instantiations
-    registries_comp = create_component(shoop_app_info.qml_dir + '/AppRegistries.qml')
+    registries_comp = create_component(shoop_qml_dir + '/AppRegistries.qml')
     registries = registries_comp.create()
 
     items = {

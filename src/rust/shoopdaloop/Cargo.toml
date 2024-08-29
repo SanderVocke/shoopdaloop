@@ -1,6 +1,6 @@
 [package]
 name = "shoopdaloop"
-version = "0.2.0"
+version = "0.1.2"
 description = "Live looping application with DAW elements"
 authors = [
     "Sander Vocke <sandervocke@gmail.com>"

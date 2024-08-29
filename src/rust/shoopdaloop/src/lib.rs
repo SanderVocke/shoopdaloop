@@ -2,13 +2,14 @@ use pyo3::prelude::*;
 use pyo3::types::{PyList, PyString};
 use std::env;
 use std::path::Path;
+use shoop_app_info::ShoopAppInfo;
 
 pub mod shoop_app_info;
 pub mod add_lib_search_path;
 pub mod shoop_rust;
 
-pub fn shoopdaloop_main(
-    shoop_app_info_module : Bound<'py, PyModule>
+pub fn shoopdaloop_main<'py>(
+    app_info : ShoopAppInfo
 ) -> PyResult<()> {
     // Get the command-line arguments
     let args: Vec<String> = env::args().collect();
@@ -26,8 +27,9 @@ pub fn shoopdaloop_main(
 
         // Expose Rust functionality to Python modules
         {
+            let py_app_info = app_info.create_py_module(py).unwrap();
             sys.getattr("modules")?.set_item("shoop_app_info",
-                                            shoop_app_info_module)?;
+                                            py_app_info)?;
         }
         {
             let shoop_rust_module = shoop_rust::create_py_module(py).unwrap();

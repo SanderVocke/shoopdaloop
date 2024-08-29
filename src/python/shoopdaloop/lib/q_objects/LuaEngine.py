@@ -14,8 +14,7 @@ from ..lua_qobject_interface import create_lua_qobject_interface
 
 import os
 import inspect
-import shoop_app_info
-lua_scriptdir = shoop_app_info.lua_dir
+from shoop_app_info import shoop_lua_dir
 
 class ScriptExecutionError(Exception):
     pass
@@ -37,7 +36,7 @@ class LuaEngine(ShoopQQuickItem):
         self.preload_libs()
         self.execute_builtin_script('system/sandbox.lua', False)
         self.run_sandboxed = self.lua.eval('function (code) return __shoop_run_sandboxed(code) end')
-        self.execute('package.path = package.path .. ";{}"'.format(lua_scriptdir.replace('\\', '\\\\') + '/lib/?.lua'), None, True, False)
+        self.execute('package.path = package.path .. ";{}"'.format(shoop_lua_dir.replace('\\', '\\\\') + '/lib/?.lua'), None, True, False)
         self._G_registrar = lambda name, val: self.evaluate('return function(val) {} = val end'.format(name), None, True, False)(val)
         self._G_registrar('require', lambda s, self=self: self.require(s))
         self.py_list_to_lua_table = self.lua.eval('''
@@ -61,7 +60,7 @@ class LuaEngine(ShoopQQuickItem):
     
     def preload_libs(self):
         self.preloaded_libs = dict()
-        libs = glob.glob(lua_scriptdir + '/lib/*.lua')
+        libs = glob.glob(shoop_lua_dir + '/lib/*.lua')
         for lib in libs:
             name = os.path.basename(lib).split('.')[0]
             self.logger.debug(lambda: 'Preloading Lua library: {}'.format(lib))
@@ -81,7 +80,7 @@ class LuaEngine(ShoopQQuickItem):
     def execute_builtin_script(self, filename, sandboxed=True):
         self.logger.debug(lambda: 'Running built-in script: {}'.format(filename))
         script = None
-        with open(lua_scriptdir  + '/' + filename, 'r') as f:
+        with open(shoop_lua_dir  + '/' + filename, 'r') as f:
             script = f.read()
         return self.execute(script, filename, sandboxed)
 

@@ -14,32 +14,36 @@ fn main() -> PyResult<()> {
     // Set up PYTHONPATH. This can deal with:
     // finding pyenv in Cargo build case, based on the remembered OUT_DIR
     let base = PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_pyenv");
-    let shoop_lib_dir = PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_lib");
-    let shoop_src_root_dir = PathBuf::from(SRC_DIR).join('../../../../..');
-    let pythonpath : PathBuf;
+    let shoop_lib_dir = std::fs::canonicalize(PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_lib")).unwrap();
+    let shoop_src_root_dir = std::fs::canonicalize(PathBuf::from(SRC_DIR).join("../../..")).unwrap();
     let pattern = format!("{}/**/site-packages", base.to_str().unwrap());
     let mut sp_glob = glob(&pattern).unwrap();
-    pythonpath = sp_glob.next()
+    let pythonpath_to_venv = std::fs::canonicalize(
+            sp_glob.next()
             .expect(format!("No site-packages dir found @ {}", pattern).as_str())
-            .unwrap();
-    println!("using PYTHONPATH: {}", pythonpath.to_str().unwrap());
-    env::set_var("PYTHONPATH", pythonpath.to_str().unwrap());
+            .unwrap()
+        ).unwrap();
+    let pythonpath_to_src = std::fs::canonicalize(
+        shoop_src_root_dir.join("src/python")).unwrap();
+    let pythonpath = format!("{}:{}:{}", pythonpath_to_src.to_str().unwrap(),
+                         pythonpath_to_venv.to_str().unwrap(),
+                         shoop_lib_dir.to_str().unwrap());
+    println!("using PYTHONPATH: {}", pythonpath.as_str());
+    env::set_var("PYTHONPATH", pythonpath.as_str());
 
     add_lib_search_path(&shoop_lib_dir);
 
-    let install_info = format!("editable dev install in {}",
-                    shoop_src_root_dir);
-    let shoop_app_info_module = 
-                shoop_app_info::create_py_module
-                    (py,
-                        install_info.as_str(),
-                        shoop_lib_dir,
-                        shoop_src_root_dir.join("src/qml"),
-                        shoop_src_root_dir.join("src/python/shoopdaloop"),
-                        shoop_src_root_dir.join("src/lua"),
-                        shoop_src_root_dir.join("resources"),
-                        shoop_src_root_dir.join("src/session_schemas"))
-                    .unwrap();
+    let mut app_info = shoop_app_info::ShoopAppInfo::default();
+    app_info.version = env!("CARGO_PKG_VERSION").to_string();
+    app_info.description = env!("CARGO_PKG_DESCRIPTION").to_string();
+    app_info.install_info = format!("editable dev install in {}",
+                    shoop_src_root_dir.to_str().unwrap());
+    app_info.dynlib_dir = shoop_lib_dir.to_str().unwrap().to_string();
+    app_info.qml_dir = shoop_src_root_dir.join("src/qml").to_str().unwrap().to_string();
+    app_info.py_dir = shoop_src_root_dir.join("src/python/shoopdaloop").to_str().unwrap().to_string();
+    app_info.lua_dir = shoop_src_root_dir.join("src/lua").to_str().unwrap().to_string();
+    app_info.resource_dir = shoop_src_root_dir.join("resources").to_str().unwrap().to_string();
+    app_info.schemas_dir = shoop_src_root_dir.join("src/session_schemas").to_str().unwrap().to_string();
 
-    shoopdaloop_main(shoop_app_info_module)
+    shoopdaloop_main(app_info)
 }

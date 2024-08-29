@@ -1,8 +1,7 @@
 from jsonschema import validate, ValidationError
 import json
 import os
-import shoop_app_info
-schemas_dir = shoop_app_info.schemas_dir + '/schemas'
+from shoop_app_info import shoop_schemas_dir
 
 def validate_subtree(t):
     if type(t) is dict:
@@ -24,7 +23,7 @@ def validate_single_object(obj):
     schema_name = schema_str.split('.')[0]
     schema_version = schema_str.split('.')[1]
     schema_filename = '{}/{}.{}.json'.format(
-        schemas_dir,
+        shoop_schemas_dir,
         schema_name,
         schema_version
     )

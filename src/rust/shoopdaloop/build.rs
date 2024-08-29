@@ -12,9 +12,11 @@ fn main() {
     let shoop_lib_dir = out_dir.join("shoop_lib");
     let cmake_backend_dir = "../../backend";
     let python_dir = "../../python";
+    let venv_dir = Path::new(&out_dir).join("shoop_pyenv");
     println!("Using Python: {}", host_python);
 
     let _ = std::fs::remove_dir_all(&shoop_lib_dir);
+    let _ = std::fs::remove_dir_all(&venv_dir);
 
     // Build back-end via CMake and install into our output directory
     println!("Building back-end...");
@@ -59,7 +61,6 @@ fn main() {
 
     // Create a venv in OUT_DIR
     println!("Creating venv...");
-    let venv_dir = Path::new(&out_dir).join("shoop_pyenv");
     Command::new(&host_python).args(
         &["-m", "venv", venv_dir.to_str().expect("Could not get venv path")]
     ).status().unwrap();
@@ -83,16 +84,6 @@ fn main() {
                 .unwrap();
     }
     let shoop_package_dir = site_packages_dir.join("shoopdaloop");
-
-    // Copy additional generated Python code in
-    std::fs::copy(
-        shoop_lib_dir.join("libshoopdaloop_bindings.py"),
-        &shoop_package_dir.join("libshoopdaloop_bindings.py")
-    ).unwrap();
-    std::fs::copy(
-        shoop_lib_dir.join("shoop_crashhandling.py"),
-        &shoop_package_dir.join("shoop_crashhandling.py")
-    ).unwrap();
 
     // Tell PyO3 where to find our venv Python
     println!("Setting PYO3_PYTHON to {}", venv_python.to_str().unwrap());

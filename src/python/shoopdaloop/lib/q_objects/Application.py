@@ -22,7 +22,7 @@ from shoop_rust import shoop_rust_init
 from ..backend_wrappers import terminate_all_backends
 
 from ..logging import *
-import shoop_app_info
+from shoop_app_info import shoop_version, shoop_resource_dir, shoop_qml_dir
 
 class Application(ShoopQApplication):
     exit_handler_called = ShoopSignal()
@@ -40,8 +40,7 @@ class Application(ShoopQApplication):
 
         self._quitting = False
 
-        import shoop_app_info
-        pkg_version = shoop_app_info.version
+        pkg_version = shoop_version
 
         self.setApplicationName('ShoopDaLoop')
         self.setApplicationVersion(pkg_version)
@@ -96,7 +95,7 @@ class Application(ShoopQApplication):
                 if len(self.engine.rootObjects()) > 0:
                     self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
 
-        self.setWindowIcon(QIcon(os.path.join(shoop_app_info.resource_dir, 'iconset', 'icon_128x128.png')))
+        self.setWindowIcon(QIcon(os.path.join(shoop_resource_dir, 'iconset', 'icon_128x128.png')))
 
     def unload_qml(self):
         if self.engine:
@@ -121,8 +120,8 @@ class Application(ShoopQApplication):
         crash_handling.register_js_engine(self.engine)
         self.engine.destroyed.connect(lambda: self.logger.debug("QML engine being destroyed."))
         self.engine.objectCreated.connect(lambda obj, _: maybe_install_event_filter(obj))
-        self.engine.addImportPath(os.path.join(shoop_app_info.qml_dir))
-        self.engine.addImportPath(os.path.join(shoop_app_info.qml_dir, 'generated'))
+        self.engine.addImportPath(os.path.join(shoop_qml_dir))
+        self.engine.addImportPath(os.path.join(shoop_qml_dir, 'generated'))
 
         if quit_on_quit:
             self.engine.quit.connect(self.do_quit)

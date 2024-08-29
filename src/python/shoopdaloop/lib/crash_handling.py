@@ -94,9 +94,9 @@ def init_crash_handling():
     if not td:
         td = tempfile.gettempdir()
     try:
-        import shoopdaloop.shoop_crashhandling
-        c_crashed_callback = shoopdaloop.shoop_crashhandling.CrashedCallback(crashed_callback)
-        shoopdaloop.shoop_crashhandling.shoop_init_crashhandling_with_cb(td, c_crashed_callback)
+        import shoop_crashhandling
+        c_crashed_callback = shoop_crashhandling.CrashedCallback(crashed_callback)
+        shoop_crashhandling.shoop_init_crashhandling_with_cb(td, c_crashed_callback)
     except Exception as e:
         from shoopdaloop.lib.logging import Logger
         logger = Logger('Frontend.CrashHandling')

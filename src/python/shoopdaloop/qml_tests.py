@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import shoop_app_info
+from shoop_app_info import shoop_qml_dir
 
 exit_text_printed = False
 coverage_reported = False
@@ -33,7 +33,7 @@ def run_qml_tests(args):
     import json
     from xml.dom import minidom
 
-    from shoopdaloop.libshoopdaloop_bindings import set_global_logging_level, log_level_error
+    from libshoopdaloop_bindings import set_global_logging_level, log_level_error
     from shoopdaloop.lib.qml_helpers import register_qml_class
     from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
     from shoopdaloop.lib.logging import Logger
@@ -67,7 +67,7 @@ def run_qml_tests(args):
         'monkey_tester': False
     }
 
-    test_files = glob.glob(shoop_app_info.qml_dir + '/**/tst_*.qml', recursive=True)
+    test_files = glob.glob(shoop_qml_dir + '/**/tst_*.qml', recursive=True)
     if len(args.test_file_glob_pattern):
         test_files = []
         for pattern in args.test_file_glob_pattern:

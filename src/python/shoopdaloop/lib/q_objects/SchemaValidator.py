@@ -6,7 +6,7 @@ from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
 
-from ..session_schemas.session_schemas import validate_session_object
+from ..session_schemas import validate_session_object
 import json
 from ..logging import *
 import threading

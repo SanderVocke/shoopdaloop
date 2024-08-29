@@ -1,0 +1,11 @@
+CMAKE should have release/debug config based on Cargo settings
+
+CMAKE needs the build requirements of pyproject.toml but doesn't install them first from the build.rs. Fix by creating a venv and isntalling inside.
+
+Fix the build pipelines
+
+Make sure debug information is dumped and saved correctly
+
+PYTHONPATH separator in shoopdaloop_dev.rs is linux-only
+
+fix the AppImage build script
