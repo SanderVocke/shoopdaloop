@@ -11,6 +11,7 @@ lcov
 ruby
 rpm
 libarchive-tools
+libclang-dev
 
 # libraries
 libglib2.0-0
