@@ -3,18 +3,15 @@
 
 There are multiple ways to install ShoopDaLoop: from source or from pre-release binaries and packages. For binaries and packages, check the latest release page.
 
-# Packages
+# From binaries
 
-Automatically built packages include:
+ShoopDaLoop is distributed either as a portable folder or an OS-specific installable artifact. I am not aware of any maintained packages in distro repositories at the moment (let me know if you want to make one!).
 
-- Python wheels for Linux/Windows/Mac (`*.whl`). These can be installed with `pip`. The advantage is that they leverage packages installed in your Python distribution (which could pull them in from `pip` or depend on packages already installed via your OS).
-- Portable runnable folders (`portable_...`). These include all dependencies in one folder, making them large but reliable. They can be extracted and run directly.
-- Packages per platform:
-   - For Linux, there are `rpm`, `deb` and `pacman` binary packages. These are "fat" packages which install `shoopdaloop` into `/opt` along with all dependencies (many of which are sourced from PyPi). If you want to utilize your distro's libraries instead, building from source or using a wheel is needed.
+- Portable runnable folders (`portable_...`). These include all dependencies in one folder, making them large but easy to use, with hardly any exernal dependencies. They can be extracted and run directly.
+- Installables per platform:
+   - For Linux, `shoopdaloop` is released as an AppImage.
    - For Windows, the package is a `.exe` installer.
    - For Mac, there is a `.dmg` disk image package. Double-click it to mount the image. The app can be started directly from the mounted volume, or copied to the Applications folder for a permanent installation. If MacOS complains that you cannot start due to not being able to check for malicious software, you can go to your Mac's privacy settings screen and make an exception at the bottom.
- 
-Note that the latest Python wheel packages can also be installed directly from PyPi: `python -m pip install shoopdaloop`.
 
 > :warning: **In ALL cases: install at your own risk. I do not take responsibility for any harm done to your system.** Be aware that these wheels and packages include code from not just this repository, but also:
 >  - several GitHub linked repo's;
@@ -29,48 +26,28 @@ There are future plans for an AUR package for Arch, which links against the dist
 
 To build from source, ensure the build dependencies for your OS are installed. The dependencies for each supported platform can be found in `distribution/dependencies` (also see the CI workflows in `.github/workflows` for practical examples).
 
-It may also be possible to skip installing some of the Python dependencies and let them be installed later by `pip` (YMMV).
-
 Make sure all the subrepositories are checked out (`git submodule init; git submodule update`).
 
-### Building the .whl from source
+### Building from source
 
-The regular way to install ShoopDaLoop is to build a Python .whl package and install it. Usually this should happen in a virtual environment. 
+ShoopDaLoop's build is governed by Cargo. To build, simply run `cargo build` in the root directory.
 
-Building the .whl:
+However, be aware that a complex combination of build systems is hidden behind this cargo build front-end. It involves C/C++ compilers, `cmake`, `meson`, Python `setuptools`, code generation and more. I am working on reducing the dependencies and tools involved, but YMMV in having to install additional tools to run the build successfully.
 
-```
-python -m build --wheel .
-```
+Until this is all more stable and simple, the golden reference for how to build ShoopDaLoop is in the GitHub Actions build scripts included in the repo (`.github/workflows/...`).
 
-Note that ShoopDaLoop does not support generating a source distribution, hence the `--wheel` argument to build the .whl directly.
+### Building redistributable binaries
 
-Also note that depending on OS some extra preparation may be needed to get the compilers and tools all configured correctly. Work is needed to document these steps properly, but for now I would point anyone to the Github Actions CI scripts in the .github folder - in particular the `prepare_build_...` actions that set up environments for the build per OS.
+After building ShoopDaLoop in-tree as described above, there are several redistributable options to build:
 
-### Installing the .whl (regular)
+#### AppDir / AppImage (Linux)
 
-Assuming you are in a virtualenv (probably best to use `--system-site-packages` to prevent duplication):
+During the in-tree build, Cargo also produces the executable `build_appdir`. Run it as: `build_appdir shoopdaloop_executable target_dir`. It will make an AppDir as `target_dir`. You can use AppImage tooling to compress this into an AppImage.
 
-```
-pip install dist/shoopdaloop-*.whl
-```
+### Editable development build
 
-You can also substitute `pipx` for `pip` if you want the virtualenv part to be managed automatically.
+Since ShoopDaLoop partly consists of interpreted / JIT-compiled scripts (in Lua, Python and QML), for a large part developers can make changes without having to rebuild.
 
-### Editable development install
+In order to run ShoopDaLoop in "editable" mode (using the scripts in the repository as opposed to installing them into the system), simply run the `shoopdaloop_dev` executable compiled by Cargo instead of the regular `shoopdaloop` one.
 
-A develpment install can be done using:
-
-```
-pip install -e . --no-build-isolation
-```
-
-This will install into `./.py-build-cmake-cache/editable` with symlinks to the Python and QML source files in this repo. It will also install a link into the system such that `shoopdaloop` can be run system-wide.
-
-In other words, it installs binaries into wherever Python libraries are normally installed, while keeping interpreted scripts (Python, QML) as symlinks, allowing for quick changes.
-
-Note that the installation command should be repeated if anything changes which affects the CMake build (C / C++ files, package metadata version/description).
-
-### Changing CMake build settings
-
-Build settings are controlled by `pyproject.toml`, including CMake build settings. To change some settings locally, an override file can be used to change only those settings needed. It should be stored alongside `pyproject.toml` and its filename should be `py-build-cmake.local.toml`. Some examples are stored in the `overrides` folder and can be copied directly, e.g. to do a debug or asan build.
+`shoopdaloop_dev` is also the only executable that works (i.e. is able to find all of its files) without installing the software.

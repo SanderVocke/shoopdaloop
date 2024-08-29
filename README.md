@@ -47,22 +47,22 @@ As such, it obviously has not been used for on-stage performing and definitely s
 
 The basic features that would be needed for a 1.0.0 release are already there. However, the version won´t go to 1.0.0 until ShoopDaLoop is considered stable for live performing.
 
-The initial architecture combined Python for front-end and as a main entry point with a C++ back-end and QML GUI elements. This works and has resulted in a very fast pace of feature development, but also has downsides:
+The initial architecture combined Python for front-end and as a main entry point with a C++ back-end and QML GUI elements. This works and has enabled a very fast pace of feature development, but also has downsides:
 
    * in particular Python and PySide can easily cause issues in object lifetimes (garbage collection combined with Qt objects) and performance (the GIL).
+   * Debugging crashes is a pain because backtraces always lead through layers of QJSEngine, Qt, PySide, Shiboken and Python.
    * the build is very complicated, using PyPa build with a CMake-wrapping package, with CMake also generating Python wrappers for C interfaces.
-   * the C++ back-end has the potential for memory bugs because of the multitude of multithreading and shared ownership patterns in use.
+   * the C++ back-end has the potential for memory bugs / race conditions because of the multitude of multithreading and shared ownership patterns in use.
 
-Therefore, a process has started to gradually replace both Python and C++ by Rust in multiple steps:
+Therefore, a process has started to gradually replace both Python and C++ by Rust. Together with Python, the dependency on PySide will also disappear. This will happen in multiple steps:
 
    * First, port Python code to Rust and remove Python from the codebase altogether. Build system becomes CMake or Cargo. This will be a huge step in the right direction.
    * Then, port C++ code as well and go to a straightforward Cargo build, solidifying the confidence in a correct and robust back-end.
 
 A prerequisite for a 1.0.0 version is that this process is complete and the codebase is only Rust + QML (+ Lua for user scripts).
 
-The downside of this process is that in the process of porting and migrating, Rust code will also start appearing in the codebase, making it even more complicated. At the moment there is C++, Python and Rust, and a combination of their respective build tools. The build is very complicated, having to build and ship test binaries that link against Qt libraries (which in the deployed software need to be provided by the PySide Python package).
-
-Of course, in the meantime new features will also be added.
+The downside of this process is that in the process of porting and migrating, the added Rust code will make the build even more complicated.
+At the moment there is C++, Python and Rust, and a combination of their respective build tools, with Cargo as a build front-end.
 
 # Comparison table
 
