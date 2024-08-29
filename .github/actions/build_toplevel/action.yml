@@ -70,48 +70,42 @@ runs:
       echo "Building wheel"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
-  - name: Build wheel
-    id: buildwheel
+  - name: Build with Cargo
+    id: buildbase
     uses: ./.github/actions/build_wheel
     with:
       variant_name: ${{ inputs.name }}
-      python: ${{ inputs.python }}
+      # python: ${{ inputs.python }}
       prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
-      windows: ${{ inputs.prepare_kind == 'windows' && 'true' || 'false' }}
-      rename_wheel_sed: ${{ inputs.rename_wheel_sed }}
-  # - name: Upload wheel pre-audit (${{ inputs.variant_name }})
-  #   if: ${{ inputs.upload_artifacts == 'true'}}
-  #   uses: actions/upload-artifact@v4
+      # windows: ${{ inputs.prepare_kind == 'windows' && 'true' || 'false' }}
+      # rename_wheel_sed: ${{ inputs.rename_wheel_sed }}
+  # - name: Post-build steps
+  #   id: postbuild
+  #   uses: ./.github/actions/post_build
   #   with:
-  #     name: wheel_preaudit_${{ inputs.name }}
-  #     path: ${{ steps.buildwheel.outputs.wheel_filename }}
-  - name: Post-build steps
-    id: postbuild
-    uses: ./.github/actions/post_build
-    with:
-      variant: ${{ inputs.prepare_kind }}
-      wheel: ${{ steps.buildwheel.outputs.wheel_filename }}
-      build_dir: ${{ steps.buildwheel.outputs.build_dir }}
-  - name: Find wheel
-    shell: wrap-shell {0}
-    id: find
-    run: |
-      echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
-  - shell: wrap-shell {0}
-    run: |
-      printf "\n\n\n\n\n\n"
-      echo "=========================================="
-      echo "PyInstaller"
-      echo "=========================================="
-      printf "\n\n\n\n\n\n"
-  - name: PyInstaller
-    id: pyinstaller
-    if: ${{ inputs.pyinstaller || inputs.appbundle }}
-    uses: ./.github/actions/build_pyinstaller
-    with:
-      python: ${{ inputs.pyinstaller_python && inputs.pyinstaller_python || inputs.python }}
-      wheel: ${{ steps.find.outputs.name }}
-      appbundle: ${{ inputs.appbundle }}
+  #     variant: ${{ inputs.prepare_kind }}
+  #     wheel: ${{ steps.buildbase.outputs.wheel_filename }}
+  #     build_dir: ${{ steps.buildbase.outputs.build_dir }}
+  # - name: Find wheel
+  #   shell: wrap-shell {0}
+  #   id: find
+  #   run: |
+  #     echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
+  # - shell: wrap-shell {0}
+  #   run: |
+  #     printf "\n\n\n\n\n\n"
+  #     echo "=========================================="
+  #     echo "PyInstaller"
+  #     echo "=========================================="
+  #     printf "\n\n\n\n\n\n"
+  # - name: PyInstaller
+  #   id: pyinstaller
+  #   if: ${{ inputs.pyinstaller || inputs.appbundle }}
+  #   uses: ./.github/actions/build_pyinstaller
+  #   with:
+  #     python: ${{ inputs.pyinstaller_python && inputs.pyinstaller_python || inputs.python }}
+  #     wheel: ${{ steps.find.outputs.name }}
+  #     appbundle: ${{ inputs.appbundle }}
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"

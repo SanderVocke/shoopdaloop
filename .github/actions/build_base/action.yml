@@ -1,0 +1,54 @@
+name: Build Base
+description: Do a basic Cargo build in the checked out repository
+
+inputs:
+  variant_name:
+    required: true
+    type: string
+  # python:
+  #   required: false
+  #   type: string
+  #   default: python3
+  prepend_build_cmd:
+    required: false
+    type: string
+  # windows:
+  #   required: false
+  #   type: string
+  #   default: 'false'
+
+outputs:
+  # run_cmd_prefix:
+  #   description: "Command-line prefix to use when running the apps in the built wheel"
+  #   value: ${{ steps.build.outputs.run_cmd_prefix }}
+  # install_dir:
+  #   description: "If the package was installed, this holds the installation folder"
+  #   value: ${{ steps.install.outputs.install_dir }}
+  build_dir:
+    value: ${{ steps.build.outputs.build_dir }}
+  source_dir:
+    value: ${{ steps.build.outputs.source_dir }}
+  # wheel_filename:
+  #   value: ${{ steps.find.outputs.name }}
+
+runs:
+  using: "composite"
+  steps:
+
+  - name: Build base (${{ inputs.variant_name }})
+    shell: wrap-shell {0}
+    id: build
+    # TODO: release part should not always be here
+    run: |
+      ${{ inputs.prepend_build_cmd }} cargo build -vv --release
+      echo "source_dir=$(pwd)" | tee -a $GITHUB_OUTPUT
+      echo "build_dir=$(realpath target/release)" | tee -a $GITHUB_OUTPUT
+
+  # - name: Find wheel (${{ inputs.variant_name }})
+  #   shell: wrap-shell {0}
+  #   id: find_wheel
+  #   run: |
+  #     echo "run_cmd_prefix=$(find . -name run_cmd_prefix.txt -exec cat {} \;)" | tee -a $GITHUB_OUTPUT
+
+  
+
