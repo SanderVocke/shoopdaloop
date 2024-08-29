@@ -23,12 +23,7 @@ fn recursive_dir_cpy (src: &Path, dst: &Path) -> std::io::Result<()> {
 fn main() {
     let args: Vec<String> = env::args().collect();
     let file_path = PathBuf::from(file!());
-    let src_path = file_path.parent().unwrap()
-                          .parent().unwrap()
-                          .parent().unwrap()
-                          .parent().unwrap()
-                          .parent().unwrap()
-                          .parent().unwrap();
+    let src_path = file_path.ancestors().nth(6).unwrap();
 
     let usage = || {
         println!("Usage: build_shoop_package shoopdaloop_executable target_dir");
@@ -67,22 +62,29 @@ fn main() {
     std::fs::copy(exe_path, target_dir.join("AppRun")).unwrap();
 
     println!("Copying assets...");
-    let from_base = PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_pyenv");
-    let from : PathBuf;
-    {
-        let pattern = format!("{}/**/site-packages", from_base.to_str().unwrap());
-        let mut sp_glob = glob(&pattern).unwrap();
-        from = sp_glob.next()
-                .expect(format!("No site-packages dir found @ {}", pattern).as_str())
-                .unwrap();
-    }
-    let to = target_dir.join("shoop_lib").join("py");
-    std::fs::create_dir(target_dir.join("shoop_lib")).unwrap();
-    std::fs::create_dir(&to).unwrap();
+    let lib_dir = target_dir.join("shoop_lib");
+    std::fs::create_dir(&lib_dir).unwrap();
     recursive_dir_cpy(
-        &from,
-        &to
+        &PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_lib"),
+        &lib_dir
     ).unwrap();
+    {
+        let from_base = PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_pyenv");
+        let from : PathBuf;
+        {
+            let pattern = format!("{}/**/site-packages", from_base.to_str().unwrap());
+            let mut sp_glob = glob(&pattern).unwrap();
+            from = sp_glob.next()
+                    .expect(format!("No site-packages dir found @ {}", pattern).as_str())
+                    .unwrap();
+        }
+        let to = lib_dir.join("py");
+        std::fs::create_dir(&to).unwrap();
+        recursive_dir_cpy(
+            &from,
+            &to
+        ).unwrap();
+    }
     std::fs::copy(
         src_path.join("distribution").join("appimage").join("shoopdaloop.desktop"),
         target_dir.join("shoopdaloop.desktop")

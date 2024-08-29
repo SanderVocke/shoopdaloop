@@ -10,9 +10,12 @@ fn main() -> PyResult<()> {
     // - Finding embedded pyenv in installed case (shoop_lib/py)
     let executable_path = env::current_exe().unwrap();
     let shoop_lib_path = executable_path.parent().unwrap().join("shoop_lib");
-    let bundled_pythonpath = std::fs::canonicalize(shoop_lib_path.join("py")).unwrap();
-    if bundled_pythonpath.exists() {
-        env::set_var("PYTHONPATH", bundled_pythonpath.to_str().unwrap());
+    let bundled_pythonpath_shoop_lib = std::fs::canonicalize(&shoop_lib_path).unwrap();
+    let bundled_pythonpath_root = std::fs::canonicalize(&shoop_lib_path.join("py")).unwrap();
+    if bundled_pythonpath_root.exists() {
+        let pythonpath = format!("{}:{}", bundled_pythonpath_shoop_lib.to_str().unwrap(), bundled_pythonpath_root.to_str().unwrap());
+        println!("using PYTHONPATH: {}", pythonpath.as_str());
+        env::set_var("PYTHONPATH", pythonpath.as_str());
     } else {
         println!("Warning: could not find PYTHONPATH for ShoopDaLoop. Attempting to run with default Python environment.");
     }

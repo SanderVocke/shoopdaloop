@@ -4,6 +4,24 @@ use std::path::{Path, PathBuf};
 use glob::glob;
 use cmake::Config;
 use copy_dir::copy_dir;
+use std::io;
+use std::fs;
+use std::io::prelude::*;
+use std::hash::Hasher;
+
+fn file_hash<P: AsRef<Path>>(path: P) -> io::Result<u64> {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut file = fs::File::open(path)?;
+    let mut buffer = [0; 1024];
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        hasher.write(&buffer[..n]);
+    }
+    Ok(hasher.finish())
+}
 
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -12,11 +30,11 @@ fn main() {
     let shoop_lib_dir = out_dir.join("shoop_lib");
     let cmake_backend_dir = "../../backend";
     let python_dir = "../../python";
-    let venv_dir = Path::new(&out_dir).join("shoop_pyenv");
     println!("Using Python: {}", host_python);
 
-    let _ = std::fs::remove_dir_all(&shoop_lib_dir);
-    let _ = std::fs::remove_dir_all(&venv_dir);
+    if shoop_lib_dir.exists() {
+        std::fs::remove_dir_all(&shoop_lib_dir).unwrap();
+    }
 
     // Build back-end via CMake and install into our output directory
     println!("Building back-end...");
@@ -58,23 +76,46 @@ fn main() {
                 .unwrap();
         println!("Found built wheel: {}", wheel.to_str().unwrap());
     }
-
-    // Create a venv in OUT_DIR
-    println!("Creating venv...");
-    Command::new(&host_python).args(
-        &["-m", "venv", venv_dir.to_str().expect("Could not get venv path")]
-    ).status().unwrap();
+    // Use hash to determine if the wheel changed
+    let wheel_hash = file_hash(&wheel).unwrap();
+    let prev_wheel_file = out_dir.join("py_wheel_hash");
+    let venv_dir = Path::new(&out_dir).join("shoop_pyenv");
     let venv_python = venv_dir.join("bin").join("python");
+    let mut rebuild_venv = true;
+    if prev_wheel_file.exists() && venv_dir.exists() {
+        let prev_wheel_hash = std::fs::read_to_string(&prev_wheel_file).unwrap().parse::<u64>().unwrap();
+        println!("Previous wheel hash: {}", prev_wheel_hash);
+        println!("Current wheel hash: {}", wheel_hash);
+        if prev_wheel_hash == wheel_hash {
+            println!("Wheel unchanged, skipping venv creation.");
+            rebuild_venv = false;
+        }
+    }
+    
+    if rebuild_venv {
+        if venv_dir.exists() {
+            std::fs::remove_dir_all(&venv_dir).unwrap();
+        }
 
-    // Install ShoopDaLoop wheel in venv
-    println!("Installing into venv...");
-    Command::new(&venv_python)
-        .args(
-            &["-m", "pip", "install", "--force-reinstall", wheel.to_str().expect("Could not get wheel path")]
-        )
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .status().unwrap();
+        // Create a venv in OUT_DIR
+        println!("Creating venv...");
+        Command::new(&host_python).args(
+            &["-m", "venv", venv_dir.to_str().expect("Could not get venv path")]
+        ).status().unwrap();
+
+        // Install ShoopDaLoop wheel in venv
+        println!("Installing into venv...");
+        Command::new(&venv_python)
+            .args(
+                &["-m", "pip", "install", "--force-reinstall", wheel.to_str().expect("Could not get wheel path")]
+            )
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status().unwrap();
+        
+        std::fs::write(&prev_wheel_file, wheel_hash.to_string()).unwrap();
+    }
+
     let site_packages_dir : PathBuf;
     {
         let pattern = format!("{}/**/site-packages", venv_dir.to_str().unwrap());
