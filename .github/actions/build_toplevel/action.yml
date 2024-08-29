@@ -130,24 +130,24 @@ runs:
       echo "Upload artifacts"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
-  - name: Upload wheel (${{ inputs.variant_name }})
-    if: ${{ inputs.upload_artifacts == 'true' }}
-    uses: actions/upload-artifact@v4
-    with:
-      name: wheel_${{ inputs.name }}
-      path: ${{ steps.find.outputs.name }}
+  # - name: Upload wheel (${{ inputs.variant_name }})
+  #   if: ${{ inputs.upload_artifacts == 'true' }}
+  #   uses: actions/upload-artifact@v4
+  #   with:
+  #     name: wheel_${{ inputs.name }}
+  #     path: ${{ steps.find.outputs.name }}
   - name: Upload debug info (${{ inputs.variant_name }})
     if: ${{ inputs.upload_artifacts == 'true' }}
     uses: actions/upload-artifact@v4
     with:
       name: breakpad_debuginfo_${{ inputs.name }}
       path: debuginfo
-  - name: Upload PyInstaller (${{ inputs.variant_name }})
-    if: ${{ inputs.pyinstaller && inputs.upload_artifacts == 'true' }}
-    uses: actions/upload-artifact@v4
-    with:
-      name: pyinstaller_${{ inputs.name }}
-      path: ${{ steps.pyinstaller.outputs.distribution }}
+  # - name: Upload PyInstaller (${{ inputs.variant_name }})
+  #   if: ${{ inputs.pyinstaller && inputs.upload_artifacts == 'true' }}
+  #   uses: actions/upload-artifact@v4
+  #   with:
+  #     name: pyinstaller_${{ inputs.name }}
+  #     path: ${{ steps.pyinstaller.outputs.distribution }}
   - name: Upload MacOS app bundle
     if: ${{ inputs.appbundle && inputs.upload_artifacts == 'true' }}
     uses: actions/upload-artifact@v4

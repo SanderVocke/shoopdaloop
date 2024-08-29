@@ -5,10 +5,10 @@ inputs:
   variant_name:
     required: true
     type: string
-  # python:
-  #   required: false
-  #   type: string
-  #   default: python3
+  python:
+    required: false
+    type: string
+    default: python3
   prepend_build_cmd:
     required: false
     type: string
@@ -40,7 +40,7 @@ runs:
     id: build
     # TODO: release part should not always be here
     run: |
-      ${{ inputs.prepend_build_cmd }} cargo build -vv --release
+      ${{ inputs.prepend_build_cmd }} PYTHON=${{ inputs.python }} cargo build -vv --release
       echo "source_dir=$(pwd)" | tee -a $GITHUB_OUTPUT
       echo "build_dir=$(realpath target/release)" | tee -a $GITHUB_OUTPUT
 

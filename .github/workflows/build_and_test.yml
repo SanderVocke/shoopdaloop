@@ -70,6 +70,7 @@ jobs:
           #   upload_release_assets: true
           - name: linux_debug
             build_type: 'Debug'
+            package_kind: appimage
           # - name: linux_asan
           #   # Note: ASAN build does not have a test because it is not trivial to deploy
           #   # an asan-built program on another system. The build is here to ensure the

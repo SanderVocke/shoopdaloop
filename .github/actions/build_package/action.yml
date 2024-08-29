@@ -36,6 +36,14 @@ runs:
       echo "version=$VERSION" | tee -a $GITHUB_ENV
       echo "gitversion=$GITVERSION" | tee -a $GITHUB_ENV
 
+  # AppImage (Linux)
+  - name: Build AppImage
+    if: ${{ inputs.package_kind == 'appimage' }}
+    shell: wrap-shell {0}
+    run: |
+      ./target/debug/build_appdir appdir
+      
+
   # Linux packages
   - name: Build .deb + pacman + .rpm
     if: ${{ inputs.package_kind == 'linuxes' }}
