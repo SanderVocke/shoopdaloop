@@ -1,6 +1,5 @@
 import sys
 import os
-from shoopdaloop.lib.directories import *
 
 import traceback
 import argparse
@@ -8,12 +7,14 @@ import glob
 import ctypes
 import platform
 
+import shoop_app_info
+
 def main():
     from shoopdaloop.lib.logging import Logger
     logger = Logger("Frontend.Main")
     try:
         from shoopdaloop.lib.backend_wrappers import AudioDriverType
-        mains = [ os.path.basename(p).replace('.qml','') for p in glob.glob('{}/lib/qml/applications/*.qml'.format(installation_dir())) ]
+        mains = [ os.path.basename(p).replace('.qml','') for p in glob.glob('{}/applications/*.qml'.format(shoop_app_info.qml_dir)) ]
 
         bare_args = []
         current_args = []
@@ -65,8 +66,7 @@ def main():
         if args.info:
             import shoop_app_info
             print('ShoopDaLoop {}'.format(shoop_app_info.version))
-            print('Installed @ {}'.format(installation_dir()))
-            print('Scripts @ {}'.format(scripts_dir()))
+            print('Installation: {}'.format(shoop_app_info.install_info))
             sys.exit(0)
 
         global_args = {
@@ -80,7 +80,7 @@ def main():
 
         app = Application(
             'ShoopDaLoop',
-            '{}/lib/qml/applications/{}.qml'.format(scripts_dir(), args.main),
+            '{}/applications/{}.qml'.format(shoop_app_info.qml_dir, args.main),
             global_args,
             dict(),
             args.qml_debug,

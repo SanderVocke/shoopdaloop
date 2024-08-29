@@ -6,6 +6,7 @@ pub const DESCRIPTION : &str = env!("CARGO_PKG_DESCRIPTION");
 
 pub fn create_py_module<'py>(
     py : Python<'py>,
+    install_info: &str,
     dynlib_dir: &Path,
     qml_dir: &Path,
     py_dir: &Path,
@@ -16,6 +17,7 @@ pub fn create_py_module<'py>(
     let m = PyModule::new_bound(py, "shoop_app_info")?;
     m.setattr("version", VERSION)?;
     m.setattr("description", DESCRIPTION)?;
+    m.setattr("install_info", install_info)?;
     m.setattr("dynlib_dir", dynlib_dir.to_str().unwrap())?;
     m.setattr("qml_dir", qml_dir.to_str().unwrap())?;
     m.setattr("py_dir", py_dir.to_str().unwrap())?;

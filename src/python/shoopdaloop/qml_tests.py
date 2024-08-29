@@ -1,4 +1,6 @@
 #!/usr/bin/python
+import shoop_app_info
+
 exit_text_printed = False
 coverage_reported = False
 exit_text = ''
@@ -39,7 +41,6 @@ def run_qml_tests(args):
     from shoopdaloop.lib.q_objects.QoverageCollectorFactory import QoverageCollectorFactory
     from shoopdaloop.lib.q_objects.Application import Application
     from shoopdaloop.lib.q_objects.TestRunner import TestRunner
-    from shoopdaloop.lib.directories import installation_dir, scripts_dir
 
     import argparse
     import re
@@ -66,7 +67,7 @@ def run_qml_tests(args):
         'monkey_tester': False
     }
 
-    test_files = glob.glob(scripts_dir() + '/**/tst_*.qml', recursive=True)
+    test_files = glob.glob(shoop_app_info.qml_dir + '/**/tst_*.qml', recursive=True)
     if len(args.test_file_glob_pattern):
         test_files = []
         for pattern in args.test_file_glob_pattern:

@@ -12,7 +12,7 @@ import importlib
 import ctypes
 import platform
 
-from .directories import *
+import shoop_app_info
 
 from .q_objects.AudioPort import AudioPort
 from .q_objects.MidiPort import MidiPort
@@ -131,7 +131,7 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
     engine.registerModule("shoop_js_constants", constants)
 
     # QML instantiations
-    registries_comp = create_component(scripts_dir() + '/lib/qml/AppRegistries.qml')
+    registries_comp = create_component(shoop_app_info.qml_dir + '/AppRegistries.qml')
     registries = registries_comp.create()
 
     items = {

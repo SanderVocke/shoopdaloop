@@ -3,6 +3,7 @@ use std::env;
 
 use shoopdaloop::shoopdaloop_main;
 use shoopdaloop::add_lib_search_path::add_lib_search_path;
+use shoopdaloop::shoop_app_info;
 
 fn main() -> PyResult<()> {
     // Set up PYTHONPATH. This can deal with:
@@ -18,5 +19,18 @@ fn main() -> PyResult<()> {
 
     add_lib_search_path(&shoop_lib_path);
 
-    shoopdaloop_main(&shoop_lib_path)
+    let install_info = format!("installed in {}", shoop_lib_path.join("..").to_str().unwrap());
+    let shoop_app_info_module = 
+                shoop_app_info::create_py_module
+                    (py,
+                     install_info.as_str(),
+                     shoop_lib_path,
+                     shoop_lib_path.join("qml"),
+                     shoop_lib_path.join("py"),
+                     shoop_lib_path.join("lua"),
+                     shoop_lib_path.join("resources"),
+                     shoop_lib_path.join("schemas"))
+                    .unwrap();
+
+    shoopdaloop_main(shoop_app_info_module)
 }

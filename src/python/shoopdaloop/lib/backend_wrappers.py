@@ -9,13 +9,13 @@ import copy
 import threading
 import time
 import sys
-from .directories import *
 import importlib
 import inspect
 import ctypes
 import traceback
 import numpy
 
+import shoop_app_info
 from shoopdaloop.lib.init_dynlibs import init_dynlibs
 init_dynlibs()
 
@@ -24,10 +24,10 @@ all_active_drivers = set()
 
 # On Windows, shoopdaloop.dll depends on shared libraries in the same folder.
 # this folder needs to be added to the PATH before loading
-os.environ['PATH'] = os.environ['PATH'] + os.pathsep + installation_dir()
+os.environ['PATH'] = os.environ['PATH'] + os.pathsep + shoop_app_info.dynlib_dir
 
 # Ensure we can find all dependency back-end dynamic libraries
-sys.path.append(dynlibs_dir())
+sys.path.append(shoop_app_info.dynlib_dir)
 
 bindings = importlib.import_module('libshoopdaloop_bindings')
 
