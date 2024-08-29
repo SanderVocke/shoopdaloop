@@ -113,9 +113,9 @@ jobs:
         package_kind: ${{ matrix.kind.package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-    - name: Setup tmate session
-      if: failure()
-      uses: SanderVocke/action-tmate@master
+    # - name: Setup tmate session
+    #   if: failure()
+    #   uses: SanderVocke/action-tmate@master
 
   test_linux:
     strategy:
