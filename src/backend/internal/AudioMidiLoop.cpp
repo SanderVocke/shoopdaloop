@@ -36,7 +36,7 @@ AudioMidiLoop::add_midi_channel(uint32_t data_size, shoop_channel_mode_t mode,
 {
     auto channel = shoop_make_shared<MidiChannel>(
         data_size, mode);
-    auto fn = [this, &channel]() {
+    auto fn = [this, channel]() {
         mp_midi_channels.push_back(
             shoop_static_pointer_cast<ChannelInterface>(channel)
         );
