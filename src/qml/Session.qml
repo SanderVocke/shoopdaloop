@@ -736,7 +736,7 @@ Rectangle {
 
                     height: 60
                     width: height / sourceSize.height * sourceSize.width
-                    source: '../../resources/logo-small.png'
+                    source: file_io.get_resource_directory() + '/logo-small.png'
                     smooth: true
                 }
 

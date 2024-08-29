@@ -7,5 +7,3 @@ Fix the build pipelines
 Make sure debug information is dumped and saved correctly
 
 PYTHONPATH separator in shoopdaloop_dev.rs is linux-only
-
-fix the AppImage build script

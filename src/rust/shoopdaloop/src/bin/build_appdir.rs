@@ -94,5 +94,6 @@ fn main() {
         target_dir.join("shoopdaloop.png")
     ).unwrap();
 
-    println!("...Done.");
+    println!("AppDir produced in {}", target_dir.to_str().unwrap());
+    println!("You can use a tool such as appimagetool to create an AppImage from this directory.");
 }

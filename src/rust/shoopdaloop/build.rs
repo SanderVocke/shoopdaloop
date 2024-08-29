@@ -44,10 +44,10 @@ fn main() {
         .build();
 
     // Copy filesets into our output lib dir
-    let to_copy = ["lua", "qml", "session_schemas"];
+    let to_copy = ["lua", "qml", "session_schemas", "../resources"];
     for directory in to_copy {
         let src = src_dir.join("../..").join(directory);
-        let dst = shoop_lib_dir.join(directory);
+        let dst = shoop_lib_dir.join(PathBuf::from(directory).file_name().unwrap());
         copy_dir(&src, &dst)
             .expect(&format!("Failed to copy {} to {}",
                             src.display(),
