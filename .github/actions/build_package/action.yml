@@ -1,8 +1,8 @@
 # Create a package/installer using fpm or InnoSetup
 
 inputs:
-  input_path:
-    description: "input path for the build, if needed"
+  cargo_build_path:
+    description: "path where cargo built its executables"
   package_kind:
     description: "innosetup / linuxes / pyinstaller"
   upload_name:
@@ -29,7 +29,9 @@ runs:
     shell: wrap-shell {0}
     run: |
       set -x
-      VERSION=$(cat $(find ${{ inputs.input_path }} -name version.txt -print -quit) | tr -d ' ')
+      # TODO
+      VERSION=0.0.0
+      # VERSION=$(cat $(find ${{ inputs.input_path }} -name version.txt -print -quit) | tr -d ' ')
       FULLGITVERSION=${{ github.sha }}
       GITVERSION=$(echo ${FULLGITVERSION:0:8} | tr -d ' ')
 
@@ -39,10 +41,19 @@ runs:
   # AppImage (Linux)
   - name: Build AppImage
     if: ${{ inputs.package_kind == 'appimage' }}
+    id: build_appimage
     shell: wrap-shell {0}
     run: |
-      ./target/debug/build_appdir appdir
-      
+      ${{ inputs.cargo_build_path }}/build_appdir appdir
+      wget https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+      chmod +x appimagetool-x86_64.AppImage
+      APPIMAGE_NAME=shoopdaloop-${{ env.version }}.${{ env.gitversion }}.$(uname -m).AppImage
+      ./appimagetool-x86_64.AppImage appdir $APPIMAGE_NAME
+      echo "pkg=$APPIMAGE_NAME" | tee -a $GITHUB_ENV
+  - uses: actions/upload-artifact@v4
+    with:
+      name: ${{ inputs.upload_name }}
+      path: ${{ env.pkg }}
 
   # Linux packages
   - name: Build .deb + pacman + .rpm
