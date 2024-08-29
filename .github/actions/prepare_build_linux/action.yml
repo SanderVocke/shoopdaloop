@@ -8,3 +8,4 @@ runs:
     shell: wrap-shell {0}
     run: |
       python3 -m pip install --upgrade pip build auditwheel patchelf
+      python3 -m pip install -r build_python_requirements.txt

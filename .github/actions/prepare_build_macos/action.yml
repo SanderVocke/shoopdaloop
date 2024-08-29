@@ -20,6 +20,7 @@ runs:
 
       # Install Python packages
       python3.9 -m pip install --upgrade pip build
+      python3.9 -m pip install -r build_python_requirements.txt
   - name: Install boost
     id: install_boost
     uses: ./.github/actions/install_boost_headers

@@ -34,6 +34,7 @@ docs = [
   "sphinxcontrib-plantuml"
 ]
 
+# Note: duplicated in root build_python_requirements.txt
 [build-system]
 requires = [
   "setuptools",
