@@ -14,8 +14,8 @@ from ..lua_qobject_interface import create_lua_qobject_interface
 
 import os
 import inspect
-from ..directories import scripts_dir
-lua_scriptdir = scripts_dir() + '/lib/lua'
+import shoop_app_info
+lua_scriptdir = shoop_app_info.lua_dir
 
 class ScriptExecutionError(Exception):
     pass

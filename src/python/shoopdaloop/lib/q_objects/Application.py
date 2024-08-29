@@ -18,11 +18,11 @@ if have_nsm:
     from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
 from ..qml_helpers import *
-from ..shoop_rust import shoop_rust_init
+from shoop_rust import shoop_rust_init
 from ..backend_wrappers import terminate_all_backends
 
 from ..logging import *
-from ..directories import *
+import shoop_app_info
 
 class Application(ShoopQApplication):
     exit_handler_called = ShoopSignal()
@@ -96,7 +96,7 @@ class Application(ShoopQApplication):
                 if len(self.engine.rootObjects()) > 0:
                     self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
 
-        self.setWindowIcon(QIcon(os.path.join(installation_dir(), 'resources', 'iconset', 'icon_128x128.png')))
+        self.setWindowIcon(QIcon(os.path.join(shoop_app_info.resource_dir, 'iconset', 'icon_128x128.png')))
 
     def unload_qml(self):
         if self.engine:
@@ -121,8 +121,8 @@ class Application(ShoopQApplication):
         crash_handling.register_js_engine(self.engine)
         self.engine.destroyed.connect(lambda: self.logger.debug("QML engine being destroyed."))
         self.engine.objectCreated.connect(lambda obj, _: maybe_install_event_filter(obj))
-        self.engine.addImportPath(os.path.join(scripts_dir(), 'lib', 'qml'))
-        self.engine.addImportPath(os.path.join(installation_dir(), 'lib', 'qml', 'generated'))
+        self.engine.addImportPath(os.path.join(shoop_app_info.qml_dir))
+        self.engine.addImportPath(os.path.join(shoop_app_info.qml_dir, 'generated'))
 
         if quit_on_quit:
             self.engine.quit.connect(self.do_quit)

@@ -1,8 +1,8 @@
 from jsonschema import validate, ValidationError
 import json
 import os
-from ..directories import scripts_dir
-schemas_dir = scripts_dir() + '/lib/session_schemas/schemas'
+import shoop_app_info
+schemas_dir = shoop_app_info.schemas_dir + '/schemas'
 
 def validate_subtree(t):
     if type(t) is dict:

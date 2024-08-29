@@ -3,6 +3,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use glob::glob;
 use cmake::Config;
+use copy_dir::copy_dir;
 
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -13,13 +14,25 @@ fn main() {
     let python_dir = "../../python";
     println!("Using Python: {}", host_python);
 
-    // Build back-end via CMake and install into our output directory
     let _ = std::fs::remove_dir_all(&shoop_lib_dir);
+
+    // Build back-end via CMake and install into our output directory
     println!("Building back-end...");
     let _ = Config::new(cmake_backend_dir)
         .out_dir(out_dir.join("cmake_build"))
-        .configure_arg(format!("-DCMAKE_INSTALL_PREFIX={}/shoop_lib",out_dir.to_str().unwrap()))
+        .configure_arg(format!("-DCMAKE_INSTALL_PREFIX={}",shoop_lib_dir.to_str().unwrap()))
         .build();
+
+    // Copy filesets into our output lib dir
+    let to_copy = ["lua", "qml", "session_schemas"];
+    for directory in to_copy {
+        let src = src_dir.join("../..").join(directory);
+        let dst = shoop_lib_dir.join(directory);
+        copy_dir(&src, &dst)
+            .expect(&format!("Failed to copy {} to {}",
+                            src.display(),
+                            dst.display()));
+    }
 
     // Build ShoopDaLoop wheel
     println!("Building wheel...");

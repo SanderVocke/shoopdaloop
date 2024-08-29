@@ -18,7 +18,7 @@ from PySide6.QtQml import QJSValue
 from .Task import Task
 from .Tasks import Tasks
 from .ShoopPyObject import *
-from ..directories import installation_dir, scripts_dir
+import shoop_app_info
 from ..recursive_jsvalue_convert import recursively_convert_jsvalue
 
 from shoopdaloop.lib.logging import Logger
@@ -42,16 +42,24 @@ class FileIO(ShoopQObject):
     ######################
     
     @ShoopSlot(result=str)
-    def get_installation_directory(self):
-        return installation_dir()
+    def get_qml_directory(self):
+        return shoop_app_info.qml_dir
     
     @ShoopSlot(result=str)
-    def get_scripts_directory(self):
-        return scripts_dir()
-
+    def get_lua_directory(self):
+        return shoop_app_info.lua_dir
+    
     @ShoopSlot(result=str)
-    def get_scripts_directory(self):
-        return scripts_dir()
+    def get_python_directory(self):
+        return shoop_app_info.py_dir
+    
+    @ShoopSlot(result=str)
+    def get_resource_directory(self):
+        return shoop_app_info.resource_dir
+    
+    @ShoopSlot(result=str)
+    def get_schemas_directory(self):
+        return shoop_app_info.schemas_dir
     
     def save_data_to_soundfile_impl(self, filename, sample_rate, data):
         try:

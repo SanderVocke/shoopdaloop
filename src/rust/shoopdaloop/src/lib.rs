@@ -8,7 +8,7 @@ pub mod add_lib_search_path;
 pub mod shoop_rust;
 
 pub fn shoopdaloop_main(
-    shoop_lib_path : &Path
+    shoop_app_info_module : Bound<'py, PyModule>
 ) -> PyResult<()> {
     // Get the command-line arguments
     let args: Vec<String> = env::args().collect();
@@ -26,9 +26,6 @@ pub fn shoopdaloop_main(
 
         // Expose Rust functionality to Python modules
         {
-            let shoop_app_info_module = shoop_app_info::create_py_module
-                                                    (py, shoop_lib_path)
-                                                    .unwrap();
             sys.getattr("modules")?.set_item("shoop_app_info",
                                             shoop_app_info_module)?;
         }

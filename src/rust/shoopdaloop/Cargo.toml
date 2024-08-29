@@ -18,3 +18,4 @@ frontend = { path = "../frontend" }
 [build-dependencies]
 glob = "0.3"
 cmake = "0.1"
+copy_dir = "0.1.3"
