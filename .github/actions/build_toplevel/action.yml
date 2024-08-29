@@ -72,7 +72,7 @@ runs:
       printf "\n\n\n\n\n\n"
   - name: Build with Cargo
     id: buildbase
-    uses: ./.github/actions/build_wheel
+    uses: ./.github/actions/build_base
     with:
       variant_name: ${{ inputs.name }}
       # python: ${{ inputs.python }}
