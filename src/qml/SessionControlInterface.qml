@@ -2,7 +2,7 @@ import QtQuick 6.6
 import ShoopDaLoop.PythonLogger
 
 import ShoopConstants
-import '../midi.js' as Midi
+import 'js/midi.js' as Midi
 
 LuaControlInterface {
     id: root

@@ -23,7 +23,7 @@
 //SOFTWARE.
 
 import QtQuick 6.6
-import "../../third_party/QtMaterialDesignIcons/qml/MaterialDesignIconGlyphs.js" as MaterialGlyphs
+import "third_party/QtMaterialDesignIcons/qml/MaterialDesignIconGlyphs.js" as MaterialGlyphs
 
 Item {
     id: root
@@ -51,6 +51,6 @@ Item {
 
     FontLoader {
         id: materialFont
-        source: "../../third_party/QtMaterialDesignIcons/resources/materialdesignicons-webfont.ttf"
+        source: "third_party/QtMaterialDesignIcons/resources/materialdesignicons-webfont.ttf"
     }
 }

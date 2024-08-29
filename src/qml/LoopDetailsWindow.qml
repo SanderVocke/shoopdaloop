@@ -3,7 +3,7 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.PythonLogger
 
-import '../mode_helpers.js' as ModeHelpers
+import 'js/mode_helpers.js' as ModeHelpers
 
 ApplicationWindow {
     property var loop_widget

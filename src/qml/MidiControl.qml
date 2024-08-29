@@ -1,8 +1,8 @@
 import QtQuick 6.6
 import ShoopDaLoop.PythonLogger
 
-import '../midi.js' as Midi
-import '../midi_control.js' as Js
+import 'js/midi.js' as Midi
+import 'js/midi_control.js' as Js
 
 Item {
     id: root

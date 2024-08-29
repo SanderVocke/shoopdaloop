@@ -5,7 +5,7 @@ import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.PythonCompositeLoop
 
 import ShoopConstants
-import '../mode_helpers.js' as ModeHelpers
+import 'js/mode_helpers.js' as ModeHelpers
 
 Item {
     id: root

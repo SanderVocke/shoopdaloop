@@ -1,4 +1,4 @@
-.import "../../type_checks.js" as TypeChecks
+.import "../js/type_checks.js" as TypeChecks
 
 function testDeepEqual(object1, object2, log_cb=console.log, crumbs=[]) {
     const keys1 = Object.keys(object1);

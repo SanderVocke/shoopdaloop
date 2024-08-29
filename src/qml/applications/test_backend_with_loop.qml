@@ -4,7 +4,7 @@ import QtQuick.Controls.Material 6.6
 import QtQuick.Dialogs
 
 import ".."
-import "../../generate_session.js" as GenerateSession
+import ""../js/generate_session.js" as GenerateSession
 import ShoopConstants
 
 ApplicationWindow {

@@ -7,8 +7,8 @@ import ShoopDaLoop.Rust
 
 import ShoopConstants
 
-import '../qml_url_to_filename.js' as UrlToFilename
-import '../delay.js' as Delay
+import 'js/qml_url_to_filename.js' as UrlToFilename
+import 'js/delay.js' as Delay
 
 Item {
     id: root

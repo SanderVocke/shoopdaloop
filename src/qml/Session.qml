@@ -6,7 +6,7 @@ import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.PythonControlHandler
 import ShoopDaLoop.PythonControlInterface
 
-import "../generate_session.js" as GenerateSession
+import "./js/generate_session.js" as GenerateSession
 import ShoopConstants
 
 Rectangle {

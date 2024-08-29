@@ -1,8 +1,8 @@
 import QtQuick 6.6
 
 import ShoopConstants
-import '../../midi.js' as Midi
-import '../../midi_control.js' as MidiControl
+import 'js/../midi.js' as Midi
+import 'js/../midi_control.js' as MidiControl
 import './testfilename.js' as TestFilename
 import '..'
 

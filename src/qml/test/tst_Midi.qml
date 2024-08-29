@@ -4,9 +4,9 @@ import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
-import '../../generate_session.js' as GenerateSession
+import '"../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
-import '../../midi.js' as Midi
+import 'js/../midi.js' as Midi
 import '..'
 
 ShoopTestFile {

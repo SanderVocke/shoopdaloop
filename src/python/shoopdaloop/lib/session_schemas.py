@@ -22,7 +22,7 @@ def validate_single_object(obj):
     schema_str = obj['schema']
     schema_name = schema_str.split('.')[0]
     schema_version = schema_str.split('.')[1]
-    schema_filename = '{}/{}.{}.json'.format(
+    schema_filename = '{}/schemas/{}.{}.json'.format(
         shoop_schemas_dir,
         schema_name,
         schema_version

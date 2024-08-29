@@ -7,7 +7,7 @@ import QtQuick.Dialogs
 
 import ShoopDaLoop.PythonLogger
 
-import '../qml_url_to_filename.js' as UrlToFilename
+import 'js/qml_url_to_filename.js' as UrlToFilename
 
 Dialog {
     id: root

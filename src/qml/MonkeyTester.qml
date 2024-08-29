@@ -3,7 +3,7 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.PythonLogger
 import ShoopConstants
-import "../generate_session.js" as GenerateSession
+import "./js/generate_session.js" as GenerateSession
 
 Item {
     id: root

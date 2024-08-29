@@ -2,7 +2,7 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 
-import "../generate_session.js" as GenerateSession
+import "./js/generate_session.js" as GenerateSession
 
 import ShoopDaLoop.PythonLogger
 

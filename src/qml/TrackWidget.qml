@@ -5,7 +5,7 @@ import QtQuick.Window
 import ShoopDaLoop.PythonLogger
 
 import ShoopConstants
-import "../generate_session.js" as GenerateSession
+import "./js/generate_session.js" as GenerateSession
 
 // The track widget displays the state of a track (collection of
 // loopers with shared settings/control).

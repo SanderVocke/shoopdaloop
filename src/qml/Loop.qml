@@ -3,7 +3,7 @@ import ShoopDaLoop.PythonLogger
 import QtQuick 6.6
 
 import ShoopConstants
-import '../mode_helpers.js' as ModeHelpers
+import 'js/mode_helpers.js' as ModeHelpers
 
 PythonLoop {
     property bool loaded : initialized

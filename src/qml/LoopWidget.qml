@@ -5,9 +5,9 @@ import QtQuick.Dialogs
 import ShoopDaLoop.PythonLogger
 import ShoopConstants
 
-import '../mode_helpers.js' as ModeHelpers
-import '../stereo.js' as Stereo
-import '../qml_url_to_filename.js' as UrlToFilename
+import 'js/mode_helpers.js' as ModeHelpers
+import 'js/stereo.js' as Stereo
+import 'js/qml_url_to_filename.js' as UrlToFilename
 
 // The loop widget allows manipulating a single loop within a track.
 Item {

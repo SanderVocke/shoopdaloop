@@ -6,7 +6,7 @@ import QtQuick.Dialogs
 import ShoopDaLoop.Rust
 
 import ".."
-import "../../generate_session.js" as GenerateSession
+import "../js/generate_session.js" as GenerateSession
 
 ApplicationWindow {
     visible: true

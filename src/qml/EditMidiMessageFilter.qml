@@ -4,8 +4,8 @@ import QtQuick.Controls.Material 6.6
 import QtQuick.Layouts
 import ShoopDaLoop.PythonLogger
 
-import '../midi.js' as Midi
-import '../midi_control.js' as MidiControl
+import 'js/midi.js' as Midi
+import 'js/midi_control.js' as MidiControl
 import 'test/testDeepEqual.js' as TestDeepEqual
 
 Column {
