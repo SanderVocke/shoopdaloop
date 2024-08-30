@@ -118,7 +118,7 @@ runs:
     if: ${{ inputs.package_kind }}
     uses: ./.github/actions/build_package
     with:
-      input_path: ${{ steps.cwd.outputs.cwd }}/distribution/pyinstaller/dist/shoopdaloop${{ inputs.appbundle && '.app' || '' }}
+      cargo_build_path: ${{ steps.build_base.outputs.build_dir }}
       package_kind: ${{ inputs.package_kind }}
       upload_name: package_${{ inputs.name }}
       upload_release_assets: ${{ inputs.upload_release_assets }}
