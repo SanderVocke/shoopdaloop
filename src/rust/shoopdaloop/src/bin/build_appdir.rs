@@ -26,7 +26,7 @@ fn main() {
     let src_path = file_path.ancestors().nth(6).unwrap();
 
     let usage = || {
-        println!("Usage: build_shoop_package shoopdaloop_executable target_dir");
+        println!("Usage: build_appdir shoopdaloop_executable target_dir");
         println!("  the target directory should not exist, but its parent should.");
         std::process::exit(1);
     };
