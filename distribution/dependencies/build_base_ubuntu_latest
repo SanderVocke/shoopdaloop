@@ -11,6 +11,7 @@ lcov
 ruby
 rpm
 libarchive-tools
+desktop-file-utils
 
 # libraries
 libglib2.0-0

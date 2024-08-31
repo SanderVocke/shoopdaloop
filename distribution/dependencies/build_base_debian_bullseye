@@ -12,6 +12,7 @@ ruby
 rpm
 libarchive-tools
 libclang-dev
+desktop-file-utils
 
 # libraries
 libglib2.0-0
