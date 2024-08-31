@@ -25,3 +25,6 @@ gcc
 
 #for checkout
 git
+
+#for appimage
+fuse3

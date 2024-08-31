@@ -27,6 +27,7 @@ libsndfile1
 lcov
 gcc
 procps
+fuse3
 
 # python
 python3-build
