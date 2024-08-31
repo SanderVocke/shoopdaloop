@@ -67,11 +67,11 @@ runs:
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
-      echo "Building wheel"
+      echo "Building"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Build with Cargo
-    id: buildbase
+    id: build_base
     uses: ./.github/actions/build_base
     with:
       variant_name: ${{ inputs.name }}
