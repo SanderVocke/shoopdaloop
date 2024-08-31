@@ -1,5 +1,5 @@
-name: prepare_build
-description: Prepare for building Shoopdaloop wheels
+name: install_qt_and_pyside
+description: Install Qt and build PySide on it
 
 
 inputs:
@@ -13,7 +13,7 @@ inputs:
 
 outputs:
   qt_root_dir:
-    description: "Location where Qt was installed
+    description: "Location where Qt was installed"
     value: ${{ steps.qt_env.outputs.qt_root_dir }}
 
 runs:
