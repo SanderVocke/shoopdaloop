@@ -1,0 +1,50 @@
+name: prepare_build
+description: Prepare for building Shoopdaloop wheels
+
+
+inputs:
+  variant:
+    required: true
+    description: "platform variant"
+  python:
+    required: true
+    default: python3
+    description: "Python executable to use"
+
+outputs:
+  qt_root_dir:
+    description: "Location where Qt was installed
+    value: ${{ steps.qt_env.outputs.qt_root_dir }}
+
+runs:
+  using: "composite"
+  steps:
+  - name: Install Qt (Windows)
+    uses: jurplel/install-qt-action@v4
+    if: ${{ inputs.variant == 'windows' }}
+    with:
+      cache: true
+      version: 6.6.3
+      arch: win64_msvc2019_64
+      setup-python: false
+  - name: Install Qt
+    uses: jurplel/install-qt-action@v4
+    if: ${{ inputs.variant != 'windows' }}
+    with:
+      cache: true
+      version: 6.6.3
+      install-deps: false
+      setup-python: false
+  - name: Env for Qt
+    id: qt_env
+    shell: wrap-shell {0}
+    run: |
+       echo "qt_root_dir=$QT_ROOT_DIR" | tee -a $GITHUB_OUTPUT
+      
+  - name: Build PySide
+    run: |
+       git clone --single-branch --branch 6.6.3.1 https://code.qt.io/pyside/pyside-setup
+       cd pyside-setup
+       ${{ inputs.python }} -m pip install -r requirements.txt
+       ${{ inputs.python }} setup.py build --qtpaths=$QT_ROOT_DIR/bin/qtpaths --ignore-git --parallel 4
+       ${{ inputs.python }} setup.py install --qtpaths=$QT_ROOT_DIR/bin/qtpaths --ignore-git --parallel 4

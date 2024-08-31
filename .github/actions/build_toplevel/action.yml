@@ -58,6 +58,7 @@ runs:
     uses: ./.github/actions/prepare_build
     with:
       variant: ${{ inputs.prepare_kind }}
+      python: ${{ inputs.python }}
   - name: Set overrides
     shell: wrap-shell {0}
     run: |
