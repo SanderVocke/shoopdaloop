@@ -42,6 +42,7 @@ runs:
        echo "qt_root_dir=$QT_ROOT_DIR" | tee -a $GITHUB_OUTPUT
       
   - name: Build PySide
+    shell: wrap-shell {0}
     run: |
        git clone --single-branch --branch 6.6.3.1 https://code.qt.io/pyside/pyside-setup
        cd pyside-setup
