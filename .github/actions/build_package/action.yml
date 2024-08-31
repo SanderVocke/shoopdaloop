@@ -48,7 +48,7 @@ runs:
       wget https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
       chmod +x appimagetool-x86_64.AppImage
       APPIMAGE_NAME=shoopdaloop-${{ env.version }}.${{ env.gitversion }}.$(uname -m).AppImage
-      ./appimagetool-x86_64.AppImage appdir $APPIMAGE_NAME
+      APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool-x86_64.AppImage appdir $APPIMAGE_NAME
       echo "pkg=$APPIMAGE_NAME" | tee -a $GITHUB_ENV
   - uses: actions/upload-artifact@v4
     with:
