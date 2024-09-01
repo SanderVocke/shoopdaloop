@@ -6,6 +6,10 @@ inputs:
   variant:
     required: true
     description: "platform variant"
+  python:
+    required: true
+    default: python3
+    description: "Python executable to use"
 
 outputs:
   prepend_build_cmd:
@@ -40,25 +44,11 @@ runs:
       echo "==== Rust toolchain list ===="
       rustup toolchain list
 
-  - name: Install Qt (Windows)
-    uses: jurplel/install-qt-action@v4
-    if: ${{ inputs.variant == 'windows' }}
+  - name: Install Qt and PySide
+    uses: ./.github/actions/install_qt_and_pyside
     with:
-      cache: true
-      version: 6.6.3
-      arch: win64_msvc2019_64
-      setup-python: false
-  - name: Install Qt
-    uses: jurplel/install-qt-action@v4
-    if: ${{ inputs.variant != 'windows' }}
-    with:
-      cache: true
-      version: 6.6.3
-      install-deps: false
-      setup-python: false
-  - name: Env for Qt
-    shell: wrap-shell {0}
-    run: echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6" > prepend_build_cmd.txt
+      variant: ${{ inputs.variant }}
+      python: ${{ inputs.python }}
 
   - name: Prepare linux
     if: ${{ inputs.variant == 'linux' }}
