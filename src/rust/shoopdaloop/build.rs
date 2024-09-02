@@ -91,7 +91,7 @@ fn main() {
             rebuild_venv = false;
         }
     }
-    
+
     if rebuild_venv {
         if venv_dir.exists() {
             std::fs::remove_dir_all(&venv_dir).unwrap();
@@ -112,19 +112,9 @@ fn main() {
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
             .status().unwrap();
-        
+
         std::fs::write(&prev_wheel_file, wheel_hash.to_string()).unwrap();
     }
-
-    let site_packages_dir : PathBuf;
-    {
-        let pattern = format!("{}/**/site-packages", venv_dir.to_str().unwrap());
-        let mut sp_glob = glob(&pattern).unwrap();
-        site_packages_dir = sp_glob.next()
-                .expect(format!("No site-packages dir found @ {}", pattern).as_str())
-                .unwrap();
-    }
-    let shoop_package_dir = site_packages_dir.join("shoopdaloop");
 
     // Tell PyO3 where to find our venv Python
     println!("Setting PYO3_PYTHON to {}", venv_python.to_str().unwrap());
@@ -133,6 +123,7 @@ fn main() {
     // Set RPATH
     println!("cargo:rustc-link-arg=-Wl,-rpath,./shoop_lib"); // For builtin libraries
     println!("cargo:rustc-link-arg=-Wl,-rpath,./shoop_lib/py/PySide6/Qt/lib"); // For the Qt distribution that comes with PySide6
+    println!("cargo:rustc-link-arg=-Wl,-rpath,./external_lib"); // For bundled dependency libraries
 
     // Rebuild if changed
     println!("cargo:rerun-if-changed=build.rs");

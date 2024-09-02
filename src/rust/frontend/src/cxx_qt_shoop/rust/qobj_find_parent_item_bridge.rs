@@ -41,7 +41,7 @@ pub mod ffi {
 
         #[inherit]
         #[qsignal]
-        unsafe fn parentChanged(self : Pin<&mut FindParentItem>, parent : *mut QQuickItem);
+        unsafe fn parent_changed(self : Pin<&mut FindParentItem>, parent : *mut QQuickItem);
 
         #[qinvokable]
         unsafe fn rescan(self : Pin<&mut FindParentItem>);

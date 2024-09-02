@@ -71,7 +71,7 @@ pub mod ffi {
 
         #[inherit]
         #[qsignal]
-        unsafe fn parentChanged(self : Pin<&mut AutoConnect>, parent : *mut QQuickItem);
+        unsafe fn parent_changed(self : Pin<&mut AutoConnect>, parent : *mut QQuickItem);
 
         #[qsignal]
         fn connected(self : Pin<&mut AutoConnect>);

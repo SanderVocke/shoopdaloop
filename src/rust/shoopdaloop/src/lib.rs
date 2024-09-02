@@ -1,7 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyString};
 use std::env;
-use std::path::Path;
 use shoop_app_info::ShoopAppInfo;
 
 pub mod shoop_app_info;

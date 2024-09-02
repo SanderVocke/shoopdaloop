@@ -58,11 +58,6 @@ runs:
     uses: ./.github/actions/prepare_build
     with:
       variant: ${{ inputs.prepare_kind }}
-  - name: Set overrides
-    shell: wrap-shell {0}
-    run: |
-      echo 'cmake.build_type = "${{ inputs.cmake_build_type }}"' > py-build-cmake.local.toml
-      echo 'cmake.options = { ${{ inputs.cmake_opts }} }' >> py-build-cmake.local.toml
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -75,7 +70,7 @@ runs:
     uses: ./.github/actions/build_base
     with:
       variant_name: ${{ inputs.name }}
-      # python: ${{ inputs.python }}
+      python: ${{ inputs.python }}
       prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
       # windows: ${{ inputs.prepare_kind == 'windows' && 'true' || 'false' }}
       # rename_wheel_sed: ${{ inputs.rename_wheel_sed }}
