@@ -39,7 +39,7 @@ libpcre.so.3
 libpcre2-16.so.0
 libpng16.so.16
 libproxy.so.1
-libpython3.10.so.1.0
+libpython3.*.so.*
 libsystemd.so.0
 libxkbcommon.so.0
 libzstd.so.1
