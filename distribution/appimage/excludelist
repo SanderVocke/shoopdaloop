@@ -46,6 +46,7 @@ libz.so.1
 libgpg-error.so.0
 libjack.so.0
 libpipewire-0.3.so.0
+libshoopdaloop.so
 libxcb-dri3.so.0
 libxcb-dri2.so.0
 libfribidi.so.0

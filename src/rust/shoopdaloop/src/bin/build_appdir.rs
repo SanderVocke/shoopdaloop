@@ -24,6 +24,7 @@ fn recursive_dir_cpy (src: &Path, dst: &Path) -> std::io::Result<()> {
 }
 
 fn get_dependency_libs (exec : &Path,
+                        src_dir : &Path,
                         excludelist_path : &Path,
                         includelist_path : &Path) -> Result<Vec<PathBuf>, anyhow::Error> {
     let mut rval : Vec<PathBuf> = Vec::new();
@@ -35,60 +36,52 @@ fn get_dependency_libs (exec : &Path,
     let includes : HashSet<&str> = includelist.lines().collect();
     let mut used_includes : HashSet<String> = HashSet::new();
 
-    let ldd_output = Command::new("ldd")
-       .args(&[exec.to_str().unwrap()])
-       .output()?;
+    let command = "sh";
+    let list_deps_script = src_dir.join("scripts/list_dependencies.sh");
+    let args = [
+        list_deps_script.to_str().unwrap(),
+        exec.to_str().unwrap(),
+        "-b", "dummy",
+        "--quit-after", "0"
+    ];
+    println!("Running command for determining dependencies: {} {}", command, args.join(" "));
+    let ldd_output = Command::new(command).args(&args).output()?;
     let ldd_output = std::str::from_utf8(&ldd_output.stdout)?;
 
     for line in ldd_output.lines() {
-        // Skip status lines and specific libraries
-        if line.contains("no version information available")
-            || line.contains("linux-vdso")
-            || line.contains("ld-linux")
-            || line.contains("not a dynamic executable")
-        {
-            println!("  Note: skipped ldd line (filtered): {}", line);
+        if line.trim().is_empty() {
             continue;
         }
-
         // Extract the full path to the library
-        if let Some(parts) = line.split_once("=>") {
-            let mut path_part = parts.1.trim();
-            if let Some(parts) = path_part.split_once(" ") {
-                path_part = parts.0.trim();
+        let path = PathBuf::from(line.trim());
+        let path_str = path.to_str().ok_or(anyhow::anyhow!("cannot find dependency"))?;
+        let path_filename = path.file_name().unwrap().to_str().unwrap();
+        if path_filename.contains(".so") {
+            let pattern_match = |s : &str, p : &str| regex::Regex::new(
+                &s.replace(".", "\\.")
+                    .replace("*", ".*")
+                    .replace("+", "\\+")
+            ).unwrap().is_match(p);
+            let in_excludes = excludes.iter().any(|e| pattern_match(e, path_filename));
+            let in_includes = includes.iter().any(|e| pattern_match(e, path_filename));
+            if !path.exists() {
+                error_msgs.push_str(format!("{}: doesn't exist\n", path_str).as_str());
+                continue;
+            } else if in_excludes && in_includes {
+                error_msgs.push_str(format!("{}: is in includes and excludes\n", path_str).as_str());
+                continue;
+            } else if in_excludes {
+                println!("  Note: skipping excluded dependency {}", &path_str);
+                continue;
+            } else if !in_includes {
+                error_msgs.push_str(format!("{}: is not in include list\n", path_filename).as_str());
+                continue;
             }
-            let path = PathBuf::from(path_part);
-            let path_str = path.to_str().ok_or(anyhow::anyhow!("cannot find dependency"))?;
-            let path_filename = path.file_name().unwrap().to_str().unwrap();
-            if path_filename.contains(".so") {
-                let pattern_match = |s : &str, p : &str| regex::Regex::new(
-                    &s.replace(".", "\\.")
-                      .replace("*", ".*")
-                      .replace("+", "\\+")
-                ).unwrap().is_match(p);
-                let in_excludes = excludes.iter().any(|e| pattern_match(e, path_filename));
-                let in_includes = includes.iter().any(|e| pattern_match(e, path_filename));
-                if !path.exists() {
-                    error_msgs.push_str(format!("{}: doesn't exist\n", path_str).as_str());
-                    continue;
-                } else if in_excludes && in_includes {
-                    error_msgs.push_str(format!("{}: is in includes and excludes\n", path_str).as_str());
-                    continue;
-                } else if in_excludes {
-                    println!("  Note: skipping excluded dependency {}", &path_str);
-                    continue;
-                } else if !in_includes {
-                    error_msgs.push_str(format!("{}: is not in include list\n", path_filename).as_str());
-                    continue;
-                }
 
-                used_includes.insert(path_filename.to_string());
-                rval.push(path);
-            } else {
-                println!("  Note: skipped ldd line (no =>): {}", line);
-            }
+            used_includes.insert(path_filename.to_string());
+            rval.push(path);
         } else {
-            println!("  Note: skipped ldd line (no =>): {}", line);
+            println!("  Note: skipped ldd line (not a .so): {}", line);
         }
     }
 
@@ -173,10 +166,27 @@ fn main_impl() -> Result<(), anyhow::Error> {
         )?;
     }
 
+    println!("Relocating libraries...");
+    let lib_dir = target_dir.join("lib");
+    std::fs::create_dir(&lib_dir).unwrap();
+    let mut lib_glob = glob(format!("{}/**/*.so*", target_dir.to_str().unwrap()).as_str()).unwrap();
+    for library in lib_glob {
+        let library = library.unwrap();
+
+        // Ignore if there is ".abi3." in the path
+        if library.clone().to_str().unwrap().contains(".abi3.") {
+            continue;
+        }
+
+        
+        let file_name = library.file_name().unwrap();
+        std::fs::rename(&library, &lib_dir.join(file_name)).unwrap();
+    }
+
     println!("Bundling dependencies...");
     let excludelist_path = src_path.join("distribution/appimage/excludelist");
     let includelist_path = src_path.join("distribution/appimage/includelist");
-    let libs = get_dependency_libs (exe_path, &excludelist_path, &includelist_path)?;
+    let libs = get_dependency_libs (exe_path, src_path, &excludelist_path, &includelist_path)?;
     let deps_dir = target_dir.join("external_lib");
     std::fs::create_dir(&deps_dir)?;
     for lib in libs {
