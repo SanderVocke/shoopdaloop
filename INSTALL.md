@@ -17,7 +17,7 @@ ShoopDaLoop is distributed either as a portable folder or an OS-specific install
 >  - several GitHub linked repo's;
 >  - packages pulled in during the CI build from PyPi repositories;
 >  - in case of "fat" packages: system libraries duplicated from the build distro;
-> 
+>
 > None of the above are created, controlled or thoroughly audited by me. For maximum control, you can build your own packages and dependencies from source.
 
 There are future plans for an AUR package for Arch, which links against the distro's libraries. For other Linuxes, I do not plan to create and maintain additional packages.
@@ -30,9 +30,9 @@ Make sure all the subrepositories are checked out (`git submodule init; git subm
 
 ### Building from source
 
-ShoopDaLoop's build is governed by Cargo. To build, simply run `cargo build` in the root directory.
+ShoopDaLoop's build is governed by Cargo. To build, simply run `cargo build` in the root directory. This generates `target/.../shoopdaloop(.exe)` and `target/.../shoopdaloop_dev(.exe)`. `shoopdaloop_dev` can be directly used to run within the source tree. For installation options, see below.
 
-However, be aware that a complex combination of build systems is hidden behind this cargo build front-end. It involves C/C++ compilers, `cmake`, `meson`, Python `setuptools`, code generation and more. I am working on reducing the dependencies and tools involved, but YMMV in having to install additional tools to run the build successfully.
+Be aware that a complex combination of build systems is hidden behind this cargo build front-end. It involves C/C++ compilers, `cmake`, `meson`, Python `setuptools`, code generation and more. I am working on reducing the dependencies and tools involved, but YMMV in having to install additional tools to run the build successfully.
 
 Until this is all more stable and simple, the golden reference for how to build ShoopDaLoop is in the GitHub Actions build scripts included in the repo (`.github/workflows/...`).
 
@@ -42,7 +42,7 @@ After building ShoopDaLoop in-tree as described above, there are several redistr
 
 #### AppDir / AppImage (Linux)
 
-During the in-tree build, Cargo also produces the executable `build_appdir`. Run it as: `build_appdir shoopdaloop_executable target_dir`. It will make an AppDir as `target_dir`. You can use AppImage tooling to compress this into an AppImage.
+During the in-tree build, Cargo also produces the executable `build_appdir`. Run it as: `build_appdir shoopdaloop shoopdaloop_dev target_dir`, where `shoopdaloop` and `shoopdaloop_dev` point to the built executables. It will make an AppDir as `target_dir`. The `AppRun` file in the target directory can be run. You can use AppImage tooling to compress this into an AppImage (i.e. `appimagetool AppDir ShoopDaLoop.AppImage`).
 
 ### Editable development build
 
