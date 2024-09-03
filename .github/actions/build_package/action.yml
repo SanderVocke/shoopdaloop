@@ -44,6 +44,7 @@ runs:
     id: build_appimage
     shell: wrap-shell {0}
     run: |
+      export QT_QPA_PLATFORM=offscreen
       ${{ inputs.cargo_build_path }}/build_appdir ${{ inputs.cargo_build_path }}/shoopdaloop ${{ inputs.cargo_build_path }}/shoopdaloop_dev $(pwd)/appdir
       wget https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
       chmod +x appimagetool-x86_64.AppImage

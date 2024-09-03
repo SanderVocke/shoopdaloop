@@ -13,6 +13,7 @@ rpm
 libarchive-tools
 libclang-dev
 desktop-file-utils
+strace
 
 # libraries
 libglib2.0-0
