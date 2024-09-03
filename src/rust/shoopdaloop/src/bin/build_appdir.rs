@@ -62,8 +62,8 @@ fn get_dependency_libs (exe : &Path,
                     .replace("*", ".*")
                     .replace("+", "\\+")
             ).unwrap().is_match(p);
-            let in_excludes = excludes.iter().any(|e| pattern_match(e, path_filename));
-            let in_includes = includes.iter().any(|e| pattern_match(e, path_filename));
+            let in_excludes = excludes.iter().any(|e| pattern_match(e, path_str));
+            let in_includes = includes.iter().any(|e| pattern_match(e, path_str));
             if !path.exists() {
                 error_msgs.push_str(format!("{}: doesn't exist\n", path_str).as_str());
                 continue;
@@ -167,34 +167,39 @@ fn main_impl() -> Result<(), anyhow::Error> {
         )?;
     }
 
-    println!("Relocating libraries...");
-    let lib_dir = target_dir.join("lib");
-    std::fs::create_dir(&lib_dir).unwrap();
-    let mut lib_glob = glob(format!("{}/**/*.so*", target_dir.to_str().unwrap()).as_str()).unwrap();
-    for library in lib_glob {
-        let library = library.unwrap();
+    // println!("Relocating libraries...");
+    // let lib_dir = target_dir.join("lib");
+    // std::fs::create_dir(&lib_dir).unwrap();
+    // let mut lib_glob = glob(format!("{}/**/*.so*", target_dir.to_str().unwrap()).as_str()).unwrap();
+    // for library in lib_glob {
+    //     let library = library.unwrap();
 
-        // Ignore if there is ".abi3." in the path
-        if library.clone().to_str().unwrap().contains(".abi3.") {
-            continue;
-        }
+    //     // Ignore if there is ".abi3." in the path
+    //     if library.clone().to_str().unwrap().contains(".abi3.") {
+    //         continue;
+    //     }
 
         
-        let file_name = library.file_name().unwrap();
-        std::fs::rename(&library, &lib_dir.join(file_name)).unwrap();
-    }
+    //     let file_name = library.file_name().unwrap();
+    //     let target_path = lib_dir.join(file_name);
+    //     if target_path.exists() {
+    //         std::fs::remove_file(&library)?;
+    //     } else {
+    //         std::fs::rename(&library, &target_path)?;
+    //     }
+    // }
 
     println!("Bundling dependencies...");
+    let dynlib_dir = target_dir.join("lib");
+    std::fs::create_dir(&dynlib_dir)?;
     let excludelist_path = src_path.join("distribution/appimage/excludelist");
     let includelist_path = src_path.join("distribution/appimage/includelist");
     let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path)?;
-    let deps_dir = target_dir.join("external_lib");
-    std::fs::create_dir(&deps_dir)?;
     for lib in libs {
         println!("  Bundling {}", lib.to_str().unwrap());
         std::fs::copy(
             lib.clone(),
-            deps_dir.clone().join(lib.file_name().unwrap())
+            dynlib_dir.clone().join(lib.file_name().unwrap())
         )?;
     }
 

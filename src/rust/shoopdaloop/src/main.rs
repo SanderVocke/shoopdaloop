@@ -11,6 +11,7 @@ fn main() -> PyResult<()> {
     let executable_path = env::current_exe().unwrap();
     let installed_path = executable_path.parent().unwrap().canonicalize().unwrap();
     let shoop_lib_path = installed_path.join("shoop_lib");
+    let lib_path = installed_path.join("lib");
     let bundled_pythonpath_shoop_lib = std::fs::canonicalize(&shoop_lib_path).unwrap();
     let bundled_pythonpath_root = std::fs::canonicalize(&shoop_lib_path.join("py")).unwrap();
     if bundled_pythonpath_root.exists() {
@@ -22,6 +23,7 @@ fn main() -> PyResult<()> {
     }
 
     add_lib_search_path(&shoop_lib_path);
+    add_lib_search_path(&lib_path);
 
     let mut app_info = shoop_app_info::ShoopAppInfo::default();
     app_info.version = env!("CARGO_PKG_VERSION").to_string();

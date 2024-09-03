@@ -121,9 +121,9 @@ fn main() {
     env::set_var("PYO3_PYTHON", venv_python.to_str().unwrap());
 
     // Set RPATH
-    println!("cargo:rustc-link-arg=-Wl,-rpath,./shoop_lib"); // For builtin libraries
-    println!("cargo:rustc-link-arg=-Wl,-rpath,./shoop_lib/py/PySide6/Qt/lib"); // For the Qt distribution that comes with PySide6
-    println!("cargo:rustc-link-arg=-Wl,-rpath,./external_lib"); // For bundled dependency libraries
+    println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/shoop_lib"); // For builtin libraries
+    println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/shoop_lib/py/PySide6/Qt/lib"); // For the Qt distribution that comes with PySide6
+    println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/lib"); // For bundled dependency libraries
 
     // Rebuild if changed
     println!("cargo:rerun-if-changed=build.rs");
