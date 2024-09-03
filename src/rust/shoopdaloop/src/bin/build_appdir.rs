@@ -197,7 +197,7 @@ fn main() {
     match main_impl() {
         Ok(()) => (),
         Err(error) => {
-            println!("AppDir creation failed: {:?}", error);
+            eprintln!("AppDir creation failed: {}.\n  Backtrace: {:?}", error, error.backtrace());
             std::process::exit(1);
         }
     }

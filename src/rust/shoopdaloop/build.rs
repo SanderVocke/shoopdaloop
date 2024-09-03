@@ -100,11 +100,16 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
         // Create a env in OUT_DIR
         println!("Creating portable Python...");
+        let py_version = Command::new("sh")
+                                .args(&["-c", "python --version | sed -r 's/.*3\\./3\\./g'"])
+                                .output()?;
+        let py_version = std::str::from_utf8(&py_version.stdout)?;
+        let py_version = py_version.trim();
         Command::new("pyenv")
-                .args(&["install", "--skip-existing", "3.9"])
+                .args(&["install", "--skip-existing", py_version])
                 .status()?;
         let py_location = Command::new("pyenv")
-                                     .args(&["prefix", "3.9"])
+                                     .args(&["prefix", &py_version])
                                      .output()?;
         let py_location = std::str::from_utf8(&py_location.stdout)?;
         let py_location = py_location.trim();
@@ -164,7 +169,7 @@ fn main() {
     match main_impl() {
         Ok(_) => {},
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("Error: {}\nBacktrace: {:?}", e, e.backtrace());
             std::process::exit(1);
         }
     }
