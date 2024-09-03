@@ -115,7 +115,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     };
 
     if args.len() != 4 {
-        bad_usage(format!("Wrong number of arguments: {} vs. 4", args.len()));
+        bad_usage(format!("Wrong number of arguments: {} vs. 3", args.len() - 1));
     }
 
     let exe_path = Path::new(&args[1]);
