@@ -4,6 +4,7 @@ use std::process::Command;
 use std::collections::HashSet;
 use glob::glob;
 use anyhow;
+use copy_dir::copy_dir;
 
 // Include generated source for remembering the OUT_DIR at build time.
 const SHOOP_BUILD_OUT_DIR : Option<&str> = option_env!("OUT_DIR");
@@ -151,14 +152,14 @@ fn main_impl() -> Result<(), anyhow::Error> {
         &lib_dir
     )?;
 
+    let target_py_env = lib_dir.join("py");
     println!("Bundling Python environment...");
     {
         let from = PathBuf::from(out_dir).join("shoop_pyenv");
-        let to = lib_dir.join("py");
-        std::fs::create_dir(&to)?;
+        std::fs::create_dir(&target_py_env)?;
         recursive_dir_cpy(
             &from,
-            &to
+            &target_py_env
         )?;
     }
 

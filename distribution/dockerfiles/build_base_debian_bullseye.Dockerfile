@@ -12,3 +12,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get -y install $(dependencies/get_dependencies.sh build_base_debian_bullseye)
 
 RUN gem install fpm
+
+RUN curl https://pyenv.run | bash
+
+ENV PATH="$PATH:/root/.pyenv/bin"

@@ -16,15 +16,22 @@ fn main() -> PyResult<()> {
     let lib_path = installed_path.join("lib");
     let bundled_pythonpath_shoop_lib = std::fs::canonicalize(&shoop_lib_path).unwrap();
     let bundled_python_home = std::fs::canonicalize(&shoop_lib_path.join("py")).unwrap();
-    let bundled_pythonpath : PathBuf;
+    let bundled_python_site_packages : PathBuf;
     {
         let pattern = format!("{}/**/site-packages", bundled_python_home.to_str().unwrap());
         let mut sp_glob = glob(&pattern).expect("Couldn't glob for site-packages");
-        bundled_pythonpath = sp_glob.next()
+        bundled_python_site_packages = sp_glob.next()
                 .expect(format!("No site-packages dir found @ {}", pattern).as_str()).unwrap();
     }
-    if bundled_python_home.exists() && bundled_pythonpath_shoop_lib.exists() && bundled_pythonpath.exists() {
-        let pythonpath = format!("{}:{}", bundled_pythonpath_shoop_lib.to_str().unwrap(), bundled_pythonpath.to_str().unwrap());
+    let bundled_python_lib_path = bundled_python_site_packages.parent().unwrap();
+    if bundled_python_home.exists() &&
+       bundled_pythonpath_shoop_lib.exists() &&
+       bundled_python_site_packages.exists() &&
+       bundled_python_lib_path.exists() {
+        let pythonpath = format!("{}:{}:{}", 
+            bundled_python_lib_path.to_str().unwrap(),
+            bundled_pythonpath_shoop_lib.to_str().unwrap(),
+            bundled_python_site_packages.to_str().unwrap());
         println!("using PYTHONPATH: {}", pythonpath.as_str());
         env::set_var("PYTHONPATH", pythonpath.as_str());
         println!("using PYTHONHOME: {}", bundled_python_home.to_str().unwrap());
