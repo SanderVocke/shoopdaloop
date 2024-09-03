@@ -58,4 +58,4 @@
 *ld.so.cache
 *libasound*
 */libQt6*
-*/*Qt*/lib*.so*
+*/*Qt*/libq*.so*
