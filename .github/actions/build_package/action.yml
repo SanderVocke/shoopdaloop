@@ -54,6 +54,9 @@ runs:
     with:
       name: ${{ inputs.upload_name }}
       path: ${{ env.pkg }}
+  
+  - name: Setup tmate session
+    uses: SanderVocke/action-tmate@master
 
   # Linux packages
   - name: Build .deb + pacman + .rpm
