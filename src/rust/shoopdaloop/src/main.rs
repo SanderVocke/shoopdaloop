@@ -1,5 +1,7 @@
 use pyo3::prelude::*;
 use std::env;
+use glob::glob;
+use std::path::PathBuf;
 
 use shoopdaloop::shoopdaloop_main;
 use shoopdaloop::add_lib_search_path::add_lib_search_path;
@@ -13,13 +15,22 @@ fn main() -> PyResult<()> {
     let shoop_lib_path = installed_path.join("shoop_lib");
     let lib_path = installed_path.join("lib");
     let bundled_pythonpath_shoop_lib = std::fs::canonicalize(&shoop_lib_path).unwrap();
-    let bundled_pythonpath_root = std::fs::canonicalize(&shoop_lib_path.join("py")).unwrap();
-    if bundled_pythonpath_root.exists() {
-        let pythonpath = format!("{}:{}", bundled_pythonpath_shoop_lib.to_str().unwrap(), bundled_pythonpath_root.to_str().unwrap());
+    let bundled_python_home = std::fs::canonicalize(&shoop_lib_path.join("py")).unwrap();
+    let bundled_pythonpath : PathBuf;
+    {
+        let pattern = format!("{}/**/site-packages", bundled_python_home.to_str().unwrap());
+        let mut sp_glob = glob(&pattern).expect("Couldn't glob for site-packages");
+        bundled_pythonpath = sp_glob.next()
+                .expect(format!("No site-packages dir found @ {}", pattern).as_str()).unwrap();
+    }
+    if bundled_python_home.exists() && bundled_pythonpath_shoop_lib.exists() && bundled_pythonpath.exists() {
+        let pythonpath = format!("{}:{}", bundled_pythonpath_shoop_lib.to_str().unwrap(), bundled_pythonpath.to_str().unwrap());
         println!("using PYTHONPATH: {}", pythonpath.as_str());
         env::set_var("PYTHONPATH", pythonpath.as_str());
+        println!("using PYTHONHOME: {}", bundled_python_home.to_str().unwrap());
+        env::set_var("PYTHONHOME", bundled_python_home.to_str().unwrap());
     } else {
-        println!("Warning: could not find PYTHONPATH for ShoopDaLoop. Attempting to run with default Python environment.");
+        println!("Warning: could not find python paths for ShoopDaLoop. Attempting to run with default Python environment.");
     }
 
     add_lib_search_path(&shoop_lib_path);

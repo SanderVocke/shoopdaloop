@@ -51,7 +51,10 @@
 */libxcb-dri3.so.0
 */libxcb.so.1
 */libz.so.1
+*/libGLX_mesa.so.0
+*/libQt6*
+*/*.cpython-*
 */shoop_lib/*
+*/shoop_pyenv/*
 *ld.so.cache
 *libasound*
-*/libGLX_mesa.so.0

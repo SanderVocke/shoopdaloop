@@ -45,7 +45,9 @@ fn get_dependency_libs (exe : &Path,
         "--quit-after", "0"
     ];
     println!("Running command for determining dependencies: {} {}", command, args.join(" "));
-    let ldd_output = Command::new(command).args(&args).output()?;
+    let ldd_output = Command::new(command)
+                             .args(&args)
+                             .output()?;
     let ldd_output = std::str::from_utf8(&ldd_output.stdout)?;
 
     for line in ldd_output.lines() {
@@ -151,14 +153,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
     println!("Bundling Python environment...");
     {
-        let from_base = PathBuf::from(out_dir).join("shoop_pyenv");
-        let from : PathBuf;
-        {
-            let pattern = format!("{}/**/site-packages", from_base.to_str().unwrap());
-            let mut sp_glob = glob(&pattern)?;
-            from = sp_glob.next()
-                    .expect(format!("No site-packages dir found @ {}", pattern).as_str())?;
-        }
+        let from = PathBuf::from(out_dir).join("shoop_pyenv");
         let to = lib_dir.join("py");
         std::fs::create_dir(&to)?;
         recursive_dir_cpy(
@@ -166,28 +161,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
             &to
         )?;
     }
-
-    // println!("Relocating libraries...");
-    // let lib_dir = target_dir.join("lib");
-    // std::fs::create_dir(&lib_dir).unwrap();
-    // let mut lib_glob = glob(format!("{}/**/*.so*", target_dir.to_str().unwrap()).as_str()).unwrap();
-    // for library in lib_glob {
-    //     let library = library.unwrap();
-
-    //     // Ignore if there is ".abi3." in the path
-    //     if library.clone().to_str().unwrap().contains(".abi3.") {
-    //         continue;
-    //     }
-
-        
-    //     let file_name = library.file_name().unwrap();
-    //     let target_path = lib_dir.join(file_name);
-    //     if target_path.exists() {
-    //         std::fs::remove_file(&library)?;
-    //     } else {
-    //         std::fs::rename(&library, &target_path)?;
-    //     }
-    // }
 
     println!("Bundling dependencies...");
     let dynlib_dir = target_dir.join("lib");
