@@ -23,7 +23,7 @@ fn recursive_dir_cpy (src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-fn get_dependency_libs (exec : &Path,
+fn get_dependency_libs (exe : &Path,
                         src_dir : &Path,
                         excludelist_path : &Path,
                         includelist_path : &Path) -> Result<Vec<PathBuf>, anyhow::Error> {
@@ -40,7 +40,7 @@ fn get_dependency_libs (exec : &Path,
     let list_deps_script = src_dir.join("scripts/list_dependencies.sh");
     let args = [
         list_deps_script.to_str().unwrap(),
-        exec.to_str().unwrap(),
+        exe.to_str().unwrap(),
         "-b", "dummy",
         "--quit-after", "0"
     ];
@@ -104,7 +104,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     let src_path = file_path.ancestors().nth(6).ok_or(anyhow::anyhow!("cannot find src dir"))?;
 
     let usage = || {
-        println!("Usage: build_appdir shoopdaloop_executable target_dir");
+        println!("Usage: build_appdir path/to/shoopdaloop path/to/shoopdaloop_dev target_dir");
         println!("  the target directory should not exist, but its parent should.");
         std::process::exit(1);
     };
@@ -114,16 +114,17 @@ fn main_impl() -> Result<(), anyhow::Error> {
         usage();
     };
 
-    if args.len() != 3 {
-        bad_usage(format!("Wrong number of arguments: {} vs. {}", args.len(), 3));
+    if args.len() != 4 {
+        bad_usage(format!("Wrong number of arguments: {} vs. 4", args.len()));
     }
 
     let exe_path = Path::new(&args[1]);
+    let dev_exe_path = Path::new(&args[2]);
     if !exe_path.is_file() {
         bad_usage("First argument is not an executable file".to_string());
     }
 
-    let target_dir = Path::new(&args[2]);
+    let target_dir = Path::new(&args[3]);
     if target_dir.exists() {
         bad_usage("Target directory already exists".to_string());
     }
@@ -186,7 +187,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     println!("Bundling dependencies...");
     let excludelist_path = src_path.join("distribution/appimage/excludelist");
     let includelist_path = src_path.join("distribution/appimage/includelist");
-    let libs = get_dependency_libs (exe_path, src_path, &excludelist_path, &includelist_path)?;
+    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path)?;
     let deps_dir = target_dir.join("external_lib");
     std::fs::create_dir(&deps_dir)?;
     for lib in libs {
