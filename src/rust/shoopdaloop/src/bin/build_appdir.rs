@@ -76,7 +76,7 @@ fn get_dependency_libs (exe : &Path,
                 println!("  Note: skipping excluded dependency {}", &path_str);
                 continue;
             } else if !in_includes {
-                error_msgs.push_str(format!("{}: is not in include list\n", path_filename).as_str());
+                error_msgs.push_str(format!("{}: is not in include list\n", path_str).as_str());
                 continue;
             }
 
