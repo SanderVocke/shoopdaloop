@@ -101,10 +101,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // Create a env in OUT_DIR
         println!("Creating portable Python...");
         let py_version = Command::new("sh")
-                                .args(&["-c", "python --version | sed -r 's/.*3\\./3\\./g'"])
+                                .args(&["-c", "python3 --version | sed -r 's/.*3\\./3\\./g'"])
                                 .output()?;
         let py_version = std::str::from_utf8(&py_version.stdout)?;
         let py_version = py_version.trim();
+        println!("Using pyenv to install {}...", py_version);
         Command::new("pyenv")
                 .args(&["install", "--skip-existing", py_version])
                 .status()?;
