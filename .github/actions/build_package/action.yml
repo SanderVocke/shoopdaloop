@@ -45,9 +45,11 @@ runs:
       export QT_QPA_PLATFORM=offscreen
       wget https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
       chmod +x appimagetool-x86_64.AppImage
+      echo "./appimagetool-x86_64.AppImage --appimage-extract-and-run $@" > appimagetool.sh
+      chmod a+x appimage.sh
       APPIMAGE_NAME=shoopdaloop.${{ env.gitversion }}.$(uname -m).AppImage
       RELEASE_APPIMAGE_NAME=shoopdaloop-${{ env.version }}.$(uname -m).AppImage
-      ${CARGO_ARTIFACTS_DIR}/package build-app-dir -a $(pwd)/appimagetool-x86_64.AppImage -o $APPIMAGE_NAME --include-tests ${CARGO_BUILD_FLAGS}
+      ${CARGO_ARTIFACTS_DIR}/package build-app-dir -a $(pwd)/appimagetool.sh -o $APPIMAGE_NAME --include-tests ${CARGO_BUILD_FLAGS}
       cp $APPIMAGE_NAME $RELEASE_APPIMAGE_NAME
       echo "pkg=$APPIMAGE_NAME" | tee -a $GITHUB_ENV
       echo "release_appimg=$RELEASE_APPIMAGE_NAME" | tee -a $GITHUB_ENV
