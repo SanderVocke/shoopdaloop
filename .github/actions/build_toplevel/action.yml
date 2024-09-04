@@ -57,13 +57,13 @@ runs:
   - name: Set Cargo build flags (release)
     if: ${{ inputs.release_build == 'true' }}
     shell: wrap-shell {0}
-    run:
+    run: |
       echo "CARGO_BUILD_FLAGS=--release" | tee -a $GITHUB_ENV
       echo "CARGO_ARTIFACTS_DIR=target/release" | tee -a $GITHUB_ENV
   - name: Set Cargo build flags (debug)
     if: ${{ inputs.release_build != 'true' }}
     shell: wrap-shell {0}
-    run:
+    run: |
       echo "CARGO_BUILD_FLAGS=" | tee -a $GITHUB_ENV
       echo "CARGO_ARTIFACTS_DIR=target/debug" | tee -a $GITHUB_ENV
   - name: Prepare
