@@ -66,6 +66,11 @@ runs:
     run: |
       echo "CARGO_BUILD_FLAGS=" | tee -a $GITHUB_ENV
       echo "CARGO_ARTIFACTS_DIR=target/debug" | tee -a $GITHUB_ENV
+  - name: Install Qoverage
+    if: ${{ inputs.coverage }}
+    uses: ./.github/actions/install_qoverage
+    with:
+      python: ${{ inputs.python }}
   - name: Prepare
     id: prepare
     uses: ./.github/actions/prepare_build
@@ -85,33 +90,11 @@ runs:
       variant_name: ${{ inputs.name }}
       python: ${{ inputs.python }}
       prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
-  # - name: Post-build steps
-  #   id: postbuild
-  #   uses: ./.github/actions/post_build
-  #   with:
-  #     variant: ${{ inputs.prepare_kind }}
-  #     wheel: ${{ steps.buildbase.outputs.wheel_filename }}
-  #     build_dir: ${{ steps.buildbase.outputs.build_dir }}
-  # - name: Find wheel
-  #   shell: wrap-shell {0}
-  #   id: find
-  #   run: |
-  #     echo "name=$(ls final_wheel/*.whl)" | tee -a $GITHUB_OUTPUT
-  # - shell: wrap-shell {0}
-  #   run: |
-  #     printf "\n\n\n\n\n\n"
-  #     echo "=========================================="
-  #     echo "PyInstaller"
-  #     echo "=========================================="
-  #     printf "\n\n\n\n\n\n"
-  # - name: PyInstaller
-  #   id: pyinstaller
-  #   if: ${{ inputs.pyinstaller || inputs.appbundle }}
-  #   uses: ./.github/actions/build_pyinstaller
-  #   with:
-  #     python: ${{ inputs.pyinstaller_python && inputs.pyinstaller_python || inputs.python }}
-  #     wheel: ${{ steps.find.outputs.name }}
-  #     appbundle: ${{ inputs.appbundle }}
+  - name: Qoverage - Instrument QML files
+    if: ${{ inputs.coverage }}
+    uses: ./.github/actions/qoverage_instrument
+    with:
+      package_path: .
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"

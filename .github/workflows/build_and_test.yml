@@ -76,10 +76,12 @@ jobs:
             # an asan-built program on another system. The build is here to ensure the
             # build process still works. To use ASAN, compile like this natively.
             release_build: false
+            package_kind: appimage
             cmake_opts: '"ENABLE_ASAN" = "On"'
           - name: linux_coverage
             release_build: false
             cmake_opts: '"ENABLE_COVERAGE" = "On"'
+            package_kind: appimage
             coverage: true
         container: [ "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest" ]
         container_options: [ "--user root --workdir /" ]

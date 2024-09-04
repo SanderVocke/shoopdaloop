@@ -95,11 +95,6 @@ runs:
     uses: ./.github/actions/install_qoverage
     with:
       python: ${{ inputs.python }}
-  # - name: Qoverage - Instrument QML files
-  #   if: ${{ inputs.coverage }}
-  #   uses: ./.github/actions/qoverage_instrument
-  #   with:
-  #     package_path: ${{ steps.install_package.outputs.install_dir }}
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
