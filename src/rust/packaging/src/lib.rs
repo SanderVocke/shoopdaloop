@@ -1,1 +1,2 @@
-pub mod appimage;
+#[cfg(unix)]
+pub mod unix_appimage;

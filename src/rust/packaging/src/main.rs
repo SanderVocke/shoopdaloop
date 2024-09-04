@@ -7,7 +7,9 @@ use anyhow;
 use anyhow::Context;
 use copy_dir::copy_dir;
 use clap::{Parser, Subcommand};
-use packaging::appimage::build_appimage;
+
+#[cfg(unix)]
+use packaging::unix_appimage::build_appimage;
 
 #[derive(Parser)]
 #[command(name = "package")]
@@ -53,13 +55,20 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
 
     match &args.command {
         Some(Commands::BuildAppDir { appimagetool, output, include_tests, release }) => {
-            build_appimage(appimagetool,
-                           Path::new(out_dir.as_str()),
-                           main_exe.as_path(),
-                           dev_exe.as_path(),
-                           output.as_path(),
-                           *include_tests,
-                           *release)
+            #[cfg(unix)]
+            {
+                build_appimage(appimagetool,
+                            Path::new(out_dir.as_str()),
+                            main_exe.as_path(),
+                            dev_exe.as_path(),
+                            output.as_path(),
+                            *include_tests,
+                            *release)
+            }
+            #[cfg(not(unix))]
+            {
+                Err(anyhow::anyhow!("AppImage packaging is only supported on Unix-like systems."))
+            }
         },
         _ => Err(anyhow::anyhow!("Did not determine a command to run."))
     }
