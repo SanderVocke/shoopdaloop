@@ -6,7 +6,7 @@ import ShoopDaLoop.Rust
 
 import ShoopConstants
 import './testDeepEqual.js' as TestDeepEqual
-import '../js/../type_checks.js' as TypeChecks
+import '../js/type_checks.js' as TypeChecks
 import '..'
 
 PythonTestCase {

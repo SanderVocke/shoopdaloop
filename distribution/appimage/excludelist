@@ -54,6 +54,8 @@
 */libusb-1.0.so.0
 */libutil.so.1
 */libuuid.so.1
+*/libxkbcommon-x11.so.0
+*/libxkbcommon.so.0
 */libxcb-dri2.so.0
 */libxcb-dri3.so.0
 */libxcb.so.1
