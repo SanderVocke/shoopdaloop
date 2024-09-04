@@ -10,7 +10,7 @@ use shoopdaloop::shoop_app_info;
 const SHOOP_BUILD_OUT_DIR : &str = env!("OUT_DIR");
 const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
 
-fn main() -> PyResult<()> {
+fn main() {
     // Set up PYTHONPATH. This can deal with:
     // finding pyenv in Cargo build case, based on the remembered OUT_DIR
     let base = PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_pyenv");
@@ -45,5 +45,6 @@ fn main() -> PyResult<()> {
     app_info.resource_dir = shoop_src_root_dir.join("resources").to_str().unwrap().to_string();
     app_info.schemas_dir = shoop_src_root_dir.join("src/session_schemas").to_str().unwrap().to_string();
 
-    shoopdaloop_main(app_info)
+    let errcode = shoopdaloop_main(app_info);
+    std::process::exit(errcode);
 }

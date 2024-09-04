@@ -2,14 +2,15 @@ use pyo3::prelude::*;
 use pyo3::types::{PyList, PyString};
 use std::env;
 use shoop_app_info::ShoopAppInfo;
+use anyhow;
 
 pub mod shoop_app_info;
 pub mod add_lib_search_path;
 pub mod shoop_rust;
 
-pub fn shoopdaloop_main<'py>(
+fn shoopdaloop_main_impl<'py>(
     app_info : ShoopAppInfo
-) -> PyResult<()> {
+) -> Result<i32, anyhow::Error> {
     // Get the command-line arguments
     let args: Vec<String> = env::args().collect();
 
@@ -42,6 +43,20 @@ pub fn shoopdaloop_main<'py>(
             .getattr("main")?
             .call0()?;
 
-        std::process::exit(result.extract::<i32>()?);
+        result.extract::<i32>()
+              .map_err(|e| {
+                e.print(py);
+                anyhow::anyhow!("Python error (details printed)")
+              })
     })
+}
+
+pub fn shoopdaloop_main(app_info : ShoopAppInfo) -> i32 {
+    match shoopdaloop_main_impl(app_info) {
+        Ok(r) => { return r; }
+        Err(e) => {
+            eprintln!("Python error: {:?}\nBacktrace:\n{:?}", e, e.backtrace());
+            return 1;
+        }
+    }
 }

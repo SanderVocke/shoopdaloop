@@ -7,7 +7,7 @@ use shoopdaloop::shoopdaloop_main;
 use shoopdaloop::add_lib_search_path::add_lib_search_path;
 use shoopdaloop::shoop_app_info;
 
-fn main() -> PyResult<()> {
+fn main() {
     // Set up PYTHONPATH. This can deal with:
     // - Finding embedded pyenv in installed case (shoop_lib/py)
     let executable_path = env::current_exe().unwrap();
@@ -28,7 +28,7 @@ fn main() -> PyResult<()> {
        bundled_pythonpath_shoop_lib.exists() &&
        bundled_python_site_packages.exists() &&
        bundled_python_lib_path.exists() {
-        let pythonpath = format!("{}:{}:{}", 
+        let pythonpath = format!("{}:{}:{}",
             bundled_python_lib_path.to_str().unwrap(),
             bundled_pythonpath_shoop_lib.to_str().unwrap(),
             bundled_python_site_packages.to_str().unwrap());
@@ -54,5 +54,6 @@ fn main() -> PyResult<()> {
     app_info.resource_dir = shoop_lib_path.join("resources").to_str().unwrap().to_string();
     app_info.schemas_dir = shoop_lib_path.join("session_schemas").to_str().unwrap().to_string();
 
-    shoopdaloop_main(app_info)
+    let errcode = shoopdaloop_main(app_info);
+    std::process::exit(errcode);
 }
