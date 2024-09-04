@@ -27,7 +27,7 @@ runs:
     run: |
       curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/jack2-win64-v1.9.22-assets.zip --output jack2-win64-v1.9.22-assets.zip
       unzip jack2-win64-v1.9.22-assets.zip -d jack
-  - name: Build pthreads4w
+  - name: Install pthreads4w
     shell: pwsh
     run: |
       curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pthreads4w.zip --output pthreads4w.zip
@@ -40,18 +40,10 @@ runs:
       echo "boost_include_dir=$(cygpath -w ${{ steps.install_boost.outputs.include_dir }})" | tee -a $GITHUB_OUTPUT
       echo "jack_dir=$(cygpath -w $(pwd)/jack)" | tee -a $GITHUB_OUTPUT
       echo "pthreads_dir=$(cygpath -w $(pwd)/pthreads4w/pthreads4w)" | tee -a $GITHUB_OUTPUT
-  # - name: Set up Clang
-  #   uses: egor-tensin/setup-clang@v1
-  #   with:
-  #     version: latest
-  #     platform: x64
-  # - name: Additional Clang steps
-  #   shell: wrap-shell {0}
-  #   run: |
-  #      echo "CC=clang" | tee -a $GITHUB_ENV
-  #      echo "CXX=clang++" | tee -a $GITHUB_ENV
+
   - name: Setup MSVC
-    uses: ilammy/msvc-dev-cmd@v1
+    uses: TheMrMilchmann/setup-msvc-dev@v3
+
   - name: Install dependencies and provide build command prefix
     shell: wrap-shell {0}
     run: |
