@@ -1,0 +1,14 @@
+#!/bin/sh
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+
+export LD_LIBRARY_PATH="${APPDIR}/lib:${LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="${APPDIR}/shoop_lib:${LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="${APPDIR}/lib:${LD_LIBRARY_PATH}"
+
+PYSIDE6_LIBS=$(find $SCRIPT_DIR -wholename "*/site-packages/PySide6/Qt/lib")
+export LD_LIBRARY_PATH="${PYSIDE6_LIBS}:${LD_LIBRARY_PATH}"
+
+MOD=$(find $SCRIPT_DIR -wholename "*/site-packages/shoopdaloop")
+
+$SCRIPT_DIR/shoop_lib/py/bin/python -m pytest $MOD $@

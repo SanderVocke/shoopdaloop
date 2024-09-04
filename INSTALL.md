@@ -38,11 +38,19 @@ Until this is all more stable and simple, the golden reference for how to build 
 
 ### Building redistributable binaries
 
-After building ShoopDaLoop in-tree as described above, there are several redistributable options to build:
+After building ShoopDaLoop in-tree as described above, there are several redistributable options to build. The in-tree build produces an executable called `package` which can help build these packages as follows:
 
 #### AppDir / AppImage (Linux)
 
-During the in-tree build, Cargo also produces the executable `build_appdir`. Run it as: `build_appdir shoopdaloop shoopdaloop_dev target_dir`, where `shoopdaloop` and `shoopdaloop_dev` point to the built executables. It will make an AppDir as `target_dir`. The `AppRun` file in the target directory can be run. You can use AppImage tooling to compress this into an AppImage (i.e. `appimagetool AppDir ShoopDaLoop.AppImage`).
+```
+package
+  build-appimage
+  --executable=target/debug/shoopdaloop
+  --dev-executable=target/debug/shoopdaloop_dev
+  --appimagetool=/path/to/appimagetool
+  [--include-tests]
+  --output=ShoopDaLoop.AppImage
+```
 
 ### Editable development build
 

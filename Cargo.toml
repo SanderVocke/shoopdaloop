@@ -7,5 +7,6 @@ members = [
     "src/rust/common",
     "src/rust/frontend",
     "src/rust/macros",
+    "src/rust/packaging",
     "src/rust/shoopdaloop",
 ]

@@ -1,25 +1,24 @@
-use std::env;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::collections::HashSet;
-use glob::glob;
 use anyhow;
 use anyhow::Context;
-use copy_dir::copy_dir;
+use std::path::{PathBuf, Path};
+use tempfile::TempDir;
+use std::collections::HashSet;
+use std::process::Command;
+use std::os::unix::fs::PermissionsExt;
 
-// Include generated source for remembering the OUT_DIR at build time.
-const SHOOP_BUILD_OUT_DIR : Option<&str> = option_env!("OUT_DIR");
-
-fn recursive_dir_cpy (src: &Path, dst: &Path) -> std::io::Result<()> {
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
+fn recursive_dir_cpy (src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
+    for entry in std::fs::read_dir(src)
+                    .with_context(|| format!("Cannot read dir {src:?}"))? {
+        let entry = entry.with_context(|| format!("Invalid entry"))?;
         let path = entry.path();
         let file_name = path.file_name().unwrap();
         if path.is_dir() {
-            std::fs::create_dir(dst.join(file_name))?;
+            std::fs::create_dir(dst.join(file_name))
+                .with_context(|| format!("Cannot create {:?}", dst.join(file_name)))?;
             recursive_dir_cpy(&path, &dst.join(file_name))?;
         } else {
-            std::fs::copy(&path, &dst.join(file_name))?;
+            std::fs::copy(&path, &dst.join(file_name))
+                .with_context(|| format!("Cannot copy {:?} to {:?}", path, dst.join(file_name)))?;
         }
     }
     Ok(())
@@ -32,8 +31,10 @@ fn get_dependency_libs (exe : &Path,
     let mut rval : Vec<PathBuf> = Vec::new();
     let mut error_msgs : String = String::from("");
 
-    let excludelist = std::fs::read_to_string(excludelist_path).unwrap();
-    let includelist = std::fs::read_to_string(includelist_path).unwrap();
+    let excludelist = std::fs::read_to_string(excludelist_path)
+                            .with_context(|| format!("Cannot read {excludelist_path:?}"))?;
+    let includelist = std::fs::read_to_string(includelist_path)
+                            .with_context(|| format!("Cannot read {excludelist_path:?}"))?;
     let excludes : HashSet<&str> = excludelist.lines().collect();
     let includes : HashSet<&str> = includelist.lines().collect();
     let mut used_includes : HashSet<String> = HashSet::new();
@@ -106,61 +107,34 @@ fn get_dependency_libs (exe : &Path,
     Ok(rval)
 }
 
-fn main_impl() -> Result<(), anyhow::Error> {
-    let args: Vec<String> = env::args().collect();
+fn populate_appdir(
+    shoop_built_out_dir : &Path,
+    appdir : &Path,
+    exe_path : &Path,
+    dev_exe_path : &Path,
+    include_tests : bool,
+) -> Result<(), anyhow::Error> {
     let file_path = PathBuf::from(file!());
-    let src_path = file_path.ancestors().nth(6).ok_or(anyhow::anyhow!("cannot find src dir"))?;
-
-    let usage = || {
-        println!("Usage: build_appdir path/to/shoopdaloop path/to/shoopdaloop_dev target_dir");
-        println!("  the target directory should not exist, but its parent should.");
-        std::process::exit(1);
-    };
-
-    let bad_usage = |msg : _| {
-        println!("Bad usage: {}", msg);
-        usage();
-    };
-
-    if args.len() != 4 {
-        bad_usage(format!("Wrong number of arguments: {} vs. 3", args.len() - 1));
-    }
-
-    let exe_path = Path::new(&args[1]);
-    let dev_exe_path = Path::new(&args[2]);
-    if !exe_path.is_file() {
-        bad_usage("First argument is not an executable file".to_string());
-    }
-
-    let target_dir = Path::new(&args[3]);
-    if target_dir.exists() {
-        bad_usage("Target directory already exists".to_string());
-    }
-    if !target_dir.parent().unwrap().exists() {
-        bad_usage("Target directory parent doesn't exist".to_string());
-    }
-
-    let out_dir = SHOOP_BUILD_OUT_DIR.ok_or(anyhow::anyhow!("No OUT_DIR set"))?;
-    println!("Assets directory: {}", out_dir);
-
-    println!("Creating target directory...");
-    std::fs::create_dir(target_dir)?;
+    let src_path = std::fs::canonicalize(file_path)?;
+    let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
+    println!("Using source path {src_path:?}");
 
     println!("Bundling executable...");
-    std::fs::copy(exe_path, target_dir.join("shoopdaloop"))?;
+    std::fs::copy(exe_path, appdir.join("shoopdaloop"))?;
 
     println!("Bundling shoop_lib...");
-    let lib_dir = target_dir.join("shoop_lib");
-    std::fs::create_dir(&lib_dir)?;
+    let lib_dir = appdir.join("shoop_lib");
+    std::fs::create_dir(&lib_dir)
+        .with_context(|| format!("Cannot create dir: {:?}", lib_dir))?;
     recursive_dir_cpy(
-        &PathBuf::from(out_dir).join("shoop_lib"),
+        &PathBuf::from(shoop_built_out_dir).join("shoop_lib"),
         &lib_dir
     )?;
 
     let target_py_env = lib_dir.join("py");
     println!("Bundling Python environment...");
     {
-        let from = PathBuf::from(out_dir).join("shoop_pyenv");
+        let from = PathBuf::from(shoop_built_out_dir).join("shoop_pyenv");
         std::fs::create_dir(&target_py_env)?;
         recursive_dir_cpy(
             &from,
@@ -169,7 +143,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     }
 
     println!("Bundling dependencies...");
-    let dynlib_dir = target_dir.join("lib");
+    let dynlib_dir = appdir.join("lib");
     std::fs::create_dir(&dynlib_dir)?;
     let excludelist_path = src_path.join("distribution/appimage/excludelist");
     let includelist_path = src_path.join("distribution/appimage/includelist");
@@ -187,35 +161,93 @@ fn main_impl() -> Result<(), anyhow::Error> {
         "distribution/appimage/shoopdaloop.desktop",
         "distribution/appimage/shoopdaloop.png",
         "distribution/appimage/AppRun",
+        "distribution/appimage/backend_tests",
+        "distribution/appimage/python_tests",
+        "distribution/appimage/rust_tests",
     ] {
         let from = src_path.join(file);
-        let to = target_dir.join(from.file_name().unwrap());
+        let to = appdir.join(from.file_name().unwrap());
         println!("  {:?} -> {:?}", &from, &to);
         std::fs::copy(&from, &to)
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
     }
 
-    println!("Slimming down AppDir...");
-    for file in [
-        "shoop_lib/test_runner"
-    ] {
-        let path = target_dir.join(file);
-        println!("  remove {:?}", path);
-        std::fs::remove_file(&path)?;
+    if !include_tests {
+        println!("Slimming down AppDir...");
+        for file in [
+            "shoop_lib/test_runner"
+        ] {
+            let path = appdir.join(file);
+            println!("  remove {:?}", path);
+            std::fs::remove_file(&path)?;
+        }
     }
 
-    println!("AppDir produced in {}", target_dir.to_str().unwrap());
-    println!("You can use a tool such as appimagetool to create an AppImage from this directory.");
+    if include_tests {
+        println!("Creating nextest archive...");
+        let archive = appdir.join("nextest-archive.tar.zst");
+        Command::new("cargo")
+                .current_dir(&src_path)
+                .args(&["nextest", "archive", "--archive-file", archive.to_str().unwrap()])
+                .status()?;
+        println!("Downloading prebuilt cargo-nextest into appdir...");
+        let nextest_path = appdir.join("cargo-nextest");
+        let nextest_dir = appdir.to_str().unwrap();
+        Command::new("sh")
+                .current_dir(&src_path)
+                .args(&["-c",
+                        &format!("curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C {}", nextest_dir)
+                        ])
+                .status()?;
+        let mut perms = std::fs::metadata(nextest_path.clone())
+            .with_context(|| "Failed to get file metadata")?
+            .permissions();
+        perms.set_mode(0o755); // Sets read, write, and execute permissions for the owner, and read and execute for group and others
+        std::fs::set_permissions(nextest_path, perms).with_context(|| "Failed to set file permissions")?;
+    }
+
+    println!("AppDir produced in {}", appdir.to_str().unwrap());
 
     Ok(())
 }
 
-fn main() {
-    match main_impl() {
-        Ok(()) => (),
-        Err(error) => {
-            eprintln!("AppDir creation failed: {:?}.\n  Backtrace: {:?}", error, error.backtrace());
-            std::process::exit(1);
-        }
+pub fn build_appimage(
+    appimagetool : &str,
+    shoop_built_out_dir : &Path,
+    exe_path : &Path,
+    dev_exe_path : &Path,
+    output_file : &Path,
+    include_tests : bool
+) -> Result<(), anyhow::Error> {
+    println!("Assets directory: {:?}", shoop_built_out_dir);
+
+    println!("Creating temporary appdir directory...");
+    let tmp_dir = TempDir::new()?;
+    let appdir : PathBuf;
+    {
+        appdir = tmp_dir.path().to_owned();
     }
+
+    match populate_appdir(shoop_built_out_dir,
+                    &appdir,
+                    exe_path,
+                    dev_exe_path,
+                    include_tests)
+    {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let p = tmp_dir.into_path();
+            eprintln!("AppDir creation failed. Persisted temporary directory @ {:?}", p);
+            Err(e)
+        }
+    }?;
+
+    println!("Creating AppImage...");
+    Command::new(appimagetool)
+        .args(&[appdir.to_str().unwrap(), output_file.to_str().unwrap()])
+        .status()?;
+
+    println!("AppImage created @ {output_file:?}");
+    Ok(())
 }
+

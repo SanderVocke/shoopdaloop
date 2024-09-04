@@ -45,12 +45,11 @@ runs:
     shell: wrap-shell {0}
     run: |
       export QT_QPA_PLATFORM=offscreen
-      ${{ inputs.cargo_build_path }}/build_appdir ${{ inputs.cargo_build_path }}/shoopdaloop ${{ inputs.cargo_build_path }}/shoopdaloop_dev $(pwd)/appdir
       wget https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
       chmod +x appimagetool-x86_64.AppImage
       APPIMAGE_NAME=shoopdaloop.${{ env.gitversion }}.$(uname -m).AppImage
       RELEASE_APPIMAGE_NAME=shoopdaloop-${{ env.version }}.$(uname -m).AppImage
-      APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool-x86_64.AppImage appdir $APPIMAGE_NAME
+      ${{ inputs.cargo_build_path }}/package build-app-dir -a appimagetool-x86_64.AppImage -o $APPIMAGE_NAME --include-tests
       cp $APPIMAGE_NAME $RELEASE_APPIMAGE_NAME
       echo "pkg=$APPIMAGE_NAME" | tee -a $GITHUB_ENV
       echo "release_appimg=$RELEASE_APPIMAGE_NAME" | tee -a $GITHUB_ENV

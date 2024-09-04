@@ -34,49 +34,61 @@ fn main_impl() -> Result<(), anyhow::Error> {
     let python_dir = "../../python";
     let profile = std::env::var("PROFILE").unwrap();
 
+    let build_whole_library = match env::var("CARGO_BIN_NAME").as_deref() {
+        Err(_) => true,
+        Ok("shoopdaloop") => false,
+        Ok("shoopdaloop_dev") => false,
+        _ => false
+    };
+
+    println!("HELLO {:?} {}", env::var("CARGO_BIN_NAME"), build_whole_library );
+
     if !["debug", "release"].contains(&profile.as_str()) {
         return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
     }
 
     println!("Using Python: {}", host_python);
 
-    if shoop_lib_dir.exists() {
-        std::fs::remove_dir_all(&shoop_lib_dir)
-            .with_context(|| format!("Failed to remove {:?}", &shoop_lib_dir))?;
+    if build_whole_library {
+        if shoop_lib_dir.exists() {
+            std::fs::remove_dir_all(&shoop_lib_dir)
+                .with_context(|| format!("Failed to remove {:?}", &shoop_lib_dir))?;
+        }
+
+        // Build back-end via CMake and install into our output directory
+        println!("Building back-end...");
+        let _ = Config::new(cmake_backend_dir)
+            .out_dir(out_dir.join("cmake_build"))
+            .configure_arg(format!("-DCMAKE_INSTALL_PREFIX={}",shoop_lib_dir.to_str().unwrap()))
+            .build();
+
+        // Copy filesets into our output lib dir
+        let to_copy = ["lua", "qml", "session_schemas", "../resources"];
+        for directory in to_copy {
+            let src = src_dir.join("../..").join(directory);
+            let dst = shoop_lib_dir.join(PathBuf::from(directory).file_name().unwrap());
+            copy_dir(&src, &dst)
+                .expect(&format!("Failed to copy {} to {}",
+                                src.display(),
+                                dst.display()));
+        }
+
+        // Build ShoopDaLoop wheel
+        println!("Building wheel...");
+        Command::new(&host_python)
+            .args(
+                &["-m", "build",
+                "--outdir", out_dir.to_str().expect("Couldn't get out dir"),
+                "--wheel",
+                python_dir]
+            )
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .current_dir(src_dir.clone())
+            .status()
+            .with_context(|| "Failed to build wheel")?;
     }
 
-    // Build back-end via CMake and install into our output directory
-    println!("Building back-end...");
-    let _ = Config::new(cmake_backend_dir)
-        .out_dir(out_dir.join("cmake_build"))
-        .configure_arg(format!("-DCMAKE_INSTALL_PREFIX={}",shoop_lib_dir.to_str().unwrap()))
-        .build();
-
-    // Copy filesets into our output lib dir
-    let to_copy = ["lua", "qml", "session_schemas", "../resources"];
-    for directory in to_copy {
-        let src = src_dir.join("../..").join(directory);
-        let dst = shoop_lib_dir.join(PathBuf::from(directory).file_name().unwrap());
-        copy_dir(&src, &dst)
-            .expect(&format!("Failed to copy {} to {}",
-                            src.display(),
-                            dst.display()));
-    }
-
-    // Build ShoopDaLoop wheel
-    println!("Building wheel...");
-    Command::new(&host_python)
-        .args(
-            &["-m", "build",
-            "--outdir", out_dir.to_str().expect("Couldn't get out dir"),
-            "--wheel",
-            python_dir]
-        )
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .current_dir(src_dir.clone())
-        .status()
-        .with_context(|| "Failed to build wheel")?;
     let wheel : PathBuf;
     {
         let whl_pattern = format!("{}/*.whl", out_dir.to_str().unwrap());
@@ -93,7 +105,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     let py_env_python = py_env_dir.join("bin").join("python");
     let pyenv_root_dir = Path::new(&out_dir).join("pyenv_root");
 
-    let mut rebuild_env = true;
+    let mut rebuild_env = build_whole_library;
     if prev_wheel_file.exists() && py_env_dir.exists() {
         let prev_wheel_hash = std::fs::read_to_string(&prev_wheel_file).unwrap().parse::<u64>()?;
         println!("Previous wheel hash: {}", prev_wheel_hash);
