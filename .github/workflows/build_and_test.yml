@@ -66,10 +66,10 @@ jobs:
           - name: linux_release
             release_build: true
             pyinstaller: true
-            package_kind: linuxes
+            package_kind: appimage
             upload_release_assets: true
           - name: linux_debug
-            release_build: true
+            release_build: false
             package_kind: appimage
           - name: linux_asan
             # Note: ASAN build does not have a test because it is not trivial to deploy

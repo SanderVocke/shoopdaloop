@@ -74,8 +74,6 @@ runs:
       python: ${{ inputs.python }}
       prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
       release_build: ${{ inputs.release_build }}
-      # windows: ${{ inputs.prepare_kind == 'windows' && 'true' || 'false' }}
-      # rename_wheel_sed: ${{ inputs.rename_wheel_sed }}
   # - name: Post-build steps
   #   id: postbuild
   #   uses: ./.github/actions/post_build
