@@ -15,11 +15,16 @@ TRACE_OUTPUT=$(mktemp)
 DEPENDENCIES=$(mktemp)
 
 echo "Running \"$COMMAND\". Will list dynamically loaded libraries once execution finishes." >&2
+echo "Note that all command output will be redirected to stderr so that stdout only contains the resulting libraries." >&2
+echo "" >&2
 
 # Run strace to capture the dynamic library loads
-strace -e openat -f $COMMAND 2>&1 | grep -E '.*\.so' | grep -v ENOENT | awk -F '"' '{print $2}' | sort -u > "$DEPENDENCIES"
+strace_out=$(mktemp)
+strace -e openat -o $TRACE_OUTPUT -f $COMMAND 1>&2
+cat $TRACE_OUTPUT | grep -E '.*\.so' | grep -v ENOENT | awk -F '"' '{print $2}' | sort -u > "$DEPENDENCIES"
 
 # Output the results
+echo "" >&2
 echo "Dynamically loaded libraries:" >&2
 cat "$DEPENDENCIES"
 
