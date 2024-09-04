@@ -4,6 +4,7 @@ use std::process::Command;
 use std::collections::HashSet;
 use glob::glob;
 use anyhow;
+use anyhow::Context;
 use copy_dir::copy_dir;
 
 // Include generated source for remembering the OUT_DIR at build time.
@@ -46,12 +47,15 @@ fn get_dependency_libs (exe : &Path,
         "--quit-after", "0"
     ];
     println!("Running command for determining dependencies: {} {}", command, args.join(" "));
-    let ldd_output = Command::new(command)
+    let list_deps_output = Command::new(command)
                              .args(&args)
-                             .output()?;
-    let ldd_output = std::str::from_utf8(&ldd_output.stdout)?;
+                             .output()
+                             .with_context(|| "Failed to run list_dependencies")?;
+    let command_output = std::str::from_utf8(&list_deps_output.stderr)?;
+    let deps_output = std::str::from_utf8(&list_deps_output.stdout)?;
+    println!("Command output:\n{}", command_output);
 
-    for line in ldd_output.lines() {
+    for line in deps_output.lines() {
         if line.trim().is_empty() {
             continue;
         }

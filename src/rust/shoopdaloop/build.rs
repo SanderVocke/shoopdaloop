@@ -9,6 +9,7 @@ use std::fs;
 use std::io::prelude::*;
 use std::hash::Hasher;
 use anyhow;
+use anyhow::Context;
 
 fn file_hash<P: AsRef<Path>>(path: P) -> io::Result<u64> {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -34,7 +35,8 @@ fn main_impl() -> Result<(), anyhow::Error> {
     println!("Using Python: {}", host_python);
 
     if shoop_lib_dir.exists() {
-        std::fs::remove_dir_all(&shoop_lib_dir)?;
+        std::fs::remove_dir_all(&shoop_lib_dir)
+            .with_context(|| format!("Failed to remove {:?}", &shoop_lib_dir))?;
     }
 
     // Build back-end via CMake and install into our output directory
@@ -67,13 +69,15 @@ fn main_impl() -> Result<(), anyhow::Error> {
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
         .current_dir(src_dir.clone())
-        .status()?;
+        .status()
+        .with_context(|| "Failed to build wheel")?;
     let wheel : PathBuf;
     {
         let whl_pattern = format!("{}/*.whl", out_dir.to_str().unwrap());
         let mut whl_glob = glob(&whl_pattern)?;
         wheel = whl_glob.next()
-                .expect(format!("No wheel found @ {}", whl_pattern).as_str())?;
+                .expect(format!("No wheel found @ {}", whl_pattern).as_str())
+                .with_context(|| "Failed to glob for wheel")?;
         println!("Found built wheel: {}", wheel.to_str().unwrap());
     }
     // Use hash to determine if the wheel changed
@@ -81,6 +85,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     let prev_wheel_file = out_dir.join("py_wheel_hash");
     let py_env_dir = Path::new(&out_dir).join("shoop_pyenv");
     let py_env_python = py_env_dir.join("bin").join("python");
+    let pyenv_root_dir = Path::new(&out_dir).join("pyenv_root");
 
     let mut rebuild_env = true;
     if prev_wheel_file.exists() && py_env_dir.exists() {
@@ -95,27 +100,38 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
     if rebuild_env {
         if py_env_dir.exists() {
-            std::fs::remove_dir_all(&py_env_dir)?;
+            std::fs::remove_dir_all(&py_env_dir)
+              .with_context(|| format!("Failed to remove Py env: {:?}", &py_env_dir))?;
+        }
+        if !pyenv_root_dir.exists() {
+            std::fs::create_dir(&pyenv_root_dir);
         }
 
         // Create a env in OUT_DIR
         println!("Creating portable Python...");
         let py_version = Command::new("sh")
                                 .args(&["-c", "python3 --version | sed -r 's/.*3\\./3\\./g'"])
-                                .output()?;
+                                .output()
+                                .with_context(|| "Failed to print python version")?;
         let py_version = std::str::from_utf8(&py_version.stdout)?;
         let py_version = py_version.trim();
-        println!("Using pyenv to install {}...", py_version);
+        println!("Using pyenv to install {} to {}...", py_version, pyenv_root_dir.to_str().unwrap());
         Command::new("pyenv")
                 .args(&["install", "--skip-existing", py_version])
-                .status()?;
+                .env("PYENV_ROOT", &pyenv_root_dir)
+                .status()
+                .with_context(|| "Failed to install Python using pyenv")?;
         let py_location = Command::new("pyenv")
                                      .args(&["prefix", &py_version])
-                                     .output()?;
-        let py_location = std::str::from_utf8(&py_location.stdout)?;
+                                     .env("PYENV_ROOT", &pyenv_root_dir)
+                                     .output()
+                                     .with_context(|| "Failed to get python location output using pyenv")?;
+        let py_location = std::str::from_utf8(&py_location.stdout)
+            .with_context(|| "Failed to parse python location output")?;
         let py_location = py_location.trim();
         println!("Using Python from: {}. Installing to: {}", py_location, py_env_dir.to_str().unwrap());
-        copy_dir(&py_location, &py_env_dir)?;
+        copy_dir(&py_location, &py_env_dir)
+            .with_context(|| format!("Failed to copy Python env from {:?} to {:?}", &py_location, &py_env_dir))?;
 
         // Install ShoopDaLoop wheel in env
         println!("Installing into python env...");
@@ -125,14 +141,16 @@ fn main_impl() -> Result<(), anyhow::Error> {
             )
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
-            .status()?;
+            .status()
+            .with_context(|| "Failed to upgrade pip")?;
         Command::new(&py_env_python)
             .args(
                 &["-m", "pip", "install", "--force-reinstall", wheel.to_str().expect("Could not get wheel path")]
             )
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
-            .status()?;
+            .status()
+            .with_context(|| "Failed to install wheel")?;
 
         std::fs::write(&prev_wheel_file, wheel_hash.to_string()).unwrap();
     }
@@ -145,7 +163,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
                 .expect(format!("No site-packages dir found @ {}", pattern).as_str()).unwrap();
         py_env_to_site_packages = PathBuf::from
                                 (format!("lib/{}/site-packages",
-                                 full_site_packages.parent().unwrap().file_name().unwrap().to_str().unwrap()))
+                                 full_site_packages.parent().unwrap().file_name().unwrap().to_str().unwrap()));
     }
 
     // Tell PyO3 where to find our venv Python
