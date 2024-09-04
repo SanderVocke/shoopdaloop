@@ -16,13 +16,6 @@ inputs:
     required: true
     type: string
 
-
-outputs:
-  build_dir:
-    value: ${{ steps.build.outputs.build_dir }}
-  source_dir:
-    value: ${{ steps.build.outputs.source_dir }}
-
 runs:
   using: "composite"
   steps:
@@ -30,20 +23,16 @@ runs:
   - name: Build release (${{ inputs.variant_name }})
     if: ${{ inputs.release_build == 'true' }}
     shell: wrap-shell {0}
-    id: build
     run: |
       ${{ inputs.prepend_build_cmd }} PYTHON=${{ inputs.python }} cargo build -vv --release
       ln -s target/release rust_build_out
-      echo "source_dir=$(pwd)" | tee -a $GITHUB_OUTPUT
   
   - name: Build debug (${{ inputs.variant_name }})
     if: ${{ inputs.release_build != 'true' }}
     shell: wrap-shell {0}
-    id: build
     run: |
       ${{ inputs.prepend_build_cmd }} PYTHON=${{ inputs.python }} cargo build -vv
       ln -s target/debug rust_build_out
-      echo "source_dir=$(pwd)" | tee -a $GITHUB_OUTPUT
       
 
 
