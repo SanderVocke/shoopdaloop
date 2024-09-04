@@ -44,7 +44,7 @@ fn get_dependency_libs (exe : &Path,
         list_deps_script.to_str().unwrap(),
         exe.to_str().unwrap(),
         "-b", "dummy",
-        "--quit-after", "0"
+        "--quit-after", "1"
     ];
     println!("Running command for determining dependencies: {} {}", command, args.join(" "));
     let list_deps_output = Command::new(command)
@@ -53,7 +53,8 @@ fn get_dependency_libs (exe : &Path,
                              .with_context(|| "Failed to run list_dependencies")?;
     let command_output = std::str::from_utf8(&list_deps_output.stderr)?;
     let deps_output = std::str::from_utf8(&list_deps_output.stdout)?;
-    println!("Command output:\n{}", command_output);
+    println!("Command stderr:\n{}", command_output);
+    println!("Command stdout:\n{}", deps_output);
 
     for line in deps_output.lines() {
         if line.trim().is_empty() {
