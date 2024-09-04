@@ -45,6 +45,17 @@ runs:
     run: |
       ${{ inputs.prepend_build_cmd }} PYTHON=${{ inputs.python }} cargo build -vv ${{ env.CARGO_BUILD_FLAGS }}
       echo "source_dir=$(pwd)" | tee -a $GITHUB_OUTPUT
-      echo "build_dir=$(realpath target/release)" | tee -a $GITHUB_OUTPUT
+  
+  - name: Symlink into artifacts dir (release)
+    if: ${{ inputs.release_build == 'true' }}
+    shell: wrap-shell {0}
+    run: |
+      ln -s target/release rust_build_out
+  
+  - name: Symlink into artifacts dir (debug)
+    if: ${{ inputs.release_build != 'true' }}
+    shell: wrap-shell {0}
+    run: |
+      ln -s target/debug rust_build_out
 
 
