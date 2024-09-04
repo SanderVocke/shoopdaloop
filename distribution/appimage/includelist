@@ -1,6 +1,6 @@
 */iris_dri.so
 */libFLAC.so.12
-*/libLLVM.so.18.1
+*/libLLVM*.so.*
 */libOpenCL.so.1
 */libSvtAv1Enc.so.2
 */libXau.so.6
@@ -40,13 +40,15 @@
 */libcurl.so.4
 */libdatrie.so.1
 */libdav1d.so.7
+*/libdb-*.so
 */libdbus-1.so.3
 */libdouble-conversion.so.3
-*/libdrm_amdgpu.so.1
-*/libdrm_intel.so.1
-*/libdrm_radeon.so.1
+*/libdrm_amdgpu.so.*
+*/libdrm_intel.so.*
+*/libdrm_nouveau.so.*
+*/libdrm_radeon.so.*
 */libduktape.so.207
-*/libedit.so.0
+*/libedit.so.*
 */libelf.so.1
 */libepoxy.so.0
 */libffi.so.*
@@ -146,6 +148,7 @@
 */libtheoradec.so.1
 */libtheoraenc.so.1
 */libtiff.so.6
+*/libtinfo.so.*
 */libtracker-sparql-3.0.so.0
 */libunistring.so.5
 */libva-drm.so.2
@@ -160,6 +163,7 @@
 */libwayland-client.so.0
 */libwayland-cursor.so.0
 */libwayland-egl.so.1
+*/libwayland-server.so.0
 */libwebp.so.7
 */libwebpmux.so.3
 */libx264.so.164

@@ -147,7 +147,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     std::fs::create_dir(target_dir)?;
 
     println!("Bundling executable...");
-    std::fs::copy(exe_path, target_dir.join("AppRun"))?;
+    std::fs::copy(exe_path, target_dir.join("shoopdaloop"))?;
 
     println!("Bundling shoop_lib...");
     let lib_dir = target_dir.join("shoop_lib");
@@ -182,15 +182,18 @@ fn main_impl() -> Result<(), anyhow::Error> {
         )?;
     }
 
-    println!("Bundling desktop and icon files...");
-    std::fs::copy(
-        src_path.join("distribution").join("appimage").join("shoopdaloop.desktop"),
-        target_dir.join("shoopdaloop.desktop")
-    )?;
-    std::fs::copy(
-        src_path.join("distribution").join("appimage").join("shoopdaloop.png"),
-        target_dir.join("shoopdaloop.png")
-    )?;
+    println!("Bundling additional assets...");
+    for file in [
+        "distribution/appimage/shoopdaloop.desktop",
+        "distribution/appimage/shoopdaloop.png",
+        "distribution/appimage/AppRun",
+    ] {
+        let from = src_path.join(file);
+        let to = target_dir.join(from.file_name().unwrap());
+        println!("  {:?} -> {:?}", &from, &to);
+        std::fs::copy(&from, &to)
+            .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
+    }
 
     println!("AppDir produced in {}", target_dir.to_str().unwrap());
     println!("You can use a tool such as appimagetool to create an AppImage from this directory.");
