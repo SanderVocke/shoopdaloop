@@ -62,7 +62,9 @@ runs:
       setup-python: false
   - name: Env for Qt
     shell: wrap-shell {0}
-    run: echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6" > prepend_build_cmd.txt
+    run: |
+      echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6" > prepend_build_cmd.txt
+      echo "QMAKE=$QT_ROOT_DIR/bin/qmake" | tee -a $GITHUB_ENV
 
   - name: Prepare linux
     if: ${{ inputs.variant == 'linux' }}
