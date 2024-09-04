@@ -46,7 +46,7 @@ runs:
       wget https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
       chmod +x appimagetool-x86_64.AppImage
       echo "./appimagetool-x86_64.AppImage --appimage-extract-and-run $@" > appimagetool.sh
-      chmod a+x appimage.sh
+      chmod a+x appimagetool.sh
       APPIMAGE_NAME=shoopdaloop.${{ env.gitversion }}.$(uname -m).AppImage
       RELEASE_APPIMAGE_NAME=shoopdaloop-${{ env.version }}.$(uname -m).AppImage
       ${CARGO_ARTIFACTS_DIR}/package build-app-dir -a $(pwd)/appimagetool.sh -o $APPIMAGE_NAME --include-tests ${CARGO_BUILD_FLAGS}
