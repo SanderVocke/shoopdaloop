@@ -188,12 +188,12 @@ fn populate_appdir(
         println!("Creating nextest archive...");
         let archive = appdir.join("nextest-archive.tar.zst");
         let args = match release {
-            true => &["nextest", "archive", "--release", "--archive-file", archive.to_str().unwrap()],
-            false => &["nextest", "archive", "--archive-file", archive.to_str().unwrap()]
+            true => vec!["nextest", "archive", "--release", "--archive-file", archive.to_str().unwrap()],
+            false => vec!["nextest", "archive", "--archive-file", archive.to_str().unwrap()]
         };
         Command::new("cargo")
                 .current_dir(&src_path)
-                .args(args)
+                .args(&args[..])
                 .status()?;
         println!("Downloading prebuilt cargo-nextest into appdir...");
         let nextest_path = appdir.join("cargo-nextest");
