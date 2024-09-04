@@ -113,6 +113,7 @@ fn populate_appdir(
     exe_path : &Path,
     dev_exe_path : &Path,
     include_tests : bool,
+    release : bool,
 ) -> Result<(), anyhow::Error> {
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
@@ -186,9 +187,13 @@ fn populate_appdir(
     if include_tests {
         println!("Creating nextest archive...");
         let archive = appdir.join("nextest-archive.tar.zst");
+        let args = match release {
+            true => &["nextest", "archive", "--release", "--archive-file", archive.to_str().unwrap()]
+            false => &["nextest", "archive", "--archive-file", archive.to_str().unwrap()]
+        };
         Command::new("cargo")
                 .current_dir(&src_path)
-                .args(&["nextest", "archive", "--archive-file", archive.to_str().unwrap()])
+                .args(args)
                 .status()?;
         println!("Downloading prebuilt cargo-nextest into appdir...");
         let nextest_path = appdir.join("cargo-nextest");
@@ -217,7 +222,8 @@ pub fn build_appimage(
     exe_path : &Path,
     dev_exe_path : &Path,
     output_file : &Path,
-    include_tests : bool
+    include_tests : bool,
+    release : bool,
 ) -> Result<(), anyhow::Error> {
     println!("Assets directory: {:?}", shoop_built_out_dir);
 
@@ -232,7 +238,8 @@ pub fn build_appimage(
                     &appdir,
                     exe_path,
                     dev_exe_path,
-                    include_tests)
+                    include_tests,
+                    release)
     {
         Ok(()) => Ok(()),
         Err(e) => {

@@ -12,27 +12,14 @@ inputs:
   prepend_build_cmd:
     required: false
     type: string
-  release_build:
-    required: true
-    type: string
 
 runs:
   using: "composite"
   steps:
 
-  - name: Build release (${{ inputs.variant_name }})
-    if: ${{ inputs.release_build == 'true' }}
+  - name: Build (${{ inputs.variant_name }})
     shell: wrap-shell {0}
     run: |
-      ${{ inputs.prepend_build_cmd }} PYTHON=${{ inputs.python }} cargo build -vv --release
-      ln -s target/release rust_build_out
-  
-  - name: Build debug (${{ inputs.variant_name }})
-    if: ${{ inputs.release_build != 'true' }}
-    shell: wrap-shell {0}
-    run: |
-      ${{ inputs.prepend_build_cmd }} PYTHON=${{ inputs.python }} cargo build -vv
-      ln -s target/debug rust_build_out
-      
+      ${{ inputs.prepend_build_cmd }} PYTHON=${{ inputs.python }} cargo build -vv ${CARGO_BUILD_FLAGS}
 
 

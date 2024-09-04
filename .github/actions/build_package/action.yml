@@ -47,7 +47,7 @@ runs:
       chmod +x appimagetool-x86_64.AppImage
       APPIMAGE_NAME=shoopdaloop.${{ env.gitversion }}.$(uname -m).AppImage
       RELEASE_APPIMAGE_NAME=shoopdaloop-${{ env.version }}.$(uname -m).AppImage
-      ./rust_build_out/package build-app-dir -a appimagetool-x86_64.AppImage -o $APPIMAGE_NAME --include-tests
+      ./rust_build_out/package build-app-dir -a appimagetool-x86_64.AppImage -o $APPIMAGE_NAME --include-tests ${CARGO_BUILD_FLAGS}
       cp $APPIMAGE_NAME $RELEASE_APPIMAGE_NAME
       echo "pkg=$APPIMAGE_NAME" | tee -a $GITHUB_ENV
       echo "release_appimg=$RELEASE_APPIMAGE_NAME" | tee -a $GITHUB_ENV

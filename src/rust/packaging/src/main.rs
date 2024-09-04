@@ -28,6 +28,9 @@ enum Commands {
 
         #[arg(short, long, action = clap::ArgAction::SetTrue)]
         include_tests: bool,
+
+        #[arg(short, long, action = clap::ArgAction::SetTrue)]
+        release: bool,
     }
 }
 
@@ -49,13 +52,14 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                               })?;
 
     match &args.command {
-        Some(Commands::BuildAppDir { appimagetool, output, include_tests }) => {
+        Some(Commands::BuildAppDir { appimagetool, output, include_tests, release }) => {
             build_appimage(appimagetool,
                            Path::new(out_dir.as_str()),
                            main_exe.as_path(),
                            dev_exe.as_path(),
                            output.as_path(),
-                           *include_tests)
+                           *include_tests,
+                           *release)
         },
         _ => Err(anyhow::anyhow!("Did not determine a command to run."))
     }

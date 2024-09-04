@@ -54,6 +54,18 @@ runs:
     if: ${{ inputs.upload_release_assets == 'true' }}
     shell: bash
     run: echo "release_upload_assets_url=$(cat release_upload_assets_url/release_upload_assets_url.txt)" | tee -a $GITHUB_ENV
+  - name: Set Cargo build flags (release)
+    if: ${{ inputs.release_build == 'true' }}
+    shell: wrap-shell {0}
+    run:
+      echo "CARGO_BUILD_FLAGS=--release" | tee -a $GITHUB_ENV
+      echo "CARGO_ARTIFACTS_DIR=target/release" | tee -a $GITHUB_ENV
+  - name: Set Cargo build flags (debug)
+    if: ${{ inputs.release_build == 'false' }}
+    shell: wrap-shell {0}
+    run:
+      echo "CARGO_BUILD_FLAGS=" | tee -a $GITHUB_ENV
+      echo "CARGO_ARTIFACTS_DIR=target/debug" | tee -a $GITHUB_ENV
   - name: Prepare
     id: prepare
     uses: ./.github/actions/prepare_build
@@ -73,7 +85,6 @@ runs:
       variant_name: ${{ inputs.name }}
       python: ${{ inputs.python }}
       prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
-      release_build: ${{ inputs.release_build }}
   # - name: Post-build steps
   #   id: postbuild
   #   uses: ./.github/actions/post_build
