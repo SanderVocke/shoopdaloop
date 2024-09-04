@@ -121,11 +121,18 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("Installing into python env...");
         Command::new(&py_env_python)
             .args(
+                &["-m", "pip", "install", "--upgrade", "pip"]
+            )
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()?;
+        Command::new(&py_env_python)
+            .args(
                 &["-m", "pip", "install", "--force-reinstall", wheel.to_str().expect("Could not get wheel path")]
             )
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
-            .status().unwrap();
+            .status()?;
 
         std::fs::write(&prev_wheel_file, wheel_hash.to_string()).unwrap();
     }

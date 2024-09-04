@@ -18,7 +18,7 @@ outputs:
   output:
     description: "Built artifact(s)"
     value: ${{ steps.find_output.outputs.output }}
-  
+
 
 runs:
   using: "composite"
@@ -55,19 +55,16 @@ runs:
     with:
       name: ${{ inputs.upload_name }}
       path: ${{ env.pkg }}
-  
-  - name: Setup tmate session
-    uses: SanderVocke/action-tmate@master
 
   # Windows installer (InnoSetup)
   - name: Compile .ISS to .EXE Installer
     uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
-    if: ${{ inputs.package_kind == 'innosetup' }}  
+    if: ${{ inputs.package_kind == 'innosetup' }}
     with:
       path: distribution/innosetup/shoopdaloop.iss
       options: /O+ /DMyAppVersion="${{ env.version }}.${{ env.gitversion }}"
   - name: Move .EXE installer
-    if: ${{ inputs.package_kind == 'innosetup' }}   
+    if: ${{ inputs.package_kind == 'innosetup' }}
     shell: wrap-shell {0}
     run: |
       ls distribution/innosetup
@@ -123,4 +120,3 @@ runs:
     shell: wrap-shell {0}
     run: |
       echo "output=${{ env.pkg }}" | tee -a $GITHUB_OUTPUT
-      

@@ -43,6 +43,8 @@ runs:
 
   - name: Setup MSVC
     uses: TheMrMilchmann/setup-msvc-dev@v3
+    with:
+       arch: x64
 
   - name: Install dependencies and provide build command prefix
     shell: wrap-shell {0}
