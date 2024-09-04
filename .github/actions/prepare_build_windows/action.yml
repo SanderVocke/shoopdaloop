@@ -46,6 +46,12 @@ runs:
     with:
        arch: x64
 
+  - name: Remove GNU link which aliases with MSVC
+    shell: wrap-shell {0}
+    run: |
+      rm -f /c/mingw64/bin/link.exe
+      rm -f /usr/bin/link.exe
+
   - name: Install dependencies and provide build command prefix
     shell: wrap-shell {0}
     run: |

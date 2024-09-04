@@ -45,7 +45,7 @@ runs:
       export QT_QPA_PLATFORM=offscreen
       wget https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
       chmod +x appimagetool-x86_64.AppImage
-      printf "#!/bin/sh\n\n./appimagetool-x86_64.AppImage --appimage-extract-and-run $@\n" > appimagetool.sh
+      printf "#!/bin/sh\n\n./appimagetool-x86_64.AppImage --appimage-extract-and-run \$@\n" > appimagetool.sh
       chmod a+x appimagetool.sh
       APPIMAGE_NAME=shoopdaloop.${{ env.gitversion }}.$(uname -m).AppImage
       RELEASE_APPIMAGE_NAME=shoopdaloop-${{ env.version }}.$(uname -m).AppImage
