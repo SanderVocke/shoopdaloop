@@ -31,6 +31,11 @@ runs:
   - name: Prepare Rust (non-Windows)
     if: ${{ inputs.variant != 'windows' }}
     uses: dtolnay/rust-toolchain@stable
+  - name: Rust packages
+    if: ${{ inputs.variant == 'windows' }}
+    shell: wrap-shell {0}
+    run: |
+      cargo install cargo-nextest
   - name: Rust info
     if: ${{ inputs.variant == 'windows' }}
     shell: wrap-shell {0}
