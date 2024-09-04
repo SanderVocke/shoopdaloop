@@ -6,4 +6,8 @@ export LD_LIBRARY_PATH="${APPDIR}/lib:${LD_LIBRARY_PATH}"
 export LD_LIBRARY_PATH="${APPDIR}/shoop_lib:${LD_LIBRARY_PATH}"
 export LD_LIBRARY_PATH="${APPDIR}/lib:${LD_LIBRARY_PATH}"
 
-${SCRIPT_DIR}/shoopdaloop $@
+if [ -n "$SHOOPDALOOP_APPIMAGE_EXECUTE" ]; then
+    ${SCRIPT_DIR}/${SHOOPDALOOP_APPIMAGE_EXECUTE} $@
+else
+    ${SCRIPT_DIR}/shoopdaloop $@
+fi

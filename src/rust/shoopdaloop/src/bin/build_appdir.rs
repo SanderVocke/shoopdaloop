@@ -195,6 +195,15 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
     }
 
+    println!("Slimming down AppDir...");
+    for file in [
+        "shoop_lib/test_runner"
+    ] {
+        let path = target_dir.join(file);
+        println!("  remove {:?}", path);
+        std::fs::remove_file(&path)?;
+    }
+
     println!("AppDir produced in {}", target_dir.to_str().unwrap());
     println!("You can use a tool such as appimagetool to create an AppImage from this directory.");
 

@@ -32,6 +32,12 @@ fn main_impl() -> Result<(), anyhow::Error> {
     let shoop_lib_dir = out_dir.join("shoop_lib");
     let cmake_backend_dir = "../../backend";
     let python_dir = "../../python";
+    let profile = std::env::var("PROFILE").unwrap();
+
+    if !["debug", "release"].contains(&profile.as_str()) {
+        return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
+    }
+
     println!("Using Python: {}", host_python);
 
     if shoop_lib_dir.exists() {
