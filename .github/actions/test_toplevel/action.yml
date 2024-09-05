@@ -50,6 +50,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       echo "package=package/$(ls package | head -n1)" | tee -a $GITHUB_OUTPUT
+  - uses: ./.github/actions/checkpoint
   - name: Install package (${{ inputs.package }})
     if: ${{ inputs.package }}
     id: install_package
@@ -58,6 +59,7 @@ runs:
       package: ${{ steps.find_package.outputs.package }}
       coverage: ${{ inputs.coverage }}
       sudo: ${{ inputs.install_with_sudo }}
+  - uses: ./.github/actions/checkpoint
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -78,6 +80,7 @@ runs:
       mkdir unzip_whl
       ${{ inputs.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
       cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
+  - uses: ./.github/actions/checkpoint
   - name: Create crashdumps folder
     shell: wrap-shell {0}
     run: |
@@ -87,11 +90,13 @@ runs:
     shell: wrap-shell {0}
     run: |
       PIP_BREAK_SYSTEM_PACKAGES=1 ${{ env.PIP }} install pytest coverage pipx
+  - uses: ./.github/actions/checkpoint
   - name: Install Qoverage
     if: ${{ inputs.coverage }}
     uses: ./.github/actions/install_qoverage
     with:
       python: ${{ inputs.python }}
+  - uses: ./.github/actions/checkpoint
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -106,6 +111,7 @@ runs:
       REPORTNAME: backend_lcov
     with:
       variant_name: ${{ inputs.name }}
+  - uses: ./.github/actions/checkpoint
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -118,6 +124,7 @@ runs:
     uses: ./.github/actions/test_rust\
     with:
       variant_name: ${{ inputs.name }}
+  - uses: ./.github/actions/checkpoint
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -144,6 +151,7 @@ runs:
       echo "QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}" | tee -a $GITHUB_ENV
       echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
       echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
+  - uses: ./.github/actions/checkpoint
   - shell: wrap-shell {0}
     if: ${{ (success() || failure()) && (inputs.do_qml_tests == 'true') }}
     run: |
@@ -161,6 +169,7 @@ runs:
       variant_name: release
       macos_rpath_patch: ${{ contains(inputs.name, 'macos') }}
       tee_all_output_to: test-qml-console-output.log
+  - uses: ./.github/actions/checkpoint
   - name: Generate QML Python coverage report
     if: ${{ (success() || failure()) && inputs.coverage && (inputs.do_qml_tests == 'true') }}
     shell: wrap-shell {0}
@@ -176,6 +185,7 @@ runs:
       package_path: ${{ steps.install_package.outputs.install_dir }}
       console_output_file: test-qml-console-output.log
       report_file: coverage_reports/qml_qoverage.xml
+  - uses: ./.github/actions/checkpoint
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -190,6 +200,7 @@ runs:
       root_path: ${{ steps.install_package.outputs.install_dir }}
       screenshots_path: _grabbed_screenshots
       artifact_name: screenshots_${{ inputs.name }}
+  - uses: ./.github/actions/checkpoint
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -197,12 +208,14 @@ runs:
       echo "Monkey test"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
+  - uses: ./.github/actions/checkpoint
   - name: Test Run App
     if: ${{ success() || failure() }}
     uses: ./.github/actions/test_run_app
     with:
       variant_name: release
       root_path: ${{ steps.install_package.outputs.install_dir }}
+  - uses: ./.github/actions/checkpoint
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -217,6 +230,7 @@ runs:
       dumps_dir: crashdumps
       python: ${{ inputs.python }}
       variant: ${{ inputs.name }}
+  - uses: ./.github/actions/checkpoint
   - name: Upload back-end coverage to CodeCov
     if: ${{ (success() || failure()) && inputs.coverage }}
     uses: codecov/codecov-action@v3
@@ -250,6 +264,3 @@ runs:
     with:
       name: coverage_reports
       path: coverage_reports
-  # - name: TMate failure session
-  #   if: ${{ failure() && inputs.asan }}
-  #   uses: SanderVocke/action-tmate@master

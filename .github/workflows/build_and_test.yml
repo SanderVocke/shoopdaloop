@@ -52,6 +52,7 @@ jobs:
         name: release_upload_assets_url
         path: release_upload_assets_url.txt
     - uses: ./.github/actions/checkpoint
+      if: startsWith(github.ref, 'refs/tags/')
 
   ##############################################################
   ## Linux

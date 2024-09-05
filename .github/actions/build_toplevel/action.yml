@@ -77,6 +77,7 @@ runs:
     uses: ./.github/actions/prepare_build
     with:
       variant: ${{ inputs.prepare_kind }}
+  - uses: ./.github/actions/checkpoint
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -92,6 +93,7 @@ runs:
     uses: ./.github/actions/qoverage_instrument
     with:
       package_path: .
+  - uses: ./.github/actions/checkpoint
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -107,6 +109,7 @@ runs:
       package_kind: ${{ inputs.package_kind }}
       upload_release_assets: ${{ inputs.upload_release_assets }}
       release_upload_assets_url: ${{ env.release_upload_assets_url }}
+  - uses: ./.github/actions/checkpoint
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -141,6 +144,7 @@ runs:
       path: |
         ./**/*.pdb
         ./**/*.PDB
+  - uses: ./.github/actions/checkpoint
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -187,6 +191,3 @@ runs:
     with:
       upload_url: ${{ env.release_upload_assets_url }}
       asset_path: ${{ steps.compress_pdb.outputs.path }}
-  # - name: TMate failure session
-  #   if: ${{ failure() }}
-  #   uses: SanderVocke/action-tmate@master
