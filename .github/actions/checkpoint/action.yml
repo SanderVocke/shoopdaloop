@@ -11,6 +11,24 @@ runs:
     run: |
       echo "Checkpoints enabled: '${{ env.checkpoints_enabled }}'"
       echo "Failure status: '${{ env.failure_status }}'"
+  
+  - name: Check 1
+    if: failure()
+    shell: bash
+    run: |
+      echo failure correct
+  
+  - name: Check 1
+    if: env.failure_status == 'unhandled'
+    shell: bash
+    run: |
+      echo failure_status correct
+
+  - name: Check 1
+    if: env.checkpoints_enabled == 'true'
+    shell: bash
+    run: |
+      echo enabled correct
 
   - name: Checkpoint message
     if: failure() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
