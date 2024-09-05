@@ -39,7 +39,7 @@ runs:
        echo "maybe_sudo=${{ (inputs.sudo == 'true') && 'sudo' || '' }}" | tee -a $GITHUB_ENV
 
   - name: Install InnoSetup installer
-    if: ${{ always() && steps.get_type.outputs.type == 'exe' }}
+    if: always() && steps.get_type.outputs.type == 'exe'
     shell: wrap-shell {0}
     run: |
       WINDOWS_SETUP_PATH=$(cygpath -w $(realpath ${{ inputs.package }}))
@@ -55,7 +55,7 @@ runs:
 
   # Linux AppImage
   - name: Setup AppImage
-    if: ${{ always() && steps.get_type.outputs.type == 'AppImage' }}
+    if: always() && steps.get_type.outputs.type == 'AppImage'
     shell: wrap-shell {0}
     run: |
       chmod a+x ${{ inputs.package }}
@@ -64,7 +64,7 @@ runs:
 
   # MacOS .dmg installer
   - name: Install MacOS .dmg
-    if: ${{ always() && steps.get_type.outputs.type == 'dmg' }}
+    if: always() && steps.get_type.outputs.type == 'dmg'
     shell: wrap-shell {0}
     run: |
       hdiutil attach ${{ inputs.package }}

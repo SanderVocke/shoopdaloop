@@ -41,20 +41,20 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Retrieve package
-    if: ${{ always() && inputs.package }}
+    if: always() && inputs.package
     uses: actions/download-artifact@v4
     with:
       name: ${{ inputs.package }}
       path: ./package
   - name: Find package
-    if: ${{ always() && inputs.package }}
+    if: always() && inputs.package
     id: find_package
     shell: wrap-shell {0}
     run: |
       echo "package=package/$(ls package | head -n1)" | tee -a $GITHUB_OUTPUT
   - uses: ./.github/actions/checkpoint
   - name: Install package (${{ inputs.package }})
-    if: ${{ always() && inputs.package }}
+    if: always() && inputs.package
     id: install_package
     uses: ./.github/actions/install_package
     with:
@@ -72,12 +72,12 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Retrieve info context for coverage analysis
-    if: ${{ always() && inputs.coverage }}
+    if: always() && inputs.coverage
     uses: actions/download-artifact@v4
     with:
       name: coverage_context
   # - name: Pre-install ASAN shared lib
-  #   if: ${{ always() && inputs.asan }}
+  #   if: always() && inputs.asan
   #   shell: wrap-shell {0}
   #   run: |
   #     ${{ env.PIP }} install wheel
@@ -107,7 +107,7 @@ runs:
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Install Qoverage
-    if: ${{ always() && inputs.coverage }}
+    if: always() && inputs.coverage
     uses: ./.github/actions/install_qoverage
   - uses: ./.github/actions/checkpoint
     if: always()
@@ -120,7 +120,7 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test back-end
-    if: ${{ always() && steps.install_package.outputs.test_runner }}
+    if: always() && steps.install_package.outputs.test_runner
     uses: ./.github/actions/test_backend
     env:
       REPORTNAME: backend_lcov
@@ -137,7 +137,7 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test rust
-    if: ${{ always() && steps.install_package.outputs.rust_test_runner }}
+    if: always() && steps.install_package.outputs.rust_test_runner
     uses: ./.github/actions/test_rust\
     with:
       variant_name: ${{ inputs.name }}
@@ -152,13 +152,13 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test Python
-    if: ${{ always() && steps.install_package.outputs.pytest_dir }}
+    if: always() && steps.install_package.outputs.pytest_dir
     uses: ./.github/actions/test_python
     with:
       variant_name: release
       root_path: ${{ steps.install_package.outputs.pytest_dir }}
   - name: Generate Pytest Python coverage report
-    if: ${{ always() && inputs.coverage }}
+    if: always() && inputs.coverage
     shell: wrap-shell {0}
     run: |
       $PYTHON -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
@@ -167,7 +167,7 @@ runs:
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
-    if: ${{ always() && (inputs.do_qml_tests == 'true') }}
+    if: always() && (inputs.do_qml_tests == 'true')
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -175,7 +175,7 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test QML
-    if: ${{ always() && (inputs.do_qml_tests == 'true') }}
+    if: always() && (inputs.do_qml_tests == 'true')
     uses: ./.github/actions/test_qml
     env:
       REPORTNAME: qml_lcov
@@ -186,14 +186,14 @@ runs:
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Generate QML Python coverage report
-    if: ${{ always() && inputs.coverage && (inputs.do_qml_tests == 'true') }}
+    if: always() && inputs.coverage && (inputs.do_qml_tests == 'true')
     shell: wrap-shell {0}
     run: |
       $PYTHON -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
       sed -r -i 's/test_venv.*shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
       $PYTHON -m coverage erase
   - name: Qoverage - Generate report
-    if: ${{ always() && inputs.coverage && (inputs.do_qml_tests == 'true') }}
+    if: always() && inputs.coverage && (inputs.do_qml_tests == 'true')
     uses: ./.github/actions/qoverage_generate_report
     with:
       strip: ".*/pip/shoopdaloop"
@@ -254,7 +254,7 @@ runs:
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Upload back-end coverage to CodeCov
-    if: ${{ always() && inputs.coverage }}
+    if: always() && inputs.coverage
     uses: codecov/codecov-action@v3
     with:
       token: ${{ inputs.codecov_token }}
@@ -263,7 +263,7 @@ runs:
       verbose: true
       fail_ci_if_error: true
   - name: Upload Pytest coverage to CodeCov
-    if: ${{ always() && inputs.coverage }}
+    if: always() && inputs.coverage
     uses: codecov/codecov-action@v3
     with:
       token: ${{ inputs.codecov_token }}
@@ -272,7 +272,7 @@ runs:
       verbose: true
       fail_ci_if_error: true
   - name: Upload QML test coverage to CodeCov
-    if: ${{ always() && inputs.coverage && (inputs.do_qml_tests == 'true') }}
+    if: always() && inputs.coverage && (inputs.do_qml_tests == 'true')
     uses: codecov/codecov-action@v3
     with:
       token: ${{ inputs.codecov_token }}
@@ -281,7 +281,7 @@ runs:
       verbose: true
       fail_ci_if_error: true
   - name: Upload raw coverage reports
-    if: ${{ always() && inputs.coverage }}
+    if: always() && inputs.coverage
     uses: actions/upload-artifact@v4
     with:
       name: coverage_reports

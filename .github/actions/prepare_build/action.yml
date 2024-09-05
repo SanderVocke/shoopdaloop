@@ -11,19 +11,19 @@ runs:
   using: "composite"
   steps:
   - name: Prepare Rust (Windows)
-    if: ${{ always() && inputs.variant == 'windows' }}
+    if: always() && inputs.variant == 'windows'
     uses: dtolnay/rust-toolchain@stable
     with:
        targets: x86_64-pc-windows-msvc
   - name: Prepare Rust (non-Windows)
-    if: ${{ always() && inputs.variant != 'windows' }}
+    if: always() && inputs.variant != 'windows'
     uses: dtolnay/rust-toolchain@stable
   - name: Rust packages
     shell: wrap-shell {0}
     run: |
       cargo install cargo-nextest
   - name: Rust info
-    if: ${{ always() && inputs.variant == 'windows' }}
+    if: always() && inputs.variant == 'windows'
     shell: wrap-shell {0}
     run: |
       echo "==== Rust version ===="
@@ -33,7 +33,7 @@ runs:
 
   - name: Install Qt (Windows)
     uses: jurplel/install-qt-action@v4
-    if: ${{ always() && inputs.variant == 'windows' }}
+    if: always() && inputs.variant == 'windows'
     with:
       cache: true
       version: 6.6.3
@@ -41,7 +41,7 @@ runs:
       setup-python: false
   - name: Install Qt
     uses: jurplel/install-qt-action@v4
-    if: ${{ always() && inputs.variant != 'windows' }}
+    if: always() && inputs.variant != 'windows'
     with:
       cache: true
       version: 6.6.3
@@ -55,16 +55,16 @@ runs:
       echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6" | tee -a $GITHUB_ENV
      
   - name: Prepare linux
-    if: ${{ always() && inputs.variant == 'linux' }}
+    if: always() && inputs.variant == 'linux'
     uses: ./.github/actions/prepare_build_linux
   - name: Prepare ubuntu-latest
-    if: ${{ always() && inputs.variant == 'ubuntu_latest' }}
+    if: always() && inputs.variant == 'ubuntu_latest'
     uses: ./.github/actions/prepare_build_ubuntu_latest
   - name: Prepare MacOS
-    if: ${{ always() && inputs.variant == 'macos' }}
+    if: always() && inputs.variant == 'macos'
     uses: ./.github/actions/prepare_build_macos
   - name: Prepare Windows
-    if: ${{ always() && inputs.variant == 'windows' }}
+    if: always() && inputs.variant == 'windows'
     uses: ./.github/actions/prepare_build_windows
 
   - name: Run sccache-cache only on non-release runs
