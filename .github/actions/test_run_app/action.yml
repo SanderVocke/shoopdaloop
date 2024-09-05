@@ -5,19 +5,9 @@ inputs:
   variant_name:
     required: true
     type: string
-  run_cmd_prefix:
-    type: string
-    description: "Command-line prefix to use when running the test runner"
   root_path:
     type: string
     required: true
-  shoopdaloop_command:
-    type: string
-    required: true
-  python:
-    type: string
-    required: false
-    default: python3
   qt_qpa_platform:
     type: string
     default: vnc
@@ -28,9 +18,7 @@ runs:
   - name: run app (${{ inputs.variant_name }})
     shell: wrap-shell {0}
     run: >
-        ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0
-        QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}
-        ${{ inputs.run_cmd_prefix }}
-        ${{ inputs.shoopdaloop_command }} --quit-after=40 -b dummy --monkey-tester
+        ${{ env.RUN_COMMAND_PREFIX }}
+        ${{ env.SHOOPDALOOP_COMMAND }} --quit-after=40 -b dummy --monkey-tester
 
 

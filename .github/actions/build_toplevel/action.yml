@@ -14,10 +14,6 @@ inputs:
     description: "Python command to use"
   rename_wheel_sed:
     description: "Sed command to use for renaming the built wheel"
-  pyinstaller:
-    description: "Whether to build pyinstaller folder"
-  appbundle:
-    description: "Whether to build app bundle using pyinstaller"
   package_kind:
     description: "Kind of package to build"
   coverage:
@@ -70,6 +66,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
+  - uses: ./.github/actions/checkpoint
   - name: Install Qoverage
     if: ${{ inputs.coverage }}
     uses: ./.github/actions/install_qoverage
@@ -117,24 +114,12 @@ runs:
       echo "Upload artifacts"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
-  # - name: Upload wheel (${{ inputs.variant_name }})
-  #   if: ${{ inputs.upload_artifacts == 'true' }}
-  #   uses: actions/upload-artifact@v4
-  #   with:
-  #     name: wheel_${{ inputs.name }}
-  #     path: ${{ steps.find.outputs.name }}
   - name: Upload debug info (${{ inputs.variant_name }})
     if: ${{ inputs.upload_artifacts == 'true' }}
     uses: actions/upload-artifact@v4
     with:
       name: breakpad_debuginfo_${{ inputs.name }}
       path: debuginfo
-  # - name: Upload PyInstaller (${{ inputs.variant_name }})
-  #   if: ${{ inputs.pyinstaller && inputs.upload_artifacts == 'true' }}
-  #   uses: actions/upload-artifact@v4
-  #   with:
-  #     name: pyinstaller_${{ inputs.name }}
-  #     path: ${{ steps.pyinstaller.outputs.distribution }}
   - name: Save build info for coverage analyis
     shell: wrap-shell {0}
     if: ${{ inputs.coverage }}

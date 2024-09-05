@@ -5,21 +5,9 @@ inputs:
   variant_name:
     required: true
     type: string
-  run_cmd_prefix:
-    type: string
-    description: "Command-line prefix to use when running the test runner"
-  shoopdaloop_command:
-    type: string
-    required: true
-  python_command:
-    type: string
-    default: python3
   tee_all_output_to:
     type: string
     default: /dev/null
-  qt_qpa_platform:
-    type: string
-    default: vnc
   macos_rpath_patch:
     type: boolean
     required: false
@@ -32,31 +20,29 @@ runs:
     shell: wrap-shell {0}
     run: |
       mkdir -p reports
-      echo "results_xml=reports/qml_test_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
+      echo "RESULTS_XML=reports/qml_test_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
 
   - name: QML test (${{ inputs.variant_name }})
     shell: wrap-shell {0}
     run: >
-      ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0
-      QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}
       QT_ASSUME_STDERR_HAS_CONSOLE=1
-      ${{ inputs.run_cmd_prefix }}
-      ${{ inputs.shoopdaloop_command }} --qml-self-test
+      ${{ env.RUN_CMD_PREFIX }}
+      ${{ env.SHOOPDALOOP_COMMAND }} --qml-self-test
       --
-      --junit ${{ env.results_xml }}
+      --junit ${{ env.RESULTS_XML }}
       2>&1 | tee ${{ inputs.tee_all_output_to }}
   
   - name: Report results filename
     shell: wrap-shell {0}
     if: success() || failure()
     run: |
-      echo "QML test results file: $(ls -la ${{ env.results_xml }})"
+      echo "QML test results file: $(ls -la ${{ env.RESULTS_XML }})"
   
   - name: Publish QML Test Report
     if: ${{ !env.ACT && ( success() || failure() ) }}
     uses: mikepenz/action-junit-report@v3
     with:
-      report_paths: ${{ env.results_xml }}
+      report_paths: ${{ env.RESULTS_XML }}
       include_passed: false
       check_name: 'QML test (${{ inputs.variant_name }})'
       annotate_only: true

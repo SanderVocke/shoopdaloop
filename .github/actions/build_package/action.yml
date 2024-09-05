@@ -2,7 +2,7 @@
 
 inputs:
   package_kind:
-    description: "innosetup / linuxes / pyinstaller"
+    description: "kind of package to build"
   upload_release_assets:
     description: "Whether to upload release assets"
     default: 'false'

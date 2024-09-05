@@ -7,20 +7,12 @@ inputs:
     description: "Whether to enable ASAN"
   coverage:
     description: "Whether to gather code coverage"
-  python_pip_args:
-    description: "pip command args to append to the python command"
   python:
     description: "python command"
   name:
     description: "workflow name"
-  python_pytest_args:
-    description: "PyTest args to append to the python command"
-  run_cmd_prefix:
-    description: "Prefix for running commands"
   qpa_platform:
     description: "Qt QPA platform"
-  pyinstaller:
-    description: "Whether to build PyInstaller"
   codecov_token:
     description: "Token for CodeCov"
   install_with_sudo:
@@ -33,6 +25,12 @@ inputs:
 runs:
   using: "composite"
   steps:
+  - name: env settings
+    shell: wrap-shell {0}
+    run: |
+      echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
+      echo "PIP=${{ inputs.python }} -m pip" | tee -a $GITHUB_ENV
+      echo "PYTEST=${{ inputs.python }} -m pytest" | tee -a $GITHUB_ENV
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -58,8 +56,6 @@ runs:
     uses: ./.github/actions/install_package
     with:
       package: ${{ steps.find_package.outputs.package }}
-      python: ${{ inputs.python }}
-      python_pytest_args: ${{ inputs.python_pytest_args }}
       coverage: ${{ inputs.coverage }}
       sudo: ${{ inputs.install_with_sudo }}
   - shell: wrap-shell {0}
@@ -78,7 +74,7 @@ runs:
     if: ${{ inputs.asan }}
     shell: wrap-shell {0}
     run: |
-      ${{ inputs.python }} ${{ inputs.python_pip_args }} install wheel
+      ${{ env.PIP }} install wheel
       mkdir unzip_whl
       ${{ inputs.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
       cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
@@ -86,10 +82,11 @@ runs:
     shell: wrap-shell {0}
     run: |
       mkdir -p crashdumps
+      echo "SHOOP_CRASH_DIR=crashdumps" | tee -a $GITHUB_ENV
   - name: Install Python modules
     shell: wrap-shell {0}
     run: |
-      PIP_BREAK_SYSTEM_PACKAGES=1 ${{ inputs.python }} ${{ inputs.python_pip_args }} install pytest coverage pipx
+      PIP_BREAK_SYSTEM_PACKAGES=1 ${{ env.PIP }} install pytest coverage pipx
   - name: Install Qoverage
     if: ${{ inputs.coverage }}
     uses: ./.github/actions/install_qoverage
@@ -105,12 +102,10 @@ runs:
   - name: Test back-end
     if: ${{ (success() || failure()) && steps.install_package.outputs.test_runner }}
     uses: ./.github/actions/test_backend
+    env:
+      REPORTNAME: backend_lcov
     with:
       variant_name: ${{ inputs.name }}
-      # note: build step generates run_cmd_prefix output
-      # for usage with shared ASAN library.
-      run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=backend_lcov ${{ inputs.run_cmd_prefix }}
-      test_runner: ${{ steps.install_package.outputs.test_runner }}
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -120,14 +115,9 @@ runs:
       printf "\n\n\n\n\n\n"
   - name: Test rust
     if: ${{ (success() || failure()) && steps.install_package.outputs.rust_test_runner }}
-    uses: ./.github/actions/test_rust
+    uses: ./.github/actions/test_rust\
     with:
       variant_name: ${{ inputs.name }}
-      # note: build step generates run_cmd_prefix output
-      # for usage with shared ASAN library.
-      run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ inputs.run_cmd_prefix }}
-      test_runner: ${{ steps.install_package.outputs.rust_test_runner }}
-      python: ${{ steps.install_package.outputs.python }}
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -140,9 +130,7 @@ runs:
     uses: ./.github/actions/test_python
     with:
       variant_name: release
-      run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=pytest_lcov ${{ inputs.run_cmd_prefix }}
       root_path: ${{ steps.install_package.outputs.pytest_dir }}
-      pytest_command: ${{ steps.install_package.outputs.python }} ${{ inputs.python_pytest_args }}
   - name: Generate Pytest Python coverage report
     if: ${{ (success() || failure()) && inputs.coverage }}
     shell: wrap-shell {0}
@@ -150,6 +138,12 @@ runs:
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
       sed -r -i 's/test_venv.*shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
       ${{ inputs.python }} -m coverage erase
+  - name: Env settings
+    shell: wrap-shell {0}
+    run: |
+      echo "QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}" | tee -a $GITHUB_ENV
+      echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
+      echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
   - shell: wrap-shell {0}
     if: ${{ (success() || failure()) && (inputs.do_qml_tests == 'true') }}
     run: |
@@ -161,12 +155,10 @@ runs:
   - name: Test QML
     if: ${{ (success() || failure()) && (inputs.do_qml_tests == 'true') }}
     uses: ./.github/actions/test_qml
+    env:
+      REPORTNAME: qml_lcov
     with:
       variant_name: release
-      run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps REPORTNAME=qml_lcov ${{ inputs.run_cmd_prefix }}
-      shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
-      python_command: ${{ inputs.python }}
-      qt_qpa_platform: ${{ inputs.qpa_platform }}
       macos_rpath_patch: ${{ contains(inputs.name, 'macos') }}
       tee_all_output_to: test-qml-console-output.log
   - name: Generate QML Python coverage report
@@ -196,12 +188,8 @@ runs:
     uses: ./.github/actions/test_screenshots
     with:
       root_path: ${{ steps.install_package.outputs.install_dir }}
-      run_cmd_prefix: SHOOP_CRASH_DIR=crashdumps ${{ inputs.run_cmd_prefix }}
       screenshots_path: _grabbed_screenshots
       artifact_name: screenshots_${{ inputs.name }}
-      qt_qpa_platform: ${{ inputs.qpa_platform }}
-      python: ${{ inputs.python }}
-      shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -214,11 +202,7 @@ runs:
     uses: ./.github/actions/test_run_app
     with:
       variant_name: release
-      run_cmd_prefix: SHOOP_CRASH_DUMP_DIR=crashdumps ${{ inputs.run_cmd_prefix }}
       root_path: ${{ steps.install_package.outputs.install_dir }}
-      python: ${{ inputs.python }}
-      qt_qpa_platform: ${{ inputs.qpa_platform }}
-      shoopdaloop_command: ${{ steps.install_package.outputs.shoopdaloop }}
   - shell: wrap-shell {0}
     run: |
       printf "\n\n\n\n\n\n"
@@ -234,7 +218,7 @@ runs:
       python: ${{ inputs.python }}
       variant: ${{ inputs.name }}
   - name: Upload back-end coverage to CodeCov
-    if: ${{ (success() || failure()) && inputs.coverage && !(inputs.pyinstaller) }}
+    if: ${{ (success() || failure()) && inputs.coverage }}
     uses: codecov/codecov-action@v3
     with:
       token: ${{ inputs.codecov_token }}
@@ -243,7 +227,7 @@ runs:
       verbose: true
       fail_ci_if_error: true
   - name: Upload Pytest coverage to CodeCov
-    if: ${{ (success() || failure()) && inputs.coverage && !(inputs.pyinstaller) }}
+    if: ${{ (success() || failure()) && inputs.coverage }}
     uses: codecov/codecov-action@v3
     with:
       token: ${{ inputs.codecov_token }}

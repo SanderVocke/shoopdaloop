@@ -9,8 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  BUILD_TYPE: Release
-  PIP_BREAK_SYSTEM_PACKAGES: 1
+  checkpoints_enabled: true
 
 permissions:
   contents: write
@@ -52,7 +51,7 @@ jobs:
       with:
         name: release_upload_assets_url
         path: release_upload_assets_url.txt
-
+    - uses: ./.github/actions/checkpoint
 
   ##############################################################
   ## Linux
@@ -65,7 +64,6 @@ jobs:
         kind:
           - name: linux_release
             release_build: true
-            pyinstaller: true
             package_kind: appimage
             upload_release_assets: true
           - name: linux_debug
@@ -98,11 +96,9 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc -eo pipefail
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
@@ -112,13 +108,10 @@ jobs:
         prepare_kind: 'linux'
         python: python3.9
         rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
         package_kind: ${{ matrix.kind.package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-    - name: Setup tmate session
-      if: failure()
-      uses: SanderVocke/action-tmate@master
+    - uses: ./.github/actions/checkpoint
 
   test_linux:
     strategy:
@@ -127,45 +120,29 @@ jobs:
         kind:
           - name: release_wheel_debian_stable
             python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: wheel_linux_release
           - name: debug_wheel_debian_stable
             python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: wheel_linux_debug
           # - name: release_deb_ubuntu_latest
           #   python: python3
-          #   python_pip_args: -m pip
-          #   python_pytest_args: -m pytest
           #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
           #   package: package_linux_release_deb
           # - name: release_pyinst_ubuntu_latest
           #   python: python3
-          #   python_pip_args: -m pip
-          #   python_pytest_args: -m pytest
           #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-          #   package: pyinstaller_linux_release
           # - name: release_pacman_arch
           #   python: python
-          #   python_pip_args: -m pip
-          #   python_pytest_args: -m pytest
           #   container: docker.io/sandervocke/shoopdaloop_run_base_arch_x86_64:latest
           #   package: package_linux_release_pacman
           # - name: release_rpm_fedora
           #   python: python3
-          #   python_pip_args: -m pip
-          #   python_pytest_args: -m pytest
           #   container: docker.io/sandervocke/shoopdaloop_run_base_fedora_x86_64:latest
           #   package: package_linux_release_rpm
           # - name: coverage_debian_bullseye
           #   python: python3
-          #   python_shoopdaloop_args: -m coverage run --source=shoopdaloop
-          #   python_pip_args: -m pip
-          #   python_pytest_args: -m coverage run --source=shoopdaloop -m pytest
           #   container: docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
           #   package: wheel_linux_coverage
           #   coverage: true
@@ -188,11 +165,10 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc -eo pipefail
+    - uses: ./.github/actions/checkpoint
     - name: Test
       uses: ./.github/actions/test_toplevel
       with:
@@ -200,17 +176,10 @@ jobs:
         package: ${{ matrix.kind.package }}
         asan: ${{ matrix.kind.asan }}
         coverage: ${{ matrix.kind.coverage }}
-        python_pip_args: ${{ matrix.kind.python_pip_args }}
         python: ${{ matrix.kind.python }}
-        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-        python_pytest_args: ${{ matrix.kind.python_pytest_args }}
         qpa_platform: vnc
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
-    # - name: Setup tmate session
-    #   if: failure()
-    #   uses: SanderVocke/action-tmate@master
-
+    - uses: ./.github/actions/checkpoint
 
 
 
@@ -233,7 +202,6 @@ jobs:
   #       kind:
   #         - name: linux_arm_release
   #           build_type: 'Release'
-  #           pyinstaller: true
   #           package_kind: linuxes
   #           upload_release_assets: true
   #         - name: linux_arm_debug
@@ -256,7 +224,7 @@ jobs:
   #     uses: sandervocke/setup-shell-wrapper@v1
   #   - name: Use container shell
   #     shell: bash
-  #     run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV
+  #     run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV !!!!!!! fix
   #   - name: Build
   #     uses: ./.github/actions/build_toplevel
   #     with:
@@ -266,7 +234,6 @@ jobs:
   #       prepare_kind: 'linux'
   #       python: python3.9
   #       rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-  #       pyinstaller: ${{ matrix.kind.pyinstaller }}
   #       package_kind: ${{ matrix.kind.package_kind }}
   #       coverage: ${{ matrix.kind.coverage }}
   #       upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
@@ -280,14 +247,10 @@ jobs:
   #       kind:
   #         - name: release_wheel_debian_bullseye_arm
   #           python: python3
-  #           python_pip_args: -m pip
-  #           python_pytest_args: -m pytest
   #           container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_arm64:latest
   #           package: wheel_linux_arm_release
   #         - name: release_deb_ubuntu_latest_arm
   #           python: python3
-  #           python_pip_args: -m pip
-  #           python_pytest_args: -m pytest
   #           container: docker.io/sandervocke/shoopdaloop_run_base_ubuntu_latest_arm64:latest
   #           package: package_linux_arm_release_deb
   #           install_with_sudo: 'true'
@@ -306,7 +269,7 @@ jobs:
   #     uses: sandervocke/setup-shell-wrapper@v1
   #   - name: Use container shell
   #     shell: bash
-  #     run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV
+  #     run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV    !!!!!!! fix this
   #   - name: Test
   #     uses: ./.github/actions/test_toplevel
   #     with:
@@ -314,15 +277,12 @@ jobs:
   #       package: ${{ matrix.kind.package }}
   #       asan: ${{ matrix.kind.asan }}
   #       coverage: ${{ matrix.kind.coverage }}
-  #       python_pip_args: ${{ matrix.kind.python_pip_args }}
   #       python: ${{ matrix.kind.python }}
-  #       run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-  #       python_pytest_args: ${{ matrix.kind.python_pytest_args }}
   #       qpa_platform: vnc
-  #       pyinstaller: ${{ matrix.kind.pyinstaller }}
   #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
   #       install_with_sudo: ${{ matrix.kind.install_with_sudo }}
   #       do_qml_tests: false # Too slow on ARM emulation
+  #   - uses: ./.github/actions/checkpoint
 
 
 
@@ -367,11 +327,9 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc -eo pipefail
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
@@ -380,7 +338,6 @@ jobs:
         cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: 'macos'
         python: python3.9
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
         appbundle: ${{ matrix.kind.appbundle }}
         package_kind: ${{ matrix.kind.package_kind }}
         coverage: ${{ matrix.kind.coverage }}
@@ -388,9 +345,7 @@ jobs:
         # Also remove the double dot if any.
         rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-    # - name: Setup tmate session
-    #   if: failure()
-    #   uses: SanderVocke/action-tmate@master
+    - uses: ./.github/actions/checkpoint
 
   test_macos:
     strategy:
@@ -399,40 +354,30 @@ jobs:
         kind:
           # - name: release_whl_macos12
           #   python: python3
-          #   python_pip_args: -m pip
-          #   python_pytest_args: -m pytest
           #   container: null
           #   os: macos-12
           #   package: wheel_macos_release
           #   qpa_platform: offscreen
           # - name: release_whl_macos13
           #   python: python3
-          #   python_pip_args: -m pip
-          #   python_pytest_args: -m pytest
           #   container: null
           #   os: macos-13
           #   package: wheel_macos_release
           #   qpa_platform: offscreen
           # - name: release_whl_macos14
           #   python: python3
-          #   python_pip_args: -m pip
-          #   python_pytest_args: -m pytest
           #   container: null
           #   os: macos-14
           #   package: wheel_macos_release_arm
           #   qpa_platform: offscreen
           - name: debug_whl_macos14
             python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
             container: null
             os: macos-14
             package: wheel_macos_debug_arm
             qpa_platform: offscreen
           # - name: release_dmg_macos14
           #   python: python3
-          #   python_pip_args: -m pip
-          #   python_pytest_args: -m pytest
           #   container: null
           #   os: macos-14
           #   package: package_macos_release_arm
@@ -446,11 +391,9 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc -eo pipefail
     - name: Test
       uses: ./.github/actions/test_toplevel
       with:
@@ -458,13 +401,10 @@ jobs:
         package: ${{ matrix.kind.package }}
         asan: ${{ matrix.kind.asan }}
         coverage: ${{ matrix.kind.coverage }}
-        python_pip_args: ${{ matrix.kind.python_pip_args }}
         python: ${{ matrix.kind.python }}
-        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-        python_pytest_args: ${{ matrix.kind.python_pytest_args }}
         qpa_platform: ${{ matrix.kind.qpa_platform }}
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
+    - uses: ./.github/actions/checkpoint
 
 
 
@@ -499,7 +439,6 @@ jobs:
           #   container_image: null
           #   prepare: 'windows'
           #   build_type: 'Release'
-          #   pyinstaller: true
           #   package_kind: innosetup
           #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
           #   upload_release_assets: true
@@ -522,11 +461,9 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc -eo pipefail
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
@@ -536,13 +473,10 @@ jobs:
         prepare_kind: ${{ matrix.kind.prepare }}
         python: ${{ matrix.kind.python }}
         rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
         package_kind: ${{ matrix.kind.package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-    # - name: Setup tmate session
-    #   if: failure()
-    #   uses: SanderVocke/action-tmate@master
+    - uses: ./.github/actions/checkpoint
 
   test_windows:
     strategy:
@@ -551,8 +485,6 @@ jobs:
         kind:
           # - name: release_windows
           #   python: python.exe
-          #   python_pip_args: -m pip
-          #   python_pytest_args: -m pytest
           #   container: null
           #   os: windows-2022
           #   package: wheel_windows_release
@@ -560,8 +492,6 @@ jobs:
           #   pathconvert: "| cygpath -u -f -"
           # - name: release_windows_innosetup
           #   python: python.exe
-          #   python_pip_args: -m pip
-          #   python_pytest_args: -m pytest
           #   container: null
           #   os: windows-2022
           #   package: package_windows_release
@@ -569,8 +499,6 @@ jobs:
           #   pathconvert: "| cygpath -u -f -"
           - name: debug_windows
             python: python.exe
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
             container: null
             os: windows-2022
             package: wheel_windows_debug
@@ -585,11 +513,9 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc -eo pipefail
     - name: Test
       uses: ./.github/actions/test_toplevel
       with:
@@ -597,13 +523,10 @@ jobs:
         package: ${{ matrix.kind.package }}
         asan: ${{ matrix.kind.asan }}
         coverage: ${{ matrix.kind.coverage }}
-        python_pip_args: ${{ matrix.kind.python_pip_args }}
         python: ${{ matrix.kind.python }}
-        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-        python_pytest_args: ${{ matrix.kind.python_pytest_args }}
         qpa_platform: ${{ matrix.kind.qpa_platform }}
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
+    - uses: ./.github/actions/checkpoint
 
 
 
@@ -643,11 +566,9 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc -eo pipefail
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:

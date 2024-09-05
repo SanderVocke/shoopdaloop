@@ -45,7 +45,7 @@ runs:
           if [[ "$lastpart" == "app" ]]; then
               type="appbundle"
           else
-              type="pyinstaller"
+              type="portable"
           fi
        else
           filename=${{ inputs.package }}
