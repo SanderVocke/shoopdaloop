@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ "$failure_status" != ""]; then
+if [ "$failure_status" != "" ]; then
   if ! [ -v GHA_RUN_ALWAYS ]; then
     echo "failure_status is set"
     exit 1
