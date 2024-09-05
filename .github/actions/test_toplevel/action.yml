@@ -76,16 +76,23 @@ runs:
     uses: actions/download-artifact@v4
     with:
       name: coverage_context
-  - name: Pre-install ASAN shared lib
-    if: ${{ always() && inputs.asan }}
-    shell: wrap-shell {0}
-    run: |
-      ${{ env.PIP }} install wheel
-      mkdir unzip_whl
-      ${{ inputs.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
-      cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
+  # - name: Pre-install ASAN shared lib
+  #   if: ${{ always() && inputs.asan }}
+  #   shell: wrap-shell {0}
+  #   run: |
+  #     ${{ env.PIP }} install wheel
+  #     mkdir unzip_whl
+  #     ${{ inputs.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
+  #     cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
   - uses: ./.github/actions/checkpoint
     if: always()
+  - name: Env settings
+    shell: wrap-shell {0}
+    if: always()
+    run: |
+      echo "QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}" | tee -a $GITHUB_ENV
+      echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
+      echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
   - name: Create crashdumps folder
     if: always()
     shell: wrap-shell {0}
@@ -102,8 +109,6 @@ runs:
   - name: Install Qoverage
     if: ${{ always() && inputs.coverage }}
     uses: ./.github/actions/install_qoverage
-    with:
-      python: ${{ inputs.python }}
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
@@ -156,16 +161,9 @@ runs:
     if: ${{ always() && inputs.coverage }}
     shell: wrap-shell {0}
     run: |
-      ${{ inputs.python }} -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
+      $PYTHON -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
       sed -r -i 's/test_venv.*shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
-      ${{ inputs.python }} -m coverage erase
-  - name: Env settings
-    shell: wrap-shell {0}
-    if: always()
-    run: |
-      echo "QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}" | tee -a $GITHUB_ENV
-      echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
-      echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
+      $PYTHON -m coverage erase
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
@@ -252,7 +250,6 @@ runs:
     uses: ./.github/actions/process_crashdumps
     with:
       dumps_dir: crashdumps
-      python: ${{ inputs.python }}
       variant: ${{ inputs.name }}
   - uses: ./.github/actions/checkpoint
     if: always()

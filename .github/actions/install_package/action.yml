@@ -61,7 +61,6 @@ runs:
       chmod a+x ${{ inputs.package }}
       echo "cmd=${{ inputs.package }}" | tee -a $GITHUB_ENV
       echo "install_dir=$(dirname ${{ inputs.package }})" | tee -a $GITHUB_ENV
-      echo "python=python3" | tee -a $GITHUB_ENV
 
   # MacOS .dmg installer
   - name: Install MacOS .dmg
@@ -71,7 +70,6 @@ runs:
       hdiutil attach ${{ inputs.package }}
       echo "cmd=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS" | tee -a $GITHUB_ENV
-      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
 
   # Final step: gather env to outputs
   - name: Get command
@@ -84,5 +82,4 @@ runs:
       echo "pytest_dir=${{ env.pytest_dir }}" | tee -a $GITHUB_OUTPUT
       echo "test_runner=${{ env.test_runner }}" | tee -a $GITHUB_OUTPUT
       echo "rust_test_runner=${{ env.rust_test_runner }}" | tee -a $GITHUB_OUTPUT
-      echo "python=${{ env.python }}" | tee -a $GITHUB_OUTPUT
 
