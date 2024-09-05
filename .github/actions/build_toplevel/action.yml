@@ -69,6 +69,8 @@ runs:
     if: always()
     run: |
       echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
+      echo "PIP=${{ inputs.python }} -m pip" | tee -a $GITHUB_ENV
+      echo "PYTEST=${{ inputs.python }} -m pytest" | tee -a $GITHUB_ENV
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Install Qoverage

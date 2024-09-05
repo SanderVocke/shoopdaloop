@@ -32,6 +32,7 @@ runs:
       echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
       echo "PIP=${{ inputs.python }} -m pip" | tee -a $GITHUB_ENV
       echo "PYTEST=${{ inputs.python }} -m pytest" | tee -a $GITHUB_ENV
+      echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
   - shell: wrap-shell {0}
     if: always()
     run: |
@@ -86,13 +87,6 @@ runs:
   #     cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
   - uses: ./.github/actions/checkpoint
     if: always()
-  - name: Env settings
-    shell: wrap-shell {0}
-    if: always()
-    run: |
-      echo "QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}" | tee -a $GITHUB_ENV
-      echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
-      echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
   - name: Create crashdumps folder
     if: always()
     shell: wrap-shell {0}
