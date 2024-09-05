@@ -1,5 +1,5 @@
 #pragma once
-#include <QSignalSpy>
+#include <QtTest/QSignalSpy>
 #include <QMetaMethod>
 #include <rust/cxx.h>
 

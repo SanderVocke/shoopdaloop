@@ -38,11 +38,14 @@ runs:
       ln -s ../lib/QtQml.framework/Headers QtQml
       ln -s ../lib/QtNetwork.framework/Headers QtNetwork
       ln -s ../lib/QtQuick.framework/Headers QtQuick
+      ln -s ../lib/QtQuickControls2.framework/Headers QtQuickControls2
+      ln -s ../lib/QtTest.framework/Headers QtTest
   - name: Set outputs
     if: always()
     shell: wrap-shell {0}
     run: |
       touch _macos_prepared
+      echo "DYLD_FRAMEWORK_PATH=$QT_ROOT_DIR/lib" | tee -a $GITHUB_ENV
       echo "CMAKE_INCLUDE_PATH=$CMAKE_INCLUDE_PATH ${{ github.workspace }}/includes" | tee -a $GITHUB_ENV
       echo "LDFLAGS=$LDFLAGS -L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib" | tee -a $GITHUB_ENV
       echo "CFLAGS=$CFLAGS -I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include CPPFLAGS=-isystem/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" | tee -a $GITHUB_ENV
