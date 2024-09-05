@@ -39,4 +39,6 @@ runs:
     shell: wrap-shell {0}
     run: |
       touch _macos_prepared
-      echo "CMAKE_INCLUDE_PATH=${{ github.workspace }}/includes LDFLAGS=-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib CFLAGS=-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include CPPFLAGS=-isystem/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" > prepend_build_cmd.txt
+      echo "CMAKE_INCLUDE_PATH=$CMAKE_INCLUDE_PATH ${{ github.workspace }}/includes" | tee -a $GITHUB_ENV
+      echo "LDFLAGS=$LDFLAGS -L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib" | tee -a $GITHUB_ENV
+      echo "CFLAGS=$CFLAGS -I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include CPPFLAGS=-isystem/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" | tee -a $GITHUB_ENV

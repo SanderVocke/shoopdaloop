@@ -1,23 +1,11 @@
 name: Build Base
 description: Do a basic Cargo build in the checked out repository
 
-inputs:
-  variant_name:
-    required: true
-    type: string
-  python:
-    required: false
-    type: string
-    default: python3
-  prepend_build_cmd:
-    required: false
-    type: string
-
 runs:
   using: "composite"
   steps:
 
-  - name: Build (${{ inputs.variant_name }})
+  - name: Build
     shell: wrap-shell {0}
     run: |
       ${{ inputs.prepend_build_cmd }} PYTHON=${{ inputs.python }} cargo build -vv ${CARGO_BUILD_FLAGS}

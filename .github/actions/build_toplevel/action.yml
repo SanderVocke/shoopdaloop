@@ -66,6 +66,10 @@ runs:
     run: |
       echo "CARGO_BUILD_FLAGS=" | tee -a $GITHUB_ENV
       echo "CARGO_ARTIFACTS_DIR=target/debug" | tee -a $GITHUB_ENV
+  - name: More env settings
+    shell: wrap-shell {0}
+    run: |
+      echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
   - name: Install Qoverage
     if: ${{ inputs.coverage }}
     uses: ./.github/actions/install_qoverage
@@ -86,10 +90,6 @@ runs:
   - name: Build with Cargo
     id: build_base
     uses: ./.github/actions/build_base
-    with:
-      variant_name: ${{ inputs.name }}
-      python: ${{ inputs.python }}
-      prepend_build_cmd: ${{ steps.prepare.outputs.prepend_build_cmd }}
   - name: Qoverage - Instrument QML files
     if: ${{ inputs.coverage }}
     uses: ./.github/actions/qoverage_instrument
@@ -108,7 +108,6 @@ runs:
     uses: ./.github/actions/build_package
     with:
       package_kind: ${{ inputs.package_kind }}
-      upload_name: package_${{ inputs.name }}
       upload_release_assets: ${{ inputs.upload_release_assets }}
       release_upload_assets_url: ${{ env.release_upload_assets_url }}
   - shell: wrap-shell {0}
@@ -136,12 +135,6 @@ runs:
   #   with:
   #     name: pyinstaller_${{ inputs.name }}
   #     path: ${{ steps.pyinstaller.outputs.distribution }}
-  - name: Upload MacOS app bundle
-    if: ${{ inputs.appbundle && inputs.upload_artifacts == 'true' }}
-    uses: actions/upload-artifact@v4
-    with:
-      name: appbundle_${{ inputs.name }}
-      path: ${{ steps.pyinstaller.outputs.distribution }}
   - name: Save build info for coverage analyis
     shell: wrap-shell {0}
     if: ${{ inputs.coverage }}
@@ -170,12 +163,6 @@ runs:
       echo "Upload release assets"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
-  - name: Upload wheel (${{ inputs.variant_name }})
-    if: ${{ env.release_upload_assets_url }}
-    uses: shogo82148/actions-upload-release-asset@v1
-    with:
-      upload_url: ${{ env.release_upload_assets_url }}
-      asset_path: ${{ steps.find.outputs.name }}
   - name: Compress debug info
     if: ${{ env.release_upload_assets_url }}
     id: compress_debug_info
@@ -189,19 +176,19 @@ runs:
     with:
       upload_url: ${{ env.release_upload_assets_url }}
       asset_path: ${{ steps.compress_debug_info.outputs.path }}
-  - name: Compress portable folder
-    if: ${{ env.release_upload_assets_url && (inputs.pyinstaller || inputs.appbundle) }}
-    id: compress_portable_folder
-    shell: bash
-    run: |
-      tar -czf portable_folder_${{ inputs.name }}.tar.gz ${{ steps.pyinstaller.outputs.distribution }}
-      echo "path=portable_folder_${{ inputs.name }}.tar.gz" | tee -a $GITHUB_OUTPUT
-  - name: Upload portable folder (${{ inputs.variant_name }})
-    if: ${{ env.release_upload_assets_url && (inputs.pyinstaller || inputs.appbundle) }}
-    uses: shogo82148/actions-upload-release-asset@v1
-    with:
-      upload_url: ${{ env.release_upload_assets_url }}
-      asset_path: ${{ steps.compress_portable_folder.outputs.path }}
+  # - name: Compress portable folder
+  #   if: ${{ env.release_upload_assets_url && (inputs.pyinstaller || inputs.appbundle) }}
+  #   id: compress_portable_folder
+  #   shell: bash
+  #   run: |
+  #     tar -czf portable_folder_${{ inputs.name }}.tar.gz ${{ steps.pyinstaller.outputs.distribution }}
+  #     echo "path=portable_folder_${{ inputs.name }}.tar.gz" | tee -a $GITHUB_OUTPUT
+  # - name: Upload portable folder (${{ inputs.variant_name }})
+  #   if: ${{ env.release_upload_assets_url && (inputs.pyinstaller || inputs.appbundle) }}
+  #   uses: shogo82148/actions-upload-release-asset@v1
+  #   with:
+  #     upload_url: ${{ env.release_upload_assets_url }}
+  #     asset_path: ${{ steps.compress_portable_folder.outputs.path }}
   - name: Compress PDB files
     if: ${{ env.release_upload_assets_url && inputs.prepare_kind == 'windows' }}
     id: compress_pdb

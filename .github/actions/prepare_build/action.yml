@@ -7,11 +7,6 @@ inputs:
     required: true
     description: "platform variant"
 
-outputs:
-  prepend_build_cmd:
-    description: "Command-line prefix to use when running the apps in the built wheel"
-    value: ${{ steps.collect.outputs.prepend_build_cmd }}
-
 runs:
   using: "composite"
   steps:
@@ -20,14 +15,6 @@ runs:
     uses: dtolnay/rust-toolchain@stable
     with:
        targets: x86_64-pc-windows-msvc
-      #  targets: x86_64-pc-windows-gnu
-  # - name: More Rust (Windows)
-  #   if: ${{ inputs.variant == 'windows' }}
-  #   shell: wrap-shell {0}
-  #   run: |
-  #     rustup toolchain install stable-gnu
-  #     rustup set default-host x86_64-pc-windows-gnu
-  #     rustup default stable-x86_64-pc-windows-gnu
   - name: Prepare Rust (non-Windows)
     if: ${{ inputs.variant != 'windows' }}
     uses: dtolnay/rust-toolchain@stable
@@ -63,9 +50,9 @@ runs:
   - name: Env for Qt
     shell: wrap-shell {0}
     run: |
-      echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6" > prepend_build_cmd.txt
       echo "QMAKE=$QT_ROOT_DIR/bin/qmake" | tee -a $GITHUB_ENV
-
+      echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6" | tee -a $GITHUB_ENV
+     
   - name: Prepare linux
     if: ${{ inputs.variant == 'linux' }}
     uses: ./.github/actions/prepare_build_linux
@@ -88,9 +75,3 @@ runs:
     run: |
       echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
       echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-
-  - name: Collect information
-    id: collect
-    shell: wrap-shell {0}
-    run: |
-      echo "prepend_build_cmd=$(cat prepend_build_cmd.txt)" | tee -a $GITHUB_OUTPUT
