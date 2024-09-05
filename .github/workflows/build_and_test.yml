@@ -304,115 +304,115 @@ jobs:
   # # ## MacOS
   # # ##############################################################
 
-  # build_macos:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         # - name: macos_release
-  #         #   build_type: 'Release'
-  #         #   appbundle: true
-  #         #   package_kind: dmg
-  #         #   os: macos-12
-  #         #   upload_release_assets: true
-  #         # - name: macos_debug
-  #         #   build_type: 'Debug'
-  #         #   os: macos-12
-  #         # - name: macos_release_arm
-  #         #   build_type: 'Release'
-  #         #   appbundle: true
-  #         #   package_kind: dmg
-  #         #   os: macos-14
-  #         #   upload_release_assets: true
-  #         - name: macos_debug_arm
-  #           build_type: 'Debug'
-  #           os: macos-14
-  #   runs-on: ${{ matrix.kind.os }}
-  #   needs: maybe_create_release
-  #   #if: false
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #     with:
-  #       submodules: recursive
-  #   - uses: ./.github/actions/checkpoint_setup
-  #     with:
-  #       shell: bash --noprofile --norc -eo pipefail
-  #   - name: Build
-  #     uses: ./.github/actions/build_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       cmake_build_type: ${{ matrix.kind.build_type }}
-  #       cmake_opts: ${{ matrix.kind.cmake_opts }}
-  #       prepare_kind: 'macos'
-  #       python: python3.9
-  #       appbundle: ${{ matrix.kind.appbundle }}
-  #       package_kind: ${{ matrix.kind.package_kind }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
-  #       # Also remove the double dot if any.
-  #       rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
-  #       upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-  #   - uses: ./.github/actions/checkpoint
+  build_macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          # - name: macos_release
+          #   build_type: 'Release'
+          #   appbundle: true
+          #   package_kind: dmg
+          #   os: macos-12
+          #   upload_release_assets: true
+          # - name: macos_debug
+          #   build_type: 'Debug'
+          #   os: macos-12
+          # - name: macos_release_arm
+          #   build_type: 'Release'
+          #   appbundle: true
+          #   package_kind: dmg
+          #   os: macos-14
+          #   upload_release_assets: true
+          - name: macos_debug_arm
+            build_type: 'Debug'
+            os: macos-14
+    runs-on: ${{ matrix.kind.os }}
+    needs: maybe_create_release
+    #if: false
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc -eo pipefail
+    - name: Build
+      uses: ./.github/actions/build_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: 'macos'
+        python: python3.9
+        appbundle: ${{ matrix.kind.appbundle }}
+        package_kind: ${{ matrix.kind.package_kind }}
+        coverage: ${{ matrix.kind.coverage }}
+        # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
+        # Also remove the double dot if any.
+        rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
+        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+    - uses: ./.github/actions/checkpoint
 
-  # test_macos:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         # - name: release_whl_macos12
-  #         #   python: python3
-  #         #   container: null
-  #         #   os: macos-12
-  #         #   package: wheel_macos_release
-  #         #   qpa_platform: offscreen
-  #         # - name: release_whl_macos13
-  #         #   python: python3
-  #         #   container: null
-  #         #   os: macos-13
-  #         #   package: wheel_macos_release
-  #         #   qpa_platform: offscreen
-  #         # - name: release_whl_macos14
-  #         #   python: python3
-  #         #   container: null
-  #         #   os: macos-14
-  #         #   package: wheel_macos_release_arm
-  #         #   qpa_platform: offscreen
-  #         - name: debug_whl_macos14
-  #           python: python3
-  #           container: null
-  #           os: macos-14
-  #           package: wheel_macos_debug_arm
-  #           qpa_platform: offscreen
-  #         # - name: release_dmg_macos14
-  #         #   python: python3
-  #         #   container: null
-  #         #   os: macos-14
-  #         #   package: package_macos_release_arm
-  #         #   qpa_platform: offscreen
-  #   runs-on: ${{ matrix.kind.os }}
-  #   needs: build_macos
-  #   #if: false
-  #   container:
-  #     image: ${{ matrix.kind.container }}
-  #     options: --user root --workdir / # Note: this gets disregarded if container is null
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #   - uses: ./.github/actions/checkpoint_setup
-  #     with:
-  #       shell: bash --noprofile --norc -eo pipefail
-  #   - name: Test
-  #     uses: ./.github/actions/test_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       package: ${{ matrix.kind.package }}
-  #       asan: ${{ matrix.kind.asan }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       python: ${{ matrix.kind.python }}
-  #       qpa_platform: ${{ matrix.kind.qpa_platform }}
-  #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
-  #   - uses: ./.github/actions/checkpoint
+  test_macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          # - name: release_whl_macos12
+          #   python: python3
+          #   container: null
+          #   os: macos-12
+          #   package: wheel_macos_release
+          #   qpa_platform: offscreen
+          # - name: release_whl_macos13
+          #   python: python3
+          #   container: null
+          #   os: macos-13
+          #   package: wheel_macos_release
+          #   qpa_platform: offscreen
+          # - name: release_whl_macos14
+          #   python: python3
+          #   container: null
+          #   os: macos-14
+          #   package: wheel_macos_release_arm
+          #   qpa_platform: offscreen
+          - name: debug_whl_macos14
+            python: python3
+            container: null
+            os: macos-14
+            package: wheel_macos_debug_arm
+            qpa_platform: offscreen
+          # - name: release_dmg_macos14
+          #   python: python3
+          #   container: null
+          #   os: macos-14
+          #   package: package_macos_release_arm
+          #   qpa_platform: offscreen
+    runs-on: ${{ matrix.kind.os }}
+    needs: build_macos
+    #if: false
+    container:
+      image: ${{ matrix.kind.container }}
+      options: --user root --workdir / # Note: this gets disregarded if container is null
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc -eo pipefail
+    - name: Test
+      uses: ./.github/actions/test_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        package: ${{ matrix.kind.package }}
+        asan: ${{ matrix.kind.asan }}
+        coverage: ${{ matrix.kind.coverage }}
+        python: ${{ matrix.kind.python }}
+        qpa_platform: ${{ matrix.kind.qpa_platform }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
+    - uses: ./.github/actions/checkpoint
 
 
 
@@ -435,106 +435,106 @@ jobs:
   # # ## Windows
   # # ##############################################################
 
-  # build_windows:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         # - name: windows_release
-  #         #   os: windows-2022
-  #         #   python: python.exe
-  #         #   pip: python.exe -m pip
-  #         #   container_image: null
-  #         #   prepare: 'windows'
-  #         #   build_type: 'Release'
-  #         #   package_kind: innosetup
-  #         #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-  #         #   upload_release_assets: true
-  #         - name: windows_debug
-  #           os: windows-2022
-  #           python: python.exe
-  #           pip: python.exe -m pip
-  #           container_image: null
-  #           prepare: 'windows'
-  #           build_type: 'Debug'
-  #           rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-  #           # cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
-  #   runs-on: ${{ matrix.kind.os}}
-  #   needs: maybe_create_release
-  #   container:
-  #     image: ${{ matrix.kind.container_image }}
-  #     options: --user root --workdir /
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #     with:
-  #       submodules: recursive
-  #   - uses: ./.github/actions/checkpoint_setup
-  #     with:
-  #       shell: bash --noprofile --norc -eo pipefail
-  #   - name: Build
-  #     uses: ./.github/actions/build_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       cmake_build_type: ${{ matrix.kind.build_type }}
-  #       cmake_opts: ${{ matrix.kind.cmake_opts }}
-  #       prepare_kind: ${{ matrix.kind.prepare }}
-  #       python: ${{ matrix.kind.python }}
-  #       rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
-  #       package_kind: ${{ matrix.kind.package_kind }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-  #   - uses: ./.github/actions/checkpoint
+  build_windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          # - name: windows_release
+          #   os: windows-2022
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container_image: null
+          #   prepare: 'windows'
+          #   build_type: 'Release'
+          #   package_kind: innosetup
+          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+          #   upload_release_assets: true
+          - name: windows_debug
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            build_type: 'Debug'
+            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+            # cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
+    runs-on: ${{ matrix.kind.os}}
+    needs: maybe_create_release
+    container:
+      image: ${{ matrix.kind.container_image }}
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc -eo pipefail
+    - name: Build
+      uses: ./.github/actions/build_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: ${{ matrix.kind.prepare }}
+        python: ${{ matrix.kind.python }}
+        rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
+        package_kind: ${{ matrix.kind.package_kind }}
+        coverage: ${{ matrix.kind.coverage }}
+        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+    - uses: ./.github/actions/checkpoint
 
-  # test_windows:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         # - name: release_windows
-  #         #   python: python.exe
-  #         #   container: null
-  #         #   os: windows-2022
-  #         #   package: wheel_windows_release
-  #         #   qpa_platform: offscreen
-  #         #   pathconvert: "| cygpath -u -f -"
-  #         # - name: release_windows_innosetup
-  #         #   python: python.exe
-  #         #   container: null
-  #         #   os: windows-2022
-  #         #   package: package_windows_release
-  #         #   qpa_platform: offscreen
-  #         #   pathconvert: "| cygpath -u -f -"
-  #         - name: debug_windows
-  #           python: python.exe
-  #           container: null
-  #           os: windows-2022
-  #           package: wheel_windows_debug
-  #           qpa_platform: offscreen
-  #           pathconvert: "| cygpath -u -f -"
-  #   runs-on: ${{ matrix.kind.os }}
-  #   needs: build_windows
-  #   #if: false
-  #   container:
-  #     image: ${{ matrix.kind.container }}
-  #     options: --user root --workdir / # Note: this gets disregarded if container is null
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #   - uses: ./.github/actions/checkpoint_setup
-  #     with:
-  #       shell: bash --noprofile --norc -eo pipefail
-  #   - name: Test
-  #     uses: ./.github/actions/test_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       package: ${{ matrix.kind.package }}
-  #       asan: ${{ matrix.kind.asan }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       python: ${{ matrix.kind.python }}
-  #       qpa_platform: ${{ matrix.kind.qpa_platform }}
-  #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
-  #   - uses: ./.github/actions/checkpoint
+  test_windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          # - name: release_windows
+          #   python: python.exe
+          #   container: null
+          #   os: windows-2022
+          #   package: wheel_windows_release
+          #   qpa_platform: offscreen
+          #   pathconvert: "| cygpath -u -f -"
+          # - name: release_windows_innosetup
+          #   python: python.exe
+          #   container: null
+          #   os: windows-2022
+          #   package: package_windows_release
+          #   qpa_platform: offscreen
+          #   pathconvert: "| cygpath -u -f -"
+          - name: debug_windows
+            python: python.exe
+            container: null
+            os: windows-2022
+            package: wheel_windows_debug
+            qpa_platform: offscreen
+            pathconvert: "| cygpath -u -f -"
+    runs-on: ${{ matrix.kind.os }}
+    needs: build_windows
+    #if: false
+    container:
+      image: ${{ matrix.kind.container }}
+      options: --user root --workdir / # Note: this gets disregarded if container is null
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc -eo pipefail
+    - name: Test
+      uses: ./.github/actions/test_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        package: ${{ matrix.kind.package }}
+        asan: ${{ matrix.kind.asan }}
+        coverage: ${{ matrix.kind.coverage }}
+        python: ${{ matrix.kind.python }}
+        qpa_platform: ${{ matrix.kind.qpa_platform }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
+    - uses: ./.github/actions/checkpoint
 
 
 
@@ -563,10 +563,10 @@ jobs:
       - test_linux
       # - build_linux_arm
       # - test_linux_arm
-      # - build_macos
-      # - test_macos
-      # - build_windows
-      # - test_windows
+      - build_macos
+      - test_macos
+      - build_windows
+      - test_windows
     if: always()
     container:
       image: archlinux:latest
