@@ -5,6 +5,13 @@ runs:
   using: "composite"
   steps:
 
+  - name: Print state
+    if: always()
+    shell: bash
+    run: |
+      echo "Checkpoints enabled: '${{ env.checkpoints_enabled }}'"
+      echo "Failure status: '${{ env.failure_status }}'"
+
   - name: Checkpoint message
     if: ${{ failure() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true' }}
     shell: bash
