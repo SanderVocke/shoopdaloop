@@ -5,44 +5,19 @@ runs:
   using: "composite"
   steps:
 
-  - name: Print state
-    if: always()
-    shell: bash
-    run: |
-      echo "Checkpoints enabled: '${{ env.checkpoints_enabled }}'"
-      echo "Failure status: '${{ env.failure_status }}'"
-  
-  - name: Check 1
-    if: failure()
-    shell: bash
-    run: |
-      echo failure correct
-  
-  - name: Check 1
-    if: env.failure_status == 'unhandled'
-    shell: bash
-    run: |
-      echo failure_status correct
-
-  - name: Check 1
-    if: env.checkpoints_enabled == 'true'
-    shell: bash
-    run: |
-      echo enabled correct
-
   - name: Checkpoint message
-    if: failure() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
+    if: always() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
     shell: bash
     run: |
       echo "Failure detected at checkpoint. Starting tmate. If you want to continue the workflow after fixing things, run the following command before exiting:"
       echo "echo \"failure_status=\" >> \$GITHUB_ENV"
 
   - name: Checkpoint tmate
-    if: failure() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
+    if: always() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
     uses: SanderVocke/action-tmate@master
 
   - name: Disable further checkpoints
-    if: failure() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
+    if: always() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
     shell: bash
     run: |
       echo "Disabling further checkpoints"
