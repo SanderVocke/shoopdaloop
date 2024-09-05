@@ -15,5 +15,5 @@ runs:
     shell: bash
     run: |
       echo "BASE_WRAP_SHELL=${{ inputs.shell }}" >> $GITHUB_ENV
-      echo "WRAP_SHELL=scripts/gha_bash_with_custom_fail.sh" >> $GITHUB_ENV
+      echo "WRAP_SHELL=bash scripts/gha_bash_with_custom_fail.sh" >> $GITHUB_ENV
       echo "failure_status=" >> $GITHUB_ENV

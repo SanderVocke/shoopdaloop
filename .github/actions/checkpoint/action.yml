@@ -6,18 +6,18 @@ runs:
   steps:
 
   - name: Checkpoint message
-    if: ${{ env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true' }}
+    if: ${{ failure() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true' }}
     shell: bash
     run: |
       echo "Failure detected at checkpoint. Starting tmate. If you want to continue the workflow after fixing things, run the following command before exiting:"
       echo "echo \"failure_status=\" >> \$GITHUB_ENV"
 
   - name: Checkpoint tmate
-    if: ${{ env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true' }}
+    if: ${{ failure() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true' }}
     uses: SanderVocke/action-tmate@master
 
   - name: Disable further checkpoints
-    if: ${{ env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true' }}
+    if: ${{ failure() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true' }}
     shell: bash
     run: |
       echo "Disabling further checkpoints"
