@@ -7,5 +7,5 @@ runs:
   - name: Shell steps
     shell: wrap-shell {0}
     run: |
-      python3 -m pip install --upgrade pip build auditwheel patchelf
-      python3 -m pip install -r build_python_requirements.txt
+      $PIP install --upgrade pip build auditwheel patchelf
+      $PIP install -r build_python_requirements.txt

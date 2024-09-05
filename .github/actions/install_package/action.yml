@@ -3,33 +3,11 @@
 inputs:
   package:
     description: "package file / directory"
-  python:
-    description: "python command to use"
   coverage:
     description: "Whether to gather code coverage"
   sudo:
     description: "whether sudo is needed to install software"
     default: 'false'
-
-outputs:
-  shoopdaloop:
-    description: "command to run ShoopDaLoop"
-    value: ${{ steps.get_cmd.outputs.cmd }}
-  install_dir:
-    description: "location where ShoopDaLoop lives"
-    value: ${{ steps.get_cmd.outputs.install_dir }}
-  pytest_dir:
-    description: "directory to run pytest, if any"
-    value: ${{ steps.get_cmd.outputs.pytest_dir }}
-  test_runner:
-    description: "path to back-end testrunner, if any"
-    value: ${{ steps.get_cmd.outputs.test_runner }}
-  rust_test_runner:
-    description: "path to Rust testrunner, if any"
-    value: ${{ steps.get_cmd.outputs.rust_test_runner }}
-  python:
-    description: "updated python command to use"
-    value: ${{ steps.get_cmd.outputs.python }}
 
 runs:
   using: "composite"
@@ -72,7 +50,6 @@ runs:
       echo "Installed at: $SHOOPDALOOP_DIR"
       echo "cmd=\\\"$SHOOPDALOOP_EXE\\\"" | tee -a $GITHUB_ENV
       echo "install_dir=\\\"$SHOOPDALOOP_DIR\\\"" | tee -a $GITHUB_ENV
-      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
 
   # Linux AppImage
   - name: Setup AppImage

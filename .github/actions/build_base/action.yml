@@ -8,6 +8,6 @@ runs:
   - name: Build
     shell: wrap-shell {0}
     run: |
-      ${{ inputs.prepend_build_cmd }} PYTHON=${{ inputs.python }} cargo build -vv ${CARGO_BUILD_FLAGS}
+      cargo build -vv ${CARGO_BUILD_FLAGS}
 
 

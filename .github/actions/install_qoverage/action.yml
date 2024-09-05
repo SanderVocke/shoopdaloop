@@ -1,15 +1,11 @@
 name: Install Qoverage
 description: Install Qoverage, for now using a direct link to its Github pre-release.
 
-inputs:
-  python:
-    description: "Python command"
-    required: true
-
 runs:
   using: "composite"
   steps:
   - name: run
     shell: wrap-shell {0}
     run: |
-      ${{ inputs.python }} -m pipx install --force qoverage
+      $PYTHON -m pip install pipx
+      $PYTHON -m pipx install --force qoverage
