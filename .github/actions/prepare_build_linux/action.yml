@@ -5,6 +5,7 @@ runs:
   using: "composite"
   steps:
   - name: Shell steps
+    if: always()
     shell: wrap-shell {0}
     run: |
       $PIP install --upgrade pip build auditwheel patchelf

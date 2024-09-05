@@ -17,21 +17,22 @@ runs:
   using: "composite"
   steps:
   - name: Post-build linux
-    if: ${{ inputs.variant == 'linux' }}
+    if: ${{ always() && inputs.variant == 'linux' }}
     uses: ./.github/actions/post_build_linux
     with:
       wheel: ${{ inputs.wheel }}
   - name: Post-build MacOS
-    if: ${{ inputs.variant == 'macos' }}
+    if: ${{ always() && inputs.variant == 'macos' }}
     uses: ./.github/actions/post_build_macos
     with:
       wheel: ${{ inputs.wheel }}
   - name: Post-build Windows
-    if: ${{ inputs.variant == 'windows' }}
+    if: ${{ always() && inputs.variant == 'windows' }}
     uses: ./.github/actions/post_build_windows
     with:
       wheel: ${{ inputs.wheel }}
   - name: Store debug info
+    if: always()
     shell: wrap-shell {0}
     run: |
       mkdir -p debuginfo

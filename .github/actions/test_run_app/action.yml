@@ -16,6 +16,7 @@ runs:
   using: "composite"
   steps:
   - name: run app (${{ inputs.variant_name }})
+    if: always()
     shell: wrap-shell {0}
     run: >
         ${{ env.RUN_COMMAND_PREFIX }}

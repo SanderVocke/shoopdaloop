@@ -22,6 +22,7 @@ runs:
   #     echo "RESULTS_XML=reports/test_runner_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
 
   - name: Expand prefix for Mac
+    if: always()
     shell: wrap-shell {0}
     id: runcmdprefix
     run: |
@@ -30,6 +31,7 @@ runs:
       fi
   
   - name: Find Qt libs
+    if: always()
     shell: wrap-shell {0}
     run: |
       PYSIDE_LOCATION=$(${{ inputs.python }} -m pip show pyside6-essentials | grep Location | cut -d ' ' -f 2)/PySide6
@@ -44,6 +46,7 @@ runs:
 
   - name: run the testrunner (${{ inputs.variant_name }})
     shell: wrap-shell {0}
+    if: always()
     run: |
       mkdir -p reports
       ${{ env.RUN_CMD_PREFIX }}
@@ -51,7 +54,7 @@ runs:
       # echo "Back-end test results file: $(ls -la ${{ env.RESULTS_XML }})"
 
   # - name: Publish Back-end Test Report
-  #   if: ${{ !env.ACT && (success() || failure()) }}
+  #   if: always()
   #   uses: mikepenz/action-junit-report@v3
   #   with:
   #     report_paths: ${{ env.RESULTS_XML }}

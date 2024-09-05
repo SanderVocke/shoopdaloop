@@ -5,6 +5,7 @@ runs:
   using: "composite"
   steps:
   - name: Install packages
+    if: always()
     shell: wrap-shell {0}
     run: |
       # Skip if already done (local act builds)
@@ -23,11 +24,13 @@ runs:
       python3.9 -m pip install -r build_python_requirements.txt
   - name: Install boost
     id: install_boost
+    if: always()
     uses: ./.github/actions/install_boost_headers
     with:
       dir: includes
   - name: Symlink Qt include folders
     shell: wrap-shell {0}
+    if: always()
     run: |
       cd $QT_ROOT_DIR/include
       ln -s ../lib/QtCore.framework/Headers QtCore
@@ -36,6 +39,7 @@ runs:
       ln -s ../lib/QtNetwork.framework/Headers QtNetwork
       ln -s ../lib/QtQuick.framework/Headers QtQuick
   - name: Set outputs
+    if: always()
     shell: wrap-shell {0}
     run: |
       touch _macos_prepared

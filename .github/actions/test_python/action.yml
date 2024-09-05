@@ -13,19 +13,21 @@ runs:
   using: "composite"
   steps:
   - name: prepare
+    if: always()
     shell: wrap-shell {0}
     run: |
       mkdir -p reports
       echo "RESULTS_XML=reports/pytest_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
 
   - name: pytest (${{ inputs.variant_name }})
+    if: always()
     shell: wrap-shell {0}
     run: |
       ${{ env.RUN_CMD_PREFIX }} ${{ env.PYTEST }} ${{ inputs.root_path }} --junit-xml=${{ env.RESULTS_XML }}
       echo "Python test results file: $(ls -la ${{ env.RESULTS_XML }})"
   
   - name: Publish Python Test Report
-    if: ${{ !env.ACT && (success() || failure()) }}
+    if: always()
     uses: mikepenz/action-junit-report@v3
     with:
       report_paths: ${{ env.RESULTS_XML }}

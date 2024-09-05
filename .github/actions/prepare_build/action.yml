@@ -11,19 +11,19 @@ runs:
   using: "composite"
   steps:
   - name: Prepare Rust (Windows)
-    if: ${{ inputs.variant == 'windows' }}
+    if: ${{ always() && inputs.variant == 'windows' }}
     uses: dtolnay/rust-toolchain@stable
     with:
        targets: x86_64-pc-windows-msvc
   - name: Prepare Rust (non-Windows)
-    if: ${{ inputs.variant != 'windows' }}
+    if: ${{ always() && inputs.variant != 'windows' }}
     uses: dtolnay/rust-toolchain@stable
   - name: Rust packages
     shell: wrap-shell {0}
     run: |
       cargo install cargo-nextest
   - name: Rust info
-    if: ${{ inputs.variant == 'windows' }}
+    if: ${{ always() && inputs.variant == 'windows' }}
     shell: wrap-shell {0}
     run: |
       echo "==== Rust version ===="
@@ -33,7 +33,7 @@ runs:
 
   - name: Install Qt (Windows)
     uses: jurplel/install-qt-action@v4
-    if: ${{ inputs.variant == 'windows' }}
+    if: ${{ always() && inputs.variant == 'windows' }}
     with:
       cache: true
       version: 6.6.3
@@ -41,37 +41,38 @@ runs:
       setup-python: false
   - name: Install Qt
     uses: jurplel/install-qt-action@v4
-    if: ${{ inputs.variant != 'windows' }}
+    if: ${{ always() && inputs.variant != 'windows' }}
     with:
       cache: true
       version: 6.6.3
       install-deps: false
       setup-python: false
   - name: Env for Qt
+    if: always()
     shell: wrap-shell {0}
     run: |
       echo "QMAKE=$QT_ROOT_DIR/bin/qmake" | tee -a $GITHUB_ENV
       echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6" | tee -a $GITHUB_ENV
      
   - name: Prepare linux
-    if: ${{ inputs.variant == 'linux' }}
+    if: ${{ always() && inputs.variant == 'linux' }}
     uses: ./.github/actions/prepare_build_linux
   - name: Prepare ubuntu-latest
-    if: ${{ inputs.variant == 'ubuntu_latest' }}
+    if: ${{ always() && inputs.variant == 'ubuntu_latest' }}
     uses: ./.github/actions/prepare_build_ubuntu_latest
   - name: Prepare MacOS
-    if: ${{ inputs.variant == 'macos' }}
+    if: ${{ always() && inputs.variant == 'macos' }}
     uses: ./.github/actions/prepare_build_macos
   - name: Prepare Windows
-    if: ${{ inputs.variant == 'windows' }}
+    if: ${{ always() && inputs.variant == 'windows' }}
     uses: ./.github/actions/prepare_build_windows
 
   - name: Run sccache-cache only on non-release runs
-    if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
+    if: always() && github.event_name != 'release' && github.event_name != 'workflow_dispatch'
     uses: mozilla-actions/sccache-action@v0.0.5
   - name: Set Rust caching env vars only on non-release runs
     shell: wrap-shell {0}
-    if: github.event_name != 'release' && github.event_name != 'workflow_dispatch'
+    if: always() && github.event_name != 'release' && github.event_name != 'workflow_dispatch'
     run: |
       echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
       echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV

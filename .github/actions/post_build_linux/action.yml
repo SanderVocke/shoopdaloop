@@ -10,6 +10,7 @@ runs:
   using: "composite"
   steps:
   - name: Auditwheel repair
+    if: always()
     shell: wrap-shell {0}
     run: |
       auditwheel repair --exclude libQt6Gui.so.6 --exclude libQt6Core.so.6 --exclude libQt6Network.so.6 --exclude libQt6Qml.so.6 --exclude libQt6Quick.so.6 --plat manylinux_2_31_${{ matrix.manylinux_arch }} --only-plat -w final_wheel ${{ inputs.wheel }}

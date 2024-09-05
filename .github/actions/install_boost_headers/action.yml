@@ -18,6 +18,7 @@ runs:
   - name: Install Boost headers
     id: boost
     shell: wrap-shell {0}
+    if: always()
     run: |
       # Skip if already done (local act builds)
       if [ -f _boost_headers_installed ]; then

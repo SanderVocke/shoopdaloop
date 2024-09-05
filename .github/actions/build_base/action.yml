@@ -6,6 +6,7 @@ runs:
   steps:
 
   - name: Build
+    if: always()
     shell: wrap-shell {0}
     run: |
       cargo build -vv ${CARGO_BUILD_FLAGS}

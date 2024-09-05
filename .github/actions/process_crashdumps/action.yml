@@ -16,7 +16,7 @@ runs:
 
   - name: Process dumps (${{ inputs.variant }})
     id: process
-    if: ${{ !env.ACT }}
+    if: always()
     shell: wrap-shell {0}
     run: |
       if [ $(ls ${{ inputs.dumps_dir}} | wc -l) -gt 0 ]; then
@@ -24,7 +24,7 @@ runs:
       fi
 
   - name: Upload dumps (${{ inputs.variant }})
-    if: ${{ !env.ACT && steps.process.outputs.upload }}
+    if: ${{ always() && steps.process.outputs.upload }}
     uses: actions/upload-artifact@v4
     with:
       name: crashdumps_${{ matrix.kind.name }}_${{ github.run_number }}

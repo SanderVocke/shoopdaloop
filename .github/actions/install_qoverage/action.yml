@@ -5,6 +5,7 @@ runs:
   using: "composite"
   steps:
   - name: run
+    if: always()
     shell: wrap-shell {0}
     run: |
       $PYTHON -m pip install pipx

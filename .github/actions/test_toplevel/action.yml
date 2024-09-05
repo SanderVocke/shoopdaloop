@@ -26,12 +26,14 @@ runs:
   using: "composite"
   steps:
   - name: env settings
+    if: always()
     shell: wrap-shell {0}
     run: |
       echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
       echo "PIP=${{ inputs.python }} -m pip" | tee -a $GITHUB_ENV
       echo "PYTEST=${{ inputs.python }} -m pytest" | tee -a $GITHUB_ENV
   - shell: wrap-shell {0}
+    if: always()
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -39,20 +41,20 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Retrieve package
-    if: ${{ inputs.package }}
+    if: ${{ always() && inputs.package }}
     uses: actions/download-artifact@v4
     with:
       name: ${{ inputs.package }}
       path: ./package
   - name: Find package
-    if: ${{ inputs.package }}
+    if: ${{ always() && inputs.package }}
     id: find_package
     shell: wrap-shell {0}
     run: |
       echo "package=package/$(ls package | head -n1)" | tee -a $GITHUB_OUTPUT
   - uses: ./.github/actions/checkpoint
   - name: Install package (${{ inputs.package }})
-    if: ${{ inputs.package }}
+    if: ${{ always() && inputs.package }}
     id: install_package
     uses: ./.github/actions/install_package
     with:
@@ -60,7 +62,9 @@ runs:
       coverage: ${{ inputs.coverage }}
       sudo: ${{ inputs.install_with_sudo }}
   - uses: ./.github/actions/checkpoint
+    if: always()
   - shell: wrap-shell {0}
+    if: always()
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -68,12 +72,12 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Retrieve info context for coverage analysis
-    if: ${{ inputs.coverage }}
+    if: ${{ always() && inputs.coverage }}
     uses: actions/download-artifact@v4
     with:
       name: coverage_context
   - name: Pre-install ASAN shared lib
-    if: ${{ inputs.asan }}
+    if: ${{ always() && inputs.asan }}
     shell: wrap-shell {0}
     run: |
       ${{ env.PIP }} install wheel
@@ -81,23 +85,29 @@ runs:
       ${{ inputs.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
       cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
   - uses: ./.github/actions/checkpoint
+    if: always()
   - name: Create crashdumps folder
+    if: always()
     shell: wrap-shell {0}
     run: |
       mkdir -p crashdumps
       echo "SHOOP_CRASH_DIR=crashdumps" | tee -a $GITHUB_ENV
   - name: Install Python modules
+    if: always()
     shell: wrap-shell {0}
     run: |
       PIP_BREAK_SYSTEM_PACKAGES=1 ${{ env.PIP }} install pytest coverage pipx
   - uses: ./.github/actions/checkpoint
+    if: always()
   - name: Install Qoverage
-    if: ${{ inputs.coverage }}
+    if: ${{ always() && inputs.coverage }}
     uses: ./.github/actions/install_qoverage
     with:
       python: ${{ inputs.python }}
   - uses: ./.github/actions/checkpoint
+    if: always()
   - shell: wrap-shell {0}
+    if: always()
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -105,14 +115,16 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test back-end
-    if: ${{ (success() || failure()) && steps.install_package.outputs.test_runner }}
+    if: ${{ always() && steps.install_package.outputs.test_runner }}
     uses: ./.github/actions/test_backend
     env:
       REPORTNAME: backend_lcov
     with:
       variant_name: ${{ inputs.name }}
   - uses: ./.github/actions/checkpoint
+    if: always()
   - shell: wrap-shell {0}
+    if: always()
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -120,12 +132,14 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test rust
-    if: ${{ (success() || failure()) && steps.install_package.outputs.rust_test_runner }}
+    if: ${{ always() && steps.install_package.outputs.rust_test_runner }}
     uses: ./.github/actions/test_rust\
     with:
       variant_name: ${{ inputs.name }}
   - uses: ./.github/actions/checkpoint
+    if: always()
   - shell: wrap-shell {0}
+    if: always()
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -133,13 +147,13 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test Python
-    if: ${{ (success() || failure()) && steps.install_package.outputs.pytest_dir }}
+    if: ${{ always() && steps.install_package.outputs.pytest_dir }}
     uses: ./.github/actions/test_python
     with:
       variant_name: release
       root_path: ${{ steps.install_package.outputs.pytest_dir }}
   - name: Generate Pytest Python coverage report
-    if: ${{ (success() || failure()) && inputs.coverage }}
+    if: ${{ always() && inputs.coverage }}
     shell: wrap-shell {0}
     run: |
       ${{ inputs.python }} -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
@@ -147,13 +161,15 @@ runs:
       ${{ inputs.python }} -m coverage erase
   - name: Env settings
     shell: wrap-shell {0}
+    if: always()
     run: |
       echo "QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}" | tee -a $GITHUB_ENV
       echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
       echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
   - uses: ./.github/actions/checkpoint
+    if: always()
   - shell: wrap-shell {0}
-    if: ${{ (success() || failure()) && (inputs.do_qml_tests == 'true') }}
+    if: ${{ always() && (inputs.do_qml_tests == 'true') }}
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -161,7 +177,7 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test QML
-    if: ${{ (success() || failure()) && (inputs.do_qml_tests == 'true') }}
+    if: ${{ always() && (inputs.do_qml_tests == 'true') }}
     uses: ./.github/actions/test_qml
     env:
       REPORTNAME: qml_lcov
@@ -170,15 +186,16 @@ runs:
       macos_rpath_patch: ${{ contains(inputs.name, 'macos') }}
       tee_all_output_to: test-qml-console-output.log
   - uses: ./.github/actions/checkpoint
+    if: always()
   - name: Generate QML Python coverage report
-    if: ${{ (success() || failure()) && inputs.coverage && (inputs.do_qml_tests == 'true') }}
+    if: ${{ always() && inputs.coverage && (inputs.do_qml_tests == 'true') }}
     shell: wrap-shell {0}
     run: |
-      ${{ inputs.python }} -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
+      $PYTHON -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
       sed -r -i 's/test_venv.*shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
-      ${{ inputs.python }} -m coverage erase
+      $PYTHON -m coverage erase
   - name: Qoverage - Generate report
-    if: ${{ (success() || failure()) && inputs.coverage && (inputs.do_qml_tests == 'true') }}
+    if: ${{ always() && inputs.coverage && (inputs.do_qml_tests == 'true') }}
     uses: ./.github/actions/qoverage_generate_report
     with:
       strip: ".*/pip/shoopdaloop"
@@ -186,7 +203,9 @@ runs:
       console_output_file: test-qml-console-output.log
       report_file: coverage_reports/qml_qoverage.xml
   - uses: ./.github/actions/checkpoint
+    if: always()
   - shell: wrap-shell {0}
+    if: always()
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -194,14 +213,16 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Screenshots
-    if: ${{ success() || failure() }}
+    if: always()
     uses: ./.github/actions/test_screenshots
     with:
       root_path: ${{ steps.install_package.outputs.install_dir }}
       screenshots_path: _grabbed_screenshots
       artifact_name: screenshots_${{ inputs.name }}
   - uses: ./.github/actions/checkpoint
+    if: always()
   - shell: wrap-shell {0}
+    if: always()
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -209,14 +230,17 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - uses: ./.github/actions/checkpoint
+    if: always()
   - name: Test Run App
-    if: ${{ success() || failure() }}
+    if: always()
     uses: ./.github/actions/test_run_app
     with:
       variant_name: release
       root_path: ${{ steps.install_package.outputs.install_dir }}
   - uses: ./.github/actions/checkpoint
+    if: always()
   - shell: wrap-shell {0}
+    if: always()
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -224,15 +248,16 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Process Crash Dumps
-    if: ${{ success() || failure() }}
+    if: always()
     uses: ./.github/actions/process_crashdumps
     with:
       dumps_dir: crashdumps
       python: ${{ inputs.python }}
       variant: ${{ inputs.name }}
   - uses: ./.github/actions/checkpoint
+    if: always()
   - name: Upload back-end coverage to CodeCov
-    if: ${{ (success() || failure()) && inputs.coverage }}
+    if: ${{ always() && inputs.coverage }}
     uses: codecov/codecov-action@v3
     with:
       token: ${{ inputs.codecov_token }}
@@ -241,7 +266,7 @@ runs:
       verbose: true
       fail_ci_if_error: true
   - name: Upload Pytest coverage to CodeCov
-    if: ${{ (success() || failure()) && inputs.coverage }}
+    if: ${{ always() && inputs.coverage }}
     uses: codecov/codecov-action@v3
     with:
       token: ${{ inputs.codecov_token }}
@@ -250,7 +275,7 @@ runs:
       verbose: true
       fail_ci_if_error: true
   - name: Upload QML test coverage to CodeCov
-    if: ${{ (success() || failure()) && inputs.coverage && (inputs.do_qml_tests == 'true') }}
+    if: ${{ always() && inputs.coverage && (inputs.do_qml_tests == 'true') }}
     uses: codecov/codecov-action@v3
     with:
       token: ${{ inputs.codecov_token }}
@@ -259,7 +284,7 @@ runs:
       verbose: true
       fail_ci_if_error: true
   - name: Upload raw coverage reports
-    if: ${{ (success() || failure()) && inputs.coverage }}
+    if: ${{ always() && inputs.coverage }}
     uses: actions/upload-artifact@v4
     with:
       name: coverage_reports

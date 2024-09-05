@@ -13,12 +13,14 @@ runs:
   using: "composite"
   steps:
   - name: prepare
+    if: always()
     shell: wrap-shell {0}
     run: |
       mkdir -p reports
       echo "results_xml=reports/test_runner_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
 
   - name: Expand prefix for Mac
+    if: always()
     shell: wrap-shell {0}
     id: runcmdprefix
     run: |
@@ -27,6 +29,7 @@ runs:
       fi
 
   - name: test_runner (${{ inputs.variant_name }})
+    if: always()
     shell: wrap-shell {0}
     run: |
       mkdir -p reports
@@ -34,7 +37,9 @@ runs:
       echo "Back-end test results file: $(ls -la ${{ env.results_xml }})"
 
   - name: Publish Back-end Test Report
-    if: ${{ !env.ACT && (success() || failure()) }}
+    if: always()
+    env:
+       GHA_RUN_ALWAYS: 1
     uses: mikepenz/action-junit-report@v3
     with:
       report_paths: ${{ env.results_xml }}

@@ -23,6 +23,7 @@ runs:
   using: "composite"
   steps:
   - name: Save screenshots
+    if: always()
     shell: wrap-shell {0}
     run: >
         LIBGL_ALWAYS_SOFTWARE=1
@@ -32,6 +33,7 @@ runs:
         ${{ env.SHOOPDALOOP_COMMAND }} -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
   
   - name: Upload screenshots
+    if: always()
     uses: actions/upload-artifact@v4
     with:
       name: ${{ inputs.artifact_name }}

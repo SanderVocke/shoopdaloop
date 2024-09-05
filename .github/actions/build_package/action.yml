@@ -22,6 +22,7 @@ runs:
 
   # Versions
   - name: Determine version
+    if: always()
     shell: wrap-shell {0}
     run: |
       set -x
@@ -36,7 +37,7 @@ runs:
 
   # AppImage (Linux)
   - name: Build AppImage
-    if: ${{ inputs.package_kind == 'appimage' }}
+    if: ${{ always() && inputs.package_kind == 'appimage' }}
     id: build_appimage
     shell: wrap-shell {0}
     run: |
@@ -52,11 +53,12 @@ runs:
       echo "BUILT_PACKAGE=$APPIMAGE_NAME" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$RELEASE_APPIMAGE_NAME" | tee -a $GITHUB_ENV
   - uses: actions/upload-artifact@v4
+    if: always()
     with:
       name: ${{ env.BUILT_PACKAGE }}
       path: ${{ env.BUILT_PACKAGE }}
   - name: Upload AppImage (release)
-    if: ${{ inputs.package_kind == 'appimage' && inputs.upload_release_assets == 'true' }}
+    if: ${{ always() && inputs.package_kind == 'appimage' && inputs.upload_release_assets == 'true' }}
     uses: shogo82148/actions-upload-release-asset@v1
     with:
       upload_url: ${{ inputs.release_upload_assets_url }}
@@ -65,12 +67,12 @@ runs:
   # Windows installer (InnoSetup)
   - name: Compile .ISS to .EXE Installer
     uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
-    if: ${{ inputs.package_kind == 'innosetup' }}
+    if: ${{ always() && inputs.package_kind == 'innosetup' }}
     with:
       path: distribution/innosetup/shoopdaloop.iss
       options: /O+ /DMyAppVersion="${{ env.SHOOP_VERSION }}"
   - name: Move .EXE installer
-    if: ${{ inputs.package_kind == 'innosetup' }}
+    if: ${{ always() && inputs.package_kind == 'innosetup' }}
     shell: wrap-shell {0}
     run: |
       ls distribution/innosetup
@@ -80,13 +82,13 @@ runs:
       echo "BUILT_PACKAGE=$GIT_REV_INSTALLER" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$RELEASE_INSTALLER" | tee -a $GITHUB_ENV
   - name: Upload .exe installer
-    if: ${{ inputs.package_kind == 'innosetup' && inputs.upload_name }}
+    if: ${{ always() && inputs.package_kind == 'innosetup' && inputs.upload_name }}
     uses: actions/upload-artifact@v4
     with:
       name: ${{ env.BUILT_PACKAGE }}
       path: ${{ env.BUILT_PACKAGE }}
   - name: Upload .exe installer (release)
-    if: ${{ inputs.package_kind == 'innosetup' && inputs.upload_release_assets == 'true' }}
+    if: ${{ always() && inputs.package_kind == 'innosetup' && inputs.upload_release_assets == 'true' }}
     uses: shogo82148/actions-upload-release-asset@v1
     with:
       upload_url: ${{ inputs.release_upload_assets_url }}
@@ -94,7 +96,7 @@ runs:
 
   # MacOS .dmg
   - name: Build MacOSX .dmg
-    if: ${{ inputs.package_kind == 'dmg' }}
+    if: ${{ always() && inputs.package_kind == 'dmg' }}
     shell: wrap-shell {0}
     run: |
       DMGFILE=shoopdaloop-${{ env.SHOOP_GIT_REV }}.$(uname -m).dmg
@@ -115,13 +117,13 @@ runs:
       echo "BUILT_PACKAGE=$DMGFILE" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$RELEASE_DMGFILE" | tee -a $GITHUB_ENV
   - name: Upload .dmg package
-    if: ${{ inputs.package_kind == 'dmg' && inputs.upload_name }}
+    if: ${{ always() && inputs.package_kind == 'dmg' && inputs.upload_name }}
     uses: actions/upload-artifact@v4
     with:
       name: ${{ env.BUILT_PACKAGE }}
       path: ${{ env.BUILT_PACKAGE }}
   - name: Upload .dmg package (release)
-    if: ${{ inputs.package_kind == 'dmg' && inputs.upload_release_assets == 'true' }}
+    if: ${{ always() && inputs.package_kind == 'dmg' && inputs.upload_release_assets == 'true' }}
     uses: shogo82148/actions-upload-release-asset@v1
     with:
       upload_url: ${{ inputs.release_upload_assets_url }}

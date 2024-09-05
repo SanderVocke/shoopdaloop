@@ -5,6 +5,7 @@ runs:
   using: "composite"
   steps:
   - name: Install dependencies
+    if: always()
     shell: bash
     env:
        PIP_BREAK_SYSTEM_PACKAGES: 1

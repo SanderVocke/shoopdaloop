@@ -1,8 +1,10 @@
 #!/bin/bash
 
-if [ "$failure_status" != "" ]; then
-  echo "failure_status is set"
-  exit 1
+if [ "$failure_status" != ""]; then
+  if ! [ -v GHA_RUN_ALWAYS ]; then
+    echo "failure_status is set"
+    exit 1
+  fi
 fi
 
 echo "GHA wrapper: running command: $BASE_WRAP_SHELL $@"
