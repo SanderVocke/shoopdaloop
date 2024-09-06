@@ -47,9 +47,9 @@ runs:
     run: |
       JACK_DIR=$(cygpath -w $(pwd)/jack)
       PTHREADS_DIR=$(cygpath -w $(pwd)/pthreads4w/pthreads4w)
-      echo "CMAKE_INCLUDE_PATH=$CMAKE_INCLUDE_PATH $BOOST_INCLUDE_DIR" | tee -a $GITHUB_ENV
+      echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH;${{ steps.install-boost.outputs.BOOST_ROOT}}/lib/cmake/Boost-1.86.0" | tee -a $GITHUB_ENV
       echo "PTHREADS4W_PATH=$PTHREADS_DIR" | tee -a $GITHUB_ENV
-      echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH $JACK_DIR" | tee -a $GITHUB_ENV
+      echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH;$JACK_DIR" | tee -a $GITHUB_ENV
 
   - name: Setup MSVC
     if: always()

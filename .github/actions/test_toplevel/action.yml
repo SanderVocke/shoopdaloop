@@ -107,12 +107,10 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test back-end
-    if: always() && steps.install_package.outputs.test_runner
+    if: always() && env.COMMAND_TEST_BACKEND != ""
     uses: ./.github/actions/test_backend
     env:
       REPORTNAME: backend_lcov
-    with:
-      variant_name: ${{ inputs.name }}
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
@@ -124,10 +122,8 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test rust
-    if: always() && steps.install_package.outputs.rust_test_runner
-    uses: ./.github/actions/test_rust\
-    with:
-      variant_name: ${{ inputs.name }}
+    if: always() && env.COMMAND_TEST_RUST != ""
+    uses: ./.github/actions/test_rust
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
@@ -139,11 +135,8 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test Python
-    if: always() && steps.install_package.outputs.pytest_dir
+    if: always() && env.COMMAND_TEST_PYTHON != ""
     uses: ./.github/actions/test_python
-    with:
-      variant_name: release
-      root_path: ${{ steps.install_package.outputs.pytest_dir }}
   - name: Generate Pytest Python coverage report
     if: always() && inputs.coverage
     shell: wrap-shell {0}

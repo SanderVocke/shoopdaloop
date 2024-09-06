@@ -63,7 +63,6 @@ runs:
       echo "COMMAND_TEST_BACKEND=SHOOPDALOOP_APPIMAGE_EXECUTE=backend_tests ${{ inputs.package }}"
       echo "COMMAND_TEST_RUST=SHOOPDALOOP_APPIMAGE_EXECUTE=rust_tests ${{ inputs.package }}"
       echo "COMMAND_TEST_PYTHON=SHOOPDALOOP_APPIMAGE_EXECUTE=python_tests ${{ inputs.package }}"
-      echo "install_dir=$(dirname ${{ inputs.package }})" | tee -a $GITHUB_ENV
 
   # MacOS .dmg installer
   - name: Install MacOS .dmg
@@ -73,16 +72,4 @@ runs:
       hdiutil attach ${{ inputs.package }}
       echo "cmd=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS" | tee -a $GITHUB_ENV
-
-  # Final step: gather env to outputs
-  - name: Get command
-    id: get_cmd
-    shell: wrap-shell {0}
-    if: always()
-    run: |
-      echo "cmd=${{ env.cmd }}" | tee -a $GITHUB_OUTPUT
-      echo "install_dir=${{ env.install_dir }}" | tee -a $GITHUB_OUTPUT
-      echo "pytest_dir=${{ env.pytest_dir }}" | tee -a $GITHUB_OUTPUT
-      echo "test_runner=${{ env.test_runner }}" | tee -a $GITHUB_OUTPUT
-      echo "rust_test_runner=${{ env.rust_test_runner }}" | tee -a $GITHUB_OUTPUT
 
