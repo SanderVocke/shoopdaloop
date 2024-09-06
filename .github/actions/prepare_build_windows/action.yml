@@ -14,11 +14,12 @@ runs:
     run: |
       echo "Default python version is $(python --version)"
   - name: Install boost
-    id: install_boost
-    if: always()
-    uses: ./.github/actions/install_boost_headers
+    uses: MarkusJx/install-boost@v2
+    id: install-boost
     with:
-      dir: includes
+      boost_version: 1.86.0
+      platform_version: 2022
+      toolset: msvc
   - name: Install pkgconfig lite
     if: always()
     shell: wrap-shell {0}
