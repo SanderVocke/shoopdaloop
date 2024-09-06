@@ -47,6 +47,7 @@ runs:
     with:
       pattern: ${{ inputs.package }}
       path: ./package
+      merge-multiple: true
   - name: Find package
     if: always() && inputs.package
     id: find_package
