@@ -48,4 +48,5 @@ runs:
       echo "DYLD_FRAMEWORK_PATH=$QT_ROOT_DIR/lib" | tee -a $GITHUB_ENV
       echo "CMAKE_INCLUDE_PATH=$CMAKE_INCLUDE_PATH ${{ github.workspace }}/includes" | tee -a $GITHUB_ENV
       echo "LDFLAGS=$LDFLAGS -L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib" | tee -a $GITHUB_ENV
-      echo "CFLAGS=$CFLAGS -I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include CPPFLAGS=-isystem/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" | tee -a $GITHUB_ENV
+      echo "CFLAGS=$CFLAGS -I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" | tee -a $GITHUB_ENV
+      echo "CPPFLAGS=$CPPFLAGS -isystem/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" | tee -a $GITHUB_ENV
