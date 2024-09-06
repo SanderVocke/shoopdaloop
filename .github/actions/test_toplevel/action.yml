@@ -107,7 +107,7 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test back-end
-    if: always() && env.COMMAND_TEST_BACKEND != ""
+    if: always() && env.COMMAND_TEST_BACKEND != ''
     uses: ./.github/actions/test_backend
     env:
       REPORTNAME: backend_lcov
@@ -122,7 +122,7 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test rust
-    if: always() && env.COMMAND_TEST_RUST != ""
+    if: always() && env.COMMAND_TEST_RUST != ''
     uses: ./.github/actions/test_rust
   - uses: ./.github/actions/checkpoint
     if: always()
@@ -135,7 +135,7 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Test Python
-    if: always() && env.COMMAND_TEST_PYTHON != ""
+    if: always() && env.COMMAND_TEST_PYTHON != ''
     uses: ./.github/actions/test_python
   - name: Generate Pytest Python coverage report
     if: always() && inputs.coverage

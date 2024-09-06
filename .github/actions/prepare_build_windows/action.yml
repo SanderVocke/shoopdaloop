@@ -12,7 +12,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      echo "Default python version is $(python --version)"
+      echo "Default python version is $($PYTHON --version)"
   - name: Install boost
     uses: MarkusJx/install-boost@v2.4.5
     id: install-boost
@@ -68,6 +68,6 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      python -m pip install build virtualenv pytest
-      python -m pip install -r build_python_requirements.txt
+      $PIP install build virtualenv pytest
+      $PIP install -r build_python_requirements.txt
       choco install -y ninja
