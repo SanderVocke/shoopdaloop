@@ -14,7 +14,7 @@ runs:
     run: |
       echo "Default python version is $(python --version)"
   - name: Install boost
-    uses: MarkusJx/install-boost@v2
+    uses: MarkusJx/install-boost@v2.4.5
     id: install-boost
     with:
       boost_version: 1.86.0

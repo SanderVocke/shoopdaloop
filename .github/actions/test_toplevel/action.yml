@@ -45,7 +45,7 @@ runs:
     if: always() && inputs.package
     uses: actions/download-artifact@v4
     with:
-      name: ${{ inputs.package }}
+      pattern: ${{ inputs.package }}
       path: ./package
   - name: Find package
     if: always() && inputs.package

@@ -132,7 +132,6 @@ endif ()
 
 # Find pkgs
 # Variable to store the result (will be either "NEW", "OLD", or "NOTFOUND")
-cmake_policy(GET CMP0167 POLICY_STATUS)
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW) # Use FindBoost as opposed to BoostConfig.cmake
 endif()
