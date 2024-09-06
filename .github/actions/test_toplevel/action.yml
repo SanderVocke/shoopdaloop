@@ -77,14 +77,6 @@ runs:
     uses: actions/download-artifact@v4
     with:
       name: coverage_context
-  # - name: Pre-install ASAN shared lib
-  #   if: always() && inputs.asan
-  #   shell: wrap-shell {0}
-  #   run: |
-  #     ${{ env.PIP }} install wheel
-  #     mkdir unzip_whl
-  #     ${{ inputs.python }} -m wheel unpack ~/wheel/*.whl -d unzip_whl
-  #     cp $(find unzip_whl -name "libasan.so*") /usr/lib/x86_64-linux-gnu/libasan_shoop.so
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Create crashdumps folder

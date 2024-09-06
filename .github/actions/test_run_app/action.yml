@@ -15,11 +15,11 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - name: run app (${{ inputs.variant_name }})
+  - name: run app
     if: always()
     shell: wrap-shell {0}
     run: >
         ${{ env.RUN_COMMAND_PREFIX }}
-        ${{ env.SHOOPDALOOP_COMMAND }} --quit-after=40 -b dummy --monkey-tester
+        ${{ env.COMMAND_SHOOPDALOOP }} --quit-after=40 -b dummy --monkey-tester
 
 

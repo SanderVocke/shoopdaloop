@@ -131,6 +131,7 @@ add_compile_definitions(_GNU_SOURCE)
 endif ()
 
 # Find pkgs
+cmake_policy(SET CMP0167 OLD) # Use FindBoost as opposed to BoostConfig.cmake
 find_package(Boost REQUIRED)
 
 if (BACKEND_JACK)

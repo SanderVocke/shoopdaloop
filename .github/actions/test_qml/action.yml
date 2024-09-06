@@ -2,9 +2,6 @@ name: QML Tests
 description: Integration tests at the QML level
 
 inputs:
-  variant_name:
-    required: true
-    type: string
   tee_all_output_to:
     type: string
     default: /dev/null
@@ -21,31 +18,31 @@ runs:
     shell: wrap-shell {0}
     run: |
       mkdir -p reports
-      echo "RESULTS_XML=reports/qml_test_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
+      echo "RESULTS_XML=reports/qml_test_results.xml" | tee -a $GITHUB_ENV
 
-  - name: QML test (${{ inputs.variant_name }})
+  - name: QML test
     if: always()
     shell: wrap-shell {0}
     run: >
       QT_ASSUME_STDERR_HAS_CONSOLE=1
       ${{ env.RUN_CMD_PREFIX }}
-      ${{ env.SHOOPDALOOP_COMMAND }} --qml-self-test
+      ${{ env.COMMAND_SHOOPDALOOP }} --qml-self-test
       --
       --junit ${{ env.RESULTS_XML }}
       2>&1 | tee ${{ inputs.tee_all_output_to }}
-  
+
   - name: Report results filename
     shell: wrap-shell {0}
     if: always()
     run: |
       echo "QML test results file: $(ls -la ${{ env.RESULTS_XML }})"
-  
+
   - name: Publish QML Test Report
     if: always()
     uses: mikepenz/action-junit-report@v3
     with:
       report_paths: ${{ env.RESULTS_XML }}
       include_passed: false
-      check_name: 'QML test (${{ inputs.variant_name }})'
+      check_name: 'QML test'
       annotate_only: true
 

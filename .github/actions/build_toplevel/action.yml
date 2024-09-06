@@ -129,7 +129,7 @@ runs:
       echo "Upload artifacts"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
-  - name: Upload debug info (${{ inputs.variant_name }})
+  - name: Upload debug info
     if: always() && inputs.upload_artifacts == 'true'
     uses: actions/upload-artifact@v4
     with:
@@ -173,7 +173,7 @@ runs:
     run: |
       tar -czf ${{ inputs.name }}_breakpad_debug_info.tar.gz debuginfo
       echo "path=${{ inputs.name }}_breakpad_debug_info.tar.gz" | tee -a $GITHUB_OUTPUT
-  - name: Upload Breakpad debug info (${{ inputs.variant_name }})
+  - name: Upload Breakpad debug info
     if: always() && env.release_upload_assets_url
     uses: shogo82148/actions-upload-release-asset@v1
     with:
@@ -186,7 +186,7 @@ runs:
   #   run: |
   #     tar -czf portable_folder_${{ inputs.name }}.tar.gz ${{ steps.pyinstaller.outputs.distribution }}
   #     echo "path=portable_folder_${{ inputs.name }}.tar.gz" | tee -a $GITHUB_OUTPUT
-  # - name: Upload portable folder (${{ inputs.variant_name }})
+  # - name: Upload portable folder
   #   if: always() && env.release_upload_assets_url && (inputs.pyinstaller || inputs.appbundle)
   #   uses: shogo82148/actions-upload-release-asset@v1
   #   with:
@@ -199,7 +199,7 @@ runs:
     run: |
       find . -name "*.pdb" -o -name "*.PDB" | tar -czf ${{ inputs.name }}_pdb_files.tar.gz -T -
       echo "path=${{ inputs.name }}_pdb_files.tar.gz" | tee -a $GITHUB_OUTPUT
-  - name: Upload PDB files (${{ inputs.variant_name }})
+  - name: Upload PDB files
     if: always() && env.release_upload_assets_url && inputs.prepare_kind == 'windows'
     uses: shogo82148/actions-upload-release-asset@v1
     with:

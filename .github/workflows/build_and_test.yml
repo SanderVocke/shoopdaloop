@@ -121,10 +121,10 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: release_wheel_debian_stable
+          - name: release_debian_stable
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-            package: wheel_linux_release
+            package: shoopdaloop.*.x86_64.AppImage
           # - name: debug_wheel_debian_stable
           #   python: python3
           #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest

@@ -1,14 +1,6 @@
 name: Python Tests
 description: Unit tests for Python extensions
 
-inputs:
-  variant_name:
-    required: true
-    type: string
-  root_path:
-    type: string
-    required: true
-
 runs:
   using: "composite"
   steps:
@@ -17,21 +9,21 @@ runs:
     shell: wrap-shell {0}
     run: |
       mkdir -p reports
-      echo "RESULTS_XML=reports/pytest_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
+      echo "RESULTS_XML=reports/pytest_results.xml" | tee -a $GITHUB_ENV
 
-  - name: pytest (${{ inputs.variant_name }})
+  - name: pytest
     if: always()
     shell: wrap-shell {0}
     run: |
-      ${{ env.RUN_CMD_PREFIX }} ${{ env.PYTEST }} ${{ inputs.root_path }} --junit-xml=${{ env.RESULTS_XML }}
+      ${{ env.RUN_CMD_PREFIX }} ${{ env.COMMAND_TEST_PYTHON }} --junit-xml=${{ env.RESULTS_XML }}
       echo "Python test results file: $(ls -la ${{ env.RESULTS_XML }})"
-  
+
   - name: Publish Python Test Report
     if: always()
     uses: mikepenz/action-junit-report@v3
     with:
       report_paths: ${{ env.RESULTS_XML }}
       include_passed: false
-      check_name: 'python test (${{ inputs.variant_name }})'
+      check_name: 'python test'
       annotate_only: true
 

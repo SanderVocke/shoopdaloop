@@ -59,7 +59,10 @@ runs:
     shell: wrap-shell {0}
     run: |
       chmod a+x ${{ inputs.package }}
-      echo "cmd=${{ inputs.package }}" | tee -a $GITHUB_ENV
+      echo "COMMAND_SHOOPDALOOP=${{ inputs.package }}" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_BACKEND=SHOOPDALOOP_APPIMAGE_EXECUTE=backend_tests ${{ inputs.package }}"
+      echo "COMMAND_TEST_RUST=SHOOPDALOOP_APPIMAGE_EXECUTE=rust_tests ${{ inputs.package }}"
+      echo "COMMAND_TEST_PYTHON=SHOOPDALOOP_APPIMAGE_EXECUTE=python_tests ${{ inputs.package }}"
       echo "install_dir=$(dirname ${{ inputs.package }})" | tee -a $GITHUB_ENV
 
   # MacOS .dmg installer
