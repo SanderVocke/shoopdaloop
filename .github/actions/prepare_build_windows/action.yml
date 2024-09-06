@@ -45,7 +45,6 @@ runs:
     id: pathconvert
     shell: wrap-shell {0}
     run: |
-      BOOST_INCLUDE_DIR=$(cygpath -w ${{ steps.install_boost.outputs.include_dir }})
       JACK_DIR=$(cygpath -w $(pwd)/jack)
       PTHREADS_DIR=$(cygpath -w $(pwd)/pthreads4w/pthreads4w)
       echo "CMAKE_INCLUDE_PATH=$CMAKE_INCLUDE_PATH $BOOST_INCLUDE_DIR" | tee -a $GITHUB_ENV
