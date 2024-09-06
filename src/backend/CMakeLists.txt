@@ -132,7 +132,7 @@ endif ()
 
 # Find pkgs
 # Variable to store the result (will be either "NEW", "OLD", or "NOTFOUND")
-cmake_policy(GET ${CMP0167} POLICY_STATUS)
+cmake_policy(GET CMP0167 POLICY_STATUS)
 if(POLICY_STATUS STREQUAL "NOTFOUND")
     message(STATUS "Policy CMP0167 not found, ignoring")
 else()
