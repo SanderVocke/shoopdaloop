@@ -64,7 +64,11 @@ runs:
       export CMAKE_PYTHON=$(cmake -P /tmp/script.cmake | sed -r 's/.*Found Python3: ([^ ]*) .*/\1/g')
       echo "python: $CMAKE_PYTHON"
       $CMAKE_PYTHON -m pip install meson
-      echo "MESON=$CMAKE_PYTHON -m mesonbuild.mesonmain" | tee -a $GITHUB_ENV
+      printf "#!/bin/sh\n$PYTHON -m mesonbuild.mesonmain \$@\n" > meson.sh
+      chmod a+x meson.sh
+      echo "meson.sh:"
+      cat meson.sh
+      echo "MESON=$(pwd)/meson.sh" | tee -a $GITHUB_ENV
      
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'
