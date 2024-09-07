@@ -6,9 +6,9 @@ set(MESON_ENV ${CMAKE_COMMAND} -E env CXX=${CMAKE_CXX_COMPILER} CC=${CMAKE_C_COM
 set(MESON_OPTS --default-library=shared --prefix=${EXTERNAL_DEPS_PREFIX})
 
 if(DEFINED ENV{MESON})
-  set(MESON ${MESON_ENV} $ENV{MESON})
+  set(MESON "${MESON_ENV} $ENV{MESON}")
 else()
-  set(MESON ${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain)
+  set(MESON "${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain")
 endif()
 message("Using Meson: ${MESON}")
 

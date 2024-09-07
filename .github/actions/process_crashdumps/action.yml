@@ -2,19 +2,14 @@ name: QML Tests
 description: Integration tests at the QML level
 
 inputs:
-  python:
-    type: string
-    default: python3
   dumps_dir:
-    type: string
-  variant:
     type: string
 
 runs:
   using: "composite"
   steps:
 
-  - name: Process dumps (${{ inputs.variant }})
+  - name: Process dumps
     id: process
     if: always()
     shell: wrap-shell {0}
@@ -23,7 +18,7 @@ runs:
         echo "upload=true" | tee -a $GITHUB_OUTPUT
       fi
 
-  - name: Upload dumps (${{ inputs.variant }})
+  - name: Upload dumps
     if: always() && steps.process.outputs.upload
     uses: actions/upload-artifact@v4
     with:
