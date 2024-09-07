@@ -53,6 +53,15 @@ runs:
     run: |
       echo "QMAKE=$QT_ROOT_DIR/bin/qmake" | tee -a $GITHUB_ENV
       echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6" | tee -a $GITHUB_ENV
+
+  - name: Install Meson
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+      echo "find_package(Python3)" > /tmp/script.cmake
+      export CMAKE_PYTHON=$(cmake -P /tmp/script.cmake | sed -r 's/.*Found Python3: ([^ ]*) .*/\1/g')
+      echo "python: $CMAKE_PYTHON"
+      $CMAKE_PYTHON -m pip install meson
      
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'
