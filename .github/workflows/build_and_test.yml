@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  checkpoints_enabled: false
+  checkpoints_enabled: true
 
 permissions:
   contents: write
@@ -91,8 +91,6 @@ jobs:
       image: ${{ matrix.container }}
       options: ${{ matrix.container_options }}
     needs: maybe_create_release
-    env:
-      checkpoints_enabled: true
     #if: false
     steps:
     - name: Checkout

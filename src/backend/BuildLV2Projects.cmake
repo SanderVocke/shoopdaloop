@@ -10,6 +10,7 @@ if(DEFINED ENV{MESON})
 else()
   set(MESON ${PYTHON_CMD} -m mesonbuild.mesonmain)
 endif()
+separate_arguments(MESON)
 message("Using Meson: ${MESON}")
 
 ###################
