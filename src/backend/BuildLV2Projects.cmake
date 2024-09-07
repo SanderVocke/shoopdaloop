@@ -6,9 +6,9 @@ set(MESON_ENV ${CMAKE_COMMAND} -E env CXX=${CMAKE_CXX_COMPILER} CC=${CMAKE_C_COM
 set(MESON_OPTS --default-library=shared --prefix=${EXTERNAL_DEPS_PREFIX})
 
 if(DEFINED ENV{MESON})
-  set(MESON "${MESON_ENV} $ENV{MESON}")
+  set(MESON "$ENV{MESON}")
 else()
-  set(MESON "${MESON_ENV} ${PYTHON_CMD} -m mesonbuild.mesonmain")
+  set(MESON "${PYTHON_CMD} -m mesonbuild.mesonmain")
 endif()
 message("Using Meson: ${MESON}")
 
@@ -58,11 +58,11 @@ ExternalProject_Add(lv2_proj
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/lv2
   BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/lv2_build
   CONFIGURE_COMMAND
-    ${MESON} setup -Ddocs=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
+    ${MESON_ENV} ${MESON} setup -Ddocs=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    ${MESON} compile
+    ${MESON_ENV} ${MESON} compile
   INSTALL_COMMAND
-    ${MESON} install
+    ${MESON_ENV} ${MESON} install
     COMMAND ${FIND_PKGCONF_DIRS}
 )
 
@@ -70,11 +70,11 @@ ExternalProject_Add(serd_proj
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/serd
   BINARY_DIR ${SERD_BUILD_DIR}
   CONFIGURE_COMMAND
-    ${MESON_ENV} ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Dtests=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
+    ${MESON_ENV} ${WITH_PKGCONF_CMD} ${MESON} setup -Ddocs=disabled -Dtests=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    ${MESON} compile
+    ${MESON_ENV} ${MESON} compile
   INSTALL_COMMAND
-    ${MESON} install
+    ${MESON_ENV} ${MESON} install
     COMMAND ${CMAKE_COMMAND} -E copy ${SERD_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj
   BUILD_BYPRODUCTS ${SERD_OUTPUTS}
@@ -84,11 +84,11 @@ ExternalProject_Add(sord_proj
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/sord
   BINARY_DIR ${SORD_BUILD_DIR}
   CONFIGURE_COMMAND
-    ${MESON_ENV} ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Dtests=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
+    ${MESON_ENV} ${WITH_PKGCONF_CMD} ${MESON} setup -Ddocs=disabled -Dtests=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    ${MESON} compile
+    ${MESON_ENV} ${MESON_ENV} ${MESON} compile
   INSTALL_COMMAND
-    ${MESON} install
+    ${MESON_ENV} ${MESON} install
     COMMAND ${CMAKE_COMMAND} -E copy ${SORD_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj
   BUILD_BYPRODUCTS ${SORD_OUTPUTS}
@@ -98,11 +98,11 @@ ExternalProject_Add(sratom_proj
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/sratom
   BINARY_DIR ${SRATOM_BUILD_DIR}
   CONFIGURE_COMMAND
-    ${MESON_ENV} ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Dtests=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
+    ${MESON_ENV} ${WITH_PKGCONF_CMD} ${MESON} setup -Ddocs=disabled -Dtests=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    ${MESON} compile
+    ${MESON_ENV} ${MESON} compile
   INSTALL_COMMAND
-    ${MESON} install
+    ${MESON_ENV} ${MESON} install
     COMMAND ${CMAKE_COMMAND} -E copy ${SRATOM_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj sord_proj
   BUILD_BYPRODUCTS ${SRATOM_OUTPUTS}
@@ -112,11 +112,11 @@ ExternalProject_Add(lilv_proj
   SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/lilv
   BINARY_DIR ${LILV_BUILD_DIR}
   CONFIGURE_COMMAND
-    ${MESON_ENV} ${WITH_PKGCONF_CMD} ${PYTHON_CMD} -m mesonbuild.mesonmain setup -Ddocs=disabled -Dtests=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
+    ${MESON_ENV} ${WITH_PKGCONF_CMD} ${MESON} setup -Ddocs=disabled -Dtests=disabled ${MESON_OPTS} <BINARY_DIR> <SOURCE_DIR>
   BUILD_COMMAND
-    ${MESON} compile
+    ${MESON_ENV} ${MESON} compile
   INSTALL_COMMAND
-    ${MESON} install
+    ${MESON_ENV} ${MESON} install
     COMMAND ${CMAKE_COMMAND} -E copy ${LILV_LIB} ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS lv2_proj serd_proj sord_proj sratom_proj
   BUILD_BYPRODUCTS ${LILV_OUTPUTS}
