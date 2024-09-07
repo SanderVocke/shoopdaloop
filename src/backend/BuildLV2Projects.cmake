@@ -5,6 +5,7 @@ set(FIND_PKGCONF_DIRS ${GLOB_CMD} directory separator ":" ${EXTERNAL_DEPS_PREFIX
 set(MESON_ENV ${CMAKE_COMMAND} -E env CXX=${CMAKE_CXX_COMPILER} CC=${CMAKE_C_COMPILER})
 set(MESON_OPTS --default-library=shared --prefix=${EXTERNAL_DEPS_PREFIX})
 
+message("Env meson: $ENV{MESON}")
 if(DEFINED ENV{MESON})
   set(MESON $ENV{MESON})
 else()
