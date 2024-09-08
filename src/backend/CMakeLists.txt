@@ -9,8 +9,12 @@ set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-set(PYTHON_CMD ${Python3_EXECUTABLE})
+if(DEFINED ENV{PYTHON})
+  set(PYTHON_CMD $ENV{PYTHON})
+else()
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  set(PYTHON_CMD ${Python3_EXECUTABLE})
+endif()
 set(GLOB_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../../scripts/do_glob.py")
 set(RUN_WITH_ENV_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../../scripts/run_with_env_from_files.py")
 
@@ -135,7 +139,7 @@ endif ()
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW) # Use FindBoost as opposed to BoostConfig.cmake
 endif()
-find_package(Boost REQUIRED ALL)
+find_package(Boost REQUIRED headers)
 
 if (BACKEND_JACK)
   # Generate a wrapper for libjack which allows dynamic loading using dlopen
@@ -191,13 +195,12 @@ target_include_directories(shoopdaloop_internals
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
-                        ${Boost_INCLUDE_DIRS}
                         )
 target_link_libraries(shoopdaloop_internals PRIVATE
   Threads::Threads
   fmt::fmt
-  ${Boost_LIBRARIES}
   zita
+  Boost::headers
   )
 if (DEFINED PTHREADS4W_PATH)
   target_include_directories(shoopdaloop_internals PRIVATE ${PTHREADS4W_PATH})

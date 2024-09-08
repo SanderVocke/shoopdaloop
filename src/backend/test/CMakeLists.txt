@@ -30,10 +30,9 @@ target_link_libraries(test_runner PRIVATE
                       Catch2::Catch2WithMain
                       fmt::fmt
                       Threads::Threads
-                      ${Boost_LIBRARIES})
+                      Boost::headers)
 target_include_directories(test_runner
                         PRIVATE
-                        ${Boost_INCLUDE_DIRS}
                         ${JACK_INCLUDE_DIRS}
                         ${CMAKE_CURRENT_SOURCE_DIR}
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
