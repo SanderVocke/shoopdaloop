@@ -10,7 +10,7 @@ if [ "$failure_status" != "" ]; then
 fi
 
 echo "GHA wrapper: running command: $BASE_WRAP_SHELL $@"
-$BASE_WRAP_SHELL $@
+$BASE_WRAP_SHELL $@ | tee -a log_all.txt
 
 # check if command was successful
 if [ $? -ne 0 ]; then
