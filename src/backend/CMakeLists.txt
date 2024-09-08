@@ -135,7 +135,7 @@ endif ()
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW) # Use FindBoost as opposed to BoostConfig.cmake
 endif()
-find_package(Boost REQUIRED)
+find_package(Boost REQUIRED ALL)
 
 if (BACKEND_JACK)
   # Generate a wrapper for libjack which allows dynamic loading using dlopen
@@ -191,11 +191,12 @@ target_include_directories(shoopdaloop_internals
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
-                        ${Boost_INCLUDE_DIR}
+                        ${Boost_INCLUDE_DIRS}
                         )
 target_link_libraries(shoopdaloop_internals PRIVATE
   Threads::Threads
   fmt::fmt
+  ${Boost_LIBRARIES}
   zita
   )
 if (DEFINED PTHREADS4W_PATH)
