@@ -47,7 +47,7 @@ runs:
       touch _macos_prepared
       echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:${{ steps.install-boost.outputs.BOOST_ROOT}}/lib/cmake/Boost-1.86.0" | tee -a $GITHUB_ENV
       echo "DYLD_FRAMEWORK_PATH=$QT_ROOT_DIR/lib" | tee -a $GITHUB_ENV
-      echo "CMAKE_INCLUDE_PATH=$CMAKE_INCLUDE_PATH:${{ github.workspace }}/includes" | tee -a $GITHUB_ENV
+      echo "CMAKE_INCLUDE_PATH=$CMAKE_INCLUDE_PATH:${{ github.workspace }}/includes:${{ github.workspace }}/boost/boost/include" | tee -a $GITHUB_ENV
       echo "LDFLAGS=$LDFLAGS -L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib" | tee -a $GITHUB_ENV
-      echo "CFLAGS=$CFLAGS -I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" | tee -a $GITHUB_ENV
-      echo "CPPFLAGS=$CPPFLAGS -isystem/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" | tee -a $GITHUB_ENV
+      echo "CFLAGS=$CFLAGS -I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include -I/Users/runner/work/shoopdaloop/shoopdaloop/boost/boost/include" | tee -a $GITHUB_ENV
+      echo "CPPFLAGS=$CPPFLAGS -isystem/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include -I/Users/runner/work/shoopdaloop/shoopdaloop/boost/boost/include" | tee -a $GITHUB_ENV
