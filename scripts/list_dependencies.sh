@@ -7,6 +7,13 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
+OS=$(uname)
+if [[ "$OS" != "Linux" ]] && [[ "$(bash.exe -c 'echo hi')" == "hi" ]]; then
+    OS=Windows
+fi
+
+echo "OS: $OS" >&2
+
 # Get the executable path
 COMMAND=$@
 
@@ -18,10 +25,14 @@ echo "Running \"$COMMAND\". Will list dynamically loaded libraries once executio
 echo "Note that all command output will be redirected to stderr so that stdout only contains the resulting libraries." >&2
 echo "" >&2
 
-# Run strace to capture the dynamic library loads
-strace_out=$(mktemp)
-strace -e openat -o $TRACE_OUTPUT -f $COMMAND 1>&2
-cat $TRACE_OUTPUT | grep -E '.*\.so' | grep -v ENOENT | awk -F '"' '{print $2}' | sort -u > "$DEPENDENCIES"
+if [[ "$OS" == "Linux" ]]; then
+    # Run strace to capture the dynamic library loads
+    strace -e openat -o $TRACE_OUTPUT -f $COMMAND 1>&2
+    cat $TRACE_OUTPUT | grep -E '.*\.so' | grep -v ENOENT | awk -F '"' '{print $2}' | sort -u > "$DEPENDENCIES"
+elif [[ "$OS" == "Darwin" ]]; then
+    DYLD_PRINT_LIBRARIES=1 $COMMAND 1>&2
+    cat $TRACE_OUTPUT | grep 'dyld' | grep 'loaded' | grep '.dylib' | awk 'NF>1{print $NF}' | sort -u > "$DEPENDENCIES"
+fi
 
 # Output the results
 echo "" >&2

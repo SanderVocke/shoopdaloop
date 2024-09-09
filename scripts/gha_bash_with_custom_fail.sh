@@ -16,4 +16,5 @@ $BASE_WRAP_SHELL $@ | tee -a log_all.txt
 if [ ${PIPESTATUS[0]} -ne 0 ]; then
   echo "Command failed with exit code $?, setting status to failed"
   echo "failure_status=unhandled" | tee -a $GITHUB_ENV
+  echo "ACTION_TMATE_CONNECT_TIMEOUT_SECONDS=3600" | tee -a $GITHUB_ENV
 fi

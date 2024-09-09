@@ -5,24 +5,7 @@ use tempfile::TempDir;
 use std::process::Command;
 use std::os::unix::fs::PermissionsExt;
 use crate::dependencies::get_dependency_libs;
-
-fn recursive_dir_cpy (src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
-    for entry in std::fs::read_dir(src)
-                    .with_context(|| format!("Cannot read dir {src:?}"))? {
-        let entry = entry.with_context(|| format!("Invalid entry"))?;
-        let path = entry.path();
-        let file_name = path.file_name().unwrap();
-        if path.is_dir() {
-            std::fs::create_dir(dst.join(file_name))
-                .with_context(|| format!("Cannot create {:?}", dst.join(file_name)))?;
-            recursive_dir_cpy(&path, &dst.join(file_name))?;
-        } else {
-            std::fs::copy(&path, &dst.join(file_name))
-                .with_context(|| format!("Cannot copy {:?} to {:?}", path, dst.join(file_name)))?;
-        }
-    }
-    Ok(())
-}
+use crate::fs_helpers::recursive_dir_cpy;
 
 fn populate_appdir(
     shoop_built_out_dir : &Path,

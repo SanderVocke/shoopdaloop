@@ -5,26 +5,9 @@ use tempfile::TempDir;
 use std::process::Command;
 use std::os::unix::fs::PermissionsExt;
 use crate::dependencies::get_dependency_libs;
+use crate::fs_helpers::recursive_dir_cpy;
 
-fn recursive_dir_cpy (src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
-    for entry in std::fs::read_dir(src)
-                    .with_context(|| format!("Cannot read dir {src:?}"))? {
-        let entry = entry.with_context(|| format!("Invalid entry"))?;
-        let path = entry.path();
-        let file_name = path.file_name().unwrap();
-        if path.is_dir() {
-            std::fs::create_dir(dst.join(file_name))
-                .with_context(|| format!("Cannot create {:?}", dst.join(file_name)))?;
-            recursive_dir_cpy(&path, &dst.join(file_name))?;
-        } else {
-            std::fs::copy(&path, &dst.join(file_name))
-                .with_context(|| format!("Cannot copy {:?} to {:?}", path, dst.join(file_name)))?;
-        }
-    }
-    Ok(())
-}
-
-fn populate_appdir(
+fn populate_appbundle(
     shoop_built_out_dir : &Path,
     appdir : &Path,
     exe_path : &Path,
@@ -74,32 +57,32 @@ fn populate_appdir(
         )?;
     }
 
-    println!("Bundling additional assets...");
-    for file in [
-        "distribution/appimage/shoopdaloop.desktop",
-        "distribution/appimage/shoopdaloop.png",
-        "distribution/appimage/AppRun",
-        "distribution/appimage/backend_tests",
-        "distribution/appimage/python_tests",
-        "distribution/appimage/rust_tests",
-    ] {
-        let from = src_path.join(file);
-        let to = appdir.join(from.file_name().unwrap());
-        println!("  {:?} -> {:?}", &from, &to);
-        std::fs::copy(&from, &to)
-            .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
-    }
+    // println!("Bundling additional assets...");
+    // for file in [
+    //     "distribution/appimage/shoopdaloop.desktop",
+    //     "distribution/appimage/shoopdaloop.png",
+    //     "distribution/appimage/AppRun",
+    //     "distribution/appimage/backend_tests",
+    //     "distribution/appimage/python_tests",
+    //     "distribution/appimage/rust_tests",
+    // ] {
+    //     let from = src_path.join(file);
+    //     let to = appdir.join(from.file_name().unwrap());
+    //     println!("  {:?} -> {:?}", &from, &to);
+    //     std::fs::copy(&from, &to)
+    //         .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
+    // }
 
-    if !include_tests {
-        println!("Slimming down AppDir...");
-        for file in [
-            "shoop_lib/test_runner"
-        ] {
-            let path = appdir.join(file);
-            println!("  remove {:?}", path);
-            std::fs::remove_file(&path)?;
-        }
-    }
+    // if !include_tests {
+    //     println!("Slimming down AppDir...");
+    //     for file in [
+    //         "shoop_lib/test_runner"
+    //     ] {
+    //         let path = appdir.join(file);
+    //         println!("  remove {:?}", path);
+    //         std::fs::remove_file(&path)?;
+    //     }
+    // }
 
     if include_tests {
         println!("Creating nextest archive...");
@@ -128,50 +111,45 @@ fn populate_appdir(
         std::fs::set_permissions(nextest_path, perms).with_context(|| "Failed to set file permissions")?;
     }
 
-    println!("AppDir produced in {}", appdir.to_str().unwrap());
+    println!("App bundle produced in {}", appdir.to_str().unwrap());
 
     Ok(())
 }
 
-pub fn build_appimage(
-    appimagetool : &str,
+pub fn build_appbundle(
     shoop_built_out_dir : &Path,
     exe_path : &Path,
     dev_exe_path : &Path,
-    output_file : &Path,
+    output_dir : &Path,
     include_tests : bool,
     release : bool,
 ) -> Result<(), anyhow::Error> {
     println!("Assets directory: {:?}", shoop_built_out_dir);
 
-    println!("Creating temporary appdir directory...");
-    let tmp_dir = TempDir::new()?;
-    let appdir : PathBuf;
-    {
-        appdir = tmp_dir.path().to_owned();
+    if std::fs::exists(output_dir) {
+        return Err(anyhow::anyhow!("Output directory {:?} already exists", output_dir));
     }
+    if !std::fs::exists(output_dir.parent()) {
+        return Err(anyhow::anyhow!("Output directory {:?}: parent doesn't exist", output_dir));
+    }
+    println!("Creating app bundle directory...");
+    std::fs::create_dir(output_dir)?;
 
-    match populate_appdir(shoop_built_out_dir,
-                    &appdir,
-                    exe_path,
-                    dev_exe_path,
-                    include_tests,
-                    release)
+    match populate_appbundle(shoop_built_out_dir,
+                            output_dir,
+                            exe_path,
+                            dev_exe_path,
+                            include_tests,
+                            release)
     {
         Ok(()) => Ok(()),
         Err(e) => {
-            let p = tmp_dir.into_path();
-            eprintln!("AppDir creation failed. Persisted temporary directory @ {:?}", p);
+            eprintln!("App bundle creation failed. Persisted temporary directory @ {:?}", p);
             Err(e)
         }
     }?;
 
-    println!("Creating AppImage...");
-    Command::new(appimagetool)
-        .args(&[appdir.to_str().unwrap(), output_file.to_str().unwrap()])
-        .status()?;
-
-    println!("AppImage created @ {output_file:?}");
+    println!("App bundle created @ {output_dir:?}");
     Ok(())
 }
 
