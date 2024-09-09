@@ -9,17 +9,15 @@ runs:
     if: always() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
     shell: bash
     run: |
-      echo "Failure detected at checkpoint. Starting tmate. If you want to continue the workflow after fixing things, run the following command before exiting:"
+      echo "Failure detected at checkpoint. Connect to the already-running tmate session. If you want to continue the workflow after fixing things, run the following command before exiting:"
       echo "echo \"failure_status=\" >> \$GITHUB_ENV"
 
-  - name: Checkpoint tmate
-    if: always() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
-    uses: SanderVocke/action-tmate@master
-
-  - name: Disable further checkpoints
+  - name: Pause on checkpoint
     if: always() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
     shell: bash
     run: |
+      while [ ! -f checkpoint_continue ]; do sleep 1; done
+      rm -f checkpoint_continue
       echo "Disabling further checkpoints"
       echo "failure_status=handled" >> $GITHUB_ENV
 
