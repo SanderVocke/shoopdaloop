@@ -30,8 +30,6 @@ runs:
 
   - name: Publish Back-end Test Report
     if: always()
-    env:
-       GHA_RUN_ALWAYS: 1
     uses: mikepenz/action-junit-report@v3
     with:
       report_paths: ${{ env.results_xml }}

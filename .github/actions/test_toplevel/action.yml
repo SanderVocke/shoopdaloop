@@ -111,6 +111,7 @@ runs:
     uses: ./.github/actions/test_backend
     env:
       REPORTNAME: backend_lcov
+      GHA_RUN_ALWAYS: 1
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
@@ -124,6 +125,8 @@ runs:
   - name: Test rust
     if: always() && env.COMMAND_TEST_RUST != ''
     uses: ./.github/actions/test_rust
+    env:
+       GHA_RUN_ALWAYS: 1
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
@@ -137,9 +140,13 @@ runs:
   - name: Test Python
     if: always() && env.COMMAND_TEST_PYTHON != ''
     uses: ./.github/actions/test_python
+    env:
+       GHA_RUN_ALWAYS: 1
   - name: Generate Pytest Python coverage report
     if: always() && inputs.coverage
     shell: wrap-shell {0}
+    env:
+       GHA_RUN_ALWAYS: 1
     run: |
       $PYTHON -m coverage xml -i -o coverage_reports/pytest_pycoverage.xml
       sed -r -i 's/test_venv.*shoopdaloop/src\/shoopdaloop/g' coverage_reports/pytest_pycoverage.xml
@@ -159,6 +166,7 @@ runs:
     uses: ./.github/actions/test_qml
     env:
       REPORTNAME: qml_lcov
+      GHA_RUN_ALWAYS: 1
     with:
       variant_name: release
       macos_rpath_patch: ${{ contains(inputs.name, 'macos') }}
@@ -168,6 +176,8 @@ runs:
   - name: Generate QML Python coverage report
     if: always() && inputs.coverage && (inputs.do_qml_tests == 'true')
     shell: wrap-shell {0}
+    env:
+       GHA_RUN_ALWAYS: 1
     run: |
       $PYTHON -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
       sed -r -i 's/test_venv.*shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
@@ -175,6 +185,8 @@ runs:
   - name: Qoverage - Generate report
     if: always() && inputs.coverage && (inputs.do_qml_tests == 'true')
     uses: ./.github/actions/qoverage_generate_report
+    env:
+       GHA_RUN_ALWAYS: 1
     with:
       strip: ".*/pip/shoopdaloop"
       package_path: ${{ steps.install_package.outputs.install_dir }}
@@ -193,6 +205,8 @@ runs:
   - name: Screenshots
     if: always()
     uses: ./.github/actions/test_screenshots
+    env:
+      GHA_RUN_ALWAYS: 1
     with:
       root_path: ${{ steps.install_package.outputs.install_dir }}
       screenshots_path: _grabbed_screenshots
@@ -211,6 +225,8 @@ runs:
     if: always()
   - name: Test Run App
     if: always()
+    env:
+       GHA_RUN_ALWAYS: 1
     uses: ./.github/actions/test_run_app
     with:
       variant_name: release
@@ -227,6 +243,8 @@ runs:
       printf "\n\n\n\n\n\n"
   - name: Process Crash Dumps
     if: always()
+    env:
+       GHA_RUN_ALWAYS: 1
     uses: ./.github/actions/process_crashdumps
     with:
       dumps_dir: crashdumps
@@ -236,6 +254,8 @@ runs:
   - name: Upload back-end coverage to CodeCov
     if: always() && inputs.coverage
     uses: codecov/codecov-action@v3
+    env:
+       GHA_RUN_ALWAYS: 1
     with:
       token: ${{ inputs.codecov_token }}
       flags: back-end
@@ -245,6 +265,8 @@ runs:
   - name: Upload Pytest coverage to CodeCov
     if: always() && inputs.coverage
     uses: codecov/codecov-action@v3
+    env:
+       GHA_RUN_ALWAYS: 1
     with:
       token: ${{ inputs.codecov_token }}
       flags: pytest
@@ -254,6 +276,8 @@ runs:
   - name: Upload QML test coverage to CodeCov
     if: always() && inputs.coverage && (inputs.do_qml_tests == 'true')
     uses: codecov/codecov-action@v3
+    env:
+       GHA_RUN_ALWAYS: 1
     with:
       token: ${{ inputs.codecov_token }}
       flags: qml
@@ -263,6 +287,8 @@ runs:
   - name: Upload raw coverage reports
     if: always() && inputs.coverage
     uses: actions/upload-artifact@v4
+    env:
+       GHA_RUN_ALWAYS: 1
     with:
       name: coverage_reports
       path: coverage_reports
