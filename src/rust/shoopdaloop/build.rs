@@ -201,10 +201,10 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
     println!("build.rs finished.");
 
-    println!("cargo:rustc-link-search=native=/home/sander/.qt-installs/6.6.3/gcc_64/lib");
-    println!("cargo:rustc-link-lib=Qt6Core");
-    println!("cargo:rustc-link-lib=Qt6Gui");
-    println!("cargo:rustc-link-lib=Qt6Quick");
+    // println!("cargo:rustc-link-search=native=/home/sander/.qt-installs/6.6.3/gcc_64/lib");
+    // println!("cargo:rustc-link-lib=Qt6Core");
+    // println!("cargo:rustc-link-lib=Qt6Gui");
+    // println!("cargo:rustc-link-lib=Qt6Quick");
 
     Ok(())
 }

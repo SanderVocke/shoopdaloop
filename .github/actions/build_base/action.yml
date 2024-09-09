@@ -9,6 +9,6 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      cargo build -vv ${CARGO_BUILD_FLAGS}
+      cargo build ${CARGO_BUILD_FLAGS}
 
 
