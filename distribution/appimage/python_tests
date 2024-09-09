@@ -1,5 +1,7 @@
 #!/bin/sh
 
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+
 MOD=$(find $SCRIPT_DIR -wholename "*/site-packages/shoopdaloop")
 
 $SCRIPT_DIR/shoop_lib/py/bin/python -m pytest $MOD $@
