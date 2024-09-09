@@ -28,6 +28,11 @@ runs:
     with:
       boost_version: 1.86.0
       platform_version: 12
+  - name: Install PyEnv
+    shell: wrap-shell {0}
+    run: |
+      curl https://pyenv.run | bash
+      echo "$HOME/.pyenv/bin" >> $GITHUB_PATH
   - name: Symlink Qt include folders
     shell: wrap-shell {0}
     if: always()

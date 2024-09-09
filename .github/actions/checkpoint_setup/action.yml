@@ -18,7 +18,7 @@ runs:
       echo "WRAP_SHELL=bash scripts/gha_bash_with_custom_fail.sh" >> $GITHUB_ENV
       echo "failure_status=" >> $GITHUB_ENV
   - name: Background tmate
-    if: always() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
+    if: always()
     uses: SanderVocke/action-tmate@master
     with:
        detached: true

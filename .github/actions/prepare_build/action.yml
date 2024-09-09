@@ -69,7 +69,7 @@ runs:
       echo "meson.sh:"
       cat meson.sh
       echo "MESON=$(pwd)/meson.sh" | tee -a $GITHUB_ENV
-     
+
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'
     uses: ./.github/actions/prepare_build_linux
