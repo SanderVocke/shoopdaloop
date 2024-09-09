@@ -22,4 +22,4 @@ runs:
     uses: SanderVocke/action-tmate@master
     with:
        detached: true
-       connect-timeout-seconds: 0
+       connect-timeout-seconds: 1

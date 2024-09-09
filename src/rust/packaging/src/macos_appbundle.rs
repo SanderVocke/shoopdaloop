@@ -135,7 +135,7 @@ pub fn build_appbundle(
     println!("Creating app bundle directory...");
     std::fs::create_dir(output_dir)?;
 
-    match populate_appbundle(shoop_built_out_dir,
+    populate_appbundle(shoop_built_out_dir,
                             output_dir,
                             exe_path,
                             dev_exe_path,
