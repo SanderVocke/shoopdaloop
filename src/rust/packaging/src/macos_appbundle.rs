@@ -126,10 +126,10 @@ pub fn build_appbundle(
 ) -> Result<(), anyhow::Error> {
     println!("Assets directory: {:?}", shoop_built_out_dir);
 
-    if std::fs::exists(output_dir) {
+    if std::fs::exists(output_dir)? {
         return Err(anyhow::anyhow!("Output directory {:?} already exists", output_dir));
     }
-    if !std::fs::exists(output_dir.parent()) {
+    if !std::fs::exists(output_dir.parent().unwrap())? {
         return Err(anyhow::anyhow!("Output directory {:?}: parent doesn't exist", output_dir));
     }
     println!("Creating app bundle directory...");
