@@ -75,13 +75,14 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
             }
             #[cfg(not(target_os = "linux"))]
             {
+                let _ = (appimagetool, output, include_tests, release);
                 Err(anyhow::anyhow!("AppImage packaging is only supported on Linux systems."))
             }
         },
         Some(Commands::BuildAppBundle { output_dir, include_tests, release }) => {
             #[cfg(target_os = "macos")]
             {
-                use packaging::linux_appimage::build_appbundle;
+                use packaging::macos_appbundle::build_appbundle;
                 build_appbundle(
                             Path::new(out_dir.as_str()),
                             main_exe.as_path(),
@@ -92,6 +93,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
             }
             #[cfg(not(target_os = "macos"))]
             {
+                let _ = (output_dir, include_tests, release);
                 Err(anyhow::anyhow!("App bundle packaging is only supported on MacOS systems."))
             }
         },
