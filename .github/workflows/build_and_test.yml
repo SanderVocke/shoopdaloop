@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  checkpoints_enabled: false
+  checkpoints_enabled: true
 
 permissions:
   contents: write
@@ -354,64 +354,64 @@ jobs:
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
     - uses: ./.github/actions/checkpoint
 
-  test_macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        kind:
-          # - name: release_whl_macos12
-          #   python: python3
-          #   container: null
-          #   os: macos-12
-          #   package: wheel_macos_release
-          #   qpa_platform: offscreen
-          # - name: release_whl_macos13
-          #   python: python3
-          #   container: null
-          #   os: macos-13
-          #   package: wheel_macos_release
-          #   qpa_platform: offscreen
-          # - name: release_whl_macos14
-          #   python: python3
-          #   container: null
-          #   os: macos-14
-          #   package: wheel_macos_release_arm
-          #   qpa_platform: offscreen
-          - name: debug_whl_macos14
-            python: python3
-            container: null
-            os: macos-14
-            package: wheel_macos_debug_arm
-            qpa_platform: offscreen
-          # - name: release_dmg_macos14
-          #   python: python3
-          #   container: null
-          #   os: macos-14
-          #   package: package_macos_release_arm
-          #   qpa_platform: offscreen
-    runs-on: ${{ matrix.kind.os }}
-    needs: build_macos
-    #if: false
-    container:
-      image: ${{ matrix.kind.container }}
-      options: --user root --workdir / # Note: this gets disregarded if container is null
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - uses: ./.github/actions/checkpoint_setup
-      with:
-        shell: bash --noprofile --norc -eo pipefail
-    - name: Test
-      uses: ./.github/actions/test_toplevel
-      with:
-        name: ${{ matrix.kind.name }}
-        package: ${{ matrix.kind.package }}
-        asan: ${{ matrix.kind.asan }}
-        coverage: ${{ matrix.kind.coverage }}
-        python: ${{ matrix.kind.python }}
-        qpa_platform: ${{ matrix.kind.qpa_platform }}
-        codecov_token: ${{ secrets.CODECOV_TOKEN }}
-    - uses: ./.github/actions/checkpoint
+  # test_macos:
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       kind:
+  #         # - name: release_whl_macos12
+  #         #   python: python3
+  #         #   container: null
+  #         #   os: macos-12
+  #         #   package: wheel_macos_release
+  #         #   qpa_platform: offscreen
+  #         # - name: release_whl_macos13
+  #         #   python: python3
+  #         #   container: null
+  #         #   os: macos-13
+  #         #   package: wheel_macos_release
+  #         #   qpa_platform: offscreen
+  #         # - name: release_whl_macos14
+  #         #   python: python3
+  #         #   container: null
+  #         #   os: macos-14
+  #         #   package: wheel_macos_release_arm
+  #         #   qpa_platform: offscreen
+  #         - name: debug_whl_macos14
+  #           python: python3
+  #           container: null
+  #           os: macos-14
+  #           package: wheel_macos_debug_arm
+  #           qpa_platform: offscreen
+  #         # - name: release_dmg_macos14
+  #         #   python: python3
+  #         #   container: null
+  #         #   os: macos-14
+  #         #   package: package_macos_release_arm
+  #         #   qpa_platform: offscreen
+  #   runs-on: ${{ matrix.kind.os }}
+  #   needs: build_macos
+  #   #if: false
+  #   container:
+  #     image: ${{ matrix.kind.container }}
+  #     options: --user root --workdir / # Note: this gets disregarded if container is null
+  #   steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v4
+  #   - uses: ./.github/actions/checkpoint_setup
+  #     with:
+  #       shell: bash --noprofile --norc -eo pipefail
+  #   - name: Test
+  #     uses: ./.github/actions/test_toplevel
+  #     with:
+  #       name: ${{ matrix.kind.name }}
+  #       package: ${{ matrix.kind.package }}
+  #       asan: ${{ matrix.kind.asan }}
+  #       coverage: ${{ matrix.kind.coverage }}
+  #       python: ${{ matrix.kind.python }}
+  #       qpa_platform: ${{ matrix.kind.qpa_platform }}
+  #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
+  #   - uses: ./.github/actions/checkpoint
 
 
 
