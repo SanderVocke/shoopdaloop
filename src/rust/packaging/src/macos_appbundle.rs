@@ -140,14 +140,7 @@ pub fn build_appbundle(
                             exe_path,
                             dev_exe_path,
                             include_tests,
-                            release)
-    {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            eprintln!("App bundle creation failed. Persisted temporary directory @ {:?}", p);
-            Err(e)
-        }
-    }?;
+                            release)?;
 
     println!("App bundle created @ {output_dir:?}");
     Ok(())

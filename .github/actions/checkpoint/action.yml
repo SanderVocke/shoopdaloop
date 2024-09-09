@@ -16,7 +16,7 @@ runs:
     if: always() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
     shell: bash
     run: |
-      while [ ! -f checkpoint_continue ]; do sleep 1; done
+      while [ ! -f checkpoint_continue ] && [ $(ps aux | grep tmate | grep -v grep | wc -l) -gt 0 ]; do sleep 1; done
       rm -f checkpoint_continue
       echo "Disabling further checkpoints"
       echo "failure_status=handled" >> $GITHUB_ENV
