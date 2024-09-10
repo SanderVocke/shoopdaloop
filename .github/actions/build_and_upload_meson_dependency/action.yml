@@ -16,6 +16,9 @@ runs:
 
   - shell: wrap-shell {0}
     run: |
+       echo "============= ENV ==================="
+       env
+       echo "================ END ENV ============"
        git clone ${{ inputs.repo }} ${{ inputs.name }}
        cd ${{ inputs.name }}
        git checkout ${{ inputs.git_rev }}
