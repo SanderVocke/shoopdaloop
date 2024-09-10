@@ -1,6 +1,6 @@
 name: Build and upload dependencies
 
-on: pull-request
+on: workflow-dispatch
 
 
 permissions:
