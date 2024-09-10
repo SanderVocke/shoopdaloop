@@ -32,7 +32,7 @@ runs:
   - name: Notify
     if: ${{ inputs.notify_installed }}
     shell: wrap-shell {0}
-    run: ${{ inputs.notify_installed }} ${{ inputs.name }}/${{ inputs.name }}
+    run: ${{ inputs.notify_installed }} $(pwd)/${{ inputs.name }}/${{ inputs.name }}
 
   - name: Upload
     uses: actions/upload-artifact@v4
