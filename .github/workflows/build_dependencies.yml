@@ -19,27 +19,33 @@ jobs:
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest"
             python: python3
             path_separator: ":"
+            setup: false
           - runs-on: ubuntu-latest
             name-suffix: linux-arm
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest"
             python: python3
             arch: arm64
             path_separator: ":"
+            setup: false
           - runs-on: macos-14
             name-suffix: macos-arm
             container: false
             python: python3
             path_separator: ":"
+            setup: false
           - runs-on: macos-12
             name-suffix: macos-x64
             container: false
             python: python3
             path_separator: ":"
+            setup: false
           - runs-on: windows-2022
             name-suffix: windows-x64
             container: false
             python: python3
             path_separator: ";"
+            setup_msvc: true
+            setup_choco_pkgconfig: true
     env:
       PIP_BREAK_SYSTEM_PACKAGES: 1
     runs-on: ${{ matrix.runs-on }}
@@ -74,6 +80,15 @@ jobs:
       - shell: wrap-shell {0}
         run: |
            echo "PATH_SEPARATOR=${{ matrix.path_separator }}" | tee -a $GITHUB_ENV
+
+      - if: ${{ matrix.setup_msvc }}
+        uses: TheMrMilchmann/setup-msvc-dev@v3
+        with:
+          arch: x64
+
+      - if: ${{ matrix.setup_choco_pkgconfig }}
+        shell: wrap-shell {0}
+        run: choco install pkgconfiglite
 
       - name: Build LV2
         uses: ./.github/actions/build_and_upload_meson_dependency
