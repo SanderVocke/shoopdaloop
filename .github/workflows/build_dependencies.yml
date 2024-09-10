@@ -1,6 +1,6 @@
 name: Build and upload dependencies
 
-on: workflow-dispatch
+on: workflow_dispatch
 
 
 permissions:
