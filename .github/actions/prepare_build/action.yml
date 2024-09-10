@@ -78,6 +78,10 @@ runs:
         curl -L -o all_dependencies.zip $URL
         unzip all_dependencies.zip -d prebuilt_dependencies
         echo "CMAKE_PREFIX_PATH=$(pwd)/prebuilt_dependencies${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
+        echo "LDFLAGS=$LDFLAGS -L$(pwd)/prebuilt_dependencies/lib" | tee -a $GITHUB_ENV
+        echo "CFLAGS=$CFLAGS -I$(pwd)/prebuilt_dependencies/include" | tee -a $GITHUB_ENV
+        echo "CXXFLAGS=$CXXFLAGS -I$(pwd)/prebuilt_dependencies/include" | tee -a $GITHUB_ENV
+        echo "CPPFLAGS=$CPPFLAGS -I$(pwd)/prebuilt_dependencies/include" | tee -a $GITHUB_ENV
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'
