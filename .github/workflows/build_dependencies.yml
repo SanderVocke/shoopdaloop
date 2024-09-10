@@ -15,24 +15,24 @@ jobs:
       matrix:
         include:
           - runs-on: ubuntu-latest
-            name-suffix: linux.x86-64
+            name-suffix: linux-x64
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest"
             python: python3
           - runs-on: ubuntu-latest
-            name-suffix: linux.arm
+            name-suffix: linux-arm
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest"
             python: python3
             arch: arm
           - runs-on: macos-14
-            name-suffix: macos.arm
+            name-suffix: macos-arm
             container: false
             python: python3
           - runs-on: macos-12
-            name-suffix: macos.x86-64
+            name-suffix: macos-x64
             container: false
             python: python3
           - runs-on: windows-2022
-            name-suffix: windows.x86-64
+            name-suffix: windows-x64
             container: false
             python: python3
     env:
@@ -69,7 +69,7 @@ jobs:
         env:
            MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
         with:
-           name: lv2.v1.18.10.${{ matrix.name-suffix }}
+           name: lv2-v1.18.10-release-${{ matrix.name-suffix }}
            repo: https://github.com/lv2/lv2.git
            git_rev: v1.18.10
-           meson_options: --default-library=shared
+           meson_options: --default-library=shared --buildtype release
