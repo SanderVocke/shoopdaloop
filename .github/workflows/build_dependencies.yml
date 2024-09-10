@@ -71,36 +71,36 @@ jobs:
 
       - uses: seanmiddleditch/gha-setup-ninja@master
 
-      - if: ${{ matrix.os-kind == "windows" }}
+      - if: ${{ matrix.os-kind == 'windows' }}
         uses: TheMrMilchmann/setup-msvc-dev@v3
         with:
           arch: x64
 
-      - if: ${{ matrix.os-kind == "windows" }}
+      - if: ${{ matrix.os-kind == 'windows' }}
         shell: wrap-shell {0}
         run: choco install pkgconfiglite
 
-      - if: ${{ matrix.os-kind == "windows" }}
+      - if: ${{ matrix.os-kind == 'windows' }}
         shell: wrap-shell {0}
         run: |
            rm -f /usr/bin/link
            rm -f /usr/bin/link.exe
 
-      - if: ${{ matrix.os-kind == "windows" }}
+      - if: ${{ matrix.os-kind == 'windows' }}
         name: Install pthreads4w
         shell: pwsh
         run: |
           curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pthreads4w.zip --output pthreads4w.zip
           unzip pthreads4w.zip -d pthreads4w
 
-      - if: ${{ matrix.os-kind == "windows" }}
+      - if: ${{ matrix.os-kind == 'windows' }}
         shell: wrap-shell {0}
         run: |
           PTHREADS_DIR=$(cygpath -w $(pwd)/pthreads4w/pthreads4w)
           echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH;$PTHREADS_DIR" | tee -a $GITHUB_ENV
           echo "PTHREADS4W_PATH=$PTHREADS_DIR" | tee -a $GITHUB_ENV
 
-      - if: ${{ matrix.os-kind == "windows" }}
+      - if: ${{ matrix.os-kind == 'windows' }}
         shell: wrap-shell {0}
         run: |
            echo "#!/bin/sh"                                                                                      > notify_installed.sh
@@ -111,7 +111,7 @@ jobs:
            echo "echo \"Adding pkgconfig path: \$NEW_PKG_CFG_PATH_CONVERTED\""                                  >> notify_installed.sh
            echo "echo \"To: \$PKG_CONFIG_PATH\""                                                                >> notify_installed.sh
            echo "echo \"PKG_CONFIG_PATH=\$NEW_PKG_CFG_PATH_CONVERTED;\$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> notify_installed.sh
-      - if: ${{ matrix.os-kind != "windows" }}
+      - if: ${{ matrix.os-kind != 'windows' }}
         shell: wrap-shell {0}
         run: |
            echo "#!/bin/sh"                                                                            > notify_installed.sh
@@ -121,7 +121,7 @@ jobs:
            echo "echo \"To: \$PKG_CONFIG_PATH\""                                                      >> notify_installed.sh
            echo "echo \"PKG_CONFIG_PATH=\$NEW_PKG_CFG_PATH:\$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> notify_installed.sh
 
-      - if: ${{ matrix.os-kind == "windows" }}
+      - if: ${{ matrix.os-kind == 'windows' }}
         shell: wrap-shell {0}
         run: |
            echo "echo \"LIBS=\$INSTALL_FOLDER/lib;\$LIBS\" >> \$GITHUB_ENV"    >> notify_installed.sh
