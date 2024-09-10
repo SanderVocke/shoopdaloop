@@ -94,9 +94,10 @@ jobs:
         shell: wrap-shell {0}
         run: |
            echo "#!/bin/sh" > add_pkg_config_path.sh
-           echo "echo \"Adding pkgconfig path: \$1\"" >> add_pkg_config_path.sh
+           echo "CONVERTED=\$(cygpath -w \$1)"
+           echo "echo \"Adding pkgconfig path: \$CONVERTED\"" >> add_pkg_config_path.sh
            echo "echo \"To: \$PKG_CONFIG_PATH\"" >> add_pkg_config_path.sh
-           echo "echo \"PKG_CONFIG_PATH=\$(cygpath -w $1);\$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> add_pkg_config_path.sh
+           echo "echo \"PKG_CONFIG_PATH=\$CONVERTED;\$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> add_pkg_config_path.sh
 
       - if: ${{ ! matrix.windows }}
         shell: wrap-shell {0}
