@@ -4,7 +4,9 @@ description: Prepare Linux for building Shoopdaloop wheels
 runs:
   using: "composite"
   steps:
-  - name: Dummy
+  - name: Shell steps
+    if: always()
     shell: wrap-shell {0}
     run: |
-      python3 -m pip install --upgrade pip build auditwheel patchelf
+      $PIP install --upgrade pip build auditwheel patchelf
+      $PIP install -r build_python_requirements.txt

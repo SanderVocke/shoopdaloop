@@ -1,0 +1,12 @@
+[workspace]
+
+resolver = "2"
+
+members = [
+    "src/rust/backend",
+    "src/rust/common",
+    "src/rust/frontend",
+    "src/rust/macros",
+    "src/rust/packaging",
+    "src/rust/shoopdaloop",
+]

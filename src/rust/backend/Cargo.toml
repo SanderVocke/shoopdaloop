@@ -1,0 +1,12 @@
+[package]
+name = "backend"
+edition = "2021"
+
+[lib]
+
+[dependencies]
+anyhow = "1.0"
+common = { path = "../common" }
+
+[build-dependencies]
+bindgen = "0.70.1"

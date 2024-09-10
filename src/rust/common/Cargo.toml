@@ -1,0 +1,10 @@
+[package]
+name = "common"
+edition = "2021"
+
+[lib]
+
+[dependencies]
+
+[build-dependencies]
+bindgen = "0.70.1"

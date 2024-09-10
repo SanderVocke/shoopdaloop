@@ -1,0 +1,267 @@
+name: Build and upload dependencies
+
+on:
+  push:
+    branches: [ "*" ]
+    tags: "v*.*.*"
+  pull_request:
+    branches: [ "*" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-latest
+            name-suffix: linux-x64
+            container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest"
+            python: python3
+            os-kind: linux
+          - runs-on: ubuntu-latest
+            name-suffix: linux-arm
+            container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest"
+            python: python3
+            arch: arm64
+            os-kind: linux
+          - runs-on: macos-14
+            name-suffix: macos-arm
+            container: false
+            python: python3
+            os-kind: macos
+          - runs-on: macos-12
+            name-suffix: macos-x64
+            container: false
+            python: python3
+            os-kind: macos
+          - runs-on: windows-2022
+            name-suffix: windows-msvc-x64
+            container: false
+            python: python3
+            os-kind: windows
+    env:
+      PIP_BREAK_SYSTEM_PACKAGES: 1
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start container
+        if: ${{ matrix.container }}
+        uses: sandervocke/setup-qemu-container@v1
+        with:
+          container: ${{ matrix.container }}
+          arch: ${{ matrix.arch }}
+      - name: Setup Shell Wrapper
+        uses: sandervocke/setup-shell-wrapper@v1
+      - name: Use regular shell
+        if: ${{ ! matrix.container }}
+        shell: bash
+        run: echo "WRAP_SHELL=bash" >> $GITHUB_ENV
+      - name: Use container shell
+        if: ${{ matrix.container }}
+        shell: bash
+        run: echo "WRAP_SHELL=run-in-container.sh" >> $GITHUB_ENV
+
+      - name: Install Meson
+        shell: wrap-shell {0}
+        run: |
+           ${{ matrix.python }} -m pip install meson
+
+      - uses: seanmiddleditch/gha-setup-ninja@master
+
+      - if: ${{ matrix.os-kind == 'linux' && matrix.arch == 'arm64' }}
+        shell: wrap-shell {0}
+        run: |
+           curl -L https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-linux-aarch64.zip --output ninja.zip
+           unzip ninja.zip
+           rm $(which ninja)
+           cp ninja /usr/bin/ninja
+           chmod a+x /usr/bin/ninja
+           /usr/bin/ninja --version
+           ninja --version
+
+      - if: ${{ matrix.os-kind == 'windows' }}
+        uses: TheMrMilchmann/setup-msvc-dev@v3
+        with:
+          arch: x64
+
+      - if: ${{ matrix.os-kind == 'windows' }}
+        shell: wrap-shell {0}
+        run: choco install pkgconfiglite
+
+      - if: ${{ matrix.os-kind == 'windows' }}
+        shell: wrap-shell {0}
+        run: |
+           rm -f /usr/bin/link
+           rm -f /usr/bin/link.exe
+
+      - if: ${{ matrix.os-kind == 'windows' }}
+        name: Install pthreads4w
+        shell: pwsh
+        run: |
+          curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pthreads4w.zip --output pthreads4w.zip
+          unzip pthreads4w.zip -d pthreads4w
+
+      - if: ${{ matrix.os-kind == 'windows' }}
+        shell: wrap-shell {0}
+        run: |
+          PTHREADS_DIR=$(cygpath -w $(pwd)/pthreads4w/pthreads4w)
+          echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH;$PTHREADS_DIR" | tee -a $GITHUB_ENV
+          echo "PTHREADS4W_PATH=$PTHREADS_DIR" | tee -a $GITHUB_ENV
+          echo "INCLUDE=$PTHREADS_DIR;$INCLUDE"  | tee -a $GITHUB_ENV
+
+      - if: ${{ matrix.os-kind == 'windows' }}
+        shell: wrap-shell {0}
+        run: |
+           echo "#!/bin/sh"                                                                                      > notify_installed.sh
+           echo "INSTALL_FOLDER=\$1"                                                                            >> notify_installed.sh
+           echo "CONVERTED=\$(cygpath -w \$INSTALL_FOLDER)"                                                     >> notify_installed.sh
+           echo "NEW_PKG_CFG_PATH=\$(find \$INSTALL_FOLDER -name pkgconfig)"                                    >> notify_installed.sh
+           echo "NEW_PKG_CFG_PATH_CONVERTED=\$(cygpath -w \$NEW_PKG_CFG_PATH)"                                  >> notify_installed.sh
+           echo "echo \"Adding pkgconfig path: \$NEW_PKG_CFG_PATH_CONVERTED\""                                  >> notify_installed.sh
+           echo "echo \"To: \$PKG_CONFIG_PATH\""                                                                >> notify_installed.sh
+           echo "echo \"PKG_CONFIG_PATH=\$NEW_PKG_CFG_PATH_CONVERTED;\$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> notify_installed.sh
+      - if: ${{ matrix.os-kind != 'windows' }}
+        shell: wrap-shell {0}
+        run: |
+           echo "#!/bin/sh"                                                                            > notify_installed.sh
+           echo "INSTALL_FOLDER=\$1"                                                                  >> notify_installed.sh
+           echo "NEW_PKG_CFG_PATH=\$(find \$INSTALL_FOLDER -name pkgconfig)"                          >> notify_installed.sh
+           echo "echo \"Adding pkgconfig path: \$NEW_PKG_CFG_PATH\""                                  >> notify_installed.sh
+           echo "echo \"To: \$PKG_CONFIG_PATH\""                                                      >> notify_installed.sh
+           echo "echo \"PKG_CONFIG_PATH=\$NEW_PKG_CFG_PATH:\$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> notify_installed.sh
+      - if: ${{ matrix.os-kind == 'windows' }}
+        shell: wrap-shell {0}
+        run: |
+           echo "echo \"LIBS=\$INSTALL_FOLDER/lib;\$LIBS\" >> \$GITHUB_ENV"    >> notify_installed.sh
+           echo "echo \"\$INSTALL_FOLDER/bin\" >> \$GITHUB_PATH"                >> notify_installed.sh
+      - if: ${{ matrix.os-kind == 'linux' }}
+        shell: wrap-shell {0}
+        run: |
+           echo "echo \"LD_LIBRARY_PATH=\$(dirname \$(find \$INSTALL_FOLDER -name '*.so' | head -n1)):\$LD_LIBRARY_PATH\" >> \$GITHUB_ENV" >> notify_installed.sh
+
+      - shell: wrap-shell {0}
+        run: |
+           echo "install folder handling script:"
+           cat notify_installed.sh
+           chmod a+x notify_installed.sh
+
+      - shell: wrap-shell {0}
+        run: |
+           echo "MESON=${{ matrix.python }} -m mesonbuild.mesonmain" | tee -a $GITHUB_ENV
+
+      - shell: wrap-shell {0}
+        run: |
+           git config --global core.compression 0
+
+      - name: Build LV2
+        uses: ./.github/actions/build_and_upload_meson_dependency
+        with:
+           name: lv2-v1.18.10-release-${{ matrix.name-suffix }}
+           repo: https://github.com/lv2/lv2.git
+           git_rev: v1.18.10
+           meson_options: --default-library=shared --buildtype release
+           notify_installed: ./notify_installed.sh
+
+      - name: Build zix
+        uses: ./.github/actions/build_and_upload_meson_dependency
+        with:
+           name: zix-v0.4.2-release-${{ matrix.name-suffix }}
+           repo: https://github.com/drobilla/zix.git
+           git_rev: v0.4.2
+           meson_options: --default-library=shared --buildtype release
+           notify_installed: ./notify_installed.sh
+
+      - name: Build serd
+        uses: ./.github/actions/build_and_upload_meson_dependency
+        with:
+           name: serd-v0.32.2-release-${{ matrix.name-suffix }}
+           repo: https://github.com/drobilla/serd.git
+           git_rev: v0.32.2
+           meson_options: --default-library=shared --buildtype release
+           notify_installed: ./notify_installed.sh
+
+      - name: Build sord
+        uses: ./.github/actions/build_and_upload_meson_dependency
+        with:
+           name: sord-v0.16.16-release-${{ matrix.name-suffix }}
+           repo: https://github.com/drobilla/sord.git
+           git_rev: v0.16.16
+           meson_options: --default-library=shared --buildtype release
+           notify_installed: ./notify_installed.sh
+
+      - name: Build sratom
+        uses: ./.github/actions/build_and_upload_meson_dependency
+        with:
+           name: sratom-v0.6.16-release-${{ matrix.name-suffix }}
+           repo: https://github.com/lv2/sratom.git
+           git_rev: v0.6.16
+           meson_options: --default-library=shared --buildtype release
+           notify_installed: ./notify_installed.sh
+
+      - name: Build lilv
+        uses: ./.github/actions/build_and_upload_meson_dependency
+        with:
+           name: lilv-v0.24.24-release-${{ matrix.name-suffix }}
+           repo: https://github.com/lv2/lilv.git
+           git_rev: v0.24.24
+           meson_options: -Dtests=disabled --default-library=shared --buildtype release
+           notify_installed: ./notify_installed.sh
+
+      - name: Build catch
+        uses: ./.github/actions/build_and_upload_cmake_dependency
+        with:
+           name: catch2-v3.7.0-release-${{ matrix.name-suffix }}
+           repo: https://github.com/catchorg/Catch2.git
+           git_rev: v3.7.0
+           configure_options: -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build zita-resampler
+        uses: ./.github/actions/build_and_upload_cmake_dependency
+        with:
+           name: zita-resampler-e9ff46b-release-${{ matrix.name-suffix }}
+           repo: https://github.com/SanderVocke/zita-resampler.git
+           git_rev: e9ff46b
+           configure_options: -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build breakpad
+        uses: ./.github/actions/build_and_upload_cmake_dependency
+        with:
+           name: breakpad-6b95400-release-${{ matrix.name-suffix }}
+           repo: https://github.com/snxd/breakpad.git
+           git_rev: 6b95400
+           configure_options: -DCMAKE_BUILD_TYPE=Release -DBKPAD_UNITTESTS=0 -DPROCESSOR_UNITTESTS=0 -DBKPAD_DUMP_SYMS=ON -DBKPAD_MINIDUMP=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+           targets_part: --target breakpad --target breakpad_common --target dump_syms --target minidump_stackwalk
+           upload_build_dir: true
+
+  collect:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-latest
+            name-suffix: linux-x64
+          - runs-on: ubuntu-latest
+            name-suffix: linux-arm
+          - runs-on: macos-14
+            name-suffix: macos-arm
+          - runs-on: macos-12
+            name-suffix: macos-x64
+          - runs-on: windows-2022
+            name-suffix: windows-msvc-x64
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - uses: actions/download-artifact@v4
+      with:
+         pattern: "*${{ matrix.name-suffix }}"
+         path: collected
+         merge-multiple: true
+    - uses: actions/upload-artifact@v4
+      with:
+         name: all_dependencies-${{ matrix.name-suffix }}
+         path: collected

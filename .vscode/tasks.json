@@ -14,18 +14,18 @@
     {
       "label": "Build (Pip editable system install)",
       "type": "shell",
-      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install -e ${workspaceFolder} --no-deps -v",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install -e ${workspaceFolder} --no-deps -v",
       "group": {
         "kind": "build",
         "isDefault": true
       },
       "problemMatcher": "$gcc"
     },
-    
+
     {
       "label": "Build (Pip regular system install)",
       "type": "shell",
-      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python3 -m pip install ${workspaceFolder} --no-deps -v",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip install ${workspaceFolder} --no-deps -v",
       "group": {
         "kind": "build",
         "isDefault": true
@@ -35,7 +35,17 @@
     {
       "label": "Build (Pip wheel in isolation)",
       "type": "shell",
-      "command": "python3 -m build --wheel ${workspaceFolder}",
+      "command": "python -m build --wheel ${workspaceFolder}",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$gcc"
+    },
+    {
+      "label": "Build (Wheel without isolation)",
+      "type": "shell",
+      "command": "cmake -E env PIP_BREAK_SYSTEM_PACKAGES=1 python -m pip wheel ${workspaceFolder} --no-deps -v",
       "group": {
         "kind": "build",
         "isDefault": true

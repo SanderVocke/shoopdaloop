@@ -1,0 +1,14 @@
+name: Build Base
+description: Do a basic Cargo build in the checked out repository
+
+runs:
+  using: "composite"
+  steps:
+
+  - name: Build
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+      cargo build ${CARGO_BUILD_FLAGS}
+
+

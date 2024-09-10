@@ -1,0 +1,1 @@
+This is a folder for generated Rust code. This code shouldn't be edited manually.

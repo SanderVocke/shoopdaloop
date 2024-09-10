@@ -1,0 +1,10 @@
+#!/bin/sh
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+
+if [ ! -f $SCRIPT_DIR/cargo-nextest ]; then
+    echo "Rust tests were not bundled in this AppImage." >&2
+    exit 1;
+else
+    $SCRIPT_DIR/cargo-nextest nextest run --archive-file $SCRIPT_DIR/nextest-archive.tar.zst $@
+fi
