@@ -69,6 +69,14 @@ runs:
       echo "meson.sh:"
       cat meson.sh
       echo "MESON=$(pwd)/meson.sh" | tee -a $GITHUB_ENV
+  
+  - name: Install pre-built dependencies
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+        URL=https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/all_dependencies-${{ matrix.kind.platform }}.zip
+        curl -L -o all_dependencies.zip $URL
+        unzip all_dependencies.zip -d prebuilt_dependencies
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'
