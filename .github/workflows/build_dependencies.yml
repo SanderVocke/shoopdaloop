@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  run:
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -18,26 +18,22 @@ jobs:
             name-suffix: linux-x64
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest"
             python: python3
-            setup: false
             os-kind: linux
           - runs-on: ubuntu-latest
             name-suffix: linux-arm
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest"
             python: python3
             arch: arm64
-            setup: false
             os-kind: linux
           - runs-on: macos-14
             name-suffix: macos-arm
             container: false
             python: python3
-            setup: false
             os-kind: macos
           - runs-on: macos-12
             name-suffix: macos-x64
             container: false
             python: python3
-            setup: false
             os-kind: macos
           - runs-on: windows-2022
             name-suffix: windows-msvc-x64
@@ -221,3 +217,32 @@ jobs:
            targets_part: --target breakpad --target breakpad_common --target dump_syms --target minidump_stackwalk
            add_pkgconfig_path: null
            upload_build_dir: true
+
+  collect:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-latest
+            name-suffix: linux-x64
+          - runs-on: ubuntu-latest
+            name-suffix: linux-arm
+          - runs-on: macos-14
+            name-suffix: macos-arm
+          - runs-on: macos-12
+            name-suffix: macos-x64
+          - runs-on: windows-2022
+            name-suffix: windows-msvc-x64
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - uses: actions/download-artifact@v4
+      with:
+         pattern: "*${{ matrix.name-suffix }}"
+         path: collected
+         merge-multiple: true
+    - uses: actions/upload-artifact@v4
+      with:
+         name: all_dependencies-${{ matrix.name-suffix }}
+         path: collected
