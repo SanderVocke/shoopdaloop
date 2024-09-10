@@ -120,13 +120,11 @@ jobs:
            echo "echo \"Adding pkgconfig path: \$NEW_PKG_CFG_PATH\""                                  >> notify_installed.sh
            echo "echo \"To: \$PKG_CONFIG_PATH\""                                                      >> notify_installed.sh
            echo "echo \"PKG_CONFIG_PATH=\$NEW_PKG_CFG_PATH:\$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> notify_installed.sh
-
       - if: ${{ matrix.os-kind == 'windows' }}
         shell: wrap-shell {0}
         run: |
            echo "echo \"LIBS=\$INSTALL_FOLDER/lib;\$LIBS\" >> \$GITHUB_ENV"    >> notify_installed.sh
            echo "echo \"\$INSTALL_FOLDER/bin" >> \$GITHUB_PATH"                >> notify_installed.sh
-
       - if: ${{ matrix.os-kind == 'linux' }}
         shell: wrap-shell {0}
         run: |
@@ -193,7 +191,7 @@ jobs:
            name: lilv-v0.24.24-release-${{ matrix.name-suffix }}
            repo: https://github.com/lv2/lilv.git
            git_rev: v0.24.24
-           meson_options: --default-library=shared --buildtype release
+           meson_options: -Dtests=disabled --default-library=shared --buildtype release
            notify_installed: ./notify_installed.sh
 
       - name: Build catch
