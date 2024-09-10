@@ -76,9 +76,10 @@ jobs:
         run: |
            curl -L https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-linux-aarch64.zip --output ninja.zip
            unzip ninja.zip
+           rm $(which ninja)
            cp ninja /usr/bin/ninja
            chmod a+x /usr/bin/ninja
-           usr/bin/ninja --version
+           /usr/bin/ninja --version
            ninja --version
 
       - if: ${{ matrix.os-kind == 'windows' }}
