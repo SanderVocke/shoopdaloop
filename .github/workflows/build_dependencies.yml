@@ -64,6 +64,8 @@ jobs:
         run: |
            ${{ matrix.python }} -m pip install meson
 
+      - uses: seanmiddleditch/gha-setup-ninja@master
+
       - name: Build LV2
         uses: ./.github/actions/build_and_upload_meson_dependency
         env:
