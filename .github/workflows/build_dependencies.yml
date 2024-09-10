@@ -217,9 +217,9 @@ jobs:
       - name: Build zita-resampler
         uses: ./.github/actions/build_and_upload_cmake_dependency
         with:
-           name: zita-resampler-095fe2c6-release-${{ matrix.name-suffix }}
+           name: zita-resampler-e9ff46b-release-${{ matrix.name-suffix }}
            repo: https://github.com/SanderVocke/zita-resampler.git
-           git_rev: 095fe2c6
+           git_rev: e9ff46b
            configure_options: -DCMAKE_BUILD_TYPE=Release
 
       - name: Build breakpad
