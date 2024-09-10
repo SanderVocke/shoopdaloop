@@ -107,6 +107,7 @@ jobs:
           PTHREADS_DIR=$(cygpath -w $(pwd)/pthreads4w/pthreads4w)
           echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH;$PTHREADS_DIR" | tee -a $GITHUB_ENV
           echo "PTHREADS4W_PATH=$PTHREADS_DIR" | tee -a $GITHUB_ENV
+          echo "INCLUDE=$PTHREADS_DIR;$INCLUDE"  | tee -a $GITHUB_ENV
 
       - if: ${{ matrix.os-kind == 'windows' }}
         shell: wrap-shell {0}
