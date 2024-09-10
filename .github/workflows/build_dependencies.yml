@@ -71,6 +71,13 @@ jobs:
 
       - uses: seanmiddleditch/gha-setup-ninja@master
 
+      - if: ${{ matrix.os-kind == 'linux' && matrix.arch == 'arm64' }}
+        shell: wrap-shell {0}
+        run: |
+           curl -L https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-linux-aarch64.zip --output ninja.zip
+           unzip ninja.zip
+           cp ninja /usr/bin/ninja
+
       - if: ${{ matrix.os-kind == 'windows' }}
         uses: TheMrMilchmann/setup-msvc-dev@v3
         with:
@@ -124,7 +131,7 @@ jobs:
         shell: wrap-shell {0}
         run: |
            echo "echo \"LIBS=\$INSTALL_FOLDER/lib;\$LIBS\" >> \$GITHUB_ENV"    >> notify_installed.sh
-           echo "echo \"\$INSTALL_FOLDER/bin" >> \$GITHUB_PATH"                >> notify_installed.sh
+           echo "echo \"\$INSTALL_FOLDER/bin\" >> \$GITHUB_PATH"                >> notify_installed.sh
       - if: ${{ matrix.os-kind == 'linux' }}
         shell: wrap-shell {0}
         run: |
