@@ -149,6 +149,7 @@ jobs:
            repo: https://github.com/lv2/lv2.git
            git_rev: v1.18.10
            meson_options: --default-library=shared --buildtype release
+           notify_installed: ./notify_installed.sh
 
       - name: Build zix
         uses: ./.github/actions/build_and_upload_meson_dependency
@@ -157,6 +158,7 @@ jobs:
            repo: https://github.com/drobilla/zix.git
            git_rev: v0.4.2
            meson_options: --default-library=shared --buildtype release
+           notify_installed: ./notify_installed.sh
 
       - name: Build serd
         uses: ./.github/actions/build_and_upload_meson_dependency
@@ -165,6 +167,7 @@ jobs:
            repo: https://github.com/drobilla/serd.git
            git_rev: v0.32.2
            meson_options: --default-library=shared --buildtype release
+           notify_installed: ./notify_installed.sh
 
       - name: Build sord
         uses: ./.github/actions/build_and_upload_meson_dependency
@@ -173,6 +176,7 @@ jobs:
            repo: https://github.com/drobilla/sord.git
            git_rev: v0.16.16
            meson_options: --default-library=shared --buildtype release
+           notify_installed: ./notify_installed.sh
 
       - name: Build sratom
         uses: ./.github/actions/build_and_upload_meson_dependency
@@ -181,6 +185,7 @@ jobs:
            repo: https://github.com/lv2/sratom.git
            git_rev: v0.6.16
            meson_options: --default-library=shared --buildtype release
+           notify_installed: ./notify_installed.sh
 
       - name: Build lilv
         uses: ./.github/actions/build_and_upload_meson_dependency
@@ -189,6 +194,7 @@ jobs:
            repo: https://github.com/lv2/lilv.git
            git_rev: v0.24.24
            meson_options: --default-library=shared --buildtype release
+           notify_installed: ./notify_installed.sh
 
       - name: Build catch
         uses: ./.github/actions/build_and_upload_cmake_dependency
