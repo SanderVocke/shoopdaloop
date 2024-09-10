@@ -25,6 +25,7 @@ runs:
        cd build
        $MESON compile
        $MESON install
+       echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH${PATH_SEPARATOR}$(find $(pwd)/${{ inputs.name }} -name pkgconfig)" | tee -a $GITHUB_ENV
 
   - name: Upload
     uses: actions/upload-artifact@v4

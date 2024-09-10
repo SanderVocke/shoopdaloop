@@ -18,23 +18,28 @@ jobs:
             name-suffix: linux-x64
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest"
             python: python3
+            path_separator: ":"
           - runs-on: ubuntu-latest
             name-suffix: linux-arm
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest"
             python: python3
             arch: arm
+            path_separator: ":"
           - runs-on: macos-14
             name-suffix: macos-arm
             container: false
             python: python3
+            path_separator: ":"
           - runs-on: macos-12
             name-suffix: macos-x64
             container: false
             python: python3
+            path_separator: ":"
           - runs-on: windows-2022
             name-suffix: windows-x64
             container: false
             python: python3
+            path_separator: ";"
     env:
       PIP_BREAK_SYSTEM_PACKAGES: 1
     runs-on: ${{ matrix.runs-on }}
@@ -70,8 +75,59 @@ jobs:
         uses: ./.github/actions/build_and_upload_meson_dependency
         env:
            MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
+           PATH_SEPARATOR: ${{ matrix.path_separator }}
         with:
            name: lv2-v1.18.10-release-${{ matrix.name-suffix }}
            repo: https://github.com/lv2/lv2.git
            git_rev: v1.18.10
+           meson_options: --default-library=shared --buildtype release
+
+      - name: Build zix
+        uses: ./.github/actions/build_and_upload_meson_dependency
+        env:
+           MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
+        with:
+           name: zix-v0.4.2-release-${{ matrix.name-suffix }}
+           repo: https://github.com/drobilla/zix.git
+           git_rev: v0.4.2
+           meson_options: --default-library=shared --buildtype release
+
+      - name: Build serd
+        uses: ./.github/actions/build_and_upload_meson_dependency
+        env:
+           MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
+        with:
+           name: serd-v0.32.2-release-${{ matrix.name-suffix }}
+           repo: https://github.com/drobilla/serd.git
+           git_rev: v0.32.2
+           meson_options: --default-library=shared --buildtype release
+
+      - name: Build sord
+        uses: ./.github/actions/build_and_upload_meson_dependency
+        env:
+           MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
+        with:
+           name: sord-v0.16.16-release-${{ matrix.name-suffix }}
+           repo: https://github.com/drobilla/sord.git
+           git_rev: v0.16.16
+           meson_options: --default-library=shared --buildtype release
+
+      - name: Build sratom
+        uses: ./.github/actions/build_and_upload_meson_dependency
+        env:
+           MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
+        with:
+           name: sratom-v0.6.16-release-${{ matrix.name-suffix }}
+           repo: https://github.com/lv2/sratom.git
+           git_rev: v0.6.16
+           meson_options: --default-library=shared --buildtype release
+
+      - name: Build lilv
+        uses: ./.github/actions/build_and_upload_meson_dependency
+        env:
+           MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
+        with:
+           name: lilv-v0.24.24-release-${{ matrix.name-suffix }}
+           repo: https://github.com/lv2/lilv.git
+           git_rev: v0.24.24
            meson_options: --default-library=shared --buildtype release
