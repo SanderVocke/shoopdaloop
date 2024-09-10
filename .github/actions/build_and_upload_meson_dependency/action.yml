@@ -9,6 +9,9 @@ inputs:
     description: "git revision to build"
   meson_options:
     description: "additional meson configure options"
+  notify_installed:
+    description: "if set, this command is executed and given the path of the finished installation dir"
+    default: null
 
 runs:
   using: "composite"
@@ -30,8 +33,11 @@ runs:
        cd build
        ${{ env.MESON }} compile
        ${{ env.MESON }} install
-       cd ..
-       ${{ env.ADD_PKG_CONFIG_PATH }} $(find $(pwd)/${{ inputs.name }} -name pkgconfig)
+
+  - name: Notify
+    if: ${{ inputs.notify_installed }}
+    shell: wrap-shell {0}
+    run: ${{ inputs.notify_installed }} ${{ inputs.name }}/${{ inputs.name }}
 
   - name: Upload
     uses: actions/upload-artifact@v4

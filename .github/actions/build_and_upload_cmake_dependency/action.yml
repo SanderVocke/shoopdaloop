@@ -15,9 +15,9 @@ inputs:
   upload_build_dir:
     description: "Whether to upload the build directory instead of the installed one"
     default: null
-  add_pkgconfig_path:
-    description: "Whether to add the installed directory to the pkgconfig path"
-    default: true
+  notify_installed:
+    description: "if set, this command is executed and given the path of the finished installation dir"
+    default: null
 
 runs:
   using: "composite"
@@ -33,16 +33,16 @@ runs:
        cmake -B build -S . -DCMAKE_INSTALL_PREFIX=$(pwd)/${{ inputs.name }} ${{ inputs.configure_options }}
        cmake --build build/ ${{ inputs.targets_part }}
 
-  - shell: wrap-shell {0}
-    if: ${{ inputs.add_pkgconfig_path }}
-    run: |
-       ${{ env.ADD_PKG_CONFIG_PATH }} $(find $(pwd)/${{ inputs.name }} -name pkgconfig)
-
   - if: ${{ inputs.upload_build_dir }}
     shell: wrap-shell {0}
     run: |
        rmdir ${{ inputs.name }}/${{ inputs.name }}
        mv ${{ inputs.name }}/build ${{ inputs.name }}/${{ inputs.name }}
+
+  - name: Notify
+    if: ${{ inputs.notify_installed }}
+    shell: wrap-shell {0}
+    run: ${{ inputs.notify_installed }} ${{ inputs.name }}/${{ inputs.name }}
 
   - name: Upload
     uses: actions/upload-artifact@v4

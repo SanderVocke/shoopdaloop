@@ -19,27 +19,31 @@ jobs:
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest"
             python: python3
             setup: false
+            os-kind: linux
           - runs-on: ubuntu-latest
             name-suffix: linux-arm
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest"
             python: python3
             arch: arm64
             setup: false
+            os-kind: linux
           - runs-on: macos-14
             name-suffix: macos-arm
             container: false
             python: python3
             setup: false
+            os-kind: macos
           - runs-on: macos-12
             name-suffix: macos-x64
             container: false
             python: python3
             setup: false
+            os-kind: macos
           - runs-on: windows-2022
             name-suffix: windows-msvc-x64
             container: false
             python: python3
-            windows: true
+            os-kind: windows
     env:
       PIP_BREAK_SYSTEM_PACKAGES: 1
     runs-on: ${{ matrix.runs-on }}
@@ -71,59 +75,73 @@ jobs:
 
       - uses: seanmiddleditch/gha-setup-ninja@master
 
-      - if: ${{ matrix.windows }}
+      - if: ${{ matrix.os-kind == "windows" }}
         uses: TheMrMilchmann/setup-msvc-dev@v3
         with:
           arch: x64
 
-      - if: ${{ matrix.windows }}
+      - if: ${{ matrix.os-kind == "windows" }}
         shell: wrap-shell {0}
         run: choco install pkgconfiglite
 
-      - if: ${{ matrix.windows }}
+      - if: ${{ matrix.os-kind == "windows" }}
         shell: wrap-shell {0}
         run: |
            rm -f /usr/bin/link
            rm -f /usr/bin/link.exe
 
-      - if: ${{ matrix.windows }}
+      - if: ${{ matrix.os-kind == "windows" }}
         name: Install pthreads4w
         shell: pwsh
         run: |
           curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pthreads4w.zip --output pthreads4w.zip
           unzip pthreads4w.zip -d pthreads4w
 
-      - if: ${{ matrix.windows }}
+      - if: ${{ matrix.os-kind == "windows" }}
         shell: wrap-shell {0}
         run: |
           PTHREADS_DIR=$(cygpath -w $(pwd)/pthreads4w/pthreads4w)
           echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH;$PTHREADS_DIR" | tee -a $GITHUB_ENV
           echo "PTHREADS4W_PATH=$PTHREADS_DIR" | tee -a $GITHUB_ENV
 
-      - if: ${{ matrix.windows }}
+      - if: ${{ matrix.os-kind == "windows" }}
         shell: wrap-shell {0}
         run: |
-           echo "#!/bin/sh" > add_pkg_config_path.sh
-           echo "CONVERTED=\$(cygpath -w \$1)" >> add_pkg_config_path.sh
-           echo "echo \"Adding pkgconfig path: \$CONVERTED\"" >> add_pkg_config_path.sh
-           echo "echo \"To: \$PKG_CONFIG_PATH\"" >> add_pkg_config_path.sh
-           echo "echo \"PKG_CONFIG_PATH=\$CONVERTED;\$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> add_pkg_config_path.sh
+           echo "#!/bin/sh"                                                                                      > notify_installed.sh
+           echo "INSTALL_FOLDER=\$1"                                                                            >> notify_installed.sh
+           echo "CONVERTED=\$(cygpath -w \$INSTALL_FOLDER)"                                                     >> notify_installed.sh
+           echo "NEW_PKG_CFG_PATH=\$(find \$INSTALL_FOLDER -name pkgconfig)"                                    >> notify_installed.sh
+           echo "NEW_PKG_CFG_PATH_CONVERTED=\$(cygpath -w \$NEW_PKG_CFG_PATH)"                                  >> notify_installed.sh
+           echo "echo \"Adding pkgconfig path: \$NEW_PKG_CFG_PATH_CONVERTED\""                                  >> notify_installed.sh
+           echo "echo \"To: \$PKG_CONFIG_PATH\""                                                                >> notify_installed.sh
+           echo "echo \"PKG_CONFIG_PATH=\$NEW_PKG_CFG_PATH_CONVERTED;\$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> notify_installed.sh
+      - if: ${{ matrix.os-kind != "windows" }}
+        shell: wrap-shell {0}
+        run: |
+           echo "#!/bin/sh"                                                                            > notify_installed.sh
+           echo "INSTALL_FOLDER=\$1"                                                                  >> notify_installed.sh
+           echo "NEW_PKG_CFG_PATH=\$(find \$INSTALL_FOLDER -name pkgconfig)"                          >> notify_installed.sh
+           echo "echo \"Adding pkgconfig path: \$NEW_PKG_CFG_PATH\""                                  >> notify_installed.sh
+           echo "echo \"To: \$PKG_CONFIG_PATH\""                                                      >> notify_installed.sh
+           echo "echo \"PKG_CONFIG_PATH=\$NEW_PKG_CFG_PATH:\$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> notify_installed.sh
+      - if:
 
-      - if: ${{ ! matrix.windows }}
+      - if: ${{ matrix.os-kind == "windows" }}
         shell: wrap-shell {0}
         run: |
-           echo "#!/bin/sh" > add_pkg_config_path.sh
-           echo "echo \"Adding pkgconfig path: \$1\"" >> add_pkg_config_path.sh
-           echo "echo \"To: \$PKG_CONFIG_PATH\"" >> add_pkg_config_path.sh
-           echo "echo \"PKG_CONFIG_PATH=\$1:\$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> add_pkg_config_path.sh
+           echo "echo \"LIBS=\$INSTALL_FOLDER/lib;\$LIBS\" >> \$GITHUB_ENV"    >> notify_installed.sh
+           echo "echo \"\$INSTALL_FOLDER/bin" >> \$GITHUB_PATH"                >> notify_installed.sh
+
+      - if: ${{ matrix.os-kind == "linux" }}
+        shell: wrap-shell {0}
+        run: |
+           echo "echo \"LD_LIBRARY_PATH=\$(dirname \$(find \$INSTALL_FOLDER -name '*.so' | head -n1)):\$LD_LIBRARY_PATH\" >> \$GITHUB_ENV" >> notify_installed.sh
 
       - shell: wrap-shell {0}
         run: |
-           echo "Pkg config path script:"
-           cat add_pkg_config_path.sh
-
-           chmod a+x add_pkg_config_path.sh
-           echo "ADD_PKG_CONFIG_PATH=$(pwd)/add_pkg_config_path.sh" | tee -a $GITHUB_ENV
+           echo "install folder handling script:"
+           cat notify_installed.sh
+           chmod a+x notify_installed.sh
 
       - shell: wrap-shell {0}
         run: |
