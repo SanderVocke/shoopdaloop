@@ -19,11 +19,6 @@ runs:
 
   - shell: wrap-shell {0}
     run: |
-       echo "============= ENV ==================="
-       env
-       echo "================ END ENV ============"
-       cat $GITHUB_ENV
-       echo "===========END GHA==========="
        git clone ${{ inputs.repo }} ${{ inputs.name }}
        cd ${{ inputs.name }}
        git checkout ${{ inputs.git_rev }}
