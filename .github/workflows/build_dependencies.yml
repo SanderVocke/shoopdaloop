@@ -67,7 +67,7 @@ jobs:
       - name: Build LV2
         uses: ./.github/actions/build_and_upload_meson_dependency
         env:
-           MESON: ${{ inputs.python }} -m mesonbuild.mesonmain
+           MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
         with:
            name: lv2.v1.18.10.${{ matrix.name-suffix }}
            repo: https://github.com/lv2/lv2.git
