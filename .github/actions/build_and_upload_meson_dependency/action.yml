@@ -24,7 +24,7 @@ runs:
        git checkout ${{ inputs.git_rev }}
        mkdir ${{ inputs.name }}
        mkdir build
-       ${{ env.MESON }} setup --prefix=$(pwd)/${{ inputs.name }} --pkgconfig.relocatable build .
+       ${{ env.MESON }} setup ${{ inputs.meson_options }} --prefix=$(pwd)/${{ inputs.name }} --pkgconfig.relocatable build .
        cd build
        ${{ env.MESON }} compile
        ${{ env.MESON }} install
