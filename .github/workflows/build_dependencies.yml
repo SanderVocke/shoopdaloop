@@ -23,7 +23,7 @@ jobs:
             name-suffix: linux-arm
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest"
             python: python3
-            arch: arm
+            arch: arm64
             path_separator: ":"
           - runs-on: macos-14
             name-suffix: macos-arm
@@ -71,11 +71,14 @@ jobs:
 
       - uses: seanmiddleditch/gha-setup-ninja@master
 
+      - shell: wrap-shell {0}
+        run: |
+           echo "PATH_SEPARATOR=${{ matrix.path_separator }}" | tee -a $GITHUB_ENV
+
       - name: Build LV2
         uses: ./.github/actions/build_and_upload_meson_dependency
         env:
            MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
-           PATH_SEPARATOR: ${{ matrix.path_separator }}
         with:
            name: lv2-v1.18.10-release-${{ matrix.name-suffix }}
            repo: https://github.com/lv2/lv2.git
