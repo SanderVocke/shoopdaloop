@@ -46,6 +46,7 @@ jobs:
             path_separator: ";"
             setup_msvc: true
             setup_choco_pkgconfig: true
+            remove_mingw_linker: true
     env:
       PIP_BREAK_SYSTEM_PACKAGES: 1
     runs-on: ${{ matrix.runs-on }}
@@ -89,6 +90,12 @@ jobs:
       - if: ${{ matrix.setup_choco_pkgconfig }}
         shell: wrap-shell {0}
         run: choco install pkgconfiglite
+
+      - if: ${{ matrix.remove_mingw_linker }}
+        shell: wrap-shell {0}
+        run: |
+           rm -f /usr/bin/link
+           rm -f /usr/bin/link.exe
 
       - name: Build LV2
         uses: ./.github/actions/build_and_upload_meson_dependency
