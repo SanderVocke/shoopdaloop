@@ -78,6 +78,8 @@ jobs:
            unzip ninja.zip
            cp ninja /usr/bin/ninja
            chmod a+x /usr/bin/ninja
+           usr/bin/ninja --version
+           ninja --version
 
       - if: ${{ matrix.os-kind == 'windows' }}
         uses: TheMrMilchmann/setup-msvc-dev@v3
