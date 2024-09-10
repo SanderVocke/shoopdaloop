@@ -21,7 +21,7 @@ runs:
        git checkout ${{ inputs.git_rev }}
        mkdir ${{ inputs.name }}
        mkdir build
-       $MESON setup --prefix=$(pwd)/$${{ inputs.name }} build .
+       $MESON setup --prefix=$(pwd)/${{ inputs.name }} build .
        cd build
        $MESON compile
        $MESON install
