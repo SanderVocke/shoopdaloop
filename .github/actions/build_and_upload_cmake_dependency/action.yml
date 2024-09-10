@@ -1,0 +1,33 @@
+# Build a CMake project and upload it
+
+inputs:
+  name:
+    description: "name of the dependency"
+  repo:
+    description: "repository URL"
+  git_rev:
+    description: "git revision to build"
+  configure_options:
+    description: "additional cmake configure options"
+
+runs:
+  using: "composite"
+  steps:
+
+  - shell: wrap-shell {0}
+    run: |
+       git clone ${{ inputs.repo }} ${{ inputs.name }}
+       cd ${{ inputs.name }}
+       git checkout ${{ inputs.git_rev }}
+       mkdir ${{ inputs.name }}
+       mkdir build
+       cmake -B build -S . -DCMAKE_INSTALL_PREFIX=$(pwd)/${{ inputs.name }} ${{ inputs.configure_options }}
+       cmake --build build/ --target install
+       ${{ env.ADD_PKG_CONFIG_PATH }} $(find $(pwd)/${{ inputs.name }} -name pkgconfig)
+
+  - name: Upload
+    uses: actions/upload-artifact@v4
+    with:
+      name: ${{ inputs.name }}
+      path: ${{ github.workspace }}/${{ inputs.name }}/${{ inputs.name }}
+

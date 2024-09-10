@@ -163,3 +163,11 @@ jobs:
            repo: https://github.com/lv2/lilv.git
            git_rev: v0.24.24
            meson_options: --default-library=shared --buildtype release
+
+      - name: Build catch
+        uses: ./.github/actions/build_and_upload_cmake_dependency
+        with:
+           name: catch2-v3.7.0-release-${{ matrix.name-suffix }}
+           repo: https://github.com/catchorg/Catch2.git
+           git_rev: v3.7.0
+           configure_options: -DCMAKE_BUILD_TYPE=Release
