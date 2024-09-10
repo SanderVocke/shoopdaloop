@@ -17,22 +17,57 @@ jobs:
           - runs-on: ubuntu-latest
             name-suffix: linux.x86-64
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest"
+            python: python3
           - runs-on: ubuntu-latest
             name-suffix: linux.arm
-            conatainer: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest"
+            container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest"
+            python: python3
+            arch: arm
           - runs-on: macos-14
             name-suffix: macos.arm
+            container: false
+            python: python3
           - runs-on: macos-12
             name-suffix: macos.x86-64
+            container: false
+            python: python3
           - runs-on: windows-2022
             name-suffix: windows.x86-64
+            container: false
+            python: python3
+    env:
+      PIP_BREAK_SYSTEM_PACKAGES: 1
     runs-on: ${{ matrix.runs-on }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Start container
+        if: ${{ matrix.container }}
+        uses: sandervocke/setup-qemu-container@v1
+        with:
+          container: ${{ matrix.container }}
+          arch: ${{ matrix.arch }}
+      - name: Setup Shell Wrapper
+        uses: sandervocke/setup-shell-wrapper@v1
+      - name: Use regular shell
+        if: ${{ ! matrix.container }}
+        shell: bash
+        run: echo "WRAP_SHELL=bash" >> $GITHUB_ENV
+      - name: Use container shell
+        if: ${{ matrix.container }}
+        shell: bash
+        run: echo "WRAP_SHELL=run-in-container.sh" >> $GITHUB_ENV
+
+      - name: Install Meson
+        shell: wrap-shell {0}
+        run: |
+           ${{ matrix.python }} -m pip install meson
+
       - name: Build LV2
         uses: ./.github/actions/build_and_upload_meson_dependency
+        env:
+           MESON: ${{ inputs.python }} -m mesonbuild.mesonmain
         with:
            name: lv2.v1.18.10.${{ matrix.name-suffix }}
            repo: https://github.com/lv2/lv2.git

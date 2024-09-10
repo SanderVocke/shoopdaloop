@@ -14,19 +14,17 @@ runs:
   using: "composite"
   steps:
 
-  - shell: bash
+  - shell: wrap-shell {0}
     run: |
        git clone ${{ inputs.repo }} ${{ inputs.name }}
        cd ${{ inputs.name }}
        git checkout ${{ inputs.git_rev }}
        mkdir ${{ inputs.name }}
        mkdir build
-
-  - uses: BSFishy/meson-build@v1.0.3
-    with:
-      action: install
-      directory: build
-      setup-options: ${{ inputs.meson_options }}
+       $MESON setup --prefix=$(pwd)/$${{ inputs.name }}
+       cd build
+       $MESON compile
+       $MESON install
 
   - name: Upload
     uses: actions/upload-artifact@v4
