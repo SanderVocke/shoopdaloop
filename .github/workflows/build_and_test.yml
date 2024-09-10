@@ -1,15 +1,9 @@
 name: Build and test
 
-on:
-  push:
-    branches: [ "master" ]
-    tags: "v*.*.*"
-  pull_request:
-    branches: [ "master" ]
-  workflow_dispatch:
+on: workflow_dispatch
 
 env:
-  checkpoints_enabled: false
+  checkpoints_enabled: true
 
 permissions:
   contents: write
