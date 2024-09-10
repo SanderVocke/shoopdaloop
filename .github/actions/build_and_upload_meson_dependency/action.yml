@@ -31,9 +31,7 @@ runs:
        ${{ env.MESON }} compile
        ${{ env.MESON }} install
        cd ..
-       PKGCONFIG_DIR=$(find $(pwd)/${{ inputs.name }} -name pkgconfig)
-       echo "Pkg config dir in install folder: $PKGCONFIG_DIR"
-       PKG_CONFIG_PATH=${{ env.PKG_CONFIG_PATH }} ${{ env.ADD_PKG_CONFIG_PATH }} $PKGCONFIG_DIR
+       ${{ env.ADD_PKG_CONFIG_PATH }} $(find $(pwd)/${{ inputs.name }} -name pkgconfig)
 
   - name: Upload
     uses: actions/upload-artifact@v4

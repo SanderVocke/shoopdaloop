@@ -36,9 +36,7 @@ runs:
   - shell: wrap-shell {0}
     if: ${{ inputs.add_pkgconfig_path }}
     run: |
-       PKGCONFIG_DIR=$(find $(pwd)/${{ inputs.name }} -name pkgconfig)
-       echo "Pkg config dir in install folder: $PKGCONFIG_DIR"
-       PKG_CONFIG_PATH=${{ env.PKG_CONFIG_PATH }} ${{ env.ADD_PKG_CONFIG_PATH }} $PKGCONFIG_DIR
+       ${{ env.ADD_PKG_CONFIG_PATH }} $(find $(pwd)/${{ inputs.name }} -name pkgconfig)
 
   - if: ${{ inputs.upload_build_dir }}
     shell: wrap-shell {0}
