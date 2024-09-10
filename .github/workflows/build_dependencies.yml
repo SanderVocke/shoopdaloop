@@ -186,3 +186,6 @@ jobs:
            repo: https://github.com/snxd/breakpad.git
            git_rev: 6b95400
            configure_options: -DCMAKE_BUILD_TYPE=Release -DBKPAD_UNITTESTS=0 -DPROCESSOR_UNITTESTS=0 -DBKPAD_DUMP_SYMS=ON -DBKPAD_MINIDUMP=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+           targets_part: --target breakpad --target breakpad_common --target dump_syms --target minidump_stackwalk
+           add_pkgconfig_path: null
+           upload_build_dir: true

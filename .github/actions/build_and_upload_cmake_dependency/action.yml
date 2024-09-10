@@ -9,6 +9,15 @@ inputs:
     description: "git revision to build"
   configure_options:
     description: "additional cmake configure options"
+  targets_part:
+    description: "CMake targets"
+    default: "--target install"
+  upload_build_dir:
+    description: "Whether to upload the build directory instead of the installed one"
+    default: null
+  add_pkgconfig_path:
+    description: "Whether to add the installed directory to the pkgconfig path"
+    default: true
 
 runs:
   using: "composite"
@@ -22,10 +31,20 @@ runs:
        mkdir ${{ inputs.name }}
        mkdir build
        cmake -B build -S . -DCMAKE_INSTALL_PREFIX=$(pwd)/${{ inputs.name }} ${{ inputs.configure_options }}
-       cmake --build build/ --target install
+       cmake --build build/ ${{ inputs.targets_part }}
+
+  - shell: wrap-shell {0}
+    if: ${{ inputs.add_pkgconfig_path }}
+    run: |
        PKGCONFIG_DIR=$(find $(pwd)/${{ inputs.name }} -name pkgconfig)
        echo "Pkg config dir in install folder: $PKGCONFIG_DIR"
        PKG_CONFIG_PATH=${{ env.PKG_CONFIG_PATH }} ${{ env.ADD_PKG_CONFIG_PATH }} $PKGCONFIG_DIR
+
+  - if: ${{ inputs.upload_build_dir }}
+    shell: wrap-shell {0}
+    run: |
+       rmdir ${{ inputs.name }}/${{ inputs.name }}
+       mv ${{ inputs.name }}/build ${{ inputs.name }}/${{ inputs.name }}
 
   - name: Upload
     uses: actions/upload-artifact@v4
