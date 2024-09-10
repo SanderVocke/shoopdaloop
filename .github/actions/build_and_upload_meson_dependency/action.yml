@@ -21,12 +21,12 @@ runs:
        git checkout ${{ inputs.git_rev }}
        mkdir ${{ inputs.name }}
        mkdir build
-       $MESON setup --prefix=$(pwd)/${{ inputs.name }} build .
+       ${{ env.MESON }} setup --prefix=$(pwd)/${{ inputs.name }} build .
        cd build
-       $MESON compile
-       $MESON install
+       ${{ env.MESON }} compile
+       ${{ env.MESON }} install
        cd ..
-       echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH${PATH_SEPARATOR}$(find $(pwd)/${{ inputs.name }} -name pkgconfig)" | tee -a $GITHUB_ENV
+       ${{ env.ADD_PKG_CONFIG_PATH }} $(find $(pwd)/${{ inputs.name }} -name pkgconfig)
 
   - name: Upload
     uses: actions/upload-artifact@v4

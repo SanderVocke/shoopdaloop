@@ -18,35 +18,28 @@ jobs:
             name-suffix: linux-x64
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest"
             python: python3
-            path_separator: ":"
             setup: false
           - runs-on: ubuntu-latest
             name-suffix: linux-arm
             container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest"
             python: python3
             arch: arm64
-            path_separator: ":"
             setup: false
           - runs-on: macos-14
             name-suffix: macos-arm
             container: false
             python: python3
-            path_separator: ":"
             setup: false
           - runs-on: macos-12
             name-suffix: macos-x64
             container: false
             python: python3
-            path_separator: ":"
             setup: false
           - runs-on: windows-2022
-            name-suffix: windows-x64
+            name-suffix: windows-msvc-x64
             container: false
             python: python3
-            path_separator: ";"
-            setup_msvc: true
-            setup_choco_pkgconfig: true
-            remove_mingw_linker: true
+            windows: true
     env:
       PIP_BREAK_SYSTEM_PACKAGES: 1
     runs-on: ${{ matrix.runs-on }}
@@ -82,25 +75,43 @@ jobs:
         run: |
            echo "PATH_SEPARATOR=${{ matrix.path_separator }}" | tee -a $GITHUB_ENV
 
-      - if: ${{ matrix.setup_msvc }}
+      - if: ${{ matrix.windows }}
         uses: TheMrMilchmann/setup-msvc-dev@v3
         with:
           arch: x64
 
-      - if: ${{ matrix.setup_choco_pkgconfig }}
+      - if: ${{ matrix.windows }}
         shell: wrap-shell {0}
         run: choco install pkgconfiglite
 
-      - if: ${{ matrix.remove_mingw_linker }}
+      - if: ${{ matrix.windows }}
         shell: wrap-shell {0}
         run: |
            rm -f /usr/bin/link
            rm -f /usr/bin/link.exe
 
+      - if: ${{ matrix.windows }}
+        shell: wrap-shell {0}
+        run: |
+           echo "#!/bin/sh" > add_pkg_config_path.sh
+           echo "echo \"PKG_CONFIG_PATH=$(cygpath -w $1);$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> add_pkg_config_path.sh
+           chmod a+x add_pkg_config_path.sh
+           echo "ADD_PKG_CONFIG_PATH=${{ github.workspace }}/add_pkg_config_path.sh" | tee -a $GITHUB_ENV
+
+      - if: ${{ ! matrix.windows }}
+        shell: wrap-shell {0}
+        run: |
+           echo "#!/bin/sh" > add_pkg_config_path.sh
+           echo "echo \"PKG_CONFIG_PATH=$1:$PKG_CONFIG_PATH\" | tee -a \$GITHUB_ENV" >> add_pkg_config_path.sh
+           chmod a+x add_pkg_config_path.sh
+           echo "ADD_PKG_CONFIG_PATH=${{ github.workspace }}/add_pkg_config_path.sh" | tee -a $GITHUB_ENV
+
+      - shell: wrap-shell {0}
+        run: |
+           echo "MESON=${{ matrix.python }} -m mesonbuild.mesonmain" | tee -a $GITHUB_ENV
+
       - name: Build LV2
         uses: ./.github/actions/build_and_upload_meson_dependency
-        env:
-           MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
         with:
            name: lv2-v1.18.10-release-${{ matrix.name-suffix }}
            repo: https://github.com/lv2/lv2.git
@@ -109,8 +120,6 @@ jobs:
 
       - name: Build zix
         uses: ./.github/actions/build_and_upload_meson_dependency
-        env:
-           MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
         with:
            name: zix-v0.4.2-release-${{ matrix.name-suffix }}
            repo: https://github.com/drobilla/zix.git
@@ -119,8 +128,6 @@ jobs:
 
       - name: Build serd
         uses: ./.github/actions/build_and_upload_meson_dependency
-        env:
-           MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
         with:
            name: serd-v0.32.2-release-${{ matrix.name-suffix }}
            repo: https://github.com/drobilla/serd.git
@@ -129,8 +136,6 @@ jobs:
 
       - name: Build sord
         uses: ./.github/actions/build_and_upload_meson_dependency
-        env:
-           MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
         with:
            name: sord-v0.16.16-release-${{ matrix.name-suffix }}
            repo: https://github.com/drobilla/sord.git
@@ -139,8 +144,6 @@ jobs:
 
       - name: Build sratom
         uses: ./.github/actions/build_and_upload_meson_dependency
-        env:
-           MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
         with:
            name: sratom-v0.6.16-release-${{ matrix.name-suffix }}
            repo: https://github.com/lv2/sratom.git
@@ -149,8 +152,6 @@ jobs:
 
       - name: Build lilv
         uses: ./.github/actions/build_and_upload_meson_dependency
-        env:
-           MESON: ${{ matrix.python }} -m mesonbuild.mesonmain
         with:
            name: lilv-v0.24.24-release-${{ matrix.name-suffix }}
            repo: https://github.com/lv2/lilv.git
