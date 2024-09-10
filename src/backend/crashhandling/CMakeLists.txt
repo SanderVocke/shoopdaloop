@@ -1,5 +1,5 @@
 # Build Breakpad
-include (${CMAKE_CURRENT_SOURCE_DIR}/BuildBreakpad.cmake)
+include (${CMAKE_CURRENT_SOURCE_DIR}/breakpad_symbols.cmake)
 
 add_library(shoop_crashhandling SHARED shoop_crashhandling.cpp)
 set_property(TARGET shoop_crashhandling PROPERTY POSITION_INDEPENDENT_CODE ON)
