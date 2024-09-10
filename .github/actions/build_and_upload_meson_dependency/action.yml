@@ -21,10 +21,12 @@ runs:
        git checkout ${{ inputs.git_rev }}
        mkdir ${{ inputs.name }}
        mkdir build
-       meson setup --prefix=$(pwd)/$${{ inputs.name }}
-       cd build
-       meson compile
-       meson install
+
+  - uses: BSFishy/meson-build@v1.0.3
+    with:
+      action: install
+      directory: build
+      setup-options: ${{ inputs.meson_options }}
 
   - name: Upload
     uses: actions/upload-artifact@v4
