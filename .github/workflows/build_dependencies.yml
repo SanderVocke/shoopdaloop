@@ -127,7 +127,7 @@ jobs:
            echo "echo \"LIBS=\$INSTALL_FOLDER/lib;\$LIBS\" >> \$GITHUB_ENV"    >> notify_installed.sh
            echo "echo \"\$INSTALL_FOLDER/bin" >> \$GITHUB_PATH"                >> notify_installed.sh
 
-      - if: ${{ matrix.os-kind == "linux" }}
+      - if: ${{ matrix.os-kind == 'linux' }}
         shell: wrap-shell {0}
         run: |
            echo "echo \"LD_LIBRARY_PATH=\$(dirname \$(find \$INSTALL_FOLDER -name '*.so' | head -n1)):\$LD_LIBRARY_PATH\" >> \$GITHUB_ENV" >> notify_installed.sh
