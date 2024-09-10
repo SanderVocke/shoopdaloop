@@ -110,7 +110,7 @@ jobs:
            cat add_pkg_config_path.sh
 
            chmod a+x add_pkg_config_path.sh
-           echo "ADD_PKG_CONFIG_PATH=${{ github.workspace }}/add_pkg_config_path.sh" | tee -a $GITHUB_ENV
+           echo "ADD_PKG_CONFIG_PATH=$(pwd)/add_pkg_config_path.sh" | tee -a $GITHUB_ENV
 
       - shell: wrap-shell {0}
         run: |
