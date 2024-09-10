@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  checkpoints_enabled: true
+  checkpoints_enabled: false
 
 permissions:
   contents: write

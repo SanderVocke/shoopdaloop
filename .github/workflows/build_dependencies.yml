@@ -1,0 +1,68 @@
+name: Build and upload dependencies
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+  checks: write
+
+build_linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          - name: linux_release
+            release_build: true
+            package_kind: appimage
+            upload_release_assets: true
+          # - name: linux_debug
+          #   release_build: false
+          #   package_kind: appimage
+          # - name: linux_asan
+          #   # Note: ASAN build does not have a test because it is not trivial to deploy
+          #   # an asan-built program on another system. The build is here to ensure the
+          #   # build process still works. To use ASAN, compile like this natively.
+          #   release_build: false
+          #   package_kind: appimage
+          #   cmake_opts: '"ENABLE_ASAN" = "On"'
+          # - name: linux_coverage
+          #   release_build: false
+          #   cmake_opts: '"ENABLE_COVERAGE" = "On"'
+          #   package_kind: appimage
+          #   coverage: true
+        container: [ "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest" ]
+        container_options: [ "--user root --workdir /" ]
+        arch: [ x86_64 ]
+        manylinux_arch: [ x86_64 ]
+    runs-on: ubuntu-latest
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runs-on: ubuntu-latest
+            name-suffix: linux.x86-64
+            container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest"
+          - runs-on: ubuntu-latest
+            name-suffix: linux.arm
+            conatainer: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest"
+          - runs-on: macos-14
+            name-suffix: macos.arm
+          - runs-on: macos-12
+            name-suffix: macos.x86-64
+          - runs-on: windows-2022
+            name-suffix: windows.x86-64
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build LV2
+        uses: ./.github/actions/build_and_upload_meson_dependency
+        with:
+           name: lv2.v1.18.10.${{ matrix.name-suffix }}
+           repo: https://github.com/lv2/lv2.git
+           git_rev: v1.18.10
+           meson_options: --default-library=shared
