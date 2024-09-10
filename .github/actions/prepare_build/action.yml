@@ -52,7 +52,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       echo "QMAKE=$QT_ROOT_DIR/bin/qmake" | tee -a $GITHUB_ENV
-      echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6" | tee -a $GITHUB_ENV
+      echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
 
   - name: Install Meson
     if: always()
@@ -77,6 +77,7 @@ runs:
         URL=https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/all_dependencies-${{ matrix.kind.platform }}.zip
         curl -L -o all_dependencies.zip $URL
         unzip all_dependencies.zip -d prebuilt_dependencies
+        echo "CMAKE_PREFIX_PATH=$(pwd)/prebuilt_dependencies${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'

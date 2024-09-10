@@ -1,11 +1,6 @@
 name: Build and upload dependencies
 
 on:
-  push:
-    branches: [ "*" ]
-    tags: "v*.*.*"
-  pull_request:
-    branches: [ "*" ]
   workflow_dispatch:
 
 jobs:
@@ -226,15 +221,15 @@ jobs:
            git_rev: e9ff46b
            configure_options: -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build breakpad
-        uses: ./.github/actions/build_and_upload_cmake_dependency
-        with:
-           name: breakpad-6b95400-release-${{ matrix.name-suffix }}
-           repo: https://github.com/snxd/breakpad.git
-           git_rev: 6b95400
-           configure_options: -DCMAKE_BUILD_TYPE=Release -DBKPAD_UNITTESTS=0 -DPROCESSOR_UNITTESTS=0 -DBKPAD_DUMP_SYMS=ON -DBKPAD_MINIDUMP=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-           targets_part: --target breakpad --target breakpad_common --target dump_syms --target minidump_stackwalk
-           upload_build_dir: true
+      # - name: Build breakpad
+      #   uses: ./.github/actions/build_and_upload_cmake_dependency
+      #   with:
+      #      name: breakpad-6b95400-release-${{ matrix.name-suffix }}
+      #      repo: https://github.com/snxd/breakpad.git
+      #      git_rev: 6b95400
+      #      configure_options: -DCMAKE_BUILD_TYPE=Release -DBKPAD_UNITTESTS=0 -DPROCESSOR_UNITTESTS=0 -DBKPAD_DUMP_SYMS=ON -DBKPAD_MINIDUMP=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      #      targets_part: --target breakpad --target breakpad_common --target dump_syms --target minidump_stackwalk
+      #      upload_build_dir: true
 
   collect:
     needs: build

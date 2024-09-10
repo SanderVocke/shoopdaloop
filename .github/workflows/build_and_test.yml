@@ -88,6 +88,8 @@ jobs:
     container:
       image: ${{ matrix.container }}
       options: ${{ matrix.container_options }}
+    env:
+      PATH_SEPARATOR: ":"
     needs: maybe_create_release
     #if: false
     steps:
@@ -214,6 +216,8 @@ jobs:
   #           platform: linux-arm
   #   runs-on: ubuntu-latest
   #   needs: maybe_create_release
+  #   env:
+  #     PATH_SEPARATOR: ":"
   #   #if: false
   #   steps:
   #   - name: Checkout
@@ -333,7 +337,7 @@ jobs:
     needs: maybe_create_release
     #if: false
     env:
-       checkpoints_enabled: true
+       PATH_SEPARATOR: ":"
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -400,6 +404,8 @@ jobs:
   #   container:
   #     image: ${{ matrix.kind.container }}
   #     options: --user root --workdir / # Note: this gets disregarded if container is null
+  #   env:
+  #     PATH_SEPARATOR: ":"
   #   steps:
   #   - name: Checkout
   #     uses: actions/checkout@v4
@@ -468,7 +474,7 @@ jobs:
     runs-on: ${{ matrix.kind.os}}
     needs: maybe_create_release
     env:
-      checkpoints_enabled: true
+      PATH_SEPARATOR: ";"
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /

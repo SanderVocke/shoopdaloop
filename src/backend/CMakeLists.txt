@@ -71,8 +71,9 @@ set(CTYPESGEN_COMMAND ${PYTHON_CMD} -m ctypesgen)
 set(PREV_SETTING ${CMAKE_POSITION_INDEPENDENT_CODE})
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
-add_subdirectory(third_party/Catch2 EXCLUDE_FROM_ALL)
 set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
+
+find_package(Catch2 REQUIRED)
 
 include(CompilerCaching)
 
@@ -161,12 +162,11 @@ add_custom_target(
 
 set(EXTERNAL_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external_deps)
 
-add_subdirectory(crashhandling)
+# add_subdirectory(crashhandling)
 
 # Backend lib
 file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
 if (HAVE_LV2)
-  include (${CMAKE_CURRENT_SOURCE_DIR}/BuildLV2Projects.cmake)
   file(GLOB LV2_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2/*.cpp)
   list(APPEND INTERNAL_SOURCES ${LV2_SOURCES}
        ${CMAKE_SOURCE_DIR}/third_party/lv2_evbuf/lv2_evbuf.c)
@@ -179,8 +179,8 @@ if (BACKEND_JACK)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
 endif()
 
-# build libzita-resampler
-include(${CMAKE_CURRENT_SOURCE_DIR}/BuildZitaResampler.cmake)
+# Find libzita-resampler
+find_library(ZITA_RESAMPLER_LIB zita-resampler)
 
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
@@ -199,7 +199,7 @@ target_include_directories(shoopdaloop_internals
 target_link_libraries(shoopdaloop_internals PRIVATE
   Threads::Threads
   fmt::fmt
-  zita
+  ${ZITA_RESAMPLER_LIB}
   Boost::headers
   )
 if (DEFINED PTHREADS4W_PATH)
@@ -215,7 +215,6 @@ if (HAVE_LV2)
                           ${LV2_INCLUDE_DIRS}
                           ${CMAKE_SOURCE_DIR}/third_party/lv2_external_ui
                           )
-  add_dependencies(shoopdaloop_internals lilv_proj)
 endif()
 if (BACKEND_JACK)
   target_include_directories(shoopdaloop_internals PRIVATE ${JACK_INCLUDE_DIRS})
@@ -224,7 +223,7 @@ endif()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "#include \"libshoopdaloop.h\"")
 add_library(shoopdaloop SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
 target_link_libraries(shoopdaloop PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_internals>")
-create_breakpad_symbols_dump(shoopdaloop)
+# create_breakpad_symbols_dump(shoopdaloop)
 
 if(UNIX)
   set_target_properties(shoopdaloop PROPERTIES
