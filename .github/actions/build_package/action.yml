@@ -52,11 +52,12 @@ runs:
       COMPRESSED_PORTABLE_DIR=$(${{ env.COMPRESS_PORTABLE_FOLDER }} ${PORTABLE_DIR})
       COMPRESSED_RELEASE_PORTABLE_DIR=$(${{ env.COMPRESS_PORTABLE_FOLDER }} ${RELEASE_PORTABLE_DIR})
       echo "BUILT_PACKAGE=$COMPRESSED_PORTABLE_DIR" | tee -a $GITHUB_ENV
+      echo "BUILT_PACKAGE_NAME=$(basename $COMPRESSED_PORTABLE_DIR)" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$COMPRESSED_RELEASE_PORTABLE_DIR" | tee -a $GITHUB_ENV
   - uses: actions/upload-artifact@v4
     if: always()
     with:
-      name: ${{ env.BUILT_PACKAGE }}
+      name: ${{ env.BUILT_PACKAGE_NAME }}
       path: ${{ env.BUILT_PACKAGE }}
   - name: Upload AppDir (release)
     if: always() && inputs.package_kind == 'appimage' && inputs.upload_release_assets == 'true'

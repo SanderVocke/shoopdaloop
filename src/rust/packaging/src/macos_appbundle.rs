@@ -46,8 +46,8 @@ fn populate_appbundle(
     println!("Bundling dependencies...");
     let dynlib_dir = appdir.join("lib");
     std::fs::create_dir(&dynlib_dir)?;
-    let excludelist_path = src_path.join("distribution/appimage/excludelist");
-    let includelist_path = src_path.join("distribution/appimage/includelist");
+    let excludelist_path = src_path.join("distribution/linux/excludelist");
+    let includelist_path = src_path.join("distribution/linux/includelist");
     let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path)?;
     for lib in libs {
         println!("  Bundling {}", lib.to_str().unwrap());
@@ -59,12 +59,12 @@ fn populate_appbundle(
 
     // println!("Bundling additional assets...");
     // for file in [
-    //     "distribution/appimage/shoopdaloop.desktop",
-    //     "distribution/appimage/shoopdaloop.png",
-    //     "distribution/appimage/AppRun",
-    //     "distribution/appimage/backend_tests",
-    //     "distribution/appimage/python_tests",
-    //     "distribution/appimage/rust_tests",
+    //     "distribution/linux/shoopdaloop.desktop",
+    //     "distribution/linux/shoopdaloop.png",
+    //     "distribution/linux/AppRun",
+    //     "distribution/linux/backend_tests",
+    //     "distribution/linux/python_tests",
+    //     "distribution/linux/rust_tests",
     // ] {
     //     let from = src_path.join(file);
     //     let to = appdir.join(from.file_name().unwrap());

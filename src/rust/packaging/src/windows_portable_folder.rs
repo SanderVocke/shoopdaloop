@@ -59,12 +59,12 @@ fn populate_folder(
 
     // println!("Bundling additional assets...");
     // for file in [
-    //     "distribution/appimage/shoopdaloop.desktop",
-    //     "distribution/appimage/shoopdaloop.png",
-    //     "distribution/appimage/AppRun",
-    //     "distribution/appimage/backend_tests",
-    //     "distribution/appimage/python_tests",
-    //     "distribution/appimage/rust_tests",
+    //     "distribution/linux/shoopdaloop.desktop",
+    //     "distribution/linux/shoopdaloop.png",
+    //     "distribution/linux/AppRun",
+    //     "distribution/linux/backend_tests",
+    //     "distribution/linux/python_tests",
+    //     "distribution/linux/rust_tests",
     // ] {
     //     let from = src_path.join(file);
     //     let to = folder.join(from.file_name().unwrap());
