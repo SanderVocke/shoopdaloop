@@ -44,8 +44,8 @@ runs:
     shell: wrap-shell {0}
     run: |
       export QT_QPA_PLATFORM=offscreen
-      PORTABLE_DIR=shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.PLATFORM }}.portable
-      RELEASE_PORTABLE_DIR=shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.PLATFORM }}.portable
+      PORTABLE_DIR=$(pwd)/shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.PLATFORM }}.portable
+      RELEASE_PORTABLE_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.PLATFORM }}.portable
       echo "PORTABLE_DIR=$PORTABLE_DIR" | tee -a $GITHUB_ENV
       ${CARGO_ARTIFACTS_DIR}/package build-portable-folder -o $PORTABLE_DIR --include-tests ${CARGO_BUILD_FLAGS}
       cp -r $PORTABLE_DIR $RELEASE_PORTABLE_DIR
