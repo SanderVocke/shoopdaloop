@@ -22,6 +22,8 @@ pub fn build_appimage(
     if strip {
         src_dir = tmp_dir.unwrap().path().to_owned().join("appdir");
 
+        std::fs::create_dir_all(&src_dir)
+           .with_context(|| format!("Failed to create {src_dir:?}"))?;
         recursive_dir_cpy(appdir, &src_dir)
            .with_context(|| format!("Failed to copy {appdir:?} to {src_dir:?}"))?;
 
