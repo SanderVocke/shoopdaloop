@@ -3,7 +3,6 @@ use anyhow::Context;
 use std::path::{PathBuf, Path};
 use tempfile::TempDir;
 use std::process::Command;
-use std::os::unix::fs::PermissionsExt;
 use crate::dependencies::get_dependency_libs;
 use crate::fs_helpers::recursive_dir_cpy;
 
@@ -104,11 +103,6 @@ fn populate_folder(
                         &format!("curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C {}", nextest_dir)
                         ])
                 .status()?;
-        let mut perms = std::fs::metadata(nextest_path.clone())
-            .with_context(|| "Failed to get file metadata")?
-            .permissions();
-        perms.set_mode(0o755); // Sets read, write, and execute permissions for the owner, and read and execute for group and others
-        std::fs::set_permissions(nextest_path, perms).with_context(|| "Failed to set file permissions")?;
     }
 
     println!("Portable folder produced in {}", folder.to_str().unwrap());
