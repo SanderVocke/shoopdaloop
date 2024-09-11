@@ -20,6 +20,16 @@ fn populate_appbundle(
     let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     println!("Using source path {src_path:?}");
 
+    println!("Creating directories...");
+    for directory in [
+        "Contents",
+        "Contents/MacOS",
+        "Contents/Resources",
+    ] {
+        std::fs::create_dir(appdir.join(directory))
+            .with_context(|| format!("Failed to create {directory:?}"))?;
+    }
+
     println!("Bundling executable...");
     std::fs::copy(exe_path, appdir.join("shoopdaloop"))?;
 
@@ -57,32 +67,28 @@ fn populate_appbundle(
         )?;
     }
 
-    // println!("Bundling additional assets...");
-    // for file in [
-    //     "distribution/linux/shoopdaloop.desktop",
-    //     "distribution/linux/shoopdaloop.png",
-    //     "distribution/linux/AppRun",
-    //     "distribution/linux/backend_tests",
-    //     "distribution/linux/python_tests",
-    //     "distribution/linux/rust_tests",
-    // ] {
-    //     let from = src_path.join(file);
-    //     let to = appdir.join(from.file_name().unwrap());
-    //     println!("  {:?} -> {:?}", &from, &to);
-    //     std::fs::copy(&from, &to)
-    //         .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
-    // }
+    println!("Bundling additional assets...");
+    for (src,dst) in [
+        ("distribution/macos/Info.plist", "Contents/Info.plist"),
+        ("distribution/macos/icon.icns", "Contents/Resources/icon.icns")
+    ] {
+        let from = src_path.join(file);
+        let to = appdir.join(from.file_name().unwrap());
+        println!("  {:?} -> {:?}", &from, &to);
+        std::fs::copy(&from, &to)
+            .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
+    }
 
-    // if !include_tests {
-    //     println!("Slimming down AppDir...");
-    //     for file in [
-    //         "shoop_lib/test_runner"
-    //     ] {
-    //         let path = appdir.join(file);
-    //         println!("  remove {:?}", path);
-    //         std::fs::remove_file(&path)?;
-    //     }
-    // }
+    if !include_tests {
+        println!("Slimming down AppDir...");
+        for file in [
+            "shoop_lib/test_runner"
+        ] {
+            let path = appdir.join(file);
+            println!("  remove {:?}", path);
+            std::fs::remove_file(&path)?;
+        }
+    }
 
     if include_tests {
         println!("Creating nextest archive...");
