@@ -134,7 +134,7 @@ runs:
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Build second package
-    id: package
+    id: second_package
     if: always() && inputs.second_package_kind
     uses: ./.github/actions/build_package
     with:
