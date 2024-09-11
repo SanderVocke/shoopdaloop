@@ -140,7 +140,7 @@ endif ()
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW) # Use FindBoost as opposed to BoostConfig.cmake
 endif()
-if (WIN23)
+if (WIN32)
   find_package(Boost REQUIRED headers system)
 else()
   find_package(Boost REQUIRED headers)
