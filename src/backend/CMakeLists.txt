@@ -222,7 +222,9 @@ endif()
 
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "#include \"libshoopdaloop.h\"")
 add_library(shoopdaloop SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
-target_link_libraries(shoopdaloop PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_internals>")
+target_link_libraries(shoopdaloop PRIVATE
+   "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_internals>"
+   ${ZITA_RESAMPLER_LIB})
 # create_breakpad_symbols_dump(shoopdaloop)
 
 if(UNIX)

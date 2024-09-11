@@ -11,6 +11,8 @@ on:
 env:
   checkpoints_enabled: true
   CONVERT_PATH_FN: "echo"
+  COMPRESS_TGZ: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
+  COMPRESS_NONE: ''
 
 permissions:
   contents: write
@@ -98,7 +100,7 @@ jobs:
       options: ${{ matrix.container_options }}
     env:
       PATH_SEPARATOR: ":"
-      COMPRESS_PORTABLE_FOLDER: 'bash <(echo "tar -czvf \$1.tar.gz \$1 > /dev/null; echo $1")'
+      COMPRESS_PORTABLE_FOLDER: ${{ COMPRESS_TGZ }}
     needs: maybe_create_release
     #if: false
     steps:
@@ -229,7 +231,7 @@ jobs:
   #   needs: maybe_create_release
   #   env:
   #     PATH_SEPARATOR: ":"
-  #     COMPRESS_PORTABLE_FOLDER: 'bash <(echo "tar -czvf \$1.tar.gz \$1 > /dev/null; echo $1")'
+  #     COMPRESS_PORTABLE_FOLDER: ${{ env.COMPRESS_TGZ }}
   #   #if: false
   #   steps:
   #   - name: Checkout
@@ -350,7 +352,7 @@ jobs:
     #if: false
     env:
        PATH_SEPARATOR: ":"
-       COMPRESS_PORTABLE_FOLDER: 'bash <(echo "tar -czvf \$1.tar.gz \$1 > /dev/null; echo $1")'
+       COMPRESS_PORTABLE_FOLDER: ${{ env.COMPRESS_TGZ }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -487,7 +489,7 @@ jobs:
     env:
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: "cygpath -w"
-      COMPRESS_PORTABLE_FOLDER: ''
+      COMPRESS_PORTABLE_FOLDER: ${{ env.COMPRESS_NONE }}
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /

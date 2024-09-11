@@ -30,7 +30,8 @@ target_link_libraries(test_runner PRIVATE
                       Catch2::Catch2WithMain
                       fmt::fmt
                       Threads::Threads
-                      Boost::headers)
+                      Boost::headers
+                      ${ZITA_RESAMPLER_LIB})
 target_include_directories(test_runner
                         PRIVATE
                         ${JACK_INCLUDE_DIRS}

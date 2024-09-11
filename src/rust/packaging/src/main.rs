@@ -82,8 +82,14 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
             }
             #[cfg(target_os = "windows")]
             {
-                let _ = (output_dir, include_tests, release);
-                Err(anyhow::anyhow!("Portable folder packaging is not yet supported on Windows systems."))
+                use packaging::windows_portable_folder::build_portable_folder;
+                build_portable_folder(
+                            Path::new(out_dir.as_str()),
+                            main_exe.as_path(),
+                            dev_exe.as_path(),
+                            output_dir.as_path(),
+                            *include_tests,
+                            *release)
             }
         },
         Some(Commands::BuildAppImage { appimagetool, appdir, output, strip }) => {
