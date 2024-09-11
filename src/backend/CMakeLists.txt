@@ -140,7 +140,11 @@ endif ()
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW) # Use FindBoost as opposed to BoostConfig.cmake
 endif()
-find_package(Boost REQUIRED headers system)
+if (WIN23)
+  find_package(Boost REQUIRED headers System)
+else()
+  find_package(Boost REQUIRED headers)
+endif()
 
 if (BACKEND_JACK)
   # Generate a wrapper for libjack which allows dynamic loading using dlopen
@@ -202,8 +206,10 @@ target_link_libraries(shoopdaloop_internals PRIVATE
   fmt::fmt
   ${ZITA_RESAMPLER_LIB}
   Boost::headers
-  Boost::system
   )
+if (WIN32)
+  target_link_libraries(shoopdaloop_internals PRIVATE Boost::System)
+endif()
 if (DEFINED PTHREADS4W_PATH)
   target_include_directories(shoopdaloop_internals PRIVATE ${PTHREADS4W_PATH})
 endif()
@@ -228,6 +234,9 @@ target_link_libraries(shoopdaloop PRIVATE
    "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_internals>"
    ${ZITA_RESAMPLER_LIB}
    Threads::Threads)
+if (WIN32)
+   target_link_libraries(shoopdaloop PRIVATE Boost::System)
+endif()
 # create_breakpad_symbols_dump(shoopdaloop)
 
 if(UNIX)

@@ -31,7 +31,6 @@ target_link_libraries(test_runner PRIVATE
                       fmt::fmt
                       Threads::Threads
                       Boost::headers
-                      Boost::system
                       ${ZITA_RESAMPLER_LIB})
 target_include_directories(test_runner
                         PRIVATE
@@ -40,6 +39,10 @@ target_include_directories(test_runner
                         ${CMAKE_CURRENT_SOURCE_DIR}/..
                         ${CMAKE_SOURCE_DIR}/third_party/ut/include
                         )
+if (WIN32)
+    target_link_libraries(test_runner PRIVATE Boost::System)
+endif()
+endif()
 target_compile_definitions(test_runner PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG_TRACE)
 target_compile_definitions(test_runner PUBLIC -DBOOST_UT_DISABLE_MODULE)
 install(TARGETS test_runner
