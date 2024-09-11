@@ -5,6 +5,9 @@ runs:
   using: "composite"
   steps:
 
+  - name: Rust cache
+    uses: Swatinem/rust-cache@v2
+
   - name: Build
     if: always()
     shell: wrap-shell {0}

@@ -10,6 +10,7 @@ on:
 
 env:
   checkpoints_enabled: true
+  CONVERT_PATH_FN: "echo"
 
 permissions:
   contents: write
@@ -210,7 +211,7 @@ jobs:
   #       container: [ "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest" ]
   #       arch: [ arm64 ]
   #       manylinux_arch: [ aarch64 ]
-  # 
+  #
   #       kind:
   #         - name: linux_arm_release
   #           build_type: 'Release'
@@ -481,6 +482,7 @@ jobs:
     needs: maybe_create_release
     env:
       PATH_SEPARATOR: ";"
+      CONVERT_PATH_FN: "cygpath -w"
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /

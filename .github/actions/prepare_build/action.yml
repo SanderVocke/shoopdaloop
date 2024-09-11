@@ -52,7 +52,8 @@ runs:
     shell: wrap-shell {0}
     run: |
       echo "QMAKE=$QT_ROOT_DIR/bin/qmake" | tee -a $GITHUB_ENV
-      echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake/Qt6${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
+      QT_PREFIX_PATH=$(${CONVERT_PATH_FN} "$QT_ROOT_DIR/lib/cmake/Qt6")
+      echo "CMAKE_PREFIX_PATH=$QT_PREFIX_PATH${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
 
   - name: Install Meson
     if: always()
@@ -69,7 +70,7 @@ runs:
       echo "meson.sh:"
       cat meson.sh
       echo "MESON=$(pwd)/meson.sh" | tee -a $GITHUB_ENV
-  
+
   - name: Install pre-built dependencies
     if: always()
     shell: wrap-shell {0}
@@ -77,11 +78,14 @@ runs:
         URL=https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/all_dependencies-${{ matrix.kind.platform }}.zip
         curl -L -o all_dependencies.zip $URL
         unzip all_dependencies.zip -d prebuilt_dependencies
-        echo "CMAKE_PREFIX_PATH=$(pwd)/prebuilt_dependencies${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
-        echo "LDFLAGS=$LDFLAGS -L$(pwd)/prebuilt_dependencies/lib" | tee -a $GITHUB_ENV
-        echo "CFLAGS=$CFLAGS -I$(pwd)/prebuilt_dependencies/include" | tee -a $GITHUB_ENV
-        echo "CXXFLAGS=$CXXFLAGS -I$(pwd)/prebuilt_dependencies/include" | tee -a $GITHUB_ENV
-        echo "CPPFLAGS=$CPPFLAGS -I$(pwd)/prebuilt_dependencies/include" | tee -a $GITHUB_ENV
+        PREFIX_PATH=$(${CONVERT_PATH_FN} "$(pwd)/prebuilt_dependencies")
+        INCLUDE_PATH=$(${CONVERT_PATH_FN} "$(pwd)/prebuilt_dependencies/include")
+        LIB_PATH=$(${CONVERT_PATH_FN} "$(pwd)/prebuilt_dependencies/lib")
+        echo "CMAKE_PREFIX_PATH=${PREFIX_PATH}${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
+        echo "LDFLAGS=$LDFLAGS -L${LIB_PATH}" | tee -a $GITHUB_ENV
+        echo "CFLAGS=$CFLAGS -I${INCLUDE_PATH}" | tee -a $GITHUB_ENV
+        echo "CXXFLAGS=$CXXFLAGS -I${INCLUDE_PATH}" | tee -a $GITHUB_ENV
+        echo "CPPFLAGS=$CPPFLAGS -I${INCLUDE_PATH}" | tee -a $GITHUB_ENV
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'
