@@ -11,7 +11,6 @@ on:
 env:
   checkpoints_enabled: true
   CONVERT_PATH_FN: "echo"
-  COMPRESS_NONE: ''
 
 permissions:
   contents: write
@@ -488,7 +487,7 @@ jobs:
     env:
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: "cygpath -w"
-      COMPRESS_PORTABLE_FOLDER: ${{ env.COMPRESS_NONE }}
+      COMPRESS_PORTABLE_FOLDER: ''
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
