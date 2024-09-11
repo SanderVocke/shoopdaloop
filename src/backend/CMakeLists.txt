@@ -141,7 +141,7 @@ if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW) # Use FindBoost as opposed to BoostConfig.cmake
 endif()
 if (WIN23)
-  find_package(Boost REQUIRED headers System)
+  find_package(Boost REQUIRED headers system)
 else()
   find_package(Boost REQUIRED headers)
 endif()
@@ -208,7 +208,7 @@ target_link_libraries(shoopdaloop_internals PRIVATE
   Boost::headers
   )
 if (WIN32)
-  target_link_libraries(shoopdaloop_internals PRIVATE Boost::System)
+  target_link_libraries(shoopdaloop_internals PRIVATE Boost::system)
 endif()
 if (DEFINED PTHREADS4W_PATH)
   target_include_directories(shoopdaloop_internals PRIVATE ${PTHREADS4W_PATH})
@@ -235,7 +235,7 @@ target_link_libraries(shoopdaloop PRIVATE
    ${ZITA_RESAMPLER_LIB}
    Threads::Threads)
 if (WIN32)
-   target_link_libraries(shoopdaloop PRIVATE Boost::System)
+   target_link_libraries(shoopdaloop PRIVATE Boost::system)
 endif()
 # create_breakpad_symbols_dump(shoopdaloop)
 
