@@ -100,7 +100,7 @@ jobs:
       options: ${{ matrix.container_options }}
     env:
       PATH_SEPARATOR: ":"
-      COMPRESS_PORTABLE_FOLDER: ${{ COMPRESS_TGZ }}
+      COMPRESS_PORTABLE_FOLDER: ${{ env.COMPRESS_TGZ }}
     needs: maybe_create_release
     #if: false
     steps:
