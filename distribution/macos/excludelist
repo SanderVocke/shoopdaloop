@@ -1,0 +1,6 @@
+*/libsystem_*.dylib
+*/libobjc-trampolines.dylib
+*/python*/site-packages/*
+*/libshoopdaloop.dylib
+/System/*
+/usr/*

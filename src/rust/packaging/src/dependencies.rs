@@ -7,7 +7,9 @@ use std::process::Command;
 pub fn get_dependency_libs (exe : &Path,
                             src_dir : &Path,
                             excludelist_path : &Path,
-                            includelist_path : &Path) -> Result<Vec<PathBuf>, anyhow::Error> {
+                            includelist_path : &Path,
+                            dylib_filename_part: &str,
+                            allow_nonexistent: bool) -> Result<Vec<PathBuf>, anyhow::Error> {
     let mut rval : Vec<PathBuf> = Vec::new();
     let mut error_msgs : String = String::from("");
 
@@ -19,7 +21,7 @@ pub fn get_dependency_libs (exe : &Path,
     let includes : HashSet<&str> = includelist.lines().collect();
     let mut used_includes : HashSet<String> = HashSet::new();
 
-    let command = "sh";
+    let command = "bash";
     let list_deps_script = src_dir.join("scripts/list_dependencies.sh");
     let args = [
         list_deps_script.to_str().unwrap(),
@@ -45,7 +47,7 @@ pub fn get_dependency_libs (exe : &Path,
         let path = PathBuf::from(line.trim());
         let path_str = path.to_str().ok_or(anyhow::anyhow!("cannot find dependency"))?;
         let path_filename = path.file_name().unwrap().to_str().unwrap();
-        if path_filename.contains(".so") {
+        if path_filename.contains(dylib_filename_part) {
             let pattern_match = |s : &str, p : &str| regex::Regex::new(
                     &s.replace(".", "\\.")
                     .replace("*", ".*")
@@ -54,9 +56,14 @@ pub fn get_dependency_libs (exe : &Path,
             let in_excludes = excludes.iter().any(|e| pattern_match(e, path_str));
             let in_includes = includes.iter().any(|e| pattern_match(e, path_str));
             if !path.exists() {
-                error_msgs.push_str(format!("{}: doesn't exist\n", path_str).as_str());
-                continue;
-            } else if in_excludes && in_includes {
+                if allow_nonexistent {
+                    println!("  Nonexistent file {}", &path_str);
+                } else {
+                    error_msgs.push_str(format!("{}: doesn't exist\n", path_str).as_str());
+                    continue;
+                }
+            }
+            if in_excludes && in_includes {
                 error_msgs.push_str(format!("{}: is in includes and excludes\n", path_str).as_str());
                 continue;
             } else if in_excludes {
@@ -67,8 +74,8 @@ pub fn get_dependency_libs (exe : &Path,
                 continue;
             }
 
-        used_includes.insert(path_filename.to_string());
-        rval.push(path);
+            used_includes.insert(path_filename.to_string());
+            rval.push(path);
         } else {
             println!("  Note: skipped ldd line (not a .so): {}", line);
         }

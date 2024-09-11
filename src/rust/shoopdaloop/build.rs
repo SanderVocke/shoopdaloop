@@ -28,7 +28,7 @@ fn file_hash<P: AsRef<Path>>(path: P) -> io::Result<u64> {
 fn main_impl() -> Result<(), anyhow::Error> {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let src_dir = env::current_dir()?;
-    let host_python = env::var("PYTHON").unwrap_or(String::from("python"));
+    let host_python = env::var("PYTHON").unwrap_or(String::from("python3"));
     let shoop_lib_dir = out_dir.join("shoop_lib");
     let cmake_backend_dir = "../../backend";
     let python_dir = "../../python";
@@ -75,18 +75,17 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
         // Build ShoopDaLoop wheel
         println!("Building wheel...");
+        let args = &["-m", "build",
+            "--outdir", out_dir.to_str().expect("Couldn't get out dir"),
+            "--wheel",
+            python_dir];
         Command::new(&host_python)
-            .args(
-                &["-m", "build",
-                "--outdir", out_dir.to_str().expect("Couldn't get out dir"),
-                "--wheel",
-                python_dir]
-            )
+            .args(args)
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
             .current_dir(src_dir.clone())
             .status()
-            .with_context(|| "Failed to build wheel")?;
+            .with_context(|| format!("Failed to build wheel: {host_python:?} {args:?}"))?;
     }
 
     let wheel : PathBuf;
@@ -127,18 +126,20 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
         // Create a env in OUT_DIR
         println!("Creating portable Python...");
+        let args = &["-c", "python3 --version | sed -r 's/.*3\\./3\\./g'"];
         let py_version = Command::new("sh")
-                                .args(&["-c", "python3 --version | sed -r 's/.*3\\./3\\./g'"])
+                                .args(args)
                                 .output()
-                                .with_context(|| "Failed to print python version")?;
+                                .with_context(|| format!("Failed to print python version: sh ${args:?}"))?;
         let py_version = std::str::from_utf8(&py_version.stdout)?;
         let py_version = py_version.trim();
         println!("Using pyenv to install {} to {}...", py_version, pyenv_root_dir.to_str().unwrap());
+        let args = &["install", "--skip-existing", py_version];
         Command::new("pyenv")
-                .args(&["install", "--skip-existing", py_version])
+                .args(args)
                 .env("PYENV_ROOT", &pyenv_root_dir)
                 .status()
-                .with_context(|| "Failed to install Python using pyenv")?;
+                .with_context(|| format!("Failed to install Python using pyenv: pyenv {args:?}"))?;
         let py_location = Command::new("pyenv")
                                      .args(&["prefix", &py_version])
                                      .env("PYENV_ROOT", &pyenv_root_dir)
@@ -189,11 +190,18 @@ fn main_impl() -> Result<(), anyhow::Error> {
     env::set_var("PYO3_PYTHON", py_env_python.to_str().unwrap());
 
     // Set RPATH
-    println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/shoop_lib"); // For builtin libraries
-    println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/shoop_lib/py/lib"); // For Python library
-    println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/shoop_lib/py/{}/PySide6/Qt/lib",
+    println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib"); // For builtin libraries
+    println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib/py/lib"); // For Python library
+    println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib/py/{}/PySide6/Qt/lib",
              py_env_to_site_packages.to_str().unwrap()); // For the Qt distribution that comes with PySide6
-    println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/lib"); // For bundled dependency libraries
+    println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/lib"); // For bundled dependency libraries
+
+    // Link to dev folders
+    println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}/..", py_env_dir.to_str().unwrap()); // For builtin libraries
+    println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}/lib", py_env_dir.to_str().unwrap()); // For Python library
+    println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}/{}/PySide6/Qt/lib",
+        py_env_dir.to_str().unwrap(),
+        py_env_to_site_packages.to_str().unwrap()); // For the Qt distribution that comes with PySide6
 
     // Rebuild if changed
     println!("cargo:rerun-if-changed=build.rs");

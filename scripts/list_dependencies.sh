@@ -30,11 +30,16 @@ if [[ "$OS" == "Linux" ]]; then
     strace -e openat -o $TRACE_OUTPUT -f $COMMAND 1>&2
     cat $TRACE_OUTPUT | grep -E '.*\.so' | grep -v ENOENT | awk -F '"' '{print $2}' | sort -u > "$DEPENDENCIES"
 elif [[ "$OS" == "Darwin" ]]; then
-    DYLD_PRINT_LIBRARIES=1 $COMMAND 1>&2
-    cat $TRACE_OUTPUT | grep 'dyld' | grep 'loaded' | grep '.dylib' | awk 'NF>1{print $NF}' | sort -u > "$DEPENDENCIES"
+    # lldb -s <(printf "run\nimage list\nq\n") ${COMMAND%% *} -- ${COMMAND#* } | tee -a $TRACE_OUTPUT
+    # cat $TRACE_OUTPUT | grep '.dylib' | awk 'NF>1{print $NF}' | sort -u > "$DEPENDENCIES"
+    DYLD_PRINT_LIBRARIES=1 $COMMAND 2>$TRACE_OUTPUT 1>&2
+    cat $TRACE_OUTPUT | grep 'dyld' | grep '.dylib' | awk 'NF>1{print $NF}' | sort -u > "$DEPENDENCIES"
 fi
 
 # Output the results
+echo "" >&2
+echo "Raw output:" >&2
+cat $TRACE_OUTPUT >&2
 echo "" >&2
 echo "Dynamically loaded libraries:" >&2
 cat "$DEPENDENCIES"

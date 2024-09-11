@@ -45,9 +45,9 @@ fn populate_folder(
     println!("Bundling dependencies...");
     let dynlib_dir = folder;
     std::fs::create_dir(&dynlib_dir)?;
-    let excludelist_path = src_path.join("distribution/windows_portable/excludelist");
-    let includelist_path = src_path.join("distribution/windows_portable/includelist");
-    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path)?;
+    let excludelist_path = src_path.join("distribution/windows/excludelist");
+    let includelist_path = src_path.join("distribution/windows/includelist");
+    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path, ".exe", false)?;
     for lib in libs {
         println!("  Bundling {}", lib.to_str().unwrap());
         std::fs::copy(
@@ -84,24 +84,24 @@ fn populate_folder(
     // }
 
     if include_tests {
-        println!("Creating nextest archive...");
-        let archive = folder.join("nextest-archive.tar.zst");
-        let args = match release {
-            true => vec!["nextest", "archive", "--release", "--archive-file", archive.to_str().unwrap()],
-            false => vec!["nextest", "archive", "--archive-file", archive.to_str().unwrap()]
-        };
-        Command::new("cargo")
-                .current_dir(&src_path)
-                .args(&args[..])
-                .status()?;
         println!("Downloading prebuilt cargo-nextest into folder...");
         let nextest_path = folder.join("cargo-nextest.exe");
         let nextest_dir = folder.to_str().unwrap();
         Command::new("sh")
                 .current_dir(&src_path)
                 .args(&["-c",
-                        &format!("curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C {}", nextest_dir)
+                        &format!("curl -LsSf https://get.nexte.st/latest/windows | tar zxf - -C {}", nextest_dir)
                         ])
+                .status()?;
+        println!("Creating nextest archive...");
+        let archive = folder.join("nextest-archive.tar.zst");
+        let args = match release {
+            true => vec!["nextest", "archive", "--release", "--archive-file", archive.to_str().unwrap()],
+            false => vec!["nextest", "archive", "--archive-file", archive.to_str().unwrap()]
+        };
+        Command::new(&nextest_path)
+                .current_dir(&src_path)
+                .args(&args[..])
                 .status()?;
     }
 

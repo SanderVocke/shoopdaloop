@@ -47,7 +47,7 @@ fn populate_appdir(
     std::fs::create_dir(&dynlib_dir)?;
     let excludelist_path = src_path.join("distribution/linux/excludelist");
     let includelist_path = src_path.join("distribution/linux/includelist");
-    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path)?;
+    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path, ".so", false)?;
     for lib in libs {
         println!("  Bundling {}", lib.to_str().unwrap());
         std::fs::copy(
@@ -85,16 +85,6 @@ fn populate_appdir(
     }
 
     if include_tests {
-        println!("Creating nextest archive...");
-        let archive = appdir.join("nextest-archive.tar.zst");
-        let args = match release {
-            true => vec!["nextest", "archive", "--release", "--archive-file", archive.to_str().unwrap()],
-            false => vec!["nextest", "archive", "--archive-file", archive.to_str().unwrap()]
-        };
-        Command::new("cargo")
-                .current_dir(&src_path)
-                .args(&args[..])
-                .status()?;
         println!("Downloading prebuilt cargo-nextest into appdir...");
         let nextest_path = appdir.join("cargo-nextest");
         let nextest_dir = appdir.to_str().unwrap();
@@ -108,7 +98,17 @@ fn populate_appdir(
             .with_context(|| "Failed to get file metadata")?
             .permissions();
         perms.set_mode(0o755); // Sets read, write, and execute permissions for the owner, and read and execute for group and others
-        std::fs::set_permissions(nextest_path, perms).with_context(|| "Failed to set file permissions")?;
+        std::fs::set_permissions(&nextest_path, perms).with_context(|| "Failed to set file permissions")?;
+        println!("Creating nextest archive...");
+        let archive = appdir.join("nextest-archive.tar.zst");
+        let args = match release {
+            true => vec!["nextest", "archive", "--release", "--archive-file", archive.to_str().unwrap()],
+            false => vec!["nextest", "archive", "--archive-file", archive.to_str().unwrap()]
+        };
+        Command::new(&nextest_path)
+                .current_dir(&src_path)
+                .args(&args[..])
+                .status()?;
     }
 
     println!("AppDir produced in {}", appdir.to_str().unwrap());

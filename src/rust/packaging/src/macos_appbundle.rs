@@ -6,6 +6,8 @@ use std::process::Command;
 use std::os::unix::fs::PermissionsExt;
 use crate::dependencies::get_dependency_libs;
 use crate::fs_helpers::recursive_dir_cpy;
+use regex::Regex;
+use std::collections::HashSet;
 
 fn populate_appbundle(
     shoop_built_out_dir : &Path,
@@ -56,15 +58,37 @@ fn populate_appbundle(
     println!("Bundling dependencies...");
     let dynlib_dir = appdir.join("lib");
     std::fs::create_dir(&dynlib_dir)?;
-    let excludelist_path = src_path.join("distribution/linux/excludelist");
-    let includelist_path = src_path.join("distribution/linux/includelist");
-    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path)?;
+    let excludelist_path = src_path.join("distribution/macos/excludelist");
+    let includelist_path = src_path.join("distribution/macos/includelist");
+    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path, ".dylib", true)?;
+    let re = Regex::new(r"(.*/.*.framework)/.*").unwrap();
+    let mut set: HashSet<PathBuf> = HashSet::new();
     for lib in libs {
-        println!("  Bundling {}", lib.to_str().unwrap());
-        std::fs::copy(
-            lib.clone(),
-            dynlib_dir.clone().join(lib.file_name().unwrap())
-        )?;
+        // Detect libraries in framework folders and reduce the entries to the frameworks themselves
+        let cap = re.captures(lib.to_str().unwrap());
+        if !cap.is_none() {
+            let p = PathBuf::from(cap.unwrap().get(1).unwrap().as_str());
+            set.insert(p);
+        } else {
+            set.insert(lib.clone());
+        }
+    }
+    let libs: Vec<_> = set.into_iter().collect(); // Convert back to Vec
+    for lib in libs {
+        let from = lib.clone();
+        let to = dynlib_dir.clone().join(lib.file_name().unwrap());
+
+        if !from.exists() {
+            println!("  Skipping nonexistent file/framework {from:?}");
+        } else if std::fs::metadata(&from)?.is_dir() {
+            println!("  Bundling {}", lib.to_str().unwrap());
+            recursive_dir_cpy(&from, &to)
+               .with_context(|| format!("Failed to copy dir {from:?} to {to:?}"))?;
+        } else {
+            println!("  Bundling {}", lib.to_str().unwrap());
+            std::fs::copy(&from, &to)
+               .with_context(|| format!("Failed to copy {from:?} to {to:?}"))?;
+        }
     }
 
     println!("Bundling additional assets...");
@@ -72,8 +96,8 @@ fn populate_appbundle(
         ("distribution/macos/Info.plist", "Contents/Info.plist"),
         ("distribution/macos/icon.icns", "Contents/Resources/icon.icns")
     ] {
-        let from = src_path.join(file);
-        let to = appdir.join(from.file_name().unwrap());
+        let from = src_path.join(src);
+        let to = appdir.join(dst);
         println!("  {:?} -> {:?}", &from, &to);
         std::fs::copy(&from, &to)
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
@@ -91,30 +115,30 @@ fn populate_appbundle(
     }
 
     if include_tests {
-        println!("Creating nextest archive...");
-        let archive = appdir.join("nextest-archive.tar.zst");
-        let args = match release {
-            true => vec!["nextest", "archive", "--release", "--archive-file", archive.to_str().unwrap()],
-            false => vec!["nextest", "archive", "--archive-file", archive.to_str().unwrap()]
-        };
-        Command::new("cargo")
-                .current_dir(&src_path)
-                .args(&args[..])
-                .status()?;
         println!("Downloading prebuilt cargo-nextest into appdir...");
         let nextest_path = appdir.join("cargo-nextest");
         let nextest_dir = appdir.to_str().unwrap();
         Command::new("sh")
                 .current_dir(&src_path)
                 .args(&["-c",
-                        &format!("curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C {}", nextest_dir)
+                        &format!("curl -LsSf https://get.nexte.st/latest/mac | tar zxf - -C {}", nextest_dir)
                         ])
                 .status()?;
         let mut perms = std::fs::metadata(nextest_path.clone())
             .with_context(|| "Failed to get file metadata")?
             .permissions();
         perms.set_mode(0o755); // Sets read, write, and execute permissions for the owner, and read and execute for group and others
-        std::fs::set_permissions(nextest_path, perms).with_context(|| "Failed to set file permissions")?;
+        std::fs::set_permissions(&nextest_path, perms).with_context(|| "Failed to set file permissions")?;
+        println!("Creating nextest archive...");
+        let archive = appdir.join("nextest-archive.tar.zst");
+        let args = match release {
+            true => vec!["nextest", "archive", "--release", "--archive-file", archive.to_str().unwrap()],
+            false => vec!["nextest", "archive", "--archive-file", archive.to_str().unwrap()]
+        };
+        Command::new(&nextest_path)
+                .current_dir(&src_path)
+                .args(&args[..])
+                .status()?;
     }
 
     println!("App bundle produced in {}", appdir.to_str().unwrap());

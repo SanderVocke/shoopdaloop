@@ -18,10 +18,6 @@ runs:
   - name: Prepare Rust (non-Windows)
     if: always() && inputs.variant != 'windows'
     uses: dtolnay/rust-toolchain@stable
-  - name: Rust packages
-    shell: wrap-shell {0}
-    run: |
-      cargo install cargo-nextest
   - name: Rust info
     if: always() && inputs.variant == 'windows'
     shell: wrap-shell {0}
