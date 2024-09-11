@@ -212,6 +212,7 @@ jobs:
            repo: https://github.com/catchorg/Catch2.git
            git_rev: v3.7.0
            configure_options: -DCMAKE_BUILD_TYPE=Release
+           build_options: --config Release
 
       - name: Build zita-resampler
         uses: ./.github/actions/build_and_upload_cmake_dependency
@@ -220,6 +221,7 @@ jobs:
            repo: https://github.com/SanderVocke/zita-resampler.git
            git_rev: d8cc16
            configure_options: -DCMAKE_BUILD_TYPE=Release
+           build_options: --config Release
 
       # - name: Build breakpad
       #   uses: ./.github/actions/build_and_upload_cmake_dependency
