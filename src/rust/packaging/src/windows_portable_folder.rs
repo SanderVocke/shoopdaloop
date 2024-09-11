@@ -43,7 +43,7 @@ fn populate_folder(
     }
 
     println!("Bundling dependencies...");
-    let dynlib_dir = folder.join("lib");
+    let dynlib_dir = folder;
     std::fs::create_dir(&dynlib_dir)?;
     let excludelist_path = src_path.join("distribution/windows_portable/excludelist");
     let includelist_path = src_path.join("distribution/windows_portable/includelist");
