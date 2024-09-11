@@ -33,7 +33,7 @@ fn populate_appbundle(
     }
 
     println!("Bundling executable...");
-    std::fs::copy(exe_path, appdir.join("shoopdaloop"))?;
+    std::fs::copy(exe_path, appdir.join("Contents/MacOS/shoopdaloop"))?;
 
     println!("Bundling shoop_lib...");
     let lib_dir = appdir.join("shoop_lib");
