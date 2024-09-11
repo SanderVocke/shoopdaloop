@@ -79,7 +79,7 @@ runs:
       chmod a+x appimagetool.sh
       APPIMAGE_NAME=shoopdaloop.${{ env.SHOOP_GIT_REV }}.$(uname -m).AppImage
       RELEASE_APPIMAGE_NAME=shoopdaloop-${{ env.SHOOP_VERSION }}.$(uname -m).AppImage
-      ${CARGO_ARTIFACTS_DIR}/package build-app-image --appimagetool $(pwd)/appimagetool.sh -o $APPIMAGE_NAME --appdir ${{ env.APPDIR_NAME }} --strip
+      ${CARGO_ARTIFACTS_DIR}/package build-app-image --appimagetool $(pwd)/appimagetool.sh -o $APPIMAGE_NAME --appdir ${{ env.PORTABLE_DIR }} --strip
       cp $APPIMAGE_NAME $RELEASE_APPIMAGE_NAME
       echo "BUILT_PACKAGE=$APPIMAGE_NAME" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$RELEASE_APPIMAGE_NAME" | tee -a $GITHUB_ENV
