@@ -66,7 +66,8 @@ jobs:
         kind:
           - name: linux_release
             release_build: true
-            package_kind: appimage
+            package_kind: portable_folder
+            second_package_kind: appimage
             upload_release_assets: true
             platform: linux-x64
           # - name: linux_debug
@@ -97,6 +98,7 @@ jobs:
       options: ${{ matrix.container_options }}
     env:
       PATH_SEPARATOR: ":"
+      COMPRESS_PORTABLE_FOLDER: 'bash <(echo "tar -czvf \$1.tar.gz \$1 > /dev/null; echo $1")'
     needs: maybe_create_release
     #if: false
     steps:
@@ -112,12 +114,13 @@ jobs:
       uses: ./.github/actions/build_toplevel
       with:
         name: ${{ matrix.kind.name }}
+        platform: ${{ matrix.kind.platform }}
         release_build: ${{ matrix.kind.release_build }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: 'linux'
         python: python3.9
-        rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
         package_kind: ${{ matrix.kind.package_kind }}
+        second_package_kind: ${{ matrix.kind.second_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
     - uses: ./.github/actions/checkpoint
@@ -214,8 +217,9 @@ jobs:
   #
   #       kind:
   #         - name: linux_arm_release
-  #           build_type: 'Release'
-  #           package_kind: linuxes
+  #           release_build: true
+  #           package_kind: portable_folder
+  #           second_package_kind: appimage
   #           upload_release_assets: true
   #           platform: linux-arm
   #         - name: linux_arm_debug
@@ -225,6 +229,7 @@ jobs:
   #   needs: maybe_create_release
   #   env:
   #     PATH_SEPARATOR: ":"
+  #     COMPRESS_PORTABLE_FOLDER: 'bash <(echo "tar -czvf \$1.tar.gz \$1 > /dev/null; echo $1")'
   #   #if: false
   #   steps:
   #   - name: Checkout
@@ -246,12 +251,13 @@ jobs:
   #     uses: ./.github/actions/build_toplevel
   #     with:
   #       name: ${{ matrix.kind.name }}
+  #       platform: ${{ matrix.kind.platform }}
   #       cmake_build_type: ${{ matrix.kind.build_type }}
   #       cmake_opts: ${{ matrix.kind.cmake_opts }}
   #       prepare_kind: 'linux'
   #       python: python3.9
-  #       rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
   #       package_kind: ${{ matrix.kind.package_kind }}
+  #       second_package_kind: ${{ matrix.kind.package_kind }}
   #       coverage: ${{ matrix.kind.coverage }}
   #       upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
 
@@ -319,7 +325,7 @@ jobs:
       matrix:
         kind:
           # - name: macos_release
-          #   build_type: 'Release'
+          #   release_build: true
           #   appbundle: true
           #   package_kind: dmg
           #   os: macos-12
@@ -329,22 +335,22 @@ jobs:
           #   build_type: 'Debug'
           #   os: macos-12
           #   platform: macos-x64
-          # - name: macos_release_arm
-          #   build_type: 'Release'
-          #   appbundle: true
-          #   package_kind: dmg
-          #   os: macos-14
-          #   upload_release_assets: true
-          #   platform: macos-arm
-          - name: macos_debug_arm
-            build_type: 'Debug'
+          - name: macos_release_arm
+            release_build: true
+            package_kind: portable_folder
             os: macos-14
+            upload_release_assets: true
             platform: macos-arm
+          # - name: macos_debug_arm
+          #   build_type: 'Debug'
+          #   os: macos-14
+          #   platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
     #if: false
     env:
        PATH_SEPARATOR: ":"
+       COMPRESS_PORTABLE_FOLDER: 'bash <(echo "tar -czvf \$1.tar.gz \$1 > /dev/null; echo $1")'
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -357,6 +363,7 @@ jobs:
       uses: ./.github/actions/build_toplevel
       with:
         name: ${{ matrix.kind.name }}
+        platform: ${{ matrix.kind.platform }}
         cmake_build_type: ${{ matrix.kind.build_type }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: 'macos'
@@ -366,7 +373,6 @@ jobs:
         coverage: ${{ matrix.kind.coverage }}
         # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
         # Also remove the double dot if any.
-        rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
     - uses: ./.github/actions/checkpoint
 
@@ -457,32 +463,31 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: windows_release
-          #   os: windows-2022
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container_image: null
-          #   prepare: 'windows'
-          #   build_type: 'Release'
-          #   package_kind: innosetup
-          #   rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-          #   upload_release_assets: true
-          #   platform: windows-msvc-x64
-          - name: windows_debug
+          - name: windows_release
             os: windows-2022
             python: python.exe
             pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
-            build_type: 'Debug'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-            # cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
+            release_build: true
+            package_kind: portable_folder
+            upload_release_assets: true
             platform: windows-msvc-x64
+          # - name: windows_debug
+          #   os: windows-2022
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container_image: null
+          #   prepare: 'windows'
+          #   build_type: 'Debug'
+          #   # cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
+          #   platform: windows-msvc-x64
     runs-on: ${{ matrix.kind.os}}
     needs: maybe_create_release
     env:
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: "cygpath -w"
+      COMPRESS_PORTABLE_FOLDER: ''
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
@@ -498,11 +503,11 @@ jobs:
       uses: ./.github/actions/build_toplevel
       with:
         name: ${{ matrix.kind.name }}
+        platform: ${{ matrix.kind.platform }}
         cmake_build_type: ${{ matrix.kind.build_type }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: ${{ matrix.kind.prepare }}
         python: ${{ matrix.kind.python }}
-        rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
         package_kind: ${{ matrix.kind.package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}

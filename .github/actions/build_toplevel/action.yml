@@ -12,10 +12,13 @@ inputs:
     description: "Which prepare function to call (see prepare action)"
   python:
     description: "Python command to use"
-  rename_wheel_sed:
-    description: "Sed command to use for renaming the built wheel"
+  platform:
+    description: "platform descriptor"
   package_kind:
     description: "Kind of package to build"
+  second_package_kind:
+    description: "Kind of package to build (additional)"
+    default: null
   coverage:
     description: "Whether to run coverage"
   upload_artifacts:
@@ -71,6 +74,7 @@ runs:
       echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
       echo "PIP=${{ inputs.python }} -m pip" | tee -a $GITHUB_ENV
       echo "PYTEST=${{ inputs.python }} -m pytest" | tee -a $GITHUB_ENV
+      echo "PLATFORM=${{ inputs.platform }}" | tee -a $GITHUB_ENV
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Install Qoverage
@@ -104,7 +108,7 @@ runs:
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
-    if: always()
+    if: always() && inputs.package_kind
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -117,6 +121,24 @@ runs:
     uses: ./.github/actions/build_package
     with:
       package_kind: ${{ inputs.package_kind }}
+      upload_release_assets: ${{ inputs.upload_release_assets }}
+      release_upload_assets_url: ${{ env.release_upload_assets_url }}
+  - uses: ./.github/actions/checkpoint
+    if: always()
+  - shell: wrap-shell {0}
+    if: always() && inputs.second_package_kind
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Build package: ${{ inputs.second_package_kind }}"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
+  - name: Build second package
+    id: package
+    if: always() && inputs.second_package_kind
+    uses: ./.github/actions/build_package
+    with:
+      package_kind: ${{ inputs.second_package_kind }}
       upload_release_assets: ${{ inputs.upload_release_assets }}
       release_upload_assets_url: ${{ env.release_upload_assets_url }}
   - uses: ./.github/actions/checkpoint
