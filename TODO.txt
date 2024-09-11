@@ -2,8 +2,8 @@ Fix the build pipelines
 
 Make sure debug information is dumped and saved correctly
 
-Make own PySide and Qt (or aqtinstall) for packaging in
-
 version number wrong in appimage
 
 Reintroduce crashpad handling
+
+Documentation about the external dependency download

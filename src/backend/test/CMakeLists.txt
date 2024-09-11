@@ -31,6 +31,7 @@ target_link_libraries(test_runner PRIVATE
                       fmt::fmt
                       Threads::Threads
                       Boost::headers
+                      Boost::system
                       ${ZITA_RESAMPLER_LIB})
 target_include_directories(test_runner
                         PRIVATE

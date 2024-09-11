@@ -140,7 +140,7 @@ endif ()
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW) # Use FindBoost as opposed to BoostConfig.cmake
 endif()
-find_package(Boost REQUIRED headers)
+find_package(Boost REQUIRED headers system)
 
 if (BACKEND_JACK)
   # Generate a wrapper for libjack which allows dynamic loading using dlopen
@@ -182,6 +182,7 @@ endif()
 # Find libzita-resampler
 find_library(ZITA_RESAMPLER_LIB zita-resampler)
 
+
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
@@ -201,6 +202,7 @@ target_link_libraries(shoopdaloop_internals PRIVATE
   fmt::fmt
   ${ZITA_RESAMPLER_LIB}
   Boost::headers
+  Boost::system
   )
 if (DEFINED PTHREADS4W_PATH)
   target_include_directories(shoopdaloop_internals PRIVATE ${PTHREADS4W_PATH})
@@ -224,7 +226,8 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "#include \"libshoopdaloop.h\""
 add_library(shoopdaloop SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
 target_link_libraries(shoopdaloop PRIVATE
    "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_internals>"
-   ${ZITA_RESAMPLER_LIB})
+   ${ZITA_RESAMPLER_LIB}
+   Threads::Threads)
 # create_breakpad_symbols_dump(shoopdaloop)
 
 if(UNIX)
