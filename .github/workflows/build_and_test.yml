@@ -11,7 +11,6 @@ on:
 env:
   checkpoints_enabled: true
   CONVERT_PATH_FN: "echo"
-  COMPRESS_TGZ: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
   COMPRESS_NONE: ''
 
 permissions:
@@ -100,7 +99,7 @@ jobs:
       options: ${{ matrix.container_options }}
     env:
       PATH_SEPARATOR: ":"
-      COMPRESS_PORTABLE_FOLDER: ${{ env.COMPRESS_TGZ }}
+      COMPRESS_PORTABLE_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
     needs: maybe_create_release
     #if: false
     steps:
@@ -231,7 +230,7 @@ jobs:
   #   needs: maybe_create_release
   #   env:
   #     PATH_SEPARATOR: ":"
-  #     COMPRESS_PORTABLE_FOLDER: ${{ env.COMPRESS_TGZ }}
+  #     COMPRESS_PORTABLE_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
   #   #if: false
   #   steps:
   #   - name: Checkout
@@ -352,7 +351,7 @@ jobs:
     #if: false
     env:
        PATH_SEPARATOR: ":"
-       COMPRESS_PORTABLE_FOLDER: ${{ env.COMPRESS_TGZ }}
+       COMPRESS_PORTABLE_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
     steps:
     - name: Checkout
       uses: actions/checkout@v4
