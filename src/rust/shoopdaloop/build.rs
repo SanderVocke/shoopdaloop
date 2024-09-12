@@ -142,13 +142,28 @@ fn main_impl() -> Result<(), anyhow::Error> {
                 .env("PYENV_ROOT", &pyenv_root_dir)
                 .status()
                 .with_context(|| format!("Failed to install Python using pyenv: {pyenv:?} {args:?}"))?;
-        let py_location = Command::new(&pyenv)
+        let py_location_output = Command::new(&pyenv)
                                      .args(&["prefix", &py_version])
                                      .env("PYENV_ROOT", &pyenv_root_dir)
                                      .output()
                                      .with_context(|| "Failed to get python location output using pyenv")?;
-        let py_location = std::str::from_utf8(&py_location.stdout)
-            .with_context(|| "Failed to parse python location output")?;
+        let mut py_location = String::from(std::str::from_utf8(&py_location_output.stdout)?);
+        if !py_location_output.status.success() {
+            let maybe_root = env::var("PYENV_ROOT");
+            if maybe_root.is_ok() {
+                let maybe_root = maybe_root.unwrap();
+                let root = Path::new(&maybe_root);
+                let maybe_py_location = root.join("versions").join(py_version);
+                if maybe_py_location.exists() {
+                    println!("pyenv prefix command failed. Using guessed prefix {maybe_py_location:?}");
+                    py_location = String::from(maybe_py_location.to_str().unwrap());
+                } else {
+                    return Err(anyhow::anyhow!("Could not find Python location in pyenv root"));
+                }
+            } else {
+                return Err(anyhow::anyhow!("Could not find Python location in pyenv root"));
+            }
+        }
         let py_location = py_location.trim();
         println!("Using Python from: {}. Installing to: {}", py_location, py_env_dir.to_str().unwrap());
         copy_dir(&py_location, &py_env_dir)
