@@ -34,13 +34,13 @@ pub fn get_dependency_libs (exe : &Path,
             .args(&args)
             .output()
             .with_context(|| "Failed to run list_dependencies")?;
-    if !list_deps_output.status.success() {
-        return Err(anyhow::anyhow!("list_dependencies returned nonzero exit code"));
-    }
     let command_output = std::str::from_utf8(&list_deps_output.stderr)?;
     let deps_output = std::str::from_utf8(&list_deps_output.stdout)?;
     println!("Command stderr:\n{}", command_output);
     println!("Command stdout:\n{}", deps_output);
+    if !list_deps_output.status.success() {
+        return Err(anyhow::anyhow!("list_dependencies returned nonzero exit code"));
+    }
 
     for line in deps_output.lines() {
         if line.trim().is_empty() {
