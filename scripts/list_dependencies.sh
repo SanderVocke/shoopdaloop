@@ -7,12 +7,12 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-OS=$(uname)
-if [[ "$OS" != "Linux" ]] && [[ "$(bash -c \"bash.exe -c 'echo hi'\" || true)" == "hi" ]]; then
-    OS=Windows
+MY_OS=$(uname)
+if [[ "$MY_OS" != "Linux" ]] && [[ "$OS" == Windows* ]]; then
+    MY_OS=Windows
 fi
 
-echo "OS: $OS" >&2
+echo "OS: $MY_OS" >&2
 
 # Get the executable path
 COMMAND=$@
@@ -26,20 +26,20 @@ EXECUTABLE=$1
 # echo "Note that all command output will be redirected to stderr so that stdout only contains the resulting libraries." >&2
 # echo "" >&2
 
-if [[ "$OS" == "Linux" ]]; then
+if [[ "$MY_OS" == "Linux" ]]; then
     # # Run strace to capture the dynamic library loads
     # strace -e openat -o $TRACE_OUTPUT -f $COMMAND 1>&2
     # RESULT=$?
     # cat $TRACE_OUTPUT | grep -E '.*\.so' | grep -v ENOENT | awk -F '"' '{print $2}' | sort -u > "$DEPENDENCIES"
     ldd $EXECUTABLE | grep "=>" | sed -r 's/.*=>[ ]*([^ ]+) .*/\1/g' | sort | uniq
-elif [[ "$OS" == "Darwin" ]]; then
+elif [[ "$MY_OS" == "Darwin" ]]; then
     # lldb -s <(printf "run\nimage list\nq\n") ${COMMAND%% *} -- ${COMMAND#* } | tee -a $TRACE_OUTPUT
     # cat $TRACE_OUTPUT | grep '.dylib' | awk 'NF>1{print $NF}' | sort -u > "$DEPENDENCIES"
     # DYLD_PRINT_LIBRARIES=1 $COMMAND 2>$TRACE_OUTPUT 1>&2
     # RESULT=$?
     # cat $TRACE_OUTPUT | grep 'dyld' | grep '.dylib' | awk 'NF>1{print $NF}' | sort -u > "$DEPENDENCIES"
     otool -L $EXECUTABLE | grep -v ':' | awk '{print $1}' | sort | uniq
-elif [[ "$OS" == "Windows" ]]; then
+elif [[ "$MY_OS" == "Windows" ]]; then
     # Dumpbin
     dumpbin /DEPENDENTS $EXECUTABLE | grep "DLL Name:" | awk '{print $3}' | sort | uniq
 fi
