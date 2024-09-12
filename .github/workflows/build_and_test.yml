@@ -491,7 +491,7 @@ jobs:
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: "cygpath -w"
       COMPRESS_PORTABLE_FOLDER: ''
-      # checkpoints_enabled: true
+      checkpoints_enabled: true
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
