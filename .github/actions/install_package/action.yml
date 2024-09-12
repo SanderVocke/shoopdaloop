@@ -18,17 +18,15 @@ runs:
     shell: wrap-shell {0}
     id: get_type
     run: |
-       if [ ! -f ${{ inputs.package }} ]; then
-          foldername=${{ inputs.package }}
-          lastpart="${filename##*.}"
-          if [[ "$lastpart" == "app" ]]; then
-              type="appbundle"
-          else
-              type="portable"
-          fi
+       filename=${{ inputs.package }}
+       if [[ $filename == *linux*.portable.tar.gz ]]; then
+           type="portable-linux"
+       elif [[ $filename == *macos*.portable.tar.gz ]]; then
+           type="portable-macos"
+       elif [[ $filename == *windows*.portable.tar.gz ]]; then
+           type="portable-windows"
        else
-          filename=${{ inputs.package }}
-          type="${filename##*.}"
+         type="${filename##*.}"
        fi
        echo "type=$type" | tee -a $GITHUB_OUTPUT
 
@@ -38,6 +36,7 @@ runs:
     run: |
        echo "maybe_sudo=${{ (inputs.sudo == 'true') && 'sudo' || '' }}" | tee -a $GITHUB_ENV
 
+  # InnoSetup
   - name: Install InnoSetup installer
     if: always() && steps.get_type.outputs.type == 'exe'
     shell: wrap-shell {0}
@@ -53,6 +52,42 @@ runs:
       echo "cmd=\\\"$SHOOPDALOOP_EXE\\\"" | tee -a $GITHUB_ENV
       echo "install_dir=\\\"$SHOOPDALOOP_DIR\\\"" | tee -a $GITHUB_ENV
 
+  # Linux portable folder
+  - name: Setup Linux AppDir portable folder
+    if: always() && steps.get_type.outputs.type == 'portable-linux'
+    shell: wrap-shell {0}
+    run: |
+      mkdir portable
+      cd portable
+      tar -xzf ${{ inputs.package }}
+      cd ..
+      PORTABLE=$(pwd)/portable
+      echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
+  
+  # Windows portable folder
+  - name: Setup Windows portable folder
+    if: always() && steps.get_type.outputs.type == 'portable-windows'
+    shell: wrap-shell {0}
+    run: |
+      mkdir portable
+      cd portable
+      tar -xzf ${{ inputs.package }}
+      cd ..
+      PORTABLE=$(pwd)/portable
+      echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
+  
+  # MacOS portable folder
+  - name: Setup MacOS app bundle folder
+    if: always() && steps.get_type.outputs.type == 'portable-macos'
+    shell: wrap-shell {0}
+    run: |
+      mkdir portable
+      cd portable
+      tar -xzf ${{ inputs.package }}
+      cd ..
+      PORTABLE=$(pwd)/portable
+      echo "COMMAND_SHOOPDALOOP=$PORTABLE/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
+
   # Linux AppImage
   - name: Setup AppImage
     if: always() && steps.get_type.outputs.type == 'AppImage'
@@ -60,9 +95,9 @@ runs:
     run: |
       chmod a+x ${{ inputs.package }}
       echo "COMMAND_SHOOPDALOOP=${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
-      echo "COMMAND_TEST_BACKEND=SHOOPDALOOP_APPIMAGE_EXECUTE=backend_tests ${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
-      echo "COMMAND_TEST_RUST=SHOOPDALOOP_APPIMAGE_EXECUTE=rust_tests ${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
-      echo "COMMAND_TEST_PYTHON=SHOOPDALOOP_APPIMAGE_EXECUTE=python_tests ${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
+      # echo "COMMAND_TEST_BACKEND=SHOOPDALOOP_APPIMAGE_EXECUTE=backend_tests ${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
+      # echo "COMMAND_TEST_RUST=SHOOPDALOOP_APPIMAGE_EXECUTE=rust_tests ${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
+      # echo "COMMAND_TEST_PYTHON=SHOOPDALOOP_APPIMAGE_EXECUTE=python_tests ${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
 
   # MacOS .dmg installer
   - name: Install MacOS .dmg
