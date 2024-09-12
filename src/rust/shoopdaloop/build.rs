@@ -141,7 +141,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
                 .args(args)
                 .env("PYENV_ROOT", &pyenv_root_dir)
                 .status()
-                .with_context(|| format!("Failed to install Python using pyenv: pyenv {args:?}"))?;
+                .with_context(|| format!("Failed to install Python using pyenv: {pyenv:?} {args:?}"))?;
         let py_location = Command::new("pyenv")
                                      .args(&["prefix", &py_version])
                                      .env("PYENV_ROOT", &pyenv_root_dir)
