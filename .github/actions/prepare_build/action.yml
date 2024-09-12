@@ -82,6 +82,7 @@ runs:
         echo "CFLAGS=$CFLAGS -I${INCLUDE_PATH}" | tee -a $GITHUB_ENV
         echo "CXXFLAGS=$CXXFLAGS -I${INCLUDE_PATH}" | tee -a $GITHUB_ENV
         echo "CPPFLAGS=$CPPFLAGS -I${INCLUDE_PATH}" | tee -a $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${LIB_PATH}" | tee -a $GITHUB_ENV
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'

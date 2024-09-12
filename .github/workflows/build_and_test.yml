@@ -99,6 +99,7 @@ jobs:
     env:
       PATH_SEPARATOR: ":"
       COMPRESS_PORTABLE_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
+      checkpoints_enabled: true
     needs: maybe_create_release
     #if: false
     steps:
