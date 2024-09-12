@@ -11,6 +11,7 @@ on:
 env:
   checkpoints_enabled: false
   CONVERT_PATH_FN: "echo"
+  RUST_BACKTRACE: "1"
 
 permissions:
   contents: write

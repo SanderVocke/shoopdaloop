@@ -41,8 +41,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
         _ => false
     };
 
-    println!("HELLO {:?} {}", env::var("CARGO_BIN_NAME"), build_whole_library );
-
     if !["debug", "release"].contains(&profile.as_str()) {
         return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
     }
@@ -218,7 +216,10 @@ fn main_impl() -> Result<(), anyhow::Error> {
     println!("cargo:rustc-link-search=native={}", shoop_lib_dir.to_str().unwrap());
     println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,--no-as-needed");
     println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-lshoopdaloop_backend");
-    println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");
+    #[cfg(target_os = "linux")]
+    {
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");
+    }
     println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
 
     // Set RPATH

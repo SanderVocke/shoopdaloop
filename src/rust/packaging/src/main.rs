@@ -44,9 +44,21 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
 
     let exe = std::env::current_exe()?;
     let exe_dir = exe.parent().ok_or(anyhow::anyhow!("Unable to find exe dir"))?;
-    let main_exe = exe_dir.join("shoopdaloop");
-    let dev_exe = exe_dir.join("shoopdaloop_dev");
-    let print_out_dir_exe = exe_dir.join("print_out_dir");
+    let main_exe : PathBuf;
+    let dev_exe : PathBuf;
+    let print_out_dir_exe : PathBuf;
+    #[cfg(target_os = "windows")]
+    {
+        main_exe = exe_dir.join("shoopdaloop.exe");
+        dev_exe = exe_dir.join("shoopdaloop_dev.exe");
+        print_out_dir_exe = exe_dir.join("print_out_dir.exe");
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        main_exe = exe_dir.join("shoopdaloop");
+        dev_exe = exe_dir.join("shoopdaloop_dev");
+        print_out_dir_exe = exe_dir.join("print_out_dir");
+    }
 
     let out_dir = Command::new(print_out_dir_exe)
                               .output()

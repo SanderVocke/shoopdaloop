@@ -20,7 +20,8 @@ fn populate_folder(
     println!("Using source path {src_path:?}");
 
     println!("Bundling executable...");
-    std::fs::copy(exe_path, folder.join("shoopdaloop.exe"))?;
+    std::fs::copy(exe_path, folder.join("shoopdaloop.exe"))
+        .with_context(|| format!("Failed to copy {exe_path:?} to {folder:?}"))?;
 
     println!("Bundling shoop_lib...");
     let lib_dir = folder.join("shoop_lib");
