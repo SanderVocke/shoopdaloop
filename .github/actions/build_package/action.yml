@@ -142,7 +142,7 @@ runs:
         --hide-extension "shoopdaloop.app" \
         --app-drop-link 600 185 \
         $DMGFILE \
-        ${{ inputs.input_path }}
+        ${{ env.PORTABLE_DIR }}
       cp $DMGFILE $RELEASE_DMGFILE
 
       echo "BUILT_PACKAGE=$DMGFILE" | tee -a $GITHUB_ENV

@@ -28,11 +28,13 @@ echo "" >&2
 if [[ "$OS" == "Linux" ]]; then
     # Run strace to capture the dynamic library loads
     strace -e openat -o $TRACE_OUTPUT -f $COMMAND 1>&2
+    RESULT=$?
     cat $TRACE_OUTPUT | grep -E '.*\.so' | grep -v ENOENT | awk -F '"' '{print $2}' | sort -u > "$DEPENDENCIES"
 elif [[ "$OS" == "Darwin" ]]; then
     # lldb -s <(printf "run\nimage list\nq\n") ${COMMAND%% *} -- ${COMMAND#* } | tee -a $TRACE_OUTPUT
     # cat $TRACE_OUTPUT | grep '.dylib' | awk 'NF>1{print $NF}' | sort -u > "$DEPENDENCIES"
     DYLD_PRINT_LIBRARIES=1 $COMMAND 2>$TRACE_OUTPUT 1>&2
+    RESULT=$?
     cat $TRACE_OUTPUT | grep 'dyld' | grep '.dylib' | awk 'NF>1{print $NF}' | sort -u > "$DEPENDENCIES"
 fi
 
@@ -46,3 +48,4 @@ cat "$DEPENDENCIES"
 
 # Cleanup
 rm -f "$TRACE_OUTPUT" "$DEPENDENCIES"
+exit $RESULT
