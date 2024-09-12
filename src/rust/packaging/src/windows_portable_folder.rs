@@ -52,7 +52,7 @@ fn populate_folder(
         println!("  Bundling {}", lib.to_str().unwrap());
         std::fs::copy(
             lib.clone(),
-            dynlib_dir.clone().join(lib.file_name().unwrap())
+            dynlib_dir.join(lib.file_name().unwrap())
         )?;
     }
 

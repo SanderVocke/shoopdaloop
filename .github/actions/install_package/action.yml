@@ -61,7 +61,7 @@ runs:
       cd portable
       tar -xzf ${{ inputs.package }}
       cd ..
-      PORTABLE=$(pwd)/portable
+      PORTABLE=$(pwd)/portable/*
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
       echo "COMMAND_TEST_BACKEND=$PORTABLE/backend_tests" | tee -a $GITHUB_ENV
       echo "COMMAND_TEST_RUST=$PORTABLE/rust_tests" | tee -a $GITHUB_ENV
@@ -76,7 +76,7 @@ runs:
       cd portable
       tar -xzf ${{ inputs.package }}
       cd ..
-      PORTABLE=$(pwd)/portable
+      PORTABLE=$(pwd)/portable/*
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
   
   # MacOS portable folder
@@ -88,7 +88,7 @@ runs:
       cd portable
       tar -xzf ${{ inputs.package }}
       cd ..
-      PORTABLE=$(pwd)/portable
+      PORTABLE=$(pwd)/portable/*
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
 
   # Linux AppImage
