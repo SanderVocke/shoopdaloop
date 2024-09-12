@@ -214,7 +214,10 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
     // Link to libshoopdaloop_backend
     println!("cargo:rustc-link-search=native={}", shoop_lib_dir.to_str().unwrap());
-    println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,--no-as-needed");
+    #[cfg(target_os = "linux")]
+    {
+        println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,--no-as-needed");
+    }
     println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-lshoopdaloop_backend");
     #[cfg(target_os = "linux")]
     {
