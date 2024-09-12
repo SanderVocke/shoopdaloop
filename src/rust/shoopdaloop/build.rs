@@ -214,6 +214,14 @@ fn main_impl() -> Result<(), anyhow::Error> {
     println!("Setting PYO3_PYTHON to {}", py_env_python.to_str().unwrap());
     env::set_var("PYO3_PYTHON", py_env_python.to_str().unwrap());
 
+    // Link to libshoopdaloop_backend
+    // println!("cargo:rustc-link-search=native={}", shoop_lib_dir.to_str().unwrap());
+    // println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-lshoopdaloop_backend");
+    // println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-lshoopdaloop_backend");
+    // println!("cargo:rustc-link-lib=shoopdaloop_backend");
+    // println!("cargo:rustc-link-arg=-Wl,--no-as-needed");
+    // println!("cargo:rustc-link-arg=-Wl,--no-as-needed");
+
     // Set RPATH
     println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib"); // For builtin libraries
     println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib/py/lib"); // For Python library
@@ -222,11 +230,12 @@ fn main_impl() -> Result<(), anyhow::Error> {
     println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/lib"); // For bundled dependency libraries
 
     // Link to dev folders
-    println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}/..", py_env_dir.to_str().unwrap()); // For builtin libraries
-    println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}/lib", py_env_dir.to_str().unwrap()); // For Python library
+    println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}/..", py_env_dir.to_str().unwrap());
+    println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}/lib", py_env_dir.to_str().unwrap());
     println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}/{}/PySide6/Qt/lib",
         py_env_dir.to_str().unwrap(),
         py_env_to_site_packages.to_str().unwrap()); // For the Qt distribution that comes with PySide6
+    println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", shoop_lib_dir.to_str().unwrap());
 
     // Rebuild if changed
     println!("cargo:rerun-if-changed=build.rs");

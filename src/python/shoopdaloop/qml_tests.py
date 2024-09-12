@@ -33,7 +33,7 @@ def run_qml_tests(args):
     import json
     from xml.dom import minidom
 
-    from libshoopdaloop_bindings import set_global_logging_level, log_level_error
+    from libshoopdaloop_backend_bindings import set_global_logging_level, log_level_error
     from shoopdaloop.lib.qml_helpers import register_qml_class
     from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
     from shoopdaloop.lib.logging import Logger

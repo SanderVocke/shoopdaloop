@@ -48,7 +48,7 @@
 */libpthread.so.0
 */libresolv.so.2
 */librt.so.1
-*/libshoopdaloop.so
+*/libshoopdaloop_backend.so
 */libstdc++.so.6
 */libthread_db.so.1
 */libusb-1.0.so.0

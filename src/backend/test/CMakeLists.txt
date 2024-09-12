@@ -26,7 +26,7 @@ endif()
 
 add_executable(test_runner ${TEST_RUNNER_SOURCES})
 target_link_libraries(test_runner PRIVATE
-                      shoopdaloop_internals
+                      shoopdaloop_backend_internals
                       Catch2::Catch2WithMain
                       fmt::fmt
                       Threads::Threads

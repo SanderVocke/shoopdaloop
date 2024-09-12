@@ -1,5 +1,5 @@
 name: Back-end Tests
-description: Unit tests for libshoopdaloop
+description: Unit tests for libshoopdaloop_backend
 
 runs:
   using: "composite"

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_ARCHITECTURES "${ARCHS_STANDARD}") # Enables a universal build on MacOS where possible
-project(shoopdaloop)
+project(shoopdaloop_backend)
 
 # Set up language settings
 set(CMAKE_CXX_STANDARD 20)
@@ -197,30 +197,30 @@ include_directories(${CMAKE_SOURCE_DIR}/third_party/nlohmann_json)
 
 add_subdirectory(test)
 
-add_library(shoopdaloop_internals STATIC libshoopdaloop.cpp ${INTERNAL_SOURCES})
-set_target_properties(shoopdaloop_internals PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(shoopdaloop_internals
+add_library(shoopdaloop_backend_internals STATIC libshoopdaloop_backend.cpp ${INTERNAL_SOURCES})
+set_target_properties(shoopdaloop_backend_internals PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(shoopdaloop_backend_internals
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
                         )
-target_link_libraries(shoopdaloop_internals PRIVATE
+target_link_libraries(shoopdaloop_backend_internals PRIVATE
   Threads::Threads
   fmt::fmt
   ${ZITA_RESAMPLER_LIB}
   Boost::headers
   )
 if (WIN32)
-  target_link_libraries(shoopdaloop_internals PRIVATE Boost::system)
+  target_link_libraries(shoopdaloop_backend_internals PRIVATE Boost::system)
 endif()
 if (DEFINED PTHREADS4W_PATH)
-  target_include_directories(shoopdaloop_internals PRIVATE ${PTHREADS4W_PATH})
+  target_include_directories(shoopdaloop_backend_internals PRIVATE ${PTHREADS4W_PATH})
 endif()
 if (UNIX)
-    target_link_libraries(shoopdaloop_internals PUBLIC dl)
+    target_link_libraries(shoopdaloop_backend_internals PUBLIC dl)
 endif()
 if (HAVE_LV2)
-  target_include_directories(shoopdaloop_internals
+  target_include_directories(shoopdaloop_backend_internals
                           PRIVATE
                           ${CMAKE_SOURCE_DIR}/third_party/lv2_evbuf
                           ${LV2_INCLUDE_DIRS}
@@ -228,54 +228,54 @@ if (HAVE_LV2)
                           )
 endif()
 if (BACKEND_JACK)
-  target_include_directories(shoopdaloop_internals PRIVATE ${JACK_INCLUDE_DIRS})
+  target_include_directories(shoopdaloop_backend_internals PRIVATE ${JACK_INCLUDE_DIRS})
 endif()
 
-file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "#include \"libshoopdaloop.h\"")
-add_library(shoopdaloop SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
-target_link_libraries(shoopdaloop PRIVATE
-   "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_internals>"
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "#include \"libshoopdaloop_backend.h\"")
+add_library(shoopdaloop_backend SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
+target_link_libraries(shoopdaloop_backend PRIVATE
+   "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_backend_internals>"
    ${ZITA_RESAMPLER_LIB}
    Threads::Threads)
 if (WIN32)
-   target_link_libraries(shoopdaloop PRIVATE Boost::system)
+   target_link_libraries(shoopdaloop_backend PRIVATE Boost::system)
 endif()
-# create_breakpad_symbols_dump(shoopdaloop)
+# create_breakpad_symbols_dump(shoopdaloop_backend)
 
 if(UNIX)
-  set_target_properties(shoopdaloop PROPERTIES
+  set_target_properties(shoopdaloop_backend PROPERTIES
     INSTALL_RPATH "$ORIGIN/"  # Load .so's from same directory
   )
 elseif(APPLE)
-  set_target_properties(shoopdaloop PROPERTIES
+  set_target_properties(shoopdaloop_backend PROPERTIES
       BUILD_WITH_INSTALL_RPATH TRUE
       INSTALL_RPATH "@loader_path/"  # Load dylibs from same directory
   )
 endif()
 
-install(TARGETS shoopdaloop
+install(TARGETS shoopdaloop_backend
         DESTINATION .)
 
 if (OVERRIDE_COMPILE_LOG_LEVEL STREQUAL "")
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Building in debug mode. Using compile time log level for back-end: LOG_LEVEL_DEBUG_TRACE")
-    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG_TRACE)
+    target_compile_definitions(shoopdaloop_backend_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_DEBUG_TRACE)
   else()
     message("Building in non-debug mode. Disabling trace messages. Using compile time log level for back-end: LOG_LEVEL_ALWAYS_TRACE")
-    target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_ALWAYS_TRACE)
+    target_compile_definitions(shoopdaloop_backend_internals PUBLIC -DCOMPILE_LOG_LEVEL=LOG_LEVEL_ALWAYS_TRACE)
   endif()
 else()
   message(WARNING "Using overridden compile time log level for back-end: ${OVERRIDE_COMPILE_LOG_LEVEL}")
-  target_compile_definitions(shoopdaloop_internals PUBLIC -DCOMPILE_LOG_LEVEL=${OVERRIDE_COMPILE_LOG_LEVEL})
+  target_compile_definitions(shoopdaloop_backend_internals PUBLIC -DCOMPILE_LOG_LEVEL=${OVERRIDE_COMPILE_LOG_LEVEL})
 endif()
 
-# Generate libshoopdaloop Python bindings into source dir
-set(GENERATED_BINDINGS_PY ${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop_bindings.py)
+# Generate libshoopdaloop_backend Python bindings into source dir
+set(GENERATED_BINDINGS_PY ${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop_backend_bindings.py)
 add_custom_command(
   OUTPUT ${GENERATED_BINDINGS_PY}
-  COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 ${CTYPESGEN_COMMAND} --no-macro-warnings -lshoopdaloop ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/types.h -o ${GENERATED_BINDINGS_PY}
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop.cpp shoopdaloop
-  COMMENT "Generating C bindings for libshoopdaloop."
+  COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 ${CTYPESGEN_COMMAND} --no-macro-warnings -lshoopdaloop_backend ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop_backend.h ${CMAKE_CURRENT_SOURCE_DIR}/types.h -o ${GENERATED_BINDINGS_PY}
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop_backend.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop_backend.cpp shoopdaloop_backend
+  COMMENT "Generating C bindings for libshoopdaloop_backend."
   )
 add_custom_target(
   c_bindings

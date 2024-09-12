@@ -26,11 +26,14 @@ fn main() {
     let pythonpath_to_src = std::fs::canonicalize(
         shoop_src_root_dir.join("src/python")).unwrap();
     let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
-    let pythonpath = format!("{}{sep}{}{sep}{}{sep}{}",
+    let pythonpath = format!("{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}",
+                         pythonpath_to_src.to_str().unwrap(),
                          pythonpath_to_venv.to_str().unwrap(),
                          pythonpath_to_venv.parent().unwrap().to_str().unwrap(),
+                         pythonpath_to_venv.parent().unwrap().join("lib-dynload").to_str().unwrap(),
+                         pythonpath_to_venv.parent().unwrap().join("importlib").to_str().unwrap(),
                          shoop_lib_dir.to_str().unwrap(),
-                         pythonpath_to_src.to_str().unwrap(),);
+                         );
     println!("using PYTHONPATH: {}", pythonpath.as_str());
     env::set_var("PYTHONPATH", pythonpath.as_str());
 

@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "libshoopdaloop_test_if.h"
-#include "libshoopdaloop.h"
+#include "libshoopdaloop_backend.h"
 #include <memory>
 #include "types.h"
 

@@ -1,7 +1,7 @@
 #pragma once
 #include <memory>
 #include <set>
-#include "libshoopdaloop.h"
+#include "libshoopdaloop_backend.h"
 #include "GraphPort.h"
 #include "GraphLoopChannel.h"
 #include "BackendSession.h"

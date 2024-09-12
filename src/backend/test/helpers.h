@@ -6,7 +6,7 @@
 #include "LoggingBackend.h"
 #include "midi_helpers.h"
 #include "types.h"
-#include "libshoopdaloop.h"
+#include "libshoopdaloop_backend.h"
 
 #include <sstream>
 #include <vector>

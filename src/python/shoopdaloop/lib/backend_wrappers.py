@@ -29,7 +29,7 @@ os.environ['PATH'] = os.environ['PATH'] + os.pathsep + shoop_dynlib_dir
 # Ensure we can find all dependency back-end dynamic libraries
 sys.path.append(shoop_dynlib_dir)
 
-bindings = importlib.import_module('libshoopdaloop_bindings')
+bindings = importlib.import_module('libshoopdaloop_backend_bindings')
 
 intmax = 2**31-1
 intmin = -intmax - 1

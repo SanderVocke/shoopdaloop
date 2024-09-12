@@ -1,7 +1,7 @@
-// This file implements the libshoopdaloop C API. It is also where
+// This file implements the libshoopdaloop_backend C API. It is also where
 // internal C++ objects are tied together at the highest level.
 
-#include "libshoopdaloop.h"
+#include "libshoopdaloop_backend.h"
 #include "ExternalUIInterface.h"
 #include "GraphAudioPort.h"
 #include "GraphMidiPort.h"

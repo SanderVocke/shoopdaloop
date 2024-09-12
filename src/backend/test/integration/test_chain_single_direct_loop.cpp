@@ -11,7 +11,7 @@
 #include <limits>
 #include <memory>
 #include "libshoopdaloop_test_if.h"
-#include "libshoopdaloop.h"
+#include "libshoopdaloop_backend.h"
 #include "shoop_globals.h"
 #include <iostream>
 #include <thread>

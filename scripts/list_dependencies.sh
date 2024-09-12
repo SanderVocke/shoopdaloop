@@ -8,7 +8,7 @@ if [ $# -lt 1 ]; then
 fi
 
 OS=$(uname)
-if [[ "$OS" != "Linux" ]] && [[ "$(bash.exe -c 'echo hi')" == "hi" ]]; then
+if [[ "$OS" != "Linux" ]] && [[ "$(bash -c \"bash.exe -c 'echo hi'\" || true)" == "hi" ]]; then
     OS=Windows
 fi
 

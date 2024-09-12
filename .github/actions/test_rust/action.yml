@@ -1,5 +1,5 @@
 name: Rust tests
-description: Unit tests for libshoopdaloop
+description: Unit tests for libshoopdaloop_backend
 
 inputs:
   variant_name:
