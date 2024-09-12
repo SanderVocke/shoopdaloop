@@ -215,12 +215,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
     env::set_var("PYO3_PYTHON", py_env_python.to_str().unwrap());
 
     // Link to libshoopdaloop_backend
-    // println!("cargo:rustc-link-search=native={}", shoop_lib_dir.to_str().unwrap());
-    // println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-lshoopdaloop_backend");
-    // println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-lshoopdaloop_backend");
-    // println!("cargo:rustc-link-lib=shoopdaloop_backend");
-    // println!("cargo:rustc-link-arg=-Wl,--no-as-needed");
-    // println!("cargo:rustc-link-arg=-Wl,--no-as-needed");
+    println!("cargo:rustc-link-search=native={}", shoop_lib_dir.to_str().unwrap());
+    println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,--no-as-needed");
+    println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-lshoopdaloop_backend");
+    println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");
+    println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
 
     // Set RPATH
     println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib"); // For builtin libraries
