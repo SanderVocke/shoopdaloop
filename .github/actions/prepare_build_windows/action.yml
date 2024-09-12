@@ -61,7 +61,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       powershell -Command "Invoke-WebRequest -UseBasicParsing -Uri \"https://raw.githubusercontent.com/pyenv-win/pyenv-win/master/pyenv-win/install-pyenv-win.ps1\" -OutFile \"./install-pyenv-win.ps1\"; &\"./install-pyenv-win.ps1\""
-      echo "PYENV=$(cygpath -w /c/Users/runneradmin/.pyenv/pyenv-win/bin/pyenv)" | tee -a $GITHUB_ENV
+      echo "PYENV=$(cygpath -w /c/Users/runneradmin/.pyenv/pyenv-win/bin/pyenv.bat)" | tee -a $GITHUB_ENV
 
   - name: Remove GNU link which aliases with MSVC
     if: always()
