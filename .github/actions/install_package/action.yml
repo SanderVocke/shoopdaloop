@@ -63,6 +63,9 @@ runs:
       cd ..
       PORTABLE=$(pwd)/portable
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_BACKEND=$PORTABLE/backend_tests" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_RUST=$PORTABLE/rust_tests" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_PYTHON=$PORTABLE/python_tests" | tee -a $GITHUB_ENV
   
   # Windows portable folder
   - name: Setup Windows portable folder
