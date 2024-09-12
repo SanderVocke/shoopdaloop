@@ -122,7 +122,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
               .with_context(|| format!("Failed to remove Py env: {:?}", &py_env_dir))?;
         }
         if !pyenv_root_dir.exists() {
-            std::fs::create_dir(&pyenv_root_dir);
+            std::fs::create_dir(&pyenv_root_dir)?;
         }
 
         // Create a env in OUT_DIR
@@ -136,7 +136,8 @@ fn main_impl() -> Result<(), anyhow::Error> {
         let py_version = py_version.trim();
         println!("Using pyenv to install {} to {}...", py_version, pyenv_root_dir.to_str().unwrap());
         let args = &["install", "--skip-existing", py_version];
-        Command::new("pyenv")
+        let pyenv = env::var("PYENV").unwrap_or(String::from("pyenv"));
+        Command::new(pyenv)
                 .args(args)
                 .env("PYENV_ROOT", &pyenv_root_dir)
                 .status()
