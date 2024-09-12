@@ -3,6 +3,8 @@
 inputs:
   package:
     description: "Package artifact to install"
+  second_package:
+    description: "Second package artifact to install"
   asan:
     description: "Whether to enable ASAN"
   coverage:

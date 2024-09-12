@@ -59,6 +59,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("Building back-end...");
         let _ = Config::new(cmake_backend_dir)
             .out_dir(out_dir.join("cmake_build"))
+            .generator("Ninja")
             .configure_arg(format!("-DCMAKE_INSTALL_PREFIX={}",shoop_lib_dir.to_str().unwrap()))
             .build();
 
