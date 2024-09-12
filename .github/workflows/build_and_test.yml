@@ -176,6 +176,8 @@ jobs:
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
+    env:
+      checkpoints_enabled: true
     steps:
     - name: Checkout
       uses: actions/checkout@v4
