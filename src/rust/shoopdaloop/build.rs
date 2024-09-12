@@ -102,7 +102,15 @@ fn main_impl() -> Result<(), anyhow::Error> {
     let wheel_hash = file_hash(&wheel).unwrap();
     let prev_wheel_file = out_dir.join("py_wheel_hash");
     let py_env_dir = Path::new(&out_dir).join("shoop_pyenv");
-    let py_env_python = py_env_dir.join("bin").join("python");
+    let py_env_python : PathBuf;
+    #[cfg(target_os = "windows")]
+    {
+        py_env_python = py_env_dir.join("python.exe").to_owned();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        py_env_python = py_env_dir.join("bin").join("python").to_owned();
+    }
     let pyenv_root_dir = Path::new(&out_dir).join("pyenv_root");
 
     let mut rebuild_env = build_whole_library;
