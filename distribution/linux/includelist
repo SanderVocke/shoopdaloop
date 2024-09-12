@@ -190,3 +190,4 @@
 */libxshmfence.so.1
 */libxvidcore.so.4
 */libzstd.so.1
+*/libzita-resampler.so*
