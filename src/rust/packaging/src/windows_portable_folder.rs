@@ -45,7 +45,6 @@ fn populate_folder(
 
     println!("Bundling dependencies...");
     let dynlib_dir = folder;
-    std::fs::create_dir(&dynlib_dir)?;
     let excludelist_path = src_path.join("distribution/windows/excludelist");
     let includelist_path = src_path.join("distribution/windows/includelist");
     let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path, ".exe", false)?;
