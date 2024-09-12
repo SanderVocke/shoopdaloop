@@ -137,7 +137,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("Using pyenv to install {} to {}...", py_version, pyenv_root_dir.to_str().unwrap());
         let args = &["install", "--skip-existing", py_version];
         let pyenv = env::var("PYENV").unwrap_or(String::from("pyenv"));
-        Command::new(pyenv)
+        Command::new(&pyenv)
                 .args(args)
                 .env("PYENV_ROOT", &pyenv_root_dir)
                 .status()
