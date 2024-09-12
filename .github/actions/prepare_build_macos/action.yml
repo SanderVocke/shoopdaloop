@@ -32,8 +32,6 @@ runs:
     shell: wrap-shell {0}
     run: |
       curl https://pyenv.run | bash
-      echo "PYENV=$HOME/.pyenv/bin/pyenv" | tee -a $GITHUB_ENV
-      echo "PYENV_ROOT=$HOME/.pyenv" | tee -a $GITHUB_ENV
   - name: Symlink Qt include folders
     shell: wrap-shell {0}
     if: always()
