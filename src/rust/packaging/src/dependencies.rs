@@ -57,7 +57,7 @@ pub fn get_dependency_libs (files : &[&Path],
     {
         command = String::from("sh");
         let commandstr : String = format!(
-            "for f in {files_str}; do otool -L {exe_str} | grep -v ':' | awk '{print $1}'; done | xargs -n1 realpath | sort | uniq");
+            "for f in {files_str}; do otool -L $f | grep -v ':' | awk '{{print $1}}'; done | xargs -n1 realpath | sort | uniq");
         args = vec!(String::from("-c"), commandstr);
     }
     println!("Running command for determining dependencies: {} {}", &command, args.join(" "));
