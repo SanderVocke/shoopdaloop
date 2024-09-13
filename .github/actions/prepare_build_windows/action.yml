@@ -56,7 +56,7 @@ runs:
     shell: wrap-shell {0}
     run: |
        curl -L https://github.com/lucasg/Dependencies/releases/download/v1.11.1/Dependencies_x64_Release.zip --output dependencies.zip
-       unzip dependencies.zip dependencies
+       unzip dependencies.zip -d dependencies
        echo "$(cygpath -w $(pwd)/dependencies)" | tee -a $GITHUB_PATH
 
   - name: Setup MSVC
