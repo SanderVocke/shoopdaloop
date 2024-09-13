@@ -21,7 +21,16 @@ pub fn get_dependency_libs (exe : &Path,
     let includes : HashSet<&str> = includelist.lines().collect();
     let mut used_includes : HashSet<String> = HashSet::new();
 
-    let command = "bash";
+
+    let command : String;
+    #[cfg(target_os = "windows")]
+    {
+        command = String::from("bash.exe");
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        command = String::from("bash");
+    }
     let list_deps_script = src_dir.join("scripts/list_dependencies.sh");
     let args = [
         list_deps_script.to_str().unwrap(),
@@ -29,8 +38,8 @@ pub fn get_dependency_libs (exe : &Path,
         "-b", "dummy",
         "--quit-after", "1"
     ];
-    println!("Running command for determining dependencies: {} {}", command, args.join(" "));
-    let list_deps_output = Command::new(command)
+    println!("Running command for determining dependencies: {} {}", &command, args.join(" "));
+    let list_deps_output = Command::new(&command)
             .args(&args)
             .output()
             .with_context(|| "Failed to run list_dependencies")?;
