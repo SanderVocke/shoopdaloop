@@ -31,14 +31,13 @@ pub fn get_dependency_libs (exe : &Path,
         let commandstr : String = format!(
            "$output = & Dependencies.exe -modules {exe_str} | Sort-Object | Get-Unique;
             $dllNames = $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
-            Where-Object | {{ -not ($_ -match \".exe\") }} |  ForEach-Object {{
+            Where-Object {{ -not ($_ -match \".exe\") }} |  ForEach-Object {{
                 $_.Trim() -split '\\s+' | Select-Object -Last 1
             }} | Sort-Object | Get-Unique;
             Write-Error \"Raw results:\";
             Write-Error \"$output\";
             Write-Error \"Dependencies:\"
             $dllNames");
-        println!("SCRIPT:   \n{commandstr}");
         args = vec!(String::from("-Command"), commandstr);
     }
     #[cfg(not(target_os = "windows"))]
