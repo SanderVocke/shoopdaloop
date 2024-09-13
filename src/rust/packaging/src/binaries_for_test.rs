@@ -39,7 +39,7 @@ fn populate_folder(
                         ])
                 .status()?;
     }
-    #[cfg(target_os = "mac")]
+    #[cfg(target_os = "macos")]
     {
         nextest_path = folder.join("cargo-nextest");
         Command::new("sh")

@@ -127,12 +127,12 @@ pub fn build_appbundle(
 ) -> Result<(), anyhow::Error> {
     println!("Assets directory: {:?}", shoop_built_out_dir);
 
-    if output_dir.exists()? {
+    if output_dir.exists() {
         return Err(anyhow::anyhow!("Output directory {:?} already exists", output_dir));
     }
     if !output_dir.parent()
         .ok_or(anyhow::anyhow!("Cannot find parent of {output_dir:?}"))?
-        .exists()? {
+        .exists() {
         return Err(anyhow::anyhow!("Output directory {:?}: parent doesn't exist", output_dir));
     }
     println!("Creating app bundle directory...");

@@ -89,6 +89,7 @@ pub fn get_dependency_libs (files : &[&Path],
                     &s.replace(".", "\\.")
                     .replace("*", ".*")
                     .replace("+", "\\+")
+                    .replace("\\", "\\\\")
                 ).unwrap().is_match(p);
             let in_excludes = excludes.iter().any(|e| pattern_match(e, path_str));
             let in_includes = includes.iter().any(|e| pattern_match(e, path_str));
