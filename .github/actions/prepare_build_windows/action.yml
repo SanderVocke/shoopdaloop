@@ -59,6 +59,12 @@ runs:
        unzip dependencies.zip -d dependencies
        echo "$(cygpath -w $(pwd)/dependencies)" | tee -a $GITHUB_PATH
 
+  - name: Allow running powershell scripts
+    if: always()
+    shell: pwsh
+    run: |
+       Set-ExecutionPolicy Unrestricted -Scope CurrentUser
+
   - name: Setup MSVC
     if: always()
     uses: TheMrMilchmann/setup-msvc-dev@v3
