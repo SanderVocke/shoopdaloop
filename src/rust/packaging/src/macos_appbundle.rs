@@ -22,6 +22,11 @@ fn populate_appbundle(
     let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     println!("Using source path {src_path:?}");
 
+    let dynlib_dir = appdir.join("lib");
+    let excludelist_path = src_path.join("distribution/macos/excludelist");
+    let includelist_path = src_path.join("distribution/macos/includelist");
+    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path, ".dylib", true)?;
+
     println!("Creating directories...");
     for directory in [
         "Contents",
@@ -56,11 +61,7 @@ fn populate_appbundle(
     }
 
     println!("Bundling dependencies...");
-    let dynlib_dir = appdir.join("lib");
     std::fs::create_dir(&dynlib_dir)?;
-    let excludelist_path = src_path.join("distribution/macos/excludelist");
-    let includelist_path = src_path.join("distribution/macos/includelist");
-    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path, ".dylib", true)?;
     let re = Regex::new(r"(.*/.*.framework)/.*").unwrap();
     let mut set: HashSet<PathBuf> = HashSet::new();
     for lib in libs {

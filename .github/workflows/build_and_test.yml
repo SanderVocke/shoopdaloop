@@ -377,6 +377,7 @@ jobs:
         python: python3.9
         appbundle: ${{ matrix.kind.appbundle }}
         package_kind: ${{ matrix.kind.package_kind }}
+        second_package_kind: ${{ matrix.kind.second_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
         # Also remove the double dot if any.
@@ -478,6 +479,7 @@ jobs:
             prepare: 'windows'
             release_build: true
             package_kind: portable_folder
+            second_package_kind: innosetup
             upload_release_assets: true
             platform: windows-msvc-x64
           # - name: windows_debug
@@ -517,6 +519,7 @@ jobs:
         prepare_kind: ${{ matrix.kind.prepare }}
         python: ${{ matrix.kind.python }}
         package_kind: ${{ matrix.kind.package_kind }}
+        second_package_kind: ${{ matrix.kind.second_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
     - uses: ./.github/actions/checkpoint

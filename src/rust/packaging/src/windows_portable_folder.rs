@@ -19,6 +19,11 @@ fn populate_folder(
     let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     println!("Using source path {src_path:?}");
 
+    let dynlib_dir = folder;
+    let excludelist_path = src_path.join("distribution/windows/excludelist");
+    let includelist_path = src_path.join("distribution/windows/includelist");
+    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path, ".dll", false)?;
+
     println!("Bundling executable...");
     std::fs::copy(exe_path, folder.join("shoopdaloop.exe"))
         .with_context(|| format!("Failed to copy {exe_path:?} to {folder:?}"))?;
@@ -44,10 +49,6 @@ fn populate_folder(
     }
 
     println!("Bundling dependencies...");
-    let dynlib_dir = folder;
-    let excludelist_path = src_path.join("distribution/windows/excludelist");
-    let includelist_path = src_path.join("distribution/windows/includelist");
-    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path, ".exe", false)?;
     for lib in libs {
         println!("  Bundling {}", lib.to_str().unwrap());
         std::fs::copy(

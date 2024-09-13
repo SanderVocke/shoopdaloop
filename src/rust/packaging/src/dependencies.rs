@@ -29,17 +29,16 @@ pub fn get_dependency_libs (exe : &Path,
         command = String::from("powershell.exe");
         let exe_str = exe.to_str().unwrap();
         let commandstr : String = format!(
-            "powershell.exe -Command \"                                                                         \
-                 $output = & Dependencies.exe -modules {exe_str} | Sort-Object | Get-Unique;                    \
-                 $dllNames = $output | Where-Object {{ -not ($_ -match \\\"NotFound\\\") }} | Where-Object      \
-                    {{ -not ($_ -match \\\".exe\\\") }} |  ForEach-Object {{                                    \
-                        $_.Trim() -split '\\s+' | Select-Object -Last 1                                         \
-                    }} | Sort-Object | Get-Unique;                                                              \
-                 Write-Error \\\"Raw results:\\\";                                                              \
-                 Write-Error \\\"$output\\\";                                                                   \
-                 Write-Error \\\"Dependencies:\\\"                                                              \
-                 $dllNames                                                                                      \
-            \"");
+           "$output = & Dependencies.exe -modules {exe_str} | Sort-Object | Get-Unique;
+            $dllNames = $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
+            Where-Object | {{ -not ($_ -match \".exe\") }} |  ForEach-Object {{
+                $_.Trim() -split '\\s+' | Select-Object -Last 1
+            }} | Sort-Object | Get-Unique;
+            Write-Error \"Raw results:\";
+            Write-Error \"$output\";
+            Write-Error \"Dependencies:\"
+            $dllNames");
+        println!("SCRIPT:   \n{commandstr}");
         args = vec!(String::from("-Command"), commandstr);
     }
     #[cfg(not(target_os = "windows"))]
@@ -99,7 +98,7 @@ pub fn get_dependency_libs (exe : &Path,
             used_includes.insert(path_filename.to_string());
             rval.push(path);
         } else {
-            println!("  Note: skipped ldd line (not a .so): {}", line);
+            println!("  Note: skipped ldd line (not a dynamic library): {}", line);
         }
     }
 

@@ -6,12 +6,13 @@
     #error No version passed.
 #endif
 #define MyAppPublisher "ShoopDaLoop"
-#define MyAppURL "https://sandervocke.github.io/shoopdaloop"
+#define MyAppURL "https://www.shoopdaloop.com"
 #define MyAppExeName "shoopdaloop.exe"
 #define MyAppInstallerExeName MyAppName + "-" + MyAppVersion
 #define MyAppAssocName MyAppName + " Session"
 #define MyAppAssocExt ".shl"
 #define MyAppAssocKey StringChange(MyAppAssocName, " ", "") + MyAppAssocExt
+#define MyAppPortableFolder "shoopdaloop-portable-notspecified"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
@@ -42,9 +43,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\pyinstaller\dist\shoopdaloop\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\pyinstaller\dist\shoopdaloop\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
-; NOTE: Don't use "Flags: ignoreversion" on any shared system files
+Source: "{#MyAppPortableFolder}"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Registry]
 Root: HKA; Subkey: "Software\Classes\{#MyAppAssocExt}\OpenWithProgids"; ValueType: string; ValueName: "{#MyAppAssocKey}"; ValueData: ""; Flags: uninsdeletevalue

@@ -19,6 +19,11 @@ fn populate_appdir(
     let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     println!("Using source path {src_path:?}");
 
+    let dynlib_dir = appdir.join("lib");
+    let excludelist_path = src_path.join("distribution/linux/excludelist");
+    let includelist_path = src_path.join("distribution/linux/includelist");
+    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path, ".so", false)?;
+
     println!("Bundling executable...");
     std::fs::copy(exe_path, appdir.join("shoopdaloop_bin"))?;
 
@@ -43,11 +48,7 @@ fn populate_appdir(
     }
 
     println!("Bundling dependencies...");
-    let dynlib_dir = appdir.join("lib");
     std::fs::create_dir(&dynlib_dir)?;
-    let excludelist_path = src_path.join("distribution/linux/excludelist");
-    let includelist_path = src_path.join("distribution/linux/includelist");
-    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path, ".so", false)?;
     for lib in libs {
         println!("  Bundling {}", lib.to_str().unwrap());
         std::fs::copy(
