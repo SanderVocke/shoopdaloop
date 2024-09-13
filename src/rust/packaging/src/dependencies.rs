@@ -40,11 +40,21 @@ pub fn get_dependency_libs (exe : &Path,
             $dllNames");
         args = vec!(String::from("-Command"), commandstr);
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     {
-        command = String::from("bash");
-        let list_deps_script = src_dir.join("scripts/list_dependencies.sh");
-        args = vec!(String::from(list_deps_script.to_str().unwrap()), String::from(exe.to_str().unwrap()));
+        command = String::from("sh");
+        let exe_str = exe.to_str().unwrap();
+        let commandstr : String = format!(
+            "ldd {exe_str} | grep \"=>\" | sed -r 's/.*=>[ ]*([^ ]+) .*/\\1/g' | sort | uniq");
+        args = vec!(String::from("-Command"), commandstr);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        command = String::from("sh");
+        let exe_str = exe.to_str().unwrap();
+        let commandstr : String = format!(
+            "otool -L {exe_str} | grep -v ':' | awk '{print $1}' | sort | uniq");
+        args = vec!(String::from("-Command"), commandstr);
     }
     println!("Running command for determining dependencies: {} {}", &command, args.join(" "));
     let list_deps_output = Command::new(&command)
