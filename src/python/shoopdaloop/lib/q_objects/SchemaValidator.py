@@ -6,9 +6,9 @@ from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
 
-from ..session_schemas import validate_session_object
+from shoopdaloop.lib.logging import *
+from shoopdaloop.lib.validate_session_schemas import validate_session_object
 import json
-from ..logging import *
 import threading
 import copy
 
@@ -17,7 +17,7 @@ class SchemaValidator(ShoopQObject):
     def __init__(self, parent=None):
         super(SchemaValidator, self).__init__(parent)
         self.logger = Logger("Frontend.SchemaValidator")
-    
+
     ###########
     ## SLOTS
     ###########
@@ -28,10 +28,10 @@ class SchemaValidator(ShoopQObject):
         _obj = obj
         if isinstance(obj, QJSValue):
             _obj = obj.toVariant()
-            
+
         if type(_obj) not in [list, dict]:
             self.logger.error(lambda: f"Cannot validate a non-list/dict object: {type(_obj)}")
-            
+
         cpy = copy.deepcopy(_obj)
         obj_desc_copy = copy.deepcopy(obj_desc)
         schemaname_copy = copy.deepcopy(schemaname)
@@ -43,7 +43,7 @@ class SchemaValidator(ShoopQObject):
             except Exception as e:
                 self.logger.error(lambda: f"Error validating {obj_desc} against {schemaname}: {e}")
                 return False
-        
+
         if asynchronous:
             threading.Thread(target=validate_fn).start()
             return True

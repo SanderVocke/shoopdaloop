@@ -1,11 +1,12 @@
 use anyhow;
 use anyhow::Context;
 use std::path::{PathBuf, Path};
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::process::Command;
 
-pub fn get_dependency_libs (exe : &Path,
+pub fn get_dependency_libs (files : &[&Path],
                             src_dir : &Path,
+                            env: &HashMap<&str, &str>,
                             excludelist_path : &Path,
                             includelist_path : &Path,
                             dylib_filename_part: &str,
@@ -24,42 +25,48 @@ pub fn get_dependency_libs (exe : &Path,
 
     let command : String;
     let args: Vec<String>;
+    let files_str = files.iter().map(|f| f.to_str().unwrap()).collect::<Vec<_>>().join(" ");
     #[cfg(target_os = "windows")]
     {
         command = String::from("powershell.exe");
-        let exe_str = exe.to_str().unwrap();
         let commandstr : String = format!(
-           "$output = & Dependencies.exe -modules {exe_str} | Sort-Object | Get-Unique;
-            $dllNames = $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
-            Where-Object {{ -not ($_ -match \".exe\") }} |  ForEach-Object {{
-                $_.Trim() -split '\\s+' | Select-Object -Last 1
-            }} | Sort-Object | Get-Unique;
-            Write-Error \"Raw results:\";
-            Write-Error \"$output\";
-            Write-Error \"Dependencies:\"
+           "$dllNames = \"\"
+            $files = \"{files_str}\" -split ' '
+            foreach ($file in $files) {{
+                $output = & Dependencies.exe -modules $file | Sort-Object | Get-Unique;
+                $newDllNames = $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
+                Where-Object {{ -not ($_ -match \".exe\") }} |  ForEach-Object {{
+                    $_.Trim() -split '\\s+' | Select-Object -Last 1
+                }} | Sort-Object | Get-Unique;
+                $dllNames = $dllNames + $newDllNames | Sort-Object | Get-Unique;
+            }}
+            # Write-Error \"Raw results:\";
+            # Write-Error \"$output\";
+            # Write-Error \"Dependencies:\"
             $dllNames");
         args = vec!(String::from("-Command"), commandstr);
     }
     #[cfg(target_os = "linux")]
     {
         command = String::from("sh");
-        let exe_str = exe.to_str().unwrap();
         let commandstr : String = format!(
-            "ldd {exe_str} | grep \"=>\" | sed -r 's/.*=>[ ]*([^ ]+) .*/\\1/g' | sort | uniq");
-        args = vec!(String::from("-Command"), commandstr);
+            "for f in {files_str}; do ldd $f | grep \"=>\" | sed -r 's/.*=>[ ]*([^ ]+) .*/\\1/g'; done | xargs -n1 realpath | sort | uniq");
+        args = vec!(String::from("-c"), commandstr);
     }
     #[cfg(target_os = "macos")]
     {
         command = String::from("sh");
-        let exe_str = exe.to_str().unwrap();
         let commandstr : String = format!(
-            "otool -L {exe_str} | grep -v ':' | awk '{print $1}' | sort | uniq");
-        args = vec!(String::from("-Command"), commandstr);
+            "for f in {files_str}; do otool -L {exe_str} | grep -v ':' | awk '{print $1}'; done | xargs -n1 realpath | sort | uniq");
+        args = vec!(String::from("-c"), commandstr);
     }
     println!("Running command for determining dependencies: {} {}", &command, args.join(" "));
-    let list_deps_output = Command::new(&command)
-            .args(&args)
-            .output()
+    let mut list_deps : &mut Command = &mut Command::new(&command);
+    list_deps = list_deps.args(&args);
+    for (key, val) in env {
+        list_deps = list_deps.env(key, val);
+    }
+    let list_deps_output = list_deps.output()
             .with_context(|| "Failed to run list_dependencies")?;
     let command_output = std::str::from_utf8(&list_deps_output.stderr)?;
     let deps_output = std::str::from_utf8(&list_deps_output.stdout)?;

@@ -22,7 +22,7 @@ fn populate_folder(
     let dynlib_dir = folder;
     let excludelist_path = src_path.join("distribution/windows/excludelist");
     let includelist_path = src_path.join("distribution/windows/includelist");
-    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path, ".dll", false)?;
+    let libs = get_dependency_libs (&[dev_exe_path], src_path, &excludelist_path, &includelist_path, ".dll", false)?;
 
     println!("Bundling executable...");
     std::fs::copy(exe_path, folder.join("shoopdaloop.exe"))

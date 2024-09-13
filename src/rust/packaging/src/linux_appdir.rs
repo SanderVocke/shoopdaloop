@@ -3,6 +3,8 @@ use anyhow::Context;
 use std::path::{PathBuf, Path};
 use std::process::Command;
 use std::os::unix::fs::PermissionsExt;
+use glob::glob;
+use std::collections::{HashSet, HashMap};
 use crate::dependencies::get_dependency_libs;
 use crate::fs_helpers::recursive_dir_cpy;
 
@@ -19,13 +21,9 @@ fn populate_appdir(
     let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     println!("Using source path {src_path:?}");
 
-    let dynlib_dir = appdir.join("lib");
-    let excludelist_path = src_path.join("distribution/linux/excludelist");
-    let includelist_path = src_path.join("distribution/linux/includelist");
-    let libs = get_dependency_libs (dev_exe_path, src_path, &excludelist_path, &includelist_path, ".so", false)?;
-
     println!("Bundling executable...");
-    std::fs::copy(exe_path, appdir.join("shoopdaloop_bin"))?;
+    let final_exe_path = appdir.join("shoopdaloop_bin");
+    std::fs::copy(exe_path, &final_exe_path)?;
 
     println!("Bundling shoop_lib...");
     let lib_dir = appdir.join("shoop_lib");
@@ -46,6 +44,25 @@ fn populate_appdir(
             &target_py_env
         )?;
     }
+
+    println!("Getting dependencies...");
+    let mut all_files_to_analyze : Vec<PathBuf> = Vec::new();
+    for f in glob(&format!("{}/**/*.so*", appdir.to_str().unwrap()))
+        .with_context(|| "Failed to read glob pattern")? {
+            all_files_to_analyze.push(std::fs::canonicalize(f?)?)
+        }
+    all_files_to_analyze.push(final_exe_path.to_owned());
+    let all_files_to_analyze_refs : Vec<&Path> = all_files_to_analyze.iter().map(|p| p.as_path()).collect();
+    let dynlib_dir = appdir.join("lib");
+    let excludelist_path = src_path.join("distribution/linux/excludelist");
+    let includelist_path = src_path.join("distribution/linux/includelist");
+    let all_lib_dirs : HashSet<String> = all_files_to_analyze_refs.iter().map(|p| String::from(p.parent().unwrap().to_str().unwrap())).collect();
+    let all_lib_dirs : Vec<&str> = all_lib_dirs.iter().map(|s| s.as_str()).collect();
+    let all_lib_dirs : String = all_lib_dirs.join(":");
+    let env : HashMap<&str, &str> = HashMap::from([
+        ("LD_LIBRARY_PATH", all_lib_dirs.as_str()),
+    ]);
+    let libs = get_dependency_libs (&all_files_to_analyze_refs, src_path, &env, &excludelist_path, &includelist_path, ".so", false)?;
 
     println!("Bundling dependencies...");
     std::fs::create_dir(&dynlib_dir)?;
@@ -77,12 +94,21 @@ fn populate_appdir(
 
     if !include_tests {
         println!("Slimming down AppDir...");
-        for file in [
-            "shoop_lib/test_runner"
+        for pattern in [
+            "shoop_lib/test_runner",
+            "shoop_lib/py/lib/python*/test",
+            "shoop_lib/py/lib/python*/*/test",
+            "**/*.a",
         ] {
-            let path = appdir.join(file);
-            println!("  remove {:?}", path);
-            std::fs::remove_file(&path)?;
+            let pattern = format!("{}/{pattern}", appdir.to_str().unwrap());
+            for f in glob(&pattern)? {
+                let f = f?;
+                println!("  remove {f:?}");
+                match std::fs::metadata(&f)?.is_dir() {
+                    true => { std::fs::remove_dir_all(&f)?; }
+                    false => { std::fs::remove_file(&f)?; }
+                }
+            }
         }
     }
 
