@@ -19,9 +19,6 @@ enum Commands {
         output_dir: PathBuf,
 
         #[arg(short, long, action = clap::ArgAction::SetTrue)]
-        include_tests: bool,
-
-        #[arg(short, long, action = clap::ArgAction::SetTrue)]
         release: bool,
     },
     BuildAppImage {
@@ -37,6 +34,13 @@ enum Commands {
         #[arg(short, long, action = clap::ArgAction::SetTrue)]
         strip: bool,
     },
+    BuildTestBinaries {
+        #[arg(short, long, value_name="/path/to/folder", required = true)]
+        output_dir: PathBuf,
+
+        #[arg(short, long, action = clap::ArgAction::SetTrue)]
+        release: bool,
+    }
 }
 
 pub fn main_impl() -> Result<(), anyhow::Error> {
@@ -69,7 +73,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                               })?;
 
     match &args.command {
-        Some(Commands::BuildPortableFolder { output_dir, include_tests, release }) => {
+        Some(Commands::BuildPortableFolder { output_dir, release }) => {
             #[cfg(target_os = "linux")]
             {
                 use packaging::linux_appdir::build_appdir;
@@ -78,7 +82,6 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                             main_exe.as_path(),
                             dev_exe.as_path(),
                             output_dir.as_path(),
-                            *include_tests,
                             *release)
             }
             #[cfg(target_os = "macos")]
@@ -89,7 +92,6 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                             main_exe.as_path(),
                             dev_exe.as_path(),
                             output_dir.as_path(),
-                            *include_tests,
                             *release)
             }
             #[cfg(target_os = "windows")]
@@ -100,9 +102,15 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                             main_exe.as_path(),
                             dev_exe.as_path(),
                             output_dir.as_path(),
-                            *include_tests,
                             *release)
             }
+        },
+        Some(Commands::BuildTestBinaries { output_dir, release }) => {
+            use packaging::binaries_for_test::build_test_binaries_folder;
+            build_test_binaries_folder
+                        (Path::new(out_dir.as_str()),
+                        output_dir.as_path(),
+                        *release)
         },
         Some(Commands::BuildAppImage { appimagetool, appdir, output, strip }) => {
             #[cfg(target_os = "linux")]

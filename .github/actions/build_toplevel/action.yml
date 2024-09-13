@@ -19,6 +19,9 @@ inputs:
   second_package_kind:
     description: "Kind of package to build (additional)"
     default: null
+  third_package_kind:
+    description: "Kind of package to build (additional)"
+    default: null
   coverage:
     description: "Whether to run coverage"
   upload_artifacts:
@@ -141,6 +144,24 @@ runs:
     uses: ./.github/actions/build_package
     with:
       package_kind: ${{ inputs.second_package_kind }}
+      upload_release_assets: ${{ inputs.upload_release_assets }}
+      release_upload_assets_url: ${{ env.release_upload_assets_url }}
+  - uses: ./.github/actions/checkpoint
+    if: always()
+  - shell: wrap-shell {0}
+    if: always() && inputs.third_package_kind
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Build package: ${{ inputs.third_package_kind }}"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
+  - name: Build third package
+    id: third_package
+    if: always() && inputs.third_package_kind
+    uses: ./.github/actions/build_package
+    with:
+      package_kind: ${{ inputs.third_package_kind }}
       upload_release_assets: ${{ inputs.upload_release_assets }}
       release_upload_assets_url: ${{ env.release_upload_assets_url }}
   - uses: ./.github/actions/checkpoint

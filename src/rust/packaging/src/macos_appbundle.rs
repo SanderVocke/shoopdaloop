@@ -7,14 +7,13 @@ use std::os::unix::fs::PermissionsExt;
 use crate::dependencies::get_dependency_libs;
 use crate::fs_helpers::recursive_dir_cpy;
 use regex::Regex;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 fn populate_appbundle(
     shoop_built_out_dir : &Path,
     appdir : &Path,
     exe_path : &Path,
     dev_exe_path : &Path,
-    include_tests : bool,
     release : bool,
 ) -> Result<(), anyhow::Error> {
     let file_path = PathBuf::from(file!());
@@ -25,7 +24,8 @@ fn populate_appbundle(
     let dynlib_dir = appdir.join("lib");
     let excludelist_path = src_path.join("distribution/macos/excludelist");
     let includelist_path = src_path.join("distribution/macos/includelist");
-    let libs = get_dependency_libs (&[dev_exe_path], src_path, &excludelist_path, &includelist_path, ".dylib", true)?;
+    let env : HashMap<&str, &str> = HashMap::new();
+    let libs = get_dependency_libs (&[dev_exe_path], src_path, &env, &excludelist_path, &includelist_path, ".dylib", true)?;
 
     println!("Creating directories...");
     for directory in [
@@ -104,42 +104,13 @@ fn populate_appbundle(
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
     }
 
-    if !include_tests {
-        println!("Slimming down AppDir...");
-        for file in [
-            "shoop_lib/test_runner"
-        ] {
-            let path = appdir.join(file);
-            println!("  remove {:?}", path);
-            std::fs::remove_file(&path)?;
-        }
-    }
-
-    if include_tests {
-        println!("Downloading prebuilt cargo-nextest into appdir...");
-        let nextest_path = appdir.join("cargo-nextest");
-        let nextest_dir = appdir.to_str().unwrap();
-        Command::new("sh")
-                .current_dir(&src_path)
-                .args(&["-c",
-                        &format!("curl -LsSf https://get.nexte.st/latest/mac | tar zxf - -C {}", nextest_dir)
-                        ])
-                .status()?;
-        let mut perms = std::fs::metadata(nextest_path.clone())
-            .with_context(|| "Failed to get file metadata")?
-            .permissions();
-        perms.set_mode(0o755); // Sets read, write, and execute permissions for the owner, and read and execute for group and others
-        std::fs::set_permissions(&nextest_path, perms).with_context(|| "Failed to set file permissions")?;
-        println!("Creating nextest archive...");
-        let archive = appdir.join("nextest-archive.tar.zst");
-        let args = match release {
-            true => vec!["nextest", "archive", "--release", "--archive-file", archive.to_str().unwrap()],
-            false => vec!["nextest", "archive", "--archive-file", archive.to_str().unwrap()]
-        };
-        Command::new(&nextest_path)
-                .current_dir(&src_path)
-                .args(&args[..])
-                .status()?;
+    println!("Slimming down AppDir...");
+    for file in [
+        "shoop_lib/test_runner"
+    ] {
+        let path = appdir.join(file);
+        println!("  remove {:?}", path);
+        std::fs::remove_file(&path)?;
     }
 
     println!("App bundle produced in {}", appdir.to_str().unwrap());
@@ -152,15 +123,16 @@ pub fn build_appbundle(
     exe_path : &Path,
     dev_exe_path : &Path,
     output_dir : &Path,
-    include_tests : bool,
     release : bool,
 ) -> Result<(), anyhow::Error> {
     println!("Assets directory: {:?}", shoop_built_out_dir);
 
-    if std::fs::exists(output_dir)? {
+    if output_dir.exists()? {
         return Err(anyhow::anyhow!("Output directory {:?} already exists", output_dir));
     }
-    if !std::fs::exists(output_dir.parent().unwrap())? {
+    if !output_dir.parent()
+        .ok_or(anyhow::anyhow!("Cannot find parent of {output_dir:?}"))?
+        .exists()? {
         return Err(anyhow::anyhow!("Output directory {:?}: parent doesn't exist", output_dir));
     }
     println!("Creating app bundle directory...");
@@ -170,7 +142,6 @@ pub fn build_appbundle(
                             output_dir,
                             exe_path,
                             dev_exe_path,
-                            include_tests,
                             release)?;
 
     println!("App bundle created @ {output_dir:?}");

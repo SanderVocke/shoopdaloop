@@ -66,3 +66,15 @@
 *ld.so.cache
 *libasound*
 /usr/lib/wsl/*
+*/libc-*.so
+*/libdl-*.so
+*/libm-*.so
+*/libmvec-*.so
+*/libpthread-*.so
+*/libresolv-*.so
+*/librt-*.so
+*/libutil-*.so
+*/libXft.so*
+*/libXss.so*
+*/libtcl*.so*
+*/libtk*.so*

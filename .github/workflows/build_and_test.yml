@@ -69,6 +69,7 @@ jobs:
             release_build: true
             package_kind: portable_folder
             second_package_kind: appimage
+            third_package_kind: test_binaries
             upload_release_assets: true
             platform: linux-x64
           # - name: linux_debug
@@ -99,7 +100,7 @@ jobs:
       options: ${{ matrix.container_options }}
     env:
       PATH_SEPARATOR: ":"
-      COMPRESS_PORTABLE_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
+      COMPRESS_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
       checkpoints_enabled: true
     needs: maybe_create_release
     #if: false
@@ -344,6 +345,7 @@ jobs:
             release_build: true
             package_kind: portable_folder
             second_package_kind: dmg
+            third_package_kind: test_binaries
             os: macos-14
             upload_release_assets: true
             platform: macos-arm
@@ -356,7 +358,7 @@ jobs:
     #if: false
     env:
        PATH_SEPARATOR: ":"
-       COMPRESS_PORTABLE_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
+       COMPRESS_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
        checkpoints_enabled: true
     steps:
     - name: Checkout
@@ -480,6 +482,7 @@ jobs:
             release_build: true
             package_kind: portable_folder
             second_package_kind: innosetup
+            third_package_kind: test_binaries
             upload_release_assets: true
             platform: windows-msvc-x64
           # - name: windows_debug
@@ -496,7 +499,7 @@ jobs:
     env:
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: "cygpath -w"
-      COMPRESS_PORTABLE_FOLDER: ''
+      COMPRESS_FOLDER: ''
       checkpoints_enabled: true
     container:
       image: ${{ matrix.kind.container_image }}

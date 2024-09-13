@@ -47,10 +47,10 @@ runs:
       PORTABLE_DIR=$(pwd)/shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.portable
       RELEASE_PORTABLE_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.portable
       echo "PORTABLE_DIR=$PORTABLE_DIR" | tee -a $GITHUB_ENV
-      ${CARGO_ARTIFACTS_DIR}/package build-portable-folder -o $PORTABLE_DIR --include-tests ${CARGO_BUILD_FLAGS}
+      ${CARGO_ARTIFACTS_DIR}/package build-portable-folder -o $PORTABLE_DIR ${CARGO_BUILD_FLAGS}
       cp -r $PORTABLE_DIR $RELEASE_PORTABLE_DIR
-      COMPRESSED_PORTABLE_DIR=$(${{ env.COMPRESS_PORTABLE_FOLDER }} ${PORTABLE_DIR})
-      COMPRESSED_RELEASE_PORTABLE_DIR=$(${{ env.COMPRESS_PORTABLE_FOLDER }} ${RELEASE_PORTABLE_DIR})
+      COMPRESSED_PORTABLE_DIR=$(${{ env.COMPRESS_FOLDER }} ${PORTABLE_DIR})
+      COMPRESSED_RELEASE_PORTABLE_DIR=$(${{ env.COMPRESS_FOLDER }} ${RELEASE_PORTABLE_DIR})
       echo "BUILT_PACKAGE=$COMPRESSED_PORTABLE_DIR" | tee -a $GITHUB_ENV
       echo "BUILT_PACKAGE_NAME=$(basename $COMPRESSED_PORTABLE_DIR)" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$COMPRESSED_RELEASE_PORTABLE_DIR" | tee -a $GITHUB_ENV
@@ -65,6 +65,29 @@ runs:
     with:
       upload_url: ${{ inputs.release_upload_assets_url }}
       asset_path: ${{ env.BUILT_RELEASE_ARTIFACT }}
+
+  # Test binaries for downstream CI
+  - name: Build test binaries
+    if: always() && inputs.package_kind == 'test_binaries'
+    id: build_test_binaries
+    shell: wrap-shell {0}
+    run: |
+      export QT_QPA_PLATFORM=offscreen
+      TEST_BINARIES_DIR=$(pwd)/shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.test_binaries
+      RELEASE_TEST_BINARIES_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.test_binaries
+      echo "TEST_BINARIES_DIR=$TEST_BINARIES_DIR" | tee -a $GITHUB_ENV
+      ${CARGO_ARTIFACTS_DIR}/package build-test-binaries -o $TEST_BINARIES_DIR ${CARGO_BUILD_FLAGS}
+      cp -r $TEST_BINARIES_DIR $RELEASE_TEST_BINARIES_DIR
+      COMPRESSED_TEST_BINARIES_DIR=$(${{ env.COMPRESS_FOLDER }} ${TEST_BINARIES_DIR})
+      COMPRESSED_RELEASE_TEST_BINARIES_DIR=$(${{ env.COMPRESS_FOLDER }} ${RELEASE_TEST_BINARIES_DIR})
+      echo "BUILT_PACKAGE=$COMPRESSED_TEST_BINARIES_DIR" | tee -a $GITHUB_ENV
+      echo "BUILT_PACKAGE_NAME=$(basename $COMPRESSED_TEST_BINARIES_DIR)" | tee -a $GITHUB_ENV
+      echo "BUILT_RELEASE_ARTIFACT=$COMPRESSED_RELEASE_TEST_BINARIES_DIR" | tee -a $GITHUB_ENV
+  - uses: actions/upload-artifact@v4
+    if: always() && inputs.package_kind == 'test_binaries'
+    with:
+      name: ${{ env.BUILT_PACKAGE_NAME }}
+      path: ${{ env.BUILT_PACKAGE }}
 
   # AppImage (Linux) (Requires AppDir to already be built)
   - name: Build AppImage

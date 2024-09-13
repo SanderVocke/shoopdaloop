@@ -1,5 +1,6 @@
 pub mod dependencies;
 pub mod fs_helpers;
+pub mod binaries_for_test;
 
 #[cfg(target_os = "linux")]
 pub mod linux_appdir;

@@ -13,7 +13,6 @@ fn populate_appdir(
     appdir : &Path,
     exe_path : &Path,
     dev_exe_path : &Path,
-    include_tests : bool,
     release : bool,
 ) -> Result<(), anyhow::Error> {
     let file_path = PathBuf::from(file!());
@@ -92,51 +91,22 @@ fn populate_appdir(
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
     }
 
-    if !include_tests {
-        println!("Slimming down AppDir...");
-        for pattern in [
-            "shoop_lib/test_runner",
-            "shoop_lib/py/lib/python*/test",
-            "shoop_lib/py/lib/python*/*/test",
-            "**/*.a",
-        ] {
-            let pattern = format!("{}/{pattern}", appdir.to_str().unwrap());
-            for f in glob(&pattern)? {
-                let f = f?;
-                println!("  remove {f:?}");
-                match std::fs::metadata(&f)?.is_dir() {
-                    true => { std::fs::remove_dir_all(&f)?; }
-                    false => { std::fs::remove_file(&f)?; }
-                }
+    println!("Slimming down AppDir...");
+    for pattern in [
+        "shoop_lib/test_runner",
+        "shoop_lib/py/lib/python*/test",
+        "shoop_lib/py/lib/python*/*/test",
+        "**/*.a",
+    ] {
+        let pattern = format!("{}/{pattern}", appdir.to_str().unwrap());
+        for f in glob(&pattern)? {
+            let f = f?;
+            println!("  remove {f:?}");
+            match std::fs::metadata(&f)?.is_dir() {
+                true => { std::fs::remove_dir_all(&f)?; }
+                false => { std::fs::remove_file(&f)?; }
             }
         }
-    }
-
-    if include_tests {
-        println!("Downloading prebuilt cargo-nextest into appdir...");
-        let nextest_path = appdir.join("cargo-nextest");
-        let nextest_dir = appdir.to_str().unwrap();
-        Command::new("sh")
-                .current_dir(&src_path)
-                .args(&["-c",
-                        &format!("curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C {}", nextest_dir)
-                        ])
-                .status()?;
-        let mut perms = std::fs::metadata(nextest_path.clone())
-            .with_context(|| "Failed to get file metadata")?
-            .permissions();
-        perms.set_mode(0o755); // Sets read, write, and execute permissions for the owner, and read and execute for group and others
-        std::fs::set_permissions(&nextest_path, perms).with_context(|| "Failed to set file permissions")?;
-        println!("Creating nextest archive...");
-        let archive = appdir.join("nextest-archive.tar.zst");
-        let args = match release {
-            true => vec!["nextest", "archive", "--release", "--archive-file", archive.to_str().unwrap()],
-            false => vec!["nextest", "archive", "--archive-file", archive.to_str().unwrap()]
-        };
-        Command::new(&nextest_path)
-                .current_dir(&src_path)
-                .args(&args[..])
-                .status()?;
     }
 
     println!("AppDir produced in {}", appdir.to_str().unwrap());
@@ -149,7 +119,6 @@ pub fn build_appdir(
     exe_path : &Path,
     dev_exe_path : &Path,
     output_dir : &Path,
-    include_tests : bool,
     release : bool,
 ) -> Result<(), anyhow::Error> {
     println!("Assets directory: {:?}", shoop_built_out_dir);
@@ -169,7 +138,6 @@ pub fn build_appdir(
                     output_dir,
                     exe_path,
                     dev_exe_path,
-                    include_tests,
                     release)?;
 
     println!("AppDir created @ {output_dir:?}");
