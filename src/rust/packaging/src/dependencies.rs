@@ -31,7 +31,6 @@ pub fn get_dependency_libs (exe : &Path,
         let commandstr : String = format!(
             "powershell.exe -Command \"                                                                         \
                  $output = & Dependencies.exe -modules {exe_str} | Sort-Object | Get-Unique;                    \
-                 $filteredLines = $output | Select-String \\\"[ApplicationDirectory]|MSVCP|MSVCR|VCRUNTIME\\\"; \
                  $dllNames = $output | Where-Object {{ -not ($_ -match \\\"NotFound\\\") }} | Where-Object      \
                     {{ -not ($_ -match \\\".exe\\\") }} |  ForEach-Object {{                                    \
                         $_.Trim() -split '\\s+' | Select-Object -Last 1                                         \
