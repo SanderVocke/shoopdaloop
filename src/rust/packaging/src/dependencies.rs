@@ -23,15 +23,17 @@ pub fn get_dependency_libs (exe : &Path,
 
 
     let command : String;
+    let list_deps_script : PathBuf;
     #[cfg(target_os = "windows")]
     {
-        command = String::from("bash.exe");
+        command = String::from("powershell.exe");
+        list_deps_script = src_dir.join("scripts/list_dependencies.ps1");
     }
     #[cfg(not(target_os = "windows"))]
     {
         command = String::from("bash");
+        list_deps_script = src_dir.join("scripts/list_dependencies.sh");
     }
-    let list_deps_script = src_dir.join("scripts/list_dependencies.sh");
     let args = [
         list_deps_script.to_str().unwrap(),
         exe.to_str().unwrap(),

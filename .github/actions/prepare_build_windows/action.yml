@@ -51,6 +51,14 @@ runs:
       echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH;$BOOST_DIR;$JACK_DIR;$PTHREADS_DIR" | tee -a $GITHUB_ENV
       echo "PTHREADS4W_PATH=$PTHREADS_DIR" | tee -a $GITHUB_ENV
 
+  - name: Setup dependencies
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+       curl -L https://github.com/lucasg/Dependencies/releases/download/v1.11.1/Dependencies_x64_Release.zip --output dependencies.zip
+       unzip dependencies.zip dependencies
+       echo "$(cygpath -w $(pwd)/dependencies)" | tee -a $GITHUB_PATH
+
   - name: Setup MSVC
     if: always()
     uses: TheMrMilchmann/setup-msvc-dev@v3

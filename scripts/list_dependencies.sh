@@ -39,9 +39,9 @@ elif [[ "$MY_OS" == "Darwin" ]]; then
     # RESULT=$?
     # cat $TRACE_OUTPUT | grep 'dyld' | grep '.dylib' | awk 'NF>1{print $NF}' | sort -u > "$DEPENDENCIES"
     otool -L $EXECUTABLE | grep -v ':' | awk '{print $1}' | sort | uniq
-elif [[ "$MY_OS" == "Windows" ]]; then
-    # Dumpbin
-    dumpbin /DEPENDENTS $EXECUTABLE | grep "DLL Name:" | awk '{print $3}' | sort | uniq
+else
+    echo "Unsupported OS: $MY_OS"
+    exit 1
 fi
 
 # Output the results
