@@ -1,6 +1,7 @@
 #!/bin/sh
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+source ${SCRIPT_DIR}/env.sh
 
 MOD=$(find $SCRIPT_DIR -wholename "*/site-packages/shoopdaloop")
 

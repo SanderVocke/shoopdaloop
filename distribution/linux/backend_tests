@@ -1,6 +1,7 @@
 #!/bin/sh
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+source ${SCRIPT_DIR}/env.sh
 
 if [ ! -f $SCRIPT_DIR/shoop_lib/test_runner ]; then
     echo "Backend tests were not bundled in this app." >&2
