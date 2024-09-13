@@ -179,6 +179,9 @@ if (HAVE_LV2)
        ${CMAKE_SOURCE_DIR}/third_party/lv2_evbuf/lv2_evbuf.c)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2
                       ${CMAKE_SOURCE_DIR/third_party/lv2_evbuf})
+  include(FindPkgConfig)
+  pkg_search_module(lilv REQUIRED IMPORTED_TARGET GLOBAL lilv-0)
+  pkg_search_module(lv2 REQUIRED IMPORTED_TARGET GLOBAL lv2)
 endif()
 if (BACKEND_JACK)
   file(GLOB JACK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/jack/*.cpp)
@@ -203,12 +206,14 @@ target_include_directories(shoopdaloop_backend_internals
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
+                        ${Catch2_INCLUDE_DIR}
                         )
 target_link_libraries(shoopdaloop_backend_internals PRIVATE
   Threads::Threads
   fmt::fmt
   ${ZITA_RESAMPLER_LIB}
   Boost::headers
+  Catch2::Catch2
   )
 if (WIN32)
   target_link_libraries(shoopdaloop_backend_internals PRIVATE Boost::system)
@@ -223,9 +228,9 @@ if (HAVE_LV2)
   target_include_directories(shoopdaloop_backend_internals
                           PRIVATE
                           ${CMAKE_SOURCE_DIR}/third_party/lv2_evbuf
-                          ${LV2_INCLUDE_DIRS}
                           ${CMAKE_SOURCE_DIR}/third_party/lv2_external_ui
                           )
+  target_link_libraries(shoopdaloop_backend_internals PUBLIC PkgConfig::lilv PkgConfig::lv2)
 endif()
 if (BACKEND_JACK)
   target_include_directories(shoopdaloop_backend_internals PRIVATE ${JACK_INCLUDE_DIRS})

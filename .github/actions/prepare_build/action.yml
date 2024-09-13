@@ -75,13 +75,12 @@ runs:
         curl -L -o all_dependencies.zip $URL
         unzip all_dependencies.zip -d prebuilt_dependencies
         PREFIX_PATH=$(${CONVERT_PATH_FN} "$(pwd)/prebuilt_dependencies")
+        for d in $(find $(pwd)/prebuilt_dependencies -name "*.cmake" -o -name "*.pc" | xargs -n1 dirname | sort | uniq); do
+           PREFIX_PATH=$PREFIX_PATH${PATH_SEPARATOR}$(${CONVERT_PATH_FN} $d)
+        done
         INCLUDE_PATH=$(${CONVERT_PATH_FN} "$(pwd)/prebuilt_dependencies/include")
         LIB_PATH=$(${CONVERT_PATH_FN} "$(pwd)/prebuilt_dependencies/lib")
         echo "CMAKE_PREFIX_PATH=${PREFIX_PATH}${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
-        echo "LDFLAGS=$LDFLAGS -L${LIB_PATH}" | tee -a $GITHUB_ENV
-        echo "CFLAGS=$CFLAGS -I${INCLUDE_PATH}" | tee -a $GITHUB_ENV
-        echo "CXXFLAGS=$CXXFLAGS -I${INCLUDE_PATH}" | tee -a $GITHUB_ENV
-        echo "CPPFLAGS=$CPPFLAGS -I${INCLUDE_PATH}" | tee -a $GITHUB_ENV
         echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${LIB_PATH}" | tee -a $GITHUB_ENV
 
   - name: Prepare linux

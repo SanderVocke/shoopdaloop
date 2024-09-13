@@ -64,6 +64,7 @@ runs:
     shell: pwsh
     run: |
        Set-ExecutionPolicy Unrestricted -Scope CurrentUser
+       Get-ExecutionPolicy -List
 
   - name: Setup MSVC
     if: always()

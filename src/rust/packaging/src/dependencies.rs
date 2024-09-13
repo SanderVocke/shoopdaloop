@@ -23,23 +23,32 @@ pub fn get_dependency_libs (exe : &Path,
 
 
     let command : String;
-    let list_deps_script : PathBuf;
+    let args: Vec<String>;
     #[cfg(target_os = "windows")]
     {
         command = String::from("powershell.exe");
-        list_deps_script = src_dir.join("scripts/list_dependencies.ps1");
+        let exe_str = exe.to_str().unwrap();
+        let commandstr : String = format!(
+            "powershell.exe -Command \"                                                                         \
+                 $output = & Dependencies.exe -modules {exe_str} | Sort-Object | Get-Unique;                    \
+                 $filteredLines = $output | Select-String \\\"[ApplicationDirectory]|MSVCP|MSVCR|VCRUNTIME\\\"; \
+                 $dllNames = $output | Where-Object {{ -not ($_ -match \\\"NotFound\\\") }} | Where-Object      \
+                    {{ -not ($_ -match \\\".exe\\\") }} |  ForEach-Object {{                                    \
+                        $_.Trim() -split '\\s+' | Select-Object -Last 1                                         \
+                    }} | Sort-Object | Get-Unique;                                                              \
+                 Write-Error \\\"Raw results:\\\";                                                              \
+                 Write-Error \\\"$output\\\";                                                                   \
+                 Write-Error \\\"Dependencies:\\\"                                                              \
+                 $dllNames                                                                                      \
+            \"");
+        args = vec!(String::from("-Command"), commandstr);
     }
     #[cfg(not(target_os = "windows"))]
     {
         command = String::from("bash");
-        list_deps_script = src_dir.join("scripts/list_dependencies.sh");
+        let list_deps_script = src_dir.join("scripts/list_dependencies.sh");
+        args = vec!(String::from(list_deps_script.to_str().unwrap()), String::from(exe.to_str().unwrap()));
     }
-    let args = [
-        list_deps_script.to_str().unwrap(),
-        exe.to_str().unwrap(),
-        "-b", "dummy",
-        "--quit-after", "1"
-    ];
     println!("Running command for determining dependencies: {} {}", &command, args.join(" "));
     let list_deps_output = Command::new(&command)
             .args(&args)
