@@ -382,6 +382,7 @@ jobs:
         package_kind: ${{ matrix.kind.package_kind }}
         second_package_kind: ${{ matrix.kind.second_package_kind }}
         third_package_kind: ${{ matrix.kind.third_package_kind }}
+        release_build: ${{ matrix.kind.release_build }}
         coverage: ${{ matrix.kind.coverage }}
         # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
         # Also remove the double dot if any.
@@ -527,6 +528,7 @@ jobs:
         second_package_kind: ${{ matrix.kind.second_package_kind }}
         third_package_kind: ${{ matrix.kind.third_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
+        release_build: ${{ matrix.kind.release_build }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
     - uses: ./.github/actions/checkpoint
 

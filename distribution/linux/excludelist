@@ -78,3 +78,12 @@
 */libXss.so*
 */libtcl*.so*
 */libtk*.so*
+*/libwayland-*.*
+*/libxcb-*.so*
+*/libssl*.*
+*/libsystemd.so.*
+*/libX*.so*
+*/libEGL.so*
+*/libGL.so*
+*/libGLX.so*
+*/libGLdispatch.so*
