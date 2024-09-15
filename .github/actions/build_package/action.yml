@@ -157,7 +157,7 @@ runs:
       RELEASE_DMGFILE=shoopdaloop-${{ env.SHOOP_VERSION }}.$(uname -m).dmg
       create-dmg \
         --volname "ShoopDaLoop" \
-        --volicon "src/shoopdaloop/resources/iconset/icon.icns" \
+        --volicon "distribution/macos/icon.icns" \
         --window-pos 200 120 \
         --window-size 800 400 \
         --icon-size 100 \
