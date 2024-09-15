@@ -43,7 +43,7 @@ pub fn get_dependency_libs (files : &[&Path],
             # Write-Error \"Raw results:\";
             # Write-Error \"$output\";
             # Write-Error \"Dependencies:\"
-            $dllNames | ForEach-Object {{ $_ }}");
+            $dllNames | ForEach-Object {{ Write-Output $_ }}");
         args = vec!(String::from("-Command"), commandstr);
     }
     #[cfg(target_os = "linux")]
