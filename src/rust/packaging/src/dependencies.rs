@@ -1,17 +1,25 @@
 use anyhow;
 use anyhow::Context;
-use std::path::{PathBuf, Path};
+use std::path::{self, Path, PathBuf};
 use std::collections::{HashSet, HashMap};
 use std::process::Command;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+#[derive(Default)]
+struct InternalDependency {
+    path : PathBuf,
+    deps : Vec<Rc<RefCell<InternalDependency>>>,
+    children_indent: usize,
+    maybe_parent : Option<Rc<RefCell<InternalDependency>>>,
+}
 
 pub fn get_dependency_libs (files : &[&Path],
-                            src_dir : &Path,
                             env: &HashMap<&str, &str>,
                             excludelist_path : &Path,
                             includelist_path : &Path,
                             dylib_filename_part: &str,
                             allow_nonexistent: bool) -> Result<Vec<PathBuf>, anyhow::Error> {
-    let mut rval : Vec<PathBuf> = Vec::new();
     let mut error_msgs : String = String::from("");
 
     let excludelist = std::fs::read_to_string(excludelist_path)
@@ -49,7 +57,7 @@ pub fn get_dependency_libs (files : &[&Path],
     {
         command = String::from("sh");
         let commandstr : String = format!(
-            "for f in {files_str}; do ldd $f | grep \"=>\" | sed -r 's/.*=>[ ]*([^ ]+) .*/\\1/g'; done | xargs -n1 realpath | sort | uniq");
+            "for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'; done"); // | xargs -n1 realpath | sort | uniq");
         args = vec!(String::from("-c"), commandstr);
     }
     #[cfg(target_os = "macos")]
@@ -75,58 +83,148 @@ pub fn get_dependency_libs (files : &[&Path],
         return Err(anyhow::anyhow!("list_dependencies returned nonzero exit code"));
     }
 
+    let root : Rc<RefCell<InternalDependency>> = Rc::new(RefCell::new(InternalDependency::default()));
+    let mut current_parent : Rc<RefCell<InternalDependency>> = root.clone();
     for line in deps_output.lines() {
         if line.trim().is_empty() {
             continue;
         }
-        // Extract the full path to the library
         let path = PathBuf::from(line.trim());
         let path_str = path.to_str().ok_or(anyhow::anyhow!("cannot find dependency"))?;
         let path_filename = path.file_name().unwrap().to_str().unwrap();
-        if path_filename.contains(dylib_filename_part) {
-            let pattern_match = |s : &str, p : &str| regex::Regex::new(
-                    &s.replace(".", "\\.")
-                    .replace("*", ".*")
-                    .replace("+", "\\+")
-                    .replace("\\", "\\\\")
-                ).unwrap().is_match(p);
-            let in_excludes = excludes.iter().any(|e| pattern_match(e, path_str));
-            let in_includes = includes.iter().any(|e| pattern_match(e, path_str));
-            if !path.exists() {
-                if allow_nonexistent {
-                    println!("  Nonexistent file {}", &path_str);
-                } else {
-                    error_msgs.push_str(format!("{}: doesn't exist\n", path_str).as_str());
-                    continue;
+        let indent = line.chars()
+                            .take_while(|&c| c == ' ')
+                            .count();
+
+        if Rc::ptr_eq(&current_parent, &root) && root.borrow().deps.len() == 0 {
+            // First line, this is our base indentation
+            let mut root_mut = root.borrow_mut();
+            root_mut.children_indent = indent;
+        }
+
+        let dep : Rc<RefCell<InternalDependency>> = Rc::new(RefCell::new(InternalDependency::default()));
+        {
+            let mut dep_mut = dep.borrow_mut();
+            dep_mut.path = path.clone();
+        }
+        {
+            let mut children_indent = current_parent.borrow().children_indent;
+            let maybe_prev : Option<Rc<RefCell<InternalDependency>>> =
+                current_parent.borrow().deps.last().map(|r| r.clone());
+            if indent > children_indent && maybe_prev.is_some() {
+                let prev = maybe_prev.unwrap();
+                let mut new_parent_mut = prev.borrow_mut();
+                new_parent_mut.children_indent = indent;
+                new_parent_mut.deps.push(dep.clone());
+                current_parent = prev.clone();
+            } else if indent < children_indent {
+                while indent < children_indent {
+                    let parent = current_parent.borrow().maybe_parent.clone()
+                        .ok_or(anyhow::anyhow!("Failed to traverse outward"))?
+                        .clone();
+                    current_parent = parent;
+                    children_indent = current_parent.borrow().children_indent;
+                }
+                if children_indent != indent {
+                    return Err(anyhow::anyhow!("Failed to find correct indent level"));
                 }
             }
-            if in_excludes && in_includes {
-                error_msgs.push_str(format!("{}: is in includes and excludes\n", path_str).as_str());
-                continue;
-            } else if in_excludes {
-                println!("  Note: skipping excluded dependency {}", &path_str);
-                continue;
-            } else if !in_includes {
-                error_msgs.push_str(format!("{}: is not in include list\n", path_str).as_str());
+        }
+        let dylib_filename_pattern = dylib_filename_part.to_lowercase();
+        if !path_filename.to_lowercase().contains(dylib_filename_pattern.as_str()) {
+            println!("  Note: skipped ldd line (not a dynamic library): {}", line);
+            continue;
+        }
+        if !path.exists() {
+            if allow_nonexistent {
+                println!("  Nonexistent file {}", &path_str);
+            } else {
+                error_msgs.push_str(format!("{}: doesn't exist\n", path_str).as_str());
                 continue;
             }
-
-            used_includes.insert(path_filename.to_string());
-            rval.push(path);
-        } else {
-            println!("  Note: skipped ldd line (not a dynamic library): {}", line);
         }
+        {
+            let mut dep_mut = dep.borrow_mut();
+            dep_mut.maybe_parent = Some(current_parent.clone());
+        }
+        println!("adding {path_filename} to {:?}", current_parent.borrow().path);
+        current_parent.borrow_mut().deps.push(dep);
+        used_includes.insert(path_filename.to_string());
     }
 
-    if !error_msgs.is_empty() {
-        return Err(anyhow::anyhow!("Dependency errors:\n{}", error_msgs));
-    }
-
-    for include in includes {
-        if !used_includes.contains(include) {
+    for include in includes.iter() {
+        if !used_includes.contains(*include) {
             println!("  Note: library {} from include list was not required", include);
         }
     }
 
-    Ok(rval)
+    fn collect_deps(d : &Rc<RefCell<InternalDependency>>,
+                    includes : &HashSet<&str>,
+                    excludes : &HashSet<&str>,
+                    handled : &mut HashSet<String>,
+                    error_msgs : &mut String,
+                    paths : &mut Vec<PathBuf>,
+                    skip_n_levels : usize)
+    {
+        let path_str : String;
+        let path : PathBuf;
+        {
+            let db = d.borrow();
+            path = db.path.clone();
+            path_str = db.path.to_str().unwrap().to_owned();
+        }
+        let pattern_match = |s : &str, p : &str| {
+            let pattern_str = &s
+                .replace("\\", "\\\\")
+                .replace(".", "\\.")
+                .replace("*", ".*")
+                .replace("+", "\\+")
+                ;
+            return regex::Regex::new(pattern_str).unwrap().is_match(p);
+        };
+        let in_excludes = excludes.iter().any(|e| pattern_match(e, path_str.as_str()));
+        let in_includes = includes.iter().any(|e| pattern_match(e, path_str.as_str()));
+        if in_excludes && in_includes {
+            if !handled.contains(&path_str) {
+                println!("  Note: dependency {} is in include and exclude, include takes precedence", &path_str);
+            }
+        }
+        if skip_n_levels == 0 {
+            if in_excludes && !in_includes {
+                if !handled.contains(&path_str) {
+                    println!("  Note: skipping excluded dependency {}", &path_str);
+                    handled.insert(path_str.clone());
+                }
+                return;
+            } else if !in_includes {
+                if !handled.contains(&path_str) {
+                    error_msgs.push_str(format!("{}: is not in include list\n", path_str).as_str());
+                    handled.insert(path_str.clone());
+                }
+                return;
+            }
+
+            if !handled.contains(&path_str) {
+                println!("  Including dependency {}", &path_str);
+                paths.push (path.to_path_buf());
+                handled.insert(path_str.clone());
+            }
+        }
+
+        let db = d.borrow();
+        for sub in db.deps.iter() { collect_deps(&sub, includes, excludes, handled, error_msgs, paths, skip_n_levels - (std::cmp::min(skip_n_levels, 1))); }
+    }
+
+    let mut paths : Vec<PathBuf> = Vec::new();
+    let mut handled : HashSet<String> = HashSet::new();
+    for dep in root.borrow().deps.iter() {
+        collect_deps(dep, &includes, &excludes, &mut handled, &mut error_msgs, &mut paths, 1);
+    }
+    if !error_msgs.is_empty() {
+        return Err(anyhow::anyhow!("Dependency errors:\n{}", error_msgs));
+    }
+    paths.dedup();
+
+    println!("Dependencies: {paths:?}");
+    Ok(paths)
 }

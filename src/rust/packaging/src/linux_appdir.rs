@@ -48,7 +48,11 @@ fn populate_appdir(
     let mut all_files_to_analyze : Vec<PathBuf> = Vec::new();
     for f in glob(&format!("{}/**/*.so*", appdir.to_str().unwrap()))
         .with_context(|| "Failed to read glob pattern")? {
-            all_files_to_analyze.push(std::fs::canonicalize(f?)?)
+            let p = std::fs::canonicalize(f?)?;
+            if !p.to_str().unwrap().contains("py/lib/python") &&
+               !std::fs::symlink_metadata(&p)?.is_symlink() {
+                all_files_to_analyze.push(p);
+            }
         }
     all_files_to_analyze.push(final_exe_path.to_owned());
     let all_files_to_analyze_refs : Vec<&Path> = all_files_to_analyze.iter().map(|p| p.as_path()).collect();
@@ -63,7 +67,7 @@ fn populate_appdir(
     ]);
     let libs = get_dependency_libs (&all_files_to_analyze_refs, &env, &excludelist_path, &includelist_path, ".so", false)?;
 
-    println!("Bundling dependencies...");
+    println!("Bundling {} dependencies...", libs.len());
     std::fs::create_dir(&dynlib_dir)?;
     for lib in libs {
         println!("  Bundling {}", lib.to_str().unwrap());

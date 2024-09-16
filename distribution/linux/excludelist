@@ -1,1 +1,7 @@
-*
+*/libQt6*.so*
+*/libEGL.so*
+*/libX11.so*
+*/libGLX.so*
+*/libOpenGL.so*
+*/ld-linux*
+*/libc.so*
