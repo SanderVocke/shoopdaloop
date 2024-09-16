@@ -1,8 +1,6 @@
 use anyhow;
 use anyhow::Context;
 use std::path::{PathBuf, Path};
-use std::process::Command;
-use std::os::unix::fs::PermissionsExt;
 use glob::glob;
 use std::collections::{HashSet, HashMap};
 use crate::dependencies::get_dependency_libs;

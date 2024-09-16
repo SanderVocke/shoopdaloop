@@ -1,10 +1,6 @@
 use anyhow;
-use anyhow::Context;
 use std::path::{PathBuf, Path};
-use tempfile::TempDir;
 use std::process::Command;
-use crate::dependencies::get_dependency_libs;
-use crate::fs_helpers::recursive_dir_cpy;
 
 fn populate_folder(
     shoop_built_out_dir : &Path,

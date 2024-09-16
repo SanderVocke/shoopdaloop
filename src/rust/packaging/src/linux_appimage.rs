@@ -2,8 +2,6 @@ use anyhow;
 use anyhow::Context;
 use std::path::Path;
 use std::process::Command;
-use tempfile::TempDir;
-use crate::fs_helpers::recursive_dir_cpy;
 
 pub fn build_appimage(
     appimagetool : &str,
@@ -11,7 +9,7 @@ pub fn build_appimage(
     output_file : &Path,
     strip: bool,
 ) -> Result<(), anyhow::Error> {
-    let mut src_dir = appdir.to_owned();
+    let src_dir = appdir.to_owned();
 
     println!("Creating AppImage...");
     Command::new(appimagetool)
