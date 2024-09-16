@@ -89,10 +89,13 @@ pub fn get_dependency_libs (files : &[&Path],
     }
     println!("Running command for determining dependencies: {} {}", &command, args.join(" "));
     let mut list_deps : &mut Command = &mut Command::new(&command);
-    list_deps = list_deps.args(&args);
+    let mut env_vars: Vec<(String, String)> = std::env::vars().collect();
     for (key, val) in env {
-        list_deps = list_deps.env(key, val);
+        env_vars.push((String::from(*key), String::from(*val)));
     }
+    list_deps = list_deps.args(&args)
+                         .envs(env_vars)
+                         .current_dir(std::env::current_dir().unwrap());
     let list_deps_output = list_deps.output()
             .with_context(|| "Failed to run list_dependencies")?;
     let command_output = std::str::from_utf8(&list_deps_output.stderr)?;

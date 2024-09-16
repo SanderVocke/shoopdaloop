@@ -64,14 +64,14 @@ runs:
     run: |
       echo "CARGO_BUILD_FLAGS=--release" | tee -a $GITHUB_ENV
       echo "ARTIFACT_VARIANT=release-${{ inputs.platform }}" | tee -a $GITHUB_ENV
-      echo "CARGO_ARTIFACTS_DIR=target/release" | tee -a $GITHUB_ENV
+      echo "CARGO_ARTIFACTS_DIR=$(CONVERT_PATH $(pwd)/target/release)" | tee -a $GITHUB_ENV
   - name: Set Cargo build flags (debug)
     if: always() && inputs.release_build != 'true'
     shell: wrap-shell {0}
     run: |
       echo "CARGO_BUILD_FLAGS=" | tee -a $GITHUB_ENV
       echo "ARTIFACT_VARIANT=debug-${{ inputs.platform }}" | tee -a $GITHUB_ENV
-      echo "CARGO_ARTIFACTS_DIR=target/debug" | tee -a $GITHUB_ENV
+      echo "CARGO_ARTIFACTS_DIR=$(CONVERT_PATH $(pwd)target/debug)" | tee -a $GITHUB_ENV
   - name: More env settings
     shell: wrap-shell {0}
     if: always()
