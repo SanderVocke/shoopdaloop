@@ -59,7 +59,8 @@ pub fn get_dependency_libs (files : &[&Path],
     {
         command = String::from("sh");
         let commandstr : String = format!(
-            "for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'; done"); // | xargs -n1 realpath | sort | uniq");
+            "for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\"; done"); // | xargs -n1 realpath | sort | uniq");
+            // "for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'; done"); // | xargs -n1 realpath | sort | uniq");
         args = vec!(String::from("-c"), commandstr);
         skip_n_levels = 1;
     }
