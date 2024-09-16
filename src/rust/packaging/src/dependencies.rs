@@ -33,15 +33,16 @@ pub fn get_dependency_libs (files : &[&Path],
 
     let command : String;
     let args: Vec<String>;
+    let skip_n_levels: usize;
     let files_str = files.iter().map(|f| f.to_str().unwrap()).collect::<Vec<_>>().join(" ");
     #[cfg(target_os = "windows")]
     {
         command = String::from("powershell.exe");
         let commandstr : String = format!(
            "$dllNames = @()
-            $files = \"{files_str}\" -split ' '
+            $files = \"{files_str}\" -split ' ' | ForEach-Object { \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }
             foreach ($file in $files) {{
-                $output = & Dependencies.exe -modules $file | Sort-Object | Get-Unique;
+                $output = & Dependencies.exe -chain $file;
                 $newDllNames = $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
                 Where-Object {{ -not ($_ -match \".exe\") }} |  ForEach-Object {{
                     $_.Trim() -split '\\s+' | Select-Object -Last 1
@@ -50,8 +51,9 @@ pub fn get_dependency_libs (files : &[&Path],
             # Write-Error \"Raw results:\";
             # Write-Error \"$output\";
             # Write-Error \"Dependencies:\"
-            $dllNames | Sort-Object | Get-Unique | ForEach-Object {{ Write-Output $_ }}");
+            $dllNames | ForEach-Object {{ Write-Output $_ }}");
         args = vec!(String::from("-Command"), commandstr);
+        skip_n_levels = 0;
     }
     #[cfg(target_os = "linux")]
     {
@@ -59,13 +61,27 @@ pub fn get_dependency_libs (files : &[&Path],
         let commandstr : String = format!(
             "for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'; done"); // | xargs -n1 realpath | sort | uniq");
         args = vec!(String::from("-c"), commandstr);
+        skip_n_levels = 1;
     }
     #[cfg(target_os = "macos")]
     {
         command = String::from("sh");
         let commandstr : String = format!(
-            "for f in {files_str}; do otool -L $f | grep -v ':' | awk '{{print $1}}'; done | xargs -n1 realpath | sort | uniq");
+            "function direct_deps() {{
+                otool -L \"$1\" | tail -n +1 | awk 'NR>1 {{print $1}}'
+             }}
+             function recurse_deps() {{
+                direct=$(direct_deps \"$1\")
+                for dep in $direct; do
+                    if [ ! -z \"$dep\" ]; then
+                        echo \"$2$dep\"
+                        recurse_deps \"$dep\" \"$2  \"
+                    fi
+                done
+             }}
+             for f in {files_str}; do recurse_deps $1 \"\"; done");
         args = vec!(String::from("-c"), commandstr);
+        skip_n_levels = 1;
     }
     println!("Running command for determining dependencies: {} {}", &command, args.join(" "));
     let mut list_deps : &mut Command = &mut Command::new(&command);

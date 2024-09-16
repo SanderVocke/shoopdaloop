@@ -5,3 +5,5 @@
 */libOpenGL.so*
 */ld-linux*
 */libc.so*
+*/libdl.so*
+not

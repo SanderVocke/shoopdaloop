@@ -20,3 +20,5 @@
 */libpcre.so*
 */libgraphite*.so*
 */libgomp.so*
+*/libpthread.so*
+*/libutil.so*
