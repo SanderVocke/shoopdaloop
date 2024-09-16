@@ -40,7 +40,7 @@ pub fn get_dependency_libs (files : &[&Path],
         command = String::from("powershell.exe");
         let commandstr : String = format!(
            "$dllNames = @()
-            $files = \"{files_str}\" -split ' ' | ForEach-Object { \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }
+            $files = \"{files_str}\" -split ' ' | ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }}
             foreach ($file in $files) {{
                 $output = & Dependencies.exe -chain $file;
                 $newDllNames = $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
