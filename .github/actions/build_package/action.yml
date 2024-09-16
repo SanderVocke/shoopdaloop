@@ -38,11 +38,13 @@ runs:
       echo "BUILT_RELEASE_ARTIFACT=" | tee -a $GITHUB_ENV
 
   # Portable folder
+  # (note: leading sleep is for Windows)
   - name: Build portable folder
     if: always() && inputs.package_kind == 'portable_folder'
     id: build_portable_folder
     shell: wrap-shell {0}
     run: |
+      sleep 5
       export QT_QPA_PLATFORM=offscreen
       PORTABLE_DIR=$(pwd)/shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.portable
       RELEASE_PORTABLE_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.portable

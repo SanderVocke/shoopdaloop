@@ -61,7 +61,7 @@ pub fn get_dependency_libs (files : &[&Path],
     {
         command = String::from("sh");
         let commandstr : String = format!(
-            "for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\" | grep -v \"not found\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'; done");
+            "for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'; done");
         error_patterns = vec!(String::from("not found"));
         args = vec!(String::from("-c"), commandstr);
         skip_n_levels = 1;
@@ -102,7 +102,6 @@ pub fn get_dependency_libs (files : &[&Path],
     if !list_deps_output.status.success() {
         return Err(anyhow::anyhow!("list_dependencies returned nonzero exit code"));
     }
-    let error_lines : Vec<String> = Vec::new();
 
     let root : Rc<RefCell<InternalDependency>> = Rc::new(RefCell::new(InternalDependency::default()));
     let mut current_parent : Rc<RefCell<InternalDependency>> = root.clone();
@@ -246,7 +245,7 @@ pub fn get_dependency_libs (files : &[&Path],
     let mut paths : Vec<PathBuf> = Vec::new();
     let mut handled : HashSet<String> = HashSet::new();
     for dep in root.borrow().deps.iter() {
-        collect_deps(dep, &includes, &excludes, &mut handled, &mut error_msgs, &mut paths, 1);
+        collect_deps(dep, &includes, &excludes, &mut handled, &mut error_msgs, &mut paths, skip_n_levels);
     }
     if !error_msgs.is_empty() {
         return Err(anyhow::anyhow!("Dependency errors:\n{}", error_msgs));
