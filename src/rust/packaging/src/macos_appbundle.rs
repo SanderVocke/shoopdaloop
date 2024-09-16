@@ -25,7 +25,7 @@ fn populate_appbundle(
     let excludelist_path = src_path.join("distribution/macos/excludelist");
     let includelist_path = src_path.join("distribution/macos/includelist");
     let env : HashMap<&str, &str> = HashMap::new();
-    let libs = get_dependency_libs (&[dev_exe_path], src_path, &env, &excludelist_path, &includelist_path, ".dylib", true)?;
+    let libs = get_dependency_libs (&[dev_exe_path], &env, &excludelist_path, &includelist_path, ".dylib", true)?;
 
     println!("Creating directories...");
     for directory in [

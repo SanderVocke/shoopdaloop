@@ -136,7 +136,7 @@ runs:
       echo "BUILT_PACKAGE=$GIT_REV_INSTALLER" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$RELEASE_INSTALLER" | tee -a $GITHUB_ENV
   - name: Upload .exe installer
-    if: always() && inputs.package_kind == 'innosetup' && inputs.upload_name
+    if: always() && inputs.package_kind == 'innosetup'
     uses: actions/upload-artifact@v4
     with:
       name: ${{ env.BUILT_PACKAGE }}
@@ -172,7 +172,7 @@ runs:
       echo "BUILT_PACKAGE=$DMGFILE" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$RELEASE_DMGFILE" | tee -a $GITHUB_ENV
   - name: Upload .dmg package
-    if: always() && inputs.package_kind == 'dmg' && inputs.upload_name
+    if: always() && inputs.package_kind == 'dmg'
     uses: actions/upload-artifact@v4
     with:
       name: ${{ env.BUILT_PACKAGE }}

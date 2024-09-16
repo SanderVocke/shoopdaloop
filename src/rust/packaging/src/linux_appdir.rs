@@ -61,7 +61,7 @@ fn populate_appdir(
     let env : HashMap<&str, &str> = HashMap::from([
         ("LD_LIBRARY_PATH", all_lib_dirs.as_str()),
     ]);
-    let libs = get_dependency_libs (&all_files_to_analyze_refs, src_path, &env, &excludelist_path, &includelist_path, ".so", false)?;
+    let libs = get_dependency_libs (&all_files_to_analyze_refs, &env, &excludelist_path, &includelist_path, ".so", false)?;
 
     println!("Bundling dependencies...");
     std::fs::create_dir(&dynlib_dir)?;
