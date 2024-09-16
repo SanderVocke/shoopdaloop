@@ -43,7 +43,7 @@ pub fn get_dependency_libs (files : &[&Path],
            "$dllNames = @()
             $files = \"{files_str}\" -split ' ' | ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }}
             foreach ($file in $files) {{
-                $output = & Dependencies.exe -chain $file;
+                $output = & Dependencies.exe -chain \"$file\";
                 $newDllNames = $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
                 Where-Object {{ -not ($_ -match \".exe\") }} |  ForEach-Object {{
                     $_.Trim() -split '\\s+' | Select-Object -Last 1
