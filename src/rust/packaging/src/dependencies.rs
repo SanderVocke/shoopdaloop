@@ -33,6 +33,7 @@ pub fn get_dependency_libs (files : &[&Path],
 
     let command : String;
     let args: Vec<String>;
+    let error_patterns: Vec<String>;
     let skip_n_levels: usize;
     let files_str = files.iter().map(|f| f.to_str().unwrap()).collect::<Vec<_>>().join(" ");
     #[cfg(target_os = "windows")]
@@ -53,13 +54,15 @@ pub fn get_dependency_libs (files : &[&Path],
             # Write-Error \"Dependencies:\"
             $dllNames | ForEach-Object {{ Write-Output $_ }}");
         args = vec!(String::from("-Command"), commandstr);
+        error_patterns = vec!();
         skip_n_levels = 0;
     }
     #[cfg(target_os = "linux")]
     {
         command = String::from("sh");
         let commandstr : String = format!(
-            "for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\" | grep -v \"not found\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'; done"); // | xargs -n1 realpath | sort | uniq");
+            "for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\" | grep -v \"not found\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'; done");
+        error_patterns = vec!(String::from("not found"));
         args = vec!(String::from("-c"), commandstr);
         skip_n_levels = 1;
     }
@@ -81,6 +84,7 @@ pub fn get_dependency_libs (files : &[&Path],
              }}
              for f in {files_str}; do recurse_deps $1 \"\"; done");
         args = vec!(String::from("-c"), commandstr);
+        error_patterns = vec!();
         skip_n_levels = 1;
     }
     println!("Running command for determining dependencies: {} {}", &command, args.join(" "));
@@ -98,6 +102,7 @@ pub fn get_dependency_libs (files : &[&Path],
     if !list_deps_output.status.success() {
         return Err(anyhow::anyhow!("list_dependencies returned nonzero exit code"));
     }
+    let error_lines : Vec<String> = Vec::new();
 
     let root : Rc<RefCell<InternalDependency>> = Rc::new(RefCell::new(InternalDependency::default()));
     let mut current_parent : Rc<RefCell<InternalDependency>> = root.clone();
@@ -105,6 +110,7 @@ pub fn get_dependency_libs (files : &[&Path],
         if line.trim().is_empty() {
             continue;
         }
+
         let path = PathBuf::from(line.trim());
         let path_str = path.to_str().ok_or(anyhow::anyhow!("cannot find dependency"))?;
         let path_filename = path.file_name().unwrap().to_str().unwrap();
@@ -144,6 +150,12 @@ pub fn get_dependency_libs (files : &[&Path],
                 if children_indent != indent {
                     return Err(anyhow::anyhow!("Failed to find correct indent level"));
                 }
+            }
+        }
+        for pattern in &error_patterns {
+            if line.contains(pattern.as_str()) {
+                error_msgs.push_str(format!("{}: matched error pattern {}\n", path_str, pattern.as_str()).as_str());
+                continue;
             }
         }
         let dylib_filename_pattern = dylib_filename_part.to_lowercase();
