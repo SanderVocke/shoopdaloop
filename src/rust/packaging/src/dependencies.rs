@@ -30,20 +30,19 @@ pub fn get_dependency_libs (files : &[&Path],
     {
         command = String::from("powershell.exe");
         let commandstr : String = format!(
-           "$dllNames = \"\"
+           "$dllNames = @()
             $files = \"{files_str}\" -split ' '
             foreach ($file in $files) {{
                 $output = & Dependencies.exe -modules $file | Sort-Object | Get-Unique;
                 $newDllNames = $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
                 Where-Object {{ -not ($_ -match \".exe\") }} |  ForEach-Object {{
                     $_.Trim() -split '\\s+' | Select-Object -Last 1
-                }} | Sort-Object | Get-Unique;
-                $dllNames = $dllNames + $newDllNames | Sort-Object | Get-Unique;
+                }} | ForEach-Object {{ $dllNames = $dllNames + $_ }}
             }}
             # Write-Error \"Raw results:\";
             # Write-Error \"$output\";
             # Write-Error \"Dependencies:\"
-            $dllNames | ForEach-Object {{ Write-Output $_ }}");
+            $dllNames | Sort-Object | Get-Unique | ForEach-Object {{ Write-Output $_ }}");
         args = vec!(String::from("-Command"), commandstr);
     }
     #[cfg(target_os = "linux")]

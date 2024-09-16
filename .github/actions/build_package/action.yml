@@ -155,6 +155,7 @@ runs:
     run: |
       DMGFILE=shoopdaloop-${{ env.SHOOP_GIT_REV }}.$(uname -m).dmg
       RELEASE_DMGFILE=shoopdaloop-${{ env.SHOOP_VERSION }}.$(uname -m).dmg
+      cp -r ${{ env.PORTABLE_DIR }} shoopdaloop.app
       create-dmg \
         --volname "ShoopDaLoop" \
         --volicon "distribution/macos/icon.icns" \
@@ -165,7 +166,7 @@ runs:
         --hide-extension "shoopdaloop.app" \
         --app-drop-link 600 185 \
         $DMGFILE \
-        ${{ env.PORTABLE_DIR }}
+        shoopdaloop.app
       cp $DMGFILE $RELEASE_DMGFILE
 
       echo "BUILT_PACKAGE=$DMGFILE" | tee -a $GITHUB_ENV
