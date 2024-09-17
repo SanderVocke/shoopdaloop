@@ -38,7 +38,7 @@ fn populate_appbundle(
     }
 
     println!("Bundling executable...");
-    std::fs::copy(exe_path, appdir.join("Contents/MacOS/shoopdaloop"))?;
+    std::fs::copy(exe_path, appdir.join("shoopdaloop"))?;
 
     println!("Bundling shoop_lib...");
     let lib_dir = appdir.join("shoop_lib");
@@ -95,7 +95,8 @@ fn populate_appbundle(
     println!("Bundling additional assets...");
     for (src,dst) in [
         ("distribution/macos/Info.plist", "Contents/Info.plist"),
-        ("distribution/macos/icon.icns", "Contents/Resources/icon.icns")
+        ("distribution/macos/icon.icns", "Contents/Resources/icon.icns"),
+        ("distribution/macos/shoopdaloop", "Contents/MacOS/shoopdaloop"),
     ] {
         let from = src_path.join(src);
         let to = appdir.join(dst);
