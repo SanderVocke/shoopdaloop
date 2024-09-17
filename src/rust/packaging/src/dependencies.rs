@@ -41,8 +41,6 @@ pub fn get_dependency_libs (files : &[&Path],
         command = String::from("powershell.exe");
         let commandstr : String = format!(
            "$dllNames = @()
-            Get-Location
-            Get-ChildItem Env:
             $files = \"{files_str}\" -split ' ' | ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }}
             foreach ($file in $files) {{
                 $output = & Dependencies.exe -chain \"$file\";
@@ -63,7 +61,7 @@ pub fn get_dependency_libs (files : &[&Path],
     {
         command = String::from("sh");
         let commandstr : String = format!(
-            "pwd; env; for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'; done");
+            "for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'; done");
         error_patterns = vec!(String::from("not found"));
         args = vec!(String::from("-c"), commandstr);
         skip_n_levels = 1;

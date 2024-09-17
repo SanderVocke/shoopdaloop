@@ -60,6 +60,7 @@ fn populate_appdir(
     let all_lib_dirs : HashSet<String> = all_files_to_analyze_refs.iter().map(|p| String::from(p.parent().unwrap().to_str().unwrap())).collect();
     let all_lib_dirs : Vec<&str> = all_lib_dirs.iter().map(|s| s.as_str()).collect();
     let all_lib_dirs : String = all_lib_dirs.join(":");
+    let all_lib_dirs = format!("{}:{}", all_lib_dirs, std::env::var("LD_LIBRARY_PATH").unwrap_or(String::from("")));
     let env : HashMap<&str, &str> = HashMap::from([
         ("LD_LIBRARY_PATH", all_lib_dirs.as_str()),
     ]);
