@@ -9,4 +9,5 @@
 */libGL.so*
 */librt.so*
 */libpthread.so*
-*/libgthread*.so*
+*/libXft.so*
+*/libXss.so*

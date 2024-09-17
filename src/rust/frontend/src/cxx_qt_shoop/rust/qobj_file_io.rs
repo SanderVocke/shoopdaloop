@@ -377,7 +377,7 @@ mod tests {
     #[test]
     fn test_is_absolute_yes() {
         assert_eq!(make_unique_fileio().is_absolute(QString::from(
-            if cfg!(windows) { "C:\\a\\b\\c" } else { "a/b/c" }
+            if cfg!(windows) { "C:\\a\\b\\c" } else { "/a/b/c" }
         )), true);
     }
 

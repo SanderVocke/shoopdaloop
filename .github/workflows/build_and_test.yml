@@ -431,7 +431,7 @@ jobs:
       options: --user root --workdir / # Note: this gets disregarded if container is null
     env:
       PATH_SEPARATOR: ":"
-      checkpoints_enabled: true
+      # checkpoints_enabled: true
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -503,7 +503,7 @@ jobs:
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: "cygpath -w"
       COMPRESS_FOLDER: ''
-      # checkpoints_enabled: true
+      checkpoints_enabled: true
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
@@ -562,7 +562,7 @@ jobs:
     runs-on: ${{ matrix.kind.os }}
     needs: build_windows
     env:
-       checkpoints_enabled: true
+      #  checkpoints_enabled: true
     #if: false
     container:
       image: ${{ matrix.kind.container }}

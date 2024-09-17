@@ -22,3 +22,9 @@
 */libgomp.so*
 */libutil.so*
 */libzita-resampler.so*
+*/libcrypto.so*
+*/libtirpc.so*
+*/libgssapi_krb5.so*
+*/libncursesw.so*
+*/libtinfo.so*
+*/libgthread*.so*
