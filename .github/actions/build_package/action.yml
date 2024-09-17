@@ -100,8 +100,8 @@ runs:
       chmod +x appimagetool-x86_64.AppImage
       printf "#!/bin/sh\n\n./appimagetool-x86_64.AppImage --appimage-extract-and-run \$@\n" > appimagetool.sh
       chmod a+x appimagetool.sh
-      APPIMAGE_NAME=shoopdaloop.${{ env.SHOOP_GIT_REV }}.$(uname -m).AppImage
-      RELEASE_APPIMAGE_NAME=shoopdaloop-${{ env.SHOOP_VERSION }}.$(uname -m).AppImage
+      APPIMAGE_NAME=shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.AppImage
+      RELEASE_APPIMAGE_NAME=shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.AppImage
       ${CARGO_ARTIFACTS_DIR}/package build-app-image --appimagetool $(pwd)/appimagetool.sh -o $APPIMAGE_NAME --appdir ${{ env.PORTABLE_DIR }} --strip
       cp $APPIMAGE_NAME $RELEASE_APPIMAGE_NAME
       echo "BUILT_PACKAGE=$APPIMAGE_NAME" | tee -a $GITHUB_ENV

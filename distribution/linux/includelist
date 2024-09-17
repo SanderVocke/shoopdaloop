@@ -28,3 +28,7 @@
 */libncursesw.so*
 */libtinfo.so*
 */libgthread*.so*
+*/libkrb5.so*
+*/libk5crypto.so*
+*/libcom_err.so*
+*/libkrb5support.so*
