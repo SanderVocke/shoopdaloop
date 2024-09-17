@@ -6,3 +6,5 @@
 */ld-linux*
 */libc.so*
 */libdl.so*
+*/libGL.so*
+*/librt.so*

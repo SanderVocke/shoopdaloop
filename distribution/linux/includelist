@@ -22,3 +22,5 @@
 */libgomp.so*
 */libpthread.so*
 */libutil.so*
+*/libzita-resampler.so*
+*/libgthread*.so*

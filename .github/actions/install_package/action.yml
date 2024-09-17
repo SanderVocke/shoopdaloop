@@ -25,6 +25,8 @@ runs:
            type="portable-macos"
        elif [[ $filename == *windows*.portable.tar.gz ]]; then
            type="portable-windows"
+       elif [[ $filename == *.test_binaries.tar.gz ]]; then
+           type="test-binaries"
        else
          type="${filename##*.}"
        fi
@@ -85,7 +87,8 @@ runs:
       cd portable
       tar -xzf ${{ inputs.package }}
       cd ..
-      PORTABLE=$(pwd)/portable/*
+      PORTABLE=$(ls $(pwd)/portable/*)
+      echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
 
   # Linux AppImage
@@ -95,9 +98,7 @@ runs:
     run: |
       chmod a+x ${{ inputs.package }}
       echo "COMMAND_SHOOPDALOOP=${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
-      # echo "COMMAND_TEST_BACKEND=SHOOPDALOOP_APPIMAGE_EXECUTE=backend_tests ${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
-      # echo "COMMAND_TEST_RUST=SHOOPDALOOP_APPIMAGE_EXECUTE=rust_tests ${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
-      # echo "COMMAND_TEST_PYTHON=SHOOPDALOOP_APPIMAGE_EXECUTE=python_tests ${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_PYTHON=SHOOPDALOOP_APPIMAGE_EXECUTE=python_tests ${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
 
   # MacOS .dmg installer
   - name: Install MacOS .dmg
@@ -108,3 +109,16 @@ runs:
       echo "cmd=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS" | tee -a $GITHUB_ENV
 
+  # Test binaries
+  - name: Install test binaries
+    if: always() && steps.get_type.outputs.type == 'test-binaries'
+    shell: wrap-shell {0}
+    run: |
+      if [ -z $PORTABLE_FOLDER_INSTALL ]; then
+        echo "There is no portable installation to install test binaries into."
+        exit 1
+      fi
+      cd $PORTABLE_FOLDER_INSTALL
+      tar -xzf ${{ inputs.package }}
+      echo "COMMAND_TEST_BACKEND=$PORTABLE_FOLDER_INSTALL/test_runner" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_RUST=$PORTABLE_FOLDER_INSTALL/cargo-nextest nextest run --archive-file $PORTABLE_FOLDER_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV
