@@ -146,7 +146,7 @@ pub fn get_dependency_libs (files : &[&Path],
                     children_indent = current_parent.borrow().children_indent;
                 }
                 if children_indent != indent {
-                    return Err(anyhow::anyhow!("Failed to find correct indent level"));
+                    return Err(anyhow::anyhow!("Failed to find correct indent level: {children_indent} vs. {indent}"));
                 }
             }
         }
@@ -173,7 +173,7 @@ pub fn get_dependency_libs (files : &[&Path],
             let mut dep_mut = dep.borrow_mut();
             dep_mut.maybe_parent = Some(current_parent.clone());
         }
-        println!("adding {path_filename} to {:?}", current_parent.borrow().path);
+        println!("adding {path_filename} to {:?} at indent {}", current_parent.borrow().path, indent);
         current_parent.borrow_mut().deps.insert(path.clone(), dep);
         used_includes.insert(path_filename.to_string());
     }
