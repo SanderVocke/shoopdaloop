@@ -45,9 +45,7 @@ pub fn get_dependency_libs (files : &[&Path],
             foreach ($file in $files) {{
                 $output = & Dependencies.exe -chain $file.Trim();
                 $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
-                    Where-Object {{ -not ($_ -match \".exe\") }} |
-                    Where-Object {{ -not ($_ -match \"kernel32.dll\" ) }} |
-                    Where-Object {{ -not ($_ -match \"kernelbase.dll\" ) }} |
+                    Get-Unique |
                     ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }} |
                     ForEach-Object {{ Write-Output $_ }}
             }}");

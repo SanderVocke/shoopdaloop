@@ -11,3 +11,5 @@
 */libpthread.so*
 */libXft.so*
 */libXss.so*
+*/libpython3.*
+*/libshoopdaloop_backend.so*

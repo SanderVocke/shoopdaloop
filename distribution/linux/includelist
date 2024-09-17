@@ -32,3 +32,16 @@
 */libk5crypto.so*
 */libcom_err.so*
 */libkrb5support.so*
+*/libresolv.so*
+*/libkeyutils.so*
+*/libbz2*
+*/libcrypt*
+*/libffi*
+*/libpanelw*
+*/liblzma*
+*/libsqlite3*
+*/libssl.so*
+*/libtk8.6*
+*/libtcl8.6*
+*/libnsl.so*
+*/libreadline.so*
