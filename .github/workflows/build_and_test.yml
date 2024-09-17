@@ -561,7 +561,7 @@ jobs:
           #   pathconvert: "| cygpath -u -f -"
     runs-on: ${{ matrix.kind.os }}
     needs: build_windows
-    env:
+    # env:
       #  checkpoints_enabled: true
     #if: false
     container:
