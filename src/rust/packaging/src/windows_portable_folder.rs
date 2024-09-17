@@ -38,17 +38,6 @@ fn populate_folder(
         &lib_dir
     )?;
 
-    let target_py_env = lib_dir.join("py");
-    println!("Bundling Python environment...");
-    {
-        let from = PathBuf::from(shoop_built_out_dir).join("shoop_pyenv");
-        std::fs::create_dir(&target_py_env)?;
-        recursive_dir_cpy(
-            &from,
-            &target_py_env
-        )?;
-    }
-
     println!("Bundling dependencies...");
     for lib in libs {
         println!("  Bundling {}", lib.to_str().unwrap());
