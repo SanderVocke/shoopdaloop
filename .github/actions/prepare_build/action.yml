@@ -81,6 +81,7 @@ runs:
         INCLUDE_PATH=$(${CONVERT_PATH_FN} "$(pwd)/prebuilt_dependencies/include")
         LIB_PATH=$(${CONVERT_PATH_FN} "$(pwd)/prebuilt_dependencies/lib")
         echo "CMAKE_PREFIX_PATH=${PREFIX_PATH}${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=${PREFIX_PATH}${PATH_SEPARATOR}${PKG_CONFIG_PATH}" | tee -a $GITHUB_ENV
         echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${LIB_PATH}" | tee -a $GITHUB_ENV
 
   - name: Prepare linux

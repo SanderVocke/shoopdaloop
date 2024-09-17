@@ -1,11 +1,12 @@
 [package]
-name = "backend"
+name = "backend_bindings"
 edition = "2021"
 
 [lib]
 
 [dependencies]
+anyhow = "1.0"
 
 [build-dependencies]
-cmake = "0.1"
+bindgen = "0.70.1"
 anyhow = "1.0"

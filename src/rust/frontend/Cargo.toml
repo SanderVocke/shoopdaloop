@@ -24,7 +24,7 @@ regex = "1"
 cxx-qt = { git = "https://github.com/SanderVocke/cxx-qt.git", rev = "b475b382410b0dc009ac56fd4c28c12bcf83853e" }
 cxx-qt-lib = { git = "https://github.com/SanderVocke/cxx-qt.git", rev = "b475b382410b0dc009ac56fd4c28c12bcf83853e" }
 macros = { path = "../macros" }
-backend = { path = "../backend" }
+backend_bindings = { path = "../backend_bindings" }
 common = { path = "../common" }
 
 [build-dependencies]

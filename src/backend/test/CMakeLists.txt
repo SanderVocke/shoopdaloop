@@ -31,7 +31,7 @@ target_link_libraries(test_runner PRIVATE
                       fmt::fmt
                       Threads::Threads
                       Boost::headers
-                      ${ZITA_RESAMPLER_LIB})
+                      zita-resampler::zita-resampler)
 target_include_directories(test_runner
                         PRIVATE
                         ${JACK_INCLUDE_DIRS}

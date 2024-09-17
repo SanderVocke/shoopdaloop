@@ -83,8 +83,8 @@ pub mod ffi {
 
 pub use ffi::make_unique_test_port as make_unique;
 pub use ffi::TestPort;
-use backend::PortDataType;
-use backend::PortDirection;
+use backend_bindings::PortDataType;
+use backend_bindings::PortDirection;
 use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
 use ffi::*;
 

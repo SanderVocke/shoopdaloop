@@ -6,8 +6,7 @@ use std::process::Command;
 pub fn build_appimage(
     appimagetool : &str,
     appdir : &Path,
-    output_file : &Path,
-    strip: bool,
+    output_file : &Path
 ) -> Result<(), anyhow::Error> {
     let src_dir = appdir.to_owned();
 

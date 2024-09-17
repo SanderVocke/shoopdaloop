@@ -1,5 +1,5 @@
 [package]
-name = "backend"
+name = "py_env"
 edition = "2021"
 
 [lib]
@@ -7,5 +7,6 @@ edition = "2021"
 [dependencies]
 
 [build-dependencies]
-cmake = "0.1"
+glob = "0.3"
+copy_dir = "0.1"
 anyhow = "1.0"

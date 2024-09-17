@@ -30,9 +30,6 @@ enum Commands {
 
         #[arg(short, long, value_name="File.AppImage", required = true)]
         output: PathBuf,
-
-        #[arg(short, long, action = clap::ArgAction::SetTrue)]
-        strip: bool,
     },
     BuildTestBinaries {
         #[arg(short, long, value_name="/path/to/folder", required = true)]
@@ -112,15 +109,15 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                         output_dir.as_path(),
                         *release)
         },
-        Some(Commands::BuildAppImage { appimagetool, appdir, output, strip }) => {
+        Some(Commands::BuildAppImage { appimagetool, appdir, output }) => {
             #[cfg(target_os = "linux")]
             {
                 use packaging::linux_appimage::build_appimage;
-                build_appimage(appimagetool, appdir, output, *strip)
+                build_appimage(appimagetool, appdir, output)
             }
             #[cfg(not(target_os = "linux"))]
             {
-                let _ = (appimagetool, appdir, output, strip);
+                let _ = (appimagetool, appdir, output);
                 Err(anyhow::anyhow!("AppImage packaging is only supported on Linux systems."))
             }
         },

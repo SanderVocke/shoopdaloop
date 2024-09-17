@@ -179,7 +179,8 @@ if (HAVE_LV2)
        ${CMAKE_SOURCE_DIR}/third_party/lv2_evbuf/lv2_evbuf.c)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2
                       ${CMAKE_SOURCE_DIR/third_party/lv2_evbuf})
-  include(FindPkgConfig)
+  set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH TRUE)
+  find_package(PkgConfig REQUIRED)
   pkg_search_module(lilv REQUIRED IMPORTED_TARGET GLOBAL lilv-0)
   pkg_search_module(lv2 REQUIRED IMPORTED_TARGET GLOBAL lv2)
 endif()
@@ -190,8 +191,7 @@ if (BACKEND_JACK)
 endif()
 
 # Find libzita-resampler
-find_library(ZITA_RESAMPLER_LIB zita-resampler)
-
+find_package(zita-resampler REQUIRED)
 
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
@@ -211,7 +211,7 @@ target_include_directories(shoopdaloop_backend_internals
 target_link_libraries(shoopdaloop_backend_internals PRIVATE
   Threads::Threads
   fmt::fmt
-  ${ZITA_RESAMPLER_LIB}
+  zita-resampler::zita-resampler
   Boost::headers
   Catch2::Catch2
   )
@@ -240,7 +240,7 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp "#include \"libshoopdaloop_back
 add_library(shoopdaloop_backend SHARED ${CMAKE_CURRENT_BINARY_DIR}/empty.cpp)
 target_link_libraries(shoopdaloop_backend PRIVATE
    "$<LINK_LIBRARY:WHOLE_ARCHIVE,shoopdaloop_backend_internals>"
-   ${ZITA_RESAMPLER_LIB}
+   zita-resampler::zita-resampler
    Threads::Threads)
 if (WIN32)
    target_link_libraries(shoopdaloop_backend PRIVATE Boost::system)
