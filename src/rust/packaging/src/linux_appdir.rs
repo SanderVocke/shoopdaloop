@@ -47,7 +47,7 @@ fn populate_appdir(
     for f in glob(&format!("{}/**/*.so*", appdir.to_str().unwrap()))
         .with_context(|| "Failed to read glob pattern")? {
             let p = std::fs::canonicalize(f?)?;
-            if !p.to_str().unwrap().contains("py/lib/python") &&
+            if !p.to_str().unwrap().contains("site-packages/") &&
                !std::fs::symlink_metadata(&p)?.is_symlink() {
                 all_files_to_analyze.push(p);
             }

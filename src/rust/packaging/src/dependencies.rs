@@ -2,6 +2,7 @@ use anyhow;
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 use std::collections::{HashSet, HashMap};
+use indexmap::IndexMap;
 use std::process::Command;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -9,7 +10,7 @@ use std::rc::Rc;
 #[derive(Default)]
 struct InternalDependency {
     path : PathBuf,
-    deps : Vec<Rc<RefCell<InternalDependency>>>,
+    deps : IndexMap<PathBuf, Rc<RefCell<InternalDependency>>>,
     children_indent: usize,
     maybe_parent : Option<Rc<RefCell<InternalDependency>>>,
 }
@@ -45,6 +46,8 @@ pub fn get_dependency_libs (files : &[&Path],
                 $output = & Dependencies.exe -chain $file.Trim();
                 $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
                     Where-Object {{ -not ($_ -match \".exe\") }} |
+                    Where-Object {{ -not ($_ -match \"kernel32.dll\" ) }} |
+                    Where-Object {{ -not ($_ -match \"kernelbase.dll\" ) }} |
                     ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }} |
                     ForEach-Object {{ Write-Output $_ }}
             }}");
@@ -129,12 +132,12 @@ pub fn get_dependency_libs (files : &[&Path],
         {
             let mut children_indent = current_parent.borrow().children_indent;
             let maybe_prev : Option<Rc<RefCell<InternalDependency>>> =
-                current_parent.borrow().deps.last().map(|r| r.clone());
+                current_parent.borrow().deps.last().map(|r| r.1.clone());
             if indent > children_indent && maybe_prev.is_some() {
                 let prev = maybe_prev.unwrap();
                 let mut new_parent_mut = prev.borrow_mut();
                 new_parent_mut.children_indent = indent;
-                new_parent_mut.deps.push(dep.clone());
+                new_parent_mut.deps.insert(path.clone(), dep.clone());
                 current_parent = prev.clone();
             } else if indent < children_indent {
                 while indent < children_indent {
@@ -173,7 +176,7 @@ pub fn get_dependency_libs (files : &[&Path],
             dep_mut.maybe_parent = Some(current_parent.clone());
         }
         println!("adding {path_filename} to {:?}", current_parent.borrow().path);
-        current_parent.borrow_mut().deps.push(dep);
+        current_parent.borrow_mut().deps.insert(path.clone(), dep);
         used_includes.insert(path_filename.to_string());
     }
 
@@ -237,12 +240,12 @@ pub fn get_dependency_libs (files : &[&Path],
         }
 
         let db = d.borrow();
-        for sub in db.deps.iter() { collect_deps(&sub, includes, excludes, handled, error_msgs, paths, skip_n_levels - (std::cmp::min(skip_n_levels, 1))); }
+        for sub in db.deps.values() { collect_deps(&sub, includes, excludes, handled, error_msgs, paths, skip_n_levels - (std::cmp::min(skip_n_levels, 1))); }
     }
 
     let mut paths : Vec<PathBuf> = Vec::new();
     let mut handled : HashSet<String> = HashSet::new();
-    for dep in root.borrow().deps.iter() {
+    for dep in root.borrow().deps.values() {
         collect_deps(dep, &includes, &excludes, &mut handled, &mut error_msgs, &mut paths, skip_n_levels);
     }
     if !error_msgs.is_empty() {

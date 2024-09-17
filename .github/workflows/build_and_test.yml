@@ -100,7 +100,7 @@ jobs:
       options: ${{ matrix.container_options }}
     env:
       PATH_SEPARATOR: ":"
-      COMPRESS_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
+      COMPRESS_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
       # checkpoints_enabled: true
     needs: maybe_create_release
     #if: false
@@ -139,7 +139,7 @@ jobs:
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.portable.tar.gz
-            second_package: shoopdaloop.*.x86_64.AppImage
+            second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
           # - name: debug_wheel_debian_stable
           #   python: python3
           #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
@@ -359,7 +359,7 @@ jobs:
     #if: false
     env:
        PATH_SEPARATOR: ":"
-       COMPRESS_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
+       COMPRESS_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
       #  checkpoints_enabled: true
     steps:
     - name: Checkout
@@ -542,6 +542,7 @@ jobs:
             container: null
             os: windows-2022
             package: shoopdaloop.*.release-windows-x64.portable.tar.gz
+            second_package: shoopdaloop.*.release-windows-x64.test_binaries.tar.gz
             qpa_platform: offscreen
             pathconvert: "| cygpath -u -f -"
           # - name: release_windows_innosetup
