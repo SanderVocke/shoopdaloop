@@ -40,19 +40,14 @@ pub fn get_dependency_libs (files : &[&Path],
     {
         command = String::from("powershell.exe");
         let commandstr : String = format!(
-           "$dllNames = @()
-            $files = \"{files_str}\" -split ' ' | ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }}
+           "$files = \"{files_str}\" -split ' '
             foreach ($file in $files) {{
                 $output = & Dependencies.exe -chain $file.Trim();
-                $newDllNames = $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
-                Where-Object {{ -not ($_ -match \".exe\") }} |  ForEach-Object {{
-                    $_.Trim() -split '\\s+' | Select-Object -Last 1
-                }} | ForEach-Object {{ $dllNames = $dllNames + $_ }}
-            }}
-            # Write-Error \"Raw results:\";
-            # Write-Error \"$output\";
-            # Write-Error \"Dependencies:\"
-            $dllNames | ForEach-Object {{ Write-Output $_ }}");
+                $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
+                    Where-Object {{ -not ($_ -match \".exe\") }} |
+                    ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }} |
+                    ForEach-Object {{ Write-Output $_ }}
+            }}");
         args = vec!(String::from("-Command"), commandstr);
         error_patterns = vec!();
         skip_n_levels = 0;
