@@ -8,3 +8,5 @@
 */libdl.so*
 */libGL.so*
 */librt.so*
+*/libpthread.so*
+*/libgthread*.so*
