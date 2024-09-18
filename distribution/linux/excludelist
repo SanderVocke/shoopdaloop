@@ -13,3 +13,7 @@
 */libXss.so*
 */libpython3.*
 */libshoopdaloop_backend.so*
+*/libXext.so*
+*/libXrender.so*
+*/libXcursor.so*
+*/libsystemd.so*

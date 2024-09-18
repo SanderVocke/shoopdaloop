@@ -22,13 +22,8 @@ fn populate_appbundle(
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
     let src_path = src_path.ancestors().nth(6).ok_or(anyhow::anyhow!("cannot find src dir"))?;
+    let final_exe_path = appdir.join("shoopdaloop");
     info!("Using source path {src_path:?}");
-
-    let dynlib_dir = appdir.join("lib");
-    let excludelist_path = src_path.join("distribution/macos/excludelist");
-    let includelist_path = src_path.join("distribution/macos/includelist");
-    let env : HashMap<&str, &str> = HashMap::new();
-    let libs = get_dependency_libs (&[dev_exe_path], &env, &excludelist_path, &includelist_path, ".dylib", true)?;
 
     info!("Creating directories...");
     for directory in [
@@ -41,7 +36,7 @@ fn populate_appbundle(
     }
 
     info!("Bundling executable...");
-    std::fs::copy(exe_path, appdir.join("shoopdaloop"))?;
+    std::fs::copy(exe_path, &final_exe_path)?;
 
     info!("Bundling shoop_lib...");
     let lib_dir = appdir.join("shoop_lib");
@@ -51,6 +46,13 @@ fn populate_appbundle(
         &PathBuf::from(shoop_built_out_dir).join("shoop_lib"),
         &lib_dir
     )?;
+
+    info!("Getting dependencies (this may take some time)...");
+    let dynlib_dir = appdir.join("lib");
+    let excludelist_path = src_path.join("distribution/macos/excludelist");
+    let includelist_path = src_path.join("distribution/macos/includelist");
+    let final_exe_dir = final_exe_path.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
+    let libs = get_dependency_libs (&final_exe_path, &final_exe_dir, &excludelist_path, &includelist_path, true)?;
 
     info!("Bundling dependencies...");
     std::fs::create_dir(&dynlib_dir)?;

@@ -20,16 +20,11 @@ fn populate_folder(
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
     let src_path = src_path.ancestors().nth(6).ok_or(anyhow::anyhow!("cannot find src dir"))?;
+    let final_exe_path = folder.join("shoopdaloop.exe");
     info!("Using source path {src_path:?}");
 
-    let dynlib_dir = folder;
-    let excludelist_path = src_path.join("distribution/windows/excludelist");
-    let includelist_path = src_path.join("distribution/windows/includelist");
-    let env : HashMap<&str, &str> = HashMap::new();
-    let libs = get_dependency_libs (&[dev_exe_path], &env, &excludelist_path, &includelist_path, ".dll", false)?;
-
     info!("Bundling executable...");
-    std::fs::copy(exe_path, folder.join("shoopdaloop.exe"))
+    std::fs::copy(exe_path, &final_exe_path)
         .with_context(|| format!("Failed to copy {exe_path:?} to {folder:?}"))?;
 
     info!("Bundling shoop_lib...");
@@ -40,6 +35,13 @@ fn populate_folder(
         &PathBuf::from(shoop_built_out_dir).join("shoop_lib"),
         &lib_dir
     )?;
+
+    let dynlib_dir = folder;
+    let excludelist_path = src_path.join("distribution/windows/excludelist");
+    let includelist_path = src_path.join("distribution/windows/includelist");
+    let final_exe_dir = final_exe_path.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
+    info!("Getting dependencies (this may take some time)...");
+    let libs = get_dependency_libs (&final_exe_path, &final_exe_dir, &excludelist_path, &includelist_path, false)?;
 
     info!("Bundling dependencies...");
     for lib in libs {

@@ -2,7 +2,6 @@ use anyhow;
 use anyhow::Context;
 use std::path::{PathBuf, Path};
 use glob::glob;
-use std::collections::{HashSet, HashMap};
 use crate::dependencies::get_dependency_libs;
 use crate::fs_helpers::recursive_dir_cpy;
 
@@ -32,29 +31,12 @@ fn populate_appdir(
         &lib_dir
     )?;
 
-    info!("Getting dependencies...");
-    let mut all_files_to_analyze : Vec<PathBuf> = Vec::new();
-    for f in glob(&format!("{}/**/*.so*", appdir.to_str().unwrap()))
-        .with_context(|| "Failed to read glob pattern")? {
-            let p = std::fs::canonicalize(f?)?;
-            if !p.to_str().unwrap().contains("site-packages/") &&
-               !std::fs::symlink_metadata(&p)?.is_symlink() {
-                all_files_to_analyze.push(p);
-            }
-        }
-    all_files_to_analyze.push(final_exe_path.to_owned());
-    let all_files_to_analyze_refs : Vec<&Path> = all_files_to_analyze.iter().map(|p| p.as_path()).collect();
+    info!("Getting dependencies (this may take some time)...");
     let dynlib_dir = appdir.join("lib");
     let excludelist_path = src_path.join("distribution/linux/excludelist");
     let includelist_path = src_path.join("distribution/linux/includelist");
-    let all_lib_dirs : HashSet<String> = all_files_to_analyze_refs.iter().map(|p| String::from(p.parent().unwrap().to_str().unwrap())).collect();
-    let all_lib_dirs : Vec<&str> = all_lib_dirs.iter().map(|s| s.as_str()).collect();
-    let all_lib_dirs : String = all_lib_dirs.join(":");
-    let all_lib_dirs = format!("{}:{}", all_lib_dirs, std::env::var("LD_LIBRARY_PATH").unwrap_or(String::from("")));
-    let env : HashMap<&str, &str> = HashMap::from([
-        ("LD_LIBRARY_PATH", all_lib_dirs.as_str()),
-    ]);
-    let libs = get_dependency_libs (&all_files_to_analyze_refs, &env, &excludelist_path, &includelist_path, ".so", false)?;
+    let exe_dir = final_exe_path.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
+    let libs = get_dependency_libs (&final_exe_path, &exe_dir, &excludelist_path, &includelist_path, false)?;
 
     info!("Bundling {} dependencies...", libs.len());
     std::fs::create_dir(&dynlib_dir)?;
@@ -89,6 +71,13 @@ fn populate_appdir(
         "shoop_lib/test_runner",
         "shoop_lib/py/lib/python*/test",
         "shoop_lib/py/lib/python*/*/test",
+        "shoop_lib/py/lib/python*/site-packages/PySide6/**/*Qt6Sql*",
+        "shoop_lib/py/lib/python*/site-packages/PySide6/Qt/plugins/sqldrivers",
+        "shoop_lib/py/lib/python*/site-packages/PySide6/Qt/plugins/designer",
+        "shoop_lib/py/lib/python*/site-packages/PySide6/Qt/plugins/qmltooling",
+        "shoop_lib/py/lib/python*/site-packages/PySide6/Qt/qml/QtQuick/VirtualKeyboard",
+        "shoop_lib/py/lib/python*/site-packages/PySide6/Qt/qml/QtQuick/Scene2D",
+        "shoop_lib/py/lib/python*/site-packages/PySide6/Qt/qml/Qt5Compat/GraphicalEffects",
         "**/*.a",
     ] {
         let pattern = format!("{}/{pattern}", appdir.to_str().unwrap());
