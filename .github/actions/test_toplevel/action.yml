@@ -13,8 +13,6 @@ inputs:
     description: "python command"
   name:
     description: "workflow name"
-  qpa_platform:
-    description: "Qt QPA platform"
   codecov_token:
     description: "Token for CodeCov"
   install_with_sudo:

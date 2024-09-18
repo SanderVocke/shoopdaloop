@@ -12,6 +12,7 @@ env:
   checkpoints_enabled: false
   CONVERT_PATH_FN: "echo"
   RUST_BACKTRACE: "1"
+  QT_QPA_PLATFORM: "offscreen"
 
 permissions:
   contents: write
@@ -203,7 +204,6 @@ jobs:
         asan: ${{ matrix.kind.asan }}
         coverage: ${{ matrix.kind.coverage }}
         python: ${{ matrix.kind.python }}
-        qpa_platform: vnc
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
     - uses: ./.github/actions/checkpoint
       if: always()
@@ -312,7 +312,6 @@ jobs:
   #       asan: ${{ matrix.kind.asan }}
   #       coverage: ${{ matrix.kind.coverage }}
   #       python: ${{ matrix.kind.python }}
-  #       qpa_platform: vnc
   #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
   #       install_with_sudo: ${{ matrix.kind.install_with_sudo }}
   #       do_qml_tests: false # Too slow on ARM emulation
@@ -401,32 +400,27 @@ jobs:
           #   container: null
           #   os: macos-12
           #   package: wheel_macos_release
-          #   qpa_platform: offscreen
           # - name: release_whl_macos13
           #   python: python3
           #   container: null
           #   os: macos-13
           #   package: wheel_macos_release
-          #   qpa_platform: offscreen
           # - name: release_whl_macos14
           #   python: python3
           #   container: null
           #   os: macos-14
           #   package: wheel_macos_release_arm
-          #   qpa_platform: offscreen
           # - name: debug_whl_macos14
           #   python: python3
           #   container: null
           #   os: macos-14
           #   package: wheel_macos_debug_arm
-          #   qpa_platform: offscreen
           - name: release_macos_arm
             python: python3
             container: null
             os: macos-14
             package: shoopdaloop.*.release-macos-arm.portable.tar.gz
             second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
-            qpa_platform: offscreen
     runs-on: ${{ matrix.kind.os }}
     needs: build_macos
     #if: false
@@ -450,7 +444,6 @@ jobs:
         asan: ${{ matrix.kind.asan }}
         coverage: ${{ matrix.kind.coverage }}
         python: ${{ matrix.kind.python }}
-        qpa_platform: ${{ matrix.kind.qpa_platform }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
     - uses: ./.github/actions/checkpoint
 
@@ -547,21 +540,18 @@ jobs:
             os: windows-2022
             package: shoopdaloop.*.release-windows-x64.portable.tar.gz
             second_package: shoopdaloop.*.release-windows-x64.test_binaries.tar.gz
-            qpa_platform: offscreen
             pathconvert: "| cygpath -u -f -"
           # - name: release_windows_innosetup
           #   python: python.exe
           #   container: null
           #   os: windows-2022
           #   package: package_windows_release
-          #   qpa_platform: offscreen
           #   pathconvert: "| cygpath -u -f -"
           # - name: debug_windows
           #   python: python.exe
           #   container: null
           #   os: windows-2022
           #   package: wheel_windows_debug
-          #   qpa_platform: offscreen
           #   pathconvert: "| cygpath -u -f -"
     runs-on: ${{ matrix.kind.os }}
     needs: build_windows
@@ -585,7 +575,6 @@ jobs:
         asan: ${{ matrix.kind.asan }}
         coverage: ${{ matrix.kind.coverage }}
         python: ${{ matrix.kind.python }}
-        qpa_platform: ${{ matrix.kind.qpa_platform }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
     - uses: ./.github/actions/checkpoint
 

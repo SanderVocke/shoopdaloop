@@ -12,9 +12,6 @@ inputs:
   artifact_name:
     required: true
     type: string
-  qt_qpa_platform:
-    type: string
-    default: vnc
   python:
     type: string
     default: python
@@ -27,7 +24,6 @@ runs:
     shell: wrap-shell {0}
     run: >
         LIBGL_ALWAYS_SOFTWARE=1
-        QT_QPA_PLATFORM=${{ inputs.qt_qpa_platform }}
         SHOOP_LOG=Frontend.TestScreenGrabber=debug
         ${{ env.RUN_CMD_PREFIX }}
         ${{ env.COMMAND_SHOOPDALOOP }} -b dummy --test-grab-screens ${{ inputs.screenshots_path }}
