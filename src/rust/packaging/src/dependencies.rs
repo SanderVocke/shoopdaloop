@@ -60,7 +60,7 @@ pub fn get_dependency_libs (files : &[&Path],
             "for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'; done");
         error_patterns = vec!(String::from("not found"));
         args = vec!(String::from("-c"), commandstr);
-        skip_n_levels = 1;
+        skip_n_levels = 0;
     }
     #[cfg(target_os = "macos")]
     {
