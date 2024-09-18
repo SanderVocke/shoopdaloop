@@ -43,7 +43,7 @@ pub fn get_dependency_libs (files : &[&Path],
         let commandstr : String = format!(
            "$files = \"{files_str}\" -split ' '
             foreach ($file in $files) {{
-                $output = & Dependencies.exe -chain $file.Trim();
+                $output = & Dependencies.exe -chain -depth 4 $file.Trim();
                 $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
                     Get-Unique |
                     ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }} |
