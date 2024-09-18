@@ -4,7 +4,7 @@ import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
-import '"../js/generate_session.js' as GenerateSession
+import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
@@ -40,7 +40,7 @@ ShoopTestFile {
             session: session
 
             property var tut : session.main_tracks[0]
-            
+
             function tut_control() {
                 return tut.control_widget
             }

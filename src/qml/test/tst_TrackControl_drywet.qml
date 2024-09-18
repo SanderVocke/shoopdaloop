@@ -4,7 +4,7 @@ import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
-import '"../js/generate_session.js' as GenerateSession
+import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
@@ -40,7 +40,7 @@ ShoopTestFile {
             session: session
 
             property var tut : session.main_tracks[0]
-            
+
             function tut_control() {
                 return tut.control_widget
             }
@@ -178,7 +178,7 @@ ShoopTestFile {
                     let out2 = output_port_2.dummy_dequeue_data(4)
 
                     midi_input_port.dummy_clear_queues()
-                    
+
                     verify_approx(out1, expect_out1)
                     verify_approx(out2, expect_out2)
                     verify_true(fx.active)

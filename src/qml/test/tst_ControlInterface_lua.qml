@@ -4,7 +4,7 @@ import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
-import '"../js/generate_session.js' as GenerateSession
+import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
@@ -167,7 +167,7 @@ ShoopTestFile {
                 'test_loop_count': () => {
                     check_backend()
                     clear()
-                    
+
                     verify_eq(do_eval('return shoop_control.loop_count({})'), 0)
                     verify_eq(do_eval('return shoop_control.loop_count({-1, -1})'), 0)
                     verify_eq(do_eval('return shoop_control.loop_count({0, 0})'), 1)
@@ -178,7 +178,7 @@ ShoopTestFile {
                 'test_loop_get_mode': () => {
                     check_backend()
                     clear()
-                    
+
                     verify_eq_lua('shoop_control.loop_get_mode({0,0})', '{ shoop_control.constants.LoopMode_Stopped }')
                     loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
@@ -191,7 +191,7 @@ ShoopTestFile {
                 'test_loop_get_next_mode': () => {
                     check_backend()
                     clear()
-                    
+
                     loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 1, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('shoop_control.loop_get_next_mode({0,0})', '{ shoop_control.constants.LoopMode_Recording }')
@@ -200,7 +200,7 @@ ShoopTestFile {
                 'test_loop_get_next_mode_delay': () => {
                     check_backend()
                     clear()
-                    
+
                     verify_eq_lua('shoop_control.loop_get_next_mode_delay({0,0})', '{ -1 }')
                     loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, 1, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
@@ -210,7 +210,7 @@ ShoopTestFile {
                 'test_loop_get_length': () => {
                     check_backend()
                     clear()
-                    
+
                     verify_eq_lua('shoop_control.loop_get_length({0,0})', '{0}')
 
                     loop_at(1,1).set_length(100)
@@ -233,7 +233,7 @@ ShoopTestFile {
                 'test_loop_get_which_targeted': () => {
                     check_backend()
                     clear()
-                    
+
                     verify_eq_lua('shoop_control.loop_get_which_targeted()', 'nil')
                     loop_at(0,0).target()
                     verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0, 0}')
@@ -244,7 +244,7 @@ ShoopTestFile {
                 'test_loop_get_by_mode': () => {
                     check_backend()
                     clear()
-                    
+
                     verify_eq_lua('shoop_control.loop_get_by_mode(shoop_control.constants.LoopMode_Stopped)', '{{0,0}, {0,1}, {1,0}, {1,1}, {-1,0}}')
                     loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
@@ -255,7 +255,7 @@ ShoopTestFile {
                 'test_loop_get_by_track': () => {
                     check_backend()
                     clear()
-                    
+
                     verify_eq_lua('shoop_control.loop_get_by_track(0)', '{{0,0}, {0,1}}')
                     verify_eq_lua('shoop_control.loop_get_by_track(1)', '{{1,0}, {1,1}}')
                 },
@@ -263,14 +263,14 @@ ShoopTestFile {
                 'test_loop_get_all': () => {
                     check_backend()
                     clear()
-                    
+
                     verify_eq_lua('shoop_control.loop_get_all()', '{{0,0}, {0,1}, {1,0}, {1,1}, {-1,0}}')
                 },
 
                 'test_loop_set_get_gain': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.loop_set_gain({0,0}, 1.0)')
                     do_execute('shoop_control.loop_set_gain({1,0}, 1.0)')
                     verify_eq_lua('shoop_control.loop_get_gain({0,0})', '{1.0}')
@@ -282,7 +282,7 @@ ShoopTestFile {
                 'test_loop_set_get_gain_fader': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.loop_set_gain_fader({0,0}, 1.0)')
                     verify_eq_lua('shoop_control.loop_get_gain_fader({0,0})', '{1.0}')
                     do_execute('shoop_control.loop_set_gain_fader({0,0}, 0.5)')
@@ -342,7 +342,7 @@ ShoopTestFile {
                 'test_loop_select': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.loop_select({0,0}, true)')
                     verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}}')
                     do_execute('shoop_control.loop_select({0,1}, true)')
@@ -358,7 +358,7 @@ ShoopTestFile {
                 'test_loop_target': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.loop_target({0,0})')
                     verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0,0}')
                     do_execute('shoop_control.loop_target({0,1})')
@@ -372,7 +372,7 @@ ShoopTestFile {
                 'test_loop_toggle_selected': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.loop_toggle_selected({0,0})')
                     verify_eq_lua('shoop_control.loop_get_which_selected()', '{{0,0}}')
                     do_execute('shoop_control.loop_toggle_selected({0,0})')
@@ -382,7 +382,7 @@ ShoopTestFile {
                 'test_loop_toggle_targeted': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.loop_toggle_targeted({0,0})')
                     verify_eq_lua('shoop_control.loop_get_which_targeted()', '{0,0}')
                     do_execute('shoop_control.loop_toggle_targeted({0,1})')
@@ -398,7 +398,7 @@ ShoopTestFile {
                     loop_at(0,0).set_length(100)
                     loop_at(0,1).set_length(100)
                     testcase.wait_updated(session.backend)
-                    
+
                     do_execute('shoop_control.loop_clear({0,0})')
                     testcase.wait_updated(session.backend)
 
@@ -434,7 +434,7 @@ ShoopTestFile {
                     loop_at(0,1).set_length(100)
                     loop_at(-1,0).set_length(100)
                     testcase.wait_updated(session.backend)
-                    
+
                     do_execute('shoop_control.loop_clear_all()')
                     testcase.wait_updated(session.backend)
 
@@ -471,7 +471,7 @@ ShoopTestFile {
                 'test_track_set_get_gain': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.track_set_gain(0, 1.0)')
                     do_execute('shoop_control.track_set_gain(1, 1.0)')
                     verify_eq_lua('shoop_control.track_get_gain(0)', '{1.0}')
@@ -483,7 +483,7 @@ ShoopTestFile {
                 'test_track_set_get_gain_fader': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.track_set_gain_fader(0, 1.0)')
                     verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{1.0}')
                     do_execute('shoop_control.track_set_gain_fader(0, 0.5)')
@@ -497,7 +497,7 @@ ShoopTestFile {
                 'test_track_set_get_input_gain': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.track_set_input_gain(0, 1.0)')
                     do_execute('shoop_control.track_set_input_gain(1, 1.0)')
                     verify_eq_lua('shoop_control.track_get_input_gain(0)', '{1.0}')
@@ -509,7 +509,7 @@ ShoopTestFile {
                 'test_track_set_get_input_gain_fader': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.track_set_input_gain_fader(0, 1.0)')
                     verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{1.0}')
                     do_execute('shoop_control.track_set_input_gain_fader(0, 0.5)')
@@ -523,7 +523,7 @@ ShoopTestFile {
                 'test_track_set_get_balance': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.track_set_balance(0, 1.0)')
                     verify_eq_lua('shoop_control.track_get_balance(0)', '{1.0}')
                     do_execute('shoop_control.track_set_balance(0, -1.0)')
@@ -533,7 +533,7 @@ ShoopTestFile {
                 'test_track_set_get_muted': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.track_set_muted(0, true)')
                     do_execute('shoop_control.track_set_muted(1, true)')
                     verify_eq_lua('shoop_control.track_get_muted(0)', '{true}')
@@ -546,7 +546,7 @@ ShoopTestFile {
                 'test_track_set_get_input_muted': () => {
                     check_backend()
                     clear()
-                    
+
                     do_execute('shoop_control.track_set_input_muted(0, true)')
                     do_execute('shoop_control.track_set_input_muted(1, true)')
                     verify_eq_lua('shoop_control.track_get_input_muted(0)', '{true}')

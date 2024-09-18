@@ -4,7 +4,7 @@ import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
-import '"../js/generate_session.js' as GenerateSession
+import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
@@ -238,7 +238,7 @@ ShoopTestFile {
                     dwt_loop().clear()
                     mt_loop().clear()
                     testcase.wait_updated(session.backend)
-                    
+
                     verify_eq(dt_loop_channels()[0].get_data_list(), [])
                     verify_eq(dt_loop_channels()[1].get_data_list(), [])
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])

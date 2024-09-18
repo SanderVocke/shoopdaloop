@@ -27,7 +27,7 @@ enum Commands {
         release: bool,
     },
     BuildAppImage {
-        #[arg(short, long, value_name="/path/to/appimagetool", required = true)]
+        #[arg(short='t', long, value_name="/path/to/appimagetool", required = true)]
         appimagetool: String,
 
         #[arg(short, long, value_name="/path/to/AppDir", required = true)]

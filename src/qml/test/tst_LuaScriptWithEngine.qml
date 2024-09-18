@@ -3,9 +3,9 @@ import QtTest 1.0
 import ShoopDaLoop.PythonBackend
 
 import ShoopConstants
-import '"../js/generate_session.js' as GenerateSession
+import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
-import '..' 
+import '..'
 
 ShoopTestFile {
     Session {

@@ -4,7 +4,7 @@ import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
-import '"../js/generate_session.js' as GenerateSession
+import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
@@ -255,7 +255,7 @@ ShoopTestFile {
                     verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
                     verify_eq(second_loop().next_transition_delay, -1)
                 },
-                
+
                 'test_playback_targeted': () => {
                     clear()
 
@@ -484,7 +484,7 @@ ShoopTestFile {
                     verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
                     verify_eq(second_loop().next_transition_delay, -1)
                 },
-                
+
                 'test_playdry_targeted': () => {
                     clear()
 
@@ -883,7 +883,7 @@ ShoopTestFile {
 
                     // One marker at end
                     run_with_marker_samples(500, [499])
-                    
+
                     testcase.wait_updated(session.backend)
                     registries.state_registry.set_play_after_record_active(false)
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -903,7 +903,7 @@ ShoopTestFile {
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     testcase.wait_updated(session.backend)
-                    
+
                     // One marker at end
                     run_with_marker_samples(500, [499])
 
@@ -972,7 +972,7 @@ ShoopTestFile {
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
-                    
+
                     // Run 550 samples with a marker sample at 325 and 475. That corresponds to
                     // the 25th frame of the 2nd-last cycle and 75th frame of the last cycle.
                     // Those should both be in the capture.
@@ -1064,7 +1064,7 @@ ShoopTestFile {
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
-                    
+
                     // Run 550 samples with a marker sample at 301 and 410. That corresponds to
                     // the 1st frame of the last cycle and 10th frame of the current cycle.
                     run_with_marker_samples(450, [301, 410])

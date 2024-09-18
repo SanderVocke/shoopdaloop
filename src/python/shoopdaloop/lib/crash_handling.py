@@ -100,7 +100,7 @@ def init_crash_handling():
     except Exception as e:
         from shoopdaloop.lib.logging import Logger
         logger = Logger('Frontend.CrashHandling')
-        logger.warning("Unable to load back-end extensions for crash handling. Waveforms will not be visible. Error: {}".format(e))
+        logger.warning("Unable to load back-end extensions for crash handling. Error: {}".format(e))
         return
     from shoopdaloop.lib.logging import Logger
     logger = Logger('Frontend.CrashHandling')

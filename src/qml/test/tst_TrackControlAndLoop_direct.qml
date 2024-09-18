@@ -4,7 +4,7 @@ import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
-import '"../js/generate_session.js' as GenerateSession
+import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
@@ -41,7 +41,7 @@ ShoopTestFile {
 
             property var tut : session.main_tracks[0]
             property var lut : session.main_tracks[0].loops[0] // LoopWidget
-            
+
             function tut_control() {
                 return tut.control_widget
             }

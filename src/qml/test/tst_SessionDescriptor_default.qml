@@ -4,7 +4,7 @@ import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
-import '"../js/generate_session.js' as GenerateSession
+import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
@@ -39,7 +39,7 @@ ShoopTestFile {
 
                     session.logger.info(() => ("Saving session to " + filename))
                     session.save_session(filename)
-                    
+
                     testcase.wait_session_io_done()
 
                     session.logger.info(() => ("Re-loading session"))
@@ -47,7 +47,7 @@ ShoopTestFile {
 
                     testcase.wait_session_io_done()
                     testcase.wait_session_loaded(session)
-                        
+
                     actual = session.actual_session_descriptor(false, '', null)
 
                     ShoopFileIO.deleteFile(filename)
