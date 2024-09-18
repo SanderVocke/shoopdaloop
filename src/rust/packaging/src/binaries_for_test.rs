@@ -2,6 +2,9 @@ use anyhow;
 use std::path::{PathBuf, Path};
 use std::process::Command;
 
+use common::logging::macros::*;
+shoop_log_unit!("packaging");
+
 fn populate_folder(
     shoop_built_out_dir : &Path,
     folder : &Path,
@@ -10,18 +13,18 @@ fn populate_folder(
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
     let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
-    println!("Using source path {src_path:?}");
+    info!("Using source path {src_path:?}");
 
     for f in glob::glob(format!("{}/**/test_runner*", shoop_built_out_dir.join("shoop_lib").to_str().unwrap()).as_str())? {
         let f = f?.clone();
-        println!("Bundling {f:?}...");
+        info!("Bundling {f:?}...");
         std::fs::copy(
             &f,
             folder.join(&f.file_name().unwrap())
         )?;
     }
 
-    println!("Downloading prebuilt cargo-nextest into folder...");
+    info!("Downloading prebuilt cargo-nextest into folder...");
 
     let nextest_path : PathBuf;
     let nextest_dir = folder.to_str().unwrap();
@@ -56,7 +59,7 @@ fn populate_folder(
                 .status()?;
     }
 
-    println!("Creating nextest archive...");
+    info!("Creating nextest archive...");
     let archive = folder.join("nextest-archive.tar.zst");
     let args = match release {
         true => vec!["nextest", "archive", "--release", "--archive-file", archive.to_str().unwrap()],
@@ -67,7 +70,7 @@ fn populate_folder(
             .args(&args[..])
             .status()?;
 
-    println!("Test binaries folder produced in {}", folder.to_str().unwrap());
+    info!("Test binaries folder produced in {}", folder.to_str().unwrap());
 
     Ok(())
 }
@@ -85,14 +88,14 @@ pub fn build_test_binaries_folder(
         .exists() {
         return Err(anyhow::anyhow!("Output directory {:?}: parent doesn't exist", output_dir));
     }
-    println!("Creating test binaries directory...");
+    info!("Creating test binaries directory...");
     std::fs::create_dir(output_dir)?;
 
     populate_folder(shoop_built_out_dir,
                             output_dir,
                             release)?;
 
-    println!("Test binaries folder created @ {output_dir:?}");
+    info!("Test binaries folder created @ {output_dir:?}");
     Ok(())
 }
 

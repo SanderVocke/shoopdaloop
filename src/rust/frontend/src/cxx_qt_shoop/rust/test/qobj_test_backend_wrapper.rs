@@ -1,4 +1,4 @@
-use crate::logging::macros::*;
+use common::logging::macros::*;
 shoop_log_unit!("Frontend.TestBackendWrapper");
 
 pub use crate::cxx_qt_shoop::test::qobj_test_backend_wrapper_bridge::TestBackendWrapper;

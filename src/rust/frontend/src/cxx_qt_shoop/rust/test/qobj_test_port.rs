@@ -1,4 +1,4 @@
-use crate::logging::macros::*;
+use common::logging::macros::*;
 shoop_log_unit!("Frontend.TestPort");
 
 pub use crate::cxx_qt_shoop::test::qobj_test_port_bridge::ffi::make_unique_test_port as make_unique;

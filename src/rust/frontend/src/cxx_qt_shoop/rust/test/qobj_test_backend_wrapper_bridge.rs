@@ -1,4 +1,4 @@
-use crate::logging::macros::*;
+use common::logging::macros::*;
 shoop_log_unit!("Frontend.TestBackendWrapper");
 
 pub mod constants {

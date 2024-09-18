@@ -7,6 +7,9 @@ use std::process::Command;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use common::logging::macros::*;
+shoop_log_unit!("packaging");
+
 #[derive(Default)]
 struct InternalDependency {
     path : PathBuf,
@@ -57,7 +60,7 @@ pub fn get_dependency_libs (files : &[&Path],
     {
         command = String::from("sh");
         let commandstr : String = format!(
-            "for f in {files_str}; do lddtree -a $f | grep \"=>\" | grep -E -v \"=>.*=>\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'; done");
+            "lddtree -a {files_str} | grep \"=>\" | grep -E -v \"=>.*=>\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g'");
         error_patterns = vec!(String::from("not found"));
         args = vec!(String::from("-c"), commandstr);
         skip_n_levels = 0;
@@ -83,7 +86,7 @@ pub fn get_dependency_libs (files : &[&Path],
         error_patterns = vec!();
         skip_n_levels = 1;
     }
-    println!("Running command for determining dependencies: {} {}", &command, args.join(" "));
+    debug!("Running command for determining dependencies: {} {}", &command, args.join(" "));
     let mut list_deps : &mut Command = &mut Command::new(&command);
     let mut env_vars: Vec<(String, String)> = std::env::vars().collect();
     for (key, val) in env {
@@ -96,8 +99,8 @@ pub fn get_dependency_libs (files : &[&Path],
             .with_context(|| "Failed to run list_dependencies")?;
     let command_output = std::str::from_utf8(&list_deps_output.stderr)?;
     let deps_output = std::str::from_utf8(&list_deps_output.stdout)?;
-    println!("Command stderr:\n{}", command_output);
-    println!("Command stdout:\n{}", deps_output);
+    debug!("Command stderr:\n{}", command_output);
+    debug!("Command stdout:\n{}", deps_output);
     if !list_deps_output.status.success() {
         return Err(anyhow::anyhow!("list_dependencies returned nonzero exit code"));
     }
@@ -158,12 +161,12 @@ pub fn get_dependency_libs (files : &[&Path],
         }
         let dylib_filename_pattern = dylib_filename_part.to_lowercase();
         if !path_filename.to_lowercase().contains(dylib_filename_pattern.as_str()) {
-            println!("  Note: skipped ldd line (not a dynamic library): {}", line);
+            warn!("  Note: skipped ldd line (not a dynamic library): {}", line);
             continue;
         }
         if !path.exists() {
             if allow_nonexistent {
-                println!("  Nonexistent file {}", &path_str);
+                warn!("  Nonexistent file {}", &path_str);
             } else {
                 error_msgs.push_str(format!("{}: doesn't exist\n", path_str).as_str());
                 continue;
@@ -173,14 +176,14 @@ pub fn get_dependency_libs (files : &[&Path],
             let mut dep_mut = dep.borrow_mut();
             dep_mut.maybe_parent = Some(current_parent.clone());
         }
-        println!("adding {path_filename} to {:?} at indent {}", current_parent.borrow().path, indent);
+        debug!("adding {path_filename} to {:?} at indent {}", current_parent.borrow().path, indent);
         current_parent.borrow_mut().deps.insert(path.clone(), dep);
         used_includes.insert(path_filename.to_string());
     }
 
     for include in includes.iter() {
         if !used_includes.contains(*include) {
-            println!("  Note: library {} from include list was not required", include);
+            info!("  Note: library {} from include list was not required", include);
         }
     }
 
@@ -212,13 +215,13 @@ pub fn get_dependency_libs (files : &[&Path],
         let in_includes = includes.iter().any(|e| pattern_match(e, path_str.as_str()));
         if in_excludes && in_includes {
             if !handled.contains(&path_str) {
-                println!("  Note: dependency {} is in include and exclude, include takes precedence", &path_str);
+                warn!("  Dependency {} is in include and exclude, include takes precedence", &path_str);
             }
         }
         if skip_n_levels == 0 {
             if in_excludes && !in_includes {
                 if !handled.contains(&path_str) {
-                    println!("  Note: skipping excluded dependency {}", &path_str);
+                    info!("  Note: skipping excluded dependency {}", &path_str);
                     handled.insert(path_str.clone());
                 }
                 return;
@@ -231,7 +234,7 @@ pub fn get_dependency_libs (files : &[&Path],
             }
 
             if !handled.contains(&path_str) {
-                println!("  Including dependency {}", &path_str);
+                info!("  Including dependency {}", &path_str);
                 paths.push (path.to_path_buf());
                 handled.insert(path_str.clone());
             }
@@ -251,6 +254,6 @@ pub fn get_dependency_libs (files : &[&Path],
     }
     paths.dedup();
 
-    println!("Dependencies: {paths:?}");
+    info!("Dependencies: {paths:?}");
     Ok(paths)
 }

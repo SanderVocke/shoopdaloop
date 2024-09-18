@@ -11,7 +11,6 @@ mod test_init {
 pub mod init;
 
 pub mod audio_power_pyramid;
-pub mod logging;
 
 pub mod cxx_qt_shoop;
 pub mod cxx_qt_lib_shoop;

@@ -6,6 +6,9 @@ use std::collections::{HashSet, HashMap};
 use crate::dependencies::get_dependency_libs;
 use crate::fs_helpers::recursive_dir_cpy;
 
+use common::logging::macros::*;
+shoop_log_unit!("packaging");
+
 fn populate_appdir(
     shoop_built_out_dir : &Path,
     appdir : &Path,
@@ -13,14 +16,14 @@ fn populate_appdir(
 ) -> Result<(), anyhow::Error> {
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
-    let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
-    println!("Using source path {src_path:?}");
+    let src_path = src_path.ancestors().nth(6).ok_or(anyhow::anyhow!("cannot find src dir"))?;
+    info!("Using source path {src_path:?}");
 
-    println!("Bundling executable...");
+    info!("Bundling executable...");
     let final_exe_path = appdir.join("shoopdaloop_bin");
     std::fs::copy(exe_path, &final_exe_path)?;
 
-    println!("Bundling shoop_lib...");
+    info!("Bundling shoop_lib...");
     let lib_dir = appdir.join("shoop_lib");
     std::fs::create_dir(&lib_dir)
         .with_context(|| format!("Cannot create dir: {:?}", lib_dir))?;
@@ -29,7 +32,7 @@ fn populate_appdir(
         &lib_dir
     )?;
 
-    println!("Getting dependencies...");
+    info!("Getting dependencies...");
     let mut all_files_to_analyze : Vec<PathBuf> = Vec::new();
     for f in glob(&format!("{}/**/*.so*", appdir.to_str().unwrap()))
         .with_context(|| "Failed to read glob pattern")? {
@@ -53,17 +56,17 @@ fn populate_appdir(
     ]);
     let libs = get_dependency_libs (&all_files_to_analyze_refs, &env, &excludelist_path, &includelist_path, ".so", false)?;
 
-    println!("Bundling {} dependencies...", libs.len());
+    info!("Bundling {} dependencies...", libs.len());
     std::fs::create_dir(&dynlib_dir)?;
     for lib in libs {
-        println!("  Bundling {}", lib.to_str().unwrap());
+        info!("  Bundling {}", lib.to_str().unwrap());
         std::fs::copy(
             lib.clone(),
             dynlib_dir.clone().join(lib.file_name().unwrap())
         )?;
     }
 
-    println!("Bundling additional assets...");
+    info!("Bundling additional assets...");
     for file in [
         "distribution/linux/shoopdaloop.desktop",
         "distribution/linux/shoopdaloop.png",
@@ -76,12 +79,12 @@ fn populate_appdir(
     ] {
         let from = src_path.join(file);
         let to = appdir.join(from.file_name().unwrap());
-        println!("  {:?} -> {:?}", &from, &to);
+        info!("  {:?} -> {:?}", &from, &to);
         std::fs::copy(&from, &to)
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
     }
 
-    println!("Slimming down AppDir...");
+    info!("Slimming down AppDir...");
     for pattern in [
         "shoop_lib/test_runner",
         "shoop_lib/py/lib/python*/test",
@@ -91,7 +94,7 @@ fn populate_appdir(
         let pattern = format!("{}/{pattern}", appdir.to_str().unwrap());
         for f in glob(&pattern)? {
             let f = f?;
-            println!("  remove {f:?}");
+            info!("  remove {f:?}");
             match std::fs::metadata(&f)?.is_dir() {
                 true => { std::fs::remove_dir_all(&f)?; }
                 false => { std::fs::remove_file(&f)?; }
@@ -99,7 +102,7 @@ fn populate_appdir(
         }
     }
 
-    println!("AppDir produced in {}", appdir.to_str().unwrap());
+    info!("AppDir produced in {}", appdir.to_str().unwrap());
 
     Ok(())
 }
@@ -111,7 +114,7 @@ pub fn build_appdir(
     output_dir : &Path,
     _release : bool,
 ) -> Result<(), anyhow::Error> {
-    println!("Assets directory: {:?}", shoop_built_out_dir);
+    info!("Assets directory: {:?}", shoop_built_out_dir);
 
     if output_dir.exists() {
         return Err(anyhow::anyhow!("Output directory {:?} already exists", output_dir));
@@ -121,14 +124,14 @@ pub fn build_appdir(
        .exists() {
         return Err(anyhow::anyhow!("Output directory {:?}: parent doesn't exist", output_dir));
     }
-    println!("Creating app directory...");
+    info!("Creating app directory...");
     std::fs::create_dir(output_dir)?;
 
     populate_appdir(shoop_built_out_dir,
                     output_dir,
                     exe_path)?;
 
-    println!("AppDir created @ {output_dir:?}");
+    info!("AppDir created @ {output_dir:?}");
     Ok(())
 }
 

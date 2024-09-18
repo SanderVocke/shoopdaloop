@@ -1,4 +1,4 @@
-use crate::logging::macros::*;
+use common::logging::macros::*;
 shoop_log_unit!("Frontend.ReleaseFocusNotifier");
 
 pub use crate::cxx_qt_shoop::qobj_release_focus_notifier_bridge::ffi::ReleaseFocusNotifier;

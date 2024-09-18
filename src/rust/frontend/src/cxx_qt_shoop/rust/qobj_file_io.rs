@@ -1,4 +1,4 @@
-use crate::logging::macros::*;
+use common::logging::macros::*;
 shoop_log_unit!("Frontend.FileIO");
 
 pub use crate::cxx_qt_shoop::qobj_file_io_bridge::FileIORust;

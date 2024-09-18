@@ -3,6 +3,11 @@ use std::process::Command;
 use anyhow;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
+use common;
+use packaging::binaries_for_test::build_test_binaries_folder;
+
+use common::logging::macros::*;
+shoop_log_unit!("packaging");
 
 #[derive(Parser)]
 #[command(name = "package")]
@@ -41,6 +46,8 @@ enum Commands {
 }
 
 pub fn main_impl() -> Result<(), anyhow::Error> {
+    common::init()?;
+
     let args = Cli::parse();
 
     let exe = std::env::current_exe()?;
@@ -73,8 +80,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
         Some(Commands::BuildPortableFolder { output_dir, release }) => {
             #[cfg(target_os = "linux")]
             {
-                use packaging::linux_appdir::build_appdir;
-                build_appdir
+                packaging::linux_appdir::build_appdir
                            (Path::new(out_dir.as_str()),
                             main_exe.as_path(),
                             dev_exe.as_path(),
@@ -83,8 +89,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
             }
             #[cfg(target_os = "macos")]
             {
-                use packaging::macos_appbundle::build_appbundle;
-                build_appbundle(
+                packaging::macos_appbundle::build_appbundle(
                             Path::new(out_dir.as_str()),
                             main_exe.as_path(),
                             dev_exe.as_path(),
@@ -93,8 +98,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
             }
             #[cfg(target_os = "windows")]
             {
-                use packaging::windows_portable_folder::build_portable_folder;
-                build_portable_folder(
+                packaging::windows_portable_folder::build_portable_folder(
                             Path::new(out_dir.as_str()),
                             main_exe.as_path(),
                             dev_exe.as_path(),
@@ -103,7 +107,6 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
             }
         },
         Some(Commands::BuildTestBinaries { output_dir, release }) => {
-            use packaging::binaries_for_test::build_test_binaries_folder;
             build_test_binaries_folder
                         (Path::new(out_dir.as_str()),
                         output_dir.as_path(),
@@ -112,8 +115,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
         Some(Commands::BuildAppImage { appimagetool, appdir, output }) => {
             #[cfg(target_os = "linux")]
             {
-                use packaging::linux_appimage::build_appimage;
-                build_appimage(appimagetool, appdir, output)
+                packaging::linux_appimage::build_appimage(appimagetool, appdir, output)
             }
             #[cfg(not(target_os = "linux"))]
             {
@@ -129,7 +131,7 @@ fn main() {
     match main_impl() {
         Ok(()) => (),
         Err(error) => {
-            eprintln!("packaging failed: {:?}.\n  Backtrace: {:?}", error, error.backtrace());
+            error!("packaging failed: {:?}.\n  Backtrace: {:?}", error, error.backtrace());
             std::process::exit(1);
         }
     }

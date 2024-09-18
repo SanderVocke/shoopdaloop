@@ -8,9 +8,6 @@ inputs:
   root_path:
     type: string
     required: true
-  qt_qpa_platform:
-    type: string
-    default: vnc
 
 runs:
   using: "composite"

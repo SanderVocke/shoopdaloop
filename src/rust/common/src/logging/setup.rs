@@ -1,16 +1,18 @@
 use fern;
-// use std::time::SystemTime;
-// use humantime;
-use crate::logging::units::SHOOP_LOG_MODULES;
 use colored::Colorize;
+use std::sync::Mutex;
+use lazy_static::lazy_static;
+use std::collections::HashSet;
+use anyhow;
+use log;
 
-fn find_log_unit(target: &str) -> Option<&'static str> {
-    for module in SHOOP_LOG_MODULES {
-        if target == *module {
-            return Some(module);
-        }
-    }
-    None
+lazy_static! {
+    static ref LOG_MODULES : Mutex<HashSet<&'static str>> = Mutex::new(HashSet::new());
+}
+
+pub fn register_log_module(name: &'static str) {
+    let mut modules = LOG_MODULES.lock().unwrap();
+    modules.insert(name);
 }
 
 fn parse_level(level : &str) -> log::LevelFilter {
@@ -24,7 +26,12 @@ fn parse_level(level : &str) -> log::LevelFilter {
     }
 }
 
-fn apply_env(dispatch: fern::Dispatch) -> fern::Dispatch {
+fn apply_env(dispatch: fern::Dispatch) -> Result<fern::Dispatch, anyhow::Error> {
+    let modules = LOG_MODULES.lock()
+                             .map_err(|e| anyhow::anyhow!("Could not lock global modules list: {e:?}"))?;
+    let find_module = |module : &str| modules.iter().find(|m| **m == module)
+                                             .and_then(|m| Some(*m));
+
     let mut rval = dispatch;
     if let Ok(value) = std::env::var("SHOOP_LOG") {
         for item in value.split(',') {
@@ -33,22 +40,24 @@ fn apply_env(dispatch: fern::Dispatch) -> fern::Dispatch {
             let level = parts.next().unwrap_or_default().to_string();
             match (module_or_level.is_empty(), level.is_empty()) {
                 (false, false) => {
-                    let maybe_log_unit = find_log_unit(module_or_level.as_str());
+                    let maybe_log_unit = find_module(module_or_level.as_str());
                     if let Some(log_unit) = maybe_log_unit {
                         rval = rval.level_for(log_unit, parse_level(&level));
+                    } else {
+                        log::warn!(target: "Logging", "Skipping unknown logging module {}", module_or_level);
                     }
                 }
                 (false, true) => {
                     rval = rval.level(parse_level(&module_or_level));
                 }
-                _ => panic!("Invalid log statement: {}", item),
+                _ => log::warn!(target: "Logging", "Skipping invalid log statement: {}", item),
             }
         }
     }
-    rval
+    Ok(rval)
 }
 
-pub fn init_logging() -> Result<(), fern::InitError> {
+pub fn init_logging() -> Result<(), anyhow::Error> {
     let level_colors = fern::colors::ColoredLevelConfig::new()
         .trace(fern::colors::Color::White)
         .debug(fern::colors::Color::Blue)
@@ -59,16 +68,14 @@ pub fn init_logging() -> Result<(), fern::InitError> {
         .format(move |out, message, record| {
             out.finish(format_args!(
                 "[{}] [{}] {}",
-                // humantime::format_rfc3339_seconds(SystemTime::now()),
                 record.target().magenta(),
                 level_colors.color(record.level()),
                 message
             ))
         })
         .level(log::LevelFilter::Info);
-    dispatch = apply_env(dispatch);
+    dispatch = apply_env(dispatch)?;
     dispatch.chain(fern::Output::call(|record| println!("{}", record.args())))
-    //dispatch.chain(std::io::stdout())
             .apply()?;
     Ok(())
 }

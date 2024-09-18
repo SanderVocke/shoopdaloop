@@ -1,5 +1,5 @@
 
-use crate::logging::macros::*;
+use common::logging::macros::*;
 shoop_log_unit!("Frontend.FindParentItem");
 
 pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::FindParentItem;

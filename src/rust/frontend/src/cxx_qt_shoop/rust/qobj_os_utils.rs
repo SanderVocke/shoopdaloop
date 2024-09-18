@@ -1,4 +1,4 @@
-use crate::logging::macros::*;
+use common::logging::macros::*;
 shoop_log_unit!("Frontend.OSUtils");
 
 pub use crate::cxx_qt_shoop::qobj_os_utils_bridge::ffi::OSUtils;

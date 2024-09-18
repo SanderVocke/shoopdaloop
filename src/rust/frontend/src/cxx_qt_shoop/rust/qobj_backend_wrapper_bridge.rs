@@ -1,4 +1,4 @@
-use crate::logging::macros::*;
+use common::logging::macros::*;
 shoop_log_unit!("Frontend.BackendWrapper");
 
 #[cxx_qt::bridge(cxx_file_stem="qobj_backend_wrapper")]

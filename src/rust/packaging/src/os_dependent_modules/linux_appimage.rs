@@ -3,6 +3,9 @@ use anyhow::Context;
 use std::path::Path;
 use std::process::Command;
 
+use common::logging::macros::*;
+shoop_log_unit!("packaging");
+
 pub fn build_appimage(
     appimagetool : &str,
     appdir : &Path,
@@ -10,12 +13,12 @@ pub fn build_appimage(
 ) -> Result<(), anyhow::Error> {
     let src_dir = appdir.to_owned();
 
-    println!("Creating AppImage...");
+    info!("Creating AppImage...");
     Command::new(appimagetool)
         .args(&[src_dir.to_str().unwrap(), output_file.to_str().unwrap()])
         .status()
         .with_context(|| "Failed to run appimagetool")?;
 
-    println!("AppImage created @ {output_file:?}");
+    info!("AppImage created @ {output_file:?}");
     Ok(())
 }

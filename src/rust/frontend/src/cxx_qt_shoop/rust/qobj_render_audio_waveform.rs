@@ -1,4 +1,4 @@
-use crate::logging::macros::*;
+use common::logging::macros::*;
 shoop_log_unit!("Frontend.RenderAudioWaveform");
 
 pub use crate::cxx_qt_shoop::qobj_render_audio_waveform_bridge::ffi::RenderAudioWaveform;

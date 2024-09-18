@@ -1,4 +1,4 @@
-use crate::logging::macros::*;
+use common::logging::macros::*;
 shoop_log_unit!("Frontend.GenericTestItem");
 
 pub use crate::cxx_qt_shoop::test::qobj_generic_test_item_bridge::GenericTestItem;

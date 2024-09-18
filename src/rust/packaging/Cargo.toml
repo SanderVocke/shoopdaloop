@@ -14,4 +14,7 @@ regex = "1.10"
 copy_dir = "0.1"
 tempfile = "3.12"
 indexmap = "2.5"
+log = "0.4"
+ctor = "0.2"
 clap = { version = "4.5", features = ["derive"] }
+common = { path = "../common" }

@@ -9,6 +9,9 @@ use crate::fs_helpers::recursive_dir_cpy;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 
+use common::logging::macros::*;
+shoop_log_unit!("packaging");
+
 fn populate_appbundle(
     shoop_built_out_dir : &Path,
     appdir : &Path,
@@ -18,8 +21,8 @@ fn populate_appbundle(
 ) -> Result<(), anyhow::Error> {
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
-    let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
-    println!("Using source path {src_path:?}");
+    let src_path = src_path.ancestors().nth(6).ok_or(anyhow::anyhow!("cannot find src dir"))?;
+    info!("Using source path {src_path:?}");
 
     let dynlib_dir = appdir.join("lib");
     let excludelist_path = src_path.join("distribution/macos/excludelist");
@@ -27,7 +30,7 @@ fn populate_appbundle(
     let env : HashMap<&str, &str> = HashMap::new();
     let libs = get_dependency_libs (&[dev_exe_path], &env, &excludelist_path, &includelist_path, ".dylib", true)?;
 
-    println!("Creating directories...");
+    info!("Creating directories...");
     for directory in [
         "Contents",
         "Contents/MacOS",
@@ -37,10 +40,10 @@ fn populate_appbundle(
             .with_context(|| format!("Failed to create {directory:?}"))?;
     }
 
-    println!("Bundling executable...");
+    info!("Bundling executable...");
     std::fs::copy(exe_path, appdir.join("shoopdaloop"))?;
 
-    println!("Bundling shoop_lib...");
+    info!("Bundling shoop_lib...");
     let lib_dir = appdir.join("shoop_lib");
     std::fs::create_dir(&lib_dir)
         .with_context(|| format!("Cannot create dir: {:?}", lib_dir))?;
@@ -49,7 +52,7 @@ fn populate_appbundle(
         &lib_dir
     )?;
 
-    println!("Bundling dependencies...");
+    info!("Bundling dependencies...");
     std::fs::create_dir(&dynlib_dir)?;
     let re = Regex::new(r"(.*/.*.framework)/.*").unwrap();
     let mut set: HashSet<PathBuf> = HashSet::new();
@@ -69,19 +72,19 @@ fn populate_appbundle(
         let to = dynlib_dir.clone().join(lib.file_name().unwrap());
 
         if !from.exists() {
-            println!("  Skipping nonexistent file/framework {from:?}");
+            info!("  Skipping nonexistent file/framework {from:?}");
         } else if std::fs::metadata(&from)?.is_dir() {
-            println!("  Bundling {}", lib.to_str().unwrap());
+            info!("  Bundling {}", lib.to_str().unwrap());
             recursive_dir_cpy(&from, &to)
                .with_context(|| format!("Failed to copy dir {from:?} to {to:?}"))?;
         } else {
-            println!("  Bundling {}", lib.to_str().unwrap());
+            info!("  Bundling {}", lib.to_str().unwrap());
             std::fs::copy(&from, &to)
                .with_context(|| format!("Failed to copy {from:?} to {to:?}"))?;
         }
     }
 
-    println!("Bundling additional assets...");
+    info!("Bundling additional assets...");
     for (src,dst) in [
         ("distribution/macos/Info.plist", "Contents/Info.plist"),
         ("distribution/macos/icon.icns", "Contents/Resources/icon.icns"),
@@ -89,21 +92,21 @@ fn populate_appbundle(
     ] {
         let from = src_path.join(src);
         let to = appdir.join(dst);
-        println!("  {:?} -> {:?}", &from, &to);
+        info!("  {:?} -> {:?}", &from, &to);
         std::fs::copy(&from, &to)
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
     }
 
-    println!("Slimming down AppDir...");
+    info!("Slimming down AppDir...");
     for file in [
         "shoop_lib/test_runner"
     ] {
         let path = appdir.join(file);
-        println!("  remove {:?}", path);
+        info!("  remove {:?}", path);
         std::fs::remove_file(&path)?;
     }
 
-    println!("App bundle produced in {}", appdir.to_str().unwrap());
+    info!("App bundle produced in {}", appdir.to_str().unwrap());
 
     Ok(())
 }
@@ -115,7 +118,7 @@ pub fn build_appbundle(
     output_dir : &Path,
     release : bool,
 ) -> Result<(), anyhow::Error> {
-    println!("Assets directory: {:?}", shoop_built_out_dir);
+    info!("Assets directory: {:?}", shoop_built_out_dir);
 
     if output_dir.exists() {
         return Err(anyhow::anyhow!("Output directory {:?} already exists", output_dir));
@@ -125,7 +128,7 @@ pub fn build_appbundle(
         .exists() {
         return Err(anyhow::anyhow!("Output directory {:?}: parent doesn't exist", output_dir));
     }
-    println!("Creating app bundle directory...");
+    info!("Creating app bundle directory...");
     std::fs::create_dir(output_dir)?;
 
     populate_appbundle(shoop_built_out_dir,
@@ -134,7 +137,7 @@ pub fn build_appbundle(
                             dev_exe_path,
                             release)?;
 
-    println!("App bundle created @ {output_dir:?}");
+    info!("App bundle created @ {output_dir:?}");
     Ok(())
 }
 
