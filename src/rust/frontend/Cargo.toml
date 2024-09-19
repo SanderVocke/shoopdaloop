@@ -15,6 +15,7 @@ dunce = "1.0"
 anyhow = "1.0"
 ctor = "0.2"
 regex = "1"
+log = "0.4"
 # cxx-qt = { path = "../../../../cxx-qt/crates/cxx-qt" }
 # cxx-qt-lib = { path = "../../../../cxx-qt/crates/cxx-qt-lib" }
 cxx-qt = { git = "https://github.com/SanderVocke/cxx-qt.git", rev = "b475b382410b0dc009ac56fd4c28c12bcf83853e" }
