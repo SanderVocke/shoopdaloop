@@ -61,9 +61,9 @@ runs:
     run: |
       mkdir -p portable
       cd portable
-      tar -xzf ${{ inputs.package }}
+      tar --strip-components=1 -xzf ${{ inputs.package }}
       cd ..
-      PORTABLE=$(pwd)/portable/$(ls $(pwd)/portable/)
+      PORTABLE=$(pwd)/portable
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
 
@@ -74,9 +74,9 @@ runs:
     run: |
       mkdir -p portable
       cd portable
-      tar -xzf ${{ inputs.package }}
+      tar --strip-components=1 -xzf ${{ inputs.package }}
       cd ..
-      PORTABLE=$(pwd)/portable/$(ls $(pwd)/portable/)
+      PORTABLE=$(pwd)/portable
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
 
@@ -87,9 +87,9 @@ runs:
     run: |
       mkdir -p portable
       cd portable
-      tar -xzf ${{ inputs.package }}
+      tar --strip-components=1 -xzf ${{ inputs.package }}
       cd ..
-      PORTABLE=$(pwd)/portable/$(ls $(pwd)/portable/)
+      PORTABLE=$(pwd)/portable
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
 
@@ -121,6 +121,6 @@ runs:
         exit 1
       fi
       cd $PORTABLE_FOLDER_INSTALL
-      tar -xzf ${{ inputs.package }}
+      tar --strip-components=1 -xzf ${{ inputs.package }}
       echo "COMMAND_TEST_BACKEND=$PORTABLE_FOLDER_INSTALL/test_runner" | tee -a $GITHUB_ENV
       echo "COMMAND_TEST_RUST=$PORTABLE_FOLDER_INSTALL/cargo-nextest nextest run --archive-file $PORTABLE_FOLDER_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV
