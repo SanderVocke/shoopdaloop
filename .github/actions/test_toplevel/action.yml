@@ -77,7 +77,7 @@ runs:
     if: always() && inputs.second_package
     uses: actions/download-artifact@v4
     with:
-      pattern: ${{ inputs.package }}
+      pattern: ${{ inputs.second_package }}
       path: ./package
       merge-multiple: true
   - name: Find package

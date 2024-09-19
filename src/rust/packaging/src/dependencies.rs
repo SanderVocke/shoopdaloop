@@ -227,7 +227,7 @@ pub fn get_dependency_libs (executable : &Path,
         }
         let pattern_match = |s : &str, p : &str| {
             let pattern_str = &s
-                .replace("\\", "\\\\")
+                .replace("\\", "/")
                 .replace(".", "\\.")
                 .replace("*", ".*")
                 .replace("+", "\\+")

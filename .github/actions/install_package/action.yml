@@ -59,7 +59,7 @@ runs:
     if: always() && steps.get_type.outputs.type == 'portable-linux'
     shell: wrap-shell {0}
     run: |
-      mkdir portable
+      mkdir -p portable
       cd portable
       tar -xzf ${{ inputs.package }}
       cd ..
@@ -71,7 +71,7 @@ runs:
     if: always() && steps.get_type.outputs.type == 'portable-windows'
     shell: wrap-shell {0}
     run: |
-      mkdir portable
+      mkdir -p portable
       cd portable
       tar -xzf ${{ inputs.package }}
       cd ..
@@ -83,7 +83,7 @@ runs:
     if: always() && steps.get_type.outputs.type == 'portable-macos'
     shell: wrap-shell {0}
     run: |
-      mkdir portable
+      mkdir -p portable
       cd portable
       tar -xzf ${{ inputs.package }}
       cd ..
