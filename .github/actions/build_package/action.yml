@@ -43,7 +43,7 @@ runs:
     id: build_portable_folder
     shell: wrap-shell {0}
     env:
-      SHOOP_LOG=debug
+      SHOOP_LOG: debug
     run: |
       PORTABLE_DIR=$(pwd)/shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.portable
       RELEASE_PORTABLE_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.portable
