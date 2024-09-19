@@ -501,7 +501,7 @@ jobs:
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: "cygpath -w"
       COMPRESS_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
-      # checkpoints_enabled: true
+      checkpoints_enabled: true
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /

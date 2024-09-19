@@ -1,13 +1,10 @@
 use anyhow;
 use anyhow::Context;
 use std::path::{PathBuf, Path};
-use tempfile::TempDir;
-use std::process::Command;
-use std::os::unix::fs::PermissionsExt;
 use crate::dependencies::get_dependency_libs;
 use crate::fs_helpers::recursive_dir_cpy;
 use regex::Regex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
@@ -16,8 +13,6 @@ fn populate_appbundle(
     shoop_built_out_dir : &Path,
     appdir : &Path,
     exe_path : &Path,
-    dev_exe_path : &Path,
-    release : bool,
 ) -> Result<(), anyhow::Error> {
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
@@ -116,9 +111,9 @@ fn populate_appbundle(
 pub fn build_appbundle(
     shoop_built_out_dir : &Path,
     exe_path : &Path,
-    dev_exe_path : &Path,
+    _dev_exe_path : &Path,
     output_dir : &Path,
-    release : bool,
+    _release : bool,
 ) -> Result<(), anyhow::Error> {
     info!("Assets directory: {:?}", shoop_built_out_dir);
 
@@ -135,9 +130,7 @@ pub fn build_appbundle(
 
     populate_appbundle(shoop_built_out_dir,
                             output_dir,
-                            exe_path,
-                            dev_exe_path,
-                            release)?;
+                            exe_path)?;
 
     info!("App bundle created @ {output_dir:?}");
     Ok(())

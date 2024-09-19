@@ -82,17 +82,17 @@ runs:
       merge-multiple: true
   - name: Find package
     if: always() && inputs.second_package
-    id: find_package
+    id: find_package_2
     shell: wrap-shell {0}
     run: |
       echo "package=$(pwd)/package/$(ls package | head -n1)" | tee -a $GITHUB_OUTPUT
   - uses: ./.github/actions/checkpoint
-  - name: Install package (${{ inputs.package }})
+  - name: Install package (${{ inputs.second_package }})
     if: always() && inputs.second_package
-    id: install_package
+    id: install_package_2
     uses: ./.github/actions/install_package
     with:
-      package: ${{ steps.find_package.outputs.package }}
+      package: ${{ steps.find_package_2.outputs.package }}
       coverage: ${{ inputs.coverage }}
       sudo: ${{ inputs.install_with_sudo }}
   - uses: ./.github/actions/checkpoint
