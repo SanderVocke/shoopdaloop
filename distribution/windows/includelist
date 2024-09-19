@@ -1,2 +1,3 @@
 */MSVCP*.dll
 */VCRUNTIME*.dll
+*/bcryptPrimitives.dll

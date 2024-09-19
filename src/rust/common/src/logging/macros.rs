@@ -13,7 +13,6 @@ macro_rules! shoop_warn { ( $($msg:tt)* ) => { log::warn!(target: SHOOP_LOG_UNIT
 #[macro_export]
 macro_rules! shoop_error { ( $($msg:tt)* ) => { log::error!(target: SHOOP_LOG_UNIT, $($msg)*); } }
 
-
 pub use shoop_error as error;
 pub use shoop_warn as warn;
 pub use shoop_info as info;

@@ -85,7 +85,7 @@ runs:
     id: find_package_2
     shell: wrap-shell {0}
     run: |
-      echo "package=$(pwd)/second_package/$(ls package | head -n1)" | tee -a $GITHUB_OUTPUT
+      echo "package=$(pwd)/second_package/$(ls second_package | head -n1)" | tee -a $GITHUB_OUTPUT
   - uses: ./.github/actions/checkpoint
   - name: Install package (${{ inputs.second_package }})
     if: always() && inputs.second_package
