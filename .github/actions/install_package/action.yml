@@ -122,5 +122,5 @@ runs:
       fi
       cd $PORTABLE_FOLDER_INSTALL
       tar --strip-components=1 -xzf ${{ inputs.package }}
-      echo "COMMAND_TEST_BACKEND=$PORTABLE_FOLDER_INSTALL/test_runner" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_BACKEND=LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$PORTABLE_FOLDER_INSTALL/lib $PORTABLE_FOLDER_INSTALL/test_runner" | tee -a $GITHUB_ENV
       echo "COMMAND_TEST_RUST=$PORTABLE_FOLDER_INSTALL/cargo-nextest nextest run --archive-file $PORTABLE_FOLDER_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV

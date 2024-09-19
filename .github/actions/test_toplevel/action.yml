@@ -132,6 +132,8 @@ runs:
     if: always()
   - shell: wrap-shell {0}
     if: always()
+    env:
+       GHA_RUN_ALWAYS: 1
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -148,6 +150,8 @@ runs:
     if: always()
   - shell: wrap-shell {0}
     if: always()
+    env:
+       GHA_RUN_ALWAYS: 1
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -163,6 +167,8 @@ runs:
     if: always()
   - shell: wrap-shell {0}
     if: always()
+    env:
+       GHA_RUN_ALWAYS: 1
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -187,6 +193,8 @@ runs:
     if: always()
   - shell: wrap-shell {0}
     if: always() && (inputs.do_qml_tests == 'true')
+    env:
+       GHA_RUN_ALWAYS: 1
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -228,6 +236,8 @@ runs:
     if: always()
   - shell: wrap-shell {0}
     if: always()
+    env:
+       GHA_RUN_ALWAYS: 1
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -247,6 +257,8 @@ runs:
     if: always()
   - shell: wrap-shell {0}
     if: always()
+    env:
+       GHA_RUN_ALWAYS: 1
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
@@ -267,6 +279,8 @@ runs:
     if: always()
   - shell: wrap-shell {0}
     if: always()
+    env:
+       GHA_RUN_ALWAYS: 1
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
