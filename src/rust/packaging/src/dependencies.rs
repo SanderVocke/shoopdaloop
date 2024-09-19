@@ -196,8 +196,12 @@ pub fn get_dependency_libs (executable : &Path,
             let mut dep_mut = dep.borrow_mut();
             dep_mut.maybe_parent = Some(current_parent.clone());
         }
-        debug!("adding {path_filename} to {:?} at indent {}", current_parent.borrow().path, indent);
-        current_parent.borrow_mut().deps.insert(path.clone(), dep);
+        if !current_parent.borrow_mut().deps.contains_key(&path) {
+            debug!("adding {path_filename} to {:?} at indent {}", current_parent.borrow().path, indent);
+            current_parent.borrow_mut().deps.insert(path.clone(), dep);
+        } else {
+            debug!("{path_filename} already handled, skipping");
+        }
     }
 
     fn collect_deps(d : &Rc<RefCell<InternalDependency>>,
