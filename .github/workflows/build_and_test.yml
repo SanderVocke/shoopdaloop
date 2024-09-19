@@ -201,6 +201,7 @@ jobs:
       with:
         name: ${{ matrix.kind.name }}
         package: ${{ matrix.kind.package }}
+        second_package: ${{ matrix.kind.second_package }}
         asan: ${{ matrix.kind.asan }}
         coverage: ${{ matrix.kind.coverage }}
         python: ${{ matrix.kind.python }}

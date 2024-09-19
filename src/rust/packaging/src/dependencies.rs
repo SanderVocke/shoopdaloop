@@ -89,14 +89,17 @@ pub fn get_dependency_libs (executable : &Path,
              }}
              function recurse_deps() {{
                 direct=$(direct_deps \"$1\")
+                level=$3
+                maxlevels=$4
+                if [[ $level -ge $maxlevels ]]; then exit 0; fi
                 for dep in $direct; do
                     if [ ! -z \"$dep\" ]; then
                         echo \"$2$dep\"
-                        recurse_deps \"$dep\" \"$2  \"
+                        recurse_deps \"$dep\" \"$2  \" $(( $level + 1 )) $maxlevels
                     fi
                 done
              }}
-             recurse_deps \"{0}\" \"\"",
+             recurse_deps \"{0}\" \"\" 0 5",
             executable.to_str().unwrap());
         args = vec!(String::from("-c"), commandstr);
         warning_patterns = vec!();

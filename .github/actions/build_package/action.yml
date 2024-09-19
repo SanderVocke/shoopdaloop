@@ -122,14 +122,14 @@ runs:
     uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
     if: always() && inputs.package_kind == 'innosetup'
     with:
-      path: distribution/innosetup/shoopdaloop.iss
+      path: distribution/windows/shoopdaloop.iss
       options: /O+ /DMyAppVersion="${{ env.SHOOP_VERSION }}"
   - name: Move .EXE installer
     if: always() && inputs.package_kind == 'innosetup'
     shell: wrap-shell {0}
     run: |
-      ls distribution/innosetup
-      RELEASE_INSTALLER=$(find distribution/innosetup -name "ShoopDaLoop-*.exe")
+      ls distribution/windows
+      RELEASE_INSTALLER=$(find distribution/windows -name "ShoopDaLoop-*.exe")
       GIT_REV_INSTALLER=ShoopDaLoop-$SHOOP_GIT_REV.exe
       cp $RELEASE_INSTALLER $GIT_REV_INSTALLER
       echo "BUILT_PACKAGE=$GIT_REV_INSTALLER" | tee -a $GITHUB_ENV

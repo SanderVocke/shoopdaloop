@@ -34,11 +34,11 @@ runs:
       echo "PYTEST=${{ inputs.python }} -m pytest" | tee -a $GITHUB_ENV
       echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
   - shell: wrap-shell {0}
-    if: always()
+    if: always() && inputs.package
     run: |
       printf "\n\n\n\n\n\n"
       echo "=========================================="
-      echo "Install package"
+      echo "Install package ${{ inputs.package }}"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
   - name: Retrieve package
@@ -57,6 +57,38 @@ runs:
   - uses: ./.github/actions/checkpoint
   - name: Install package (${{ inputs.package }})
     if: always() && inputs.package
+    id: install_package
+    uses: ./.github/actions/install_package
+    with:
+      package: ${{ steps.find_package.outputs.package }}
+      coverage: ${{ inputs.coverage }}
+      sudo: ${{ inputs.install_with_sudo }}
+  - uses: ./.github/actions/checkpoint
+    if: always()
+  - shell: wrap-shell {0}
+    if: always() && inputs.second_package
+    run: |
+      printf "\n\n\n\n\n\n"
+      echo "=========================================="
+      echo "Install package ${{ inputs.second_package }}"
+      echo "=========================================="
+      printf "\n\n\n\n\n\n"
+  - name: Retrieve package
+    if: always() && inputs.second_package
+    uses: actions/download-artifact@v4
+    with:
+      pattern: ${{ inputs.package }}
+      path: ./package
+      merge-multiple: true
+  - name: Find package
+    if: always() && inputs.second_package
+    id: find_package
+    shell: wrap-shell {0}
+    run: |
+      echo "package=$(pwd)/package/$(ls package | head -n1)" | tee -a $GITHUB_OUTPUT
+  - uses: ./.github/actions/checkpoint
+  - name: Install package (${{ inputs.package }})
+    if: always() && inputs.second_package
     id: install_package
     uses: ./.github/actions/install_package
     with:
