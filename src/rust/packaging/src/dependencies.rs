@@ -45,14 +45,14 @@ pub fn get_dependency_libs (executable : &Path,
         command = String::from("powershell.exe");
         let commandstr : String = format!(
            "
-            $files = \"{files_str}\" -split ' '
+            $files = \"{0}\" -split ' '
             foreach ($file in $files) {{
                 $output = & Dependencies.exe -chain -depth 4 $file.Trim();
                 $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
                     Get-Unique |
                     ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }} |
                     ForEach-Object {{ Write-Output $_ }}
-            }}");
+            }}", executable.to_str().unwrap());
         args = vec!(String::from("-Command"), commandstr);
         warning_patterns = vec!();
         skip_n_levels = 0;
@@ -96,7 +96,8 @@ pub fn get_dependency_libs (executable : &Path,
                     fi
                 done
              }}
-             for f in {files_str}; do recurse_deps $1 \"\"; done");
+             recurse_deps \"{0}\" \"\"",
+            executable.to_str().unwrap());
         args = vec!(String::from("-c"), commandstr);
         warning_patterns = vec!();
         skip_n_levels = 0;
