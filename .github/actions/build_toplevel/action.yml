@@ -199,8 +199,8 @@ runs:
     with:
       name: pdb_${{ inputs.name }}
       path: |
-        ./**/*.pdb
-        ./**/*.PDB
+        ./target/**/*.pdb
+        ./target/**/*.PDB
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
