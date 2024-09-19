@@ -34,7 +34,7 @@ fn populate_folder(
         Command::new("sh")
                 .current_dir(&src_path)
                 .args(&["-c",
-                        &format!("curl -LsSf https://get.nexte.st/latest/windows | tar zxf - -C {}", nextest_dir)
+                        &format!("curl -LsSf https://get.nexte.st/latest/windows-tar | tar zxf - -C {}", nextest_dir)
                         ])
                 .status()?;
     }

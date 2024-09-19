@@ -64,6 +64,7 @@ runs:
       tar -xzf ${{ inputs.package }}
       cd ..
       PORTABLE=$(pwd)/portable/*
+      echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
 
   # Windows portable folder
@@ -76,6 +77,7 @@ runs:
       tar -xzf ${{ inputs.package }}
       cd ..
       PORTABLE=$(pwd)/portable/*
+      echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
 
   # MacOS portable folder
