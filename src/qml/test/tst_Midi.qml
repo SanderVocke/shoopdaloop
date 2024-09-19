@@ -6,7 +6,7 @@ import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
-import 'js/../midi.js' as Midi
+import '../js/midi.js' as Midi
 import '..'
 
 ShoopTestFile {

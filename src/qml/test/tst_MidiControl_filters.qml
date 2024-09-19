@@ -1,8 +1,8 @@
 import QtQuick 6.6
 
 import ShoopConstants
-import 'js/../midi.js' as Midi
-import 'js/../midi_control.js' as MidiControl
+import '../js/midi.js' as Midi
+import '../js/midi_control.js' as MidiControl
 import './testfilename.js' as TestFilename
 import '..'
 
@@ -28,23 +28,23 @@ ShoopTestFile {
 
                 configuration: MidiControlConfiguration {
                     contents: [
-                        { 
+                        {
                             'filters': [],
                             'action': 'shoop_control.loop_count({{0, 0}})'
                         },
-                        { 
+                        {
                             'filters': [MidiControl.match_type(Midi.NoteOn)],
                             'action': 'shoop_control.loop_count({{1, 1}})'
                         },
-                        { 
+                        {
                             'filters': [MidiControl.match_type(Midi.NoteOff)],
                             'action': 'shoop_control.loop_count({{2, 2}})'
                         },
-                        { 
+                        {
                             'filters': [MidiControl.match_type(Midi.ControlChange)],
                             'action': 'shoop_control.loop_count({{3, 3}})'
                         },
-                        { 
+                        {
                             'filters': [MidiControl.match_type(Midi.ProgramChange)],
                             'action': 'shoop_control.loop_count({{4, 4}})'
                         },
