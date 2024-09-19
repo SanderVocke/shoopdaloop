@@ -87,7 +87,7 @@ runs:
       cd portable
       tar -xzf ${{ inputs.package }}
       cd ..
-      PORTABLE=$(ls $(pwd)/portable)
+      PORTABLE=$(pwd)/portable/*
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
 

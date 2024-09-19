@@ -13,7 +13,7 @@ from ..backend_wrappers import *
 from ..midi_helpers import *
 from shoop_rust import shoop_rust_create_autoconnect
 
-import shiboken6
+from shiboken6 import Shiboken
 
 from ..lua_qobject_interface import create_lua_qobject_interface, lua_int
 class MidiControlPort(FindParentBackend):
@@ -284,7 +284,7 @@ class MidiControlPort(FindParentBackend):
             for regex in self._autoconnect_regexes:
                 if not shoop_rust_create_autoconnect:
                     raise Exception("No construction function available for AutoConnect")
-                inst = shiboken6.wrapInstance(ctypes.c_void_p(shoop_rust_create_autoconnect()), QObject)
+                inst = Shiboken.wrapInstance(shoop_rust_create_autoconnect(), QObject)
                 if not isinstance(inst, QObject):
                     raise Exception("Created AutoConnect is not a QObject")
                 inst.setParent(self)

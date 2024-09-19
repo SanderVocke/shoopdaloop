@@ -225,7 +225,7 @@ std::optional<shoop_audio_driver_type_t> audio_system_type(AudioMidiDriver *sys)
 #ifdef SHOOP_HAVE_BACKEND_JACK
     else if (dynamic_cast<JackAudioMidiDriver*>(sys)) {
         return Jack;
-    } 
+    }
 #endif
     else if (dynamic_cast<_DummyAudioMidiDriver*>(sys)) {
         return Dummy;
@@ -427,7 +427,7 @@ shoop_profiling_report_t *get_profiling_report(shoop_backend_session_t *backend)
         internal->log<log_level_error>("Profiling support was disabled at compile-time.");
     }
 
-    auto r = internal->profiler->report();    
+    auto r = internal->profiler->report();
 
     auto items = new shoop_profiling_report_item_t[r.size()];
     for (uint32_t idx=0; idx<r.size(); idx++) {
@@ -516,7 +516,7 @@ unsigned get_n_midi_channels (shoopdaloop_loop_t *loop) {
   }, 0);
 }
 
-void delete_audio_channel(shoopdaloop_loop_t *loop, shoopdaloop_loop_audio_channel_t *channel) {    
+void delete_audio_channel(shoopdaloop_loop_t *loop, shoopdaloop_loop_audio_channel_t *channel) {
   return api_impl<void>("delete_audio_channel", [&]() {
     auto loop_info = internal_loop(loop);
     if (!loop_info) { return; }
@@ -1336,7 +1336,8 @@ void close_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *port) {
     auto _port = internal_decoupled_midi_port(port);
     auto _driver = _port->get_maybe_driver();
     if (!_driver) {
-      throw std::runtime_error("close_decoupled_midi_port: port driver not available");
+       // Already closed
+       return;
     }
     _driver->queue_process_thread_command([=]() {
         auto _port = internal_decoupled_midi_port(port);
@@ -1547,7 +1548,7 @@ shoop_audio_port_state_info_t *get_audio_port_state(shoopdaloop_audio_port_t *po
     auto pp = internal_audio_port(port);
     if (!pp) { return nullptr; }
     auto p = pp->maybe_audio_port();
-  
+
     if (p) {
       r->input_peak = p->get_input_peak();
       r->output_peak = p->get_output_peak();

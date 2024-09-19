@@ -12,8 +12,8 @@ const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
 fn main() {
     // Set up PYTHONPATH. This can deal with:
     // finding pyenv in Cargo build case, based on the remembered OUT_DIR
-    let base = PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_pyenv");
     let shoop_lib_dir = std::fs::canonicalize(PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_lib")).unwrap();
+    let base = shoop_lib_dir.join("py");
     let shoop_src_root_dir = std::fs::canonicalize(PathBuf::from(SRC_DIR).join("../../..")).unwrap();
     let pattern = format!("{}/**/site-packages", base.to_str().unwrap());
     let mut sp_glob = glob(&pattern).unwrap();

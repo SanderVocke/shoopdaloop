@@ -226,13 +226,14 @@ pub fn get_dependency_libs (executable : &Path,
             path_str = db.path.to_str().unwrap().to_owned();
         }
         let pattern_match = |s : &str, p : &str| {
+            let path_str = &p
+                .replace("\\", "/");
             let pattern_str = &s
-                .replace("\\", "/")
+                .replace("\\", "\\\\")
                 .replace(".", "\\.")
                 .replace("*", ".*")
-                .replace("+", "\\+")
-                ;
-            return regex::Regex::new(pattern_str).unwrap().is_match(p);
+                .replace("+", "\\+");
+            return regex::Regex::new(pattern_str).unwrap().is_match(path_str);
         };
         let in_excludes = excludes.iter().any(|e| pattern_match(e, path_str.as_str()));
         let in_includes = includes.iter().any(|e| pattern_match(e, path_str.as_str()));
