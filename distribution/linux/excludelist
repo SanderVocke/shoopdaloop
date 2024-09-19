@@ -15,5 +15,4 @@
 */libpthread.so*
 */libpython3.*
 */librt.so*
-*/libshoopdaloop_backend.so*
 */libsystemd.so*
