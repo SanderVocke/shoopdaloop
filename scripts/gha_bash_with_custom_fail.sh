@@ -1,10 +1,10 @@
 #!/bin/bash
-MASK_CMD=/bin/true
+MASK_CMD=true
 
 if [ "$failure_status" != "" ]; then
   if [[ -n "${GHA_RUN_ALWAYS}" ]]; then
     echo "failure_status is set, but GHA_RUN_ALWAYS is set. Running command."
-    MASK_CMD=/bin/false # ensure that the end result fails
+    MASK_CMD=false # ensure that the end result fails
   else
     echo "failure_status is set"
     exit 1
