@@ -501,7 +501,7 @@ jobs:
     env:
       NATIVE_SHELL_CMD: "powershell -Command"
       PATH_SEPARATOR: ";"
-      CONVERT_PATH_FN: "cygpath -w"
+      CONVERT_PATH_FN: "bash <(echo cygpath -w \$1 | sed 's/\\/\\\\/g')"
       COMPRESS_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
       # checkpoints_enabled: true
     container:
