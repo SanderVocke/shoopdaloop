@@ -1,7 +1,7 @@
 use cxx::UniquePtr;
 use cxx_qt;
 
-#[cxx_qt::bridge(cxx_file_stem="qjsonobject")]
+#[cxx_qt::bridge]
 mod ffi {
 
     unsafe extern "C++" {
@@ -22,20 +22,10 @@ mod ffi {
 
         #[rust_name="qjsonobject_to_json"]
         pub fn qjsonobjectToJson(obj: &QJsonObject) -> Result<String>;
-
-        fn dummy(u : UniquePtr<QJsonObject>);
-    }
-
-    extern "RustQt" {
-        #[qobject]
-        type DummyQJsonObject = super::DummyQJsonObjectRust;
     }
 }
 
 pub use ffi::*;
-
-#[derive(Default)]
-pub struct DummyQJsonObjectRust {}
 
 impl QJsonObject {
     pub fn from_json(json: &str) -> Result<UniquePtr<QJsonObject>, String> {

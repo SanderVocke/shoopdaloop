@@ -17,7 +17,7 @@ pub mod constants {
     pub const INVOKABLE_UPDATE_FOUND_ITEM_BOOL_PROPERTY : &str = "updateFoundItemBoolProperty()";
 }
 
-#[cxx_qt::bridge(cxx_file_stem="qobj_find_parent_item")]
+#[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
@@ -30,7 +30,7 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
-        #[base = "QQuickItem"]
+        #[base = QQuickItem]
         #[qproperty(*mut QQuickItem, found_item)]
         #[qproperty(QString, item_bool_property_to_check)]
         #[qproperty(*mut QQuickItem, found_item_with_true_checked_property)]

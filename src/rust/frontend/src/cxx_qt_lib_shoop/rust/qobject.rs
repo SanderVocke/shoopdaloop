@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-#[cxx_qt::bridge(cxx_file_stem="qobject")]
+#[cxx_qt::bridge]
 mod ffi {
 
     unsafe extern "C++" {
@@ -33,15 +33,7 @@ mod ffi {
         #[rust_name = "qobject_set_object_name"]
         unsafe fn qobjectSetObjectName(obj: *mut QObject, name: String) -> Result<()>;
     }
-
-    extern "RustQt" {
-        #[qobject]
-        type DummyQQObject = super::DummyQObjectRust;
-    }
 }
-
-#[derive(Default)]
-pub struct DummyQObjectRust {}
 
 pub use ffi::QObject;
 use ffi::*;

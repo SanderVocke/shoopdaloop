@@ -1,7 +1,7 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.OSUtils");
 
-#[cxx_qt::bridge(cxx_file_stem="qobj_os_utils")]
+#[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");

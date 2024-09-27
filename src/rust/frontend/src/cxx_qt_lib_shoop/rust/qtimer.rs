@@ -2,7 +2,7 @@ use cxx::{type_id, ExternType};
 use cxx_qt;
 use std::pin::Pin;
 
-#[cxx_qt::bridge(cxx_file_stem="qtimer")]
+#[cxx_qt::bridge]
 mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qtimer.h");
@@ -28,19 +28,11 @@ mod ffi {
         #[rust_name = "make_raw_qtimer_with_parent"]
         unsafe fn make_raw_with_one_arg(parent : *mut QObject) -> *mut QTimer;
     }
-
-    extern "RustQt" {
-        #[qobject]
-        type DummyQTimer = super::DummyQTimerRust;
-    }
 }
 
 pub use ffi::QTimer;
 pub use ffi::make_raw_qtimer_with_parent as make_raw_with_parent;
 use ffi::QObject;
-
-#[derive(Default)]
-pub struct DummyQTimerRust {}
 
 #[repr(C)]
 pub struct QTimerRust {

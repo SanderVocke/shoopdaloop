@@ -1,7 +1,7 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.BackendWrapper");
 
-#[cxx_qt::bridge(cxx_file_stem="qobj_backend_wrapper")]
+#[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
@@ -10,7 +10,7 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
-        #[base = "QQuickItem"]
+        #[base = QQuickItem]
         #[qproperty(bool, ready)]
         type BackendWrapper = super::BackendWrapperRust;
     }

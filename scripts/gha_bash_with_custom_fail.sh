@@ -2,7 +2,7 @@
 AND_RESULT=true
 
 if [ "$failure_status" != "" ]; then
-  if [ -v GHA_RUN_ALWAYS ]; then
+  if [[ -v GHA_RUN_ALWAYS ]]; then
     echo "failure_status is set, but GHA_RUN_ALWAYS is set. Running command."
     AND_RESULT=false # ensure that the end result fails
   else

@@ -8,6 +8,7 @@ use core::pin::Pin;
 use crate::audio_power_pyramid;
 use cxx_qt_lib::{QColor, QLine};
 use crate::audio_power_pyramid::*;
+use cxx_qt::CxxQtType;
 
 pub fn register_qml_type(module_name : &str, type_name : &str) {
     let obj = make_unique_renderaudiowaveform();
@@ -19,7 +20,7 @@ pub fn register_qml_type(module_name : &str, type_name : &str) {
 impl ffi::RenderAudioWaveform {
     pub fn preprocess(self: Pin<&mut Self>) {
         {
-            let s : &RenderAudioWaveformRust = self.cxx_qt_ffi_rust();
+            let s : &RenderAudioWaveformRust = self.rust();
             let mut p = s.pyramid.lock().unwrap();
             debug!("Preprocessing input data with {} values", s.input_data.len());
             *p = audio_power_pyramid::create_audio_power_pyramid(
@@ -30,7 +31,7 @@ impl ffi::RenderAudioWaveform {
 
     pub unsafe fn paint(self: Pin<&mut Self>, painter: *mut ffi::QPainter) {
         trace!("paint (offset {}, scale {})", self.samples_offset, self.samples_per_bin);
-        let s : &RenderAudioWaveformRust = self.cxx_qt_ffi_rust();
+        let s : &RenderAudioWaveformRust = self.rust();
         let p = s.pyramid.lock().unwrap();
 
         // Skip if no pyramid
@@ -56,7 +57,7 @@ impl ffi::RenderAudioWaveform {
         // Calculate lines
         let n_lines = f64::ceil(self.size().width()) as usize;
         let n_samples = level.data.len();
-        let mut lines : QList_QLineF = QList_QLineF::default();
+        let mut lines : QVector_QLineF = QVector_QLineF::default();
         lines.reserve(n_lines as isize);
         lines.clear();
         trace!("  - {} line slots, {} samples", lines.len(), level.data.len());

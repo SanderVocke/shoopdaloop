@@ -1,7 +1,7 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.ReleaseFocusNotifier");
 
-#[cxx_qt::bridge(cxx_file_stem="qobj_release_focus_notifier")]
+#[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]

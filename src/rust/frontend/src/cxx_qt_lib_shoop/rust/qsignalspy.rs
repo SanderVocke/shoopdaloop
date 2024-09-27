@@ -1,7 +1,7 @@
 use cxx::{type_id, ExternType};
 use cxx_qt;
 
-#[cxx_qt::bridge(cxx_file_stem="qsignalspy")]
+#[cxx_qt::bridge]
 mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qsignalspy.h");
@@ -19,15 +19,7 @@ mod ffi {
         #[rust_name = "qsignalspy_make_raw"]
         unsafe fn qsignalspyCreate(obj: *const QObject, signal : String) -> Result<*mut QSignalSpy>;
     }
-
-    extern "RustQt" {
-        #[qobject]
-        type DummyQSignalSpy = super::DummyQSignalSpyRust;
-    }
 }
-
-#[derive(Default)]
-pub struct DummyQSignalSpyRust {}
 
 #[repr(C)]
 pub struct QSignalSpyRust {

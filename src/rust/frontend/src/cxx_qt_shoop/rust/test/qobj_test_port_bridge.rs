@@ -25,7 +25,7 @@ pub mod constants {
     pub const SIGNAL_EXTERNAL_CONNECTION_MADE: &str = "externalConnectionMade(QString)";
 }
 
-#[cxx_qt::bridge(cxx_file_stem="qobj_test_port")]
+#[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
@@ -46,7 +46,7 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
-        #[base = "QQuickItem"]
+        #[base = QQuickItem]
         #[qproperty(QMap_QString_QVariant, connections_state)]
         #[qproperty(i32, data_type)]
         #[qproperty(i32, direction)]

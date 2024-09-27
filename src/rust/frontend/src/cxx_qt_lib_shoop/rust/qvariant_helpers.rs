@@ -1,6 +1,6 @@
 use cxx_qt;
 
-#[cxx_qt::bridge(cxx_file_stem="qvariant_helpers")]
+#[cxx_qt::bridge]
 mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qvariant.h");
@@ -11,15 +11,7 @@ mod ffi {
         #[rust_name = "qvariant_type_name"]
         fn qvariantTypeName(obj: &QVariant) -> Result<&str>;
     }
-
-    extern "RustQt" {
-        #[qobject]
-        type DummyQVariant = super::DummyQVariantRust;
-    }
 }
-
-#[derive(Default)]
-pub struct DummyQVariantRust {}
 
 pub use ffi::QVariant;
 pub use ffi::qvariant_type_name;

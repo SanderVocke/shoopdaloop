@@ -14,6 +14,8 @@ use std::{pin::Pin, ptr::null_mut};
 use crate::cxx_qt_lib_shoop::qobject::qobject_object_name;
 use crate::cxx_qt_lib_shoop::qquickitem;
 
+use cxx_qt::CxxQtType;
+
 type Predicate = dyn Fn(*mut QQuickItem) -> bool;
 type BoxedPredicate = Box<Predicate>;
 
@@ -67,7 +69,7 @@ impl FindParentItem {
 
     pub unsafe fn rescan_with_result(mut self: Pin<&mut Self>) -> Result<(), anyhow::Error> {
         let quick = self.as_mut().pin_mut_qquickitem_ptr();
-        let rust = self.as_mut().cxx_qt_ffi_rust_mut();
+        let rust = self.as_mut().rust_mut();
         let maybe_find_predicate = rust.find_predicate.as_ref();
         if matches!(maybe_find_predicate, None) {
             debug!("No predicate set for FindParentItem. Cannot rescan.");
@@ -118,7 +120,7 @@ impl FindParentItem {
     }
 
     pub fn set_find_predicate(mut self: Pin<&mut Self>, predicate : BoxedPredicate) {
-        self.as_mut().cxx_qt_ffi_rust_mut().find_predicate = Some(predicate);
+        self.as_mut().rust_mut().find_predicate = Some(predicate);
         self.as_mut().rescan();
     }
 }

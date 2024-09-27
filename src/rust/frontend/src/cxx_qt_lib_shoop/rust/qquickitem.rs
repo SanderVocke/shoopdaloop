@@ -1,7 +1,7 @@
 use std::pin::Pin;
 use crate::cxx_qt_lib_shoop::qobject::{IsQObject, AsQObject};
 
-#[cxx_qt::bridge(cxx_file_stem="qquickitem")]
+#[cxx_qt::bridge]
 mod ffi {
 
     unsafe extern "C++" {
@@ -21,15 +21,7 @@ mod ffi {
         #[rust_name = "qquickitem_to_qobject_ref"]
         fn qquickitemToQobjectRef(item : &QQuickItem) -> &QObject;
     }
-
-    extern "RustQt" {
-        #[qobject]
-        type DummyQQuickItem = super::DummyQQuickItemRust;
-    }
 }
-
-#[derive(Default)]
-pub struct DummyQQuickItemRust {}
 
 pub use ffi::QQuickItem;
 use ffi::QObject;

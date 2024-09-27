@@ -1,4 +1,4 @@
-#[cxx_qt::bridge(cxx_file_stem = "shoop_rust_callable")]
+#[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qvariant.h");
@@ -26,17 +26,10 @@ pub mod ffi {
         #[rust_name = "qvariant_value_or_default_shoop_rust_callable"]
         fn qvariantValueOrDefault(variant: &QVariant) -> ShoopRustCallable;
     }
-
-    extern "RustQt" {
-        #[qobject]
-        type DummyShoopRustCallable = super::DummyShoopRustCallableRust;
-    }
 }
 
 pub use ffi::ShoopRustCallable;
 use ffi::*;
-#[derive(Default)]
-pub struct DummyShoopRustCallableRust {}
 
 #[repr(C)]
 pub struct ShoopRustCallableRust {

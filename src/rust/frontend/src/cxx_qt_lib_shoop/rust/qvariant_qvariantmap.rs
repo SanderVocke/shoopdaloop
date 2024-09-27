@@ -1,4 +1,4 @@
-#[cxx_qt::bridge(cxx_file_stem="qvariant_qvariantmap")]
+#[cxx_qt::bridge]
 mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qvariant.h");
@@ -17,15 +17,7 @@ mod ffi {
         #[rust_name = "qvariant_convertible_to_qvariantmap"]
         fn qvariantConvertibleToQvariantmap(v : &QVariant) -> Result<bool>;
     }
-
-    extern "RustQt" {
-        #[qobject]
-        type DummyQVariantQVariantMap = super::DummyQVariantQVariantMapRust;
-    }
 }
-
-#[derive(Default)]
-pub struct DummyQVariantQVariantMapRust {}
 
 pub use ffi::{
     qvariant_as_qvariantmap,

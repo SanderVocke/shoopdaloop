@@ -13,7 +13,7 @@ pub mod constants {
         = qobj_signature_backend_wrapper::constants::INVOKABLE_FIND_EXTERNAL_PORTS;
 }
 
-#[cxx_qt::bridge(cxx_file_stem="qobj_test_backend_wrapper")]
+#[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
@@ -31,7 +31,7 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
-        #[base = "QQuickItem"]
+        #[base = QQuickItem]
         #[qproperty(bool, initialized)]
         type TestBackendWrapper = super::TestBackendWrapperRust;
 

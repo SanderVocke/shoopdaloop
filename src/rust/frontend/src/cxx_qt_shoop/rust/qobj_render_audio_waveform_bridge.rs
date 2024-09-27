@@ -1,7 +1,7 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.RenderAudioWaveform");
 
-#[cxx_qt::bridge(cxx_file_stem="qobj_render_audio_waveform")]
+#[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qcolor.h");
@@ -25,16 +25,20 @@ pub mod ffi {
         include!("cxx-qt-lib/qlist.h");
         type QList_QLineF = cxx_qt_lib::QList<cxx_qt_lib::QLineF>;
 
+        include!("cxx-qt-lib/qvector.h");
+        type QVector_QLineF = cxx_qt_lib::QVector<cxx_qt_lib::QLineF>;
+
         include!("cxx-qt-lib/qpainter.h");
         type QPainter = cxx_qt_lib::QPainter;
 
         include!(<QtQuick/QQuickPaintedItem>);
+        type QQuickPaintedItem;
     }
 
     unsafe extern "RustQt" {
         #[qobject]
         #[qml_element]
-        #[base = "QQuickPaintedItem"]
+        #[base = QQuickPaintedItem]
         #[qproperty(i64, samples_offset)]
         #[qproperty(f64, samples_per_bin)]
         #[qproperty(QList_f64, input_data)]

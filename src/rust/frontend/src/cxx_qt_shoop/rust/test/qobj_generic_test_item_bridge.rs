@@ -7,7 +7,7 @@ pub mod constants {
     pub const SIGNAL_BOOL_PROP_CHANGED: &str = "boolPropChanged()";
 }
 
-#[cxx_qt::bridge(cxx_file_stem="qobj_generic_test_item")]
+#[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
@@ -17,7 +17,7 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
-        #[base = "QQuickItem"]
+        #[base = QQuickItem]
         #[qproperty(bool, bool_prop)]
         type GenericTestItem = super::GenericTestItemRust;
     }

@@ -7,6 +7,7 @@ pub use crate::cxx_qt_shoop::test::qobj_test_port_bridge::constants::*;
 use crate::cxx_qt_shoop::test::qobj_test_port_bridge::ffi::*;
 use std::pin::Pin;
 use cxx::UniquePtr;
+use cxx_qt::CxxQtType;
 
 impl TestPort {
     pub fn set_connections_state_from_json(self : Pin<&mut Self>, json : &str) -> Result<(), String> {
@@ -22,7 +23,7 @@ impl TestPort {
     }
 
     pub fn connect_external_port(mut self: Pin<&mut TestPort>, name : QString) -> bool {
-        let rval : bool = self.as_mut().cxx_qt_ffi_rust_mut().connect_external_port_return_val;
+        let rval : bool = self.as_mut().rust_mut().connect_external_port_return_val;
         self.as_mut().external_connection_made(name);
         return rval;
     }

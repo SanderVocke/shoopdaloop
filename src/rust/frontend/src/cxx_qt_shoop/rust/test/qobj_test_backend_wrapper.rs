@@ -10,6 +10,7 @@ use std::pin::Pin;
 use crate::cxx_qt_lib_shoop::qobject;
 use crate::cxx_qt_shoop::fn_qlist_helpers;
 use crate::cxx_qt_shoop::type_external_port_descriptor::ExternalPortDescriptor;
+use cxx_qt::CxxQtType;
 
 impl TestBackendWrapper {
     unsafe fn initialize_impl_with_result(self : Pin<&mut TestBackendWrapper>) -> Result<(), cxx::Exception> {
@@ -30,7 +31,7 @@ impl TestBackendWrapper {
                                _maybe_regex : QString,
                                _port_direction : i32,
                                _data_type : i32) -> QList_QVariant {
-        let rust = self.cxx_qt_ffi_rust_mut();
+        let rust = self.rust_mut();
         return match fn_qlist_helpers::as_qlist_qvariant::<ExternalPortDescriptor>
             (&rust.mock_external_ports)
         {

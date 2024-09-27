@@ -1,4 +1,5 @@
 use common::logging::macros::*;
+use cxx_qt::CxxQtType;
 shoop_log_unit!("Frontend.AutoConnect");
 
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::AutoConnect;
@@ -26,7 +27,7 @@ impl AutoConnect {
         debug!("Initializing");
         {
             self.as_mut().on_parent_changed(|o,_| {
-                let mut rust : Pin<&mut AutoConnectRust> = o.cxx_qt_ffi_rust_mut();
+                let mut rust : Pin<&mut AutoConnectRust> = o.rust_mut();
                 rust.find_backend_wrapper.as_mut().unwrap().rescan();
             }).release();
             self.as_mut().on_internal_port_changed(|o| {
@@ -43,7 +44,7 @@ impl AutoConnect {
         let obj_ptr = self.get_unchecked_mut() as *mut AutoConnect;
         let obj_qobject = qquickitem_to_qobject_mut(obj_qquickitem);
         let mut pinned = Pin::new_unchecked(&mut *obj_ptr);
-        let mut rust : Pin<&mut AutoConnectRust> = pinned.as_mut().cxx_qt_ffi_rust_mut();
+        let mut rust : Pin<&mut AutoConnectRust> = pinned.as_mut().rust_mut();
 
         {
             let mut rust_finder_access = rust.as_mut();
@@ -89,7 +90,7 @@ impl AutoConnect {
             }
         }
 
-        let mut rust = self.as_mut().cxx_qt_ffi_rust_mut();
+        let mut rust = self.as_mut().rust_mut();
         let regex_str = format!("^{}$", rust.connect_to_port_regex.to_string());
         let finder = rust.find_backend_wrapper.as_mut().unwrap();
         let regex = Regex::new(regex_str.as_str())
@@ -241,7 +242,7 @@ mod tests {
             let mut backend = qobj_test_backend_wrapper::make_unique();
             backend.as_mut().unwrap().set_initialized(true);
             {
-                let mut backend_rust = backend.pin_mut().cxx_qt_ffi_rust_mut();
+                let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
                     name: String::from("port_1"),
                     direction: PortDirection::Output,
@@ -293,7 +294,7 @@ mod tests {
             let mut backend = qobj_test_backend_wrapper::make_unique();
             backend.as_mut().unwrap().set_initialized(true);
             {
-                let mut backend_rust = backend.pin_mut().cxx_qt_ffi_rust_mut();
+                let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
                     name: String::from("not_port_1"),
                     direction: PortDirection::Output,
@@ -345,7 +346,7 @@ mod tests {
             let mut backend = qobj_test_backend_wrapper::make_unique();
             backend.as_mut().unwrap().set_initialized(true);
             {
-                let mut backend_rust = backend.pin_mut().cxx_qt_ffi_rust_mut();
+                let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
                     name: String::from("port_1"),
                     direction: PortDirection::Output,
@@ -397,7 +398,7 @@ mod tests {
             let mut backend = qobj_test_backend_wrapper::make_unique();
             backend.as_mut().unwrap().set_initialized(true);
             {
-                let mut backend_rust = backend.pin_mut().cxx_qt_ffi_rust_mut();
+                let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
                     name: String::from("port_1"),
                     direction: PortDirection::Output,
@@ -469,7 +470,7 @@ mod tests {
             assert_eq!(autoconnect_connected_spy.as_ref().unwrap().count().expect("Could not get count"), 0);
             assert_eq!(port_connection_made_spy.as_ref().unwrap().count().expect("Could not get count"), 0);
             {
-                let mut backend_rust = backend.pin_mut().cxx_qt_ffi_rust_mut();
+                let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
                     name: String::from("port_1"),
                     direction: PortDirection::Output,

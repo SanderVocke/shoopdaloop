@@ -8,7 +8,7 @@ fn main() {
         .qt_module("Network")
         .qt_module("Test")
         .qml_module(QmlModule {
-            uri: "shoopdaloop",
+            uri: "cxx_qt_lib_shoop",
             rust_files: &[
                 "src/cxx_qt_lib_shoop/rust/qjsonobject.rs",
                 "src/cxx_qt_lib_shoop/rust/qobject.rs",
@@ -17,7 +17,13 @@ fn main() {
                 "src/cxx_qt_lib_shoop/rust/qtimer.rs",
                 "src/cxx_qt_lib_shoop/rust/qvariant_helpers.rs",
                 "src/cxx_qt_lib_shoop/rust/qvariant_qvariantmap.rs",
-
+            ],
+            qml_files: &[] as &[&'static str],
+            ..Default::default()
+        })
+        .qml_module(QmlModule {
+            uri: "shoopdaloop",
+            rust_files: &[
                 "src/cxx_qt_shoop/rust/qobj_autoconnect_bridge.rs",
                 "src/cxx_qt_shoop/rust/qobj_backend_wrapper_bridge.rs",
                 "src/cxx_qt_shoop/rust/qobj_file_io_bridge.rs",
@@ -25,9 +31,14 @@ fn main() {
                 "src/cxx_qt_shoop/rust/qobj_os_utils_bridge.rs",
                 "src/cxx_qt_shoop/rust/qobj_release_focus_notifier_bridge.rs",
                 "src/cxx_qt_shoop/rust/qobj_render_audio_waveform_bridge.rs",
-
                 "src/cxx_qt_shoop/rust/type_shoop_rust_callable.rs",
-
+            ],
+            qml_files: &[] as &[&'static str],
+            ..Default::default()
+        })
+        .qml_module(QmlModule {
+            uri: "shoopdaloop_test",
+            rust_files: &[
                 "src/cxx_qt_shoop/rust/test/qobj_generic_test_item_bridge.rs",
                 "src/cxx_qt_shoop/rust/test/qobj_test_backend_wrapper_bridge.rs",
                 "src/cxx_qt_shoop/rust/test/qobj_test_port_bridge.rs",

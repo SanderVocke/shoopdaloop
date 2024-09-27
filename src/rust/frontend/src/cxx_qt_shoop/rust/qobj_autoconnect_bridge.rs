@@ -16,7 +16,7 @@ pub mod constants {
     pub const INVOKABLE_UPDATE : &str = "update()";
 }
 
-#[cxx_qt::bridge(cxx_file_stem="qobj_autoconnect")]
+#[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
@@ -58,7 +58,7 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
-        #[base = "QQuickItem"]
+        #[base = QQuickItem]
         #[qproperty(*mut QObject, internal_port)]
         #[qproperty(QString, connect_to_port_regex)]
         #[qproperty(bool, is_closed)]
