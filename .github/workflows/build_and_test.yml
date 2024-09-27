@@ -13,6 +13,7 @@ env:
   CONVERT_PATH_FN: "echo"
   RUST_BACKTRACE: "1"
   QT_QPA_PLATFORM: "offscreen"
+  NATIVE_SHELL_CMD: "bash -c"
 
 permissions:
   contents: write
@@ -498,6 +499,7 @@ jobs:
     runs-on: ${{ matrix.kind.os}}
     needs: maybe_create_release
     env:
+      NATIVE_SHELL_CMD: "powershell -Command"
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: "cygpath -w"
       COMPRESS_FOLDER: 'bash <(echo "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT")'
