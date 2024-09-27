@@ -1,4 +1,4 @@
-use cxx_qt_build::{CxxQtBuilder, QmlModule};
+use cxx_qt_build::CxxQtBuilder;
 
 fn main() {
     CxxQtBuilder
@@ -7,45 +7,24 @@ fn main() {
         .qt_module("Gui")
         .qt_module("Network")
         .qt_module("Test")
-        .qml_module(QmlModule {
-            uri: "cxx_qt_lib_shoop",
-            rust_files: &[
-                "src/cxx_qt_lib_shoop/rust/qjsonobject.rs",
-                "src/cxx_qt_lib_shoop/rust/qobject.rs",
-                "src/cxx_qt_lib_shoop/rust/qquickitem.rs",
-                "src/cxx_qt_lib_shoop/rust/qsignalspy.rs",
-                "src/cxx_qt_lib_shoop/rust/qtimer.rs",
-                "src/cxx_qt_lib_shoop/rust/qvariant_helpers.rs",
-                "src/cxx_qt_lib_shoop/rust/qvariant_qvariantmap.rs",
-            ],
-            qml_files: &[] as &[&'static str],
-            ..Default::default()
-        })
-        .qml_module(QmlModule {
-            uri: "shoopdaloop",
-            rust_files: &[
-                "src/cxx_qt_shoop/rust/qobj_autoconnect_bridge.rs",
-                "src/cxx_qt_shoop/rust/qobj_backend_wrapper_bridge.rs",
-                "src/cxx_qt_shoop/rust/qobj_file_io_bridge.rs",
-                "src/cxx_qt_shoop/rust/qobj_find_parent_item_bridge.rs",
-                "src/cxx_qt_shoop/rust/qobj_os_utils_bridge.rs",
-                "src/cxx_qt_shoop/rust/qobj_release_focus_notifier_bridge.rs",
-                "src/cxx_qt_shoop/rust/qobj_render_audio_waveform_bridge.rs",
-                "src/cxx_qt_shoop/rust/type_shoop_rust_callable.rs",
-            ],
-            qml_files: &[] as &[&'static str],
-            ..Default::default()
-        })
-        .qml_module(QmlModule {
-            uri: "shoopdaloop_test",
-            rust_files: &[
-                "src/cxx_qt_shoop/rust/test/qobj_generic_test_item_bridge.rs",
-                "src/cxx_qt_shoop/rust/test/qobj_test_backend_wrapper_bridge.rs",
-                "src/cxx_qt_shoop/rust/test/qobj_test_port_bridge.rs",
-            ],
-            qml_files: &[] as &[&'static str],
-            ..Default::default()
-        })
+        .file("src/cxx_qt_lib_shoop/rust/qjsonobject.rs")
+        .file("src/cxx_qt_lib_shoop/rust/qobject.rs")
+        .file("src/cxx_qt_lib_shoop/rust/qquickitem.rs")
+        .file("src/cxx_qt_lib_shoop/rust/qsignalspy.rs")
+        .file("src/cxx_qt_lib_shoop/rust/qtimer.rs")
+        .file("src/cxx_qt_lib_shoop/rust/qvariant_helpers.rs")
+        .file("src/cxx_qt_lib_shoop/rust/qvariant_qvariantmap.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_autoconnect_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_backend_wrapper_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_file_io_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_find_parent_item_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_os_utils_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_release_focus_notifier_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_render_audio_waveform_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/type_shoop_rust_callable.rs")
+        .file("src/cxx_qt_shoop/rust/test/qobj_generic_test_item_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/test/qobj_test_backend_wrapper_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/test/qobj_test_port_bridge.rs")
         .cc_builder(|cc| {
             cc.include("src/cxx_qt_shoop/include");
             cc.file("src/cxx_qt_shoop/cxx/ShoopQObject.cpp");
