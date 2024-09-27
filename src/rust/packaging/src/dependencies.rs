@@ -227,12 +227,14 @@ pub fn get_dependency_libs (executable : &Path,
         }
         let pattern_match = |s : &str, p : &str| {
             let path_str = &p
-                .replace("\\", "/");
+                .replace("\\", "/")
+                .to_lowercase();
             let pattern_str = &s
                 .replace("\\", "\\\\")
                 .replace(".", "\\.")
                 .replace("*", ".*")
-                .replace("+", "\\+");
+                .replace("+", "\\+")
+                .to_lowercase();
             return regex::Regex::new(pattern_str).unwrap().is_match(path_str);
         };
         let in_excludes = excludes.iter().any(|e| pattern_match(e, path_str.as_str()));
