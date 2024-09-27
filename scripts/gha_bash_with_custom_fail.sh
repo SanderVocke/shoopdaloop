@@ -13,10 +13,12 @@ fi
 
 echo "GHA wrapper: running command: $BASE_WRAP_SHELL $@"
 $BASE_WRAP_SHELL $@ | tee -a log_all.txt
+CMD_RESULT=${PIPESTATUS[0]}
 
 # Process the result code
-$(sh -c "exit ${PIPESTATUS[0]}") && $(${MASK_CMD})
+$(sh -c "exit ${CMD_RESULT}") && $(${MASK_CMD})
 RESULT=$?
+echo "Command result ${CMD_RESULT}, masked with ${MASK_CMD}, final result ${RESULT}"
 
 # check if command was successful
 if [ ${RESULT} -ne 0 ]; then
