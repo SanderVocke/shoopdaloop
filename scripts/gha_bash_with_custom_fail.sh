@@ -12,6 +12,9 @@ if [ "$failure_status" != "" ]; then
 fi
 
 echo "GHA wrapper: running command: $BASE_WRAP_SHELL $@"
+echo ""
+echo "GHA wrapper: script: $(cat $@)"
+echo ""
 $BASE_WRAP_SHELL $@ | tee -a log_all.txt
 CMD_RESULT=${PIPESTATUS[0]}
 
