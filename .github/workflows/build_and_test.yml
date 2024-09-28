@@ -14,6 +14,7 @@ env:
   RUST_BACKTRACE: "1"
   QT_QPA_PLATFORM: "offscreen"
   NATIVE_SHELL_CMD: "bash -c"
+  BASH_FLAGS: "-x"
 
 permissions:
   contents: write
@@ -113,7 +114,7 @@ jobs:
         submodules: recursive
     - uses: ./.github/actions/checkpoint_setup
       with:
-        shell: bash --noprofile --norc -eo pipefail
+        shell: bash ${{ env.BASH_FLAGS }} --noprofile --norc -eo pipefail
     - name: Build
       if: always()
       uses: ./.github/actions/build_toplevel
@@ -193,7 +194,7 @@ jobs:
       uses: actions/checkout@v4
     - uses: ./.github/actions/checkpoint_setup
       with:
-        shell: bash --noprofile --norc -eo pipefail
+        shell: bash ${{ env.BASH_FLAGS }} --noprofile --norc -eo pipefail
     - uses: ./.github/actions/checkpoint
       if: always()
     - name: Test
@@ -373,7 +374,7 @@ jobs:
         submodules: recursive
     - uses: ./.github/actions/checkpoint_setup
       with:
-        shell: bash --noprofile --norc -eo pipefail
+        shell: bash ${{ env.BASH_FLAGS }} --noprofile --norc -eo pipefail
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
@@ -437,7 +438,7 @@ jobs:
       uses: actions/checkout@v4
     - uses: ./.github/actions/checkpoint_setup
       with:
-        shell: bash --noprofile --norc -eo pipefail
+        shell: bash ${{ env.BASH_FLAGS }} --noprofile --norc -eo pipefail
     - name: Test
       uses: ./.github/actions/test_toplevel
       with:
@@ -514,7 +515,7 @@ jobs:
         submodules: recursive
     - uses: ./.github/actions/checkpoint_setup
       with:
-        shell: bash --noprofile --norc -eo pipefail
+        shell: bash ${{ env.BASH_FLAGS }} --noprofile --norc -eo pipefail
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
@@ -569,7 +570,7 @@ jobs:
       uses: actions/checkout@v4
     - uses: ./.github/actions/checkpoint_setup
       with:
-        shell: bash --noprofile --norc -eo pipefail
+        shell: bash ${{ env.BASH_FLAGS }} --noprofile --norc -eo pipefail
     - name: Test
       uses: ./.github/actions/test_toplevel
       with:
