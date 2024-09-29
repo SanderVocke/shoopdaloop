@@ -503,7 +503,7 @@ jobs:
       NATIVE_SHELL_CMD: "powershell -Command"
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: "cygpath -m"
-      COMPRESS_FOLDER_FN: bash -c 'OUT=$(pwd)/$(basename $1.tar.gz); PARENT=$1/..; FOLDER=$(basename $1); cd $PARENT; tar -czf $OUT $FOLDER > /dev/null; echo $OUT'
+      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT"
       # checkpoints_enabled: true
     container:
       image: ${{ matrix.kind.container_image }}
