@@ -14,7 +14,7 @@ env:
   RUST_BACKTRACE: "1"
   QT_QPA_PLATFORM: "offscreen"
   NATIVE_SHELL_CMD: "bash -c"
-  BASH_FLAGS: "-x"
+  BASH_FLAGS: ""
 
 permissions:
   contents: write
@@ -103,7 +103,7 @@ jobs:
       options: ${{ matrix.container_options }}
     env:
       PATH_SEPARATOR: ":"
-      COMPRESS_FOLDER: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT"
+      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT"
       # checkpoints_enabled: true
     needs: maybe_create_release
     #if: false
@@ -365,7 +365,7 @@ jobs:
     #if: false
     env:
        PATH_SEPARATOR: ":"
-       COMPRESS_FOLDER: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT"
+       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT"
       #  checkpoints_enabled: true
     steps:
     - name: Checkout
@@ -503,7 +503,7 @@ jobs:
       NATIVE_SHELL_CMD: "powershell -Command"
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: "bash -c \"cygpath -w \\$1 | sed 's/\\\\/\\\\\\\\/g'\""
-      COMPRESS_FOLDER: bash -c 'OUT=$(pwd)/$(basename $1.tar.gz); PARENT=$1/..; FOLDER=$(basename $1); cd $PARENT; tar -czf $OUT $FOLDER > /dev/null; echo $OUT'
+      COMPRESS_FOLDER_FN: bash -c 'OUT=$(pwd)/$(basename $1.tar.gz); PARENT=$1/..; FOLDER=$(basename $1); cd $PARENT; tar -czf $OUT $FOLDER > /dev/null; echo $OUT'
       # checkpoints_enabled: true
     container:
       image: ${{ matrix.kind.container_image }}
