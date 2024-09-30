@@ -87,8 +87,10 @@ def main():
             True
             )
         app.exec()
-        
+
         return 0
+    except SystemExit as e:
+        return e.code
     except Exception as e:
         logger.error(lambda: "Exception: " + str(e) + "\n" + traceback.format_exc())
         return 1
