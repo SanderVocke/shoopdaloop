@@ -105,7 +105,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     println!("Installing into python env...");
     Command::new(&py_env_python)
         .args(
-            &["-m", "pip", "install", "--upgrade", "pip"]
+            &["-m", "pip", "install", "--no-input", "--upgrade", "pip"]
         )
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
@@ -113,7 +113,15 @@ fn main_impl() -> Result<(), anyhow::Error> {
         .with_context(|| "Failed to upgrade pip")?;
     Command::new(&py_env_python)
         .args(
-            &["-m", "pip", "install", "--force-reinstall", wheel.to_str().expect("Could not get wheel path")]
+            &["-m", "pip", "install", "--no-input", "pytest"]
+        )
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .with_context(|| "Failed to upgrade pip")?;
+    Command::new(&py_env_python)
+        .args(
+            &["-m", "pip", "install", "--no-input", "--force-reinstall", wheel.to_str().expect("Could not get wheel path")]
         )
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit())
