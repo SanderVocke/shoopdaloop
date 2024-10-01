@@ -28,6 +28,7 @@ fn populate_folder(
 
     let nextest_path : PathBuf;
     let nextest_dir = folder.to_str().unwrap();
+    println!("sh -c 'curl -LsSf https://get.nexte.st/latest/windows-tar | tar zxf - -C {}'", nextest_dir);
     #[cfg(target_os = "windows")]
     {
         nextest_path = folder.join("cargo-nextest.exe");
