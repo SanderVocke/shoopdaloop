@@ -73,12 +73,25 @@ fn main_impl() -> Result<(), anyhow::Error> {
     }
     println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
 
-    // Set RPATH
-    println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib"); // For builtin libraries
-    println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib/py/lib"); // For Python library
-    println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib/py/{}/PySide6/Qt/lib",
-             py_env_to_site_packages.to_str().unwrap()); // For the Qt distribution that comes with PySide6
-    println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/lib"); // For bundled dependency libraries
+    #[cfg(target_os = "linux")]
+    {
+        // Set RPATH
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib"); // For builtin libraries
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib/py/lib"); // For Python library
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib/py/{}/PySide6/Qt/lib",
+                py_env_to_site_packages.to_str().unwrap()); // For the Qt distribution that comes with PySide6
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/lib"); // For bundled dependency libraries
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // Set RPATH
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,@loader_path/shoop_lib"); // For builtin libraries
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,@loader_path/shoop_lib/py/lib"); // For Python library
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,@loader_path/shoop_lib/py/{}/PySide6/Qt/lib",
+                py_env_to_site_packages.to_str().unwrap()); // For the Qt distribution that comes with PySide6
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,@loader_path/lib"); // For bundled dependency libraries
+    }
 
     // Link to dev folders
     println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}/..", py_env_dir.to_str().unwrap());
