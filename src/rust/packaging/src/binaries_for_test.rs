@@ -28,14 +28,14 @@ fn populate_folder(
 
     let nextest_path : PathBuf;
     let nextest_dir = folder.to_str().unwrap();
-    println!("sh -c 'curl -LsSf https://get.nexte.st/latest/windows-tar | tar zxf - -C {}'", nextest_dir);
+    println!("sh -c 'curl -LsSf https://get.nexte.st/latest/windows-tar | tar zxf - -C \"{}\"'", nextest_dir);
     #[cfg(target_os = "windows")]
     {
         nextest_path = folder.join("cargo-nextest.exe");
         Command::new("sh")
                 .current_dir(&src_path)
                 .args(&["-c",
-                        &format!("curl -LsSf https://get.nexte.st/latest/windows-tar | tar zxf - -C {}", nextest_dir)
+                        &format!("curl -LsSf https://get.nexte.st/latest/windows-tar | tar zxf - -C \"{}\"", nextest_dir)
                         ])
                 .status()?;
     }
@@ -45,7 +45,7 @@ fn populate_folder(
         Command::new("sh")
                 .current_dir(&src_path)
                 .args(&["-c",
-                        &format!("curl -LsSf https://get.nexte.st/latest/mac | tar zxf - -C {}", nextest_dir)
+                        &format!("curl -LsSf https://get.nexte.st/latest/mac | tar zxf - -C \"{}\"", nextest_dir)
                         ])
                 .status()?;
     }
@@ -55,7 +55,7 @@ fn populate_folder(
         Command::new("sh")
                 .current_dir(&src_path)
                 .args(&["-c",
-                        &format!("curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C {}", nextest_dir)
+                        &format!("curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C \"{}\"", nextest_dir)
                         ])
                 .status()?;
     }
