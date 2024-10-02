@@ -32,10 +32,10 @@ fn populate_folder(
     #[cfg(target_os = "windows")]
     {
         nextest_path = folder.join("cargo-nextest.exe");
-        Command::new("sh")
+        Command::new("pwsh")
                 .current_dir(&src_path)
-                .args(&["-c",
-                        &format!("curl -LsSf https://get.nexte.st/latest/windows-tar | tar zxf - -C \"{}\"", nextest_dir)
+                .args(&["-Command",
+                        &format!("curl -LsSf https://get.nexte.st/latest/windows-tar | tar -zxf - -C {}", nextest_dir)
                         ])
                 .status()?;
     }
