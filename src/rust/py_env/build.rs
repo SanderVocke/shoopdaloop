@@ -39,15 +39,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("Found built wheel: {}", wheel.to_str().unwrap());
     }
     let py_env_dir = Path::new(&out_dir).join("shoop_pyenv");
-    let py_env_python : PathBuf;
-    #[cfg(target_os = "windows")]
-    {
-        py_env_python = py_env_dir.join("python.exe").to_owned();
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        py_env_python = py_env_dir.join("bin").join("python").to_owned();
-    }
     let pyenv_root_dir = Path::new(&out_dir).join("pyenv_root");
 
     if py_env_dir.exists() {
@@ -110,6 +101,24 @@ fn main_impl() -> Result<(), anyhow::Error> {
         .with_context(|| format!("Failed to copy Python env from {:?} to {:?}", &py_location, &py_env_dir))?;
 
     // Install ShoopDaLoop wheel in env
+    let py_env_python : PathBuf;
+    #[cfg(target_os = "windows")]
+    {
+        py_env_python = py_env_dir.join("python.exe").to_owned();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        py_env_python = py_env_dir.join("bin").join("python").to_owned();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // Glob for **/bin/python and use it to set py_env_python
+        let py_glob = format!("{}/**/bin/python", py_env_dir.to_str().unwrap());
+        let mut py_glob = glob(&py_glob)?;
+        py_env_python = py_glob.next()
+            .with_context(|| "Failed to glob for python")?;
+    }
+    println!("Using installed Python interpreter: {}", py_env_python.to_str().unwrap());
     println!("Installing into python env...");
     Command::new(&py_env_python)
         .args(
