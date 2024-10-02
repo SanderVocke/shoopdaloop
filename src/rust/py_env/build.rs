@@ -116,7 +116,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         let py_glob = format!("{}/**/bin/python", py_env_dir.to_str().unwrap());
         let mut py_glob = glob(&py_glob)?;
         py_env_python = py_glob.next()
-            .expect(format!("No python found @ {}", py_glob).as_str())
+            .expect("No python found")
             .with_context(|| "Failed to glob for python")?;
     }
     println!("Using installed Python interpreter: {}", py_env_python.to_str().unwrap());
