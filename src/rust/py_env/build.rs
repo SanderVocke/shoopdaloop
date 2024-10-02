@@ -1,6 +1,7 @@
 use std::process::Command;
 use std::env;
 use std::path::{Path, PathBuf};
+use std::collections::HashMap;
 use glob::glob;
 use copy_dir::copy_dir;
 use anyhow;
@@ -70,9 +71,15 @@ fn main_impl() -> Result<(), anyhow::Error> {
     println!("Using pyenv to install {} to {}...", py_version, pyenv_root_dir.to_str().unwrap());
     let args = &["install", "--skip-existing", py_version];
     let pyenv = env::var("PYENV").unwrap_or(String::from("pyenv"));
+    let mut install_env : HashMap<String, String> = env::vars().collect();
+    install_env.insert("PYENV_ROOT".to_string(), pyenv_root_dir.to_str().unwrap().to_string());
+    #[cfg(target_os = "macos")]
+    {
+        install_env.insert("PYTHON_CONFIGURE_OPTS".to_string(), "--enable-framework".to_string());
+    }
     Command::new(&pyenv)
             .args(args)
-            .env("PYENV_ROOT", &pyenv_root_dir)
+            .envs(install_env)
             .status()
             .with_context(|| format!("Failed to install Python using pyenv: {pyenv:?} {args:?}"))?;
     let py_location_output = Command::new(&pyenv)
