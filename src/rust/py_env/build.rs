@@ -59,7 +59,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
     // Create a env in OUT_DIR
     println!("Creating portable Python...");
-    let args = &["-c", "python3 --version | sed -r 's/.*3\\./3\\./g'"];
+    let args = &["-c", format!("{} --version | sed -r 's/.*3\\./3\\./g'", host_python).as_str()];
     let py_version = Command::new("sh")
                             .args(args)
                             .output()
