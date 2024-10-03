@@ -75,10 +75,12 @@ jobs:
             third_package_kind: test_binaries
             upload_release_assets: true
             platform: linux-x64
-          # - name: linux_debug
-          #   release_build: false
-          #   package_kind: appimage
-          #   platform: linux-x64
+          - name: linux_debug
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            upload_release_assets: true
+            platform: linux-x64
           # - name: linux_asan
           #   # Note: ASAN build does not have a test because it is not trivial to deploy
           #   # an asan-built program on another system. The build is here to ensure the
@@ -143,29 +145,15 @@ jobs:
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
+          - name: debug_debian_stable
+            python: python3
+            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+            package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
+            second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
           - name: release_arch_appimage
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.AppImage
-          # - name: debug_wheel_debian_stable
-          #   python: python3
-          #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-          #   package: wheel_linux_debug
-          # - name: release_deb_ubuntu_latest
-          #   python: python3
-          #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-          #   package: package_linux_release_deb
-          # - name: release_pyinst_ubuntu_latest
-          #   python: python3
-          #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-          # - name: release_pacman_arch
-          #   python: python
-          #   container: docker.io/sandervocke/shoopdaloop_run_base_arch_x86_64:latest
-          #   package: package_linux_release_pacman
-          # - name: release_rpm_fedora
-          #   python: python3
-          #   container: docker.io/sandervocke/shoopdaloop_run_base_fedora_x86_64:latest
-          #   package: package_linux_release_rpm
           # - name: coverage_debian_bullseye
           #   python: python3
           #   container: docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
@@ -337,17 +325,21 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: macos_release
-          #   release_build: true
-          #   appbundle: true
-          #   package_kind: dmg
-          #   os: macos-12
-          #   upload_release_assets: true
-          #   platform: macos-x64
-          # - name: macos_debug
-          #   build_type: 'Debug'
-          #   os: macos-12
-          #   platform: macos-x64
+          - name: macos_release
+            release_build: true
+            package_kind: portable_folder
+            second_package_kind: dmg
+            third_package_kind: test_binaries
+            os: macos-12
+            upload_release_assets: true
+            platform: macos-x64
+          - name: macos_debug
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            os: macos-12
+            upload_release_assets: true
+            platform: macos-x64
           - name: macos_release_arm
             release_build: true
             package_kind: portable_folder
@@ -356,10 +348,13 @@ jobs:
             os: macos-14
             upload_release_assets: true
             platform: macos-arm
-          # - name: macos_debug_arm
-          #   build_type: 'Debug'
-          #   os: macos-14
-          #   platform: macos-arm
+          - name: macos_debug_arm
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            os: macos-14
+            upload_release_assets: true
+            platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
     #if: false
@@ -488,15 +483,16 @@ jobs:
             third_package_kind: test_binaries
             upload_release_assets: true
             platform: windows-msvc-x64
-          # - name: windows_debug
-          #   os: windows-2022
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container_image: null
-          #   prepare: 'windows'
-          #   build_type: 'Debug'
-          #   # cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
-          #   platform: windows-msvc-x64
+          - name: windows_debug
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            platform: windows-msvc-x64
     runs-on: ${{ matrix.kind.os}}
     needs: maybe_create_release
     env:
@@ -542,8 +538,8 @@ jobs:
             python: python.exe
             container: null
             os: windows-2022
-            package: shoopdaloop.*.release-windows-x64.portable.tar.gz
-            second_package: shoopdaloop.*.release-windows-x64.test_binaries.tar.gz
+            package: shoopdaloop.*.release-windows-msvc-x64.portable.tar.gz
+            second_package: shoopdaloop.*.release-windows-msvc-x64.test_binaries.tar.gz
             pathconvert: "| cygpath -u -f -"
           # - name: release_windows_innosetup
           #   python: python.exe
