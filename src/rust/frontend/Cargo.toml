@@ -16,15 +16,12 @@ anyhow = "1.0"
 ctor = "0.2"
 regex = "1"
 log = "0.4"
-# cxx-qt = { path = "../../../../cxx-qt/crates/cxx-qt" }
-# cxx-qt-lib = { path = "../../../../cxx-qt/crates/cxx-qt-lib" }
-cxx-qt = { git = "https://github.com/KDAB/cxx-qt.git", rev = "a603811d75c1d9fa362802408e205918b5dd4b5e" }
-cxx-qt-lib = { git = "https://github.com/KDAB/cxx-qt.git", rev = "a603811d75c1d9fa362802408e205918b5dd4b5e", features = ["full_qt"] }
+cxx-qt = { git = "https://github.com/KDAB/cxx-qt.git", rev = "dff128ffebcb0ecf3635d81ee9a95581bc8cd37a" }
+cxx-qt-lib = { git = "https://github.com/KDAB/cxx-qt.git", rev = "dff128ffebcb0ecf3635d81ee9a95581bc8cd37a", features = ["full_qt"] }
 macros = { path = "../macros" }
 backend_bindings = { path = "../backend_bindings" }
 common = { path = "../common" }
 
 [build-dependencies]
-# cxx-qt-build = { path = "../../../../cxx-qt/crates/cxx-qt-build" }
-cxx-qt-build = { git = "https://github.com/KDAB/cxx-qt.git", rev = "a603811d75c1d9fa362802408e205918b5dd4b5e" }
+cxx-qt-build = { git = "https://github.com/KDAB/cxx-qt.git", rev = "dff128ffebcb0ecf3635d81ee9a95581bc8cd37a" }
 macros = { path = "../macros" }
