@@ -476,7 +476,7 @@ jobs:
             python: python.exe
             pip: python.exe -m pip
             container_image: null
-            prepare: 'windows'`
+            prepare: 'windows'
             release_build: true
             package_kind: portable_folder
             second_package_kind: innosetup
