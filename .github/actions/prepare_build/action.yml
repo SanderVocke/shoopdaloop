@@ -12,18 +12,20 @@ runs:
   steps:
   - name: Prepare Rust (Windows)
     if: always() && inputs.variant == 'windows'
-    uses: dtolnay/rust-toolchain@stable
+    uses: dtolnay/rust-toolchain@nightly
     with:
        targets: x86_64-pc-windows-msvc
   - name: Prepare Rust (non-Windows)
     if: always() && inputs.variant != 'windows'
-    uses: dtolnay/rust-toolchain@stable
+    uses: dtolnay/rust-toolchain@nightly
   - name: Rust info
     if: always() && inputs.variant == 'windows'
     shell: wrap-shell {0}
     run: |
-      echo "==== Rust version ===="
-      rustc +stable --version --verbose
+      echo "==== Rustc version ===="
+      rustc --version --verbose
+      echo "==== Cargo version ===="
+      cargo version --verbose
       echo "==== Rust toolchain list ===="
       rustup toolchain list
 

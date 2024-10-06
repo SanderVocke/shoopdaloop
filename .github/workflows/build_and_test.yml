@@ -9,7 +9,7 @@ on:
     workflow_dispatch:
 
 env:
-  checkpoints_enabled: true
+  checkpoints_enabled: false
   CONVERT_PATH_FN: "echo"
   RUST_BACKTRACE: "1"
   QT_QPA_PLATFORM: "offscreen"
