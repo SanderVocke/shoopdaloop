@@ -19,7 +19,6 @@ runs:
     if: always() && inputs.variant != 'windows'
     uses: dtolnay/rust-toolchain@nightly
   - name: Rust info
-    if: always() && inputs.variant == 'windows'
     shell: wrap-shell {0}
     run: |
       echo "==== Rustc version ===="
