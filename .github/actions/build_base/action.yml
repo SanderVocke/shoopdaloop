@@ -11,7 +11,7 @@ runs:
   - name: Install build-deps
     if: always()
     shell: wrap-shell {0}
-    run: cargo install cargo-build-deps
+    run: cargo install --git https://github.com/romac/cargo-build-deps.git
 
   - name: Build dependencies
     if: always()
