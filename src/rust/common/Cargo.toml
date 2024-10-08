@@ -15,3 +15,7 @@ ctor = "0.2"
 
 [build-dependencies]
 bindgen = "0.70.1"
+
+[features]
+# Dummy build to build dependencies only
+prebuild = []

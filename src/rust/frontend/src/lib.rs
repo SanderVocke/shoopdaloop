@@ -8,11 +8,17 @@ mod test_init {
     }
 }
 
+#[cfg(not(feature = "prebuild"))]
 pub mod init;
 
+#[cfg(not(feature = "prebuild"))]
 pub mod audio_power_pyramid;
 
+#[cfg(not(feature = "prebuild"))]
 pub mod cxx_qt_shoop;
+
+#[cfg(not(feature = "prebuild"))]
 pub mod cxx_qt_lib_shoop;
 
+#[cfg(not(feature = "prebuild"))]
 mod tests;

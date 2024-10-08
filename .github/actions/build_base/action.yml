@@ -8,18 +8,13 @@ runs:
   - name: Rust cache
     uses: Swatinem/rust-cache@v2
 
-  - name: Install build-deps
-    if: always()
-    shell: wrap-shell {0}
-    run: cargo install --git https://github.com/romac/cargo-build-deps.git
-
   - name: Build dependencies
     if: always()
     shell: wrap-shell {0}
     run: |
-      cargo build-deps ${CARGO_BUILD_FLAGS}
+      cargo build --features prebuild ${CARGO_BUILD_FLAGS}
 
-  - name: Build
+  - name: Build main packages
     if: always()
     shell: wrap-shell {0}
     run: |
@@ -29,4 +24,4 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      cargo test --no-run ${CARGO_BUILD_FLAGS}
+      cargo test -vv --no-run ${CARGO_BUILD_FLAGS}

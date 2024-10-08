@@ -2,13 +2,4 @@
 
 resolver = "2"
 
-members = [
-    "src/rust/backend",
-    "src/rust/backend_bindings",
-    "src/rust/common",
-    "src/rust/frontend",
-    "src/rust/macros",
-    "src/rust/packaging",
-    "src/rust/py_env",
-    "src/rust/shoopdaloop",
-]
+members = ["src/rust/shoopdaloop"]

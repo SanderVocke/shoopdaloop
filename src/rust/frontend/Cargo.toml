@@ -25,3 +25,9 @@ common = { path = "../common" }
 [build-dependencies]
 cxx-qt-build = { git = "https://github.com/KDAB/cxx-qt.git", rev = "dff128ffebcb0ecf3635d81ee9a95581bc8cd37a" }
 macros = { path = "../macros" }
+
+[features]
+# Dummy build to build dependencies only
+prebuild = ["macros/prebuild",
+            "backend_bindings/prebuild",
+            "common/prebuild"]

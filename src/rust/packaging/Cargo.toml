@@ -18,3 +18,7 @@ log = "0.4"
 ctor = "0.2"
 clap = { version = "4.5", features = ["derive"] }
 common = { path = "../common" }
+
+[features]
+# Dummy build to build dependencies only
+prebuild = ["common/prebuild"]
