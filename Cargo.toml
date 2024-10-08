@@ -2,4 +2,5 @@
 
 resolver = "2"
 
-members = ["src/rust/shoopdaloop"]
+members = ["src/rust/shoopdaloop",
+           "src/rust/packaging"]

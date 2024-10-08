@@ -12,7 +12,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      cargo build --features prebuild ${CARGO_BUILD_FLAGS}
+      cargo build --features "shoopdaloop/prebuild packaging/prebuild" ${CARGO_BUILD_FLAGS}
 
   - name: Build main packages
     if: always()
