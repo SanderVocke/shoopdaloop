@@ -2,7 +2,10 @@
 mod main_impl;
 
 #[cfg(not(feature = "prebuild"))]
-pub use main_impl::*;
+fn main() {
+    use main_impl::main;
+    main();
+}
 
 #[cfg(feature = "prebuild")]
 fn main() {}

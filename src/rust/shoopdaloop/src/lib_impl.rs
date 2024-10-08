@@ -1,12 +1,8 @@
-pub mod shoop_app_info;
-pub mod add_lib_search_path;
-pub mod shoop_rust_py;
-
 use pyo3::prelude::*;
 use pyo3::types::{PyList, PyString};
 use std::env;
 use anyhow;
-use shoop_app_info::ShoopAppInfo;
+use crate::shoop_app_info::ShoopAppInfo;
 
 fn shoopdaloop_main_impl<'py>(
     app_info : ShoopAppInfo
@@ -32,7 +28,7 @@ fn shoopdaloop_main_impl<'py>(
                                             py_app_info)?;
         }
         {
-            let shoop_rust_py_module = shoop_rust_py::create_py_module(py).unwrap();
+            let shoop_rust_py_module = crate::shoop_rust_py::create_py_module(py).unwrap();
             sys.getattr("modules")?.set_item("shoop_rust",
                                               shoop_rust_py_module)?;
         }

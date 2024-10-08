@@ -6,7 +6,7 @@ use shoopdaloop::shoopdaloop_main;
 use shoopdaloop::add_lib_search_path::add_lib_search_path;
 use shoopdaloop::shoop_app_info;
 
-fn main() {
+pub fn main() {
     // Set up PYTHONPATH. This can deal with:
     // - Finding embedded pyenv in installed case (shoop_lib/py)
     let executable_path = env::current_exe().unwrap();

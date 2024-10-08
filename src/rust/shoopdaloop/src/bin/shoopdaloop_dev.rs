@@ -1,5 +1,8 @@
 #[cfg(not(feature = "prebuild"))]
-pub use shoopdaloop::shoopdaloop_dev_impl::*;
+fn main() {
+    use shoopdaloop::shoopdaloop_dev_impl::main;
+    main();
+}
 
 #[cfg(feature = "prebuild")]
 fn main() {}

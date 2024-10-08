@@ -2,14 +2,14 @@ use std::env;
 use std::path::PathBuf;
 use glob::glob;
 
-use shoopdaloop::shoopdaloop_main;
-use shoopdaloop::add_lib_search_path::add_lib_search_path;
-use shoopdaloop::shoop_app_info;
+use crate::shoopdaloop_main;
+use crate::add_lib_search_path::add_lib_search_path;
+use crate::shoop_app_info;
 
 const SHOOP_BUILD_OUT_DIR : &str = env!("OUT_DIR");
 const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
 
-fn main() {
+pub fn main() {
     // Set up PYTHONPATH. This can deal with:
     // finding pyenv in Cargo build case, based on the remembered OUT_DIR
     let shoop_lib_dir = std::fs::canonicalize(PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_lib")).unwrap();
