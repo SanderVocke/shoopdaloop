@@ -333,13 +333,13 @@ jobs:
           #   os: macos-12
           #   upload_release_assets: true
           #   platform: macos-x64
-          - name: macos_debug
-            release_build: false
-            package_kind: portable_folder
-            second_package_kind: test_binaries
-            os: macos-12
-            upload_release_assets: true
-            platform: macos-x64
+          # - name: macos_debug
+          #   release_build: false
+          #   package_kind: portable_folder
+          #   second_package_kind: test_binaries
+          #   os: macos-12
+          #   upload_release_assets: true
+          #   platform: macos-x64
           # - name: macos_release_arm
           #   release_build: true
           #   package_kind: portable_folder
@@ -348,13 +348,13 @@ jobs:
           #   os: macos-14
           #   upload_release_assets: true
           #   platform: macos-arm
-          # - name: macos_debug_arm
-          #   release_build: false
-          #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
-          #   os: macos-14
-          #   upload_release_assets: true
-          #   platform: macos-arm
+          - name: macos_debug_arm
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            os: macos-14
+            upload_release_assets: true
+            platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
     #if: false
@@ -414,12 +414,18 @@ jobs:
           #   container: null
           #   os: macos-14
           #   package: wheel_macos_debug_arm
-          - name: release_macos_arm
+          # - name: release_macos_arm
+          #   python: python3
+          #   container: null
+          #   os: macos-14
+          #   package: shoopdaloop.*.release-macos-arm.portable.tar.gz
+          #   second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
+          - name: debug_macos_arm
             python: python3
             container: null
             os: macos-14
-            package: shoopdaloop.*.release-macos-arm.portable.tar.gz
-            second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
+            package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
+            second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
     needs: build_macos
     #if: false
