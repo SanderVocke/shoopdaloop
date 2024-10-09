@@ -67,6 +67,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // Tell PyO3 where to find our venv Python
         println!("Setting PYO3_PYTHON to {}", py_interpreter.to_str().unwrap());
         env::set_var("PYO3_PYTHON", py_interpreter.to_str().unwrap());
+        println!("cargo:rustc-env=PYO3_PYTHON={}", py_interpreter.to_str().unwrap());
 
         // Link to libshoopdaloop_backend
         println!("cargo:rustc-link-search=native={}", shoop_lib_dir.to_str().unwrap());
