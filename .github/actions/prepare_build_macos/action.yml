@@ -50,7 +50,6 @@ runs:
     shell: wrap-shell {0}
     run: |
       touch _macos_prepared
-      echo "PYO3_PYTHON=$PYTHON" | tee -a $GITHUB_ENV
       echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:${{ steps.install-boost.outputs.BOOST_ROOT }}/lib/cmake/Boost-1.86.0" | tee -a $GITHUB_ENV
       echo "DYLD_FRAMEWORK_PATH=$QT_ROOT_DIR/lib" | tee -a $GITHUB_ENV
       echo "CMAKE_INCLUDE_PATH=$CMAKE_INCLUDE_PATH:${{ github.workspace }}/includes:${{ github.workspace }}/boost/boost/include" | tee -a $GITHUB_ENV

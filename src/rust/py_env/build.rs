@@ -154,6 +154,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // Tell PyO3 where to find our venv Python
         println!("Setting PYO3_PYTHON to {}", py_env_python.to_str().unwrap());
         env::set_var("PYO3_PYTHON", py_env_python.to_str().unwrap());
+        println!("cargo:rustc-env=PYO3_PYTHON={}", py_env_python.to_str().unwrap());
 
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");
