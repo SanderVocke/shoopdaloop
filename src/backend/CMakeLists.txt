@@ -247,14 +247,14 @@ if (WIN32)
 endif()
 # create_breakpad_symbols_dump(shoopdaloop_backend)
 
-if(UNIX)
-  set_target_properties(shoopdaloop_backend PROPERTIES
-    INSTALL_RPATH "$ORIGIN/"  # Load .so's from same directory
-  )
-elseif(APPLE)
+if(APPLE)
   set_target_properties(shoopdaloop_backend PROPERTIES
       BUILD_WITH_INSTALL_RPATH TRUE
       INSTALL_RPATH "@loader_path/"  # Load dylibs from same directory
+  )
+elseif(UNIX)
+  set_target_properties(shoopdaloop_backend PROPERTIES
+    INSTALL_RPATH "$ORIGIN/"  # Load .so's from same directory
   )
 endif()
 
