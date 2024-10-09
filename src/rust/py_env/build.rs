@@ -72,10 +72,10 @@ fn main_impl() -> Result<(), anyhow::Error> {
         let pyenv = env::var("PYENV").unwrap_or(String::from("pyenv"));
         let mut install_env : HashMap<String, String> = env::vars().collect();
         install_env.insert("PYENV_ROOT".to_string(), pyenv_root_dir.to_str().unwrap().to_string());
-        #[cfg(target_os = "macos")]
-        {
-            install_env.insert("PYTHON_CONFIGURE_OPTS".to_string(), "--enable-framework".to_string());
-        }
+        // #[cfg(target_os = "macos")]
+        // {
+        //     install_env.insert("PYTHON_CONFIGURE_OPTS".to_string(), "--enable-framework".to_string());
+        // }
         Command::new(&pyenv)
                 .args(args)
                 .envs(install_env)
