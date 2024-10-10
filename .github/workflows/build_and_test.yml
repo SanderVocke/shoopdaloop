@@ -361,7 +361,7 @@ jobs:
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-      #  checkpoints_enabled: true
+       checkpoints_enabled: true
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -386,6 +386,9 @@ jobs:
         release_build: ${{ matrix.kind.release_build }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+    - name: error
+      shell: wrap-shell {0}
+      run: exit 1
     - uses: ./.github/actions/checkpoint
       if: always()
 
