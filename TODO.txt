@@ -1,0 +1,7 @@
+Make sure debug information is dumped and saved correctly
+
+version number wrong in appimage
+
+Reintroduce crashpad handling
+
+Documentation about the external dependency download

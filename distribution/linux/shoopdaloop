@@ -1,0 +1,10 @@
+#!/bin/sh
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+. ${SCRIPT_DIR}/env.sh
+
+if [ -n "$SHOOPDALOOP_APPIMAGE_EXECUTE" ]; then
+    ${SCRIPT_DIR}/${SHOOPDALOOP_APPIMAGE_EXECUTE} $@
+else
+    ${SCRIPT_DIR}/shoopdaloop_bin $@
+fi

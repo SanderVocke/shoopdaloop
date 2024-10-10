@@ -1,0 +1,21 @@
+[package]
+name = "common"
+edition = "2021"
+
+[lib]
+
+[dependencies]
+log = "0.4"
+colored = "2.1"
+humantime = "2.1"
+fern = { version = "0.6", features = ["colored"] }
+lazy_static = "1.5"
+anyhow = "1.0"
+ctor = "0.2"
+
+[build-dependencies]
+bindgen = "0.70.1"
+
+[features]
+# Dummy build to build dependencies only
+prebuild = []

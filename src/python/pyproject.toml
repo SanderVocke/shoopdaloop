@@ -1,0 +1,45 @@
+[project]
+name = "shoopdaloop-py"
+version = "0.0.0"
+description = "Python components for ShoopDaLoop: live looping application with DAW elements"
+authors = [
+  { name = "Sander Vocke", email = "sandervocke@gmail.com" },
+]
+maintainers = [
+  { name = "Sander Vocke", email = "sandervocke@gmail.com" },
+]
+requires-python = ">=3.9"
+
+dependencies = [
+  "soundfile==0.12.1",
+  "mido==1.3.2",
+  "jsonschema==4.22.0",
+  "numpy==1.26.4",
+  "pyjacklib==0.1.1",
+  "pyside6-essentials==6.6.3.1",
+  "lupa==2.2",
+  "appdirs==1.4.4",
+  "sounddevice==0.5.0",
+  "pywin32 ; platform_system == \"Windows\"",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+]
+docs = [
+  "sphinx",
+  "sphinx-material",
+  "sphinxcontrib-fulltoc",
+  "sphinxcontrib-plantuml"
+]
+
+# Note: duplicated in root build_python_requirements.txt
+[build-system]
+requires = [
+  "setuptools",
+  "setuptools-scm",
+  "ctypesgen@git+https://github.com/SanderVocke/ctypesgen@9b88a970cb85823de83423add2a4b21ea79b63d9",
+  "meson",
+  "toml"
+]

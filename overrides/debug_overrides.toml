@@ -1,2 +1,0 @@
-cmake.build_type = "Debug"
-cmake.options = { "ENABLE_TRACKED_SHARED_PTRS" = "On" }

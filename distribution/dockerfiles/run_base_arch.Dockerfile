@@ -13,8 +13,4 @@ USER build
 WORKDIR /home/build
 COPY dependencies dependencies
 
-# RUN sudo pacman --noconfirm --needed -S git && \
-#     git clone https://aur.archlinux.org/yay-bin.git && \
-#     cd yay-bin && makepkg --noconfirm -si
-
 RUN sudo pacman --noconfirm -S --needed --overwrite "*" $(dependencies/get_dependencies.sh run_base_arch)

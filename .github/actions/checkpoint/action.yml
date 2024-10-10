@@ -1,0 +1,27 @@
+name: Checkpoint
+description: Checkpoint in the workflow.
+
+runs:
+  using: "composite"
+  steps:
+
+  - name: Checkpoint message
+    if: always() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
+    shell: bash
+    run: |
+      export -p > checkpoint_env
+      echo "Failure detected at checkpoint. Connect to the already-running tmate session. If you want to continue the workflow after fixing things, run the following command before exiting:"
+      echo "Be aware the env in the original tmate session is not up-to-date. To load the env at the time of this message: \"source checkpoint_env\""
+      echo "Also, keep the terminal open if you continue the session - you won't be able to re-connect again."
+      echo "echo \"failure_status=\" >> \$GITHUB_ENV"
+
+  - name: Pause on checkpoint
+    if: always() && env.failure_status == 'unhandled' && env.checkpoints_enabled == 'true'
+    shell: bash
+    run: |
+      while [ ! -f checkpoint_continue ] && [ ! -f tmate_finished ]; do sleep 1; done
+      rm -f checkpoint_continue
+      echo "Disabling further checkpoints"
+      echo "failure_status=handled" >> $GITHUB_ENV
+
+

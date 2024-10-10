@@ -5,8 +5,13 @@ runs:
   using: "composite"
   steps:
   - name: Install dependencies
+    if: always()
     shell: bash
+    env:
+       PIP_BREAK_SYSTEM_PACKAGES: 1
+       DEBIAN_FRONTEND: noninteractive
     run: |
-       sudo DEBIAN_FRONTEND=noninteractive apt-get update
-       sudo DEBIAN_FRONTEND=noninteractive apt-get -y install $(distribution/dependencies/get_dependencies.sh build_base_ubuntu_latest)
-       PIP_BREAK_SYSTEM_PACKAGES=1 sudo python3 -m pip install --upgrade pip build auditwheel patchelf
+       sudo apt-get update
+       sudo apt-get -y install $(distribution/dependencies/get_dependencies.sh build_base_ubuntu_latest)
+       sudo $PIP install --upgrade pip build auditwheel patchelf
+       sudo $PIP install -r build_python_requirements.txt

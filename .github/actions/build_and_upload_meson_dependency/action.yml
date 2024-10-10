@@ -1,0 +1,42 @@
+# Build a meson project and upload it
+
+inputs:
+  name:
+    description: "name of the dependency"
+  repo:
+    description: "repository URL"
+  git_rev:
+    description: "git revision to build"
+  meson_options:
+    description: "additional meson configure options"
+  notify_installed:
+    description: "if set, this command is executed and given the path of the finished installation dir"
+    default: null
+
+runs:
+  using: "composite"
+  steps:
+
+  - shell: wrap-shell {0}
+    run: |
+       git clone ${{ inputs.repo }} ${{ inputs.name }}
+       cd ${{ inputs.name }}
+       git checkout ${{ inputs.git_rev }}
+       mkdir ${{ inputs.name }}
+       mkdir build
+       ${{ env.MESON }} setup ${{ inputs.meson_options }} --prefix=$(pwd)/${{ inputs.name }} --pkgconfig.relocatable build .
+       cd build
+       ${{ env.MESON }} compile
+       ${{ env.MESON }} install
+
+  - name: Notify
+    if: ${{ inputs.notify_installed }}
+    shell: wrap-shell {0}
+    run: ${{ inputs.notify_installed }} $(pwd)/${{ inputs.name }}/${{ inputs.name }}
+
+  - name: Upload
+    uses: actions/upload-artifact@v4
+    with:
+      name: ${{ inputs.name }}
+      path: ${{ github.workspace }}/${{ inputs.name }}/${{ inputs.name }}
+
