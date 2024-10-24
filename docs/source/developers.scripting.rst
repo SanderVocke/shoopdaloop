@@ -13,7 +13,7 @@ Lua scripts can be provided by the user and don't require a re-installation of t
 API and Libraries
 ^^^^^^^^^^^^^^^^^
 
-The API consists of globally available functions and constants, in addition to functions and constants available through built-in libraries. Built-in libraries should be included in scripts using the `require` function. Check `lib/lua/builtins/keyboard.lua` for an example.
+The API consists of globally available functions and constants, in addition to functions and constants available through built-in libraries. Built-in libraries should be included in scripts using the `require` function. Check `src/lua/builtins/keyboard.lua` for an example.
 
 Globally available APIs
 """""""""""""""""""""""
