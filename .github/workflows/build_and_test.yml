@@ -15,6 +15,7 @@ env:
   QT_QPA_PLATFORM: "offscreen"
   NATIVE_SHELL_CMD: "bash -c"
   BASH_FLAGS: ""
+  PIP_BREAK_SYSTEM_PACKAGES: 1
 
 permissions:
   contents: write
