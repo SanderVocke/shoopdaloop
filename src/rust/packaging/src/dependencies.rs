@@ -86,7 +86,7 @@ pub fn get_dependency_libs (executable : &Path,
             "
             handled=\"\"
             exe_dir=$(dirname \"$1\")
-            exe_dir_escaped=$(dirname \"$1\" | sed 's/\//\\\//g')
+            exe_dir_escaped=$(dirname \"$1\" | sed 's/\\//\\\\\\//g')
             search_dirs=$(otool -l \"$1\" | grep -A2 LC_RPATH | grep -E \" path [/@]\" | awk '
             NR>1 {{print $2}}' | sed \"s/@loader_path/$exe_dir_escaped/g\")
             
