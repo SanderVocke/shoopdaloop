@@ -7,3 +7,4 @@ Reintroduce crashpad handling
 Documentation about the external dependency download
 
 remove macscript.sh
+remove "error" from macos build in build_and_test.yml

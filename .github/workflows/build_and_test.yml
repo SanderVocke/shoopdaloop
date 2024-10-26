@@ -387,9 +387,9 @@ jobs:
         release_build: ${{ matrix.kind.release_build }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-    - name: error
-      shell: wrap-shell {0}
-      run: exit 1
+    # - name: error
+    #   shell: wrap-shell {0}
+    #   run: exit 1
     - uses: ./.github/actions/checkpoint
       if: always()
 
