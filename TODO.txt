@@ -5,3 +5,5 @@ version number wrong in appimage
 Reintroduce crashpad handling
 
 Documentation about the external dependency download
+
+remove macscript.sh

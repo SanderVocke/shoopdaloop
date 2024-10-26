@@ -4,26 +4,29 @@ exe_dir_escaped=$(dirname "$1" | sed 's/\//\\\//g')
 search_dirs=$(otool -l "$1" | grep -A2 LC_RPATH | grep -E " path [/@]" | awk '
 NR>1 {print $2}' | sed "s/@loader_path/$exe_dir_escaped/g")
 
-function direct_deps() {
-    if [ -f "$1" ]; then
-        path=$(realpath "$1")
-        if [ -z "$(echo $handled | grep $path)" ]; then
-            otool -L "$path" | tail -n +1 | awk 'NR>1 {print $1}' || true
-            handled=$(printf $handled"\n"$path)
-        fi
+function resolve_rpath() {
+    if [ -f "$1" ]; then echo $1; return
     elif [[ $1 == *"@rpath"* ]]; then
         for dir in $search_dirs; do
-            direct_deps "$dir/$(echo $1 | sed 's/@rpath//g')"
+            trypath="$dir/$(echo $1 | sed 's/@rpath//g')"
+            if [ -f "$trypath" ]; then
+              echo "$trypath"
+              return
+            fi
         done
     fi
 }
+
 function recurse_deps() {
-    if [[ $3 -ge $4 ]]; then return 0; fi
-    for dep in $(direct_deps "$1"); do
-        if [ ! -z "$dep" ]; then
-            echo "$2$dep"
-            recurse_deps "$dep" "$2  " $(( $3 + 1 )) $4
-        fi
+    for f in $(otool -L "$1" | tail -n +1 | awk 'NR>1 {print $1}' || true); do
+        resolved=$(resolve_rpath "$f" "$2")
+        resolved_filename=$(basename "$resolved")
+        filtered=$(echo $handled | grep "$resolved_filename")
+        if [ ! -z "$resolved" ] && [ -z "$filtered" ]; then
+            echo "${2}$resolved"
+            handled=$(printf "$handled\n$resolved_filename")
+            recurse_deps "$resolved" "$2  "
+        fi 
     done
 }
-recurse_deps "$1" "" 0 5
+recurse_deps "$1" ""
