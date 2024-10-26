@@ -115,7 +115,7 @@ pub fn get_dependency_libs (executable : &Path,
                     fi 
                 done
             }}
-            recurse_deps \"$1\" \"\"",
+            recurse_deps \"{0}\" \"\"",
             executable.to_str().unwrap());
         args = vec!(String::from("-c"), commandstr);
         warning_patterns = vec!();
