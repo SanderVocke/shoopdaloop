@@ -85,10 +85,11 @@ pub fn get_dependency_libs (executable : &Path,
         let commandstr : String = format!(
             "
             set -x
+            exe=\"{0}\"
             handled=\"\"
-            exe_dir=$(dirname \"$1\")
-            exe_dir_escaped=$(dirname \"$1\" | sed 's/\\//\\\\\\//g')
-            search_dirs=$(otool -l \"$1\" | grep -A2 LC_RPATH | grep -E \" path [/@]\" | awk '
+            exe_dir=$(dirname \"$exe\")
+            exe_dir_escaped=$(dirname \"$exe\" | sed 's/\\//\\\\\\//g')
+            search_dirs=$(otool -l \"$exe\" | grep -A2 LC_RPATH | grep -E \" path [/@]\" | awk '
             NR>1 {{print $2}}' | sed \"s/@loader_path/$exe_dir_escaped/g\")
             
             function resolve_rpath() {{
@@ -116,7 +117,7 @@ pub fn get_dependency_libs (executable : &Path,
                     fi 
                 done
             }}
-            recurse_deps \"{0}\" \"\"",
+            recurse_deps \"$exe\" \"\"",
             executable.to_str().unwrap());
         args = vec!(String::from("-c"), commandstr);
         warning_patterns = vec!();
