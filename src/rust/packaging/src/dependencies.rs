@@ -84,6 +84,7 @@ pub fn get_dependency_libs (executable : &Path,
         command = String::from("sh");
         let commandstr : String = format!(
             "
+            set -x
             handled=\"\"
             exe_dir=$(dirname \"$1\")
             exe_dir_escaped=$(dirname \"$1\" | sed 's/\\//\\\\\\//g')
