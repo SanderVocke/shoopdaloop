@@ -88,8 +88,8 @@ pub fn get_dependency_libs (executable : &Path,
             handled=\"\"
             exe_dir=$(dirname \"$exe\")
             exe_dir_escaped=$(dirname \"$exe\" | sed 's/\\//\\\\\\//g')
-            search_dirs=$(otool -l \"$exe\" | grep -A2 LC_RPATH | grep -E \" path [/@]\" | awk '
-            NR>1 {{print $2}}' | sed \"s/@loader_path/$exe_dir_escaped/g\")
+            search_dirs=$(otool -l \"$exe\" | grep -A2 LC_RPATH | grep -E \" path [/@]\" | awk '{{print $2}}' | sed \"s/@loader_path/$exe_dir_escaped/g\")
+            echo \"Search dirs: $search_dirs\" >&2
             
             function resolve_rpath() {{
                 if [ -f \"$1\" ]; then echo $1; return
@@ -101,6 +101,7 @@ pub fn get_dependency_libs (executable : &Path,
                           return
                         fi
                     done
+                    echo \"Could not find '$1' in search paths, skipping.\" >&2
                 fi
             }}
             
