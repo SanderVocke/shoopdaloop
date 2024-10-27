@@ -84,7 +84,6 @@ pub fn get_dependency_libs (executable : &Path,
         command = String::from("sh");
         let commandstr : String = format!(
             "
-            set -x
             exe=\"{0}\"
             handled=\"\"
             exe_dir=$(dirname \"$exe\")
