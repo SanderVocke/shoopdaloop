@@ -1,1 +1,6 @@
 */libzita-resampler.dylib*
+*/liblilv-*.dylib*
+*/libserd-*.dylib*
+*/libsord-*.dylib*
+*/libzix-*.dylib*
+*/libsratom-*.dylib*

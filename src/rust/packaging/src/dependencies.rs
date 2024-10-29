@@ -126,7 +126,7 @@ pub fn get_dependency_libs (executable : &Path,
         args = vec!(String::from("-c"), commandstr);
         warning_patterns = vec!();
         skip_n_levels = 0;
-        dylib_filename_part = ".dylib";
+        dylib_filename_part = "";
     }
     debug!("Running shell command for determining dependencies: {}", args.last().ok_or(anyhow::anyhow!("Empty args list"))?);
     let mut list_deps : &mut Command = &mut Command::new(&command);
