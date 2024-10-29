@@ -88,7 +88,11 @@ pub fn get_dependency_libs (executable : &Path,
             handled=\"\"
             exe_dir=$(dirname \"$exe\")
             exe_dir_escaped=$(dirname \"$exe\" | sed 's/\\//\\\\\\//g')
+
             search_dirs=$(otool -l \"$exe\" | grep -A2 LC_RPATH | grep -E \" path [/@]\" | awk '{{print $2}}' | sed \"s/@loader_path/$exe_dir_escaped/g\")
+            for d in $(echo $DYLD_LIBRARY_PATH | tr ':' '\\n'); do search_dirs=$(printf \"$search_dirs\n$d\"); done
+            for d in $(echo $DYLD_FALLBACK_LIBRARY_PATH | tr ':' '\\n'); do search_dirs=$(printf \"$search_dirs\n$d\"); done
+            for d in $(echo $DYLD_FRAMEWORK_PATH | tr ':' '\\n'); do search_dirs=$(printf \"$search_dirs\n$d\"); done
             echo \"Search dirs: $search_dirs\" >&2
             
             function resolve_rpath() {{
