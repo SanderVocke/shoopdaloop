@@ -15,9 +15,12 @@ runs:
       cd ${{ inputs.path }}
       for f in $(find . -name "*.dylib"); do
         echo "Post-processing $f to make relocatable..."
+        newid="@rpath/$(basename $f)"
+        echo "  id: $f -> $newid"
+        install_name_tool -id $newid $f
         for dep in $(otool -L $f | tail -n +1 | awk '{{print $1}}' | grep "${{ inputs.base }}" || true); do
             newdep="@rpath/$(basename $dep)"
-            echo "    $dep -> $newdep"
+            echo "  dependency: $dep -> $newdep"
             install_name_tool -change $dep $newdep $f
         done
       done
