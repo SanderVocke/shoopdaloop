@@ -28,6 +28,13 @@ runs:
        cd build
        ${{ env.MESON }} compile
        ${{ env.MESON }} install
+  
+  - name: Make relocatable (MacOS)
+    if: runner.os == 'macOS'
+    uses: ./.github/actions/macos_make_libs_relocatable
+    with:
+      path: ${{ github.workspace }}/${{ inputs.name }}/${{ inputs.name }}
+      base: ${{ github.workspace }}
 
   - name: Notify
     if: ${{ inputs.notify_installed }}

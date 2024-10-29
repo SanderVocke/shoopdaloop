@@ -1,0 +1,23 @@
+# Change absolute dependency paths to RPATHs
+
+inputs:
+  path:
+    description: "path to search and fix"
+  base:
+    description: "base path in which all dependencies are made relocatable"
+
+runs:
+  using: "composite"
+  steps:
+
+  - shell: wrap-shell {0}
+    run: |
+      cd ${{ inputs.path }}
+      for f in $(find . -name "*.dylib"); do
+        echo "Post-processing $f to make relocatable..."
+        for dep in $(otool -L $f | tail -n +1 | awk 'NR>1 {{print $1}}' | grep "$base" || true); do
+            newdep="@rpath/$(basename $dep)"
+            echo "    $dep -> $newdep"
+            install_name_tool -change $dep $newdep $f
+        done
+      done
