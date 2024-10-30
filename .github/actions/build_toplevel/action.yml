@@ -80,6 +80,19 @@ runs:
       echo "PIP=${{ inputs.python }} -m pip" | tee -a $GITHUB_ENV
       echo "PYTEST=${{ inputs.python }} -m pytest" | tee -a $GITHUB_ENV
       echo "PLATFORM=${{ inputs.platform }}" | tee -a $GITHUB_ENV
+  - uses: ./.github/actions/checkpoint
+    if: always()
+  - name: Install Qoverage
+    if: always() && inputs.coverage
+    uses: ./.github/actions/install_qoverage
+  - name: Prepare
+    if: always()
+    id: prepare
+    uses: ./.github/actions/prepare_build
+    with:
+      variant: ${{ inputs.prepare_kind }}
+  - uses: ./.github/actions/checkpoint
+    if: always()
   - name: More env settings (non-Mac)
     shell: wrap-shell {0}
     if: always() && runner.os != 'macOS'
@@ -92,17 +105,6 @@ runs:
       pyenv install --skip-existing 3.10
       pyenv_py=$(pyenv prefix 3.10)/bin/python
       echo "PYO3_PYTHON=$pyenv_py" | tee -a $GITHUB_ENV
-  - uses: ./.github/actions/checkpoint
-    if: always()
-  - name: Install Qoverage
-    if: always() && inputs.coverage
-    uses: ./.github/actions/install_qoverage
-  - name: Prepare
-    if: always()
-    id: prepare
-    uses: ./.github/actions/prepare_build
-    with:
-      variant: ${{ inputs.prepare_kind }}
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
