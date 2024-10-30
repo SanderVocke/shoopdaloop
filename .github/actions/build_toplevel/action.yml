@@ -77,7 +77,6 @@ runs:
     if: always()
     run: |
       echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
-      echo "PYO3_PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
       echo "PYO3_PRINT_CONFIG=1" | tee -a $GITHUB_ENV
       echo "PIP=${{ inputs.python }} -m pip" | tee -a $GITHUB_ENV
       echo "PYTEST=${{ inputs.python }} -m pytest" | tee -a $GITHUB_ENV
