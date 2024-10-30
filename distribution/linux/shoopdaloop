@@ -1,6 +1,6 @@
 #!/bin/sh
 
-SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . ${SCRIPT_DIR}/env.sh
 
 if [ -n "$SHOOPDALOOP_APPIMAGE_EXECUTE" ]; then
