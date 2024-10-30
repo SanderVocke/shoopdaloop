@@ -82,12 +82,12 @@ runs:
       echo "PLATFORM=${{ inputs.platform }}" | tee -a $GITHUB_ENV
   - name: More env settings (non-Mac)
     shell: wrap-shell {0}
-    if: always() && inputs.platform != 'macos'
+    if: always() && runner.os != 'macOS'
     run: |
       echo "PYO3_PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
   - name: Use pyenv python (Mac)
     shell: wrap-shell {0}
-    if: always() && inputs.platform == 'macos'
+    if: always() && runner.os == 'macOS'
     run: |
       pyenv install --skip-existing 3.10
       pyenv_py=$(pyenv prefix 3.10)/bin/python
