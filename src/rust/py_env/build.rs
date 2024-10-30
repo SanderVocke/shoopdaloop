@@ -18,7 +18,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     {
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
         let src_dir = env::current_dir()?;
-        let host_python = env::var("PYTHON").unwrap_or(String::from("python3"));
+        let host_python = env::var("PYO3_PYTHON").unwrap_or(String::from("python3"));
         let python_src_dir = format!("{}/../../python", src_dir.to_str().unwrap());
 
         println!("Using Python: {}", host_python);

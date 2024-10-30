@@ -78,9 +78,22 @@ runs:
     run: |
       echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
       echo "PYO3_PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
+      echo "PYO3_PRINT_CONFIG=1" | tee -a $GITHUB_ENV
       echo "PIP=${{ inputs.python }} -m pip" | tee -a $GITHUB_ENV
       echo "PYTEST=${{ inputs.python }} -m pytest" | tee -a $GITHUB_ENV
       echo "PLATFORM=${{ inputs.platform }}" | tee -a $GITHUB_ENV
+  - name: More env settings (non-Mac)
+    shell: wrap-shell {0}
+    if: always() && inputs.platform != 'macos'
+    run: |
+      echo "PYO3_PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
+  - name: Use pyenv python (Mac)
+    shell: wrap-shell {0}
+    if: always() && inputs.platform == 'macos'
+    run: |
+      pyenv install --skip-existing 3.10
+      pyenv_py=$(pyenv prefix 3.10)/bin/python
+      echo "PYO3_PYTHON=$pyenv_py" | tee -a $GITHUB_ENV
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Install Qoverage
