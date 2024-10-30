@@ -104,6 +104,8 @@ runs:
     run: |
       pyenv install --skip-existing 3.10
       pyenv_py=$(pyenv prefix 3.10)/bin/python
+      $(pyenv_py) -m pip install --upgrade pip
+      $(pyenv_py) -m pip install build
       echo "PYO3_PYTHON=$pyenv_py" | tee -a $GITHUB_ENV
   - uses: ./.github/actions/checkpoint
     if: always()
