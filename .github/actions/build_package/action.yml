@@ -55,7 +55,7 @@ runs:
     uses: ./.github/actions/macos_make_relocatable
     with:
       path: ${{ env.PORTABLE_DIR }}
-      find_cmd: "find . -name \"*.dylib\";echo \"shoopdaloop\""
+      find_cmd: "find ./lib -name \"*.dylib\";echo \"shoopdaloop\""
       match: "libpython3"
   - name: Symlink Qt libs (MacOS)
     if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
