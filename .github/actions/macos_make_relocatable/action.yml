@@ -2,9 +2,11 @@
 
 inputs:
   path:
-    description: "path to search and fix"
-  base:
-    description: "base path in which all dependencies are made relocatable"
+    description: "path to search in"
+  find_cmd:
+    description: "command to find files to fix"
+  match:
+    description: "paths matching this will be made relocatable"
 
 runs:
   using: "composite"
@@ -13,7 +15,7 @@ runs:
   - shell: wrap-shell {0}
     run: |
       cd ${{ inputs.path }}
-      for f in $(find . -name "*.dylib"); do
+      for f in $(${{ inputs.find_cmd }}); do
         echo "Post-processing $f to make relocatable..."
         newid="@rpath/$(basename $f)"
         echo "  id: $f -> $newid"

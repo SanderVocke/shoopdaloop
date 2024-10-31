@@ -46,7 +46,8 @@ runs:
     uses: ./.github/actions/macos_make_libs_relocatable
     with:
       path: ${{ github.workspace }}/${{ inputs.name }}/${{ inputs.name }}
-      base: ${{ github.workspace }}
+      find_cmd: "find . -name \"*.dylib\""
+      match: ${{ github.workspace }}
 
   - name: Notify
     if: ${{ inputs.notify_installed }}

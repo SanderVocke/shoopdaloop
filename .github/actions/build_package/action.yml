@@ -48,7 +48,18 @@ runs:
       PORTABLE_DIR=$(pwd)/shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.portable
       RELEASE_PORTABLE_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.portable
       echo "PORTABLE_DIR=$PORTABLE_DIR" | tee -a $GITHUB_ENV
+      echo "RELEASE_PORTABLE_DIR=$RELEASE_PORTABLE_DIR" | tee -a $GITHUB_ENV
       ${CARGO_ARTIFACTS_DIR}/package build-portable-folder -o $PORTABLE_DIR ${CARGO_BUILD_FLAGS}
+  - name: Make relocatable (MacOS)
+    if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
+    uses: ./.github/actions/macos_make_libs_relocatable
+    with:
+      path: ${{ env.PORTABLE_DIR }}
+      find_cmd: "find . -name \"*.dylib\""
+      match: "libpython3"
+  - if: always() && inputs.package_kind == 'portable_folder'
+    shell: wrap-shell {0}
+    run: |
       cp -r $PORTABLE_DIR $RELEASE_PORTABLE_DIR
       COMPRESSED_PORTABLE_DIR=$(${{ env.COMPRESS_FOLDER_FN }} ${PORTABLE_DIR})
       COMPRESSED_RELEASE_PORTABLE_DIR=$(${{ env.COMPRESS_FOLDER_FN }} ${RELEASE_PORTABLE_DIR})
