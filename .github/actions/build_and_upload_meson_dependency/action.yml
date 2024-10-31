@@ -31,7 +31,7 @@ runs:
   
   - name: Make relocatable (MacOS)
     if: runner.os == 'macOS'
-    uses: ./.github/actions/macos_make_libs_relocatable
+    uses: ./.github/actions/macos_make_relocatable
     with:
       path: ${{ github.workspace }}/${{ inputs.name }}/${{ inputs.name }}
       find_cmd: "find . -name \"*.dylib\""
