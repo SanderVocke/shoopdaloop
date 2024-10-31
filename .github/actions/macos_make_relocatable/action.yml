@@ -20,7 +20,7 @@ runs:
         newid="@rpath/$(basename $f)"
         echo "  id: $f -> $newid"
         install_name_tool -id $newid $f
-        for dep in $(otool -L $f | tail -n +1 | awk '{{print $1}}' | grep "${{ inputs.base }}" || true); do
+        for dep in $(otool -L $f | tail -n +1 | awk '{{print $1}}' | grep "${{ inputs.match }}" || true); do
             newdep="@rpath/$(basename $dep)"
             echo "  dependency: $dep -> $newdep"
             install_name_tool -change $dep $newdep $f
