@@ -568,7 +568,8 @@ jobs:
             python: python.exe
             container: null
             os: windows-2022
-            package: wheel_windows_debug
+            package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
+            second_package: shoopdaloop.*.debug-windows-msvc-x64.test_binaries.tar.gz
             pathconvert: "| cygpath -u -f -"
     runs-on: ${{ matrix.kind.os }}
     needs: build_windows
