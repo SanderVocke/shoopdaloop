@@ -88,7 +88,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
             println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
         }
 
-        #[cfateg(target_os = "linux")]
+        #[cfg(target_os = "linux")]
         {
             // Set RPATH
             println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib"); // For builtin libraries
