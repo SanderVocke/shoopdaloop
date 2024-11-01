@@ -1,7 +1,7 @@
 use anyhow;
 use anyhow::Context;
 use std::path::{Path, PathBuf};
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use indexmap::IndexMap;
 use std::process::Command;
 use std::cell::RefCell;
@@ -32,7 +32,8 @@ pub fn get_dependency_libs (executable : &Path,
     let excludes : HashSet<&str> = excludelist.lines().collect();
     let includes : HashSet<&str> = includelist.lines().collect();
     let mut used_includes : HashSet<String> = HashSet::new();
-
+    let ori_env_vars : Vec<(String, String)> = std::env::vars().collect();
+    let mut env_map : HashMap<String, String> = ori_env_vars.iter().cloned().collect();
 
     let command : String;
     let args: Vec<String>;
@@ -42,17 +43,27 @@ pub fn get_dependency_libs (executable : &Path,
     // let files_str = files.iter().map(|f| f.to_str().unwrap()).collect::<Vec<_>>().join(" ");
     #[cfg(target_os = "windows")]
     {
+        for relpath in [
+            "shoop_lib",
+            "shoop_lib/py",
+            "shoop_lib/py/Lib/site-packages/PySide6",
+        ] {
+            env_map.insert(String::from("PATH"), format!("{relpath};{PATH}"));
+        }
         command = String::from("powershell.exe");
         let commandstr : String = format!(
            "
-            $files = \"{0}\" -split ' '
-            foreach ($file in $files) {{
-                $output = & Dependencies.exe -chain -depth 4 $file.Trim();
-                $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
-                    Get-Unique |
-                    ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }} |
-                    ForEach-Object {{ Write-Output $_ }}
-            }}", executable.to_str().unwrap());
+            $executable = \"{0}\"
+            $output = & Dependencies.exe -chain -depth 4 $executable.Trim();
+            $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
+                Get-Unique |
+                ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }} |
+                ForEach-Object {{ Write-Output $_ }}
+            $output | Where-Object {{ ($_ -match \"NotFound\") }} |
+                Get-Unique |
+                ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }} |
+                ForEach-Object {{ Write-Error $_ }}
+            ", executable.to_str().unwrap());
         args = vec!(String::from("-Command"), commandstr);
         warning_patterns = vec!();
         skip_n_levels = 0;
@@ -130,7 +141,7 @@ pub fn get_dependency_libs (executable : &Path,
     }
     debug!("Running shell command for determining dependencies: {}", args.last().ok_or(anyhow::anyhow!("Empty args list"))?);
     let mut list_deps : &mut Command = &mut Command::new(&command);
-    let env_vars: Vec<(String, String)> = std::env::vars().collect();
+    let env_vars : Vec<(String, String)> = env_map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     list_deps = list_deps.args(&args)
                          .envs(env_vars)
                          .current_dir(std::env::current_dir().unwrap());
