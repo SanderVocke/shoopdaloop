@@ -49,7 +49,7 @@ fn populate_folder(
 
     info!("Bundling additional assets...");
     for (src,dst) in [
-        ("distribution/windows/shoopdaloop.bat", "shoopdaloop.bat"),\
+        ("distribution/windows/shoopdaloop.bat", "shoopdaloop.bat"),
     ] {
         let from = src_path.join(src);
         let to = appdir.join(dst);
