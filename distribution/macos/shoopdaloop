@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Note: we are assuming to be in the Contents/MacOS subfolder of an app bundle
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
