@@ -48,7 +48,7 @@ pub fn get_dependency_libs (executable : &Path,
             "shoop_lib/py",
             "shoop_lib/py/Lib/site-packages/PySide6",
         ] {
-            env_map.insert(String::from("PATH"), format!("{relpath};{PATH}"));
+            env_map.insert(String::from("PATH"), format!("{relpath};{env_map.get(\"PATH\").unwrap()}"));
         }
         command = String::from("powershell.exe");
         let commandstr : String = format!(
