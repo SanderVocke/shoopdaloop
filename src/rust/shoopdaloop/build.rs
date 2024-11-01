@@ -83,11 +83,12 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
         #[cfg(target_os = "windows")]
         {
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=/INCLUDE:__imp_some_symbol_in_library");
+            // force linkage by manually importing a symbol
+            println!("cargo:rustc-link-arg-bin=shoopdaloop=/INCLUDE:create_audio_driver");
             println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
         }
 
-        #[cfg(target_os = "linux")]
+        #[cfateg(target_os = "linux")]
         {
             // Set RPATH
             println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib"); // For builtin libraries
