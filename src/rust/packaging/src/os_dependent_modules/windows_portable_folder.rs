@@ -47,22 +47,17 @@ fn populate_folder(
         )?;
     }
 
-    // info!("Bundling additional assets...");
-    // for file in [
-    //     "distribution/linux/shoopdaloop.desktop",
-    //     "distribution/linux/shoopdaloop.png",
-    //     "distribution/linux/AppRun",
-    //     "distribution/linux/backend_tests",
-    //     "distribution/linux/python_tests",
-    //     "distribution/linux/rust_tests",
-    // ] {
-    //     let from = src_path.join(file);
-    //     let to = folder.join(from.file_name().unwrap());
-    //     info!("  {:?} -> {:?}", &from, &to);
-    //     std::fs::copy(&from, &to)
-    //         .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
-    // }
-
+    info!("Bundling additional assets...");
+    for (src,dst) in [
+        ("distribution/windows/paths.bat", "paths.bat"),
+        ("distribution/windows/shoopdaloop.bat", "shoopdaloop.bat"),\
+    ] {
+        let from = src_path.join(src);
+        let to = appdir.join(dst);
+        info!("  {:?} -> {:?}", &from, &to);
+        std::fs::copy(&from, &to)
+            .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
+    }
 
     info!("Slimming down folder...");
     for file in [

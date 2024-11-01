@@ -78,7 +78,7 @@ runs:
       cd ..
       PORTABLE=$(pwd)/portable
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
-      echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
+      echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop.bat" | tee -a $GITHUB_ENV
 
   # MacOS portable folder
   - name: Setup MacOS app bundle folder

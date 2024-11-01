@@ -81,6 +81,10 @@ fn main_impl() -> Result<(), anyhow::Error> {
             println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");
         }
         println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
+        #[cfg(target_os = "windows")]
+        {
+            println!("cargo:rustc-link-lib=dylib=shoopdaloop_backend");
+        }
 
         #[cfg(target_os = "linux")]
         {
