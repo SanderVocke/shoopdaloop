@@ -16,12 +16,18 @@ pub fn main() {
     let bundled_pythonpath_shoop_lib = std::fs::canonicalize(&shoop_lib_path).unwrap();
     let bundled_python_home = std::fs::canonicalize(&shoop_lib_path.join("py")).unwrap();
     let bundled_python_site_packages : PathBuf;
+    #[cfg(target_os = "windows")]
+    {
+        bundled_python_site_packages = bundled_python_home.join("Lib/site-packages");
+    }
+    #[cfg(not(target_os = "windows"))]
     {
         let pattern = format!("{}/**/site-packages", bundled_python_home.to_str().unwrap());
         let mut sp_glob = glob(&pattern).expect("Couldn't glob for site-packages");
         bundled_python_site_packages = sp_glob.next()
                 .expect(format!("No site-packages dir found @ {}", pattern).as_str()).unwrap();
     }
+
     let bundled_python_lib_path = bundled_python_site_packages.parent().unwrap();
     if bundled_python_home.exists() &&
        bundled_pythonpath_shoop_lib.exists() &&
