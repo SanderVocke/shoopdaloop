@@ -6,6 +6,7 @@ use indexmap::IndexMap;
 use std::process::Command;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::fs::read_to_string;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
@@ -40,16 +41,18 @@ pub fn get_dependency_libs (executable : &Path,
     let warning_patterns: Vec<String>;
     let skip_n_levels: usize;
     let dylib_filename_part: &str;
-    // let files_str = files.iter().map(|f| f.to_str().unwrap()).collect::<Vec<_>>().join(" ");
     #[cfg(target_os = "windows")]
     {
-        for relpath in [
-            "shoop_lib",
-            "shoop_lib/py",
-            "shoop_lib/py/Lib/site-packages/PySide6",
-        ] {
+        let file_path = PathBuf::from(file!());
+        let src_path = std::fs::canonicalize(file_path)?;
+        let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
+        let paths_file = src_path.join("distribution/windows/shoop.dllpaths");
+        let paths_str = read_to_string(paths_file)
+            .with_context(|| format!("Cannot read {paths_file:?}"))?;
+        let executable_folder = executable.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
+        for relpath in paths_str.lines() {
             let path = env_map.get("PATH").unwrap();
-            env_map.insert(String::from("PATH"), format!("{relpath};{path}"));
+            env_map.insert(String::from("PATH"), format!("{executable_folder}/{relpath};{path}"));
         }
         command = String::from("powershell.exe");
         let commandstr : String = format!(
