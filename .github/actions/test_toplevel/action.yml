@@ -33,6 +33,13 @@ runs:
       echo "PIP=${{ inputs.python }} -m pip" | tee -a $GITHUB_ENV
       echo "PYTEST=${{ inputs.python }} -m pytest" | tee -a $GITHUB_ENV
       echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
+  - name: Setup dependencies checker (Windows)
+    if: always() && runner.os == 'Windows'
+    shell: wrap-shell {0}
+    run: |
+       curl -L https://github.com/lucasg/Dependencies/releases/download/v1.11.1/Dependencies_x64_Release.zip --output dependencies.zip
+       unzip dependencies.zip -d dependencies
+       echo "$(cygpath -w $(pwd)/dependencies)" | tee -a $GITHUB_PATH
   - shell: wrap-shell {0}
     if: always() && inputs.package
     run: |

@@ -38,7 +38,7 @@ runs:
     run: |
        echo "maybe_sudo=${{ (inputs.sudo == 'true') && 'sudo' || '' }}" | tee -a $GITHUB_ENV
 
-  # InnoSetup
+  # InnoSetup (TODO include .bat file)
   - name: Install InnoSetup installer
     if: always() && steps.get_type.outputs.type == 'exe'
     shell: wrap-shell {0}
@@ -79,6 +79,10 @@ runs:
       PORTABLE=$(pwd)/portable
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop.bat" | tee -a $GITHUB_ENV
+      deps=$(Dependencies.exe -chain -depth 4 $PORTABLE/shoopdaloop.exe | grep NotFound)
+      echo "$(printf \"$deps\" | wc -l) missing dependencies:"
+      printf "$deps"
+      echo "end missing dependencies"
 
   # MacOS portable folder
   - name: Setup MacOS app bundle folder
