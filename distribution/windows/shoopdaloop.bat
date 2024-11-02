@@ -1,4 +1,3 @@
-set PATH=%~dp0shoop_lib;%PATH%
-set PATH=%~dp0shoop_lib/py;%PATH%
-set PATH=%~dp0shoop_lib/py/Lib/site-packages/PySide6;%PATH%
+@echo off
+call %~dp0paths.bat >nul 2>&1
 "%~dp0shoopdaloop.exe" %*
