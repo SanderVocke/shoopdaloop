@@ -79,9 +79,11 @@ runs:
       PORTABLE=$(pwd)/portable
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop.bat" | tee -a $GITHUB_ENV
-      deps=$(Dependencies.exe -chain -depth 4 $PORTABLE/shoopdaloop.exe | grep NotFound)
-      echo "$(printf \"$deps\" | wc -l) missing dependencies:"
-      printf "$deps"
+      deps=$(Dependencies.exe -chain -depth 4 $PORTABLE/shoopdaloop.exe)
+      echo "Deps cmd output: $deps"
+      ddeps=$(printf "$deps" | grep "NotFound")
+      echo "$(printf \"$ddeps\" | wc -l) missing dependencies:"
+      printf "$ddeps"
       echo "end missing dependencies"
 
   # MacOS portable folder
