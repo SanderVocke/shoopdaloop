@@ -52,7 +52,7 @@ pub fn get_dependency_libs (executable : &Path,
         let executable_folder = executable.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
         for relpath in paths_str.lines() {
             let path = env_map.get("PATH").unwrap();
-            env_map.insert(String::from("PATH"), format!("{executable_folder}/{relpath};{path}"));
+            env_map.insert(String::from("PATH"), format!("{}/{};{}", executable_folder.to_str().unwrap(), relpath, path));
         }
         command = String::from("powershell.exe");
         let commandstr : String = format!(
