@@ -85,7 +85,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         {
             // force linkage by manually importing a symbol
             println!("cargo:rustc-link-arg-bin=shoopdaloop=/INCLUDE:create_audio_driver");
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
+            println!("cargo:rustc-link-lib=shoopdaloop_backend");
         }
 
         #[cfg(target_os = "linux")]
