@@ -47,7 +47,7 @@ pub fn get_dependency_libs (executable : &Path,
         let src_path = std::fs::canonicalize(file_path)?;
         let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
         let paths_file = src_path.join("distribution/windows/shoop.dllpaths");
-        let paths_str = read_to_string(paths_file)
+        let paths_str = read_to_string(&paths_file)
             .with_context(|| format!("Cannot read {paths_file:?}"))?;
         let executable_folder = executable.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
         for relpath in paths_str.lines() {
