@@ -92,7 +92,7 @@ pub fn get_dependency_libs (executable : &Path,
         skip_n_levels = 0;
         dylib_filename_part = "";
     }
-    debug!("Running shell command for determining dependencies: {}", args.last().ok_or(anyhow::anyhow!("Empty args list"))?);
+    debug!("Running shell command for determining dependencies: {args:?}");
     let mut list_deps : &mut Command = &mut Command::new(&command);
     let env_vars : Vec<(String, String)> = env_map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     list_deps = list_deps.args(&args)
