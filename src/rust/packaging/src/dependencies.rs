@@ -55,20 +55,8 @@ pub fn get_dependency_libs (executable : &Path,
             env_map.insert(String::from("PATH"), format!("{}/{};{}", executable_folder.to_str().unwrap(), relpath, path));
         }
         command = String::from("powershell.exe");
-        let commandstr : String = format!(
-           "
-            $executable = \"{0}\"
-            $output = & Dependencies.exe -chain -depth 4 $executable.Trim();
-            $output | Where-Object {{ -not ($_ -match \"NotFound\") }} |
-                Get-Unique |
-                ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }} |
-                ForEach-Object {{ Write-Output $_ }}
-            $output | Where-Object {{ ($_ -match \"NotFound\") }} |
-                Get-Unique |
-                ForEach-Object {{ \" $_\" -replace \"[|├]\", \" \" -replace \"([^ ]+).* : \", \"$1\" }} |
-                ForEach-Object {{ Write-Error $_ }}
-            ", executable.to_str().unwrap());
-        args = vec!(String::from("-Command"), commandstr);
+        let commandstr = include_str!("scripts/windows_deps.ps1");
+        args = vec!(String::from("-Command"), String::from(commandstr), executable.to_str().unwrap());
         warning_patterns = vec!();
         skip_n_levels = 0;
         dylib_filename_part = ".dll";
@@ -80,65 +68,24 @@ pub fn get_dependency_libs (executable : &Path,
         // So we use patchelf to inject dependencies on all .so files that are already in the bundle.
         // That way lddtree is forced to include all libraries that the main executable could potentially load.
         command = String::from("sh");
-        let commandstr : String = format!(
-            "
-             EXE=$(mktemp);
-             cp {0} $EXE;
-             for f in $(find {1} -type f -name \"*.so*\"); do patchelf --add-needed $(basename $f) $EXE; done;
-             RAW=$(LD_LIBRARY_PATH=$(find {1} -type d | xargs printf \"%s:\" | sed 's/,$/\\n/'):$LD_LIBRARY_PATH lddtree $EXE)
-             printf \"$RAW\\n\" | grep -v \"not found\" | grep \"=>\" | grep -E -v \"=>.*=>\" | sed -r 's/([ ]*).*=>[ ]*([^ ]*).*/\\1\\2/g';
-             printf \"$RAW\\n\" | grep \"not found\" >&2;
-             rm $EXE;", executable.to_str().unwrap(), include_directory.to_str().unwrap());
+        let commandstr = include_str!("scripts/linux_deps.sh");
+        args = vec!(String::from("-c"),
+                    String::from(commandstr),
+                    String::from("dummy"), // Passing the command verbatim, first arg becomes $0 (unused)
+                    String::from(executable.to_str().unwrap()),
+                    String::from(include_directory.to_str().unwrap()));
         warning_patterns = vec!(String::from("not found"));
-        args = vec!(String::from("-c"), commandstr);
         skip_n_levels = 0;
         dylib_filename_part = ".so";
     }
     #[cfg(target_os = "macos")]
     {
         command = String::from("sh");
-        let commandstr : String = format!(
-            "
-            exe=\"{0}\"
-            handled=\"\"
-            exe_dir=$(dirname \"$exe\")
-            exe_dir_escaped=$(dirname \"$exe\" | sed 's/\\//\\\\\\//g')
-
-            search_dirs=$(otool -l \"$exe\" | grep -A2 LC_RPATH | grep -E \" path [/@]\" | awk '{{print $2}}' | sed \"s/@loader_path/$exe_dir_escaped/g\")
-            for d in $(echo $DYLD_LIBRARY_PATH | tr ':' '\\n'); do search_dirs=$(printf \"$search_dirs\n$d\"); done
-            for d in $(echo $DYLD_FALLBACK_LIBRARY_PATH | tr ':' '\\n'); do search_dirs=$(printf \"$search_dirs\n$d\"); done
-            for d in $(echo $DYLD_FRAMEWORK_PATH | tr ':' '\\n'); do search_dirs=$(printf \"$search_dirs\n$d\"); done
-            echo \"Search dirs: $search_dirs\" >&2
-            
-            function resolve_rpath() {{
-                if [ -f \"$1\" ]; then echo $1; return
-                elif [[ $1 == *\"@rpath\"* ]]; then
-                    for dir in $search_dirs; do
-                        trypath=\"$dir/$(echo $1 | sed 's/@rpath//g')\"
-                        if [ -f \"$trypath\" ]; then
-                          echo \"$trypath\"
-                          return
-                        fi
-                    done
-                    echo \"Could not find '$1' in search paths, skipping.\" >&2
-                fi
-            }}
-            
-            function recurse_deps() {{
-                for f in $(otool -L \"$1\" | tail -n +1 | awk 'NR>1 {{print $1}}' || true); do
-                    resolved=$(resolve_rpath \"$f\" \"$2\")
-                    resolved_filename=$(basename \"$resolved\")
-                    filtered=$(echo $handled | grep \"$resolved_filename\")
-                    if [ ! -z \"$resolved\" ] && [ -z \"$filtered\" ]; then
-                        echo \"${{2}}$resolved\"
-                        handled=$(printf \"$handled\n$resolved_filename\")
-                        recurse_deps \"$resolved\" \"$2  \"
-                    fi 
-                done
-            }}
-            recurse_deps \"$exe\" \"\"",
-            executable.to_str().unwrap());
-        args = vec!(String::from("-c"), commandstr);
+        let commandstr = include_str!("scripts/macos_deps.sh");
+        args = vec!(String::from("-c"),
+                    String::from(commandstr),
+                    String::from("dummy"), // Passing the command verbatim, first arg becomes $0 (unused)
+                    String::from(executable.to_str().unwrap()));
         warning_patterns = vec!();
         skip_n_levels = 0;
         dylib_filename_part = "";
