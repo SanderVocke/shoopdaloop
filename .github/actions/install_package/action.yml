@@ -84,7 +84,7 @@ runs:
         export PATH=$PORTABLE/$relpath:$PATH
       done
       echo "Modified path: $PATH"
-      deps=$(Dependencies.exe -chain -depth 4 $PORTABLE/shoopdaloop.exe)
+      deps=$(powershell src/rust/packaging/src/scripts/windows_deps.ps1 $PORTABLE/shoopdaloop.exe)
       echo "Deps cmd output: $deps"
       ddeps=$(echo "$deps" | grep "NotFound")
       echo "Missing deps output: $ddeps"
