@@ -196,7 +196,6 @@ Rectangle {
         if (tempdir == null) {
             throw new Error("Failed to create temporary folder")
         }
-        console.log("temp dir: " + tempdir)
         var tasks = tasks_factory.create_tasks_obj(root)
         var session_filename = tempdir + '/session.json'
 
@@ -209,7 +208,6 @@ Rectangle {
         tasks.when_finished(() => {
             try {
                 // TODO make this step asynchronous
-                console.log("temp dir: " + tempdir)
                 if (!ShoopFileIO.makeTarfile(filename, tempdir)) {
                     throw new Error(`Failed to create tarfile ${filename}`)
                 }

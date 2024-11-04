@@ -362,7 +362,6 @@ Dialog {
 
         Component.onCompleted: {
             let builtins_dir = file_io.get_lua_directory() + '/builtins'
-            console.log("builtins:", builtins_dir)
             let builtins = ShoopFileIO.glob(builtins_dir + '/**/*.lua')
             let default_run = ['keyboard.lua']
             for (let builtin of builtins) {
@@ -404,7 +403,6 @@ Dialog {
         property alias script_manager: lookup_script_manager.object
 
         function builtins_path() {
-            console.log("lua dir:", file_io.get_lua_directory())
             return ShoopFileIO.realpath(file_io.get_lua_directory() + '/builtins')
         }
 
@@ -413,10 +411,7 @@ Dialog {
             if (!ShoopFileIO.isAbsolute(fullpath)) {
                 fullpath = builtins_path() + '/' + fullpath
             }
-            console.log("full path ->", fullpath)
             if (!ShoopFileIO.exists(fullpath)) {
-                console.log("no existe")
-                console.log((new Error()).stack)
                 return null
             }
             return ShoopFileIO.realpath(fullpath)

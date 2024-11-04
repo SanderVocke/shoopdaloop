@@ -10,7 +10,6 @@ Item {
         var rval = [];
         if (input_data && is_audio) {
             rval = Array.from(input_data);
-            console.log("audio input data has", rval.length, "values")
         }
         return rval
     }
