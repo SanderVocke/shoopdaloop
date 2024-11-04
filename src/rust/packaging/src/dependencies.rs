@@ -56,7 +56,9 @@ pub fn get_dependency_libs (executable : &Path,
         }
         command = String::from("powershell.exe");
         let commandstr = include_str!("scripts/windows_deps.ps1");
-        args = vec!(String::from("-Command"), String::from(commandstr), executable.to_str().unwrap());
+        args = vec!(String::from("-Command"),
+                    String::from(commandstr),
+                    String::from(executable.to_str().unwrap()));
         warning_patterns = vec!();
         skip_n_levels = 0;
         dylib_filename_part = ".dll";
