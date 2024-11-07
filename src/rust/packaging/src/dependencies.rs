@@ -43,6 +43,13 @@ pub fn get_dependency_libs (executable : &Path,
     let dylib_filename_part: &str;
     #[cfg(target_os = "windows")]
     {
+        // make all env_map keys upper-case
+        let mut new_env_map : HashMap<String, String> = HashMap::new();
+        for (k, v) in env_map.iter() {
+            new_env_map.insert(k.to_uppercase(), v.clone());
+        }
+        env_map = new_env_map;
+
         let file_path = PathBuf::from(file!());
         let src_path = std::fs::canonicalize(file_path)?;
         let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
@@ -51,14 +58,12 @@ pub fn get_dependency_libs (executable : &Path,
             .with_context(|| format!("Cannot read {paths_file:?}"))?;
         let executable_folder = executable.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
         for relpath in paths_str.lines() {
-            let path = env_map.get("PATH").unwrap();
+            let path = env_map.get("PATH").expect("No PATH env var found");
             env_map.insert(String::from("PATH"), format!("{}/{};{}", executable_folder.to_str().unwrap(), relpath, path));
         }
         command = String::from("powershell.exe");
-        let commandstr = include_str!("scripts/windows_deps.ps1");
-        args = vec!(String::from("-Command"),
-                    String::from(commandstr),
-                    String::from(executable.to_str().unwrap()));
+        let commandstr = include_str!("scripts/windows_deps.ps1").replace("$args[0]", executable.to_str().unwrap());
+        args = vec!(String::from("-Command"), commandstr);
         warning_patterns = vec!();
         skip_n_levels = 0;
         dylib_filename_part = ".dll";

@@ -62,20 +62,23 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
         // Create a env in OUT_DIR
         println!("Creating portable Python...");
-        let sh_arg = format!("{} --version | sed -r 's/.*3\\./3\\./g'", host_python);
-        let args = &["-c", sh_arg.as_str()];
-        let py_version = Command::new("sh")
-                                .args(args)
+        let py_version = Command::new(host_python)
+                                .args(&["-c",
+                                        "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"])
                                 .output()
                                 .with_context(|| format!("Failed to print python version: sh ${args:?}"))?;
         let py_version = std::str::from_utf8(&py_version.stdout)?;
         let py_version = py_version.trim();
+        let mut py_location : String;
         println!("Using pyenv to install {} to {}...", py_version, pyenv_root_dir.to_str().unwrap());
         let args = &["install", "--skip-existing", py_version];
         let pyenv = env::var("PYENV").unwrap_or(String::from("pyenv"));
         let mut install_env : HashMap<String, String> = env::vars().collect();
         install_env.insert("PYENV_ROOT".to_string(), pyenv_root_dir.to_str().unwrap().to_string());
         install_env.insert("PYTHON_CONFIGURE_OPTS".to_string(), "--enable-shared".to_string());
+        println!("   {pyenv:?} {args:?}");
+        println!("   with PYENV_ROOT={pyenv_root_dir:?}");
+        println!("   with PYTHON_CONFIGURE_OPTS=--enable-shared");
         Command::new(&pyenv)
                 .args(args)
                 .envs(install_env)
@@ -86,7 +89,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
                                         .env("PYENV_ROOT", &pyenv_root_dir)
                                         .output()
                                         .with_context(|| "Failed to get python location output using pyenv")?;
-        let mut py_location = String::from(std::str::from_utf8(&py_location_output.stdout)?);
+        py_location = String::from(std::str::from_utf8(&py_location_output.stdout)?);
         if !py_location_output.status.success() {
             let maybe_root = env::var("PYENV_ROOT");
             if maybe_root.is_ok() {
