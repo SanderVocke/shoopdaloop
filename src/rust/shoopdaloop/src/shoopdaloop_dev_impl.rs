@@ -10,9 +10,14 @@ const SHOOP_BUILD_OUT_DIR : &str = env!("OUT_DIR");
 const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
 
 pub fn main() {
+    // For normalizing Windows paths
+    let normalize_path = |path: PathBuf| -> PathBuf {
+        PathBuf::from(std::fs::canonicalize(path).unwrap().to_str().unwrap().trim_start_matches(r"\\?\"))
+    };
+
     // Set up PYTHONPATH. This can deal with:
     // finding pyenv in Cargo build case, based on the remembered OUT_DIR
-    let shoop_lib_dir = std::fs::canonicalize(PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_lib")).unwrap();
+    let shoop_lib_dir = normalize_path(PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_lib"));
     let bundled_python_home = shoop_lib_dir.join("py");
     let bundled_python_site_packages : PathBuf;
 
@@ -28,12 +33,12 @@ pub fn main() {
                 sp_glob.next()
                 .expect(format!("No site-packages dir found @ {}", pattern).as_str())
                 .unwrap()
-            ).unwrap();
+            ).unwrap().trim_start_matches(r"\\?\");
     }
 
-    let shoop_src_root_dir = std::fs::canonicalize(PathBuf::from(SRC_DIR).join("../../..")).unwrap();    
-    let pythonpath_to_src = std::fs::canonicalize(
-        shoop_src_root_dir.join("src/python")).unwrap();
+    let shoop_src_root_dir = normalize_path(PathBuf::from(SRC_DIR).join("../../.."));    
+    let pythonpath_to_src = normalize_path(
+        shoop_src_root_dir.join("src/python"));
     let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
     let pythonpath = format!("{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}",
                          pythonpath_to_src.to_str().unwrap(),

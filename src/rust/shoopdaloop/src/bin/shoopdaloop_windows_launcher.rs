@@ -42,17 +42,7 @@ fn main() -> io::Result<()> {
     println!("PATH: {}", env::var("PATH").unwrap_or_default());
 
     // Prepare to launch the executable in the modified environment.
-    // let status = Command::new(launcher_dir.join(EXECUTABLE_NAME))
-    //     .spawn()?
-    //     .wait()?;
-
-        // let status = Command::new("DependenciesGui.exe")
-        // .args([launcher_dir.join(EXECUTABLE_NAME)])
-        // .spawn()?
-        // .wait()?;
-
-           let status = Command::new("powershell.exe")
-           .args(["-Command", "ls"])
+    let status = Command::new(launcher_dir.join(EXECUTABLE_NAME))
         .spawn()?
         .wait()?;
 
