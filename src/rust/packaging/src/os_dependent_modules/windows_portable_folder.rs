@@ -50,7 +50,6 @@ fn populate_folder(
 
     info!("Bundling additional assets...");
     for (src,dst) in [
-        ("distribution/windows/shoopdaloop.bat", "shoopdaloop.bat"),
         ("distribution/windows/shoop.dllpaths", "shoop.dllpaths"),
         (launcher_path.to_str().expect("Failed to convert launcher path"), "shoopdaloop_launcher.exe"),
     ] {

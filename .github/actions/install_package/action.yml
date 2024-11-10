@@ -78,17 +78,17 @@ runs:
       cd ..
       PORTABLE=$(pwd)/portable
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
-      echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop.bat" | tee -a $GITHUB_ENV
-      for relpath in $(cat $PORTABLE/shoop.dllpaths); do
-        echo "Adding $PORTABLE/$relpath to PATH"
-        export PATH=$PORTABLE/$relpath:$PATH
-      done
-      echo "Modified path: $PATH"
-      deps=$(powershell src/rust/packaging/src/scripts/windows_deps.ps1 $PORTABLE/shoopdaloop.exe)
-      echo "Deps cmd output: $deps"
-      ddeps=$(echo "$deps" | grep "NotFound")
-      echo "Missing deps output: $ddeps"
-      echo "end missing dependencies"
+      echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop_launcher.exe" | tee -a $GITHUB_ENV
+      # for relpath in $(cat $PORTABLE/shoop.dllpaths); do
+      #   echo "Adding $PORTABLE/$relpath to PATH"
+      #   export PATH=$PORTABLE/$relpath:$PATH
+      # done
+      # echo "Modified path: $PATH"
+      # deps=$(powershell src/rust/packaging/src/scripts/windows_deps.ps1 $PORTABLE/shoopdaloop.exe)
+      # echo "Deps cmd output: $deps"
+      # ddeps=$(echo "$deps" | grep "NotFound")
+      # echo "Missing deps output: $ddeps"
+      # echo "end missing dependencies"
 
   # MacOS portable folder
   - name: Setup MacOS app bundle folder

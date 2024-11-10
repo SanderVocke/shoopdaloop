@@ -33,7 +33,7 @@ pub fn main() {
                 sp_glob.next()
                 .expect(format!("No site-packages dir found @ {}", pattern).as_str())
                 .unwrap()
-            ).unwrap().trim_start_matches(r"\\?\");
+            ).unwrap();
     }
 
     let shoop_src_root_dir = normalize_path(PathBuf::from(SRC_DIR).join("../../.."));    
