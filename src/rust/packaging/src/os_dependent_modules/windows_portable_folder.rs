@@ -11,6 +11,7 @@ fn populate_folder(
     shoop_built_out_dir : &Path,
     folder : &Path,
     exe_path : &Path,
+    launcher_path : &Path,
 ) -> Result<(), anyhow::Error> {
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
@@ -51,6 +52,7 @@ fn populate_folder(
     for (src,dst) in [
         ("distribution/windows/shoopdaloop.bat", "shoopdaloop.bat"),
         ("distribution/windows/shoop.dllpaths", "shoop.dllpaths"),
+        (launcher_path.to_str().expect("Failed to convert launcher path"), "shoopdaloop_launcher.exe"),
     ] {
         let from = src_path.join(src);
         let to = folder.join(dst);
@@ -77,6 +79,7 @@ pub fn build_portable_folder(
     shoop_built_out_dir : &Path,
     exe_path : &Path,
     _dev_exe_path : &Path,
+    launcher_path : &Path,
     output_dir : &Path,
     _release : bool,
 ) -> Result<(), anyhow::Error> {
@@ -93,7 +96,8 @@ pub fn build_portable_folder(
 
     populate_folder(shoop_built_out_dir,
                             output_dir,
-                            exe_path)?;
+                            exe_path,
+                            launcher_path)?;
 
     info!("Portable folder created @ {output_dir:?}");
     Ok(())

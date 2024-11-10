@@ -157,6 +157,33 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .status()
             .with_context(|| "Failed to install wheel")?;
 
+        // DLL hack needed on Windows
+        #[cfg(target_os = "windows")]
+        {
+            // Copy all files in (py_env_dir)/Lib\site-packages\pywin32_system32
+            // to (py_env_dir)/Lib\site-packages\win32
+            let pywin32_system32 = Path::new(&py_env_dir).join("Lib").join("site-packages").join("pywin32_system32");
+            let win32 = Path::new(&py_env_dir).join("Lib").join("site-packages").join("win32");
+            if pywin32_system32.exists() {
+                for entry in std::fs::read_dir(pywin32_system32)? {
+                    let entry = entry?;
+                    let path = entry.path();
+            
+                    // Check if the entry is a file
+                    if path.is_file() {
+                        // Construct the destination path
+                        let file_name = path.file_name().unwrap();
+                        let dest_path = win32.join(file_name);
+            
+                        // Copy the file
+                        std::fs::copy(&path, &dest_path)?;
+                    }
+                }
+            } else {
+                Err(anyhow::anyhow!("pywin32_system32 not found at {:?}", &pywin32_system32))?;
+            }
+        }
+
         // Tell PyO3 where to find our venv Python
         println!("Setting PYO3_PYTHON to {}", py_env_python.to_str().unwrap());
         env::set_var("PYO3_PYTHON", py_env_python.to_str().unwrap());

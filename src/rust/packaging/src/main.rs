@@ -98,10 +98,12 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
             }
             #[cfg(target_os = "windows")]
             {
+                let launcher_exe : PathBuf = exe_dir.join("shoopdaloop_windows_launcher.exe");
                 packaging::windows_portable_folder::build_portable_folder(
                             Path::new(out_dir.as_str()),
                             main_exe.as_path(),
                             dev_exe.as_path(),
+                            launcher_exe.as_path(),
                             output_dir.as_path(),
                             *release)
             }

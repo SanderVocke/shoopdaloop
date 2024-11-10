@@ -13,24 +13,37 @@ pub fn main() {
     // Set up PYTHONPATH. This can deal with:
     // finding pyenv in Cargo build case, based on the remembered OUT_DIR
     let shoop_lib_dir = std::fs::canonicalize(PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_lib")).unwrap();
-    let base = shoop_lib_dir.join("py");
-    let shoop_src_root_dir = std::fs::canonicalize(PathBuf::from(SRC_DIR).join("../../..")).unwrap();
-    let pattern = format!("{}/**/site-packages", base.to_str().unwrap());
-    let mut sp_glob = glob(&pattern).unwrap();
-    let pythonpath_to_venv = std::fs::canonicalize(
-            sp_glob.next()
-            .expect(format!("No site-packages dir found @ {}", pattern).as_str())
-            .unwrap()
-        ).unwrap();
+    let bundled_python_home = shoop_lib_dir.join("py");
+    let bundled_python_site_packages : PathBuf;
+
+    #[cfg(target_os = "windows")]
+    {
+        bundled_python_site_packages = bundled_python_home.join("Lib/site-packages");
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let pattern = format!("{}/**/site-packages", bundled_python_home.to_str().unwrap());
+        let mut sp_glob = glob(&pattern).unwrap();
+        let bundled_python_site_packages = std::fs::canonicalize(
+                sp_glob.next()
+                .expect(format!("No site-packages dir found @ {}", pattern).as_str())
+                .unwrap()
+            ).unwrap();
+    }
+
+    let shoop_src_root_dir = std::fs::canonicalize(PathBuf::from(SRC_DIR).join("../../..")).unwrap();    
     let pythonpath_to_src = std::fs::canonicalize(
         shoop_src_root_dir.join("src/python")).unwrap();
     let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
-    let pythonpath = format!("{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}",
+    let pythonpath = format!("{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}",
                          pythonpath_to_src.to_str().unwrap(),
-                         pythonpath_to_venv.to_str().unwrap(),
-                         pythonpath_to_venv.parent().unwrap().to_str().unwrap(),
-                         pythonpath_to_venv.parent().unwrap().join("lib-dynload").to_str().unwrap(),
-                         pythonpath_to_venv.parent().unwrap().join("importlib").to_str().unwrap(),
+                         bundled_python_site_packages.to_str().unwrap(),
+                         bundled_python_site_packages.parent().unwrap().to_str().unwrap(),
+                         bundled_python_site_packages.parent().unwrap().join("lib-dynload").to_str().unwrap(),
+                         bundled_python_site_packages.parent().unwrap().join("importlib").to_str().unwrap(),
+                         bundled_python_site_packages.parent().unwrap().parent().unwrap().join("DLLs").to_str().unwrap(),
+                         bundled_python_site_packages.join("win32").to_str().unwrap(),
+                         bundled_python_site_packages.join("win32").join("lib").to_str().unwrap(),
                          shoop_lib_dir.to_str().unwrap(),
                          );
     println!("using PYTHONPATH: {}", pythonpath.as_str());
