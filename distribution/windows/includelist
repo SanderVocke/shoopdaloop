@@ -2,3 +2,4 @@
 */VCRUNTIME*.dll
 */bcryptPrimitives.dll
 */zita-resampler.dll
+*/pthreadVC3.dll

@@ -29,11 +29,12 @@ pub fn main() {
     }
 
     let bundled_python_lib_path = bundled_python_site_packages.parent().unwrap();
+    let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
     if bundled_python_home.exists() &&
        bundled_pythonpath_shoop_lib.exists() &&
        bundled_python_site_packages.exists() &&
        bundled_python_lib_path.exists() {
-        let pythonpath = format!("{}:{}:{}",
+        let pythonpath = format!("{}{sep}{}{sep}{}",
             bundled_python_lib_path.to_str().unwrap(),
             bundled_pythonpath_shoop_lib.to_str().unwrap(),
             bundled_python_site_packages.to_str().unwrap());
