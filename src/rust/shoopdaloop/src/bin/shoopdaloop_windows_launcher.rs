@@ -41,8 +41,12 @@ fn main() -> io::Result<()> {
 
     println!("PATH: {}", env::var("PATH").unwrap_or_default());
 
-    // Prepare to launch the executable in the modified environment.
+    // Collect all arguments passed to the launcher and pass them to the executable.
+    let args: Vec<String> = env::args().skip(1).collect();
+
+    // Prepare to launch the executable in the modified environment with arguments.
     let status = Command::new(launcher_dir.join(EXECUTABLE_NAME))
+        .args(&args) // Pass the arguments here
         .spawn()?
         .wait()?;
 

@@ -29,7 +29,7 @@ pub fn main() {
     {
         let pattern = format!("{}/**/site-packages", bundled_python_home.to_str().unwrap());
         let mut sp_glob = glob(&pattern).unwrap();
-        let bundled_python_site_packages = std::fs::canonicalize(
+        bundled_python_site_packages = std::fs::canonicalize(
                 sp_glob.next()
                 .expect(format!("No site-packages dir found @ {}", pattern).as_str())
                 .unwrap()

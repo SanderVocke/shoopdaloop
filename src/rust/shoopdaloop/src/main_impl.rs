@@ -1,20 +1,25 @@
 use std::env;
 use glob::glob;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use shoopdaloop::shoopdaloop_main;
 use shoopdaloop::add_lib_search_path::add_lib_search_path;
 use shoopdaloop::shoop_app_info;
 
 pub fn main() {
+    // For normalizing Windows paths
+    let normalize_path = |path: &Path| -> PathBuf {
+        PathBuf::from(std::fs::canonicalize(path).unwrap().to_str().unwrap().trim_start_matches(r"\\?\"))
+    };
+
     // Set up PYTHONPATH. This can deal with:
     // - Finding embedded pyenv in installed case (shoop_lib/py)
     let executable_path = env::current_exe().unwrap();
-    let installed_path = executable_path.parent().unwrap().canonicalize().unwrap();
-    let shoop_lib_path = installed_path.join("shoop_lib");
+    let installed_path = normalize_path(executable_path.parent().unwrap());
+    let shoop_lib_path = normalize_path(&installed_path.join("shoop_lib"));
     let lib_path = installed_path.join("lib");
-    let bundled_pythonpath_shoop_lib = std::fs::canonicalize(&shoop_lib_path).unwrap();
-    let bundled_python_home = std::fs::canonicalize(&shoop_lib_path.join("py")).unwrap();
+    let bundled_pythonpath_shoop_lib = &shoop_lib_path;
+    let bundled_python_home = normalize_path(&shoop_lib_path.join("py"));
     let bundled_python_site_packages : PathBuf;
     #[cfg(target_os = "windows")]
     {
