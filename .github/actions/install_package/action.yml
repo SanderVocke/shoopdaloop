@@ -129,7 +129,7 @@ runs:
       else
         QT_LIB_DIR=$(find $PORTABLE_FOLDER_INSTALL -wholename "*/PySide6/Qt/lib")
         ADD_LIB_PATH="$PORTABLE_FOLDER_INSTALL/lib:$QT_LIB_DIR"
-        CMD_PREFIX="LD_LIBRARY_PATH=\$LD_LIBRARY_PATH;$ADD_LIB_PATH"
+        CMD_PREFIX="LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$ADD_LIB_PATH"
       fi
       echo "COMMAND_TEST_BACKEND=$CMD_PREFIX $PORTABLE_FOLDER_INSTALL/test_runner" | tee -a $GITHUB_ENV
       echo "COMMAND_TEST_RUST=$CMD_PREFIX $PORTABLE_FOLDER_INSTALL/cargo-nextest nextest run --archive-file $PORTABLE_FOLDER_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV

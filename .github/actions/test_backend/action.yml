@@ -11,19 +11,11 @@ runs:
       mkdir -p reports
       echo "results_xml=reports/backend_tests_results.xml" | tee -a $GITHUB_ENV
 
-  # - name: Expand prefix for Mac
-  #   if: always()
-  #   shell: wrap-shell {0}
-  #   id: runcmdprefix
-  #   run: |
-  #     if [[ "$RUNNER_OS" == "macOS" ]]; then
-  #       echo "RUN_CMD_PREFIX=DYLD_FALLBACK_LIBRARY_PATH=$(dirname ${{ inputs.test_runner }}) $RUN_CMD_PREFIX" | tee -a $GITHUB_ENV
-  #     fi
-
   - name: Backend tests
     if: always()
     shell: wrap-shell {0}
     run: |
+      set -x
       mkdir -p reports
       ${{ env.RUN_CMD_PREFIX }} ${{ env.COMMAND_TEST_BACKEND }} -r JUnit -o ${{ env.results_xml }}
       echo "Back-end test results file: $(ls -la ${{ env.results_xml }})"
