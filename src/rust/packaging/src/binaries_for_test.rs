@@ -28,14 +28,14 @@ fn populate_folder(
 
     let nextest_path : PathBuf;
     let nextest_dir = folder.to_str().unwrap();
-    println!("sh -c 'curl -LsSf https://get.nexte.st/latest/windows-tar | tar zxf - -C \"{}\"'", nextest_dir);
     #[cfg(target_os = "windows")]
     {
         nextest_path = folder.join("cargo-nextest.exe");
-        Command::new("pwsh")
+        Command::new("powershell")
                 .current_dir(&src_path)
                 .args(&["-Command",
-                        &format!("curl -LsSf https://get.nexte.st/latest/windows-tar | tar -zxf - -C {}", nextest_dir)
+                        &format!("Invoke-WebRequest -Uri \"https://get.nexte.st/latest/windows\" -OutFile \"$env:TEMP\\nextest.zip\"; Expand-Archive -Path \"$env:TEMP\\nextest.zip\" -DestinationPath \"{}\" -Force; Remove-Item \"$env:TEMP\\nextest.zip\"",
+                         nextest_dir)
                         ])
                 .status()?;
     }
