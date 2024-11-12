@@ -10,8 +10,13 @@ fn populate_folder(
     folder : &Path,
     release : bool,
 ) -> Result<(), anyhow::Error> {
+    // For normalizing Windows paths
+    let normalize_path = |path: PathBuf| -> PathBuf {
+        PathBuf::from(std::fs::canonicalize(path).unwrap().to_str().unwrap().trim_start_matches(r"\\?\"))
+    };
+
     let file_path = PathBuf::from(file!());
-    let src_path = std::fs::canonicalize(file_path)?;
+    let src_path = normalize_path(file_path);
     let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     info!("Using source path {src_path:?}");
 

@@ -50,6 +50,7 @@ runs:
       BOOST_DIR=$(cygpath -w $(cygpath -u '${{ steps.install-boost.outputs.BOOST_ROOT }}')/lib/cmake/Boost-1.86.0)
       echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH;$BOOST_DIR;$JACK_DIR;$PTHREADS_DIR" | tee -a $GITHUB_ENV
       echo "PTHREADS4W_PATH=$PTHREADS_DIR" | tee -a $GITHUB_ENV
+      echo "$PTHREADS_DIR" | tee -a $GITHUB_PATH
 
   - name: Setup dependencies
     if: always()
