@@ -124,7 +124,7 @@ runs:
       tar --strip-components=1 -xzf ${{ inputs.package }}
       if [[ "$RUNNER_OS" == "Windows" ]]; then
         QT_LIB_DIR=$(find $PORTABLE_FOLDER_INSTALL -wholename "*/PySide6")
-        ADD_LIB_PATH="$PORTABLE_FOLDER_INSTALL;$QT_LIB_DIR"
+        ADD_LIB_PATH="$PORTABLE_FOLDER_INSTALL:$QT_LIB_DIR"
         CMD_PREFIX="PATH=\$PATH:$ADD_LIB_PATH"
       else
         QT_LIB_DIR=$(find $PORTABLE_FOLDER_INSTALL -wholename "*/PySide6/Qt/lib")
