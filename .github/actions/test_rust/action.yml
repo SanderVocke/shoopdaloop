@@ -41,8 +41,6 @@ runs:
   - name: run the testrunner
     shell: wrap-shell {0}
     if: always()
-    env:
-        DYLD_FRAMEWORK_PATH: ${{ QT_ROOT_DIR }}/lib
     run: |
       mkdir -p reports
       ${{ env.RUN_CMD_PREFIX }}
