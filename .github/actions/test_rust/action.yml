@@ -41,11 +41,13 @@ runs:
   - name: run the testrunner
     shell: wrap-shell {0}
     if: always()
+    env:
+        DYLD_FRAMEWORK_PATH: ${{ QT_ROOT_DIR }}/lib
     run: |
       mkdir -p reports
       ${{ env.RUN_CMD_PREFIX }}
       ${{ env.COMMAND_TEST_RUST }}
-      # echo "Back-end test results file: $(ls -la ${{ env.RESULTS_XML }})"
+      # echo "Rust test results file: $(ls -la ${{ env.RESULTS_XML }})"
 
   - name: Publish Rust Test Report
     if: always()
