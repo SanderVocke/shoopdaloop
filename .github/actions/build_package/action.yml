@@ -109,6 +109,10 @@ runs:
       echo "BUILT_PACKAGE=$(${{ env.CONVERT_PATH_FN }} $COMPRESSED_TEST_BINARIES_DIR)" | tee -a $GITHUB_ENV
       echo "BUILT_PACKAGE_NAME=$(basename $COMPRESSED_TEST_BINARIES_DIR)" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$(${{ env.CONVERT_PATH_FN }} $COMPRESSED_RELEASE_TEST_BINARIES_DIR)" | tee -a $GITHUB_ENV
+      # on MacOS, we need the original Qt that was built against
+      if [[ "$RUNNER_OS" == "macOS" ]]; then
+        cp -r $QT_ROOT_DIR/lib/*.framework $RELEASE_TEST_BINARIES_DIR
+      fi
   - uses: actions/upload-artifact@v4
     if: always() && inputs.package_kind == 'test_binaries'
     with:
