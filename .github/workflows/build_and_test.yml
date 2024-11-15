@@ -1,15 +1,20 @@
 name: Build and test
 
 on:
-  push:
-    branches: [ "master" ]
-    tags: "v*.*.*"
-  pull_request:
-    branches: [ "master" ]
-  workflow_dispatch:
+    push:
+      branches: [ "master" ]
+      tags: "v*.*.*"
+    pull_request:
+      branches: [ "master" ]
+    workflow_dispatch:
 
 env:
-  BUILD_TYPE: Release
+  checkpoints_enabled: false
+  CONVERT_PATH_FN: "echo"
+  RUST_BACKTRACE: "1"
+  QT_QPA_PLATFORM: "offscreen"
+  NATIVE_SHELL_CMD: "bash -c"
+  BASH_FLAGS: ""
   PIP_BREAK_SYSTEM_PACKAGES: 1
 
 permissions:
@@ -52,7 +57,8 @@ jobs:
       with:
         name: release_upload_assets_url
         path: release_upload_assets_url.txt
-
+    - uses: ./.github/actions/checkpoint
+      if: startsWith(github.ref, 'refs/tags/')
 
   ##############################################################
   ## Linux
@@ -64,23 +70,32 @@ jobs:
       matrix:
         kind:
           - name: linux_release
-            build_type: 'Release'
-            pyinstaller: true
-            package_kind: linuxes
+            release_build: true
+            package_kind: portable_folder
+            second_package_kind: appimage
+            third_package_kind: test_binaries
             upload_release_assets: true
+            platform: linux-x64
           - name: linux_debug
-            build_type: 'Debug'
-            # cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
-          - name: linux_asan
-            # Note: ASAN build does not have a test because it is not trivial to deploy
-            # an asan-built program on another system. The build is here to ensure the
-            # build process still works. To use ASAN, compile like this natively.
-            build_type: 'Debug'
-            cmake_opts: '"ENABLE_ASAN" = "On"'
-          - name: linux_coverage
-            build_type: 'Debug'
-            cmake_opts: '"ENABLE_COVERAGE" = "On"'
-            coverage: true
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            upload_release_assets: true
+            platform: linux-x64
+          # - name: linux_asan
+          #   # Note: ASAN build does not have a test because it is not trivial to deploy
+          #   # an asan-built program on another system. The build is here to ensure the
+          #   # build process still works. To use ASAN, compile like this natively.
+          #   release_build: false
+          #   package_kind: appimage
+          #   cmake_opts: '"ENABLE_ASAN" = "On"'
+          #   platform: linux-x64
+          # - name: linux_coverage
+          #   release_build: false
+          #   cmake_opts: '"ENABLE_COVERAGE" = "On"'
+          #   package_kind: appimage
+          #   coverage: true
+          #   platform: linux-x64
         container: [ "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest" ]
         container_options: [ "--user root --workdir /" ]
         arch: [ x86_64 ]
@@ -89,6 +104,10 @@ jobs:
     container:
       image: ${{ matrix.container }}
       options: ${{ matrix.container_options }}
+    env:
+      PATH_SEPARATOR: ":"
+      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
+      # checkpoints_enabled: true
     needs: maybe_create_release
     #if: false
     steps:
@@ -96,117 +115,86 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
     - name: Build
+      if: always()
       uses: ./.github/actions/build_toplevel
       with:
         name: ${{ matrix.kind.name }}
-        cmake_build_type: ${{ matrix.kind.build_type }}
+        platform: ${{ matrix.kind.platform }}
+        release_build: ${{ matrix.kind.release_build }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: 'linux'
         python: python3.9
-        rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
         package_kind: ${{ matrix.kind.package_kind }}
+        second_package_kind: ${{ matrix.kind.second_package_kind }}
+        third_package_kind: ${{ matrix.kind.third_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-    # - name: Setup tmate session
-    #   if: failure()
-    #   uses: SanderVocke/action-tmate@master
-        
+    - uses: ./.github/actions/checkpoint
+      if: always()
+
   test_linux:
     strategy:
       fail-fast: false
       matrix:
         kind:
-          - name: release_wheel_debian_stable
+          - name: release_debian_stable
             python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-            package: wheel_linux_release
-          - name: debug_wheel_debian_stable
+            package: shoopdaloop.*.release-linux-x64.portable.tar.gz
+            second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
+          - name: debug_debian_stable
             python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-            package: wheel_linux_debug
-          - name: release_deb_ubuntu_latest
-            python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
-            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-            package: package_linux_release_deb
-          - name: release_pyinst_ubuntu_latest
-            python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
-            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-            package: pyinstaller_linux_release
-          - name: release_pacman_arch
-            python: python
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
-            container: docker.io/sandervocke/shoopdaloop_run_base_arch_x86_64:latest
-            package: package_linux_release_pacman
-          - name: release_rpm_fedora
-            python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
-            container: docker.io/sandervocke/shoopdaloop_run_base_fedora_x86_64:latest
-            package: package_linux_release_rpm
-          - name: coverage_debian_bullseye
-            python: python3
-            python_shoopdaloop_args: -m coverage run --source=shoopdaloop
-            python_pip_args: -m pip
-            python_pytest_args: -m coverage run --source=shoopdaloop -m pytest
-            container: docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
-            package: wheel_linux_coverage
-            coverage: true
-            run_cmd_prefix: >-
-              BASEDIR=$(pwd)
-              EXCLUDE='/*/third_party/* /*/catch2/*'
-              REPORTDIR=coverage_reports
-              BUILDDIR=$(realpath build/cp*/)
-              ORI_BUILD_DIR=$(cat ori_build_dir.txt)
-              DO_GENHTML=0
-              SHOOP_LOG=QoverageCollectorFactory=debug
-              QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
-              scripts/run_and_generate_coverage.sh
+            package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
+            second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
+          # - name: coverage_debian_bullseye
+          #   python: python3
+          #   container: docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
+          #   package: wheel_linux_coverage
+          #   coverage: true
+          #   run_cmd_prefix: >-
+          #     BASEDIR=$(pwd)
+          #     EXCLUDE='/*/third_party/* /*/catch2/*'
+          #     REPORTDIR=coverage_reports
+          #     BUILDDIR=$(realpath build/cp*/)
+          #     ORI_BUILD_DIR=$(cat ori_build_dir.txt)
+          #     DO_GENHTML=0
+          #     SHOOP_LOG=QoverageCollectorFactory=debug
+          #     QML_IMPORT_PATH=$(~/.local/bin/qoverage --importpath)
+          #     scripts/run_and_generate_coverage.sh
     runs-on: ubuntu-latest
     needs: build_linux
     #if: false
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
+    # env:
+      # checkpoints_enabled: true
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
+    - uses: ./.github/actions/checkpoint
+      if: always()
     - name: Test
+      if: always()
       uses: ./.github/actions/test_toplevel
       with:
         name: ${{ matrix.kind.name }}
         package: ${{ matrix.kind.package }}
+        second_package: ${{ matrix.kind.second_package }}
         asan: ${{ matrix.kind.asan }}
         coverage: ${{ matrix.kind.coverage }}
-        python_pip_args: ${{ matrix.kind.python_pip_args }}
         python: ${{ matrix.kind.python }}
-        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-        python_pytest_args: ${{ matrix.kind.python_pytest_args }}
-        qpa_platform: vnc
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
-
-
+    - uses: ./.github/actions/checkpoint
+      if: always()
 
 
 
@@ -218,106 +206,104 @@ jobs:
   ## Linux (ARM emulated)
   ##############################################################
 
-  build_linux_arm:
-    strategy:
-      fail-fast: false
-      matrix:
-        container: [ "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest" ]
-        arch: [ arm64 ]
-        manylinux_arch: [ aarch64 ]
-        kind:
-          - name: linux_arm_release
-            build_type: 'Release'
-            pyinstaller: true
-            package_kind: linuxes
-            upload_release_assets: true
-          - name: linux_arm_debug
-            build_type: 'Debug'
-    runs-on: ubuntu-latest
-    needs: maybe_create_release
-    #if: false
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - name: Start QEMU container
-      if: ${{ matrix.container }}
-      uses: sandervocke/setup-qemu-container@v1
-      with:
-        container: ${{ matrix.container }}
-        arch: ${{ matrix.arch }}
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use container shell
-      shell: bash
-      run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV
-    - name: Build
-      uses: ./.github/actions/build_toplevel
-      with:
-        name: ${{ matrix.kind.name }}
-        cmake_build_type: ${{ matrix.kind.build_type }}
-        cmake_opts: ${{ matrix.kind.cmake_opts }}
-        prepare_kind: 'linux'
-        python: python3.9
-        rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
-        package_kind: ${{ matrix.kind.package_kind }}
-        coverage: ${{ matrix.kind.coverage }}
-        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-  
+  # build_linux_arm:
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       container: [ "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest" ]
+  #       arch: [ arm64 ]
+  #       manylinux_arch: [ aarch64 ]
+  #
+  #       kind:
+  #         - name: linux_arm_release
+  #           release_build: true
+  #           package_kind: portable_folder
+  #           second_package_kind: appimage
+  #           upload_release_assets: true
+  #           platform: linux-arm
+  #         - name: linux_arm_debug
+  #           build_type: 'Debug'
+  #           platform: linux-arm
+  #   runs-on: ubuntu-latest
+  #   needs: maybe_create_release
+  #   env:
+  #     PATH_SEPARATOR: ":"
+  #     COMPRESS_PORTABLE_FOLDER: 'bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT"'
+  #   #if: false
+  #   steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v4
+  #     with:
+  #       submodules: recursive
+  #   - name: Start QEMU container
+  #     if: matrix.container
+  #     uses: sandervocke/setup-qemu-container@v1
+  #     with:
+  #       container: ${{ matrix.container }}
+  #       arch: ${{ matrix.arch }}
+  #   - name: Setup Shell Wrapper
+  #     uses: sandervocke/setup-shell-wrapper@v1
+  #   - name: Use container shell
+  #     shell: bash
+  #     run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV !!!!!!! fix
+  #   - name: Build
+  #     uses: ./.github/actions/build_toplevel
+  #     with:
+  #       name: ${{ matrix.kind.name }}
+  #       platform: ${{ matrix.kind.platform }}
+  #       cmake_build_type: ${{ matrix.kind.build_type }}
+  #       cmake_opts: ${{ matrix.kind.cmake_opts }}
+  #       prepare_kind: 'linux'
+  #       python: python3.9
+  #       package_kind: ${{ matrix.kind.package_kind }}
+  #       second_package_kind: ${{ matrix.kind.package_kind }}
+  #       coverage: ${{ matrix.kind.coverage }}
+  #       upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
 
-  test_linux_arm:
-    strategy:
-      fail-fast: false
-      matrix:
-        container_arch: [ arm64 ]
-        kind:
-          - name: release_wheel_debian_bullseye_arm
-            python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
-            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_arm64:latest
-            package: wheel_linux_arm_release
-          - name: release_deb_ubuntu_latest_arm
-            python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
-            container: docker.io/sandervocke/shoopdaloop_run_base_ubuntu_latest_arm64:latest
-            package: package_linux_arm_release_deb
-            install_with_sudo: 'true'
-    runs-on: ubuntu-latest
-    needs: build_linux_arm
-    #if: false
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - name: Start QEMU container
-      uses: sandervocke/setup-qemu-container@v1
-      with:
-        container: ${{ matrix.kind.container }}
-        arch: ${{ matrix.container_arch }}
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use container shell
-      shell: bash
-      run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV
-    - name: Test
-      uses: ./.github/actions/test_toplevel
-      with:
-        name: ${{ matrix.kind.name }}
-        package: ${{ matrix.kind.package }}
-        asan: ${{ matrix.kind.asan }}
-        coverage: ${{ matrix.kind.coverage }}
-        python_pip_args: ${{ matrix.kind.python_pip_args }}
-        python: ${{ matrix.kind.python }}
-        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-        python_pytest_args: ${{ matrix.kind.python_pytest_args }}
-        qpa_platform: vnc
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
-        codecov_token: ${{ secrets.CODECOV_TOKEN }}
-        install_with_sudo: ${{ matrix.kind.install_with_sudo }}
-        do_qml_tests: false # Too slow on ARM emulation
+
+  # test_linux_arm:
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       container_arch: [ arm64 ]
+  #       kind:
+  #         - name: release_wheel_debian_bullseye_arm
+  #           python: python3
+  #           container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_arm64:latest
+  #           package: wheel_linux_arm_release
+  #         - name: release_deb_ubuntu_latest_arm
+  #           python: python3
+  #           container: docker.io/sandervocke/shoopdaloop_run_base_ubuntu_latest_arm64:latest
+  #           package: package_linux_arm_release_deb
+  #           install_with_sudo: 'true'
+  #   runs-on: ubuntu-latest
+  #   needs: build_linux_arm
+  #   #if: false
+  #   steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v4
+  #   - name: Start QEMU container
+  #     uses: sandervocke/setup-qemu-container@v1
+  #     with:
+  #       container: ${{ matrix.kind.container }}
+  #       arch: ${{ matrix.container_arch }}
+  #   - name: Setup Shell Wrapper
+  #     uses: sandervocke/setup-shell-wrapper@v1
+  #   - name: Use container shell
+  #     shell: bash
+  #     run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV    !!!!!!! fix this
+  #   - name: Test
+  #     uses: ./.github/actions/test_toplevel
+  #     with:
+  #       name: ${{ matrix.kind.name }}
+  #       package: ${{ matrix.kind.package }}
+  #       asan: ${{ matrix.kind.asan }}
+  #       coverage: ${{ matrix.kind.coverage }}
+  #       python: ${{ matrix.kind.python }}
+  #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
+  #       install_with_sudo: ${{ matrix.kind.install_with_sudo }}
+  #       do_qml_tests: false # Too slow on ARM emulation
+  #   - uses: ./.github/actions/checkpoint
 
 
 
@@ -327,9 +313,9 @@ jobs:
 
 
 
-  # ##############################################################
-  # ## MacOS
-  # ##############################################################
+  ##############################################################
+  ## MacOS
+  ##############################################################
 
   build_macos:
     strategy:
@@ -337,126 +323,124 @@ jobs:
       matrix:
         kind:
           - name: macos_release
-            build_type: 'Release'
-            appbundle: true
-            package_kind: dmg
+            release_build: true
+            package_kind: portable_folder
+            second_package_kind: dmg
+            third_package_kind: test_binaries
             os: macos-12
             upload_release_assets: true
+            platform: macos-x64
           - name: macos_debug
-            build_type: 'Debug'
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
             os: macos-12
+            upload_release_assets: true
+            platform: macos-x64
           - name: macos_release_arm
-            build_type: 'Release'
-            appbundle: true
-            package_kind: dmg
+            release_build: true
+            package_kind: portable_folder
+            second_package_kind: dmg
+            third_package_kind: test_binaries
             os: macos-14
             upload_release_assets: true
+            platform: macos-arm
           - name: macos_debug_arm
-            build_type: 'Debug'
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
             os: macos-14
+            upload_release_assets: true
+            platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
     #if: false
+    env:
+       PATH_SEPARATOR: ":"
+       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
+      #  checkpoints_enabled: true
     steps:
     - name: Checkout
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
         name: ${{ matrix.kind.name }}
+        platform: ${{ matrix.kind.platform }}
         cmake_build_type: ${{ matrix.kind.build_type }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: 'macos'
         python: python3.9
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
         appbundle: ${{ matrix.kind.appbundle }}
         package_kind: ${{ matrix.kind.package_kind }}
+        second_package_kind: ${{ matrix.kind.second_package_kind }}
+        third_package_kind: ${{ matrix.kind.third_package_kind }}
+        release_build: ${{ matrix.kind.release_build }}
         coverage: ${{ matrix.kind.coverage }}
-        # Note: for some reason, an incorrect MacOS identifier is generated (macos_11 instead of macos_11_0).
-        # Also remove the double dot if any.
-        rename_wheel_sed: "'s/(.*-macosx_[1-9]+_)(x86_64|arm64|universal2)[\\.]*whl/\\10_\\2.whl/g'"
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+    - uses: ./.github/actions/checkpoint
+      if: always()
 
   test_macos:
     strategy:
       fail-fast: false
       matrix:
         kind:
-          - name: release_whl_macos12
+          - name: release_macos_arm
             python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
+            container: null
+            os: macos-14
+            package: shoopdaloop.*.release-macos-arm.portable.tar.gz
+            second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
+          - name: debug_macos_arm
+            python: python3
+            container: null
+            os: macos-14
+            package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
+            second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
+          - name: release_macos
+            python: python3
             container: null
             os: macos-12
-            package: wheel_macos_release
-            qpa_platform: offscreen
-          - name: release_whl_macos13
+            package: shoopdaloop.*.release-macos-x64.portable.tar.gz
+            second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
+          - name: debug_macos
             python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
             container: null
-            os: macos-13
-            package: wheel_macos_release
-            qpa_platform: offscreen
-          - name: release_whl_macos14
-            python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
-            container: null
-            os: macos-14
-            package: wheel_macos_release_arm
-            qpa_platform: offscreen
-          - name: debug_whl_macos14
-            python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
-            container: null
-            os: macos-14
-            package: wheel_macos_debug_arm
-            qpa_platform: offscreen
-          - name: release_dmg_macos14
-            python: python3
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
-            container: null
-            os: macos-14
-            package: package_macos_release_arm
-            qpa_platform: offscreen
+            os: macos-12
+            package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
+            second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
     needs: build_macos
     #if: false
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
+    env:
+      PATH_SEPARATOR: ":"
+      # checkpoints_enabled: true
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
     - name: Test
       uses: ./.github/actions/test_toplevel
       with:
         name: ${{ matrix.kind.name }}
         package: ${{ matrix.kind.package }}
+        second_package: ${{ matrix.kind.second_package }}
         asan: ${{ matrix.kind.asan }}
         coverage: ${{ matrix.kind.coverage }}
-        python_pip_args: ${{ matrix.kind.python_pip_args }}
         python: ${{ matrix.kind.python }}
-        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-        python_pytest_args: ${{ matrix.kind.python_pytest_args }}
-        qpa_platform: ${{ matrix.kind.qpa_platform }}
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
+    - uses: ./.github/actions/checkpoint
 
 
 
@@ -475,9 +459,9 @@ jobs:
 
 
 
-  # ##############################################################
-  # ## Windows
-  # ##############################################################
+  # # ##############################################################
+  # # ## Windows
+  # # ##############################################################
 
   build_windows:
     strategy:
@@ -490,49 +474,57 @@ jobs:
             pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
-            build_type: 'Release'
-            pyinstaller: true
-            package_kind: innosetup
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
+            release_build: true
+            package_kind: portable_folder
+            second_package_kind: innosetup
+            third_package_kind: test_binaries
             upload_release_assets: true
+            platform: windows-msvc-x64
           - name: windows_debug
             os: windows-2022
             python: python.exe
             pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
-            build_type: 'Debug'
-            rename_wheel_sed: "'s/([^\\.]+)[\\.]+whl/\\1.whl/g'" # remove double dot
-            # cmake_opts: '"BACKEND_JACK" = "Off", "HAVE_LV2" = "Off"'
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            platform: windows-msvc-x64
     runs-on: ${{ matrix.kind.os}}
     needs: maybe_create_release
+    env:
+      NATIVE_SHELL_CMD: "powershell -Command"
+      PATH_SEPARATOR: ";"
+      CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
+      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
+      # checkpoints_enabled: true
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
-    #if: false
     steps:
     - name: Checkout
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
         name: ${{ matrix.kind.name }}
+        platform: ${{ matrix.kind.platform }}
         cmake_build_type: ${{ matrix.kind.build_type }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: ${{ matrix.kind.prepare }}
         python: ${{ matrix.kind.python }}
-        rename_wheel_sed: ${{ matrix.kind.rename_wheel_sed }}
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
         package_kind: ${{ matrix.kind.package_kind }}
+        second_package_kind: ${{ matrix.kind.second_package_kind }}
+        third_package_kind: ${{ matrix.kind.third_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
+        release_build: ${{ matrix.kind.release_build }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+    - uses: ./.github/actions/checkpoint
 
   test_windows:
     strategy:
@@ -541,33 +533,28 @@ jobs:
         kind:
           - name: release_windows
             python: python.exe
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
             container: null
             os: windows-2022
-            package: wheel_windows_release
-            qpa_platform: offscreen
+            package: shoopdaloop.*.release-windows-msvc-x64.portable.tar.gz
+            second_package: shoopdaloop.*.release-windows-msvc-x64.test_binaries.tar.gz
             pathconvert: "| cygpath -u -f -"
-          - name: release_windows_innosetup
-            python: python.exe
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
-            container: null
-            os: windows-2022
-            package: package_windows_release
-            qpa_platform: offscreen
-            pathconvert: "| cygpath -u -f -"
+          # - name: release_windows_innosetup
+          #   python: python.exe
+          #   container: null
+          #   os: windows-2022
+          #   package: package_windows_release
+          #   pathconvert: "| cygpath -u -f -"
           - name: debug_windows
             python: python.exe
-            python_pip_args: -m pip
-            python_pytest_args: -m pytest
             container: null
             os: windows-2022
-            package: wheel_windows_debug
-            qpa_platform: offscreen
+            package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
+            second_package: shoopdaloop.*.debug-windows-msvc-x64.test_binaries.tar.gz
             pathconvert: "| cygpath -u -f -"
     runs-on: ${{ matrix.kind.os }}
     needs: build_windows
+    # env:
+      #  checkpoints_enabled: true
     #if: false
     container:
       image: ${{ matrix.kind.container }}
@@ -575,25 +562,20 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
     - name: Test
       uses: ./.github/actions/test_toplevel
       with:
         name: ${{ matrix.kind.name }}
         package: ${{ matrix.kind.package }}
+        second_package: ${{ matrix.kind.second_package }}
         asan: ${{ matrix.kind.asan }}
         coverage: ${{ matrix.kind.coverage }}
-        python_pip_args: ${{ matrix.kind.python_pip_args }}
         python: ${{ matrix.kind.python }}
-        run_cmd_prefix: ${{ matrix.kind.run_cmd_prefix }}
-        python_pytest_args: ${{ matrix.kind.python_pytest_args }}
-        qpa_platform: ${{ matrix.kind.qpa_platform }}
-        pyinstaller: ${{ matrix.kind.pyinstaller }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
+    - uses: ./.github/actions/checkpoint
 
 
 
@@ -620,24 +602,22 @@ jobs:
     needs:
       - build_linux
       - test_linux
-      - build_linux_arm
-      - test_linux_arm
+      # - build_linux_arm
+      # - test_linux_arm
       - build_macos
-      - test_macos
+      # - test_macos
       - build_windows
-      - test_windows
-    if: ${{ always() }}
+      # - test_windows
+    if: always()
     container:
       image: archlinux:latest
       options: --user root --workdir /
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use regular shell
-      shell: bash
-      run: echo "WRAP_SHELL=bash --noprofile --norc -eo pipefail" >> $GITHUB_ENV
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc -eo pipefail
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
@@ -653,7 +633,7 @@ jobs:
         pacman --noconfirm -S --needed tree git
     - name: Download debug information
       uses: actions/download-artifact@v4
-      if: ${{ steps.count.outputs.crashdumps != 0 }}
+      if: steps.count.outputs.crashdumps != 0
       with:
         path: debuginfo
         pattern: debuginfo_*
@@ -665,24 +645,24 @@ jobs:
         path: minidump-stackwalk
         key: minidump-stackwalk-1
     - name: Get minidump package sources
-      if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true' }}
+      if: steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true'
       shell: wrap-shell {0}
       run: |
         pacman --noconfirm -Syy
         pacman --noconfirm -S --needed git base-devel && git clone https://aur.archlinux.org/minidump-stackwalk.git
     - name: Makepkg Build
       id: makepkg
-      if: ${{ steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true' }}
+      if: steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true'
       uses: edlanglois/pkgbuild-action@v1
       with:
         pkgdir: minidump-stackwalk
     - name: Install minidump package
-      if: ${{ steps.count.outputs.crashdumps != 0 }}
+      if: steps.count.outputs.crashdumps != 0
       shell: wrap-shell {0}
       run: |
         pacman --noconfirm -U minidump-stackwalk/minidump-stackwalk*.pkg*
     - name: Process dumps
-      if: ${{ steps.count.outputs.crashdumps != 0 }}
+      if: steps.count.outputs.crashdumps != 0
       shell: wrap-shell {0}
       run: |
         tree crashdumps
@@ -700,7 +680,7 @@ jobs:
           minidump-stackwalk $dump debuginfo/breakpad_symbols || true | tee $dump.stackwalk
         done
     - name: Upload crash dumps to Bugsplat
-      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
+      if: (success() || failure()) && steps.count.outputs.crashdumps != 0
       shell: wrap-shell {0}
       run: |
         for dump in $(find crashdumps -name "*.dmp"); do
@@ -711,11 +691,11 @@ jobs:
           bash ./scripts/upload_crash_info.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" ${dump}.moreinfo
         done
     - uses: actions/setup-node@v4
-      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
+      if: (success() || failure()) && steps.count.outputs.crashdumps != 0
       with:
         node-version: 19
     - name: Upload BugSplat debug symbols
-      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 && env.found_debuginfo == 'true' }}
+      if: (success() || failure()) && steps.count.outputs.crashdumps != 0 && env.found_debuginfo == 'true'
       uses: SanderVocke/symbol-upload@test_action
       with:
         clientId: "${{ secrets.BUGSPLAT_CLIENT_ID }}"
@@ -726,7 +706,7 @@ jobs:
         files: "**/*.sym"
         directory: crashdumps/debuginfo
     - name: Upload crash dumps as artifact
-      if: ${{ (success() || failure()) && steps.count.outputs.crashdumps != 0 }}
+      if: (success() || failure()) && steps.count.outputs.crashdumps != 0
       uses: actions/upload-artifact@v4
       with:
         name: crashdumps_summary

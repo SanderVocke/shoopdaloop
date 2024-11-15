@@ -1,0 +1,14 @@
+[package]
+name = "macros"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "*"
+syn = { version = "*", features = ["full"] }
+
+[features]
+# Dummy build to build dependencies only
+prebuild = []

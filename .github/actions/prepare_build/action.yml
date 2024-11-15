@@ -5,30 +5,107 @@ description: Prepare for building Shoopdaloop wheels
 inputs:
   variant:
     required: true
-    type: string
-
-outputs:
-  prepend_build_cmd:
-    description: "Command-line prefix to use when running the apps in the built wheel"
-    value: ${{ steps.collect.outputs.prepend_build_cmd }}
+    description: "platform variant"
 
 runs:
   using: "composite"
   steps:
-  - name: Prepare linux
-    if: ${{ inputs.variant == 'linux' }}
-    uses: ./.github/actions/prepare_build_linux
-  - name: Prepare ubuntu-latest
-    if: ${{ inputs.variant == 'ubuntu_latest' }}
-    uses: ./.github/actions/prepare_build_ubuntu_latest
-  - name: Prepare MacOS
-    if: ${{ inputs.variant == 'macos' }}
-    uses: ./.github/actions/prepare_build_macos
-  - name: Prepare Windows
-    if: ${{ inputs.variant == 'windows' }}
-    uses: ./.github/actions/prepare_build_windows
-  - name: Collect information
-    id: collect
+  - name: Prepare Rust (Windows)
+    if: always() && inputs.variant == 'windows'
+    uses: dtolnay/rust-toolchain@nightly
+    with:
+       targets: x86_64-pc-windows-msvc
+  - name: Prepare Rust (non-Windows)
+    if: always() && inputs.variant != 'windows'
+    uses: dtolnay/rust-toolchain@nightly
+  - name: Rust info
     shell: wrap-shell {0}
     run: |
-      echo "prepend_build_cmd=$(cat prepend_build_cmd.txt)" | tee -a $GITHUB_OUTPUT
+      echo "==== Rustc version ===="
+      rustc --version --verbose
+      echo "==== Cargo version ===="
+      cargo version --verbose
+      echo "==== Rust toolchain list ===="
+      rustup toolchain list
+
+  - name: Install Qt (Windows)
+    uses: jurplel/install-qt-action@v4
+    if: always() && inputs.variant == 'windows'
+    with:
+      cache: true
+      version: 6.6.3
+      arch: win64_msvc2019_64
+      setup-python: false
+  - name: Install Qt
+    uses: jurplel/install-qt-action@v4
+    if: always() && inputs.variant != 'windows'
+    with:
+      cache: true
+      version: 6.6.3
+      install-deps: false
+      setup-python: false
+  - name: Env for Qt
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+      echo "QMAKE=$QT_ROOT_DIR/bin/qmake" | tee -a $GITHUB_ENV
+      QT_PREFIX_PATH=$(${{ env.CONVERT_PATH_FN }} "$QT_ROOT_DIR/lib/cmake/Qt6")
+      echo "CMAKE_PREFIX_PATH=$QT_PREFIX_PATH${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
+
+  - name: Install Meson
+    if: always()
+    shell: wrap-shell {0}
+    env:
+      PIP_BREAK_SYSTEM_PACKAGES: 1
+    run: |
+      echo "find_package(Python3)" > /tmp/script.cmake
+      export CMAKE_PYTHON=$(cmake -P /tmp/script.cmake | sed -r 's/.*Found Python3: ([^ ]*) .*/\1/g')
+      echo "python: $CMAKE_PYTHON"
+      $CMAKE_PYTHON -m pip install meson
+      printf "#!/bin/sh\n$PYTHON -m mesonbuild.mesonmain \$@\n" > meson.sh
+      chmod a+x meson.sh
+      echo "meson.sh:"
+      cat meson.sh
+      echo "MESON=$(pwd)/meson.sh" | tee -a $GITHUB_ENV
+
+  - name: Install pre-built dependencies
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+        URL=https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/all_dependencies-${{ matrix.kind.platform }}.zip
+        curl -L -o all_dependencies.zip $URL
+        unzip all_dependencies.zip -d prebuilt_dependencies
+        PREFIX_PATH=$(${{ env.CONVERT_PATH_FN }} "$(pwd)/prebuilt_dependencies")
+        for d in $(find $(pwd)/prebuilt_dependencies -name "*.cmake" -o -name "*.pc" | xargs -n1 dirname | sort | uniq); do
+           PREFIX_PATH=$PREFIX_PATH${PATH_SEPARATOR}$(${{ env.CONVERT_PATH_FN }} $d)
+        done
+        INCLUDE_PATH=$(${{ env.CONVERT_PATH_FN }} "$(pwd)/prebuilt_dependencies/include")
+        LIB_PATH=$(${{ env.CONVERT_PATH_FN }} "$(pwd)/prebuilt_dependencies/lib")
+        echo "CMAKE_PREFIX_PATH=${PREFIX_PATH}${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=${PREFIX_PATH}${PATH_SEPARATOR}${PKG_CONFIG_PATH}" | tee -a $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${LIB_PATH}" | tee -a $GITHUB_ENV
+        echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${LIB_PATH}" | tee -a $GITHUB_ENV
+        echo "$(pwd)/prebuilt_dependencies/bin" | tee -a $GITHUB_PATH
+
+  - name: Prepare linux
+    if: always() && inputs.variant == 'linux'
+    uses: ./.github/actions/prepare_build_linux
+  - name: Prepare ubuntu-latest
+    if: always() && inputs.variant == 'ubuntu_latest'
+    uses: ./.github/actions/prepare_build_ubuntu_latest
+  - name: Prepare MacOS
+    if: always() && inputs.variant == 'macos'
+    uses: ./.github/actions/prepare_build_macos
+  - name: Prepare Windows
+    if: always() && inputs.variant == 'windows'
+    uses: ./.github/actions/prepare_build_windows
+
+  - name: Run sccache-cache only on non-release runs
+    if: always() && github.event_name != 'release' && github.event_name != 'workflow_dispatch'
+    uses: mozilla-actions/sccache-action@v0.0.5
+  - name: Set Rust caching env vars only on non-release runs
+    shell: wrap-shell {0}
+    if: always() && github.event_name != 'release' && github.event_name != 'workflow_dispatch'
+    run: |
+      echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+      echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV

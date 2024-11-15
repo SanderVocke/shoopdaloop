@@ -1,41 +1,29 @@
 name: Python Tests
 description: Unit tests for Python extensions
 
-inputs:
-  variant_name:
-    required: true
-    type: string
-  run_cmd_prefix:
-    type: string
-    description: "Command-line prefix to use when running the test runner"
-  root_path:
-    type: string
-    required: true
-  pytest_command:
-    type: string
-    default: "python3 -m pytest"
-
 runs:
   using: "composite"
   steps:
   - name: prepare
+    if: always()
     shell: wrap-shell {0}
     run: |
       mkdir -p reports
-      echo "results_xml=reports/pytest_${{ inputs.variant_name }}_results.xml" | tee -a $GITHUB_ENV
+      echo "RESULTS_XML=reports/pytest_results.xml" | tee -a $GITHUB_ENV
 
-  - name: pytest (${{ inputs.variant_name }})
+  - name: pytest
+    if: always()
     shell: wrap-shell {0}
     run: |
-      ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0 ${{ inputs.run_cmd_prefix }} ${{ inputs.pytest_command }} ${{ inputs.root_path }} --junit-xml=${{ env.results_xml }}
-      echo "Python test results file: $(ls -la ${{ env.results_xml }})"
-  
+      ${{ env.RUN_CMD_PREFIX }} ${{ env.COMMAND_TEST_PYTHON }} --junit-xml=${{ env.RESULTS_XML }}
+      echo "Python test results file: $(ls -la ${{ env.RESULTS_XML }})"
+
   - name: Publish Python Test Report
-    if: ${{ !env.ACT && (success() || failure()) }}
+    if: always()
     uses: mikepenz/action-junit-report@v3
     with:
-      report_paths: ${{ env.results_xml }}
+      report_paths: ${{ env.RESULTS_XML }}
       include_passed: false
-      check_name: 'python test (${{ inputs.variant_name }})'
+      check_name: 'python test'
       annotate_only: true
 

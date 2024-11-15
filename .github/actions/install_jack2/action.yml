@@ -7,6 +7,7 @@ runs:
   - name: Install JACK2
     id: jack
     shell: wrap-shell {0}
+    if: always()
     run: |
       # Skip if already done (local act builds)
       if [ -f _jack2_installed ]; then

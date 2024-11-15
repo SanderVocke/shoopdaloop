@@ -1,0 +1,10 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. ${SCRIPT_DIR}/env.sh
+
+if [ -n "$SHOOPDALOOP_APPIMAGE_EXECUTE" ]; then
+    ${SCRIPT_DIR}/${SHOOPDALOOP_APPIMAGE_EXECUTE} $@
+else
+    ${SCRIPT_DIR}/shoopdaloop_bin $@
+fi

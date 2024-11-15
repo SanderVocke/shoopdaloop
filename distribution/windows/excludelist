@@ -1,0 +1,7 @@
+*/Qt6*.dll
+*/kernel32.dll
+*/ntdll.dll
+*/kernelbase.dll
+*/python*.dll
+*/ucrtbase.dll
+*

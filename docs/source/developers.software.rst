@@ -10,7 +10,7 @@ Architecture
     :caption: Overall software stack
 
     component backend [
-        libshoopdaloop (C++ back-end)
+        libshoopdaloop_backend (C++ back-end)
     ]
     component frontend [
         shoopdaloop (QML front-end)
@@ -19,7 +19,7 @@ Architecture
         Front-end Extensions (Python + PySide6)
     ]
     interface interface [
-        libshoopdaloop C API
+        libshoopdaloop_backend C API
     ]
     component scripting [
         LUA scripts
@@ -32,7 +32,7 @@ Architecture
 
 The split between front-end and back-end is not entirely pure, as different parts of the functionality are implemented in the layer where it is most convenient.
 
-The **libshoopdaloop backend** handles:
+The **libshoopdaloop_backend backend** handles:
 
 * All real-time audio + MIDI processing
 * Interconnections of ports, loop channels and FX

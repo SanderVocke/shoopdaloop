@@ -9,15 +9,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-  - name: Delocate
-    id: delocate
-    shell: wrap-shell {0}
+  - name: Dummy
+    shell: bash
     run: |
-      python3.9 -m pip install delocate
-      delocate-listdeps --all ${{ inputs.wheel }}
-  - name: Passthrough
-    id: passthrough
-    shell: wrap-shell {0}
-    run: |
-      mkdir -p final_wheel
-      cp dist/*.whl final_wheel/
+      echo "Dummy step"

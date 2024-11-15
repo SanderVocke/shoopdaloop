@@ -1,0 +1,28 @@
+# Change absolute dependency paths to RPATHs
+
+inputs:
+  path:
+    description: "path to search in"
+  find_cmd:
+    description: "command to find files to fix"
+  match:
+    description: "paths matching this will be made relocatable"
+
+runs:
+  using: "composite"
+  steps:
+
+  - shell: wrap-shell {0}
+    run: |
+      cd ${{ inputs.path }}
+      for f in $(${{ inputs.find_cmd }}); do
+        echo "Post-processing $f to make relocatable..."
+        newid="@rpath/$(basename $f)"
+        echo "  id: $f -> $newid"
+        install_name_tool -id $newid $f
+        for dep in $(otool -L $f | tail -n +1 | awk '{{print $1}}' | grep "${{ inputs.match }}" || true); do
+            newdep="@rpath/$(basename $dep)"
+            echo "  dependency: $dep -> $newdep"
+            install_name_tool -change $dep $newdep $f
+        done
+      done

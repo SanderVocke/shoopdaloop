@@ -3,63 +3,44 @@
 inputs:
   package:
     description: "package file / directory"
-  python:
-    description: "python command to use"
   coverage:
     description: "Whether to gather code coverage"
   sudo:
     description: "whether sudo is needed to install software"
     default: 'false'
 
-outputs:
-  shoopdaloop:
-    description: "command to run ShoopDaLoop"
-    value: ${{ steps.get_cmd.outputs.cmd }}
-  install_dir:
-    description: "location where ShoopDaLoop lives"
-    value: ${{ steps.get_cmd.outputs.install_dir }}
-  pytest_dir:
-    description: "directory to run pytest, if any"
-    value: ${{ steps.get_cmd.outputs.pytest_dir }}
-  test_runner:
-    description: "path to back-end testrunner, if any"
-    value: ${{ steps.get_cmd.outputs.test_runner }}
-  python:
-    description: "updated python command to use"
-    value: ${{ steps.get_cmd.outputs.python }}
-
 runs:
   using: "composite"
-  steps:  
+  steps:
 
   - name: Determine package kind
+    if: always()
     shell: wrap-shell {0}
     id: get_type
     run: |
-       if [ ! -f ${{ inputs.package }} ]; then
-          foldername=${{ inputs.package }}
-          lastpart="${filename##*.}"
-          if [[ "$lastpart" == "app" ]]; then
-              type="appbundle"
-          else
-              type="pyinstaller"
-          fi
+       filename=${{ inputs.package }}
+       if [[ $filename == *linux*.portable.tar.gz ]]; then
+           type="portable-linux"
+       elif [[ $filename == *macos*.portable.tar.gz ]]; then
+           type="portable-macos"
+       elif [[ $filename == *windows*.portable.tar.gz ]]; then
+           type="portable-windows"
+       elif [[ $filename == *.test_binaries.tar.gz ]]; then
+           type="test-binaries"
        else
-          filename=${{ inputs.package }}
-          type="${filename##*.}"
-          if [[ "$type" == "gz" ]]; then
-              type="pacman"
-          fi
+         type="${filename##*.}"
        fi
        echo "type=$type" | tee -a $GITHUB_OUTPUT
 
   - name: Sudo command
+    if: always()
     shell: wrap-shell {0}
     run: |
        echo "maybe_sudo=${{ (inputs.sudo == 'true') && 'sudo' || '' }}" | tee -a $GITHUB_ENV
-  
+
+  # InnoSetup (TODO include .bat file)
   - name: Install InnoSetup installer
-    if: ${{ steps.get_type.outputs.type == 'exe' }}
+    if: always() && steps.get_type.outputs.type == 'exe'
     shell: wrap-shell {0}
     run: |
       WINDOWS_SETUP_PATH=$(cygpath -w $(realpath ${{ inputs.package }}))
@@ -72,117 +53,87 @@ runs:
       echo "Installed at: $SHOOPDALOOP_DIR"
       echo "cmd=\\\"$SHOOPDALOOP_EXE\\\"" | tee -a $GITHUB_ENV
       echo "install_dir=\\\"$SHOOPDALOOP_DIR\\\"" | tee -a $GITHUB_ENV
-      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
 
-  # Python wheel
-  - name: Coverage on
-    if: ${{ inputs.coverage }}
-    shell: wrap-shell {0}
-    run: echo "coverage_part=-m coverage run --source=shoopdaloop" | tee -a $GITHUB_ENV
-  - name: Coverage off
-    if: ${{ ! inputs.coverage }}
-    shell: wrap-shell {0}
-    run: echo "coverage_part=" | tee -a $GITHUB_ENV
-  - name: Install wheel
-    if: ${{ steps.get_type.outputs.type == 'whl' }}
+  # Linux portable folder
+  - name: Setup Linux AppDir portable folder
+    if: always() && steps.get_type.outputs.type == 'portable-linux'
     shell: wrap-shell {0}
     run: |
-      ${{ inputs.python }} -m venv test_venv
-      if [[ "${{ runner.os }}" == "Windows" ]]; then
-        export VENV_PYTHON=./test_venv/Scripts/python.exe
-      else
-        export VENV_PYTHON=./test_venv/bin/python
-      fi
-      export VENV_PIP="${VENV_PYTHON} -m pip"
-      $VENV_PIP install --upgrade pip pytest coverage
-      # Bug: this should work automatically
-      if [[ "${{ runner.os }}" == "Windows" ]]; then
-        $VENV_PIP install pywin32
-      fi
-      $VENV_PIP install --force-reinstall ${{ inputs.package }}
-      export SHOOPDALOOP="${VENV_PYTHON} ${{ env.coverage_part }} -m shoopdaloop"
-      $VENV_PYTHON -m shoopdaloop --info
-      export INSTALLDIR="$($SHOOPDALOOP --info | grep "Installed" | sed -r 's/Installed @ //g' ${{ matrix.kind.pathconvert }})"
-      echo "cmd=$SHOOPDALOOP" | tee -a $GITHUB_ENV
-      echo "install_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
-      echo "pytest_dir=$INSTALLDIR" | tee -a $GITHUB_ENV
-      echo "test_runner=$INSTALLDIR/test_runner" | tee -a $GITHUB_ENV
-      echo "python=$VENV_PYTHON" | tee -a $GITHUB_ENV
+      mkdir -p portable
+      cd portable
+      tar --strip-components=1 -xzf ${{ inputs.package }}
+      cd ..
+      PORTABLE=$(pwd)/portable
+      echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
+      echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
 
-  # Pacman
-  - name: Install Pacman
-    if: ${{ steps.get_type.outputs.type == 'pacman' }}
+  # Windows portable folder
+  - name: Setup Windows portable folder
+    if: always() && steps.get_type.outputs.type == 'portable-windows'
     shell: wrap-shell {0}
     run: |
-      ${{ env.maybe_sudo }} pacman -Syy --noconfirm
-      ${{ env.maybe_sudo }} pacman -Uv --noconfirm ${{ inputs.package }}
-      ${{ env.maybe_sudo }} pacman -Q shoopdaloop
-      ${{ env.maybe_sudo }} pacman -Ql shoopdaloop
-      echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
-      echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
-  
-  # Debian
-  - name: Install deb
-    if: ${{ steps.get_type.outputs.type == 'deb' }}
-    shell: wrap-shell {0}
-    run: |
-      DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical ${{ env.maybe_sudo }} dpkg --debug=10 -i ${{ inputs.package }}
-      ${{ env.maybe_sudo }} dpkg -l shoopdaloop
-      ${{ env.maybe_sudo }} dpkg-query -L shoopdaloop
-      echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
-      echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
-  
-  # RPM
-  - name: Install rpm
-    if: ${{ steps.get_type.outputs.type == 'rpm' }}
-    shell: wrap-shell {0}
-    run: |
-      ${{ env.maybe_sudo }} dnf -y install ${{ inputs.package }}
-      ${{ env.maybe_sudo }} dnf list installed shoopdaloop
-      echo "cmd=shoopdaloop" | tee -a $GITHUB_ENV
-      echo "install_dir=/opt/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
+      mkdir -p portable
+      cd portable
+      tar --strip-components=1 -xzf ${{ inputs.package }}
+      cd ..
+      PORTABLE=$(pwd)/portable
+      echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
+      echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop_launcher.exe" | tee -a $GITHUB_ENV
 
-  # PyInstaller portable folder
-  - name: Install PyIntaller portable folder (just determine contents)
-    if: ${{ steps.get_type.outputs.type == 'pyinstaller' }}
+  # MacOS portable folder
+  - name: Setup MacOS app bundle folder
+    if: always() && steps.get_type.outputs.type == 'portable-macos'
     shell: wrap-shell {0}
     run: |
-      chmod a+x ${{ inputs.package }}/shoopdaloop
-      echo "cmd=${{ inputs.package }}/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "install_dir=${{ inputs.package }}" | tee -a $GITHUB_ENV
-      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
+      mkdir -p portable
+      cd portable
+      tar --strip-components=1 -xzf ${{ inputs.package }}
+      cd ..
+      PORTABLE=$(pwd)/portable
+      echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
+      echo "COMMAND_SHOOPDALOOP=$PORTABLE/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
 
-  # MacOS App Bundle folder
-  - name: Install MacOS App Bundle folder
-    if: ${{ steps.get_type.outputs.type == 'appbundle' }}
+  # Linux AppImage
+  - name: Setup AppImage
+    if: always() && steps.get_type.outputs.type == 'AppImage'
     shell: wrap-shell {0}
     run: |
-      chmod a+x ${{ inputs.package }}/Contents/MacOS/shoopdaloop
-      echo "cmd=${{ inputs.package }}/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
-      echo "install_dir=${{ inputs.package }}/Contents/MacOS" | tee -a $GITHUB_ENV
-      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
-  
+      chmod a+x ${{ inputs.package }}
+      echo "COMMAND_SHOOPDALOOP=${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_PYTHON=SHOOPDALOOP_APPIMAGE_EXECUTE=python_tests ${{ inputs.package }} --appimage-extract-and-run" | tee -a $GITHUB_ENV
+
   # MacOS .dmg installer
   - name: Install MacOS .dmg
-    if: ${{ steps.get_type.outputs.type == 'dmg' }}
+    if: always() && steps.get_type.outputs.type == 'dmg'
     shell: wrap-shell {0}
     run: |
       hdiutil attach ${{ inputs.package }}
       echo "cmd=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
       echo "install_dir=/Volumes/ShoopDaLoop/shoopdaloop.app/Contents/MacOS" | tee -a $GITHUB_ENV
-      echo "python=${{ inputs.python }}" | tee -a $GITHUB_ENV
 
-  # Final step: gather env to outputs
-  - name: Get command
-    id: get_cmd
+  # Test binaries
+  - name: Install test binaries
+    if: always() && steps.get_type.outputs.type == 'test-binaries'
     shell: wrap-shell {0}
     run: |
-      echo "cmd=${{ env.cmd }}" | tee -a $GITHUB_OUTPUT
-      echo "install_dir=${{ env.install_dir }}" | tee -a $GITHUB_OUTPUT
-      echo "pytest_dir=${{ env.pytest_dir }}" | tee -a $GITHUB_OUTPUT
-      echo "test_runner=${{ env.test_runner }}" | tee -a $GITHUB_OUTPUT
-      echo "python=${{ env.python }}" | tee -a $GITHUB_OUTPUT
-      
+      if [ -z $PORTABLE_FOLDER_INSTALL ]; then
+        echo "There is no portable installation to install test binaries into."
+        exit 1
+      fi
+      cd $PORTABLE_FOLDER_INSTALL
+      tar --strip-components=1 -xzf ${{ inputs.package }}
+      if [[ "$RUNNER_OS" == "Windows" ]]; then
+        QT_LIB_DIR=$(find $PORTABLE_FOLDER_INSTALL -wholename "*/PySide6")
+        ADD_LIB_PATH="$PORTABLE_FOLDER_INSTALL:$QT_LIB_DIR"
+        CMD_PREFIX="PATH=\$PATH:$ADD_LIB_PATH"
+      elif [[ "$RUNNER_OS" == "macOS" ]]; then
+        QT_LIB_DIR=$(find $PORTABLE_FOLDER_INSTALL -wholename "*/PySide6/Qt/lib")
+        ADD_LIB_PATH="$PORTABLE_FOLDER_INSTALL/lib:$QT_LIB_DIR"
+        CMD_PREFIX="DYLD_LIBRARY_PATH=\$DYLD_LIBRARY_PATH:$ADD_LIB_PATH:$PORTABLE_FOLDER_INSTALL DYLD_FRAMEWORK_PATH=\$DYLD_FRAMEWORK_PATH:$QT_LIB_DIR"
+      else # Linux
+        QT_LIB_DIR=$(find $PORTABLE_FOLDER_INSTALL -wholename "*/PySide6/Qt/lib")
+        ADD_LIB_PATH="$PORTABLE_FOLDER_INSTALL/lib:$QT_LIB_DIR"
+        CMD_PREFIX="LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$ADD_LIB_PATH"
+      fi
+      echo "COMMAND_TEST_BACKEND=$CMD_PREFIX $PORTABLE_FOLDER_INSTALL/test_runner" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_RUST=$CMD_PREFIX $PORTABLE_FOLDER_INSTALL/cargo-nextest nextest run --archive-file $PORTABLE_FOLDER_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV

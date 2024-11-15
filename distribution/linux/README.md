@@ -1,1 +1,0 @@
-This directory contains supplemental files to be added in every Linux package build.
