@@ -7,4 +7,4 @@ which means that if so desired, you can make your own keyboard control modificat
 The help text of the default **keyboard.lua** is shown here for reference. Note that this help text can be opened any time from the Lua script settings menu as well.
 
 .. shoop_lua_docstring::
-   src/python/shoopdaloop/lib/lua/builtins/keyboard.lua
+   src/lua/builtins/keyboard.lua
