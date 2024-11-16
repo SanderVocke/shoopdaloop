@@ -44,7 +44,7 @@ module: shoop_coords
 Provides helper functions to manipulate loop and track coordinates. Implemented in `shoop_coords.lua`.
 
 .. shoop_function_docstrings::
-   src/python/shoopdaloop/lib/lua/lib/shoop_coords.lua
+   src/lua/lib/shoop_coords.lua
 
 module: shoop_helpers
 """""""""""""""""""""
@@ -52,7 +52,7 @@ module: shoop_helpers
 Provides helper functions for advanced control. Implemented in `shoop_helpers.lua`.
 
 .. shoop_function_docstrings::
-   src/python/shoopdaloop/lib/lua/lib/shoop_helpers.lua
+   src/lua/lib/shoop_helpers.lua
 
 module: shoop_format
 """"""""""""""""""""
@@ -60,4 +60,4 @@ module: shoop_format
 Provides helper functions for formatting strings. Implemented in `shoop_format.lua`.
 
 .. shoop_function_docstrings::
-   src/python/shoopdaloop/lib/lua/lib/shoop_format.lua
+   src/lua/lib/shoop_format.lua
