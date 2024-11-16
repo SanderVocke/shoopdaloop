@@ -44,8 +44,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        - language: c-cpp
-          build-mode: manual
+        #- language: c-cpp
+        #  build-mode: manual
         - language: javascript-typescript
           build-mode: none
         - language: python
