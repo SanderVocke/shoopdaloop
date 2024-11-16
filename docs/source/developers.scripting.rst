@@ -24,7 +24,7 @@ type: midi_control_port
 """""""""""""""""""""""
 
 .. shoop_function_docstrings::
-   src/shoopdaloop/lib/q_objects/MidiControlPort.py
+   src/python/shoopdaloop/lib/q_objects/MidiControlPort.py
 
 module: shoop_control
 """""""""""""""""""""
