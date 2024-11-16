@@ -32,10 +32,10 @@ module: shoop_control
 Provides basic interfacing with **ShoopDaLoop**. Note that these functions are provided as bindings into the application - they are not written in Lua.
 
 .. shoop_function_docstrings::
-   src/shoopdaloop/lib/q_objects/ControlHandler.py
+   src/python/shoopdaloop/lib/q_objects/ControlHandler.py
 
 .. shoop_function_docstrings::
-   src/shoopdaloop/lib/q_objects/ControlInterface.py
+   src/python/shoopdaloop/lib/q_objects/ControlInterface.py
 
 
 module: shoop_coords
@@ -44,7 +44,7 @@ module: shoop_coords
 Provides helper functions to manipulate loop and track coordinates. Implemented in `shoop_coords.lua`.
 
 .. shoop_function_docstrings::
-   src/shoopdaloop/lib/lua/lib/shoop_coords.lua
+   src/python/shoopdaloop/lib/lua/lib/shoop_coords.lua
 
 module: shoop_helpers
 """""""""""""""""""""
@@ -52,7 +52,7 @@ module: shoop_helpers
 Provides helper functions for advanced control. Implemented in `shoop_helpers.lua`.
 
 .. shoop_function_docstrings::
-   src/shoopdaloop/lib/lua/lib/shoop_helpers.lua
+   src/python/shoopdaloop/lib/lua/lib/shoop_helpers.lua
 
 module: shoop_format
 """"""""""""""""""""
@@ -60,4 +60,4 @@ module: shoop_format
 Provides helper functions for formatting strings. Implemented in `shoop_format.lua`.
 
 .. shoop_function_docstrings::
-   src/shoopdaloop/lib/lua/lib/shoop_format.lua
+   src/python/shoopdaloop/lib/lua/lib/shoop_format.lua
