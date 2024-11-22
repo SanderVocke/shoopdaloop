@@ -1084,7 +1084,7 @@ class BackendSession:
 
     def set_audio_driver(self, driver: Type['AudioDriver']):
         if self.active():
-            self._obj.set_audio_driver(driver)
+            self._obj.set_audio_driver(driver._obj)
 
     def segfault_on_process_thread(self):
         if self.active():
