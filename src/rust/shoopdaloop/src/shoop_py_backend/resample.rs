@@ -30,3 +30,8 @@ impl MultichannelAudio {
         }
     }
 }
+
+pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
+    m.add_class::<MultichannelAudio>()?;
+    Ok(())
+}

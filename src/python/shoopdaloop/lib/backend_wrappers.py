@@ -21,7 +21,6 @@ from shoopdaloop.lib.init_dynlibs import init_dynlibs
 init_dynlibs()
 
 all_active_backends = set()
-all_active_drivers = set()
 
 # On Windows, shoopdaloop.dll depends on shared libraries in the same folder.
 # this folder needs to be added to the PATH before loading
@@ -1085,7 +1084,7 @@ class BackendSession:
 
     def set_audio_driver(self, driver: Type['AudioDriver']):
         if self.active():
-            result = bindings.set_audio_driver(self._c_handle, driver._c_handle)
+            result = bindings.set_audio_driver(self._c_handle, driver.get_backend_obj())
             if result == BackendResult.Failure.value:
                 raise Exception("Unable to set driver for back-end session")
 
@@ -1110,24 +1109,23 @@ class BackendSession:
 
 class AudioDriver:
     def create(driver_type : Type[AudioDriverType]):
-        global all_active_drivers
-        _ptr = bindings.create_audio_driver(driver_type.value)
-        b = AudioDriver(_ptr)
-        all_active_drivers.add(b)
+        _obj = shoop_py_backend.AudioDriver(driver_type.value)
+        b = AudioDriver(_obj)
         return b
 
     def get_backend_obj(self):
-        return self._c_handle
+        addr = self._obj.unsafe_backend_ptr()
+        return cast(c_void_p(addr), POINTER(bindings.shoop_audio_driver_t))
 
-    def __init__(self, c_handle : 'POINTER(bindings.shoop_audio_driver_t)'):
-        self._c_handle = c_handle
+    def __init__(self, obj):
+        self._obj = obj
         self._active = False
         self._dsp_load = 0.0
         self._xruns = 0
         self._client_name = ''
 
     def get_state(self):
-        state = bindings.get_audio_driver_state(self._c_handle)
+        state = bindings.get_audio_driver_state(self.get_backend_obj())
         rval = AudioDriverState(deref_ptr(state))
         if state:
             self._active = rval.active
@@ -1139,105 +1137,91 @@ class AudioDriver:
 
     def open_decoupled_midi_port(self, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
         if self.active():
-            handle = bindings.open_decoupled_midi_port(self._c_handle, name_hint.encode('ascii'), direction)
+            handle = bindings.open_decoupled_midi_port(self.get_backend_obj(), name_hint.encode('ascii'), direction)
             port = BackendDecoupledMidiPort(handle, self)
             return port
         raise Exception("Trying to open a MIDI port before audio driver is started.")
 
     def dummy_enter_controlled_mode(self):
         if self.active():
-            bindings.dummy_audio_enter_controlled_mode(self._c_handle)
+            bindings.dummy_audio_enter_controlled_mode(self.get_backend_obj())
 
     def dummy_enter_automatic_mode(self):
         if self.active():
-            bindings.dummy_audio_enter_automatic_mode(self._c_handle)
+            bindings.dummy_audio_enter_automatic_mode(self.get_backend_obj())
 
     def dummy_is_controlled(self):
         if self.active():
-            return bool(bindings.dummy_audio_is_in_controlled_mode(self._c_handle))
+            return bool(bindings.dummy_audio_is_in_controlled_mode(self.get_backend_obj()))
         return False
 
     def dummy_request_controlled_frames(self, n):
         if self.active():
-            bindings.dummy_audio_request_controlled_frames(self._c_handle, n)
+            bindings.dummy_audio_request_controlled_frames(self.get_backend_obj(), n)
 
     def dummy_n_requested_frames(self):
         if self.active():
-            return int(bindings.dummy_audio_n_requested_frames(self._c_handle))
+            return int(bindings.dummy_audio_n_requested_frames(self.get_backend_obj()))
         return 0
 
     def dummy_add_external_mock_port(self, name, direction, data_type):
         if self.active():
-            bindings.dummy_driver_add_external_mock_port(self._c_handle, name.encode('ascii'), direction, data_type)
+            bindings.dummy_driver_add_external_mock_port(self.get_backend_obj(), name.encode('ascii'), direction, data_type)
 
     def dummy_remove_external_mock_port(self, name):
         if self.active():
-            bindings.dummy_driver_remove_external_mock_port(self._c_handle, name.encode('ascii'))
+            bindings.dummy_driver_remove_external_mock_port(self.get_backend_obj(), name.encode('ascii'))
 
     def dummy_remove_all_external_mock_ports(self):
         if self.active():
-            bindings.dummy_driver_remove_all_external_mock_ports(self._c_handle)
+            bindings.dummy_driver_remove_all_external_mock_ports(self.get_backend_obj())
 
     def get_sample_rate(self):
         if self.active():
-            return int(bindings.get_sample_rate(self._c_handle))
+            return int(bindings.get_sample_rate(self.get_backend_obj()))
         return 1
 
     def get_buffer_size(self):
         if self.active():
-            return int(bindings.get_buffer_size(self._c_handle))
+            return int(bindings.get_buffer_size(self.get_backend_obj()))
         return 1
 
     def start_dummy(self, settings):
-        bindings.start_dummy_driver(self._c_handle, settings.to_backend())
+        bindings.start_dummy_driver(self.get_backend_obj(), settings.to_backend())
 
     def start_jack(self, settings):
-        bindings.start_jack_driver(self._c_handle, settings.to_backend())
+        bindings.start_jack_driver(self.get_backend_obj(), settings.to_backend())
 
     def active(self):
         self.get_state()
         return self._active
 
     def wait_process(self):
-        bindings.wait_process(self._c_handle)
+        bindings.wait_process(self.get_backend_obj())
 
     def dummy_run_requested_frames(self):
-        bindings.dummy_audio_run_requested_frames(self._c_handle)
+        bindings.dummy_audio_run_requested_frames(self.get_backend_obj())
 
     def find_external_ports(self, maybe_name_regex, port_direction, data_type):
-        result = bindings.find_external_ports(self._c_handle, maybe_name_regex, port_direction, data_type)
+        result = bindings.find_external_ports(self.get_backend_obj(), maybe_name_regex, port_direction, data_type)
         rval = []
         for i in range(result[0].n_ports):
             rval.append(ExternalPortDescriptor(result[0].ports[i]))
         bindings.destroy_external_port_descriptors(result)
         return rval
 
-    def destroy(self):
-        global all_active_drivers
-        if self.active():
-            try:
-                all_active_drivers.remove(self)
-                if self._c_handle:
-                    bindings.destroy_audio_driver(self._c_handle)
-            except Exception:
-                pass
-
 def terminate_all_backends():
     global all_active_backends
     bs = copy.copy(all_active_backends)
     for b in bs:
         b.destroy()
-    global all_active_drivers
-    ds = copy.copy(all_active_drivers)
-    for d in ds:
-        d.destroy()
 
 def audio_driver_type_supported(t : Type[AudioDriverType]):
     return bool(bindings.driver_type_supported(t.value))
 
 def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendAudioPort':
     if backend_session.active() and audio_driver.active():
-        handle = bindings.open_driver_audio_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), direction, min_n_ringbuffer_samples)
+        handle = bindings.open_driver_audio_port(backend_session._c_handle, audio_driver.get_backend_obj(), name_hint.encode('ascii'), direction, min_n_ringbuffer_samples)
         port = BackendAudioPort(handle,
                                 bindings.get_audio_port_input_connectability(handle),
                                 bindings.get_audio_port_output_connectability(handle),
@@ -1247,7 +1231,7 @@ def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direc
 
 def open_driver_midi_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendMidiPort':
     if backend_session.active() and audio_driver.active():
-        handle = bindings.open_driver_midi_port(backend_session._c_handle, audio_driver._c_handle, name_hint.encode('ascii'), direction, min_n_ringbuffer_samples)
+        handle = bindings.open_driver_midi_port(backend_session._c_handle, audio_driver.get_backend_obj(), name_hint.encode('ascii'), direction, min_n_ringbuffer_samples)
         port = BackendMidiPort(handle,
                                bindings.get_midi_port_input_connectability(handle),
                                bindings.get_midi_port_output_connectability(handle),

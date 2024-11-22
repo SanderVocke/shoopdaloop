@@ -20,6 +20,17 @@ macro_rules! integer_enum {
             }
         }
 
+        impl std::convert::TryFrom<u32> for $name {
+            type Error = anyhow::Error;
+
+            fn try_from(v: u32) -> Result<Self, Self::Error> {
+                match v {
+                    $(x if x == $name::$vname as u32 => Ok($name::$vname),)*
+                    _ => Err(anyhow::anyhow!("Enum value out of range")),
+                }
+            }
+        }
+
         impl PartialEq for $name {
             fn eq(&self, other : &$name) -> bool { *self as i32 == *other as i32 }
         }

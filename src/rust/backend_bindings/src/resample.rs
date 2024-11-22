@@ -1,13 +1,10 @@
 use anyhow;
 use crate::ffi;
-use std::sync::{Arc, Mutex};
-use static_assertions::assert_impl_all;
+use std::sync::Mutex;
 
 pub struct MultichannelAudio {
     obj : Mutex<*mut ffi::shoop_multichannel_audio_t>,
 }
-
-assert_impl_all!(MultichannelAudio : Send, Sync);
 
 unsafe impl Send for MultichannelAudio {}
 unsafe impl Sync for MultichannelAudio {}

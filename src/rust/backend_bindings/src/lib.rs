@@ -13,3 +13,8 @@ pub use port::*;
 mod resample;
 #[cfg(not(feature = "prebuild"))]
 pub use resample::*;
+
+#[cfg(not(feature = "prebuild"))]
+mod audio_driver;
+#[cfg(not(feature = "prebuild"))]
+pub use audio_driver::*;

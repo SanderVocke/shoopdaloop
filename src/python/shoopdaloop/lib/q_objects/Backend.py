@@ -253,7 +253,6 @@ class Backend(ShoopQQuickItem):
                 time.sleep(0.005)
         if self._initialized:
             self._backend_session_obj.destroy()
-            self._backend_driver_obj.destroy()
         self._initialized = False
         self._closed = True
 
