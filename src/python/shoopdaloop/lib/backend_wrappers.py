@@ -1084,9 +1084,7 @@ class BackendSession:
 
     def set_audio_driver(self, driver: Type['AudioDriver']):
         if self.active():
-            result = bindings.set_audio_driver(self.get_backend_obj(), driver.get_backend_obj())
-            if result == BackendResult.Failure.value:
-                raise Exception("Unable to set driver for back-end session")
+            self._obj.set_audio_driver(driver)
 
     def segfault_on_process_thread(self):
         if self.active():

@@ -1,12 +1,13 @@
-// See audio_driver.rs from backend_bindings
+// See backend_session.rs from backend_bindings
 
 use pyo3::prelude::*;
 // use pyo3::exceptions::*;
 use backend_bindings;
+use crate::shoop_py_backend::audio_driver::AudioDriver;
 
 #[pyclass]
 pub struct BackendSession {
-    obj : backend_bindings::BackendSession,
+    pub obj : backend_bindings::BackendSession,
 }
 
 #[pymethods]
@@ -18,6 +19,14 @@ impl BackendSession {
 
     fn unsafe_backend_ptr (&self) -> usize {
         unsafe { self.obj.unsafe_backend_ptr() as usize }
+    }
+
+    fn set_audio_driver(&self, driver : &AudioDriver) -> PyResult<()> {
+        if self.obj.set_audio_driver(&driver.obj).is_ok() {
+            Ok(())
+        } else {
+            Err(PyErr::new::<pyo3::exceptions::PyException, _>("set_audio_driver() failed"))
+        }
     }
 }
 

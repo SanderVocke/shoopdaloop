@@ -37,6 +37,10 @@ impl AudioDriver {
         let guard = self.obj.lock().unwrap();
         *guard
     }
+    
+    pub fn lock(&self) -> std::sync::MutexGuard<*mut ffi::shoop_audio_driver_t> {
+        self.obj.lock().unwrap()
+    }
 }
 
 impl Drop for AudioDriver {

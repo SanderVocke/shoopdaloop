@@ -6,7 +6,7 @@ use backend_bindings;
 
 #[pyclass]
 pub struct AudioDriver {
-    obj : backend_bindings::AudioDriver,
+    pub obj : backend_bindings::AudioDriver,
 }
 
 #[pymethods]
