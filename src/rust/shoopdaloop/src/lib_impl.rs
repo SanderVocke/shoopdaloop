@@ -3,6 +3,7 @@ use pyo3::types::{PyList, PyString};
 use std::env;
 use anyhow;
 use crate::shoop_app_info::ShoopAppInfo;
+use crate::shoop_py_backend::{self, create_py_module};
 
 fn shoopdaloop_main_impl<'py>(
     app_info : ShoopAppInfo
@@ -31,6 +32,11 @@ fn shoopdaloop_main_impl<'py>(
             let shoop_rust_py_module = crate::shoop_rust_py::create_py_module(py).unwrap();
             sys.getattr("modules")?.set_item("shoop_rust",
                                               shoop_rust_py_module)?;
+        }
+        {
+            let shoop_py_backend_module = crate::shoop_py_backend::create_py_module(py).unwrap();
+            sys.getattr("modules")?.set_item("shoop_py_backend",
+                                              shoop_py_backend_module)?;
         }
 
         // Call main
