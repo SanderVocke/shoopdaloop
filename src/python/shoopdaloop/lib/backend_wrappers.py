@@ -1268,22 +1268,3 @@ def resample_audio(audio, target_n_frames):
         for frame in range(target_n_frames):
             result[frame, chan] = resampled_obj.at(frame, chan)
     return result
-    
-
-    # data_in = bindings.alloc_multichannel_audio(n_channels, n_frames)
-    # if not data_in:
-    #     raise Exception('Could not allocate multichannel audio')
-    # for chan in range(n_channels):
-    #     for frame in range(n_frames):
-    #         data_in[0].data[frame*n_channels + chan] = audio[frame, chan]
-
-    # backend_result = bindings.resample_audio(data_in, target_n_frames)
-    # if not backend_result:
-    #     raise Exception('Could not resample audio')
-    # result = numpy.zeros_like(audio, shape=[target_n_frames, n_channels])
-    # for chan in range(n_channels):
-    #     for frame in range(target_n_frames):
-    #         result[frame, chan] = backend_result[0].data[n_channels*frame + chan]
-    # bindings.destroy_multichannel_audio(backend_result)
-    # bindings.destroy_multichannel_audio(data_in)
-    # return result
