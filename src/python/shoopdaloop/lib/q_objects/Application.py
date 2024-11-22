@@ -19,7 +19,6 @@ if have_nsm:
 
 from ..qml_helpers import *
 from shoop_rust import shoop_rust_init
-from ..backend_wrappers import terminate_all_backends
 
 from ..logging import *
 from shoop_app_info import shoop_version, shoop_resource_dir, shoop_qml_dir
@@ -272,7 +271,6 @@ class Application(ShoopQApplication):
             else:
                 self.logger.debug("Terminating back-ends")
                 close_all_backends()
-                terminate_all_backends()
                 QTimer.singleShot(1, lambda: self.quit())
                 self.exec()
 

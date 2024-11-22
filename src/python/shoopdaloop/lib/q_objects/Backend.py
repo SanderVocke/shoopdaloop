@@ -251,8 +251,6 @@ class Backend(ShoopQQuickItem):
             self._timer_thread.exit()
             while self._timer_thread.isRunning():
                 time.sleep(0.005)
-        if self._initialized:
-            self._backend_session_obj.destroy()
         self._initialized = False
         self._closed = True
 

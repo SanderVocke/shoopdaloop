@@ -20,8 +20,6 @@ import shoop_py_backend
 from shoopdaloop.lib.init_dynlibs import init_dynlibs
 init_dynlibs()
 
-all_active_backends = set()
-
 # On Windows, shoopdaloop.dll depends on shared libraries in the same folder.
 # this folder needs to be added to the PATH before loading
 os.environ['PATH'] = os.environ['PATH'] + os.pathsep + shoop_dynlib_dir
@@ -1022,19 +1020,21 @@ class BackendFXChain:
 
 class BackendSession:
     def create():
-        global all_active_backends
-        _ptr = bindings.create_backend_session()
-        b = BackendSession(_ptr)
-        all_active_backends.add(b)
+        _obj = shoop_py_backend.BackendSession()
+        b = BackendSession(_obj)
         return b
 
-    def __init__(self, c_handle : 'POINTER(bindings.shoop_backend_session_t)'):
-        self._c_handle = c_handle
+    def __init__(self, obj):
+        self._obj = obj
         self._active = True
+        
+    def get_backend_obj(self):
+        addr = self._obj.unsafe_backend_ptr()
+        return cast(c_void_p(addr), POINTER(bindings.shoop_backend_session_t))
 
     def get_state(self):
         if self.active():
-            state = bindings.get_backend_session_state(self._c_handle)
+            state = bindings.get_backend_session_state(self.get_backend_obj())
             rval = BackendSessionState(deref_ptr(state))
             if state:
                 bindings.destroy_backend_state_info(state)
@@ -1043,14 +1043,14 @@ class BackendSession:
 
     def create_loop(self) -> Type['BackendLoop']:
         if self.active():
-            handle = bindings.create_loop(self._c_handle)
+            handle = bindings.create_loop(self.get_backend_obj())
             rval = BackendLoop(handle, self)
             return rval
         return None
 
     def create_fx_chain(self, chain_type : Type['FXChainType'], title: str) -> Type['BackendFXChain']:
         if self.active():
-            handle = bindings.create_fx_chain(self._c_handle, chain_type.value, title.encode('ascii'))
+            handle = bindings.create_fx_chain(self.get_backend_obj(), chain_type.value, title.encode('ascii'))
             rval = BackendFXChain(handle, chain_type, self)
             return rval
         return None
@@ -1072,7 +1072,7 @@ class BackendSession:
 
     def get_profiling_report(self):
         if self.active():
-            state = bindings.get_profiling_report(self._c_handle)
+            state = bindings.get_profiling_report(self.get_backend_obj())
             rval = ProfilingReport(deref_ptr(state))
             if state:
                 bindings.destroy_profiling_report(state)
@@ -1084,28 +1084,17 @@ class BackendSession:
 
     def set_audio_driver(self, driver: Type['AudioDriver']):
         if self.active():
-            result = bindings.set_audio_driver(self._c_handle, driver.get_backend_obj())
+            result = bindings.set_audio_driver(self.get_backend_obj(), driver.get_backend_obj())
             if result == BackendResult.Failure.value:
                 raise Exception("Unable to set driver for back-end session")
 
-    def destroy(self):
-        global all_active_backends
-        if self.active():
-            try:
-                self._active = False
-                all_active_backends.remove(self)
-                if self._c_handle:
-                    bindings.destroy_backend_session(self._c_handle)
-            except Exception:
-                pass
-
     def segfault_on_process_thread(self):
         if self.active():
-            bindings.do_segfault_on_process_thread(self._c_handle)
+            bindings.do_segfault_on_process_thread(self.get_backend_obj())
 
     def abort_on_process_thread(self):
         if self.active():
-            bindings.do_abort_on_process_thread(self._c_handle)
+            bindings.do_abort_on_process_thread(self.get_backend_obj())
 
 class AudioDriver:
     def create(driver_type : Type[AudioDriverType]):
@@ -1210,18 +1199,12 @@ class AudioDriver:
         bindings.destroy_external_port_descriptors(result)
         return rval
 
-def terminate_all_backends():
-    global all_active_backends
-    bs = copy.copy(all_active_backends)
-    for b in bs:
-        b.destroy()
-
 def audio_driver_type_supported(t : Type[AudioDriverType]):
     return bool(bindings.driver_type_supported(t.value))
 
 def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendAudioPort':
     if backend_session.active() and audio_driver.active():
-        handle = bindings.open_driver_audio_port(backend_session._c_handle, audio_driver.get_backend_obj(), name_hint.encode('ascii'), direction, min_n_ringbuffer_samples)
+        handle = bindings.open_driver_audio_port(backend_session.get_backend_obj(), audio_driver.get_backend_obj(), name_hint.encode('ascii'), direction, min_n_ringbuffer_samples)
         port = BackendAudioPort(handle,
                                 bindings.get_audio_port_input_connectability(handle),
                                 bindings.get_audio_port_output_connectability(handle),
@@ -1231,7 +1214,7 @@ def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direc
 
 def open_driver_midi_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendMidiPort':
     if backend_session.active() and audio_driver.active():
-        handle = bindings.open_driver_midi_port(backend_session._c_handle, audio_driver.get_backend_obj(), name_hint.encode('ascii'), direction, min_n_ringbuffer_samples)
+        handle = bindings.open_driver_midi_port(backend_session.get_backend_obj(), audio_driver.get_backend_obj(), name_hint.encode('ascii'), direction, min_n_ringbuffer_samples)
         port = BackendMidiPort(handle,
                                bindings.get_midi_port_input_connectability(handle),
                                bindings.get_midi_port_output_connectability(handle),

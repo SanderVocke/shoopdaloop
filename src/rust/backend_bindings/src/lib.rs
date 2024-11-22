@@ -18,3 +18,8 @@ pub use resample::*;
 mod audio_driver;
 #[cfg(not(feature = "prebuild"))]
 pub use audio_driver::*;
+
+#[cfg(not(feature = "prebuild"))]
+mod backend_session;
+#[cfg(not(feature = "prebuild"))]
+pub use backend_session::*;
