@@ -5,6 +5,11 @@ mod ffi;
 mod macros;
 
 #[cfg(not(feature = "prebuild"))]
+mod audio_channel;
+#[cfg(not(feature = "prebuild"))]
+pub use audio_channel::*;
+
+#[cfg(not(feature = "prebuild"))]
 mod audio_driver;
 #[cfg(not(feature = "prebuild"))]
 pub use audio_driver::*;
@@ -20,6 +25,11 @@ mod common;
 pub use common::*;
 
 #[cfg(not(feature = "prebuild"))]
+mod midi_channel;
+#[cfg(not(feature = "prebuild"))]
+pub use midi_channel::*;
+
+#[cfg(not(feature = "prebuild"))]
 mod port;
 #[cfg(not(feature = "prebuild"))]
 pub use port::*;
@@ -28,3 +38,8 @@ pub use port::*;
 mod resample;
 #[cfg(not(feature = "prebuild"))]
 pub use resample::*;
+
+#[cfg(not(feature = "prebuild"))]
+mod shoop_loop;
+#[cfg(not(feature = "prebuild"))]
+pub use shoop_loop::*;

@@ -310,7 +310,6 @@ class LoopChannel(ShoopQQuickItem):
     def close(self):
         if self._backend_obj:
             self.__logger.debug(lambda: 'destroy')
-            self._backend_obj.destroy()
             self._backend_obj = None
     
     @ShoopSlot(result='QVariant')

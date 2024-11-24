@@ -428,28 +428,30 @@ def midi_message_dict_to_backend(msg):
     return m
 
 class BackendLoopAudioChannel:
-    def __init__(self, loop, c_handle : 'POINTER(bindings.shoopdaloop_loop_audio_channel)', backend: 'Backend'):
-        self.loop_shoop_c_handle = loop.c_handle()
-        self.shoop_c_handle = c_handle
-        self._backend = backend
+    def __init__(self, obj):
+        self._obj = obj
+    
+    def get_backend_obj(self):
+        addr = self._obj.unsafe_backend_ptr()
+        return cast(c_void_p(addr), POINTER(bindings.shoopdaloop_loop_audio_channel_t))
 
     def available(self):
-        return self.shoop_c_handle and self.loop_shoop_c_handle and self._backend and self._backend.active()
+        return self.get_backend_obj()
 
     def connect_input(self, port : 'BackendAudioPort'):
         if self.available():
-                bindings.connect_audio_input(self.shoop_c_handle, port.c_handle())
+                bindings.connect_audio_input(self.get_backend_obj(), port.c_handle())
 
     def connect_output(self, port: 'BackendAudioPort'):
         if self.available():
-                bindings.connect_audio_output(self.shoop_c_handle, port.c_handle())
+                bindings.connect_audio_output(self.get_backend_obj(), port.c_handle())
 
     def disconnect(self, port : 'BackendAudioPort'):
         if self.available():
             if port.direction() == PortDirection.Input:
-                bindings.disconnect_audio_input(self.shoop_c_handle, port.c_handle())
+                bindings.disconnect_audio_input(self.get_backend_obj(), port.c_handle())
             else:
-                bindings.disconnect_audio_output(self.shoop_c_handle, port.c_handle())
+                bindings.disconnect_audio_output(self.get_backend_obj(), port.c_handle())
 
     def load_data(self, data):
         if self.available():
@@ -458,21 +460,21 @@ class BackendLoopAudioChannel:
                 return
             for i in range(len(data)):
                 backend_data[0].data[i] = data[i]
-            bindings.load_audio_channel_data(self.shoop_c_handle, backend_data)
+            bindings.load_audio_channel_data(self.get_backend_obj(), backend_data)
             bindings.destroy_audio_channel_data(backend_data)
 
     def get_data(self) -> List[float]:
         if self.available():
             import time
             start = time.time()
-            rval = ShoopChannelAudioData(bindings.get_audio_channel_data(self.shoop_c_handle))
+            rval = ShoopChannelAudioData(bindings.get_audio_channel_data(self.get_backend_obj()))
             got = time.time()
             return rval
         return ShoopChannelAudioData()
 
     def get_state(self):
         if self.available():
-            state = bindings.get_audio_channel_state(self.shoop_c_handle)
+            state = bindings.get_audio_channel_state(self.get_backend_obj())
             rval = LoopAudioChannelState(deref_ptr(state))
             if state:
                 bindings.destroy_audio_channel_state_info(state)
@@ -481,50 +483,42 @@ class BackendLoopAudioChannel:
 
     def set_gain(self, gain):
         if self.available():
-            bindings.set_audio_channel_gain(self.shoop_c_handle, gain)
+            bindings.set_audio_channel_gain(self.get_backend_obj(), gain)
 
     def set_mode(self, mode : Type['ChannelMode']):
         if self.available():
-            bindings.set_audio_channel_mode(self.shoop_c_handle, mode.value)
+            bindings.set_audio_channel_mode(self.get_backend_obj(), mode.value)
 
     def set_start_offset(self, offset):
         if self.available():
-            bindings.set_audio_channel_start_offset(self.shoop_c_handle, offset)
+            bindings.set_audio_channel_start_offset(self.get_backend_obj(), offset)
 
     def set_n_preplay_samples(self, n):
         if self.available():
-            bindings.set_audio_channel_n_preplay_samples(self.shoop_c_handle, n)
-
-    def destroy(self):
-        if self.available():
-            bindings.destroy_audio_channel(self.shoop_c_handle)
-            self.shoop_c_handle = None
+            bindings.set_audio_channel_n_preplay_samples(self.get_backend_obj(), n)
 
     def clear_data_dirty(self):
         if self.available():
-            bindings.clear_audio_channel_data_dirty(self.shoop_c_handle)
+            bindings.clear_audio_channel_data_dirty(self.get_backend_obj())
 
     def clear(self, length=0):
         if self.available():
-            bindings.clear_audio_channel(self.shoop_c_handle, length)
-
-    def __del__(self):
-        if self.available():
-            self.destroy()
+            bindings.clear_audio_channel(self.get_backend_obj(), length)
 
 class BackendLoopMidiChannel:
-    def __init__(self, loop : 'BackendLoop', c_handle : 'POINTER(bindings.shoopdaloop_loop_midi_channel_t)',
-                 backend: 'BackendSession'):
-        self.loop_shoop_c_handle = loop.c_handle()
-        self.shoop_c_handle = c_handle
-        self._backend = backend
+    def __init__(self, obj):
+        self._obj = obj
+    
+    def get_backend_obj(self):
+        addr = self._obj.unsafe_backend_ptr()
+        return cast(c_void_p(addr), POINTER(bindings.shoopdaloop_loop_midi_channel_t))
 
     def available(self):
-        return self.shoop_c_handle and self.loop_shoop_c_handle and self._backend and self._backend.active()
+        return self.get_backend_obj()
 
     def get_all_midi_data(self):
         if self.available():
-            r = bindings.get_midi_channel_data(self.shoop_c_handle)
+            r = bindings.get_midi_channel_data(self.get_backend_obj())
             if r:
                 msgs = [backend_midi_message_to_dict(r[0].events[i][0]) for i in range(r[0].n_events)]
                 bindings.destroy_midi_sequence(r)
@@ -544,27 +538,27 @@ class BackendLoopMidiChannel:
                 d[0].length_samples = msgs[len(msgs)-1]['time'] + 1
                 for idx, m in enumerate(msgs):
                     d[0].events[idx] = midi_message_dict_to_backend(m)
-                bindings.load_midi_channel_data(self.shoop_c_handle, d)
+                bindings.load_midi_channel_data(self.get_backend_obj(), d)
                 bindings.destroy_midi_sequence(d)
 
     def connect_input(self, port : 'BackendMidiPort'):
         if self.available():
-                bindings.connect_midi_input(self.shoop_c_handle, port.c_handle())
+                bindings.connect_midi_input(self.get_backend_obj(), port.c_handle())
 
     def connect_output(self, port: 'BackendMidiPort'):
         if self.available():
-                bindings.connect_midi_output(self.shoop_c_handle, port.c_handle())
+                bindings.connect_midi_output(self.get_backend_obj(), port.c_handle())
 
     def disconnect(self, port : 'BackendMidiPort'):
         if self.available():
             if port.direction() == PortDirection.Input:
-                bindings.disconnect_midi_input(self.shoop_c_handle, port.c_handle())
+                bindings.disconnect_midi_input(self.get_backend_obj(), port.c_handle())
             else:
-                bindings.disconnect_midi_output(self.shoop_c_handle, port.c_handle())
+                bindings.disconnect_midi_output(self.get_backend_obj(), port.c_handle())
 
     def get_state(self):
         if self.available():
-            state = bindings.get_midi_channel_state(self.shoop_c_handle)
+            state = bindings.get_midi_channel_state(self.get_backend_obj())
             rval = LoopMidiChannelState(deref_ptr(state))
             if state:
                 bindings.destroy_midi_channel_state_info(state)
@@ -573,58 +567,47 @@ class BackendLoopMidiChannel:
 
     def set_mode(self, mode : Type['ChannelMode']):
         if self.available():
-            bindings.set_midi_channel_mode(self.shoop_c_handle, mode.value)
+            bindings.set_midi_channel_mode(self.get_backend_obj(), mode.value)
 
     def set_start_offset(self, offset):
         if self.available():
-            bindings.set_midi_channel_start_offset(self.shoop_c_handle, offset)
+            bindings.set_midi_channel_start_offset(self.get_backend_obj(), offset)
 
     def set_n_preplay_samples(self, n):
         if self.available():
-            bindings.set_midi_channel_n_preplay_samples(self.shoop_c_handle, n)
-
-    def destroy(self):
-        if self.available():
-            bindings.destroy_midi_channel(self.shoop_c_handle)
-            self.shoop_c_handle = None
+            bindings.set_midi_channel_n_preplay_samples(self.get_backend_obj(), n)
 
     def clear_data_dirty(self):
         if self.available():
-            bindings.clear_midi_channel_data_dirty(self.shoop_c_handle)
+            bindings.clear_midi_channel_data_dirty(self.get_backend_obj())
 
     def clear(self):
         if self.available():
-            bindings.clear_midi_channel(self.shoop_c_handle)
+            bindings.clear_midi_channel(self.get_backend_obj())
 
     def reset_state_tracking(self):
         if self.available():
-            bindings.reset_midi_channel_state_tracking(self.shoop_c_handle)
-
-    def __del__(self):
-        if self.available():
-            self.destroy()
+            bindings.reset_midi_channel_state_tracking(self.get_backend_obj())
 
 class BackendLoop:
-    def __init__(self, c_handle : 'POINTER(bindings.shoopdaloop_loop_t)', backend: 'BackendSession'):
-        self.shoop_c_handle = c_handle
-        self._backend = backend
+    def __init__(self, backend_session):
+        self._obj = shoop_py_backend.Loop(backend_session._obj)
 
     def available(self):
-        return self.shoop_c_handle and self._backend and self._backend.active()
+        return self.get_backend_obj()
 
-    def c_handle(self):
-        return self.shoop_c_handle
+    def get_backend_obj(self):
+        addr = self._obj.unsafe_backend_ptr()
+        return cast(c_void_p(addr), POINTER(bindings.shoopdaloop_loop_t))
 
     def add_audio_channel(self, mode : Type['ChannelMode']) -> 'BackendLoopAudioChannel':
         if self.available():
-            rval = BackendLoopAudioChannel(self, bindings.add_audio_channel(self.c_handle(), mode.value), self._backend)
-            return rval
+            return BackendLoopAudioChannel(self._obj.add_audio_channel(mode.value))
         return None
 
     def add_midi_channel(self, mode : Type['ChannelMode']) -> 'BackendLoopMidiChannel':
         if self.available():
-            rval = BackendLoopMidiChannel(self, bindings.add_midi_channel(self.c_handle(), mode.value), self._backend)
-            return rval
+            return BackendLoopMidiChannel(self._obj.add_midi_channel(mode.value))
         return None
 
     def transition(self,
@@ -632,7 +615,7 @@ class BackendLoop:
                    maybe_cycles_delay : int,
                    maybe_to_sync_at_cycle : int):
         if self.available():
-            bindings.loop_transition(self.shoop_c_handle,
+            bindings.loop_transition(self.get_backend_obj(),
                                     to_state.value,
                                     maybe_cycles_delay,
                                     maybe_to_sync_at_cycle)
@@ -643,22 +626,20 @@ class BackendLoop:
                    maybe_to_sync_at_cycle : int):
         if len(loops) == 0:
             return
-        backend = loops[0]._backend
-        if backend and backend.active():
-            HandleType = POINTER(bindings.shoopdaloop_loop_t)
-            handles = (HandleType * len(loops))()
-            for idx,l in enumerate(loops):
-                handles[idx] = l.c_handle()
-            bindings.loops_transition(len(loops),
-                                    handles,
-                                    to_state.value,
-                                    maybe_cycles_delay,
-                                    maybe_to_sync_at_cycle)
-            del handles
+        HandleType = POINTER(bindings.shoopdaloop_loop_t)
+        handles = (HandleType * len(loops))()
+        for idx,l in enumerate(loops):
+            handles[idx] = l.get_backend_obj()
+        bindings.loops_transition(len(loops),
+                                handles,
+                                to_state.value,
+                                maybe_cycles_delay,
+                                maybe_to_sync_at_cycle)
+        del handles
 
     def get_state(self):
         if self.available():
-            state = bindings.get_loop_state(self.shoop_c_handle)
+            state = bindings.get_loop_state(self.get_backend_obj())
             rval = LoopState(deref_ptr(state))
             if state:
                 bindings.destroy_loop_state_info(state)
@@ -667,38 +648,29 @@ class BackendLoop:
 
     def set_length(self, length):
         if self.available():
-            bindings.set_loop_length(self.shoop_c_handle, length)
+            bindings.set_loop_length(self.get_backend_obj(), length)
 
     def set_position(self, position):
         if self.available():
-            bindings.set_loop_position(self.shoop_c_handle, position)
+            bindings.set_loop_position(self.get_backend_obj(), position)
 
     def clear(self, length):
         if self.available():
-            bindings.clear_loop(self.shoop_c_handle, length)
+            bindings.clear_loop(self.get_backend_obj(), length)
 
     def set_sync_source(self, loop):
         if self.available():
             if loop:
-                bindings.set_loop_sync_source(self.shoop_c_handle, loop.shoop_c_handle)
+                bindings.set_loop_sync_source(self.get_backend_obj(), loop.get_backend_obj())
             else:
-                bindings.set_loop_sync_source(self.shoop_c_handle, None)
-
-    def destroy(self):
-        if self.available():
-            bindings.destroy_loop(self.shoop_c_handle)
-            self.shoop_c_handle = None
+                bindings.set_loop_sync_source(self.get_backend_obj(), None)
 
     def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
         _reverse_start_cycle = (-1 if reverse_start_cycle == None else reverse_start_cycle)
         _cycles_length = (-1 if cycles_length == None else cycles_length)
         _go_to_cycle = (-1 if go_to_cycle == None else go_to_cycle)
         if self.available():
-            bindings.adopt_ringbuffer_contents(self.shoop_c_handle, _reverse_start_cycle, _cycles_length, _go_to_cycle, go_to_mode)
-
-    def __del__(self):
-        if self.available():
-            self.destroy()
+            bindings.adopt_ringbuffer_contents(self.get_backend_obj(), _reverse_start_cycle, _cycles_length, _go_to_cycle, go_to_mode)
 
 class BackendAudioPort:
     def __init__(self, c_handle : 'POINTER(bindings.shoopdaloop_audio_port_t)',
@@ -1043,9 +1015,7 @@ class BackendSession:
 
     def create_loop(self) -> Type['BackendLoop']:
         if self.active():
-            handle = bindings.create_loop(self.get_backend_obj())
-            rval = BackendLoop(handle, self)
-            return rval
+            return BackendLoop(self)
         return None
 
     def create_fx_chain(self, chain_type : Type['FXChainType'], title: str) -> Type['BackendFXChain']:
