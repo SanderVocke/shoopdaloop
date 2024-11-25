@@ -8,26 +8,26 @@ use crate::shoop_py_backend::backend_session::BackendSession;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
 
 #[pyclass]
-pub struct AudioPort {
-    pub obj : backend_bindings::AudioPort,
+pub struct MidiPort {
+    pub obj : backend_bindings::MidiPort,
 }
 
 #[pymethods]
-impl AudioPort {
+impl MidiPort {
     fn unsafe_backend_ptr (&self) -> usize {
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }
 }
 
 #[pyfunction]
-pub fn open_driver_audio_port<'py>
+pub fn open_driver_midi_port<'py>
     (backend_session : &BackendSession,
      audio_driver : &AudioDriver,
      name_hint : &str,
      direction : i32,
-     min_n_ringbuffer_samples : u32) -> PyResult<AudioPort> {
+     min_n_ringbuffer_samples : u32) -> PyResult<MidiPort> {
     let dir = backend_bindings::PortDirection::try_from(direction).unwrap();
-    Ok(AudioPort { obj: backend_bindings::AudioPort::new_driver_port
+    Ok(MidiPort { obj: backend_bindings::MidiPort::new_driver_port
                            (&backend_session.obj,
                             &audio_driver.obj,
                             name_hint,
@@ -37,13 +37,13 @@ pub fn open_driver_audio_port<'py>
 }
 
 #[pyfunction]
-pub fn unsafe_audio_port_from_raw_ptr<'py>(ptr : usize) -> PyResult<AudioPort> {
-    Ok(AudioPort { obj: backend_bindings::AudioPort::unsafe_port_from_raw_ptr(ptr) })
+pub fn unsafe_midi_port_from_raw_ptr<'py>(ptr : usize) -> PyResult<MidiPort> {
+    Ok(MidiPort { obj: backend_bindings::MidiPort::unsafe_port_from_raw_ptr(ptr) })
 }
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
-    m.add_class::<AudioPort>()?;
-    m.add_function(wrap_pyfunction!(open_driver_audio_port, m)?)?;
-    m.add_function(wrap_pyfunction!(unsafe_audio_port_from_raw_ptr, m)?)?;
+    m.add_class::<MidiPort>()?;
+    m.add_function(wrap_pyfunction!(open_driver_midi_port, m)?)?;
+    m.add_function(wrap_pyfunction!(unsafe_midi_port_from_raw_ptr, m)?)?;
     Ok(())
 }

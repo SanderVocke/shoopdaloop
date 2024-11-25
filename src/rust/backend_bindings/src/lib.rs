@@ -39,6 +39,12 @@ mod midi_channel;
 #[cfg(not(feature = "prebuild"))]
 pub use midi_channel::*;
 
+
+#[cfg(not(feature = "prebuild"))]
+mod midi_port;
+#[cfg(not(feature = "prebuild"))]
+pub use midi_port::*;
+
 #[cfg(not(feature = "prebuild"))]
 mod port;
 #[cfg(not(feature = "prebuild"))]

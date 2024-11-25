@@ -5,6 +5,7 @@ mod audio_driver;
 mod audio_port;
 mod backend_session;
 mod midi_channel;
+mod midi_port;
 mod resample;
 mod shoop_loop;
 
@@ -18,6 +19,7 @@ pub fn create_py_module<'py>(
     audio_port::register_in_module(&m)?;
     backend_session::register_in_module(&m)?;
     midi_channel::register_in_module(&m)?;
+    midi_port::register_in_module(&m)?;
     shoop_loop::register_in_module(&m)?;
     Ok(m)
 }
