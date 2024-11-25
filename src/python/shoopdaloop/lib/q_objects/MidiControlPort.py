@@ -319,8 +319,6 @@ class MidiControlPort(FindParentBackend):
     @ShoopSlot()
     def close(self):
         self.logger.trace(lambda: "Closing.")
-        if self._backend_obj:
-            self._backend_obj.destroy()
         self._backend_obj = None
         self._autoconnect_regexes = []
         self.autoconnect_update()
@@ -344,7 +342,11 @@ class MidiControlPort(FindParentBackend):
             return
         if self._name_hint and self._backend and self._direction != None and self._may_open:
             self.logger.debug(lambda: "Opening decoupled MIDI port {}".format(self._name_hint))
-            self._backend_obj = self._backend.get_backend_driver_obj().open_decoupled_midi_port(self._name_hint, self._direction)
+            self._backend_obj = open_driver_decoupled_midi_port(
+                self._backend.get_backend_driver_obj(),
+                self._name_hint,
+                self._direction
+            )
 
             if not self._backend_obj:
                 self.logger.error(lambda: "Failed to open decoupled MIDI port {}".format(self._name_hint))

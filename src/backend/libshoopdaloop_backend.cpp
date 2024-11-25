@@ -1907,7 +1907,7 @@ void destroy_midi_channel(shoopdaloop_loop_midi_channel_t *d) {
 
 void destroy_shoopdaloop_decoupled_midi_port(shoopdaloop_decoupled_midi_port_t *d) {
   return api_impl<void, log_level_debug_trace, log_level_warning>("destroy_shoopdaloop_decoupled_midi_port", [&]() {
-    logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "destroy_shoopdaloop_decoupled_midi_port");
+    logging::log<"Backend.API", log_level_debug>(std::nullopt, std::nullopt, "destroy_shoopdaloop_decoupled_midi_port");
     throw std::runtime_error("unimplemented");
   });
 }

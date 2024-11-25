@@ -766,17 +766,19 @@ class BackendAudioPort:
             bindings.set_audio_port_ringbuffer_n_samples(self.get_backend_obj(), n)
 
 class BackendDecoupledMidiPort:
-    def __init__(self, c_handle : 'POINTER(bindings.shoopdaloop_decoupled_midi_port_t)',
-                 backend : 'BackendSession'):
-        self._c_handle = c_handle
-        self._backend = backend
+    def __init__(self, obj):
+        self._obj = obj
 
     def available(self):
-        return self._c_handle and self._backend and self._backend.active()
+        return self.get_backend_obj()
+    
+    def get_backend_obj(self):
+        addr = self._obj.unsafe_backend_ptr()
+        return cast(c_void_p(addr), POINTER(bindings.shoopdaloop_decoupled_midi_port_t))
 
     def maybe_next_message(self):
         if self.available():
-            r = bindings.maybe_next_message(self._c_handle)
+            r = bindings.maybe_next_message(self.get_backend_obj())
             if r:
                 rval = MidiEvent(r[0])
                 bindings.destroy_midi_event(r)
@@ -785,13 +787,8 @@ class BackendDecoupledMidiPort:
 
     def name(self):
         if self.available():
-            return bindings.get_decoupled_midi_port_name(self._c_handle).decode('ascii')
+            return bindings.get_decoupled_midi_port_name(self.get_backend_obj()).decode('ascii')
         return '(unknown)'
-
-    def destroy(self):
-        if self.available():
-            bindings.close_decoupled_midi_port(self._c_handle)
-            self._c_handle = 0
 
     def send_midi(self, msg):
         if self.available():
@@ -817,11 +814,6 @@ class BackendDecoupledMidiPort:
     def disconnect_external_port(self, name):
         if self.available():
             bindings.disconnect_external_decoupled_midi_port(self._c_handle, name.encode('ascii'))
-
-    def __del__(self):
-        if self.available():
-            self.destroy()
-            self._c_handle = None
 
 class BackendMidiPort:
     def __init__(self,
@@ -997,9 +989,7 @@ class BackendSession:
 
     def create_fx_chain(self, chain_type : Type['FXChainType'], title: str) -> Type['BackendFXChain']:
         if self.active():
-            handle = bindings.create_fx_chain(self.get_backend_obj(), chain_type.value, title.encode('ascii'))
-            rval = BackendFXChain(handle, chain_type, self)
-            return rval
+            return BackendFXChain(self)
         return None
 
     def get_fx_chain_audio_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
@@ -1080,13 +1070,6 @@ class AudioDriver:
             self._client_name = rval.maybe_instance_name
             bindings.destroy_audio_driver_state(state)
         return rval
-
-    def open_decoupled_midi_port(self, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
-        if self.active():
-            handle = bindings.open_decoupled_midi_port(self.get_backend_obj(), name_hint.encode('ascii'), direction)
-            port = BackendDecoupledMidiPort(handle, self)
-            return port
-        raise Exception("Trying to open a MIDI port before audio driver is started.")
 
     def dummy_enter_controlled_mode(self):
         if self.active():
@@ -1169,6 +1152,17 @@ def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direc
                 min_n_ringbuffer_samples)
         return BackendAudioPort(obj)
     raise Exception("Failed to open audio port: backend session or audio driver not active")
+
+def open_driver_decoupled_midi_port(audio_driver, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
+    if audio_driver.active():
+        obj = shoop_py_backend.open_driver_decoupled_midi_port(
+            audio_driver._obj,
+            name_hint,
+            direction
+        )
+        port = BackendDecoupledMidiPort(obj)
+        return port
+    raise Exception("Trying to open a MIDI port before audio driver is started.")
 
 def open_driver_midi_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendMidiPort':
     if backend_session.active() and audio_driver.active():

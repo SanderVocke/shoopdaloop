@@ -4,6 +4,8 @@ mod audio_channel;
 mod audio_driver;
 mod audio_port;
 mod backend_session;
+mod decoupled_midi_port;
+mod fx_chain;
 mod midi_channel;
 mod midi_port;
 mod resample;
@@ -18,6 +20,8 @@ pub fn create_py_module<'py>(
     audio_driver::register_in_module(&m)?;
     audio_port::register_in_module(&m)?;
     backend_session::register_in_module(&m)?;
+    decoupled_midi_port::register_in_module(&m)?;
+    fx_chain::register_in_module(&m)?;
     midi_channel::register_in_module(&m)?;
     midi_port::register_in_module(&m)?;
     shoop_loop::register_in_module(&m)?;

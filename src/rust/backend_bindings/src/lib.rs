@@ -35,10 +35,19 @@ mod common;
 pub use common::*;
 
 #[cfg(not(feature = "prebuild"))]
+mod decoupled_midi_port;
+#[cfg(not(feature = "prebuild"))]
+pub use decoupled_midi_port::*;
+
+#[cfg(not(feature = "prebuild"))]
+mod fx_chain;
+#[cfg(not(feature = "prebuild"))]
+pub use fx_chain::*;
+
+#[cfg(not(feature = "prebuild"))]
 mod midi_channel;
 #[cfg(not(feature = "prebuild"))]
 pub use midi_channel::*;
-
 
 #[cfg(not(feature = "prebuild"))]
 mod midi_port;

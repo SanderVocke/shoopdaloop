@@ -18,7 +18,7 @@ impl AudioPort {
                            audio_driver : &AudioDriver,
                            name_hint : &str,
                            direction : &PortDirection,
-                        min_n_ringbuffer_samples : u32) -> Result<Self, anyhow::Error>
+                           min_n_ringbuffer_samples : u32) -> Result<Self, anyhow::Error>
     {
         let name_hint_ptr = name_hint.as_ptr() as *const i8;
         let obj = unsafe { ffi::open_driver_audio_port
