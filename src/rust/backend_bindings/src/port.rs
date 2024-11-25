@@ -16,3 +16,10 @@ integer_enum! {
         Any = ffi::shoop_port_data_type_t_ShoopPortDataType_Any,
     }
 }
+
+integer_enum! {
+    pub enum PortConnectability {
+        Internal = ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal,
+        External = ffi::shoop_port_connectability_t_ShoopPortConnectability_External,
+    }
+}

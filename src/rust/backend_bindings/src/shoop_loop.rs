@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use crate::backend_session::BackendSession;
 use crate::audio_channel::AudioChannel;
 use crate::midi_channel::MidiChannel;
-use crate::common::ChannelMode;
+use crate::channel::ChannelMode;
 
 pub struct Loop {
     obj : Mutex<*mut ffi::shoopdaloop_loop_t>,

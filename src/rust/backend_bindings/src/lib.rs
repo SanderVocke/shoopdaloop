@@ -10,6 +10,11 @@ mod audio_channel;
 pub use audio_channel::*;
 
 #[cfg(not(feature = "prebuild"))]
+mod audio_port;
+#[cfg(not(feature = "prebuild"))]
+pub use audio_port::*;
+
+#[cfg(not(feature = "prebuild"))]
 mod audio_driver;
 #[cfg(not(feature = "prebuild"))]
 pub use audio_driver::*;
@@ -18,6 +23,11 @@ pub use audio_driver::*;
 mod backend_session;
 #[cfg(not(feature = "prebuild"))]
 pub use backend_session::*;
+
+#[cfg(not(feature = "prebuild"))]
+mod channel;
+#[cfg(not(feature = "prebuild"))]
+pub use channel::*;
 
 #[cfg(not(feature = "prebuild"))]
 mod common;

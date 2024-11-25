@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 
 mod audio_channel;
 mod audio_driver;
+mod audio_port;
 mod backend_session;
 mod midi_channel;
 mod resample;
@@ -14,6 +15,7 @@ pub fn create_py_module<'py>(
     resample::register_in_module(&m)?;
     audio_channel::register_in_module(&m)?;
     audio_driver::register_in_module(&m)?;
+    audio_port::register_in_module(&m)?;
     backend_session::register_in_module(&m)?;
     midi_channel::register_in_module(&m)?;
     shoop_loop::register_in_module(&m)?;
