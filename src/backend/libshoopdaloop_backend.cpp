@@ -630,6 +630,20 @@ void disconnect_audio_output (shoopdaloop_loop_audio_channel_t *channel, shoopda
   });
 }
 
+void disconnect_audio_port (shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t* port) {
+  return api_impl<void>("disconnect_audio_output", [&]() {
+    auto _chan = internal_audio_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
+        auto _port = internal_audio_port(port);
+        auto _channel = internal_audio_channel(channel);
+        if (_port && _channel) {
+          _channel->disconnect_port(_port, false);
+        }
+    });
+  });
+}
+
 void disconnect_midi_output (shoopdaloop_loop_midi_channel_t  *channel, shoopdaloop_midi_port_t* port) {
   return api_impl<void>("disconnect_midi_output", [&]() {
     auto _chan = internal_midi_channel(channel);
@@ -639,6 +653,20 @@ void disconnect_midi_output (shoopdaloop_loop_midi_channel_t  *channel, shoopdal
         auto _channel = internal_midi_channel(channel);
         if (_port && _channel) {
           _channel->disconnect_output_port(_port, false);
+        }
+    });
+  });
+}
+
+void disconnect_midi_port (shoopdaloop_loop_midi_channel_t  *channel, shoopdaloop_midi_port_t* port) {
+  return api_impl<void>("disconnect_midi_output", [&]() {
+    auto _chan = internal_midi_channel(channel);
+    if (!_chan) { return; }
+    _chan->get_backend().queue_process_thread_command([=]() {
+        auto _port = internal_midi_port(port);
+        auto _channel = internal_midi_channel(channel);
+        if (_port && _channel) {
+          _channel->disconnect_port(_port, false);
         }
     });
   });

@@ -74,6 +74,18 @@ void GraphLoopChannel::disconnect_output_port(shoop_shared_ptr<GraphPort> port, 
     get_backend().set_graph_node_changes_pending();
 }
 
+void GraphLoopChannel::disconnect_port(shoop_shared_ptr<GraphPort> port, bool thread_safe) {
+    auto in_locked = mp_input_port_mapping.lock();
+    auto out_locked = mp_output_port_mapping.lock();
+    if (in_locked && in_locked == port) {
+        mp_input_port_mapping.reset();
+    } else if (out_locked && out_locked == port) {
+        mp_output_port_mapping.reset();
+    } else {
+        throw std::runtime_error("Attempting to disconnect unconnected port");
+    }
+}
+
 void GraphLoopChannel::disconnect_output_ports(bool thread_safe) {
     mp_output_port_mapping.reset();
     get_backend().set_graph_node_changes_pending();

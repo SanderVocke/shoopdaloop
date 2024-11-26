@@ -79,6 +79,8 @@ SHOOP_EXPORT void                   disconnect_audio_inputs (shoopdaloop_loop_au
 SHOOP_EXPORT void                   disconnect_midi_inputs  (shoopdaloop_loop_midi_channel_t  *channel);
 SHOOP_EXPORT void                   disconnect_audio_input  (shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t* port);
 SHOOP_EXPORT void                   disconnect_midi_input   (shoopdaloop_loop_midi_channel_t  *channel, shoopdaloop_midi_port_t* port);
+SHOOP_EXPORT void                   disconnect_audio_port   (shoopdaloop_loop_audio_channel_t *channel, shoopdaloop_audio_port_t* port);
+SHOOP_EXPORT void                   disconnect_midi_port   (shoopdaloop_loop_midi_channel_t *channel, shoopdaloop_midi_port_t* port);
 SHOOP_EXPORT shoop_audio_channel_data_t  *get_audio_channel_data   (shoopdaloop_loop_audio_channel_t *channel);
 SHOOP_EXPORT shoop_midi_sequence_t   *get_midi_channel_data    (shoopdaloop_loop_midi_channel_t  *channel);
 SHOOP_EXPORT void                   load_audio_channel_data  (shoopdaloop_loop_audio_channel_t *channel, shoop_audio_channel_data_t *data);

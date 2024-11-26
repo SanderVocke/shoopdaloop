@@ -35,6 +35,19 @@ impl AudioPort {
         })
     }
 
+    pub fn direction(&self) -> PortDirection {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe {
+            let direction = ffi::get_audio_port_direction(obj);
+            match direction {
+                0 => PortDirection::Input,
+                1 => PortDirection::Output,
+                _ => PortDirection::Input,
+            }
+        }
+    }
+
     pub fn unsafe_port_from_raw_ptr(ptr : usize) -> Self {
         AudioPort {
             obj : Mutex::new(ptr as *mut ffi::shoopdaloop_audio_port_t),
