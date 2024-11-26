@@ -14,6 +14,21 @@ pub struct AudioPort {
 
 #[pymethods]
 impl AudioPort {
+    #[getter]
+    fn input_connectability(&self) -> PyResult<i32> {
+        Ok(self.obj.input_connectability().to_ffi() as i32)
+    }
+
+    #[getter]
+    fn output_connectability(&self) -> PyResult<i32> {
+        Ok(self.obj.output_connectability().to_ffi() as i32)
+    }
+
+    #[getter]
+    fn direction(&self) -> PyResult<i32> {
+        Ok(self.obj.direction() as i32)
+    }
+
     fn unsafe_backend_ptr (&self) -> usize {
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }
@@ -37,7 +52,7 @@ pub fn open_driver_audio_port<'py>
 }
 
 #[pyfunction]
-pub fn unsafe_audio_port_from_raw_ptr<'py>(ptr : usize) -> PyResult<AudioPort> {
+pub fn unsafe_audio_port_from_raw_ptr(ptr: usize) -> PyResult<AudioPort> {
     Ok(AudioPort { obj: backend_bindings::AudioPort::unsafe_port_from_raw_ptr(ptr) })
 }
 

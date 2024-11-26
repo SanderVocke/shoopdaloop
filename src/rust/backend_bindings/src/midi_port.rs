@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use crate::backend_session::BackendSession;
 use crate::audio_driver::AudioDriver;
-use crate::port::PortDirection;
+use crate::port::{PortDirection, PortConnectability};
 
 pub struct MidiPort {
     obj : Mutex<*mut ffi::shoopdaloop_midi_port_t>,
@@ -33,6 +33,36 @@ impl MidiPort {
         Ok(MidiPort {
             obj : Mutex::new(obj),
         })
+    }
+
+    pub fn input_connectability(&self) -> PortConnectability {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe {
+            PortConnectability::from_ffi(ffi::get_midi_port_input_connectability(obj))
+        }
+    }
+
+    pub fn output_connectability(&self) -> PortConnectability {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe {
+            PortConnectability::from_ffi(ffi::get_midi_port_output_connectability(obj))
+        }
+    }
+
+    pub fn direction(&self) -> PortDirection {
+        let input_conn = self.input_connectability();
+        let output_conn = self.output_connectability();
+        if input_conn.external && output_conn.external {
+            PortDirection::Any
+        } else if input_conn.external {
+            PortDirection::Input
+        } else if output_conn.external {
+            PortDirection::Output
+        } else {
+            PortDirection::Any
+        }
     }
 
     pub fn unsafe_port_from_raw_ptr(ptr : usize) -> Self {

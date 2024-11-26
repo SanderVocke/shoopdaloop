@@ -18,6 +18,7 @@ import numpy
 from shoop_app_info import shoop_dynlib_dir
 import shoop_py_backend
 from shoopdaloop.lib.init_dynlibs import init_dynlibs
+from shoop_py_backend import AudioChannel
 init_dynlibs()
 
 # On Windows, shoopdaloop.dll depends on shared libraries in the same folder.
@@ -409,81 +410,53 @@ def midi_message_dict_to_backend(msg):
 
 class BackendLoopAudioChannel:
     def __init__(self, obj):
-        self._obj = obj
-    
-    def get_backend_obj(self):
-        addr = self._obj.unsafe_backend_ptr()
-        return cast(c_void_p(addr), POINTER(bindings.shoopdaloop_loop_audio_channel_t))
-
-    def available(self):
-        return self.get_backend_obj()
+        self._obj = AudioChannel(obj)
 
     def connect_input(self, port : 'BackendAudioPort'):
-        if self.available():
-                bindings.connect_audio_input(self.get_backend_obj(), port.get_backend_obj())
+        self._obj.connect_input(port._obj)
 
     def connect_output(self, port: 'BackendAudioPort'):
-        if self.available():
-                bindings.connect_audio_output(self.get_backend_obj(), port.get_backend_obj())
+        self._obj.connect_output(port._obj)
 
     def disconnect(self, port : 'BackendAudioPort'):
-        if self.available():
-            if port.direction() == PortDirection.Input:
-                bindings.disconnect_audio_input(self.get_backend_obj(), port.get_backend_obj())
-            else:
-                bindings.disconnect_audio_output(self.get_backend_obj(), port.get_backend_obj())
+        self._obj.disconnect(port._obj)
 
     def load_data(self, data):
-        if self.available():
-            backend_data = bindings.alloc_audio_channel_data(len(data))
-            if not backend_data:
-                return
-            for i in range(len(data)):
-                backend_data[0].data[i] = data[i]
-            bindings.load_audio_channel_data(self.get_backend_obj(), backend_data)
-            bindings.destroy_audio_channel_data(backend_data)
+        self._obj.load_data(data)
 
     def get_data(self) -> List[float]:
-        if self.available():
-            import time
-            start = time.time()
-            rval = ShoopChannelAudioData(bindings.get_audio_channel_data(self.get_backend_obj()))
-            got = time.time()
-            return rval
-        return ShoopChannelAudioData()
+        return self._obj.get_data()
 
     def get_state(self):
-        if self.available():
-            state = bindings.get_audio_channel_state(self.get_backend_obj())
-            rval = LoopAudioChannelState(deref_ptr(state))
-            if state:
-                bindings.destroy_audio_channel_state_info(state)
-            return rval
-        return LoopAudioChannelState()
+        state = self._obj.get_state()
+        return LoopAudioChannelState(
+            mode=ChannelMode(state.mode),
+            output_peak=state.output_peak,
+            gain=state.gain,
+            length=state.length,
+            start_offset=state.start_offset,
+            data_dirty=state.data_dirty,
+            played_back_sample=state.played_back_sample,
+            n_preplay_samples=state.n_preplay_samples
+        )
 
     def set_gain(self, gain):
-        if self.available():
-            bindings.set_audio_channel_gain(self.get_backend_obj(), gain)
+        self._obj.set_gain(gain)
 
     def set_mode(self, mode : Type['ChannelMode']):
-        if self.available():
-            bindings.set_audio_channel_mode(self.get_backend_obj(), mode.value)
+        self._obj.set_mode(mode.value)
 
     def set_start_offset(self, offset):
-        if self.available():
-            bindings.set_audio_channel_start_offset(self.get_backend_obj(), offset)
+        self._obj.set_start_offset(offset)
 
     def set_n_preplay_samples(self, n):
-        if self.available():
-            bindings.set_audio_channel_n_preplay_samples(self.get_backend_obj(), n)
+        self._obj.set_n_preplay_samples(n)
 
     def clear_data_dirty(self):
-        if self.available():
-            bindings.clear_audio_channel_data_dirty(self.get_backend_obj())
+        self._obj.clear_data_dirty()
 
     def clear(self, length=0):
-        if self.available():
-            bindings.clear_audio_channel(self.get_backend_obj(), length)
+        self._obj.clear(length)
 
 class BackendLoopMidiChannel:
     def __init__(self, obj):

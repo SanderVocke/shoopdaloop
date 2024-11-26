@@ -4,6 +4,7 @@ mod audio_channel;
 mod audio_driver;
 mod audio_port;
 mod backend_session;
+mod channel;
 mod decoupled_midi_port;
 mod fx_chain;
 mod midi_channel;

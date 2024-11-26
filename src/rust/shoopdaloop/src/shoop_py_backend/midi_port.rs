@@ -14,6 +14,21 @@ pub struct MidiPort {
 
 #[pymethods]
 impl MidiPort {
+    #[getter]
+    fn input_connectability(&self) -> PyResult<i32> {
+        Ok(self.obj.input_connectability().to_ffi() as i32)
+    }
+
+    #[getter]
+    fn output_connectability(&self) -> PyResult<i32> {
+        Ok(self.obj.output_connectability().to_ffi() as i32)
+    }
+
+    #[getter]
+    fn direction(&self) -> PyResult<i32> {
+        Ok(self.obj.direction() as i32)
+    }
+    
     fn unsafe_backend_ptr (&self) -> usize {
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }

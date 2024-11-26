@@ -17,9 +17,27 @@ integer_enum! {
     }
 }
 
-integer_enum! {
-    pub enum PortConnectability {
-        Internal = ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal,
-        External = ffi::shoop_port_connectability_t_ShoopPortConnectability_External,
+pub struct PortConnectability {
+    pub internal : bool,
+    pub external : bool,
+}
+
+impl PortConnectability {
+    pub fn from_ffi(ffi_connectability : u32) -> Self {
+        PortConnectability {
+            internal : ffi_connectability & ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal != 0,
+            external : ffi_connectability & ffi::shoop_port_connectability_t_ShoopPortConnectability_External != 0,
+        }
+    }
+
+    pub fn to_ffi(&self) -> u32 {
+        let mut ffi_connectability = 0;
+        if self.internal {
+            ffi_connectability |= ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal;
+        }
+        if self.external {
+            ffi_connectability |= ffi::shoop_port_connectability_t_ShoopPortConnectability_External;
+        }
+        ffi_connectability
     }
 }
