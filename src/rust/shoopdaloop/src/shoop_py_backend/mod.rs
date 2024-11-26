@@ -21,6 +21,7 @@ pub fn create_py_module<'py>(
     audio_driver::register_in_module(&m)?;
     audio_port::register_in_module(&m)?;
     backend_session::register_in_module(&m)?;
+    channel::register_in_module(&m)?;
     decoupled_midi_port::register_in_module(&m)?;
     fx_chain::register_in_module(&m)?;
     midi_channel::register_in_module(&m)?;

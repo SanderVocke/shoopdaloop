@@ -62,7 +62,7 @@ class PyLoopMode(Enum):
     PlayingDryThroughWet = int(shoop_py_backend.LoopMode.PlayingDryThroughWet)
     RecordingDryIntoWet = int(shoop_py_backend.LoopMode.RecordingDryIntoWet)
 
-class ChannelMode(Enum):
+class PyChannelMode(Enum):
     Disabled = bindings.ChannelMode_Disabled
     Direct = bindings.ChannelMode_Direct
     Dry = bindings.ChannelMode_Dry
@@ -99,39 +99,8 @@ class FXChainState:
             self.ready = False
 
 @dataclass
-class LoopAudioChannelState:
-    mode : Type[ChannelMode]
-    output_peak : float
-    gain : float
-    length : int
-    start_offset : int
-    data_dirty : bool
-    played_back_sample : Any
-    n_preplay_samples : int
-
-    def __init__(self, backend_state : 'bindings.loop_audio_channel_state_t' = None):
-        if backend_state:
-            self.output_peak = backend_state.output_peak
-            self.gain = backend_state.gain
-            self.mode = ChannelMode(backend_state.mode)
-            self.length = to_int(backend_state.length)
-            self.start_offset = to_int(backend_state.start_offset)
-            self.data_dirty = bool(backend_state.data_dirty)
-            self.played_back_sample = (to_int(backend_state.played_back_sample) if backend_state.played_back_sample >= 0 else None)
-            self.n_preplay_samples = to_int(backend_state.n_preplay_samples)
-        else:
-            self.output_peak = 0.0
-            self.gain = 0.0
-            self.mode = ChannelMode.Disabled
-            self.length = 0
-            self.start_offset = 0
-            self.data_dirty = False
-            self.played_back_sample = None
-            self.n_preplay_samples = 0
-
-@dataclass
 class LoopMidiChannelState:
-    mode: Type[ChannelMode]
+    mode: Type[PyChannelMode]
     n_events_triggered : int
     n_notes_active : int
     length: int
@@ -407,56 +376,6 @@ def midi_message_dict_to_backend(msg):
     for i in range(len(msg['data'])):
         m[0].data[i] = msg['data'][i]
     return m
-
-class BackendLoopAudioChannel:
-    def __init__(self, obj):
-        self._obj = AudioChannel(obj)
-
-    def connect_input(self, port : 'BackendAudioPort'):
-        self._obj.connect_input(port._obj)
-
-    def connect_output(self, port: 'BackendAudioPort'):
-        self._obj.connect_output(port._obj)
-
-    def disconnect(self, port : 'BackendAudioPort'):
-        self._obj.disconnect(port._obj)
-
-    def load_data(self, data):
-        self._obj.load_data(data)
-
-    def get_data(self) -> List[float]:
-        return self._obj.get_data()
-
-    def get_state(self):
-        state = self._obj.get_state()
-        return LoopAudioChannelState(
-            mode=ChannelMode(state.mode),
-            output_peak=state.output_peak,
-            gain=state.gain,
-            length=state.length,
-            start_offset=state.start_offset,
-            data_dirty=state.data_dirty,
-            played_back_sample=state.played_back_sample,
-            n_preplay_samples=state.n_preplay_samples
-        )
-
-    def set_gain(self, gain):
-        self._obj.set_gain(gain)
-
-    def set_mode(self, mode : Type['ChannelMode']):
-        self._obj.set_mode(mode.value)
-
-    def set_start_offset(self, offset):
-        self._obj.set_start_offset(offset)
-
-    def set_n_preplay_samples(self, n):
-        self._obj.set_n_preplay_samples(n)
-
-    def clear_data_dirty(self):
-        self._obj.clear_data_dirty()
-
-    def clear(self, length=0):
-        self._obj.clear(length)
 
 class BackendLoopMidiChannel:
     def __init__(self, obj):

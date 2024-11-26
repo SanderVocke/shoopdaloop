@@ -21,3 +21,8 @@ impl TryFrom<backend_bindings::ChannelMode> for ChannelMode {
         }
     }
 }
+
+pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
+    m.add_class::<ChannelMode>()?;
+    Ok(())
+}

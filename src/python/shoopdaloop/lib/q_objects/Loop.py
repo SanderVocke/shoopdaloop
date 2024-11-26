@@ -20,7 +20,7 @@ from ..findChildItems import findChildItems
 from .Logger import Logger
 
 from shoop_py_backend import Loop as BackendLoop
-from shoop_py_backend import LoopMode, transition_multiple_loops
+from shoop_py_backend import LoopMode, ChannelMode, AudioChannel, transition_multiple_loops
 
 import traceback
 
@@ -246,7 +246,7 @@ class Loop(FindParentBackend):
         self._position = state.position
         self._next_mode = (int(state.maybe_next_mode) if state.maybe_next_mode != None else int(state.mode))
         self._next_transition_delay = (state.maybe_next_mode_delay if state.maybe_next_mode_delay != None else -1)
-        self._display_peaks = [c._output_peak for c in [a for a in audio_chans if a._mode in [ChannelMode.Direct.value, ChannelMode.Wet.value]]]
+        self._display_peaks = [c._output_peak for c in [a for a in audio_chans if a._mode in [int(ChannelMode.Direct), int(ChannelMode.Wet)]]]
         self._display_midi_notes_active = (sum([c._n_notes_active for c in midi_chans]) if len(midi_chans) > 0 else 0)
         self._display_midi_events_triggered = (sum([c._n_events_triggered for c in midi_chans]) if len(midi_chans) > 0 else 0)
         
@@ -338,7 +338,7 @@ class Loop(FindParentBackend):
     def add_audio_channel(self, mode):
         if self.initialized:
             self.logger.debug(lambda: 'add audio channel')
-            return BackendLoopAudioChannel(self._backend_loop.add_audio_channel(mode))
+            return self._backend_loop.add_audio_channel(mode)
     
     @ShoopSlot(int, result=BackendLoopMidiChannel)
     def add_midi_channel(self, mode):

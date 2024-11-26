@@ -120,5 +120,6 @@ impl AudioChannel {
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<AudioChannel>()?;
+    m.add_class::<AudioChannelState>()?;
     Ok(())
 }
