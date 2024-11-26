@@ -159,27 +159,6 @@ class LoopMidiChannelState:
             self.n_preplay_samples = 0
 
 @dataclass
-class LoopState:
-    length: int
-    position: int
-    mode: Type[LoopMode]
-    maybe_next_mode: typing.Union[Type[LoopMode], None]
-    maybe_next_delay: typing.Union[int, None]
-
-    def __init__(self, backend_loop_state : 'bindings.loop_state_t' = None):
-        if backend_loop_state:
-            self.length = to_int(backend_loop_state.length)
-            self.position = to_int(backend_loop_state.position)
-            self.mode = backend_loop_state.mode
-            self.maybe_next_mode =  (None if backend_loop_state.maybe_next_mode == bindings.LOOP_MODE_INVALID else backend_loop_state.maybe_next_mode)
-            self.maybe_next_delay = (None if backend_loop_state.maybe_next_mode == bindings.LOOP_MODE_INVALID else backend_loop_state.maybe_next_mode_delay)
-        else:
-            self.length = 0
-            self.position = 0
-            self.mode = LoopMode.Unknown
-            self.maybe_next_mode = None
-            self.maybe_next_delay = None
-@dataclass
 class AudioPortState:
     input_peak: float
     output_peak: float
@@ -617,26 +596,16 @@ class BackendLoop:
                    maybe_to_sync_at_cycle : int):
         if len(loops) == 0:
             return
-        HandleType = POINTER(bindings.shoopdaloop_loop_t)
-        handles = (HandleType * len(loops))()
-        for idx,l in enumerate(loops):
-            handles[idx] = l.get_backend_obj()
-        bindings.loops_transition(len(loops),
-                                handles,
+        loop_objs = [l._obj for l in loops]
+        shoop_py_backend.transition_multiple_loops(
+                                loop_objs,
                                 to_state.value,
                                 maybe_cycles_delay,
                                 maybe_to_sync_at_cycle)
-        del handles
+        del loop_objs
 
     def get_state(self):
-        state = self._obj.get_state()
-        return LoopState(
-            length=state[1],
-            position=state[2],
-            mode=LoopMode(state[0]),
-            maybe_next_mode=LoopMode(state[3]) if state[3] is not None else None,
-            maybe_next_delay=state[4]
-        )
+        return self._obj.get_state()
 
     def set_length(self, length):
         self._obj.set_length(length)

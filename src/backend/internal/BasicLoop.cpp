@@ -17,7 +17,7 @@ BasicLoop::BasicLoop() :
         ma_triggering_now(false),
         ma_length(0),
         ma_position(0),
-        ma_maybe_next_planned_mode(LOOP_MODE_INVALID),
+        ma_maybe_next_planned_mode(LoopMode_Unknown),
         ma_maybe_next_planned_delay(-1),
         ma_already_triggered(false)
     {
@@ -211,7 +211,7 @@ shoop_shared_ptr<LoopInterface> BasicLoop::get_sync_source(bool thread_safe) {
 void BasicLoop::PROC_update_planned_transition_cache() {
 
     ma_maybe_next_planned_mode = mp_planned_states.size() > 0 ?
-        (shoop_loop_mode_t) mp_planned_states.front() : LOOP_MODE_INVALID;
+        (shoop_loop_mode_t) mp_planned_states.front() : LoopMode_Unknown;
     ma_maybe_next_planned_delay = mp_planned_state_countdowns.size() > 0 ?
         mp_planned_state_countdowns.front() : -1;
 }
@@ -261,7 +261,7 @@ void BasicLoop::PROC_handle_transition(shoop_loop_mode_t new_state) {
             set_length(0, false);
         }
         ma_mode = new_state;
-        if(ma_mode > LOOP_MODE_INVALID) {
+        if(ma_mode >= LOOP_MODE_INVALID) {
             throw_error<std::runtime_error>("invalid mode");
         }
         if (ma_mode == LoopMode_Stopped) { ma_position = 0; }
@@ -415,11 +415,11 @@ shoop_loop_mode_t BasicLoop::get_mode() const {
 void BasicLoop::get_first_planned_transition(shoop_loop_mode_t &maybe_mode_out, uint32_t &delay_out) {
     shoop_loop_mode_t maybe_mode = ma_maybe_next_planned_mode;
     int maybe_delay = ma_maybe_next_planned_delay;
-    if (maybe_delay >= 0 && maybe_mode != LOOP_MODE_INVALID) {
+    if (maybe_delay >= 0 && maybe_mode != LoopMode_Unknown) {
         maybe_mode_out = maybe_mode;
         delay_out = maybe_delay;
     } else {
-        maybe_mode_out = LOOP_MODE_INVALID;
+        maybe_mode_out = LoopMode_Unknown;
         delay_out = 0;
     }
 }

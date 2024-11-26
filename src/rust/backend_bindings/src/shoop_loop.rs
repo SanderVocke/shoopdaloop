@@ -30,7 +30,7 @@ pub struct LoopState {
 
 impl LoopState {
     pub fn new(obj : &ffi::shoop_loop_state_info_t) -> Self {
-        let has_next_mode = obj.maybe_next_mode == ffi::shoop_loop_mode_t_LOOP_MODE_INVALID;
+        let has_next_mode = obj.maybe_next_mode != ffi::shoop_loop_mode_t_LoopMode_Unknown;
         return LoopState {
             mode : LoopMode::try_from(obj.mode).unwrap(),
             length : obj.length,
@@ -97,32 +97,6 @@ impl Loop {
         }
         unsafe {
             ffi::loop_transition(obj, to_mode as u32, maybe_cycles_delay, maybe_to_sync_at_cycle)
-        };
-        Ok(())
-    }
-
-    pub fn transition_multiple(
-        loops: &[Loop],
-        to_state: LoopMode,
-        maybe_cycles_delay: i32,
-        maybe_to_sync_at_cycle: i32,
-    ) -> Result<(), anyhow::Error> {
-        if loops.is_empty() {
-            return Ok(());
-        }
-        let handles: Vec<*mut ffi::shoopdaloop_loop_t> = loops
-            .iter()
-            .map(|l| unsafe { l.unsafe_backend_ptr() })
-            .collect();
-        let handles_ptr: *mut *mut ffi::shoopdaloop_loop_t = handles.as_ptr() as *mut *mut ffi::shoopdaloop_loop_t;
-        unsafe {
-            ffi::loops_transition(
-                handles.len() as u32,
-                handles_ptr,
-                to_state as u32,
-                maybe_cycles_delay,
-                maybe_to_sync_at_cycle,
-            )
         };
         Ok(())
     }
@@ -213,6 +187,32 @@ impl Loop {
         };
         Ok(())
     }
+}
+
+pub fn transition_multiple_loops(
+    loops: &[&Loop],
+    to_state: LoopMode,
+    maybe_cycles_delay: i32,
+    maybe_to_sync_at_cycle: i32,
+) -> Result<(), anyhow::Error> {
+    if loops.is_empty() {
+        return Ok(());
+    }
+    let handles: Vec<*mut ffi::shoopdaloop_loop_t> = loops
+        .iter()
+        .map(|l| unsafe { l.unsafe_backend_ptr() })
+        .collect();
+    let handles_ptr: *mut *mut ffi::shoopdaloop_loop_t = handles.as_ptr() as *mut *mut ffi::shoopdaloop_loop_t;
+    unsafe {
+        ffi::loops_transition(
+            handles.len() as u32,
+            handles_ptr,
+            to_state as u32,
+            maybe_cycles_delay,
+            maybe_to_sync_at_cycle,
+        )
+    };
+    Ok(())
 }
 
 impl Drop for Loop {

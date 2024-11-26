@@ -238,11 +238,11 @@ class Loop(FindParentBackend):
         prev_display_midi_events_triggered = self._display_midi_events_triggered
 
         state = self._backend_loop.get_state()
-        self._mode = state.mode
+        self._mode = int(state.mode)
         self._length = state.length
         self._position = state.position
-        self._next_mode = (state.maybe_next_mode if state.maybe_next_mode != None else state.mode)
-        self._next_transition_delay = (state.maybe_next_delay if state.maybe_next_delay != None else -1)
+        self._next_mode = (int(state.maybe_next_mode) if state.maybe_next_mode != None else int(state.mode))
+        self._next_transition_delay = (state.maybe_next_mode_delay if state.maybe_next_mode_delay != None else -1)
         self._display_peaks = [c._output_peak for c in [a for a in audio_chans if a._mode in [ChannelMode.Direct.value, ChannelMode.Wet.value]]]
         self._display_midi_notes_active = (sum([c._n_notes_active for c in midi_chans]) if len(midi_chans) > 0 else 0)
         self._display_midi_events_triggered = (sum([c._n_events_triggered for c in midi_chans]) if len(midi_chans) > 0 else 0)
