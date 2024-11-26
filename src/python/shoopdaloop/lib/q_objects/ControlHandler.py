@@ -9,7 +9,7 @@ from .ShoopPyObject import *
 
 from ..logging import Logger
 from ..lua_qobject_interface import lua_passthrough, qt_typename, lua_int, lua_bool, lua_str, lua_float, lua_callable
-from ..backend_wrappers import LoopMode, DontAlignToSyncImmediately, DontWaitForSync
+from ..backend_wrappers import PyLoopMode, DontAlignToSyncImmediately, DontWaitForSync
 
 def as_loop_selector(lua_val):
     def iscoords(l):
@@ -197,7 +197,7 @@ class ControlHandler(ShoopQQuickItem):
         # RecordingDryIntoWet
         # @shoop_lua_enum_docstring.end
         rval = []
-        for i in list(LoopMode):
+        for i in list(PyLoopMode):
             rval.append(['LoopMode_' + i.name, i.value])
         return rval
 

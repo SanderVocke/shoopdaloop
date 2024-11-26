@@ -51,14 +51,15 @@ class PortConnectability(Enum):
 class BackendResult(Enum):
     Success = bindings.Success
     Failure = bindings.Failure
-class LoopMode(Enum):
-    Unknown = bindings.LoopMode_Unknown
-    Stopped = bindings.LoopMode_Stopped
-    Playing = bindings.LoopMode_Playing
-    Recording = bindings.LoopMode_Recording
-    Replacing = bindings.LoopMode_Replacing
-    PlayingDryThroughWet = bindings.LoopMode_PlayingDryThroughWet
-    RecordingDryIntoWet = bindings.LoopMode_RecordingDryIntoWet
+
+class PyLoopMode(Enum):
+    Unknown = int(shoop_py_backend.LoopMode.Unknown)
+    Stopped = int(shoop_py_backend.LoopMode.Stopped)
+    Playing = int(shoop_py_backend.LoopMode.Playing)
+    Recording = int(shoop_py_backend.LoopMode.Recording)
+    Replacing = int(shoop_py_backend.LoopMode.Replacing)
+    PlayingDryThroughWet = int(shoop_py_backend.LoopMode.PlayingDryThroughWet)
+    RecordingDryIntoWet = int(shoop_py_backend.LoopMode.RecordingDryIntoWet)
 
 class ChannelMode(Enum):
     Disabled = bindings.ChannelMode_Disabled
@@ -568,63 +569,6 @@ class BackendLoopMidiChannel:
         if self.available():
             bindings.reset_midi_channel_state_tracking(self.get_backend_obj())
 
-class BackendLoop:
-    def __init__(self, backend_session):
-        self._obj = shoop_py_backend.Loop(backend_session._obj)
-
-    def available(self):
-        return self.get_backend_obj()
-
-    def get_backend_obj(self):
-        return self._obj
-
-    def add_audio_channel(self, mode : Type['ChannelMode']) -> 'BackendLoopAudioChannel':
-        return BackendLoopAudioChannel(self._obj.add_audio_channel(mode.value))
-
-    def add_midi_channel(self, mode : Type['ChannelMode']) -> 'BackendLoopMidiChannel':
-        return BackendLoopMidiChannel(self._obj.add_midi_channel(mode.value))
-
-    def transition(self,
-                   to_state : Type['LoopMode'],
-                   maybe_cycles_delay : int,
-                   maybe_to_sync_at_cycle : int):
-        self._obj.transition(to_state.value, maybe_cycles_delay, maybe_to_sync_at_cycle)
-
-    # Static version for multiple loops
-    def transition_multiple(loops, to_state : Type['LoopMode'],
-                   maybe_cycles_delay : int,
-                   maybe_to_sync_at_cycle : int):
-        if len(loops) == 0:
-            return
-        loop_objs = [l._obj for l in loops]
-        shoop_py_backend.transition_multiple_loops(
-                                loop_objs,
-                                to_state.value,
-                                maybe_cycles_delay,
-                                maybe_to_sync_at_cycle)
-        del loop_objs
-
-    def get_state(self):
-        return self._obj.get_state()
-
-    def set_length(self, length):
-        self._obj.set_length(length)
-
-    def set_position(self, position):
-        self._obj.set_position(position)
-
-    def clear(self, length):
-        self._obj.clear(length)
-
-    def set_sync_source(self, loop):
-        self._obj.set_sync_source(loop._obj if loop else None)
-
-    def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
-        _reverse_start_cycle = (-1 if reverse_start_cycle == None else reverse_start_cycle)
-        _cycles_length = (-1 if cycles_length == None else cycles_length)
-        _go_to_cycle = (-1 if go_to_cycle == None else go_to_cycle)
-        self._obj.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
-
 class BackendAudioPort:
     def __init__(self,
                  obj):
@@ -935,9 +879,9 @@ class BackendSession:
             return rval
         return BackendSessionState()
 
-    def create_loop(self) -> Type['BackendLoop']:
+    def create_loop(self):
         if self.active():
-            return BackendLoop(self)
+            return shoop_py_backend.Loop(self._obj)
         return None
 
     def create_fx_chain(self, chain_type : Type['FXChainType'], title: str) -> Type['BackendFXChain']:
