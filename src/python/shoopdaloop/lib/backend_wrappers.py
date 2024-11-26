@@ -597,28 +597,19 @@ class BackendLoop:
         return self.get_backend_obj()
 
     def get_backend_obj(self):
-        addr = self._obj.unsafe_backend_ptr()
-        return cast(c_void_p(addr), POINTER(bindings.shoopdaloop_loop_t))
+        return self._obj
 
     def add_audio_channel(self, mode : Type['ChannelMode']) -> 'BackendLoopAudioChannel':
-        if self.available():
-            return BackendLoopAudioChannel(self._obj.add_audio_channel(mode.value))
-        return None
+        return BackendLoopAudioChannel(self._obj.add_audio_channel(mode.value))
 
     def add_midi_channel(self, mode : Type['ChannelMode']) -> 'BackendLoopMidiChannel':
-        if self.available():
-            return BackendLoopMidiChannel(self._obj.add_midi_channel(mode.value))
-        return None
+        return BackendLoopMidiChannel(self._obj.add_midi_channel(mode.value))
 
     def transition(self,
                    to_state : Type['LoopMode'],
                    maybe_cycles_delay : int,
                    maybe_to_sync_at_cycle : int):
-        if self.available():
-            bindings.loop_transition(self.get_backend_obj(),
-                                    to_state.value,
-                                    maybe_cycles_delay,
-                                    maybe_to_sync_at_cycle)
+        self._obj.transition(to_state.value, maybe_cycles_delay, maybe_to_sync_at_cycle)
 
     # Static version for multiple loops
     def transition_multiple(loops, to_state : Type['LoopMode'],
@@ -638,39 +629,32 @@ class BackendLoop:
         del handles
 
     def get_state(self):
-        if self.available():
-            state = bindings.get_loop_state(self.get_backend_obj())
-            rval = LoopState(deref_ptr(state))
-            if state:
-                bindings.destroy_loop_state_info(state)
-            return rval
-        return LoopState()
+        state = self._obj.get_state()
+        return LoopState(
+            length=state[1],
+            position=state[2],
+            mode=LoopMode(state[0]),
+            maybe_next_mode=LoopMode(state[3]) if state[3] is not None else None,
+            maybe_next_delay=state[4]
+        )
 
     def set_length(self, length):
-        if self.available():
-            bindings.set_loop_length(self.get_backend_obj(), length)
+        self._obj.set_length(length)
 
     def set_position(self, position):
-        if self.available():
-            bindings.set_loop_position(self.get_backend_obj(), position)
+        self._obj.set_position(position)
 
     def clear(self, length):
-        if self.available():
-            bindings.clear_loop(self.get_backend_obj(), length)
+        self._obj.clear(length)
 
     def set_sync_source(self, loop):
-        if self.available():
-            if loop:
-                bindings.set_loop_sync_source(self.get_backend_obj(), loop.get_backend_obj())
-            else:
-                bindings.set_loop_sync_source(self.get_backend_obj(), None)
+        self._obj.set_sync_source(loop._obj if loop else None)
 
     def adopt_ringbuffer_contents(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
         _reverse_start_cycle = (-1 if reverse_start_cycle == None else reverse_start_cycle)
         _cycles_length = (-1 if cycles_length == None else cycles_length)
         _go_to_cycle = (-1 if go_to_cycle == None else go_to_cycle)
-        if self.available():
-            bindings.adopt_ringbuffer_contents(self.get_backend_obj(), _reverse_start_cycle, _cycles_length, _go_to_cycle, go_to_mode)
+        self._obj.adopt_ringbuffer_contents(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
 
 class BackendAudioPort:
     def __init__(self,
