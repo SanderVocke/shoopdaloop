@@ -2,10 +2,29 @@ use anyhow;
 use crate::ffi;
 use std::sync::Mutex;
 
+use crate::midi_port::MidiPort;
+use crate::channel::ChannelMode;
+
 pub struct MidiChannel {
     obj : Mutex<*mut ffi::shoopdaloop_loop_midi_channel_t>,
-    pub fn available(&self) -> bool {
-        !self.unsafe_backend_ptr().is_null()
+}
+
+unsafe impl Send for MidiChannel {}
+unsafe impl Sync for MidiChannel {}
+
+impl MidiChannel {
+    pub fn new(raw : *mut ffi::shoopdaloop_loop_midi_channel_t) -> Result<Self, anyhow::Error> {
+        if raw.is_null() {
+            Err(anyhow::anyhow!("Cannot create MidiChannel from null pointer"))
+        } else {
+            let wrapped = Mutex::new(raw);
+            Ok(MidiChannel { obj: wrapped })
+        }
+    }
+
+    pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_loop_midi_channel_t {
+        let guard = self.obj.lock().unwrap();
+        *guard
     }
 
     pub fn get_all_midi_data(&self) -> Vec<MidiEvent> {
@@ -99,25 +118,6 @@ pub struct MidiChannel {
         unsafe {
             ffi::reset_midi_channel_state_tracking(self.unsafe_backend_ptr());
         }
-    }
-}
-
-unsafe impl Send for MidiChannel {}
-unsafe impl Sync for MidiChannel {}
-
-impl MidiChannel {
-    pub fn new(raw : *mut ffi::shoopdaloop_loop_midi_channel_t) -> Result<Self, anyhow::Error> {
-        if raw.is_null() {
-            Err(anyhow::anyhow!("Cannot create MidiChannel from null pointer"))
-        } else {
-            let wrapped = Mutex::new(raw);
-            Ok(MidiChannel { obj: wrapped })
-        }
-    }
-
-    pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_loop_midi_channel_t {
-        let guard = self.obj.lock().unwrap();
-        *guard
     }
 }
 
