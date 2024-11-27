@@ -195,9 +195,9 @@ class LoopChannel(ShoopQQuickItem):
     def clear(self):
         if self._backend_obj:
             self.__logger.debug(lambda: 'Clear')
-            self._backend_obj.clear()
+            self._backend_obj.clear(0)
         else:
-            self.initializedChanged.connect(lambda: self.clear())
+            self.initializedChanged.connect(lambda: self.clear(0))
 
     @ShoopSlot()
     def initialize(self):

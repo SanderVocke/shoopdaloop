@@ -439,7 +439,7 @@ class BackendLoopMidiChannel:
 
     def set_mode(self, mode : Type['ChannelMode']):
         if self.available():
-            bindings.set_midi_channel_mode(self.get_backend_obj(), mode.value)
+            bindings.set_midi_channel_mode(self.get_backend_obj(), mode)
 
     def set_start_offset(self, offset):
         if self.available():
