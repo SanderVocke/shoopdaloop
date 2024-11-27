@@ -3,9 +3,48 @@ use crate::ffi;
 use std::sync::Mutex;
 
 use crate::midi_port::MidiPort;
+use crate::ffi::shoop_midi_event_t;
+use crate::ffi::shoop_midi_channel_state_info_t;
 use crate::channel::ChannelMode;
 
-pub struct MidiChannel {
+pub struct MidiEvent {
+    pub time: u32,
+    pub data: [u8; 3],
+}
+
+impl MidiEvent {
+    pub fn from(event: shoop_midi_event_t) -> Self {
+        MidiEvent {
+            time: event.time,
+            data: event.data,
+        }
+    }
+
+    pub fn to_backend(&self) -> shoop_midi_event_t {
+        shoop_midi_event_t {
+            time: self.time,
+            data: self.data,
+        }
+    }
+}
+
+pub struct MidiChannelState {
+    pub mode: ChannelMode,
+    pub start_offset: i32,
+    pub n_preplay_samples: u32,
+    pub data_dirty: bool,
+}
+
+impl MidiChannelState {
+    pub fn new(obj: &shoop_midi_channel_state_info_t) -> Self {
+        MidiChannelState {
+            mode: ChannelMode::try_from(obj.mode).unwrap(),
+            start_offset: obj.start_offset,
+            n_preplay_samples: obj.n_preplay_samples,
+            data_dirty: obj.data_dirty != 0,
+        }
+    }
+}
     obj : Mutex<*mut ffi::shoopdaloop_loop_midi_channel_t>,
 }
 
