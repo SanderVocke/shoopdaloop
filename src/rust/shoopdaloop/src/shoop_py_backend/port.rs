@@ -49,3 +49,20 @@ pub struct ExternalPortDescriptor {
     #[pyo3(get)]
     pub data_type: PortDataType,
 }
+
+impl ExternalPortDescriptor {
+    pub fn new(obj : backend_bindings::ExternalPortDescriptor) -> Self {
+        return ExternalPortDescriptor {
+            name : obj.name,
+            direction : PortDirection::try_from(obj.direction).unwrap(),
+            data_type : PortDataType::try_from(obj.data_type).unwrap(),
+        }
+    }
+}
+
+pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
+    m.add_class::<PortDirection>()?;
+    m.add_class::<PortDataType>()?;
+    m.add_class::<ExternalPortDescriptor>()?;
+    Ok(())
+}

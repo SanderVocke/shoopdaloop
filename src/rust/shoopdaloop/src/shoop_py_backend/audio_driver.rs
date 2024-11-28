@@ -56,7 +56,11 @@ impl AudioDriver {
 
     #[pyo3(signature = (maybe_name_regex=None, port_direction=0, data_type=0))]
     pub fn find_external_ports(&self, maybe_name_regex: Option<String>, port_direction: u32, data_type: u32) -> Vec<ExternalPortDescriptor> {
-        self.obj.find_external_ports(maybe_name_regex.as_deref(), port_direction, data_type)
+        self.obj
+           .find_external_ports(maybe_name_regex.as_deref(), port_direction, data_type)
+           .into_iter()
+           .map(|p| ExternalPortDescriptor::new(p))
+           .collect()
     }
 
     fn unsafe_backend_ptr (&self) -> usize {
