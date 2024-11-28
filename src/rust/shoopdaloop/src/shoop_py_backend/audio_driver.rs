@@ -17,6 +17,46 @@ impl AudioDriver {
                                 (backend_bindings::AudioDriverType::try_from(driver_type).unwrap()).unwrap() })
     }
 
+    #[staticmethod]
+    pub fn driver_type_supported(driver_type: i32) -> bool {
+        backend_bindings::AudioDriver::driver_type_supported(
+            backend_bindings::AudioDriverType::try_from(driver_type).unwrap(),
+        )
+    }
+
+    pub fn start_dummy(&self, client_name: String, sample_rate: u32, buffer_size: u32) -> PyResult<()> {
+        let settings = backend_bindings::DummyAudioDriverSettings {
+            client_name,
+            sample_rate,
+            buffer_size,
+        };
+        self.obj.start_dummy(&settings).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    pub fn start_jack(&self, client_name_hint: String, maybe_server_name: Option<String>) -> PyResult<()> {
+        let settings = backend_bindings::JackAudioDriverSettings {
+            client_name_hint,
+            maybe_server_name,
+        };
+        self.obj.start_jack(&settings).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+
+    pub fn active(&self) -> bool {
+        self.obj.active()
+    }
+
+    pub fn wait_process(&self) {
+        self.obj.wait_process();
+    }
+
+    pub fn dummy_run_requested_frames(&self) {
+        self.obj.dummy_run_requested_frames();
+    }
+
+    pub fn find_external_ports(&self, maybe_name_regex: Option<String>, port_direction: u32, data_type: u32) -> Vec<backend_bindings::ExternalPortDescriptor> {
+        self.obj.find_external_ports(maybe_name_regex.as_deref(), port_direction, data_type)
+    }
+
     fn unsafe_backend_ptr (&self) -> usize {
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }
