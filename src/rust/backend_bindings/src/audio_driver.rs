@@ -1,5 +1,6 @@
 use anyhow;
 use crate::audio_channel::AudioChannelState;
+use crate::integer_enum;
 use crate::ffi;
 use std::sync::Mutex;
 
@@ -17,10 +18,14 @@ pub struct JackAudioDriverSettings {
 }
 
 impl JackAudioDriverSettings {
-    pub fn new(client_name_hint: String, maybe_server_name: Option<String>) -> Self {
+    pub fn new(obj : &ffi::shoop_jack_audio_driver_settings_t) -> Self {
         JackAudioDriverSettings {
-            client_name_hint,
-            maybe_server_name,
+            client_name_hint : unsafe { std::ffi::CStr::from_ptr(obj.client_name_hint).to_str().unwrap().to_string() },
+            maybe_server_name : if obj.maybe_server_name.is_null() {
+                None
+            } else {
+                Some(unsafe { std::ffi::CStr::from_ptr(obj.maybe_server_name).to_str().unwrap().to_string() })
+            },
         }
     }
 
@@ -39,11 +44,11 @@ pub struct DummyAudioDriverSettings {
 }
 
 impl DummyAudioDriverSettings {
-    pub fn new(client_name: String, sample_rate: u32, buffer_size: u32) -> Self {
+    pub fn new(obj : &ffi::shoop_dummy_audio_driver_settings_t) -> Self {
         DummyAudioDriverSettings {
-            client_name,
-            sample_rate,
-            buffer_size,
+            client_name : unsafe { std::ffi::CStr::from_ptr(obj.client_name).to_str().unwrap().to_string() },
+            sample_rate : obj.sample_rate,
+            buffer_size : obj.buffer_size,
         }
     }
 
@@ -74,15 +79,15 @@ impl AudioDriver {
         }
     }
 
-    pub fn start_dummy(&self, settings: &bindings::DummyAudioDriverSettings) -> Result<(), anyhow::Error> {
+    pub fn start_dummy(&self, settings: &DummyAudioDriverSettings) -> Result<(), anyhow::Error> {
         let obj = self.lock();
-        unsafe { ffi::start_dummy_driver(*obj, settings) };
+        unsafe { ffi::start_dummy_driver(*obj, settings.to_ffi()) };
         Ok(())
     }
 
-    pub fn start_jack(&self, settings: &bindings::JackAudioDriverSettings) -> Result<(), anyhow::Error> {
+    pub fn start_jack(&self, settings: &JackAudioDriverSettings) -> Result<(), anyhow::Error> {
         let obj = self.lock();
-        unsafe { ffi::start_jack_driver(*obj, settings) };
+        unsafe { ffi::start_jack_driver(*obj, settings.to_ffi()) };
         Ok(())
     }
 
@@ -108,12 +113,15 @@ impl AudioDriver {
         let obj = self.lock();
         let regex_ptr = maybe_name_regex.map_or(std::ptr::null(), |s| s.as_ptr() as *const i8);
         let result = unsafe { ffi::find_external_ports(*obj, regex_ptr, port_direction, data_type) };
-        let mut ports = Vec::new();
-        for i in 0..unsafe { (*result).n_ports } {
-            ports.push(unsafe { (*result).ports[i] });
+        let ports = unsafe { std::slice::from_raw_parts((*result).ports, (*result).n_ports as usize) };
+        let mut port_descriptors = Vec::new();
+        unsafe {
+            for i in 0..(*result).n_ports {
+                port_descriptors.push(bindings::ExternalPortDescriptor::new(&ports[i as usize]));
+            }
         }
         unsafe { ffi::destroy_external_port_descriptors(result) };
-        ports
+        port_descriptors
     }
 
     pub fn driver_type_supported(driver_type : AudioDriverType) -> bool {
