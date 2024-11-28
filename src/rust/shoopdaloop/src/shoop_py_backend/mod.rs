@@ -10,6 +10,7 @@ mod fx_chain;
 mod midi;
 mod midi_channel;
 mod midi_port;
+mod port;
 mod resample;
 mod shoop_loop;
 
@@ -28,6 +29,7 @@ pub fn create_py_module<'py>(
     midi::register_in_module(&m)?;
     midi_channel::register_in_module(&m)?;
     midi_port::register_in_module(&m)?;
+    port::register_in_module(&m)?;
     shoop_loop::register_in_module(&m)?;
     Ok(m)
 }

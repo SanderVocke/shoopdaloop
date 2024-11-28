@@ -3,6 +3,7 @@
 use pyo3::prelude::*;
 // use pyo3::exceptions::*;
 use backend_bindings;
+use crate::shoop_py_backend::port::ExternalPortDescriptor;
 
 #[pyclass]
 pub struct AudioDriver {
@@ -53,7 +54,8 @@ impl AudioDriver {
         self.obj.dummy_run_requested_frames();
     }
 
-    pub fn find_external_ports(&self, maybe_name_regex: Option<String>, port_direction: u32, data_type: u32) -> Vec<backend_bindings::ExternalPortDescriptor> {
+    #[pyo3(signature = (maybe_name_regex=None, port_direction=0, data_type=0))]
+    pub fn find_external_ports(&self, maybe_name_regex: Option<String>, port_direction: u32, data_type: u32) -> Vec<ExternalPortDescriptor> {
         self.obj.find_external_ports(maybe_name_regex.as_deref(), port_direction, data_type)
     }
 

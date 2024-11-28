@@ -1,8 +1,9 @@
 use anyhow;
-use crate::audio_channel::AudioChannelState;
 use crate::integer_enum;
 use crate::ffi;
 use std::sync::Mutex;
+
+use crate::port::ExternalPortDescriptor;
 
 integer_enum! {
     pub enum AudioDriverType {
@@ -109,7 +110,7 @@ impl AudioDriver {
         unsafe { ffi::dummy_audio_run_requested_frames(*obj) };
     }
 
-    pub fn find_external_ports(&self, maybe_name_regex: Option<&str>, port_direction: u32, data_type: u32) -> Vec<bindings::ExternalPortDescriptor> {
+    pub fn find_external_ports(&self, maybe_name_regex: Option<&str>, port_direction: u32, data_type: u32) -> Vec<ExternalPortDescriptor> {
         let obj = self.lock();
         let regex_ptr = maybe_name_regex.map_or(std::ptr::null(), |s| s.as_ptr() as *const i8);
         let result = unsafe { ffi::find_external_ports(*obj, regex_ptr, port_direction, data_type) };
@@ -117,7 +118,7 @@ impl AudioDriver {
         let mut port_descriptors = Vec::new();
         unsafe {
             for i in 0..(*result).n_ports {
-                port_descriptors.push(bindings::ExternalPortDescriptor::new(&ports[i as usize]));
+                port_descriptors.push(ExternalPortDescriptor::new(&ports[i as usize]));
             }
         }
         unsafe { ffi::destroy_external_port_descriptors(result) };
