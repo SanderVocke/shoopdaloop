@@ -20,7 +20,7 @@ from ..findChildItems import findChildItems
 from .Logger import Logger
 
 from shoop_py_backend import Loop as BackendLoop
-from shoop_py_backend import LoopMode, ChannelMode, AudioChannel, transition_multiple_loops
+from shoop_py_backend import LoopMode, ChannelMode, AudioChannel, MidiChannel, transition_multiple_loops
 
 import traceback
 
@@ -334,17 +334,17 @@ class Loop(FindParentBackend):
             for c in self.get_midi_channels():
                 c.clear()
     
-    @ShoopSlot(int, result=BackendLoopMidiChannel)
+    @ShoopSlot(int, result=AudioChannel)
     def add_audio_channel(self, mode):
         if self.initialized:
             self.logger.debug(lambda: 'add audio channel')
             return self._backend_loop.add_audio_channel(mode)
     
-    @ShoopSlot(int, result=BackendLoopMidiChannel)
+    @ShoopSlot(int, result=MidiChannel)
     def add_midi_channel(self, mode):
         if self.initialized:
             self.logger.debug(lambda: 'add midi channel')
-            return BackendLoopMidiChannel(self._backend_loop.add_midi_channel(mode))
+            return self._backend_loop.add_midi_channel(mode)
     
     @ShoopSlot(list)
     def load_audio_data(self, sound_channels):

@@ -346,53 +346,6 @@ def midi_message_dict_to_backend(msg):
         m[0].data[i] = msg['data'][i]
     return m
 
-class BackendLoopMidiChannel:
-    def __init__(self, midi_channel: shoop_py_backend.MidiChannel):
-        self._midi_channel = midi_channel
-
-    def get_all_midi_data(self):
-        return [midi_event.to_dict() for midi_event in self._midi_channel.get_all_midi_data()]
-
-    def get_recorded_midi_msgs(self):
-        return [m for m in self.get_all_midi_data() if m['time'] >= 0]
-
-    def get_state_midi_msgs(self):
-        return [m for m in self.get_all_midi_data() if m['time'] < 0]
-
-    def load_all_midi_data(self, msgs):
-        midi_events = [shoop_py_backend.MidiEvent(time=m['time'], data=m['data']) for m in msgs]
-        self._midi_channel.load_all_midi_data(midi_events)
-
-    def connect_input(self, port):
-        self._midi_channel.connect_input(port)
-
-    def connect_output(self, port):
-        self._midi_channel.connect_output(port)
-
-    def disconnect(self, port):
-        self._midi_channel.disconnect(port)
-
-    def get_state(self) -> shoop_py_backend.MidiChannelState:
-        return self._midi_channel.get_state()
-
-    def set_mode(self, mode: Type['ChannelMode']):
-        self._midi_channel.set_mode(int(mode))
-
-    def set_start_offset(self, offset):
-        self._midi_channel.set_start_offset(offset)
-
-    def set_n_preplay_samples(self, n):
-        self._midi_channel.set_n_preplay_samples(n)
-
-    def clear_data_dirty(self):
-        self._midi_channel.clear_data_dirty()
-
-    def clear(self):
-        self._midi_channel.clear()
-
-    def reset_state_tracking(self):
-        self._midi_channel.reset_state_tracking()
-
 class BackendAudioPort:
     def __init__(self,
                  obj):
