@@ -1,5 +1,10 @@
 use pyo3::prelude::*;
 
+pub fn register_in_module<'py>(m: &PyModule) -> PyResult<()> {
+    m.add_class::<MidiEvent>()?;
+    Ok(())
+}
+
 #[pyclass]
 #[derive(Clone)]
 pub struct MidiEvent {
