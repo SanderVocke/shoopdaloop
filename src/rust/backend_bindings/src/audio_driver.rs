@@ -1,5 +1,5 @@
 use anyhow;
-use crate::integer_enum;
+use crate::audio_channel::AudioChannelState;
 use crate::ffi;
 use std::sync::Mutex;
 
@@ -8,6 +8,51 @@ integer_enum! {
         Jack = ffi::shoop_audio_driver_type_t_Jack,
         JackTest = ffi::shoop_audio_driver_type_t_JackTest,
         Dummy = ffi::shoop_audio_driver_type_t_Dummy,
+    }
+}
+
+pub struct JackAudioDriverSettings {
+    pub client_name_hint: String,
+    pub maybe_server_name: Option<String>,
+}
+
+impl JackAudioDriverSettings {
+    pub fn new(client_name_hint: String, maybe_server_name: Option<String>) -> Self {
+        JackAudioDriverSettings {
+            client_name_hint,
+            maybe_server_name,
+        }
+    }
+
+    pub fn to_ffi(&self) -> ffi::shoop_jack_audio_driver_settings_t {
+        ffi::shoop_jack_audio_driver_settings_t {
+            client_name_hint: std::ffi::CString::new(self.client_name_hint.clone()).unwrap().into_raw(),
+            maybe_server_name: self.maybe_server_name.as_ref().map_or(std::ptr::null(), |s| std::ffi::CString::new(s.clone()).unwrap().into_raw()),
+        }
+    }
+}
+
+pub struct DummyAudioDriverSettings {
+    pub client_name: String,
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+}
+
+impl DummyAudioDriverSettings {
+    pub fn new(client_name: String, sample_rate: u32, buffer_size: u32) -> Self {
+        DummyAudioDriverSettings {
+            client_name,
+            sample_rate,
+            buffer_size,
+        }
+    }
+
+    pub fn to_ffi(&self) -> ffi::shoop_dummy_audio_driver_settings_t {
+        ffi::shoop_dummy_audio_driver_settings_t {
+            client_name: std::ffi::CString::new(self.client_name.clone()).unwrap().into_raw(),
+            sample_rate: self.sample_rate,
+            buffer_size: self.buffer_size,
+        }
     }
 }
 
