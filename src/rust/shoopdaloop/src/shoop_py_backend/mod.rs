@@ -7,6 +7,7 @@ mod backend_session;
 mod channel;
 mod decoupled_midi_port;
 mod fx_chain;
+mod midi;
 mod midi_channel;
 mod midi_port;
 mod resample;

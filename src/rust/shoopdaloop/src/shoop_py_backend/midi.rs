@@ -16,3 +16,12 @@ impl MidiEvent {
         MidiEvent { time, data }
     }
 }
+
+impl From<backend_bindings::MidiEvent> for MidiEvent {
+    fn from(event: backend_bindings::MidiEvent) -> Self {
+        MidiEvent {
+            time: event.time,
+            data: event.data,
+        }
+    }
+}
