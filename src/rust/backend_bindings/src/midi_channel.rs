@@ -3,27 +3,30 @@ use crate::ffi;
 use std::sync::Mutex;
 
 use crate::midi_port::MidiPort;
-use crate::ffi::shoop_midi_event_t;
-use crate::ffi::shoop_midi_channel_state_info_t;
 use crate::channel::ChannelMode;
 
 pub struct MidiEvent {
-    pub time: u32,
-    pub data: [u8; 3],
+    pub time: i32,
+    pub data: Vec<u8>,
 }
 
 impl MidiEvent {
-    pub fn from(event: shoop_midi_event_t) -> Self {
+    pub fn from(event: ffi::shoop_midi_event_t) -> Self {
+        let data = unsafe {
+            std::slice::from_raw_parts(event.data, event.size as usize)
+                .to_vec()
+        };
         MidiEvent {
             time: event.time,
-            data: event.data,
+            data,
         }
     }
 
-    pub fn to_backend(&self) -> shoop_midi_event_t {
-        shoop_midi_event_t {
+    pub fn to_backend(&self) -> ffi::shoop_midi_event_t {
+        ffi::shoop_midi_event_t {
             time: self.time,
-            data: self.data,
+            data: self.data.as_ptr() as *mut u8,
+            size: self.data.len() as u32,
         }
     }
 }
@@ -36,7 +39,7 @@ pub struct MidiChannelState {
 }
 
 impl MidiChannelState {
-    pub fn new(obj: &shoop_midi_channel_state_info_t) -> Self {
+    pub fn new(obj: &ffi::shoop_midi_channel_state_info_t) -> Self {
         MidiChannelState {
             mode: ChannelMode::try_from(obj.mode).unwrap(),
             start_offset: obj.start_offset,
@@ -45,6 +48,8 @@ impl MidiChannelState {
         }
     }
 }
+
+struct MidiChannel {
     obj : Mutex<*mut ffi::shoopdaloop_loop_midi_channel_t>,
 }
 
@@ -73,7 +78,7 @@ impl MidiChannel {
                 return Vec::new();
             }
             let events = std::slice::from_raw_parts((*data_ptr).events, (*data_ptr).n_events as usize);
-            let result: Vec<MidiEvent> = events.iter().map(|event| MidiEvent::from(*event)).collect();
+            let result: Vec<MidiEvent> = events.iter().map(|event| MidiEvent::from(**event)).collect();
             ffi::destroy_midi_sequence(data_ptr);
             result
         }
@@ -85,8 +90,10 @@ impl MidiChannel {
             if sequence.is_null() {
                 return;
             }
-            for (i, msg) in msgs.iter().enumerate() {
-                (*sequence).events[i] = msg.to_backend();
+            let events_ptr = (*sequence).events;
+            for i in 0..msgs.len() {
+                let event_ptr = events_ptr.wrapping_add(i);
+                **event_ptr = msgs[i].to_backend();
             }
             ffi::load_midi_channel_data(self.unsafe_backend_ptr(), sequence);
             ffi::destroy_midi_sequence(sequence);

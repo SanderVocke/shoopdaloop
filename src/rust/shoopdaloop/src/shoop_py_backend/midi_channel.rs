@@ -20,8 +20,53 @@ impl MidiEvent {
     fn new(time: i32, data: Vec<u8>) -> Self {
         MidiEvent { time, data }
     }
+}
 
-    #[getter]
+impl From<BackendMidiEvent> for MidiEvent {
+    fn from(event: BackendMidiEvent) -> Self {
+        MidiEvent {
+            time: event.time,
+            data: event.data,
+        }
+    }
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct MidiChannelState {
+    #[pyo3(get)]
+    pub mode: ChannelMode,
+    #[pyo3(get)]
+    pub start_offset: i32,
+    #[pyo3(get)]
+    pub n_preplay_samples: u32,
+    #[pyo3(get)]
+    pub data_dirty: bool,
+}
+
+impl From<BackendMidiChannelState> for MidiChannelState {
+    fn from(state: BackendMidiChannelState) -> Self {
+        MidiChannelState {
+            mode: state.mode,
+            start_offset: state.start_offset,
+            n_preplay_samples: state.n_preplay_samples,
+            data_dirty: state.data_dirty,
+        }
+    }
+}
+use backend_bindings;
+
+#[pyclass]
+pub struct MidiChannel {
+    pub obj : backend_bindings::MidiChannel,
+}
+
+#[pymethods]
+impl MidiChannel {
+    fn unsafe_backend_ptr (&self) -> usize {
+        unsafe { self.obj.unsafe_backend_ptr() as usize }
+    }
+
     fn get_all_midi_data(&self) -> PyResult<Vec<MidiEvent>> {
         let events = self.obj.get_all_midi_data();
         Ok(events.into_iter().map(MidiEvent::from).collect())
@@ -92,53 +137,8 @@ impl MidiEvent {
     }
 }
 
-impl From<BackendMidiEvent> for MidiEvent {
-    fn from(event: BackendMidiEvent) -> Self {
-        MidiEvent {
-            time: event.time,
-            data: event.data,
-        }
-    }
-}
-
-#[pyclass]
-#[derive(Clone)]
-pub struct MidiChannelState {
-    #[pyo3(get)]
-    pub mode: ChannelMode,
-    #[pyo3(get)]
-    pub start_offset: i32,
-    #[pyo3(get)]
-    pub n_preplay_samples: u32,
-    #[pyo3(get)]
-    pub data_dirty: bool,
-}
-
-impl From<BackendMidiChannelState> for MidiChannelState {
-    fn from(state: BackendMidiChannelState) -> Self {
-        MidiChannelState {
-            mode: state.mode,
-            start_offset: state.start_offset,
-            n_preplay_samples: state.n_preplay_samples,
-            data_dirty: state.data_dirty,
-        }
-    }
-}
-use backend_bindings;
-
-#[pyclass]
-pub struct MidiChannel {
-    pub obj : backend_bindings::MidiChannel,
-}
-
-#[pymethods]
-impl MidiChannel {
-    fn unsafe_backend_ptr (&self) -> usize {
-        unsafe { self.obj.unsafe_backend_ptr() as usize }
-    }
-}
-
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<MidiChannel>()?;
+    m.add_class::<MidiChannelState>()?;
     Ok(())
 }
