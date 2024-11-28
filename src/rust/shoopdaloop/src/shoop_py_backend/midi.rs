@@ -1,10 +1,5 @@
 use pyo3::prelude::*;
 
-pub fn register_in_module<'py>(m: &PyModule) -> PyResult<()> {
-    m.add_class::<MidiEvent>()?;
-    Ok(())
-}
-
 #[pyclass]
 #[derive(Clone)]
 pub struct MidiEvent {
@@ -29,4 +24,9 @@ impl From<backend_bindings::MidiEvent> for MidiEvent {
             data: event.data,
         }
     }
+}
+
+pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
+    m.add_class::<MidiEvent>()?;
+    Ok(())
 }

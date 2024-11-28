@@ -33,7 +33,11 @@ impl MidiEvent {
 
 pub struct MidiChannelState {
     pub mode: ChannelMode,
+    pub n_events_triggered: u32,
+    pub n_notes_active: u32,
+    pub length: u32,
     pub start_offset: i32,
+    pub played_back_sample: Option<u32>,
     pub n_preplay_samples: u32,
     pub data_dirty: bool,
 }
@@ -42,14 +46,21 @@ impl MidiChannelState {
     pub fn new(obj: &ffi::shoop_midi_channel_state_info_t) -> Self {
         MidiChannelState {
             mode: ChannelMode::try_from(obj.mode).unwrap(),
+            n_events_triggered: obj.n_events_triggered,
+            n_notes_active: obj.n_notes_active,
+            length: obj.length,
             start_offset: obj.start_offset,
+            played_back_sample: match obj.played_back_sample >= 0 {
+                true => Some(obj.played_back_sample as u32),
+                false => None
+            },
             n_preplay_samples: obj.n_preplay_samples,
             data_dirty: obj.data_dirty != 0,
         }
     }
 }
 
-struct MidiChannel {
+pub struct MidiChannel {
     obj : Mutex<*mut ffi::shoopdaloop_loop_midi_channel_t>,
 }
 

@@ -7,6 +7,7 @@ use crate::shoop_py_backend::audio_port::AudioPort;
 use crate::shoop_py_backend::channel::ChannelMode;
 
 #[pyclass]
+#[derive(Clone)]
 pub struct AudioChannelState {
     #[pyo3(get)]
     pub mode : ChannelMode,
@@ -40,7 +41,6 @@ impl AudioChannelState {
         }
     }
 }
-
 
 #[pyclass]
 pub struct AudioChannel {

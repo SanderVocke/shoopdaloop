@@ -2,18 +2,11 @@
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
-use backend_bindings::{MidiChannel as BackendMidiChannel, MidiChannelState as BackendMidiChannelState};
+
+use crate::shoop_py_backend::midi_port::MidiPort;
+
 use crate::shoop_py_backend::midi::MidiEvent;
 use crate::shoop_py_backend::channel::ChannelMode;
-
-impl From<backend_bindings::MidiEvent> for MidiEvent {
-    fn from(event: backend_bindings::MidiEvent) -> Self {
-        MidiEvent {
-            time: event.time,
-            data: event.data,
-        }
-    }
-}
 
 #[pyclass]
 #[derive(Clone)]
@@ -21,18 +14,30 @@ pub struct MidiChannelState {
     #[pyo3(get)]
     pub mode: ChannelMode,
     #[pyo3(get)]
+    pub n_events_triggered: u32,
+    #[pyo3(get)]
+    pub n_notes_active: u32,
+    #[pyo3(get)]
+    pub length: u32,
+    #[pyo3(get)]
     pub start_offset: i32,
+    #[pyo3(get)]
+    pub played_back_sample: Option<u32>,
     #[pyo3(get)]
     pub n_preplay_samples: u32,
     #[pyo3(get)]
     pub data_dirty: bool,
 }
 
-impl From<BackendMidiChannelState> for MidiChannelState {
-    fn from(state: BackendMidiChannelState) -> Self {
+impl MidiChannelState {
+    fn new(state: backend_bindings::MidiChannelState) -> Self {
         MidiChannelState {
-            mode: state.mode,
+            mode: ChannelMode::try_from(state.mode).unwrap(),
+            n_events_triggered: state.n_events_triggered,
+            n_notes_active: state.n_notes_active,
+            length: state.length,
             start_offset: state.start_offset,
+            played_back_sample: state.played_back_sample,
             n_preplay_samples: state.n_preplay_samples,
             data_dirty: state.data_dirty,
         }
@@ -57,7 +62,7 @@ impl MidiChannel {
     }
 
     fn load_all_midi_data(&self, py: Python, msgs: Vec<MidiEvent>) -> PyResult<()> {
-        let backend_msgs: Vec<BackendMidiEvent> = msgs.into_iter().map(|msg| BackendMidiEvent {
+        let backend_msgs: Vec<backend_bindings::MidiEvent> = msgs.into_iter().map(|msg| backend_bindings::MidiEvent {
             time: msg.time,
             data: msg.data,
         }).collect();
@@ -84,11 +89,11 @@ impl MidiChannel {
         let state = self.obj.get_state().map_err(|e| {
             PyErr::new::<PyRuntimeError, _>(format!("Get state failed: {:?}", e))
         })?;
-        Ok(MidiChannelState::from(state))
+        Ok(MidiChannelState::new(state))
     }
 
     fn set_mode(&self, mode: i32) -> PyResult<()> {
-        let mode = ChannelMode::try_from(mode).map_err(|_| {
+        let mode = backend_bindings::ChannelMode::try_from(mode).map_err(|_| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid channel mode")
         })?;
         self.obj.set_mode(mode);

@@ -99,37 +99,6 @@ class FXChainState:
             self.ready = False
 
 @dataclass
-class LoopMidiChannelState:
-    mode: Type[PyChannelMode]
-    n_events_triggered : int
-    n_notes_active : int
-    length: int
-    start_offset: int
-    data_dirty : bool
-    played_back_sample : Any
-    n_preplay_samples : int
-
-    def __init__(self, backend_state : 'bindings.loop_midi_channel_state_t' = None):
-        if backend_state:
-            self.n_events_triggered = to_int(backend_state.n_events_triggered)
-            self.n_notes_active = to_int(backend_state.n_notes_active)
-            self.mode = ChannelMode(backend_state.mode)
-            self.length = to_int(backend_state.length)
-            self.start_offset = to_int(backend_state.start_offset)
-            self.data_dirty = bool(backend_state.data_dirty)
-            self.played_back_sample = (to_int(backend_state.played_back_sample) if backend_state.played_back_sample >= 0 else None)
-            self.n_preplay_samples = to_int(backend_state.n_preplay_samples)
-        else:
-            self.n_events_triggered = 0
-            self.n_notes_active = 0
-            self.mode = ChannelMode.Disabled
-            self.length = 0
-            self.start_offset = 0
-            self.data_dirty = False
-            self.played_back_sample = None
-            self.n_preplay_samples = 0
-
-@dataclass
 class AudioPortState:
     input_peak: float
     output_peak: float
@@ -381,13 +350,8 @@ class BackendLoopMidiChannel:
     def __init__(self, midi_channel: shoop_py_backend.MidiChannel):
         self._midi_channel = midi_channel
 
-    def available(self):
-        return self._midi_channel is not None
-
     def get_all_midi_data(self):
-        if self.available():
-            return [midi_event.to_dict() for midi_event in self._midi_channel.get_all_midi_data()]
-        return []
+        return [midi_event.to_dict() for midi_event in self._midi_channel.get_all_midi_data()]
 
     def get_recorded_midi_msgs(self):
         return [m for m in self.get_all_midi_data() if m['time'] >= 0]
@@ -396,60 +360,38 @@ class BackendLoopMidiChannel:
         return [m for m in self.get_all_midi_data() if m['time'] < 0]
 
     def load_all_midi_data(self, msgs):
-        if self.available():
-            midi_events = [shoop_py_backend.MidiEvent(time=m['time'], data=m['data']) for m in msgs]
-            self._midi_channel.load_all_midi_data(midi_events)
+        midi_events = [shoop_py_backend.MidiEvent(time=m['time'], data=m['data']) for m in msgs]
+        self._midi_channel.load_all_midi_data(midi_events)
 
-    def connect_input(self, port: 'BackendMidiPort'):
-        if self.available():
-            self._midi_channel.connect_input(port._obj)
+    def connect_input(self, port):
+        self._midi_channel.connect_input(port)
 
-    def connect_output(self, port: 'BackendMidiPort'):
-        if self.available():
-            self._midi_channel.connect_output(port._obj)
+    def connect_output(self, port):
+        self._midi_channel.connect_output(port)
 
-    def disconnect(self, port: 'BackendMidiPort'):
-        if self.available():
-            self._midi_channel.disconnect(port._obj)
+    def disconnect(self, port):
+        self._midi_channel.disconnect(port)
 
-    def get_state(self) -> LoopMidiChannelState:
-        if self.available():
-            state = self._midi_channel.get_state()
-            return LoopMidiChannelState(
-                mode=state.mode,
-                n_events_triggered=0,  # Assuming default values as they are not available in MidiChannelState
-                n_notes_active=0,
-                length=0,
-                start_offset=state.start_offset,
-                data_dirty=state.data_dirty,
-                played_back_sample=None,
-                n_preplay_samples=state.n_preplay_samples
-            )
-        return LoopMidiChannelState()
+    def get_state(self) -> shoop_py_backend.MidiChannelState:
+        return self._midi_channel.get_state()
 
     def set_mode(self, mode: Type['ChannelMode']):
-        if self.available():
-            self._midi_channel.set_mode(mode.value)
+        self._midi_channel.set_mode(int(mode))
 
     def set_start_offset(self, offset):
-        if self.available():
-            self._midi_channel.set_start_offset(offset)
+        self._midi_channel.set_start_offset(offset)
 
     def set_n_preplay_samples(self, n):
-        if self.available():
-            self._midi_channel.set_n_preplay_samples(n)
+        self._midi_channel.set_n_preplay_samples(n)
 
     def clear_data_dirty(self):
-        if self.available():
-            self._midi_channel.clear_data_dirty()
+        self._midi_channel.clear_data_dirty()
 
     def clear(self):
-        if self.available():
-            self._midi_channel.clear()
+        self._midi_channel.clear()
 
     def reset_state_tracking(self):
-        if self.available():
-            self._midi_channel.reset_state_tracking()
+        self._midi_channel.reset_state_tracking()
 
 class BackendAudioPort:
     def __init__(self,
