@@ -2,28 +2,12 @@
 
 use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
-use backend_bindings::{MidiChannel as BackendMidiChannel, MidiEvent as BackendMidiEvent, MidiChannelState as BackendMidiChannelState};
+use backend_bindings::{MidiChannel as BackendMidiChannel, MidiChannelState as BackendMidiChannelState};
+use crate::shoop_py_backend::midi::MidiEvent;
 use crate::shoop_py_backend::channel::ChannelMode;
 
-#[pyclass]
-#[derive(Clone)]
-pub struct MidiEvent {
-    #[pyo3(get)]
-    pub time: i32,
-    #[pyo3(get)]
-    pub data: Vec<u8>,
-}
-
-#[pymethods]
-impl MidiEvent {
-    #[new]
-    fn new(time: i32, data: Vec<u8>) -> Self {
-        MidiEvent { time, data }
-    }
-}
-
-impl From<BackendMidiEvent> for MidiEvent {
-    fn from(event: BackendMidiEvent) -> Self {
+impl From<backend_bindings::MidiEvent> for MidiEvent {
+    fn from(event: backend_bindings::MidiEvent) -> Self {
         MidiEvent {
             time: event.time,
             data: event.data,
