@@ -9,6 +9,22 @@ integer_enum! {
     }
 }
 
+pub struct ExternalPortDescriptor {
+    pub name: String,
+    pub direction: PortDirection,
+    pub data_type: PortDataType,
+}
+
+impl ExternalPortDescriptor {
+    pub fn new(ffi_descriptor: &ffi::shoop_external_port_descriptor_t) -> Self {
+        ExternalPortDescriptor {
+            name: unsafe { std::ffi::CStr::from_ptr(ffi_descriptor.name).to_str().unwrap().to_string() },
+            direction: PortDirection::try_from(ffi_descriptor.direction).unwrap(),
+            data_type: PortDataType::try_from(ffi_descriptor.data_type).unwrap(),
+        }
+    }
+}
+
 integer_enum! {
     pub enum PortDataType {
         Audio = ffi::shoop_port_data_type_t_ShoopPortDataType_Audio,
