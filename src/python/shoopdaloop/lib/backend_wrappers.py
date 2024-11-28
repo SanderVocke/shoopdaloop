@@ -378,88 +378,78 @@ def midi_message_dict_to_backend(msg):
     return m
 
 class BackendLoopMidiChannel:
-    def __init__(self, obj):
-        self._obj = obj
-    
-    def get_backend_obj(self):
-        addr = self._obj.unsafe_backend_ptr()
-        return cast(c_void_p(addr), POINTER(bindings.shoopdaloop_loop_midi_channel_t))
+    def __init__(self, midi_channel: shoop_py_backend.MidiChannel):
+        self._midi_channel = midi_channel
 
     def available(self):
-        return self.get_backend_obj()
+        return self._midi_channel is not None
 
     def get_all_midi_data(self):
         if self.available():
-            r = bindings.get_midi_channel_data(self.get_backend_obj())
-            if r:
-                msgs = [backend_midi_message_to_dict(r[0].events[i][0]) for i in range(r[0].n_events)]
-                bindings.destroy_midi_sequence(r)
-                return msgs
+            return [midi_event.to_dict() for midi_event in self._midi_channel.get_all_midi_data()]
         return []
 
     def get_recorded_midi_msgs(self):
-        return [m for m in self.get_all_midi_data() if m['time'] >= 0.0]
+        return [m for m in self.get_all_midi_data() if m['time'] >= 0]
 
     def get_state_midi_msgs(self):
-        return [m for m in self.get_all_midi_data() if m['time'] < 0.0]
+        return [m for m in self.get_all_midi_data() if m['time'] < 0]
 
     def load_all_midi_data(self, msgs):
         if self.available():
-            d = bindings.alloc_midi_sequence(len(msgs))
-            if d:
-                d[0].length_samples = msgs[len(msgs)-1]['time'] + 1
-                for idx, m in enumerate(msgs):
-                    d[0].events[idx] = midi_message_dict_to_backend(m)
-                bindings.load_midi_channel_data(self.get_backend_obj(), d)
-                bindings.destroy_midi_sequence(d)
+            midi_events = [shoop_py_backend.MidiEvent(time=m['time'], data=m['data']) for m in msgs]
+            self._midi_channel.load_all_midi_data(midi_events)
 
-    def connect_input(self, port : 'BackendMidiPort'):
+    def connect_input(self, port: 'BackendMidiPort'):
         if self.available():
-                bindings.connect_midi_input(self.get_backend_obj(), port.get_backend_obj())
+            self._midi_channel.connect_input(port._obj)
 
     def connect_output(self, port: 'BackendMidiPort'):
         if self.available():
-                bindings.connect_midi_output(self.get_backend_obj(), port.get_backend_obj())
+            self._midi_channel.connect_output(port._obj)
 
-    def disconnect(self, port : 'BackendMidiPort'):
+    def disconnect(self, port: 'BackendMidiPort'):
         if self.available():
-            if port.direction() == PortDirection.Input:
-                bindings.disconnect_midi_input(self.get_backend_obj(), port.get_backend_obj())
-            else:
-                bindings.disconnect_midi_output(self.get_backend_obj(), port.get_backend_obj())
+            self._midi_channel.disconnect(port._obj)
 
-    def get_state(self):
+    def get_state(self) -> LoopMidiChannelState:
         if self.available():
-            state = bindings.get_midi_channel_state(self.get_backend_obj())
-            rval = LoopMidiChannelState(deref_ptr(state))
-            if state:
-                bindings.destroy_midi_channel_state_info(state)
-            return rval
+            state = self._midi_channel.get_state()
+            return LoopMidiChannelState(
+                mode=state.mode,
+                n_events_triggered=0,  # Assuming default values as they are not available in MidiChannelState
+                n_notes_active=0,
+                length=0,
+                start_offset=state.start_offset,
+                data_dirty=state.data_dirty,
+                played_back_sample=None,
+                n_preplay_samples=state.n_preplay_samples
+            )
         return LoopMidiChannelState()
 
-    def set_mode(self, mode : Type['ChannelMode']):
+    def set_mode(self, mode: Type['ChannelMode']):
         if self.available():
-            bindings.set_midi_channel_mode(self.get_backend_obj(), mode)
+            self._midi_channel.set_mode(mode.value)
 
     def set_start_offset(self, offset):
         if self.available():
-            bindings.set_midi_channel_start_offset(self.get_backend_obj(), offset)
+            self._midi_channel.set_start_offset(offset)
 
     def set_n_preplay_samples(self, n):
         if self.available():
-            bindings.set_midi_channel_n_preplay_samples(self.get_backend_obj(), n)
+            self._midi_channel.set_n_preplay_samples(n)
 
     def clear_data_dirty(self):
         if self.available():
-            bindings.clear_midi_channel_data_dirty(self.get_backend_obj())
+            self._midi_channel.clear_data_dirty()
 
     def clear(self):
         if self.available():
-            bindings.clear_midi_channel(self.get_backend_obj())
+            self._midi_channel.clear()
 
     def reset_state_tracking(self):
         if self.available():
-            bindings.reset_midi_channel_state_tracking(self.get_backend_obj())
+            self._midi_channel.reset_state_tracking()
 
 class BackendAudioPort:
     def __init__(self,
