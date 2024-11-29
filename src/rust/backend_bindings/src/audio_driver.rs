@@ -166,6 +166,7 @@ impl AudioDriver {
         let obj = self.lock();
         unsafe { ffi::dummy_driver_remove_all_external_mock_ports(*obj) };
     }
+    pub fn dummy_run_requested_frames(&self) {
         let obj = self.lock();
         unsafe { ffi::dummy_audio_run_requested_frames(*obj) };
     }
