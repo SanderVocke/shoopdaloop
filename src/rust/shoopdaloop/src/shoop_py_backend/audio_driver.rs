@@ -81,6 +81,7 @@ impl AudioDriver {
         self.obj.dummy_run_requested_frames()
     }
 
+    #[pyo3(signature = (maybe_name_regex=None, port_direction, data_type))]
     fn find_external_ports(&self, maybe_name_regex: Option<&str>, port_direction: u32, data_type: u32) -> Vec<ExternalPortDescriptor> {
         self.obj.find_external_ports(maybe_name_regex, port_direction, data_type)
     }
