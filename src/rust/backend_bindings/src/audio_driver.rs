@@ -191,7 +191,7 @@ impl AudioDriver {
     }
 
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoop_audio_driver_t {
-        let guard = self.obj.lock().unwrap();
+        let guard = self.lock();
         *guard
     }
     
@@ -202,7 +202,7 @@ impl AudioDriver {
 
 impl Drop for AudioDriver {
     fn drop(&mut self) {
-        let guard = self.obj.lock().unwrap();
+        let guard = self.lock();
         let obj = *guard;
         if obj.is_null() {
             return;
