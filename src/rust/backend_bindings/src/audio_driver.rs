@@ -145,7 +145,8 @@ impl AudioDriver {
         unsafe {
             ffi::dummy_driver_add_external_mock_port(
                 *obj,
-                std::ffi::CString::new(name).unwrap().as_ptr(),
+                let c_name = std::ffi::CString::new(name).unwrap();
+                c_name.as_ptr(),
                 direction,
                 data_type,
             )
