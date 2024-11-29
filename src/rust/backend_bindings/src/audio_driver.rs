@@ -142,10 +142,10 @@ impl AudioDriver {
 
     pub fn dummy_add_external_mock_port(&self, name: &str, direction: u32, data_type: u32) {
         let obj = self.lock();
+        let c_name = std::ffi::CString::new(name).unwrap();
         unsafe {
             ffi::dummy_driver_add_external_mock_port(
                 *obj,
-                let c_name = std::ffi::CString::new(name).unwrap();
                 c_name.as_ptr(),
                 direction,
                 data_type,
