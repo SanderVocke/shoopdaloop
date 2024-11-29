@@ -63,7 +63,10 @@ impl AudioDriver {
            .collect()
     }
 
-    fn unsafe_backend_ptr (&self) -> usize {
+    #[staticmethod]
+    pub fn driver_type_supported(driver_type: u32) -> bool {
+        RustAudioDriver::driver_type_supported(AudioDriverType::try_from(driver_type).unwrap())
+    }
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }
 }
