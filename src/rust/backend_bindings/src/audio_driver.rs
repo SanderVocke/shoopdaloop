@@ -80,6 +80,16 @@ impl AudioDriver {
         }
     }
 
+    pub fn get_sample_rate(&self) -> u32 {
+        let obj = self.lock();
+        unsafe { ffi::get_sample_rate(*obj) }
+    }
+
+    pub fn get_buffer_size(&self) -> u32 {
+        let obj = self.lock();
+        unsafe { ffi::get_buffer_size(*obj) }
+    }
+
     pub fn start_dummy(&self, settings: &DummyAudioDriverSettings) -> Result<(), anyhow::Error> {
         let obj = self.lock();
         unsafe { ffi::start_dummy_driver(*obj, settings.to_ffi()) };
@@ -105,7 +115,57 @@ impl AudioDriver {
         unsafe { ffi::wait_process(*obj) };
     }
 
-    pub fn dummy_run_requested_frames(&self) {
+    pub fn dummy_enter_controlled_mode(&self) {
+        let obj = self.lock();
+        unsafe { ffi::dummy_audio_enter_controlled_mode(*obj) };
+    }
+
+    pub fn dummy_enter_automatic_mode(&self) {
+        let obj = self.lock();
+        unsafe { ffi::dummy_audio_enter_automatic_mode(*obj) };
+    }
+
+    pub fn dummy_is_controlled(&self) -> bool {
+        let obj = self.lock();
+        unsafe { ffi::dummy_audio_is_in_controlled_mode(*obj) != 0 }
+    }
+
+    pub fn dummy_request_controlled_frames(&self, n: u32) {
+        let obj = self.lock();
+        unsafe { ffi::dummy_audio_request_controlled_frames(*obj, n) };
+    }
+
+    pub fn dummy_n_requested_frames(&self) -> u32 {
+        let obj = self.lock();
+        unsafe { ffi::dummy_audio_n_requested_frames(*obj) }
+    }
+
+    pub fn dummy_add_external_mock_port(&self, name: &str, direction: u32, data_type: u32) {
+        let obj = self.lock();
+        unsafe {
+            ffi::dummy_driver_add_external_mock_port(
+                *obj,
+                std::ffi::CString::new(name).unwrap().as_ptr(),
+                direction,
+                data_type,
+            )
+        };
+    }
+
+    pub fn dummy_remove_external_mock_port(&self, name: &str) {
+        let obj = self.lock();
+        unsafe {
+            ffi::dummy_driver_remove_external_mock_port(
+                *obj,
+                std::ffi::CString::new(name).unwrap().as_ptr(),
+            )
+        };
+    }
+
+    pub fn dummy_remove_all_external_mock_ports(&self) {
+        let obj = self.lock();
+        unsafe { ffi::dummy_driver_remove_all_external_mock_ports(*obj) };
+    }
         let obj = self.lock();
         unsafe { ffi::dummy_audio_run_requested_frames(*obj) };
     }
