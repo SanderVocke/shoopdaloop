@@ -735,69 +735,83 @@ class AudioDriver:
         self._client_name = ''
 
     def get_state(self):
-        return self._obj.get_state()
+        state = bindings.get_audio_driver_state(self.get_backend_obj())
+        rval = AudioDriverState(deref_ptr(state))
+        if state:
+            self._active = rval.active
+            self._dsp_load = rval.dsp_load
+            self._xruns = rval.xruns
+            self._client_name = rval.maybe_instance_name
+            bindings.destroy_audio_driver_state(state)
+        return rval
 
     def dummy_enter_controlled_mode(self):
         if self.active():
-            self._obj.dummy_enter_controlled_mode()
+            bindings.dummy_audio_enter_controlled_mode(self.get_backend_obj())
 
     def dummy_enter_automatic_mode(self):
         if self.active():
-            self._obj.dummy_enter_automatic_mode()
+            bindings.dummy_audio_enter_automatic_mode(self.get_backend_obj())
 
     def dummy_is_controlled(self):
         if self.active():
-            return self._obj.dummy_is_controlled()
+            return bool(bindings.dummy_audio_is_in_controlled_mode(self.get_backend_obj()))
         return False
 
     def dummy_request_controlled_frames(self, n):
         if self.active():
-            self._obj.dummy_request_controlled_frames(n)
+            bindings.dummy_audio_request_controlled_frames(self.get_backend_obj(), n)
 
     def dummy_n_requested_frames(self):
         if self.active():
-            return self._obj.dummy_n_requested_frames()
+            return int(bindings.dummy_audio_n_requested_frames(self.get_backend_obj()))
         return 0
 
     def dummy_add_external_mock_port(self, name, direction, data_type):
         if self.active():
-            self._obj.dummy_add_external_mock_port(name, direction, data_type)
+            bindings.dummy_driver_add_external_mock_port(self.get_backend_obj(), name.encode('ascii'), direction, data_type)
 
     def dummy_remove_external_mock_port(self, name):
         if self.active():
-            self._obj.dummy_remove_external_mock_port(name)
+            bindings.dummy_driver_remove_external_mock_port(self.get_backend_obj(), name.encode('ascii'))
 
     def dummy_remove_all_external_mock_ports(self):
         if self.active():
-            self._obj.dummy_remove_all_external_mock_ports()
+            bindings.dummy_driver_remove_all_external_mock_ports(self.get_backend_obj())
 
     def get_sample_rate(self):
         if self.active():
-            return self._obj.get_sample_rate()
+            return int(bindings.get_sample_rate(self.get_backend_obj()))
         return 1
 
     def get_buffer_size(self):
         if self.active():
-            return self._obj.get_buffer_size()
+            return int(bindings.get_buffer_size(self.get_backend_obj()))
         return 1
 
     def start_dummy(self, settings):
-        self._obj.start_dummy(settings)
+        bindings.start_dummy_driver(self.get_backend_obj(), settings.to_backend())
 
     def start_jack(self, settings):
-        self._obj.start_jack(settings)
+        bindings.start_jack_driver(self.get_backend_obj(), settings.to_backend())
 
     def active(self):
-        return self._obj.active()
+        self.get_state()
+        return self._active
 
     def wait_process(self):
-        self._obj.wait_process()
+        bindings.wait_process(self.get_backend_obj())
 
     def dummy_run_requested_frames(self):
-        self._obj.dummy_run_requested_frames()
+        bindings.dummy_audio_run_requested_frames(self.get_backend_obj())
 
     def find_external_ports(self, maybe_name_regex, port_direction, data_type):
-        return self._obj.find_external_ports(maybe_name_regex, port_direction, data_type)
+        result = bindings.find_external_ports(self.get_backend_obj(), maybe_name_regex, port_direction, data_type)
+        rval = []
+        for i in range(result[0].n_ports):
+            rval.append(ExternalPortDescriptor(result[0].ports[i]))
+        bindings.destroy_external_port_descriptors(result)
+        return rval
 
 def audio_driver_type_supported(t : Type[AudioDriverType]):
     return bool(bindings.driver_type_supported(t.value))
