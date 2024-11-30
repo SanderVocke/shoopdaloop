@@ -3,10 +3,23 @@ use crate::ffi;
 use std::sync::Mutex;
 
 use crate::audio_driver::AudioDriver;
+use crate::ffi::shoop_backend_session_state_info_t;
 use crate::common::BackendResult;
 
 pub struct BackendSession {
     obj : Mutex<*mut ffi::shoop_backend_session_t>,
+}
+
+pub struct BackendSessionState {
+    pub audio_driver: *mut ffi::shoop_audio_driver_t,
+}
+
+impl BackendSessionState {
+    pub fn new(obj: &shoop_backend_session_state_info_t) -> Self {
+        BackendSessionState {
+            audio_driver: obj.audio_driver,
+        }
+    }
 }
 
 unsafe impl Send for BackendSession {}
