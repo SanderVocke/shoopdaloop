@@ -1,4 +1,14 @@
-// See audio_driver.rs from backend_bindings
+#[repr(C)]
+pub struct AudioDriverState {
+    pub dsp_load_percent: f32,
+    pub xruns_since_last: u32,
+    pub maybe_driver_handle: *mut std::os::raw::c_void,
+    pub maybe_instance_name: *const std::os::raw::c_char,
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+    pub active: u32,
+    pub last_processed: u32,
+}
 
 use pyo3::prelude::*;
 // use pyo3::exceptions::*;
