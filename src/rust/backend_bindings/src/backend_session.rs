@@ -8,10 +8,6 @@ use crate::common::BackendResult;
 use crate::ffi::shoop_profiling_report_item_t;
 use std::ffi::CStr;
 
-pub struct BackendSession {
-    obj : Mutex<*mut ffi::shoop_backend_session_t>,
-}
-
 pub struct ProfilingReportItem {
     pub key: String,
     pub n_samples: f32,
@@ -43,6 +39,10 @@ impl BackendSessionState {
             audio_driver: obj.audio_driver,
         }
     }
+}
+
+pub struct BackendSession {
+    obj : Mutex<*mut ffi::shoop_backend_session_t>,
 }
 
 unsafe impl Send for BackendSession {}
