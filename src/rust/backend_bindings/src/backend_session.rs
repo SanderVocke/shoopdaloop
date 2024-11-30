@@ -3,9 +3,7 @@ use crate::ffi;
 use std::sync::Mutex;
 
 use crate::audio_driver::AudioDriver;
-use crate::ffi::shoop_backend_session_state_info_t;
 use crate::common::BackendResult;
-use crate::ffi::shoop_profiling_report_item_t;
 use std::ffi::CStr;
 use std::slice;
 
@@ -22,7 +20,7 @@ pub struct ProfilingReport {
 }
 
 impl ProfilingReport {
-    pub fn new(obj: &shoop_profiling_report_t) -> Self {
+    pub fn new(obj: &ffi::shoop_profiling_report_t) -> Self {
         let items_slice = unsafe { slice::from_raw_parts(obj.items, obj.n_items as usize) };
         let items = items_slice.iter().map(|item| ProfilingReportItem::new(item)).collect();
         ProfilingReport { items }
@@ -30,7 +28,7 @@ impl ProfilingReport {
 }
 
 impl ProfilingReportItem {
-    pub fn new(obj: &shoop_profiling_report_item_t) -> Self {
+    pub fn new(obj: &ffi::shoop_profiling_report_item_t) -> Self {
         let key = unsafe { CStr::from_ptr(obj.key).to_string_lossy().into_owned() };
         ProfilingReportItem {
             key,
@@ -47,7 +45,7 @@ pub struct BackendSessionState {
 }
 
 impl BackendSessionState {
-    pub fn new(obj: &shoop_backend_session_state_info_t) -> Self {
+    pub fn new(obj: &ffi::shoop_backend_session_state_info_t) -> Self {
         BackendSessionState {
             audio_driver: obj.audio_driver,
         }
