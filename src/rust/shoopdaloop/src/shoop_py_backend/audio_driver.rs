@@ -73,7 +73,12 @@ impl AudioDriverState {
     pub fn new(obj: &backend_bindings::AudioDriverState) -> Self {
         return AudioDriverState {
             dsp_load_percent : obj.dsp_load_percent,
-            
+            xruns_since_last : obj.xruns_since_last,
+            maybe_instance_name : obj.maybe_instance_name.clone(),
+            sample_rate : obj.sample_rate,
+            buffer_size : obj.buffer_size,
+            active : obj.active,
+            last_processed : obj.last_processed,
         }
     }
 }
@@ -159,11 +164,21 @@ impl AudioDriver {
             .map(port::ExternalPortDescriptor::new)
             .collect()
     }
+
+    fn get_state(&self) -> AudioDriverState {
+        AudioDriverState::new(&self.obj.get_state())
+    }
+}
+
+#[pyfunction]
+pub fn driver_type_supported(driver_type: u32) -> bool {
+    backend_bindings::driver_type_supported(backend_bindings::AudioDriverType::try_from(driver_type).unwrap())
 }
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<AudioDriver>()?;
     m.add_class::<JackAudioDriverSettings>()?;
     m.add_class::<DummyAudioDriverSettings>()?;
+    m.add_function(wrap_pyfunction!(driver_type_supported, m)?)?;
     Ok(())
 }

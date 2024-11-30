@@ -208,8 +208,8 @@ class Backend(ShoopQQuickItem):
         driver_state = self._backend_driver_obj.get_state()
 
         # Set the Python state directly and queue an update on the GUI thread
-        self._new_dsp_load = driver_state.dsp_load
-        self._new_xruns = min(2**31-1, self._xruns + driver_state.xruns)
+        self._new_dsp_load = driver_state.dsp_load_percent
+        self._new_xruns = min(2**31-1, self._xruns + driver_state.xruns_since_last)
         self._new_actual_backend_type = self._driver_type.value
         self._new_last_processed = driver_state.last_processed
         self._n_updates_pending += 1
@@ -410,9 +410,6 @@ class Backend(ShoopQQuickItem):
         self._backend_session_obj.set_audio_driver(self._backend_driver_obj)
         self._backend_driver_obj.wait_process()
         self._backend_driver_obj.get_state() # TODO: this has implicit side-effect
-
-        if not self._backend_driver_obj.active():
-            raise Exception("Failed to initialize back-end driver.")
 
         self.logger.debug(lambda: "Initialized")
         self._initialized = True

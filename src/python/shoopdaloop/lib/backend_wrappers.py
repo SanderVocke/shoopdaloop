@@ -216,33 +216,6 @@ class ProfilingReport:
             self.items = []
 
 @dataclass
-class AudioDriverState:
-    dsp_load : float
-    xruns : int
-    maybe_instance_name : str
-    sample_rate : int
-    buffer_size : int
-    active : bool
-    last_processed : int
-
-    def __init__(self, backend_obj : 'bindings.shoop_audio_driver_state_t'):
-        if backend_obj:
-            self.dsp_load = float(backend_obj.dsp_load_percent)
-            self.xruns = to_int(backend_obj.xruns_since_last)
-            self.maybe_instance_name = str(backend_obj.maybe_instance_name)
-            self.sample_rate = to_int(backend_obj.sample_rate)
-            self.buffer_size = to_int(backend_obj.buffer_size)
-            self.active = bool(backend_obj.active)
-            self.last_processed = to_int(backend_obj.last_processed)
-        else:
-            self.dsp_load = 0.0
-            self.xruns = 0
-            self.maybe_instance_name = 'unknown'
-            self.sample_rate = 48000
-            self.buffer_size = 1024
-            self.active = False
-            self.last_processed = 1
-@dataclass
 class ExternalPortDescriptor:
     name : str
     direction : PortDirection
@@ -701,72 +674,48 @@ class AudioDriver:
 
     def __init__(self, obj):
         self._obj = obj
-        self._active = False
-        self._dsp_load = 0.0
         self._xruns = 0
         self._client_name = ''
 
     def get_state(self):
         rval = self._obj.get_state()
-        self._active = rval.active
-        self._dsp_load = rval.dsp_load
-        self._xruns = rval.xruns
-        self._client_name = rval.maybe_instance_name
         return rval
 
     def dummy_enter_controlled_mode(self):
-        if self.active():
-            self._obj.dummy_enter_controlled_mode()
+        self._obj.dummy_enter_controlled_mode()
 
     def dummy_enter_automatic_mode(self):
-        if self.active():
-            self._obj.dummy_enter_automatic_mode()
+        self._obj.dummy_enter_automatic_mode()
 
     def dummy_is_controlled(self):
-        if self.active():
-            return self._obj.dummy_is_controlled()
-        return False
+        return self._obj.dummy_is_controlled()
 
     def dummy_request_controlled_frames(self, n):
-        if self.active():
-            self._obj.dummy_request_controlled_frames(n)
+        self._obj.dummy_request_controlled_frames(n)
 
     def dummy_n_requested_frames(self):
-        if self.active():
-            return self._obj.dummy_n_requested_frames()
-        return 0
+        return self._obj.dummy_n_requested_frames()
 
     def dummy_add_external_mock_port(self, name, direction, data_type):
-        if self.active():
-            self._obj.dummy_add_external_mock_port(name, direction, data_type)
+        self._obj.dummy_add_external_mock_port(name, direction, data_type)
 
     def dummy_remove_external_mock_port(self, name):
-        if self.active():
-            self._obj.dummy_remove_external_mock_port(name)
+        self._obj.dummy_remove_external_mock_port(name)
 
     def dummy_remove_all_external_mock_ports(self):
-        if self.active():
-            self._obj.dummy_remove_all_external_mock_ports()
+        self._obj.dummy_remove_all_external_mock_ports()
 
     def get_sample_rate(self):
-        if self.active():
-            return self._obj.get_sample_rate()
-        return 1
+        return self._obj.get_sample_rate()
 
     def get_buffer_size(self):
-        if self.active():
-            return self._obj.get_buffer_size()
-        return 1
+        return self._obj.get_buffer_size()
 
     def start_dummy(self, settings):
         self._obj.start_dummy(settings)
 
     def start_jack(self, settings):
         self._obj.start_jack(settings)
-
-    def active(self):
-        self.get_state()
-        return self._active
 
     def wait_process(self):
         self._obj.wait_process()
@@ -777,11 +726,8 @@ class AudioDriver:
     def find_external_ports(self, maybe_name_regex, port_direction, data_type):
         return self._obj.find_external_ports(maybe_name_regex, port_direction, data_type)
 
-def audio_driver_type_supported(t : Type[AudioDriverType]):
-    return bool(bindings.driver_type_supported(t.value))
-
 def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendAudioPort':
-    if backend_session.active() and audio_driver.active():
+    if backend_session.active():
         obj = shoop_py_backend.open_driver_audio_port(
                 backend_session._obj,
                 audio_driver._obj,
@@ -792,18 +738,16 @@ def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direc
     raise Exception("Failed to open audio port: backend session or audio driver not active")
 
 def open_driver_decoupled_midi_port(audio_driver, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
-    if audio_driver.active():
-        obj = shoop_py_backend.open_driver_decoupled_midi_port(
-            audio_driver._obj,
-            name_hint,
-            direction
-        )
-        port = BackendDecoupledMidiPort(obj)
-        return port
-    raise Exception("Trying to open a MIDI port before audio driver is started.")
+    obj = shoop_py_backend.open_driver_decoupled_midi_port(
+        audio_driver._obj,
+        name_hint,
+        direction
+    )
+    port = BackendDecoupledMidiPort(obj)
+    return port
 
 def open_driver_midi_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendMidiPort':
-    if backend_session.active() and audio_driver.active():
+    if backend_session.active():
         obj = shoop_py_backend.open_driver_midi_port(
                 backend_session._obj,
                 audio_driver._obj,

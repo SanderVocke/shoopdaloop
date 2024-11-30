@@ -214,10 +214,6 @@ impl AudioDriver {
         port_descriptors
     }
 
-    pub fn driver_type_supported(driver_type : AudioDriverType) -> bool {
-        unsafe { ffi::driver_type_supported(driver_type as u32) != 0 }
-    }
-
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoop_audio_driver_t {
         let guard = self.lock();
         *guard
@@ -245,4 +241,8 @@ impl Drop for AudioDriver {
         }
         unsafe { ffi::destroy_audio_driver(obj) };
     }
+}
+
+pub fn driver_type_supported(driver_type : AudioDriverType) -> bool {
+    unsafe { ffi::driver_type_supported(driver_type as u32) != 0 }
 }
