@@ -5,19 +5,19 @@ use pyo3::prelude::*;
 use backend_bindings;
 
 use pyo3::prelude::*;
-use backend_bindings::{AudioDriver as RustAudioDriver, AudioDriverType, DummyAudioDriverSettings, JackAudioDriverSettings, ExternalPortDescriptor};
+use backend_bindings;
 
 #[pyclass]
 pub struct AudioDriver {
-    pub obj: RustAudioDriver,
+    pub obj: backend_bindings::AudioDriver,
 }
 
 #[pymethods]
 impl AudioDriver {
     #[new]
     fn py_new(driver_type: u32) -> PyResult<Self> {
-        let driver_type = AudioDriverType::try_from(driver_type).map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid driver type"))?;
-        let obj = RustAudioDriver::new(driver_type).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to create AudioDriver: {:?}", e)))?;
+        let driver_type = backend_bindings::AudioDriverType::try_from(driver_type).map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid driver type"))?;
+        let obj = backend_bindings::AudioDriver::new(driver_type).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to create AudioDriver: {:?}", e)))?;
         Ok(AudioDriver { obj })
     }
 
@@ -29,11 +29,11 @@ impl AudioDriver {
         self.obj.get_buffer_size()
     }
 
-    fn start_dummy(&self, settings: &DummyAudioDriverSettings) -> PyResult<()> {
+    fn start_dummy(&self, settings: &backend_bindings::DummyAudioDriverSettings) -> PyResult<()> {
         self.obj.start_dummy(settings).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to start dummy driver: {:?}", e)))
     }
 
-    fn start_jack(&self, settings: &JackAudioDriverSettings) -> PyResult<()> {
+    fn start_jack(&self, settings: &backend_bindings::JackAudioDriverSettings) -> PyResult<()> {
         self.obj.start_jack(settings).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to start jack driver: {:?}", e)))
     }
 
@@ -82,7 +82,7 @@ impl AudioDriver {
     }
 
     #[pyo3(signature = (maybe_name_regex=None, port_direction=0, data_type=0))]
-    fn find_external_ports(&self, maybe_name_regex: Option<&str>, port_direction: u32, data_type: u32) -> Vec<ExternalPortDescriptor> {
+    fn find_external_ports(&self, maybe_name_regex: Option<&str>, port_direction: u32, data_type: u32) -> Vec<backend_bindings::ExternalPortDescriptor> {
         self.obj.find_external_ports(maybe_name_regex, port_direction, data_type)
     }
 }
