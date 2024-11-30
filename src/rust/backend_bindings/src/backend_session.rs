@@ -3,6 +3,9 @@ use crate::ffi;
 use std::sync::Mutex;
 
 use crate::audio_driver::AudioDriver;
+use crate::fx_chain::FXChain;
+use crate::audio_port::AudioPort;
+use crate::midi_port::MidiPort;
 use crate::common::BackendResult;
 use std::ffi::CStr;
 use std::slice;
@@ -24,6 +27,36 @@ impl ProfilingReport {
         let items_slice = unsafe { slice::from_raw_parts(obj.items, obj.n_items as usize) };
         let items = items_slice.iter().map(|item| ProfilingReportItem::new(item)).collect();
         ProfilingReport { items }
+    }
+
+    pub fn get_fx_chain_audio_input_port(&self, fx_chain: &FXChain, idx: usize) -> Result<AudioPort, anyhow::Error> {
+        let obj = unsafe { self.unsafe_backend_ptr() };
+        let port_ptr = unsafe { ffi::fx_chain_audio_input_port(fx_chain.unsafe_backend_ptr(), idx as u32) };
+        if port_ptr.is_null() {
+            Err(anyhow::anyhow!("Failed to get audio input port"))
+        } else {
+            Ok(AudioPort::new(port_ptr))
+        }
+    }
+
+    pub fn get_fx_chain_audio_output_port(&self, fx_chain: &FXChain, idx: usize) -> Result<AudioPort, anyhow::Error> {
+        let obj = unsafe { self.unsafe_backend_ptr() };
+        let port_ptr = unsafe { ffi::fx_chain_audio_output_port(fx_chain.unsafe_backend_ptr(), idx as u32) };
+        if port_ptr.is_null() {
+            Err(anyhow::anyhow!("Failed to get audio output port"))
+        } else {
+            Ok(AudioPort::new(port_ptr))
+        }
+    }
+
+    pub fn get_fx_chain_midi_input_port(&self, fx_chain: &FXChain, idx: usize) -> Result<MidiPort, anyhow::Error> {
+        let obj = unsafe { self.unsafe_backend_ptr() };
+        let port_ptr = unsafe { ffi::fx_chain_midi_input_port(fx_chain.unsafe_backend_ptr(), idx as u32) };
+        if port_ptr.is_null() {
+            Err(anyhow::anyhow!("Failed to get MIDI input port"))
+        } else {
+            Ok(MidiPort::new(port_ptr))
+        }
     }
 }
 
