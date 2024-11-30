@@ -3,9 +3,55 @@
 use pyo3::prelude::*;
 // use pyo3::exceptions::*;
 use backend_bindings;
+use crate::shoop_py_backend::port;
 
-use pyo3::prelude::*;
-use backend_bindings;
+#[pyclass]
+pub struct JackAudioDriverSettings {
+    pub client_name_hint: String,
+    pub maybe_server_name: Option<String>,
+}
+
+impl JackAudioDriverSettings {
+    fn to_ffi(&self) -> backend_bindings::JackAudioDriverSettings {
+        backend_bindings::JackAudioDriverSettings {
+            client_name_hint: self.client_name_hint.clone(),
+            maybe_server_name: self.maybe_server_name.clone(),
+        }
+    }
+}
+
+#[pymethods]
+impl JackAudioDriverSettings {
+    #[new]
+    fn py_new(client_name_hint: String, maybe_server_name: Option<String>) -> Self {
+        JackAudioDriverSettings { client_name_hint, maybe_server_name }
+    }
+}
+
+#[pyclass]
+pub struct DummyAudioDriverSettings {
+    pub client_name: String,
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+}
+
+impl DummyAudioDriverSettings {
+    fn to_ffi(&self) -> backend_bindings::DummyAudioDriverSettings {
+        backend_bindings::DummyAudioDriverSettings {
+            client_name: self.client_name.clone(),
+            sample_rate: self.sample_rate,
+            buffer_size: self.buffer_size,
+        }
+    }
+}
+
+#[pymethods]
+impl DummyAudioDriverSettings {
+    #[new]
+    fn py_new(client_name: String, sample_rate: u32, buffer_size: u32) -> Self {
+        DummyAudioDriverSettings { client_name, sample_rate, buffer_size }
+    }
+}
 
 #[pyclass]
 pub struct AudioDriver {
@@ -29,12 +75,12 @@ impl AudioDriver {
         self.obj.get_buffer_size()
     }
 
-    fn start_dummy(&self, settings: &backend_bindings::DummyAudioDriverSettings) -> PyResult<()> {
-        self.obj.start_dummy(settings).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to start dummy driver: {:?}", e)))
+    fn start_dummy(&self, settings: &DummyAudioDriverSettings) -> PyResult<()> {
+        self.obj.start_dummy(&settings.to_ffi()).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to start dummy driver: {:?}", e)))
     }
 
-    fn start_jack(&self, settings: &backend_bindings::JackAudioDriverSettings) -> PyResult<()> {
-        self.obj.start_jack(settings).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to start jack driver: {:?}", e)))
+    fn start_jack(&self, settings: &JackAudioDriverSettings) -> PyResult<()> {
+        self.obj.start_jack(&settings.to_ffi()).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to start jack driver: {:?}", e)))
     }
 
     fn active(&self) -> bool {
@@ -82,7 +128,17 @@ impl AudioDriver {
     }
 
     #[pyo3(signature = (maybe_name_regex=None, port_direction=0, data_type=0))]
-    fn find_external_ports(&self, maybe_name_regex: Option<&str>, port_direction: u32, data_type: u32) -> Vec<backend_bindings::ExternalPortDescriptor> {
+    fn find_external_ports(&self, maybe_name_regex: Option<&str>, port_direction: u32, data_type: u32) -> Vec<port::ExternalPortDescriptor> {
         self.obj.find_external_ports(maybe_name_regex, port_direction, data_type)
+            .into_iter()
+            .map(port::ExternalPortDescriptor::new)
+            .collect()
     }
+}
+
+pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
+    m.add_class::<AudioDriver>()?;
+    m.add_class::<JackAudioDriverSettings>()?;
+    m.add_class::<DummyAudioDriverSettings>()?;
+    Ok(())
 }
