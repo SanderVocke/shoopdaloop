@@ -7,6 +7,7 @@ use crate::ffi::shoop_backend_session_state_info_t;
 use crate::common::BackendResult;
 use crate::ffi::shoop_profiling_report_item_t;
 use std::ffi::CStr;
+use std::slice;
 
 pub struct ProfilingReportItem {
     pub key: String,
@@ -14,6 +15,18 @@ pub struct ProfilingReportItem {
     pub average: f32,
     pub worst: f32,
     pub most_recent: f32,
+}
+
+pub struct ProfilingReport {
+    pub items: Vec<ProfilingReportItem>,
+}
+
+impl ProfilingReport {
+    pub fn new(obj: &shoop_profiling_report_t) -> Self {
+        let items_slice = unsafe { slice::from_raw_parts(obj.items, obj.n_items as usize) };
+        let items = items_slice.iter().map(|item| ProfilingReportItem::new(item)).collect();
+        ProfilingReport { items }
+    }
 }
 
 impl ProfilingReportItem {
