@@ -5,9 +5,32 @@ use std::sync::Mutex;
 use crate::audio_driver::AudioDriver;
 use crate::ffi::shoop_backend_session_state_info_t;
 use crate::common::BackendResult;
+use crate::ffi::shoop_profiling_report_item_t;
+use std::ffi::CStr;
 
 pub struct BackendSession {
     obj : Mutex<*mut ffi::shoop_backend_session_t>,
+}
+
+pub struct ProfilingReportItem {
+    pub key: String,
+    pub n_samples: f32,
+    pub average: f32,
+    pub worst: f32,
+    pub most_recent: f32,
+}
+
+impl ProfilingReportItem {
+    pub fn new(obj: &shoop_profiling_report_item_t) -> Self {
+        let key = unsafe { CStr::from_ptr(obj.key).to_string_lossy().into_owned() };
+        ProfilingReportItem {
+            key,
+            n_samples: obj.n_samples,
+            average: obj.average,
+            worst: obj.worst,
+            most_recent: obj.most_recent,
+        }
+    }
 }
 
 pub struct BackendSessionState {
