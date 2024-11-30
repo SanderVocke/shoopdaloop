@@ -15,6 +15,76 @@ pub struct ProfilingReportItem {
     pub most_recent: f32,
 }
 
+impl BackendSession {
+    pub fn create() -> Result<Self, anyhow::Error> {
+        let obj = unsafe { ffi::create_backend_session() };
+        if obj.is_null() {
+            Err(anyhow::anyhow!("create_backend_session() failed"))
+        } else {
+            let wrapped = Mutex::new(obj);
+            Ok(BackendSession { obj: wrapped })
+        }
+    }
+
+    pub fn get_state(&self) -> BackendSessionState {
+        let obj = self.unsafe_backend_ptr();
+        let state = unsafe { ffi::get_backend_session_state(obj) };
+        let rval = BackendSessionState::new(unsafe { &*state });
+        unsafe { ffi::destroy_backend_state_info(state) };
+        rval
+    }
+
+    pub fn create_loop(&self) -> Result<*mut ffi::shoopdaloop_loop_t, anyhow::Error> {
+        let obj = self.unsafe_backend_ptr();
+        let loop_ptr = unsafe { ffi::create_loop(obj) };
+        if loop_ptr.is_null() {
+            Err(anyhow::anyhow!("create_loop() failed"))
+        } else {
+            Ok(loop_ptr)
+        }
+    }
+
+    pub fn create_fx_chain(&self, chain_type: ffi::shoop_fx_chain_type_t, title: &str) -> Result<*mut ffi::shoopdaloop_fx_chain_t, anyhow::Error> {
+        let obj = self.unsafe_backend_ptr();
+        let c_title = std::ffi::CString::new(title).unwrap();
+        let chain_ptr = unsafe { ffi::create_fx_chain(obj, chain_type, c_title.as_ptr()) };
+        if chain_ptr.is_null() {
+            Err(anyhow::anyhow!("create_fx_chain() failed"))
+        } else {
+            Ok(chain_ptr)
+        }
+    }
+
+    pub fn get_profiling_report(&self) -> ProfilingReport {
+        let obj = self.unsafe_backend_ptr();
+        let report = unsafe { ffi::get_profiling_report(obj) };
+        let rval = ProfilingReport::new(unsafe { &*report });
+        unsafe { ffi::destroy_profiling_report(report) };
+        rval
+    }
+
+    pub fn set_audio_driver(&self, driver: &AudioDriver) -> Result<(), anyhow::Error> {
+        let obj = self.unsafe_backend_ptr();
+        let driver_obj = driver.unsafe_backend_ptr();
+        let result = unsafe { ffi::set_audio_driver(obj, driver_obj) };
+        if BackendResult::try_from(result)? == BackendResult::Success {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("set_audio_driver() failed"))
+        }
+    }
+
+    pub fn segfault_on_process_thread(&self) {
+        let obj = self.unsafe_backend_ptr();
+        unsafe { ffi::do_segfault_on_process_thread(obj) };
+    }
+
+    pub fn abort_on_process_thread(&self) {
+        let obj = self.unsafe_backend_ptr();
+        unsafe { ffi::do_abort_on_process_thread(obj) };
+    }
+}
+
 pub struct ProfilingReport {
     pub items: Vec<ProfilingReportItem>,
 }
