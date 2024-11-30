@@ -84,7 +84,7 @@ class Backend(ShoopQQuickItem):
     def actual_backend_type(self, n):
         if self._actual_driver_type != n:
             self._actual_driver_type = n
-            self.logger.instanceIdentifier = AudioDriverType(n).name
+            self.logger.instanceIdentifier = PyAudioDriverType(n).name
             self.actualBackendTypeChanged.emit(n)
 
     clientNameHintChanged = ShoopSignal(str)
@@ -102,12 +102,12 @@ class Backend(ShoopQQuickItem):
     backendTypeChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=backendTypeChanged)
     def backend_type(self):
-        return (self._driver_type.value if self._driver_type else AudioDriverType.Dummy.value)
+        return self._driver_type
     @backend_type.setter
     def backend_type(self, n):
         if self._initialized:
             self.logger.throw_error("Back-end driver type can only be set once.")
-        self._driver_type = AudioDriverType(n)
+        self._driver_type = n
         self.maybe_init()
 
     xrunsChanged = ShoopSignal(int)
@@ -210,7 +210,7 @@ class Backend(ShoopQQuickItem):
         # Set the Python state directly and queue an update on the GUI thread
         self._new_dsp_load = driver_state.dsp_load_percent
         self._new_xruns = min(2**31-1, self._xruns + driver_state.xruns_since_last)
-        self._new_actual_backend_type = self._driver_type.value
+        self._new_actual_backend_type = self._driver_type
         self._new_last_processed = driver_state.last_processed
         self._n_updates_pending += 1
 
@@ -342,7 +342,7 @@ class Backend(ShoopQQuickItem):
 
     @ShoopSlot(int, result=bool)
     def backend_type_is_supported(self, type):
-        return audio_driver_type_supported(AudioDriverType(type))
+        return shoop_py_backend.driver_type_supported(type)
 
     @ShoopSlot(str, int, result='QVariant')
     def open_driver_audio_port(self, name_hint, direction, min_n_ringbuffer_samples):
@@ -381,14 +381,14 @@ class Backend(ShoopQQuickItem):
         if self._initialized:
             self.logger.throw_error("May not initialize more than one back-end at a time.")
         self._backend_session_obj = BackendSession.create()
-        self._backend_driver_obj = AudioDriver.create(self._driver_type)
+        self._backend_driver_obj = shoop_py_backend.AudioDriver(self._driver_type)
 
         if not self._backend_session_obj:
             self.logger.throw_error("Failed to initialize back-end session.")
         if not self._backend_driver_obj:
             self.logger.throw_error("Failed to initialize back-end driver.")
 
-        if self._driver_type == AudioDriverType.Dummy:
+        if self._driver_type == PyAudioDriverType.Dummy.value:
             sample_rate = (self._driver_setting_overrides['sample_rate'] if 'sample_rate' in self._driver_setting_overrides else 48000)
             buffer_size = (self._driver_setting_overrides['buffer_size'] if 'buffer_size' in self._driver_setting_overrides else 256)
             settings = shoop_py_backend.DummyAudioDriverSettings(
@@ -397,7 +397,7 @@ class Backend(ShoopQQuickItem):
                 buffer_size=buffer_size
             )
             self._backend_driver_obj.start_dummy(settings)
-        elif self._driver_type in [AudioDriverType.Jack, AudioDriverType.JackTest]:
+        elif self._driver_type in [PyAudioDriverType.Jack.value, PyAudioDriverType.JackTest.value]:
             maybe_server_name = (self._driver_setting_overrides['jack_server'] if 'jack_server' in self._driver_setting_overrides else '')
             settings = shoop_py_backend.JackAudioDriverSettings(
                 client_name_hint = self._client_name_hint,

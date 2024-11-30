@@ -68,7 +68,7 @@ class PyChannelMode(Enum):
     Dry = bindings.ChannelMode_Dry
     Wet = bindings.ChannelMode_Wet
 
-class AudioDriverType(Enum):
+class PyAudioDriverType(Enum):
     Jack = bindings.Jack
     JackTest = bindings.JackTest
     Dummy = bindings.Dummy
@@ -650,9 +650,9 @@ class BackendSession:
     def active(self):
         return self._active
 
-    def set_audio_driver(self, driver: Type['AudioDriver']):
+    def set_audio_driver(self, driver):
         if self.active():
-            self._obj.set_audio_driver(driver._obj)
+            self._obj.set_audio_driver(driver)
 
     def segfault_on_process_thread(self):
         if self.active():
@@ -662,75 +662,11 @@ class BackendSession:
         if self.active():
             bindings.do_abort_on_process_thread(self.get_backend_obj())
 
-class AudioDriver:
-    def create(driver_type : Type[AudioDriverType]):
-        _obj = shoop_py_backend.AudioDriver(driver_type.value)
-        b = AudioDriver(_obj)
-        return b
-
-    def get_backend_obj(self):
-        addr = self._obj.unsafe_backend_ptr()
-        return cast(c_void_p(addr), POINTER(bindings.shoop_audio_driver_t))
-
-    def __init__(self, obj):
-        self._obj = obj
-        self._xruns = 0
-        self._client_name = ''
-
-    def get_state(self):
-        rval = self._obj.get_state()
-        return rval
-
-    def dummy_enter_controlled_mode(self):
-        self._obj.dummy_enter_controlled_mode()
-
-    def dummy_enter_automatic_mode(self):
-        self._obj.dummy_enter_automatic_mode()
-
-    def dummy_is_controlled(self):
-        return self._obj.dummy_is_controlled()
-
-    def dummy_request_controlled_frames(self, n):
-        self._obj.dummy_request_controlled_frames(n)
-
-    def dummy_n_requested_frames(self):
-        return self._obj.dummy_n_requested_frames()
-
-    def dummy_add_external_mock_port(self, name, direction, data_type):
-        self._obj.dummy_add_external_mock_port(name, direction, data_type)
-
-    def dummy_remove_external_mock_port(self, name):
-        self._obj.dummy_remove_external_mock_port(name)
-
-    def dummy_remove_all_external_mock_ports(self):
-        self._obj.dummy_remove_all_external_mock_ports()
-
-    def get_sample_rate(self):
-        return self._obj.get_sample_rate()
-
-    def get_buffer_size(self):
-        return self._obj.get_buffer_size()
-
-    def start_dummy(self, settings):
-        self._obj.start_dummy(settings)
-
-    def start_jack(self, settings):
-        self._obj.start_jack(settings)
-
-    def wait_process(self):
-        self._obj.wait_process()
-
-    def dummy_run_requested_frames(self):
-        self._obj.dummy_run_requested_frames()
-
-    def find_external_ports(self, maybe_name_regex, port_direction, data_type):
-        return self._obj.find_external_ports(maybe_name_regex, port_direction, data_type)
-
 def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendAudioPort':
     if backend_session.active():
         obj = shoop_py_backend.open_driver_audio_port(
                 backend_session._obj,
-                audio_driver._obj,
+                audio_driver,
                 name_hint,
                 direction,
                 min_n_ringbuffer_samples)
@@ -739,7 +675,7 @@ def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direc
 
 def open_driver_decoupled_midi_port(audio_driver, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
     obj = shoop_py_backend.open_driver_decoupled_midi_port(
-        audio_driver._obj,
+        audio_driver,
         name_hint,
         direction
     )
@@ -750,7 +686,7 @@ def open_driver_midi_port(backend_session, audio_driver, name_hint : str, direct
     if backend_session.active():
         obj = shoop_py_backend.open_driver_midi_port(
                 backend_session._obj,
-                audio_driver._obj,
+                audio_driver,
                 name_hint,
                 direction,
                 min_n_ringbuffer_samples)
