@@ -14,6 +14,8 @@ from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
 
+import shoop_py_backend
+
 from ..backend_wrappers import *
 from ..backend_wrappers import open_driver_audio_port as backend_open_driver_audio_port, open_driver_midi_port as backend_open_driver_midi_port
 from ..findChildItems import findChildItems
@@ -389,7 +391,7 @@ class Backend(ShoopQQuickItem):
         if self._driver_type == AudioDriverType.Dummy:
             sample_rate = (self._driver_setting_overrides['sample_rate'] if 'sample_rate' in self._driver_setting_overrides else 48000)
             buffer_size = (self._driver_setting_overrides['buffer_size'] if 'buffer_size' in self._driver_setting_overrides else 256)
-            settings = DummyAudioDriverSettings(
+            settings = shoop_py_backend.DummyAudioDriverSettings(
                 client_name=self._client_name_hint,
                 sample_rate=sample_rate,
                 buffer_size=buffer_size
@@ -397,7 +399,7 @@ class Backend(ShoopQQuickItem):
             self._backend_driver_obj.start_dummy(settings)
         elif self._driver_type in [AudioDriverType.Jack, AudioDriverType.JackTest]:
             maybe_server_name = (self._driver_setting_overrides['jack_server'] if 'jack_server' in self._driver_setting_overrides else '')
-            settings = JackAudioDriverSettings(
+            settings = shoop_py_backend.JackAudioDriverSettings(
                 client_name_hint = self._client_name_hint,
                 maybe_server_name = maybe_server_name
             )

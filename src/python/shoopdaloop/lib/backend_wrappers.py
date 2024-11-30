@@ -219,7 +219,6 @@ class ProfilingReport:
 class AudioDriverState:
     dsp_load : float
     xruns : int
-    maybe_driver_handle : Any
     maybe_instance_name : str
     sample_rate : int
     buffer_size : int
@@ -230,7 +229,6 @@ class AudioDriverState:
         if backend_obj:
             self.dsp_load = float(backend_obj.dsp_load_percent)
             self.xruns = to_int(backend_obj.xruns_since_last)
-            self.maybe_driver_handle = backend_obj.maybe_driver_handle
             self.maybe_instance_name = str(backend_obj.maybe_instance_name)
             self.sample_rate = to_int(backend_obj.sample_rate)
             self.buffer_size = to_int(backend_obj.buffer_size)
@@ -239,37 +237,11 @@ class AudioDriverState:
         else:
             self.dsp_load = 0.0
             self.xruns = 0
-            self.maybe_driver_handle = None
             self.maybe_instance_name = 'unknown'
             self.sample_rate = 48000
             self.buffer_size = 1024
             self.active = False
             self.last_processed = 1
-
-@dataclass
-class JackAudioDriverSettings:
-    client_name_hint : str
-    maybe_server_name : str
-
-    def to_backend(self):
-        rval = bindings.shoop_jack_audio_driver_settings_t()
-        rval.client_name_hint = bindings.String(self.client_name_hint.encode('ascii'))
-        rval.maybe_server_name = bindings.String(self.maybe_server_name.encode('ascii'))
-        return rval
-
-@dataclass
-class DummyAudioDriverSettings:
-    client_name : str
-    sample_rate : int
-    buffer_size : int
-
-    def to_backend(self):
-        rval = bindings.shoop_dummy_audio_driver_settings_t()
-        rval.client_name = bindings.String(self.client_name.encode('ascii'))
-        rval.sample_rate = self.sample_rate
-        rval.buffer_size = self.buffer_size
-        return rval
-
 @dataclass
 class ExternalPortDescriptor:
     name : str

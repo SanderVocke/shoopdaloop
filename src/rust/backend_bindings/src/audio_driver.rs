@@ -62,6 +62,32 @@ impl DummyAudioDriverSettings {
     }
 }
 
+pub struct AudioDriverState {
+    pub dsp_load_percent: f32,
+    pub xruns_since_last: u32,
+    pub maybe_instance_name: String,
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+    pub active: u32,
+    pub last_processed: u32,
+}
+
+impl AudioDriverState {
+    pub fn new(obj : &ffi::shoop_audio_driver_state_t) -> Self {
+        let c_str = unsafe { std::ffi::CStr::from_ptr(obj.maybe_instance_name) };
+        let rust_string = c_str.to_str().expect("Failed to convert to str").to_string();
+        AudioDriverState {
+            dsp_load_percent : obj.dsp_load_percent,
+            xruns_since_last : obj.xruns_since_last,
+            maybe_instance_name : rust_string,
+            sample_rate : obj.sample_rate,
+            buffer_size : obj.buffer_size,
+            active : obj.active,
+            last_processed : obj.last_processed,
+        }
+    }
+}
+
 pub struct AudioDriver {
     obj : Mutex<*mut ffi::shoop_audio_driver_t>,
 }
@@ -156,9 +182,9 @@ impl AudioDriver {
     pub fn dummy_remove_external_mock_port(&self, name: &str) {
         let obj = self.lock();
         unsafe {
+            let c_name = std::ffi::CString::new(name).unwrap();
             ffi::dummy_driver_remove_external_mock_port(
                 *obj,
-                let c_name = std::ffi::CString::new(name).unwrap();
                 c_name.as_ptr(),
             )
         };
@@ -195,6 +221,14 @@ impl AudioDriver {
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoop_audio_driver_t {
         let guard = self.lock();
         *guard
+    }
+
+    pub fn get_state(&self) -> AudioDriverState {
+        let obj = self.lock();
+        let state = unsafe { ffi::get_audio_driver_state(*obj) };
+        let r_state = unsafe { AudioDriverState::new(&*state) };
+        unsafe { ffi::destroy_audio_driver_state(state) };
+        r_state
     }
     
     pub fn lock(&self) -> std::sync::MutexGuard<*mut ffi::shoop_audio_driver_t> {
