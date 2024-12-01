@@ -622,37 +622,32 @@ class BackendSession:
         return self._obj.get_state()
 
     def create_loop(self):
-        return self._obj.create_loop() if self.active() else None
+        return shoop_py_backend.Loop(self._obj)
 
     def create_fx_chain(self, chain_type : Type['FXChainType'], title: str) -> Type['BackendFXChain']:
-        return self._obj.create_fx_chain(chain_type, title) if self.active() else None
+        return self._obj.create_fx_chain(chain_type, title)
 
     def get_profiling_report(self):
-        return self._obj.get_profiling_report() if self.active() else ProfilingReport()
-
-    def active(self):
-        return self._active
+        return self._obj.get_profiling_report()
 
     def set_audio_driver(self, driver):
-        self._obj.set_audio_driver(driver) if self.active() else None
+        self._obj.set_audio_driver(driver)
 
     def segfault_on_process_thread(self):
-        self._obj.segfault_on_process_thread() if self.active() else None
+        self._obj.segfault_on_process_thread()
 
     def abort_on_process_thread(self):
-        self._obj.abort_on_process_thread() if self.active() else None
+        self._obj.abort_on_process_thread()
 
 def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendAudioPort':
-    if backend_session.active():
-        obj = shoop_py_backend.open_driver_audio_port(
-                backend_session._obj,
-                audio_driver,
-                name_hint,
-                direction,
-                min_n_ringbuffer_samples)
-        return BackendAudioPort(obj)
-    raise Exception("Failed to open audio port: backend session or audio driver not active")
-
+    obj = shoop_py_backend.open_driver_audio_port(
+            backend_session._obj,
+            audio_driver,
+            name_hint,
+            direction,
+            min_n_ringbuffer_samples)
+    return BackendAudioPort(obj)
+   
 def open_driver_decoupled_midi_port(audio_driver, name_hint : str, direction : int) -> 'BackendDecoupledMidiPort':
     obj = shoop_py_backend.open_driver_decoupled_midi_port(
         audio_driver,
@@ -663,15 +658,13 @@ def open_driver_decoupled_midi_port(audio_driver, name_hint : str, direction : i
     return port
 
 def open_driver_midi_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendMidiPort':
-    if backend_session.active():
-        obj = shoop_py_backend.open_driver_midi_port(
-                backend_session._obj,
-                audio_driver,
-                name_hint,
-                direction,
-                min_n_ringbuffer_samples)
-        return BackendMidiPort(obj)
-    raise Exception("Failed to open MIDI port: backend session or audio driver not active")
+    obj = shoop_py_backend.open_driver_midi_port(
+            backend_session._obj,
+            audio_driver,
+            name_hint,
+            direction,
+            min_n_ringbuffer_samples)
+    return BackendMidiPort(obj)
 
 def resample_audio(audio, target_n_frames):
     n_channels = audio.shape[1] # inner

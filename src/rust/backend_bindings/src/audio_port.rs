@@ -35,6 +35,12 @@ impl AudioPort {
         })
     }
 
+    pub fn new(ptr: *mut ffi::shoopdaloop_audio_port_t) -> Self {
+        AudioPort {
+            obj : Mutex::new(ptr),
+        }
+    }
+
     pub fn input_connectability(&self) -> PortConnectability {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;

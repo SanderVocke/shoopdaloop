@@ -2,11 +2,9 @@
 
 use pyo3::prelude::*;
 // use pyo3::exceptions::*;
-use backend_bindings::{self, BackendSessionState as BackendBackendSessionState, ProfilingReportItem as BackendProfilingReportItem};
+use backend_bindings;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
-use backend_bindings::{ProfilingReport as BackendProfilingReport, ProfilingReportItem as BackendProfilingReportItem};
 
-#[pyclass]
 #[pyclass]
 pub struct BackendSessionState {
     #[pyo3(get)]
@@ -14,7 +12,7 @@ pub struct BackendSessionState {
 }
 
 impl BackendSessionState {
-    pub fn from_backend(state: &BackendBackendSessionState) -> Self {
+    pub fn from_backend(state: &backend_bindings::BackendSessionState) -> Self {
         BackendSessionState {
             audio_driver: state.audio_driver as usize,
         }
@@ -61,7 +59,7 @@ pub struct ProfilingReportItem {
 }
 
 impl ProfilingReportItem {
-    pub fn from_backend(item: &BackendProfilingReportItem) -> Self {
+    pub fn from_backend(item: &backend_bindings::ProfilingReportItem) -> Self {
         ProfilingReportItem {
             key: item.key.clone(),
             n_samples: item.n_samples,
@@ -79,14 +77,26 @@ pub struct ProfilingReport {
 }
 
 impl ProfilingReport {
-    pub fn from_backend(report: &BackendProfilingReport) -> Self {
+    pub fn from_backend(report: &backend_bindings::ProfilingReport) -> Self {
         ProfilingReport {
             items: report.items.iter().map(ProfilingReportItem::from_backend).collect(),
         }
     }
 }
 
-pub fn register_in_module<'py>(m: &PyModule) -> PyResult<()> {
+impl Clone for ProfilingReportItem {
+    fn clone(&self) -> Self {
+        ProfilingReportItem {
+            key: self.key.clone(),
+            n_samples: self.n_samples,
+            average: self.average,
+            worst: self.worst,
+            most_recent: self.most_recent,
+        }
+    }
+}
+
+pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<ProfilingReport>()?;
     m.add_class::<ProfilingReportItem>()?;
     m.add_class::<BackendSessionState>()?;

@@ -35,6 +35,12 @@ impl MidiPort {
         })
     }
 
+    pub fn new(ptr : *mut ffi::shoopdaloop_midi_port_t) -> Self {
+        MidiPort {
+            obj : Mutex::new(ptr),
+        }
+    }
+
     pub fn input_connectability(&self) -> PortConnectability {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
