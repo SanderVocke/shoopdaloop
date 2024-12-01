@@ -577,6 +577,33 @@ class BackendFXChain:
     def restore_state(self, state_str):
         if self.available():
             bindings.restore_fx_chain_internal_state(self._c_handle, c_char_p(bytes(state_str, 'ascii')))
+            
+    def get_audio_input_port(self, idx : int):
+        if self.active():
+            ptr = bindings.fx_chain_audio_input_port(self.c_handle(), idx)
+            port = shoop_py_backend.unsafe_audio_port_from_raw_ptr(
+                ctypes.cast(ptr, ctypes.c_void_p).value
+            )
+            return BackendAudioPort(port)
+        return None
+
+    def get_audio_output_port(self, idx : int):
+        if self.active():
+            ptr = bindings.fx_chain_audio_output_port(self.c_handle(), idx)
+            port = shoop_py_backend.unsafe_audio_port_from_raw_ptr(
+                ctypes.cast(ptr, ctypes.c_void_p).value
+            )
+            return BackendAudioPort(port)
+        return None
+
+    def get_midi_input_port(self, idx : int):
+        if self.active():
+            ptr = bindings.fx_chain_midi_input_port(self.c_handle(), idx)
+            port = shoop_py_backend.unsafe_midi_port_from_raw_ptr(
+                ctypes.cast(ptr, ctypes.c_void_p).value
+            )
+            return BackendMidiPort(port)
+        return None
 
 class BackendSession:
     def create():
@@ -609,33 +636,6 @@ class BackendSession:
     def create_fx_chain(self, chain_type : Type['FXChainType'], title: str) -> Type['BackendFXChain']:
         if self.active():
             return BackendFXChain(self)
-        return None
-
-    def get_fx_chain_audio_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
-        if self.active():
-            ptr = bindings.fx_chain_audio_input_port(fx_chain.c_handle(), idx)
-            port = shoop_py_backend.unsafe_audio_port_from_raw_ptr(
-                ctypes.cast(ptr, ctypes.c_void_p).value
-            )
-            return BackendAudioPort(port)
-        return None
-
-    def get_fx_chain_audio_output_port(self, fx_chain : Type['BackendFXChain'], idx : int):
-        if self.active():
-            ptr = bindings.fx_chain_audio_output_port(fx_chain.c_handle(), idx)
-            port = shoop_py_backend.unsafe_audio_port_from_raw_ptr(
-                ctypes.cast(ptr, ctypes.c_void_p).value
-            )
-            return BackendAudioPort(port)
-        return None
-
-    def get_fx_chain_midi_input_port(self, fx_chain : Type['BackendFXChain'], idx : int):
-        if self.active():
-            ptr = bindings.fx_chain_midi_input_port(fx_chain.c_handle(), idx)
-            port = shoop_py_backend.unsafe_midi_port_from_raw_ptr(
-                ctypes.cast(ptr, ctypes.c_void_p).value
-            )
-            return BackendMidiPort(port)
         return None
 
     def get_profiling_report(self):
