@@ -2,9 +2,24 @@
 
 use pyo3::prelude::*;
 // use pyo3::exceptions::*;
-use backend_bindings::{self, ProfilingReportItem as BackendProfilingReportItem};
+use backend_bindings::{self, BackendSessionState as BackendBackendSessionState, ProfilingReportItem as BackendProfilingReportItem};
 use crate::shoop_py_backend::audio_driver::AudioDriver;
 use backend_bindings::{ProfilingReport as BackendProfilingReport, ProfilingReportItem as BackendProfilingReportItem};
+
+#[pyclass]
+#[pyclass]
+pub struct BackendSessionState {
+    #[pyo3(get)]
+    pub audio_driver: usize,
+}
+
+impl BackendSessionState {
+    pub fn from_backend(state: &BackendBackendSessionState) -> Self {
+        BackendSessionState {
+            audio_driver: state.audio_driver as usize,
+        }
+    }
+}
 
 #[pyclass]
 pub struct BackendSession {
@@ -74,6 +89,7 @@ impl ProfilingReport {
 pub fn register_in_module<'py>(m: &PyModule) -> PyResult<()> {
     m.add_class::<ProfilingReport>()?;
     m.add_class::<ProfilingReportItem>()?;
+    m.add_class::<BackendSessionState>()?;
     m.add_class::<BackendSession>()?;
     Ok(())
 }
