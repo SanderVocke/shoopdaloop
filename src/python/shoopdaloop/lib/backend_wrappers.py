@@ -616,51 +616,31 @@ class BackendSession:
         self._active = True
         
     def get_backend_obj(self):
-        addr = self._obj.unsafe_backend_ptr()
-        return cast(c_void_p(addr), POINTER(bindings.shoop_backend_session_t))
+        return self._obj
 
     def get_state(self):
-        if self.active():
-            state = bindings.get_backend_session_state(self.get_backend_obj())
-            rval = BackendSessionState(deref_ptr(state))
-            if state:
-                bindings.destroy_backend_state_info(state)
-            return rval
-        return BackendSessionState()
+        return self._obj.get_state()
 
     def create_loop(self):
-        if self.active():
-            return shoop_py_backend.Loop(self._obj)
-        return None
+        return self._obj.create_loop() if self.active() else None
 
     def create_fx_chain(self, chain_type : Type['FXChainType'], title: str) -> Type['BackendFXChain']:
-        if self.active():
-            return BackendFXChain(self)
-        return None
+        return self._obj.create_fx_chain(chain_type, title) if self.active() else None
 
     def get_profiling_report(self):
-        if self.active():
-            state = bindings.get_profiling_report(self.get_backend_obj())
-            rval = ProfilingReport(deref_ptr(state))
-            if state:
-                bindings.destroy_profiling_report(state)
-            return rval
-        return ProfilingReport()
+        return self._obj.get_profiling_report() if self.active() else ProfilingReport()
 
     def active(self):
         return self._active
 
     def set_audio_driver(self, driver):
-        if self.active():
-            self._obj.set_audio_driver(driver)
+        self._obj.set_audio_driver(driver) if self.active() else None
 
     def segfault_on_process_thread(self):
-        if self.active():
-            bindings.do_segfault_on_process_thread(self.get_backend_obj())
+        self._obj.segfault_on_process_thread() if self.active() else None
 
     def abort_on_process_thread(self):
-        if self.active():
-            bindings.do_abort_on_process_thread(self.get_backend_obj())
+        self._obj.abort_on_process_thread() if self.active() else None
 
 def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendAudioPort':
     if backend_session.active():
