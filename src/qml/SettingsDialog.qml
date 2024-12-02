@@ -375,7 +375,7 @@ Dialog {
                 }
                 if (!found) {
                     contents.known_scripts.push({
-                        'path_or_filename': builtin,
+                        'path_or_filename': '@builtins/' + builtin_name,
                         'run': default_run.includes(builtin_name)
                     })
                 }
