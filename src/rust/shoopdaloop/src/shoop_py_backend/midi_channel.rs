@@ -62,10 +62,8 @@ impl MidiChannel {
     }
 
     fn load_all_midi_data(&self, _py: Python, msgs: Vec<MidiEvent>) -> PyResult<()> {
-        let backend_msgs: Vec<backend_bindings::MidiEvent> = msgs.into_iter().map(|msg| BackendMidiEvent {
-            time: msg.time,
-            data: msg.data,
-        }).collect();
+        let backend_msgs: Vec<backend_bindings::MidiEvent> = msgs.into_iter()
+            .map(|msg| msg.to_backend()).collect();
         self.obj.load_all_midi_data(&backend_msgs);
         Ok(())
     }

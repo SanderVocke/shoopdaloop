@@ -6,6 +6,9 @@ use backend_bindings;
 
 use crate::shoop_py_backend::backend_session::BackendSession;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
+use crate::shoop_py_backend::midi::MidiEvent;
+
+use std::collections::HashMap;
 
 #[pyclass]
 pub struct MidiPortState {
@@ -90,17 +93,19 @@ impl MidiPort {
     }
 
     fn dummy_queue_msg(&self, msg: &MidiEvent) -> PyResult<()> {
-        self.obj.dummy_queue_msg(msg);
+        self.obj.dummy_queue_msg(&msg.to_backend());
         Ok(())
     }
 
     fn dummy_queue_msgs(&self, msgs: Vec<MidiEvent>) -> PyResult<()> {
-        self.obj.dummy_queue_msgs(&msgs);
+        let converted = msgs.iter().map(|msg| msg.to_backend()).collect();
+        self.obj.dummy_queue_msgs(converted);
         Ok(())
     }
 
     fn dummy_dequeue_data(&self) -> PyResult<Vec<MidiEvent>> {
-        Ok(self.obj.dummy_dequeue_data())
+        let msgs = self.obj.dummy_dequeue_data();
+        Ok(msgs.into_iter().map(|msg| MidiEvent::from(msg)).collect())
     }
 
     fn dummy_request_data(&self, n_frames: u32) -> PyResult<()> {

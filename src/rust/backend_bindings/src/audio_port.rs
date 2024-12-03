@@ -70,25 +70,6 @@ impl AudioPort {
         }
     }
 
-    pub fn available(&self) -> bool {
-        let guard = self.obj.lock().unwrap();
-        !guard.is_null()
-    }
-
-    pub fn get_backend_obj(&self) -> *mut ffi::shoopdaloop_audio_port_t {
-        let guard = self.obj.lock().unwrap();
-        *guard
-    }
-
-    pub fn name(&self) -> String {
-        let state = self.get_state();
-        state.name
-    }
-        AudioPort {
-            obj : Mutex::new(ptr),
-        }
-    }
-
     pub fn input_connectability(&self) -> PortConnectability {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
@@ -229,12 +210,6 @@ impl AudioPort {
             PortDirection::Output
         } else {
             PortDirection::Any
-        }
-    }
-
-    pub fn unsafe_port_from_raw_ptr(ptr : usize) -> Self {
-        AudioPort {
-            obj : Mutex::new(ptr as *mut ffi::shoopdaloop_audio_port_t),
         }
     }
 

@@ -27,6 +27,15 @@ impl From<BackendMidiEvent> for MidiEvent {
     }
 }
 
+impl MidiEvent {
+    pub fn to_backend(&self) -> BackendMidiEvent {
+        BackendMidiEvent {
+            time: self.time,
+            data: self.data.clone(),
+        }
+    }
+}
+
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<MidiEvent>()?;
     Ok(())

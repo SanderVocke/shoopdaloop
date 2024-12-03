@@ -5,6 +5,9 @@ use std::sync::Mutex;
 use crate::backend_session::BackendSession;
 use crate::audio_driver::AudioDriver;
 use crate::port::{PortDirection, PortConnectability};
+use crate::midi::MidiEvent;
+use std::ffi::{CStr, CString};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct MidiPortState {
@@ -106,10 +109,10 @@ impl MidiPort {
     }
 
     pub fn dummy_queue_msg(&self, msg: &MidiEvent) {
-        self.dummy_queue_msgs(&[msg.clone()]);
+        self.dummy_queue_msgs(vec![msg.clone()]);
     }
 
-    pub fn dummy_queue_msgs(&self, msgs: &[MidiEvent]) {
+    pub fn dummy_queue_msgs(&self, msgs: Vec<MidiEvent>) {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
         let sequence = unsafe { ffi::alloc_midi_sequence(msgs.len() as u32) };
@@ -117,9 +120,9 @@ impl MidiPort {
             let event = unsafe { ffi::alloc_midi_event(msg.data.len() as u32) };
             unsafe {
                 (*event).time = msg.time;
-                (*event).size = msg.size as u32;
+                (*event).size = msg.size() as u32;
                 std::ptr::copy_nonoverlapping(msg.data.as_ptr(), (*event).data, msg.data.len());
-                (*sequence).events[i] = event;
+                (*sequence).events.offset(i as isize).write(event);
             }
         }
         unsafe { ffi::dummy_midi_port_queue_data(obj, sequence) };
@@ -132,13 +135,9 @@ impl MidiPort {
         let sequence = unsafe { ffi::dummy_midi_port_dequeue_data(obj) };
         let mut events = Vec::new();
         for i in 0..unsafe { (*sequence).n_events } {
-            let event = unsafe { *(*sequence).events[i] };
-            let data = unsafe { std::slice::from_raw_parts(event.data, event.size as usize) };
-            events.push(MidiEvent {
-                time: event.time,
-                size: event.size as usize,
-                data: data.to_vec(),
-            });
+            let event = unsafe { &**(*sequence).events.add(i as usize) };
+            let obj = MidiEvent::new(event);
+            events.push(obj);
         }
         unsafe { ffi::destroy_midi_sequence(sequence) };
         events
@@ -184,6 +183,8 @@ impl MidiPort {
         let obj = *guard;
         unsafe { ffi::set_midi_port_ringbuffer_n_samples(obj, n) };
     }
+
+    pub fn input_connectability(&self) -> PortConnectability {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
         unsafe {

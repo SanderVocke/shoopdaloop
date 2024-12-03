@@ -47,11 +47,12 @@ pub use fx_chain::*;
 #[cfg(not(feature = "prebuild"))]
 mod midi;
 #[cfg(not(feature = "prebuild"))]
+pub use midi::*;
 
 #[cfg(not(feature = "prebuild"))]
 mod midi_channel;
 #[cfg(not(feature = "prebuild"))]
-pub use midi_channel::{MidiChannel, MidiEvent, MidiChannelState};
+pub use midi_channel::*;
 
 #[cfg(not(feature = "prebuild"))]
 mod midi_port;

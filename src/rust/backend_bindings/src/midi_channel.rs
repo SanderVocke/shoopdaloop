@@ -4,32 +4,7 @@ use std::sync::Mutex;
 
 use crate::midi_port::MidiPort;
 use crate::channel::ChannelMode;
-
-pub struct MidiEvent {
-    pub time: i32,
-    pub data: Vec<u8>,
-}
-
-impl MidiEvent {
-    pub fn from(event: ffi::shoop_midi_event_t) -> Self {
-        let data = unsafe {
-            std::slice::from_raw_parts(event.data, event.size as usize)
-                .to_vec()
-        };
-        MidiEvent {
-            time: event.time,
-            data,
-        }
-    }
-
-    pub fn to_backend(&self) -> ffi::shoop_midi_event_t {
-        ffi::shoop_midi_event_t {
-            time: self.time,
-            data: self.data.as_ptr() as *mut u8,
-            size: self.data.len() as u32,
-        }
-    }
-}
+use crate::midi::MidiEvent;
 
 pub struct MidiChannelState {
     pub mode: ChannelMode,
@@ -89,7 +64,7 @@ impl MidiChannel {
                 return Vec::new();
             }
             let events = std::slice::from_raw_parts((*data_ptr).events, (*data_ptr).n_events as usize);
-            let result: Vec<MidiEvent> = events.iter().map(|event| MidiEvent::from(**event)).collect();
+            let result: Vec<MidiEvent> = events.iter().map(|event| MidiEvent::new(&**event)).collect();
             ffi::destroy_midi_sequence(data_ptr);
             result
         }
@@ -104,7 +79,7 @@ impl MidiChannel {
             let events_ptr = (*sequence).events;
             for i in 0..msgs.len() {
                 let event_ptr = events_ptr.wrapping_add(i);
-                **event_ptr = msgs[i].to_backend();
+                **event_ptr = msgs[i].to_ffi();
             }
             ffi::load_midi_channel_data(self.unsafe_backend_ptr(), sequence);
             ffi::destroy_midi_sequence(sequence);

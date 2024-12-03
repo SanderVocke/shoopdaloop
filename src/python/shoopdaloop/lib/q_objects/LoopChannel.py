@@ -219,9 +219,9 @@ class LoopChannel(ShoopQQuickItem):
             backend_channel = self._backend_obj
             backend_port = port.get_backend_obj()
             if not (port.input_connectability & PortConnectability.Internal.value):
-                backend_channel.connect_input(backend_port._obj)
+                backend_channel.connect_input(backend_port)
             else:
-                backend_channel.connect_output(backend_port._obj)
+                backend_channel.connect_output(backend_port)
             self._connected_ports.append(port)
             self.connectedPortsChanged.emit(self._connected_ports)
     

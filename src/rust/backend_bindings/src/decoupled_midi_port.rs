@@ -30,12 +30,6 @@ impl DecoupledMidiPort {
         })
     }
 
-    pub fn unsafe_port_from_raw_ptr(ptr : usize) -> Self {
-        DecoupledMidiPort {
-            obj : Mutex::new(ptr as *mut ffi::shoopdaloop_decoupled_midi_port_t),
-        }
-    }
-
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_decoupled_midi_port_t {
         let guard = self.obj.lock().unwrap();
         *guard

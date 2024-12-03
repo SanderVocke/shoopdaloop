@@ -13,7 +13,7 @@ from .Port import Port
 from .ShoopPyObject import *
 
 import shoop_py_backend
-from ..backend_wrappers import PortConnectability, PortDirection, PortDataType, BackendMidiPort
+from ..backend_wrappers import PortConnectability, PortDirection, PortDataType
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from ..logging import Logger
@@ -165,7 +165,7 @@ class MidiPort(Port):
                 # Now request our backend object.
                 n_ringbuffer = self.n_ringbuffer_samples
                 if not (self.output_connectability & PortConnectability.Internal.value):
-                    self._backend_obj = BackendMidiPort(maybe_fx_chain.get_backend_obj().get_midi_input_port(idx))
+                    self._backend_obj = maybe_fx_chain.get_backend_obj().get_midi_input_port(idx)
                     self.push_state()
                     self.set_min_n_ringbuffer_samples (n_ringbuffer)
                 else:

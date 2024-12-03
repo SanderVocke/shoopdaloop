@@ -17,7 +17,6 @@ from .ShoopPyObject import *
 import shoop_py_backend
 
 from ..backend_wrappers import *
-from ..backend_wrappers import open_driver_audio_port as backend_open_driver_audio_port, open_driver_midi_port as backend_open_driver_midi_port
 from ..findChildItems import findChildItems
 from .Logger import Logger
 
@@ -346,11 +345,21 @@ class Backend(ShoopQQuickItem):
 
     @ShoopSlot(str, int, result='QVariant')
     def open_driver_audio_port(self, name_hint, direction, min_n_ringbuffer_samples):
-        return backend_open_driver_audio_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction, min_n_ringbuffer_samples)
+        return shoop_py_backend.open_driver_audio_port(
+            self._backend_session_obj,
+            self._backend_driver_obj,
+            name_hint,
+            direction,
+            min_n_ringbuffer_samples)
 
     @ShoopSlot(str, int, result='QVariant')
     def open_driver_midi_port(self, name_hint, direction, min_n_ringbuffer_samples):
-        return backend_open_driver_midi_port(self._backend_session_obj, self._backend_driver_obj, name_hint, direction, min_n_ringbuffer_samples)
+        return shoop_py_backend.open_driver_midi_port(
+            self._backend_session_obj,
+            self._backend_driver_obj,
+            name_hint,
+            direction,
+            min_n_ringbuffer_samples)
 
     @ShoopSlot()
     def segfault_on_process_thread(self):

@@ -7,6 +7,8 @@ use backend_bindings;
 use crate::shoop_py_backend::backend_session::BackendSession;
 use backend_bindings::AudioPortState as BackendAudioPortState;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
+use std::collections::HashMap;
+
 
 #[pyclass]
 pub struct AudioPortState {
@@ -39,6 +41,8 @@ impl AudioPortState {
         }
     }
 }
+
+#[pyclass]
 pub struct AudioPort {
     pub obj : backend_bindings::AudioPort,
 }
@@ -51,7 +55,7 @@ impl AudioPort {
     }
 
     fn get_state(&self) -> PyResult<AudioPortState> {
-        Ok(self.obj.get_state())
+        Ok(AudioPortState::new(self.obj.get_state()))
     }
 
     fn set_gain(&self, gain: f32) -> PyResult<()> {
