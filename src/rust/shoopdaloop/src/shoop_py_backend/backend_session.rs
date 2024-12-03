@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 use backend_bindings;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
 use crate::shoop_py_backend::shoop_loop::Loop;
+use crate::shoop_py_backend::fx_chain::FXChain;
 
 #[pyclass]
 pub struct BackendSessionState {
@@ -51,6 +52,16 @@ impl BackendSession {
         }
         let obj = Loop::new(obj.unwrap());
         Ok(obj)
+    }
+
+    fn create_fx_chain(&self, chain_type: u32, title: &str) -> PyResult<FXChain> {
+        let obj = self.obj.create_fx_chain(chain_type, title);
+        if obj.is_err() {
+            return Err(PyErr::new::<pyo3::exceptions::PyException, _>("Failed to create fx chain"));
+        }
+        let obj = obj.unwrap();
+        let wrapped = FXChain { obj };
+        Ok(wrapped)
     }
 }
 

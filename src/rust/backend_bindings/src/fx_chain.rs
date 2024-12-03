@@ -15,15 +15,15 @@ integer_enum! {
 }
 
 #[derive(Debug)]
-pub struct FXChainStateInfo {
+pub struct FXChainState {
     pub ready: u32,
     pub active: u32,
     pub visible: u32,
 }
 
-impl FXChainStateInfo {
+impl FXChainState {
     pub unsafe fn from_ffi(obj: &ffi::shoop_fx_chain_state_info_t) -> Self {
-        FXChainStateInfo {
+        FXChainState {
             ready: obj.ready,
             active: obj.active,
             visible: obj.visible,
@@ -39,22 +39,15 @@ unsafe impl Send for FXChain {}
 unsafe impl Sync for FXChain {}
 
 impl FXChain {
-    pub fn new(backend_session : &BackendSession,
-               chain_type : &FXChainType,
-               title : &str) -> Result<Self, anyhow::Error> {
-        let title_ptr = title.as_ptr() as *const i8;
-        let obj = unsafe { ffi::create_fx_chain
-                             (backend_session.unsafe_backend_ptr(),
-                              *chain_type as u32,
-                              title_ptr) };
-        if obj.is_null() {
-            return Err(anyhow::anyhow!("Failed to create FX chain"));
+    pub fn new(ptr: *mut ffi::shoopdaloop_fx_chain_t) -> Result<Self, anyhow::Error> {
+        if ptr.is_null() {
+            Err(anyhow::anyhow!("Cannot create FXChain from null pointer"))
+        } else {
+            let wrapped = Mutex::new(ptr);
+            Ok(FXChain { obj: wrapped })
         }
-        Ok(FXChain {
-            obj : Mutex::new(obj),
-        })
     }
-
+    
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_fx_chain_t {
         let guard = self.obj.lock().unwrap();
         *guard
@@ -80,12 +73,12 @@ impl FXChain {
         }
     }
 
-    pub fn get_state(&self) -> Option<FXChainStateInfo> {
+    pub fn get_state(&self) -> Option<FXChainState> {
         if self.available() {
             unsafe {
                 let state_ptr = ffi::get_fx_chain_state(*self.obj.lock().unwrap());
                 if !state_ptr.is_null() {
-                    let state = FXChainStateInfo::from_ffi(&*state_ptr);
+                    let state = FXChainState::from_ffi(&*state_ptr);
                     ffi::destroy_fx_chain_state(state_ptr);
                     Some(state)
                 } else {
@@ -111,15 +104,6 @@ impl FXChain {
             }
         } else {
             None
-        }
-    }
-
-    pub fn chain_type(&self) -> FXChainType {
-        unsafe {
-            let guard = self.obj.lock().unwrap();
-            let obj = *guard;
-            let chain_type = ffi::get_fx_chain_type(obj);
-            FXChainType::from(chain_type)
         }
     }
 
@@ -167,6 +151,8 @@ impl FXChain {
             None
         }
     }
+
+    pub fn restore_state(&self, state_str: &str) {
         if self.available() {
             let c_state_str = std::ffi::CString::new(state_str).unwrap();
             unsafe {

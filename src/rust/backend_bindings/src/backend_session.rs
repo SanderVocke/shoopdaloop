@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use crate::audio_driver::AudioDriver;
 use crate::shoop_loop::Loop;
 use crate::common::BackendResult;
+use crate::fx_chain::FXChain;
 use std::ffi::CStr;
 use std::slice;
 
@@ -118,14 +119,15 @@ impl BackendSession {
         }
     }
 
-    pub fn create_fx_chain(&self, chain_type: ffi::shoop_fx_chain_type_t, title: &str) -> Result<*mut ffi::shoopdaloop_fx_chain_t, anyhow::Error> {
+    pub fn create_fx_chain(&self, chain_type: ffi::shoop_fx_chain_type_t, title: &str) -> Result<FXChain, anyhow::Error> {
         let obj = unsafe { self.unsafe_backend_ptr() };
         let c_title = std::ffi::CString::new(title).unwrap();
         let chain_ptr = unsafe { ffi::create_fx_chain(obj, chain_type, c_title.as_ptr()) };
         if chain_ptr.is_null() {
             Err(anyhow::anyhow!("create_fx_chain() failed"))
         } else {
-            Ok(chain_ptr)
+            let chain = FXChain::new(chain_ptr)?;
+            Ok(chain)
         }
     }
 

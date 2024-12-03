@@ -25,22 +25,14 @@ impl FXChainState {
         }
     }
 }
+
+#[pyclass]
 pub struct FXChain {
     pub obj : backend_bindings::FXChain,
 }
 
 #[pymethods]
 impl FXChain {
-    #[new]
-    fn py_new(backend_session : &BackendSession,
-              chain_type : u32,
-              title : &str) -> PyResult<Self> {
-        Ok(FXChain { obj: backend_bindings::FXChain::new
-                             (&backend_session.obj,
-                              &backend_bindings::FXChainType::try_from(chain_type).unwrap(),
-                              title).unwrap() })
-    }
-
     fn available(&self) -> bool {
         self.obj.available()
     }
@@ -79,6 +71,8 @@ impl FXChain {
     fn restore_state(&self, state_str: &str) {
         self.obj.restore_state(state_str);
     }
+
+    fn unsafe_backend_ptr (&self) -> usize { 
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }
 }

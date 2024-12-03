@@ -73,7 +73,7 @@ class PyAudioDriverType(Enum):
     JackTest = bindings.JackTest
     Dummy = bindings.Dummy
 
-class FXChainType(Enum):
+class PyFXChainType(Enum):
     Carla_Rack = bindings.Carla_Rack
     Carla_Patchbay = bindings.Carla_Patchbay
     Carla_Patchbay_16x = bindings.Carla_Patchbay_16x
@@ -81,22 +81,6 @@ class FXChainType(Enum):
 
 DontWaitForSync = -1
 DontAlignToSyncImmediately = -1
-
-@dataclass
-class FXChainState:
-    visible : bool
-    ready : bool
-    active : bool
-
-    def __init__(self, backend_state : "bindings.shoop_fx_chain_state_info_t" = None):
-        if backend_state:
-            self.visible = backend_state.visible
-            self.active = backend_state.active
-            self.ready = backend_state.ready
-        else:
-            self.visible = False
-            self.active = False
-            self.ready = False
 
 @dataclass
 class AudioPortState:
@@ -468,78 +452,6 @@ class BackendMidiPort:
     def set_ringbuffer_n_samples(self, n):
         if self.available():
             bindings.set_midi_port_ringbuffer_n_samples(self.get_backend_obj(), n)
-
-class BackendFXChain:
-    def __init__(self, c_handle : "POINTER(bindings.shoopdaloop_fx_chain_t)", chain_type: FXChainType,
-                 backend : 'BackendSession'):
-        self._type = chain_type
-        self._c_handle = c_handle
-        self._backend = backend
-
-    def available(self):
-        return self._c_handle and self._backend and self._backend.active()
-
-    def chain_type(self) -> Type['FXChainType']:
-        return self._type
-
-    def c_handle(self):
-        return self._c_handle
-
-    def set_visible(self, visible):
-        if self.available():
-            bindings.fx_chain_set_ui_visible(self._c_handle, int(visible))
-
-    def set_active(self, active):
-        if self.available():
-            bindings.set_fx_chain_active(self._c_handle, int(active))
-
-    def get_state(self):
-        if self.available():
-            state = bindings.get_fx_chain_state(self._c_handle)
-            rval = FXChainState(deref_ptr(state))
-            if state:
-                bindings.destroy_fx_chain_state(state)
-            return rval
-        return FXChainState()
-
-    def get_state_str(self):
-        if self.available():
-            state = bindings.get_fx_chain_internal_state(self._c_handle)
-            rval = state.decode('ascii')
-            # TODO destroy_string(state)
-            return rval
-        return ''
-
-    def restore_state(self, state_str):
-        if self.available():
-            bindings.restore_fx_chain_internal_state(self._c_handle, c_char_p(bytes(state_str, 'ascii')))
-            
-    def get_audio_input_port(self, idx : int):
-        if self.active():
-            ptr = bindings.fx_chain_audio_input_port(self.c_handle(), idx)
-            port = shoop_py_backend.unsafe_audio_port_from_raw_ptr(
-                ctypes.cast(ptr, ctypes.c_void_p).value
-            )
-            return BackendAudioPort(port)
-        return None
-
-    def get_audio_output_port(self, idx : int):
-        if self.active():
-            ptr = bindings.fx_chain_audio_output_port(self.c_handle(), idx)
-            port = shoop_py_backend.unsafe_audio_port_from_raw_ptr(
-                ctypes.cast(ptr, ctypes.c_void_p).value
-            )
-            return BackendAudioPort(port)
-        return None
-
-    def get_midi_input_port(self, idx : int):
-        if self.active():
-            ptr = bindings.fx_chain_midi_input_port(self.c_handle(), idx)
-            port = shoop_py_backend.unsafe_midi_port_from_raw_ptr(
-                ctypes.cast(ptr, ctypes.c_void_p).value
-            )
-            return BackendMidiPort(port)
-        return None
 
 def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendAudioPort':
     obj = shoop_py_backend.open_driver_audio_port(
