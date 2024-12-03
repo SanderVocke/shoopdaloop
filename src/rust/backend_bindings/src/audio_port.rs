@@ -5,9 +5,11 @@ use std::sync::Mutex;
 use crate::backend_session::BackendSession;
 use crate::audio_driver::AudioDriver;
 use crate::port::{PortDirection, PortConnectability};
+use std::collections::HashMap;
+use std::ffi::{CStr, CString};
 
 #[derive(Debug)]
-pub struct AudioPortStateInfo {
+pub struct AudioPortState {
     pub input_peak: f32,
     pub output_peak: f32,
     pub gain: f32,
@@ -17,10 +19,10 @@ pub struct AudioPortStateInfo {
     pub name: String,
 }
 
-impl AudioPortStateInfo {
+impl AudioPortState {
     pub fn from_ffi(ffi_info: &ffi::shoop_audio_port_state_info_t) -> Self {
         unsafe {
-            AudioPortStateInfo {
+            AudioPortState {
                 input_peak: ffi_info.input_peak,
                 output_peak: ffi_info.output_peak,
                 gain: ffi_info.gain,
@@ -84,12 +86,12 @@ impl AudioPort {
         }
     }
 
-    pub fn get_state(&self) -> AudioPortStateInfo {
+    pub fn get_state(&self) -> AudioPortState {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
         unsafe {
             let state = ffi::get_audio_port_state(obj);
-            let rval = AudioPortStateInfo::from_ffi(&*state);
+            let rval = AudioPortState::from_ffi(&*state);
             ffi::destroy_audio_port_state_info(state);
             rval
         }
@@ -162,7 +164,7 @@ impl AudioPort {
             let state = ffi::get_audio_port_connections_state(obj);
             let mut rval = HashMap::new();
             for i in 0..(*state).n_ports {
-                let port = &(*state).ports[i as usize];
+                let port = &(*(*state).ports.add(i as usize));
                 let name = CStr::from_ptr(port.name).to_string_lossy().into_owned();
                 rval.insert(name, port.connected != 0);
             }
@@ -196,6 +198,8 @@ impl AudioPort {
             ffi::set_audio_port_ringbuffer_n_samples(obj, n);
         }
     }
+
+    pub fn direction(&self) -> PortDirection {  
         let input_conn = self.input_connectability();
         let output_conn = self.output_connectability();
         if input_conn.external && output_conn.external {
