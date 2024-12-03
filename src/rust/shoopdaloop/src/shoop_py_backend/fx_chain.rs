@@ -4,6 +4,9 @@ use pyo3::prelude::*;
 // use pyo3::exceptions::*;
 use backend_bindings;
 
+use crate::shoop_py_backend::audio_port::AudioPort;
+use crate::shoop_py_backend::midi_port::MidiPort;
+
 #[pyclass(eq, eq_int)]
 #[derive(PartialEq, Clone)]
 pub enum FXChainType {
@@ -86,16 +89,28 @@ impl FXChain {
         self.obj.get_state_str()
     }
 
-    fn get_audio_input_port(&self, idx: u32) -> Option<usize> {
-        self.obj.get_audio_input_port(idx).map(|ptr| ptr as usize)
+    fn get_audio_input_port(&self, idx: u32) -> Option<AudioPort> {
+        let obj = self.obj.get_audio_input_port(idx);
+        match obj {
+            Some(obj) => Some(AudioPort { obj: obj }),
+            None => None,
+        }
     }
 
-    fn get_audio_output_port(&self, idx: u32) -> Option<usize> {
-        self.obj.get_audio_output_port(idx).map(|ptr| ptr as usize)
+    fn get_audio_output_port(&self, idx: u32) -> Option<AudioPort> {
+        let obj = self.obj.get_audio_output_port(idx);
+        match obj {
+            Some(obj) => Some(AudioPort { obj: obj }),
+            None => None,
+        }
     }
 
-    fn get_midi_input_port(&self, idx: u32) -> Option<usize> {
-        self.obj.get_midi_input_port(idx).map(|ptr| ptr as usize)
+    fn get_midi_input_port(&self, idx: u32) -> Option<MidiPort> {
+        let obj = self.obj.get_midi_input_port(idx);
+        match obj {
+            Some(obj) => Some(MidiPort { obj: obj }),
+            None => None,
+        }
     }
 
     fn restore_state(&self, state_str: &str) {
@@ -109,5 +124,7 @@ impl FXChain {
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<FXChain>()?;
+    m.add_class::<FXChainState>()?;
+    m.add_class::<FXChainType>()?;
     Ok(())
 }

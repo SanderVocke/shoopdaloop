@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, exit};
 use std::io;
 

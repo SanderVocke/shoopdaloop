@@ -3,7 +3,8 @@ use crate::ffi;
 use std::sync::Mutex;
 use crate::integer_enum;
 
-use crate::backend_session::BackendSession;
+use crate::audio_port::AudioPort;
+use crate::midi_port::MidiPort;
 
 integer_enum! {
     pub enum FXChainType {
@@ -47,7 +48,7 @@ impl FXChain {
             Ok(FXChain { obj: wrapped })
         }
     }
-    
+
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_fx_chain_t {
         let guard = self.obj.lock().unwrap();
         *guard
@@ -107,12 +108,12 @@ impl FXChain {
         }
     }
 
-    pub fn get_audio_input_port(&self, idx: u32) -> Option<*mut ffi::shoopdaloop_audio_port_t> {
+    pub fn get_audio_input_port(&self, idx: u32) -> Option<AudioPort> {
         if self.available() {
             unsafe {
                 let port = ffi::fx_chain_audio_input_port(*self.obj.lock().unwrap(), idx);
                 if !port.is_null() {
-                    Some(port)
+                    Some(AudioPort::new(port))
                 } else {
                     None
                 }
@@ -122,12 +123,12 @@ impl FXChain {
         }
     }
 
-    pub fn get_audio_output_port(&self, idx: u32) -> Option<*mut ffi::shoopdaloop_audio_port_t> {
+    pub fn get_audio_output_port(&self, idx: u32) -> Option<AudioPort> {
         if self.available() {
             unsafe {
                 let port = ffi::fx_chain_audio_output_port(*self.obj.lock().unwrap(), idx);
                 if !port.is_null() {
-                    Some(port)
+                    Some(AudioPort::new(port))
                 } else {
                     None
                 }
@@ -137,12 +138,12 @@ impl FXChain {
         }
     }
 
-    pub fn get_midi_input_port(&self, idx: u32) -> Option<*mut ffi::shoopdaloop_midi_port_t> {
+    pub fn get_midi_input_port(&self, idx: u32) -> Option<MidiPort> {
         if self.available() {
             unsafe {
                 let port = ffi::fx_chain_midi_input_port(*self.obj.lock().unwrap(), idx);
                 if !port.is_null() {
-                    Some(port)
+                    Some(MidiPort::new(port))
                 } else {
                     None
                 }

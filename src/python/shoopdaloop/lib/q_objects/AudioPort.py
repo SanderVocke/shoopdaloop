@@ -12,7 +12,8 @@ from PySide6.QtQuick import QQuickItem
 from .ShoopPyObject import *
 from .Port import Port
 
-from ..backend_wrappers import PortDirection, PortDataType, PortConnectability
+import shoop_py_backend
+from ..backend_wrappers import PortDirection, PortDataType, PortConnectability, BackendAudioPort
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from ..logging import Logger
@@ -146,16 +147,16 @@ class AudioPort(Port):
                             return idx
                         elif port.input_connectability == self.input_connectability and port.output_connectability == self.output_connectability:
                             idx += 1
-                    return None
+                    return NoneBackendAudio
                 idx = find_index()
                 if idx == None:
                     self.logger.throw_error('Could not find self in FX chain')
                 # Now request our backend object.
                 n_ringbuffer = self.n_ringbuffer_samples
                 if not (self.output_connectability & PortConnectability.Internal.value):
-                    self._backend_obj = maybe_fx_chain.get_backend_obj().get_audio_input_port(idx)
+                    self._backend_obj = BackendAudioPort(maybe_fx_chain.get_backend_obj().get_audio_input_port(idx))
                 else:
-                    self._backend_obj = maybe_fx_chain.get_backend_obj().get_audio_output_port(idx)
+                    self._backend_obj = BackendAudioPort(maybe_fx_chain.get_backend_obj().get_audio_output_port(idx))
                 self.push_state()
                 self.set_min_n_ringbuffer_samples (n_ringbuffer)
 

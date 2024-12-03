@@ -4,7 +4,6 @@ use pyo3::prelude::*;
 // use pyo3::exceptions::*;
 use backend_bindings;
 
-use crate::shoop_py_backend::backend_session::BackendSession;
 use crate::shoop_py_backend::audio_channel::AudioChannel;
 use crate::shoop_py_backend::midi_channel::MidiChannel;
 

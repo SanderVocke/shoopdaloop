@@ -3,7 +3,6 @@ use crate::ffi;
 use crate::integer_enum;
 use std::sync::Mutex;
 
-use crate::backend_session::BackendSession;
 use crate::audio_channel::AudioChannel;
 use crate::midi_channel::MidiChannel;
 use crate::channel::ChannelMode;
