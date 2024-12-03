@@ -12,6 +12,69 @@ integer_enum! {
         CarlaPatchbay16x = ffi::shoop_fx_chain_type_t_Carla_Patchbay_16x,
         Test2x2x1 = ffi::shoop_fx_chain_type_t_Test2x2x1,
     }
+
+    pub fn available(&self) -> bool {
+        !self.obj.lock().unwrap().is_null()
+    }
+
+    pub fn set_visible(&self, visible: bool) {
+        if self.available() {
+            unsafe {
+                ffi::fx_chain_set_ui_visible(*self.obj.lock().unwrap(), visible as u32);
+            }
+        }
+    }
+
+    pub fn set_active(&self, active: bool) {
+        if self.available() {
+            unsafe {
+                ffi::set_fx_chain_active(*self.obj.lock().unwrap(), active as u32);
+            }
+        }
+    }
+
+    pub fn get_state(&self) -> Option<FXChainStateInfo> {
+        if self.available() {
+            unsafe {
+                let state_ptr = ffi::get_fx_chain_state(*self.obj.lock().unwrap());
+                if !state_ptr.is_null() {
+                    let state = FXChainStateInfo::from_ffi(&*state_ptr);
+                    ffi::destroy_fx_chain_state(state_ptr);
+                    Some(state)
+                } else {
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn get_state_str(&self) -> Option<String> {
+        if self.available() {
+            unsafe {
+                let state_ptr = ffi::get_fx_chain_internal_state(*self.obj.lock().unwrap());
+                if !state_ptr.is_null() {
+                    let state_str = std::ffi::CStr::from_ptr(state_ptr).to_string_lossy().into_owned();
+                    ffi::destroy_string(state_ptr);
+                    Some(state_str)
+                } else {
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn restore_state(&self, state_str: &str) {
+        if self.available() {
+            let c_state_str = std::ffi::CString::new(state_str).unwrap();
+            unsafe {
+                ffi::restore_fx_chain_internal_state(*self.obj.lock().unwrap(), c_state_str.as_ptr());
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
