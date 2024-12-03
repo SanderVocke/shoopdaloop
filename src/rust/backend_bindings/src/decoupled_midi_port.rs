@@ -4,22 +4,6 @@ use std::sync::Mutex;
 
 use crate::audio_driver::AudioDriver;
 use crate::port::PortDirection;
-use crate::ffi::shoop_port_connections_state_t;
-
-pub struct PortConnectionsState {
-    pub n_ports: u32,
-    // Assuming ports is a pointer to an array of some struct, we will keep it as a raw pointer for now.
-    pub ports: *mut ffi::shoop_port_maybe_connection_t,
-}
-
-impl PortConnectionsState {
-    pub fn from_ffi(ffi_state: &shoop_port_connections_state_t) -> Self {
-        PortConnectionsState {
-            n_ports: ffi_state.n_ports,
-            ports: ffi_state.ports,
-        }
-    }
-}
 
 pub struct DecoupledMidiPort {
     obj : Mutex<*mut ffi::shoopdaloop_decoupled_midi_port_t>,
