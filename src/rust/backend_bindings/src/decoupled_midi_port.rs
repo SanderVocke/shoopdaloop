@@ -7,6 +7,80 @@ use crate::port::PortDirection;
 
 pub struct DecoupledMidiPort {
     obj : Mutex<*mut ffi::shoopdaloop_decoupled_midi_port_t>,
+    pub fn available(&self) -> bool {
+        !self.obj.lock().unwrap().is_null()
+    }
+
+    pub fn maybe_next_message(&self) -> Option<ffi::shoop_midi_event_t> {
+        if self.available() {
+            let obj = self.unsafe_backend_ptr();
+            let msg = unsafe { ffi::maybe_next_message(obj) };
+            if !msg.is_null() {
+                let event = unsafe { *msg };
+                unsafe { ffi::destroy_midi_event(msg) };
+                return Some(event);
+            }
+        }
+        None
+    }
+
+    pub fn name(&self) -> Option<String> {
+        if self.available() {
+            let obj = self.unsafe_backend_ptr();
+            let c_str = unsafe { ffi::get_decoupled_midi_port_name(obj) };
+            if !c_str.is_null() {
+                let name = unsafe { std::ffi::CStr::from_ptr(c_str) };
+                return Some(name.to_string_lossy().into_owned());
+            }
+        }
+        None
+    }
+
+    pub fn send_midi(&self, msg: &[u8]) {
+        if self.available() {
+            let obj = self.unsafe_backend_ptr();
+            let data_type = std::mem::size_of::<u8>() * msg.len();
+            let arr = msg.as_ptr();
+            unsafe { ffi::send_decoupled_midi(obj, data_type, arr) };
+        }
+    }
+
+    pub fn get_connections_state(&self) -> Option<std::collections::HashMap<String, bool>> {
+        if self.available() {
+            let obj = self.unsafe_backend_ptr();
+            let state = unsafe { ffi::get_decoupled_midi_port_connections_state(obj) };
+            if !state.is_null() {
+                let state_ref = unsafe { &*state };
+                let mut connections = std::collections::HashMap::new();
+                for i in 0..state_ref.n_ports {
+                    let port = unsafe { &state_ref.ports[i] };
+                    let name = unsafe { std::ffi::CStr::from_ptr(port.name) }
+                        .to_string_lossy()
+                        .into_owned();
+                    connections.insert(name, port.connected != 0);
+                }
+                unsafe { ffi::destroy_port_connections_state(state) };
+                return Some(connections);
+            }
+        }
+        None
+    }
+
+    pub fn connect_external_port(&self, name: &str) {
+        if self.available() {
+            let obj = self.unsafe_backend_ptr();
+            let c_name = std::ffi::CString::new(name).unwrap();
+            unsafe { ffi::connect_external_decoupled_midi_port(obj, c_name.as_ptr()) };
+        }
+    }
+
+    pub fn disconnect_external_port(&self, name: &str) {
+        if self.available() {
+            let obj = self.unsafe_backend_ptr();
+            let c_name = std::ffi::CString::new(name).unwrap();
+            unsafe { ffi::disconnect_external_decoupled_midi_port(obj, c_name.as_ptr()) };
+        }
+    }
 }
 
 unsafe impl Send for DecoupledMidiPort {}
