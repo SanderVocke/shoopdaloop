@@ -114,7 +114,59 @@ impl FXChain {
         }
     }
 
-    pub fn restore_state(&self, state_str: &str) {
+    pub fn chain_type(&self) -> FXChainType {
+        unsafe {
+            let guard = self.obj.lock().unwrap();
+            let obj = *guard;
+            let chain_type = ffi::get_fx_chain_type(obj);
+            FXChainType::from(chain_type)
+        }
+    }
+
+    pub fn get_audio_input_port(&self, idx: u32) -> Option<*mut ffi::shoopdaloop_audio_port_t> {
+        if self.available() {
+            unsafe {
+                let port = ffi::fx_chain_audio_input_port(*self.obj.lock().unwrap(), idx);
+                if !port.is_null() {
+                    Some(port)
+                } else {
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn get_audio_output_port(&self, idx: u32) -> Option<*mut ffi::shoopdaloop_audio_port_t> {
+        if self.available() {
+            unsafe {
+                let port = ffi::fx_chain_audio_output_port(*self.obj.lock().unwrap(), idx);
+                if !port.is_null() {
+                    Some(port)
+                } else {
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn get_midi_input_port(&self, idx: u32) -> Option<*mut ffi::shoopdaloop_midi_port_t> {
+        if self.available() {
+            unsafe {
+                let port = ffi::fx_chain_midi_input_port(*self.obj.lock().unwrap(), idx);
+                if !port.is_null() {
+                    Some(port)
+                } else {
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
         if self.available() {
             let c_state_str = std::ffi::CString::new(state_str).unwrap();
             unsafe {
