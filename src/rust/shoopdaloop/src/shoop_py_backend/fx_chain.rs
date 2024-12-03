@@ -4,7 +4,38 @@ use pyo3::prelude::*;
 // use pyo3::exceptions::*;
 use backend_bindings;
 
-use crate::shoop_py_backend::backend_session::BackendSession;
+#[pyclass(eq, eq_int)]
+#[derive(PartialEq, Clone)]
+pub enum FXChainType {
+    CarlaRack = backend_bindings::FXChainType::CarlaRack as isize,
+    CarlaPatchbay = backend_bindings::FXChainType::CarlaPatchbay as isize,
+    CarlaPatchbay16x = backend_bindings::FXChainType::CarlaPatchbay16x as isize,
+    Test2x2x1 = backend_bindings::FXChainType::Test2x2x1 as isize,
+}
+
+impl TryFrom<backend_bindings::FXChainType> for FXChainType {
+    type Error = anyhow::Error;
+    fn try_from(value: backend_bindings::FXChainType) -> Result<Self, anyhow::Error> {
+        match value {
+            backend_bindings::FXChainType::CarlaRack => Ok(FXChainType::CarlaRack),
+            backend_bindings::FXChainType::CarlaPatchbay => Ok(FXChainType::CarlaPatchbay),
+            backend_bindings::FXChainType::CarlaPatchbay16x => Ok(FXChainType::CarlaPatchbay16x),
+            backend_bindings::FXChainType::Test2x2x1 => Ok(FXChainType::Test2x2x1),
+            _ => Err(anyhow::anyhow!("Invalid FXChainType")),
+        }
+    }
+}
+
+#[pymethods]
+impl FXChainType {
+    #[new]
+    fn py_new(value: u32) -> PyResult<Self> {
+        match backend_bindings::FXChainType::try_from(value) {
+            Ok(val) => Ok(FXChainType::try_from(val).unwrap()),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid FXChainType")),
+        }
+    }
+}
 
 #[pyclass]
 pub struct FXChainState {
