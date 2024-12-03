@@ -71,12 +71,6 @@ impl MidiPort {
         }
     }
 
-    pub fn unsafe_port_from_raw_ptr(ptr : usize) -> Self {
-        MidiPort {
-            obj : Mutex::new(ptr as *mut ffi::shoopdaloop_midi_port_t),
-        }
-    }
-
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_midi_port_t {
         let guard = self.obj.lock().unwrap();
         *guard
