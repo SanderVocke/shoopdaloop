@@ -51,14 +51,8 @@ pub fn open_driver_midi_port<'py>
                                 .unwrap() })
 }
 
-#[pyfunction]
-pub fn unsafe_midi_port_from_raw_ptr<'py>(ptr : usize) -> PyResult<MidiPort> {
-    Ok(MidiPort { obj: backend_bindings::MidiPort::unsafe_port_from_raw_ptr(ptr) })
-}
-
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<MidiPort>()?;
     m.add_function(wrap_pyfunction!(open_driver_midi_port, m)?)?;
-    m.add_function(wrap_pyfunction!(unsafe_midi_port_from_raw_ptr, m)?)?;
     Ok(())
 }
