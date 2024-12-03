@@ -5,9 +5,40 @@ use pyo3::prelude::*;
 use backend_bindings;
 
 use crate::shoop_py_backend::backend_session::BackendSession;
+use backend_bindings::AudioPortState as BackendAudioPortState;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
 
 #[pyclass]
+pub struct AudioPortState {
+    #[pyo3(get)]
+    pub input_peak: f32,
+    #[pyo3(get)]
+    pub output_peak: f32,
+    #[pyo3(get)]
+    pub gain: f32,
+    #[pyo3(get)]
+    pub muted: u32,
+    #[pyo3(get)]
+    pub passthrough_muted: u32,
+    #[pyo3(get)]
+    pub ringbuffer_n_samples: u32,
+    #[pyo3(get)]
+    pub name: String,
+}
+
+impl AudioPortState {
+    pub fn new(state: BackendAudioPortState) -> Self {
+        AudioPortState {
+            input_peak: state.input_peak,
+            output_peak: state.output_peak,
+            gain: state.gain,
+            muted: state.muted,
+            passthrough_muted: state.passthrough_muted,
+            ringbuffer_n_samples: state.ringbuffer_n_samples,
+            name: state.name,
+        }
+    }
+}
 pub struct AudioPort {
     pub obj : backend_bindings::AudioPort,
 }
