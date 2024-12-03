@@ -6,8 +6,6 @@ use crate::backend_session::BackendSession;
 use crate::audio_driver::AudioDriver;
 use crate::port::{PortDirection, PortConnectability};
 
-pub struct AudioPort {
-    obj : Mutex<*mut ffi::shoopdaloop_audio_port_t>,
 #[derive(Debug)]
 pub struct AudioPortStateInfo {
     pub input_peak: f32,
@@ -33,6 +31,10 @@ impl AudioPortStateInfo {
             }
         }
     }
+}
+
+pub struct AudioPort {
+    obj : Mutex<*mut ffi::shoopdaloop_audio_port_t>,
 }
 
 unsafe impl Send for AudioPort {}
