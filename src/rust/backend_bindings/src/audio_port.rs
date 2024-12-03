@@ -8,6 +8,31 @@ use crate::port::{PortDirection, PortConnectability};
 
 pub struct AudioPort {
     obj : Mutex<*mut ffi::shoopdaloop_audio_port_t>,
+#[derive(Debug)]
+pub struct AudioPortStateInfo {
+    pub input_peak: f32,
+    pub output_peak: f32,
+    pub gain: f32,
+    pub muted: u32,
+    pub passthrough_muted: u32,
+    pub ringbuffer_n_samples: u32,
+    pub name: String,
+}
+
+impl AudioPortStateInfo {
+    pub fn from_ffi(ffi_info: &ffi::shoop_audio_port_state_info_t) -> Self {
+        unsafe {
+            AudioPortStateInfo {
+                input_peak: ffi_info.input_peak,
+                output_peak: ffi_info.output_peak,
+                gain: ffi_info.gain,
+                muted: ffi_info.muted,
+                passthrough_muted: ffi_info.passthrough_muted,
+                ringbuffer_n_samples: ffi_info.ringbuffer_n_samples,
+                name: std::ffi::CStr::from_ptr(ffi_info.name).to_string_lossy().into_owned(),
+            }
+        }
+    }
 }
 
 unsafe impl Send for AudioPort {}
