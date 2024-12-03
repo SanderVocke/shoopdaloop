@@ -66,6 +66,25 @@ impl AudioPort {
 
     pub fn new(ptr: *mut ffi::shoopdaloop_audio_port_t) -> Self {
         AudioPort {
+            obj: Mutex::new(ptr),
+        }
+    }
+
+    pub fn available(&self) -> bool {
+        let guard = self.obj.lock().unwrap();
+        !guard.is_null()
+    }
+
+    pub fn get_backend_obj(&self) -> *mut ffi::shoopdaloop_audio_port_t {
+        let guard = self.obj.lock().unwrap();
+        *guard
+    }
+
+    pub fn name(&self) -> String {
+        let state = self.get_state();
+        state.name
+    }
+        AudioPort {
             obj : Mutex::new(ptr),
         }
     }
