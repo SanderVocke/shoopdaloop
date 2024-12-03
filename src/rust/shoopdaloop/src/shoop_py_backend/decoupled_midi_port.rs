@@ -1,8 +1,9 @@
 // See audio_port.rs from backend_bindings
 
 use pyo3::prelude::*;
-// use pyo3::exceptions::*;
-use backend_bindings;
+use pyo3::types::PyBytes;
+use pyo3::exceptions::PyValueError;
+use backend_bindings::{self, MidiEvent};
 
 use crate::shoop_py_backend::audio_driver::AudioDriver;
 
@@ -15,6 +16,35 @@ pub struct DecoupledMidiPort {
 impl DecoupledMidiPort {
     fn unsafe_backend_ptr (&self) -> usize {
         unsafe { self.obj.unsafe_backend_ptr() as usize }
+    }
+
+    fn maybe_next_message(&self) -> Option<MidiEvent> {
+        self.obj.maybe_next_message()
+    }
+
+    fn name(&self) -> String {
+        self.obj.name()
+    }
+
+    fn send_midi(&self, py: Python, msg: &PyBytes) -> PyResult<()> {
+        let msg_bytes = msg.as_bytes();
+        if msg_bytes.is_empty() {
+            return Err(PyValueError::new_err("MIDI message cannot be empty"));
+        }
+        self.obj.send_midi(msg_bytes);
+        Ok(())
+    }
+
+    fn get_connections_state(&self) -> std::collections::HashMap<String, bool> {
+        self.obj.get_connections_state()
+    }
+
+    fn connect_external_port(&self, name: &str) {
+        self.obj.connect_external_port(name);
+    }
+
+    fn disconnect_external_port(&self, name: &str) {
+        self.obj.disconnect_external_port(name);
     }
 }
 
