@@ -8,7 +8,7 @@ use crate::shoop_py_backend::backend_session::BackendSession;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
 
 #[pyclass]
-pub struct PyMidiPortState {
+pub struct MidiPortState {
     #[pyo3(get)]
     pub n_input_events: u32,
     #[pyo3(get)]
@@ -27,9 +27,9 @@ pub struct PyMidiPortState {
     pub name: String,
 }
 
-impl PyMidiPortState {
-    pub fn from_midi_port_state(state: backend_bindings::MidiPortState) -> Self {
-        PyMidiPortState {
+impl MidiPortState {
+    pub fn new(state: backend_bindings::MidiPortState) -> Self {
+        MidiPortState {
             n_input_events: state.n_input_events,
             n_input_notes_active: state.n_input_notes_active,
             n_output_events: state.n_output_events,
@@ -41,6 +41,8 @@ impl PyMidiPortState {
         }
     }
 }
+
+#[pyclass]
 pub struct MidiPort {
     pub obj : backend_bindings::MidiPort,
 }
@@ -86,7 +88,7 @@ pub fn open_driver_midi_port<'py>
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<MidiPort>()?;
+    m.add_class::<MidiPortState>()?;
     m.add_function(wrap_pyfunction!(open_driver_midi_port, m)?)?;
-    m.add_class::<PyMidiPortState>()?;
     Ok(())
 }
