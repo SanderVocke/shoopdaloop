@@ -70,7 +70,120 @@ impl MidiPort {
         }
     }
 
-    pub fn input_connectability(&self) -> PortConnectability {
+    pub fn get_state(&self) -> MidiPortState {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        let state_ptr = unsafe { ffi::get_midi_port_state(obj) };
+        let state = unsafe { MidiPortState::from_ffi(&*state_ptr) };
+        unsafe { ffi::destroy_midi_port_state_info(state_ptr) };
+        state
+    }
+
+    pub fn set_muted(&self, muted: bool) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe { ffi::set_midi_port_muted(obj, if muted { 1 } else { 0 }) };
+    }
+
+    pub fn set_passthrough_muted(&self, muted: bool) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe { ffi::set_midi_port_passthroughMuted(obj, if muted { 1 } else { 0 }) };
+    }
+
+    pub fn connect_internal(&self, other: &MidiPort) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        let other_guard = other.obj.lock().unwrap();
+        let other_obj = *other_guard;
+        unsafe { ffi::connect_midi_port_internal(obj, other_obj) };
+    }
+
+    pub fn dummy_clear_queues(&self) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe { ffi::dummy_midi_port_clear_queues(obj) };
+    }
+
+    pub fn dummy_queue_msg(&self, msg: &MidiEvent) {
+        self.dummy_queue_msgs(&[msg.clone()]);
+    }
+
+    pub fn dummy_queue_msgs(&self, msgs: &[MidiEvent]) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        let sequence = unsafe { ffi::alloc_midi_sequence(msgs.len() as u32) };
+        for (i, msg) in msgs.iter().enumerate() {
+            let event = unsafe { ffi::alloc_midi_event(msg.data.len() as u32) };
+            unsafe {
+                (*event).time = msg.time;
+                (*event).size = msg.size as u32;
+                std::ptr::copy_nonoverlapping(msg.data.as_ptr(), (*event).data, msg.data.len());
+                (*sequence).events[i] = event;
+            }
+        }
+        unsafe { ffi::dummy_midi_port_queue_data(obj, sequence) };
+        unsafe { ffi::destroy_midi_sequence(sequence) };
+    }
+
+    pub fn dummy_dequeue_data(&self) -> Vec<MidiEvent> {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        let sequence = unsafe { ffi::dummy_midi_port_dequeue_data(obj) };
+        let mut events = Vec::new();
+        for i in 0..unsafe { (*sequence).n_events } {
+            let event = unsafe { *(*sequence).events[i] };
+            let data = unsafe { std::slice::from_raw_parts(event.data, event.size as usize) };
+            events.push(MidiEvent {
+                time: event.time,
+                size: event.size as usize,
+                data: data.to_vec(),
+            });
+        }
+        unsafe { ffi::destroy_midi_sequence(sequence) };
+        events
+    }
+
+    pub fn dummy_request_data(&self, n_frames: u32) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe { ffi::dummy_midi_port_request_data(obj, n_frames) };
+    }
+
+    pub fn get_connections_state(&self) -> HashMap<String, bool> {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        let state_ptr = unsafe { ffi::get_midi_port_connections_state(obj) };
+        let state = unsafe { &*state_ptr };
+        let mut connections = HashMap::new();
+        for i in 0..state.n_ports {
+            let port = unsafe { &*state.ports.add(i as usize) };
+            let name = unsafe { CStr::from_ptr(port.name).to_string_lossy().into_owned() };
+            connections.insert(name, port.connected != 0);
+        }
+        unsafe { ffi::destroy_port_connections_state(state_ptr) };
+        connections
+    }
+
+    pub fn connect_external_port(&self, name: &str) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        let c_name = CString::new(name).unwrap();
+        unsafe { ffi::connect_midi_port_external(obj, c_name.as_ptr()) };
+    }
+
+    pub fn disconnect_external_port(&self, name: &str) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        let c_name = CString::new(name).unwrap();
+        unsafe { ffi::disconnect_midi_port_external(obj, c_name.as_ptr()) };
+    }
+
+    pub fn set_ringbuffer_n_samples(&self, n: u32) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe { ffi::set_midi_port_ringbuffer_n_samples(obj, n) };
+    }
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
         unsafe {
