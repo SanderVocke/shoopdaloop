@@ -19,6 +19,63 @@ impl AudioPort {
         Ok(self.obj.input_connectability().to_ffi() as i32)
     }
 
+    fn get_state(&self) -> PyResult<AudioPortState> {
+        Ok(self.obj.get_state())
+    }
+
+    fn set_gain(&self, gain: f32) -> PyResult<()> {
+        self.obj.set_gain(gain);
+        Ok(())
+    }
+
+    fn set_muted(&self, muted: bool) -> PyResult<()> {
+        self.obj.set_muted(muted);
+        Ok(())
+    }
+
+    fn set_passthrough_muted(&self, muted: bool) -> PyResult<()> {
+        self.obj.set_passthrough_muted(muted);
+        Ok(())
+    }
+
+    fn connect_internal(&self, other: &AudioPort) -> PyResult<()> {
+        self.obj.connect_internal(&other.obj);
+        Ok(())
+    }
+
+    fn dummy_queue_data(&self, data: Vec<f32>) -> PyResult<()> {
+        self.obj.dummy_queue_data(&data);
+        Ok(())
+    }
+
+    fn dummy_dequeue_data(&self, n_samples: u32) -> PyResult<Vec<f32>> {
+        Ok(self.obj.dummy_dequeue_data(n_samples))
+    }
+
+    fn dummy_request_data(&self, n_samples: u32) -> PyResult<()> {
+        self.obj.dummy_request_data(n_samples);
+        Ok(())
+    }
+
+    fn get_connections_state(&self) -> PyResult<HashMap<String, bool>> {
+        Ok(self.obj.get_connections_state())
+    }
+
+    fn connect_external_port(&self, name: &str) -> PyResult<()> {
+        self.obj.connect_external_port(name);
+        Ok(())
+    }
+
+    fn disconnect_external_port(&self, name: &str) -> PyResult<()> {
+        self.obj.disconnect_external_port(name);
+        Ok(())
+    }
+
+    fn set_ringbuffer_n_samples(&self, n: u32) -> PyResult<()> {
+        self.obj.set_ringbuffer_n_samples(n);
+        Ok(())
+    }
+
     #[getter]
     fn output_connectability(&self) -> PyResult<i32> {
         Ok(self.obj.output_connectability().to_ffi() as i32)
