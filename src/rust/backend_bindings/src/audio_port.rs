@@ -84,7 +84,118 @@ impl AudioPort {
         }
     }
 
-    pub fn direction(&self) -> PortDirection {
+    pub fn get_state(&self) -> AudioPortStateInfo {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe {
+            let state = ffi::get_audio_port_state(obj);
+            let rval = AudioPortStateInfo::from_ffi(&*state);
+            ffi::destroy_audio_port_state_info(state);
+            rval
+        }
+    }
+
+    pub fn set_gain(&self, gain: f32) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe {
+            ffi::set_audio_port_gain(obj, gain);
+        }
+    }
+
+    pub fn set_muted(&self, muted: bool) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe {
+            ffi::set_audio_port_muted(obj, if muted { 1 } else { 0 });
+        }
+    }
+
+    pub fn set_passthrough_muted(&self, muted: bool) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe {
+            ffi::set_audio_port_passthroughMuted(obj, if muted { 1 } else { 0 });
+        }
+    }
+
+    pub fn connect_internal(&self, other: &AudioPort) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        let other_guard = other.obj.lock().unwrap();
+        let other_obj = *other_guard;
+        unsafe {
+            ffi::connect_audio_port_internal(obj, other_obj);
+        }
+    }
+
+    pub fn dummy_queue_data(&self, data: &[f32]) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe {
+            ffi::dummy_audio_port_queue_data(obj, data.len() as u32, data.as_ptr());
+        }
+    }
+
+    pub fn dummy_dequeue_data(&self, n_samples: u32) -> Vec<f32> {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        let mut data = vec![0.0; n_samples as usize];
+        unsafe {
+            ffi::dummy_audio_port_dequeue_data(obj, n_samples, data.as_mut_ptr());
+        }
+        data
+    }
+
+    pub fn dummy_request_data(&self, n_samples: u32) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe {
+            ffi::dummy_audio_port_request_data(obj, n_samples);
+        }
+    }
+
+    pub fn get_connections_state(&self) -> HashMap<String, bool> {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe {
+            let state = ffi::get_audio_port_connections_state(obj);
+            let mut rval = HashMap::new();
+            for i in 0..(*state).n_ports {
+                let port = &(*state).ports[i as usize];
+                let name = CStr::from_ptr(port.name).to_string_lossy().into_owned();
+                rval.insert(name, port.connected != 0);
+            }
+            ffi::destroy_port_connections_state(state);
+            rval
+        }
+    }
+
+    pub fn connect_external_port(&self, name: &str) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        let c_name = CString::new(name).unwrap();
+        unsafe {
+            ffi::connect_audio_port_external(obj, c_name.as_ptr());
+        }
+    }
+
+    pub fn disconnect_external_port(&self, name: &str) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        let c_name = CString::new(name).unwrap();
+        unsafe {
+            ffi::disconnect_audio_port_external(obj, c_name.as_ptr());
+        }
+    }
+
+    pub fn set_ringbuffer_n_samples(&self, n: u32) {
+        let guard = self.obj.lock().unwrap();
+        let obj = *guard;
+        unsafe {
+            ffi::set_audio_port_ringbuffer_n_samples(obj, n);
+        }
+    }
         let input_conn = self.input_connectability();
         let output_conn = self.output_connectability();
         if input_conn.external && output_conn.external {
