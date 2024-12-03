@@ -55,14 +55,9 @@ unsafe impl Send for Loop {}
 unsafe impl Sync for Loop {}
 
 impl Loop {
-    pub fn new(backend_session: &BackendSession) -> Result<Self, anyhow::Error> {
-        let obj = unsafe { ffi::create_loop(backend_session.unsafe_backend_ptr()) };
-        if obj.is_null() {
-            return Err(anyhow::anyhow!("Failed to create loop"));
-        }
-        Ok(Loop {
-            obj: Mutex::new(obj),
-        })
+    pub fn new(obj : *mut ffi::shoopdaloop_loop_t) -> Result<Self, anyhow::Error> {
+        let wrapped = Mutex::new(obj);
+        Ok(Loop { obj: wrapped })
     }
 
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel, anyhow::Error> {

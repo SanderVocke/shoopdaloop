@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 // use pyo3::exceptions::*;
 use backend_bindings;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
+use crate::shoop_py_backend::shoop_loop::Loop;
 
 #[pyclass]
 pub struct BackendSessionState {
@@ -41,6 +42,15 @@ impl BackendSession {
         } else {
             Err(PyErr::new::<pyo3::exceptions::PyException, _>("set_audio_driver() failed"))
         }
+    }
+
+    fn create_loop(&self) -> PyResult<Loop> {
+        let obj = self.obj.create_loop();
+        if obj.is_err() {
+            return Err(PyErr::new::<pyo3::exceptions::PyException, _>("Failed to create loop"));
+        }
+        let obj = Loop::new(obj.unwrap());
+        Ok(obj)
     }
 }
 

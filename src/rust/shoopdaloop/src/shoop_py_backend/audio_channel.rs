@@ -43,6 +43,12 @@ impl AudioChannelState {
 }
 
 #[pyclass]
+pub struct AudioChannelData {
+    #[pyo3(get, set)]
+    pub data: Vec<f32>,
+}
+
+#[pyclass]
 pub struct AudioChannel {
     pub obj : backend_bindings::AudioChannel,
 }
@@ -73,8 +79,10 @@ impl AudioChannel {
         Ok(())
     }
 
-    fn get_data(&self) -> PyResult<Vec<f32>> {
-        Ok(self.obj.get_data())
+    fn get_data(&self) -> PyResult<AudioChannelData> {
+        Ok(AudioChannelData {
+            data : self.obj.get_data(),
+        })
     }
 
     fn get_state(&self) -> PyResult<AudioChannelState> {
@@ -120,6 +128,7 @@ impl AudioChannel {
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<AudioChannel>()?;
+    m.add_class::<AudioChannelData>()?;
     m.add_class::<AudioChannelState>()?;
     Ok(())
 }

@@ -3,9 +3,7 @@ use crate::ffi;
 use std::sync::Mutex;
 
 use crate::audio_driver::AudioDriver;
-use crate::fx_chain::FXChain;
-use crate::audio_port::AudioPort;
-use crate::midi_port::MidiPort;
+use crate::shoop_loop::Loop;
 use crate::common::BackendResult;
 use std::ffi::CStr;
 use std::slice;
@@ -109,13 +107,14 @@ impl BackendSession {
         rval
     }
 
-    pub fn create_loop(&self) -> Result<*mut ffi::shoopdaloop_loop_t, anyhow::Error> {
+    pub fn create_loop(&self) -> Result<Loop, anyhow::Error> {
         let obj = unsafe { self.unsafe_backend_ptr() };
         let loop_ptr = unsafe { ffi::create_loop(obj) };
         if loop_ptr.is_null() {
             Err(anyhow::anyhow!("create_loop() failed"))
         } else {
-            Ok(loop_ptr)
+            let _loop = Loop::new(loop_ptr)?;
+            Ok(_loop)
         }
     }
 

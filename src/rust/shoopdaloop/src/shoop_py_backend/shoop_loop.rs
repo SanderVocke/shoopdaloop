@@ -69,13 +69,14 @@ pub struct Loop {
     pub obj : backend_bindings::Loop,
 }
 
+impl Loop {
+    pub fn new(obj : backend_bindings::Loop) -> Self {
+        Loop { obj }
+    }
+}
+
 #[pymethods]
 impl Loop {
-    #[new]
-    fn py_new(backend_session : &BackendSession) -> PyResult<Self> {
-        Ok(Loop { obj: backend_bindings::Loop::new(&backend_session.obj).unwrap() })
-    }
-
     fn add_audio_channel(&self, mode : i32) -> PyResult<AudioChannel> {
         match backend_bindings::ChannelMode::try_from(mode) {
             Ok(value) => Ok(AudioChannel { obj: self.obj.add_audio_channel(value).unwrap() }),

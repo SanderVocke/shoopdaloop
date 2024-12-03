@@ -174,48 +174,6 @@ class MidiEvent:
             self.data = []
 
 @dataclass
-class BackendSessionState:
-    audio_driver_handle : Any
-
-    def __init__(self, backend_state : 'bindings.shoop_backend_session_state_info_t' = None):
-        if backend_state:
-            self.audio_driver_handle = backend_state.audio_driver
-        else:
-            self.audio_driver_handle = None
-
-@dataclass
-class ProfilingReportItem:
-    key : str
-    n_samples : float
-    worst : float
-    most_recent : float
-    average : float
-
-    def __init__(self, backend_obj : 'bindings.shoop_profiling_report_item_t'):
-        if backend_obj:
-            self.key = str(backend_obj.key)
-            self.n_samples = float(backend_obj.n_samples)
-            self.worst = float(backend_obj.worst)
-            self.most_recent = float(backend_obj.most_recent)
-            self.average = float(backend_obj.average)
-        else:
-            self.key = 'unknown'
-            self.n_samples = 0.0
-            self.worst = 0.0
-            self.most_recent = 0.0
-            self.average = 0.0
-
-@dataclass
-class ProfilingReport:
-    items : List[ProfilingReportItem]
-
-    def __init__(self, backend_obj : 'bindings.shoop_profiling_report_t'):
-        if backend_obj:
-            self.items = [ProfilingReportItem(backend_obj.items[i]) for i in range(backend_obj.n_items)] if backend_obj else []
-        else:
-            self.items = []
-
-@dataclass
 class ExternalPortDescriptor:
     name : str
     direction : PortDirection
@@ -237,28 +195,6 @@ class ExternalPortDescriptor:
             'direction': int(self.direction),
             'data_type': int(self.data_type)
         }
-
-class ShoopChannelAudioData:
-    def __init__(self, data=None):
-        if data == None:
-            self.ctypes_array = None
-            self.raw_data_ptr = None
-            self.backend_obj = None
-            self.np_array = numpy.empty(0)
-            return
-        if not isinstance(data, ctypes.POINTER(bindings.shoop_audio_channel_data_t)):
-            raise ValueError("array must be a backend bindings audio data object, is {}".format(type(data)))
-        if not isinstance(data[0].data, ctypes.POINTER(ctypes.c_float)):
-            raise ValueError("array data must be a ctypes float pointer, is {}".format(type(data[0].data)))
-        self.backend_obj = data
-        self.np_array = numpy.ctypeslib.as_array(self.backend_obj[0].data, shape=(self.backend_obj[0].n_samples,))
-
-    def __len__(self):
-        return len(self.np_array)
-
-    def __del__(self):
-        self.np_array = None
-        bindings.destroy_audio_channel_data(self.backend_obj)
 
 def deref_ptr(backend_ptr):
     if not backend_ptr:
@@ -605,43 +541,9 @@ class BackendFXChain:
             return BackendMidiPort(port)
         return None
 
-class BackendSession:
-    def create():
-        _obj = shoop_py_backend.BackendSession()
-        b = BackendSession(_obj)
-        return b
-
-    def __init__(self, obj):
-        self._obj = obj
-        self._active = True
-        
-    def get_backend_obj(self):
-        return self._obj
-
-    def get_state(self):
-        return self._obj.get_state()
-
-    def create_loop(self):
-        return shoop_py_backend.Loop(self._obj)
-
-    def create_fx_chain(self, chain_type : Type['FXChainType'], title: str) -> Type['BackendFXChain']:
-        return self._obj.create_fx_chain(chain_type, title)
-
-    def get_profiling_report(self):
-        return self._obj.get_profiling_report()
-
-    def set_audio_driver(self, driver):
-        self._obj.set_audio_driver(driver)
-
-    def segfault_on_process_thread(self):
-        self._obj.segfault_on_process_thread()
-
-    def abort_on_process_thread(self):
-        self._obj.abort_on_process_thread()
-
 def open_driver_audio_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendAudioPort':
     obj = shoop_py_backend.open_driver_audio_port(
-            backend_session._obj,
+            backend_session,
             audio_driver,
             name_hint,
             direction,
@@ -659,7 +561,7 @@ def open_driver_decoupled_midi_port(audio_driver, name_hint : str, direction : i
 
 def open_driver_midi_port(backend_session, audio_driver, name_hint : str, direction : int, min_n_ringbuffer_samples : int) -> 'BackendMidiPort':
     obj = shoop_py_backend.open_driver_midi_port(
-            backend_session._obj,
+            backend_session,
             audio_driver,
             name_hint,
             direction,

@@ -380,7 +380,7 @@ class Backend(ShoopQQuickItem):
         self.logger.debug(lambda: "Initializing with type {}, settings {}".format(self._driver_type, json.dumps(self._driver_setting_overrides)))
         if self._initialized:
             self.logger.throw_error("May not initialize more than one back-end at a time.")
-        self._backend_session_obj = BackendSession.create()
+        self._backend_session_obj = shoop_py_backend.BackendSession()
         self._backend_driver_obj = shoop_py_backend.AudioDriver(self._driver_type)
 
         if not self._backend_session_obj:
