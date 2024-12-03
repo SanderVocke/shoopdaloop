@@ -12,6 +12,53 @@ integer_enum! {
         CarlaPatchbay16x = ffi::shoop_fx_chain_type_t_Carla_Patchbay_16x,
         Test2x2x1 = ffi::shoop_fx_chain_type_t_Test2x2x1,
     }
+}
+
+#[derive(Debug)]
+pub struct FXChainStateInfo {
+    pub ready: u32,
+    pub active: u32,
+    pub visible: u32,
+}
+
+impl FXChainStateInfo {
+    pub unsafe fn from_ffi(obj: &ffi::shoop_fx_chain_state_info_t) -> Self {
+        FXChainStateInfo {
+            ready: obj.ready,
+            active: obj.active,
+            visible: obj.visible,
+        }
+    }
+}
+
+pub struct FXChain {
+    obj : Mutex<*mut ffi::shoopdaloop_fx_chain_t>,
+}
+
+unsafe impl Send for FXChain {}
+unsafe impl Sync for FXChain {}
+
+impl FXChain {
+    pub fn new(backend_session : &BackendSession,
+               chain_type : &FXChainType,
+               title : &str) -> Result<Self, anyhow::Error> {
+        let title_ptr = title.as_ptr() as *const i8;
+        let obj = unsafe { ffi::create_fx_chain
+                             (backend_session.unsafe_backend_ptr(),
+                              *chain_type as u32,
+                              title_ptr) };
+        if obj.is_null() {
+            return Err(anyhow::anyhow!("Failed to create FX chain"));
+        }
+        Ok(FXChain {
+            obj : Mutex::new(obj),
+        })
+    }
+
+    pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_fx_chain_t {
+        let guard = self.obj.lock().unwrap();
+        *guard
+    }
 
     pub fn available(&self) -> bool {
         !self.obj.lock().unwrap().is_null()
@@ -74,53 +121,6 @@ integer_enum! {
                 ffi::restore_fx_chain_internal_state(*self.obj.lock().unwrap(), c_state_str.as_ptr());
             }
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct FXChainStateInfo {
-    pub ready: u32,
-    pub active: u32,
-    pub visible: u32,
-}
-
-impl FXChainStateInfo {
-    pub unsafe fn from_ffi(obj: &ffi::shoop_fx_chain_state_info_t) -> Self {
-        FXChainStateInfo {
-            ready: obj.ready,
-            active: obj.active,
-            visible: obj.visible,
-        }
-    }
-}
-
-pub struct FXChain {
-    obj : Mutex<*mut ffi::shoopdaloop_fx_chain_t>,
-}
-
-unsafe impl Send for FXChain {}
-unsafe impl Sync for FXChain {}
-
-impl FXChain {
-    pub fn new(backend_session : &BackendSession,
-               chain_type : &FXChainType,
-               title : &str) -> Result<Self, anyhow::Error> {
-        let title_ptr = title.as_ptr() as *const i8;
-        let obj = unsafe { ffi::create_fx_chain
-                             (backend_session.unsafe_backend_ptr(),
-                              *chain_type as u32,
-                              title_ptr) };
-        if obj.is_null() {
-            return Err(anyhow::anyhow!("Failed to create FX chain"));
-        }
-        Ok(FXChain {
-            obj : Mutex::new(obj),
-        })
-    }
-
-    pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_fx_chain_t {
-        let guard = self.obj.lock().unwrap();
-        *guard
     }
 }
 
