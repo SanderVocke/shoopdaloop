@@ -41,7 +41,44 @@ impl FXChain {
                               title).unwrap() })
     }
 
-    fn unsafe_backend_ptr (&self) -> usize {
+    fn available(&self) -> bool {
+        self.obj.available()
+    }
+
+    fn set_visible(&self, visible: bool) {
+        self.obj.set_visible(visible);
+    }
+
+    fn set_active(&self, active: bool) {
+        self.obj.set_active(active);
+    }
+
+    fn get_state(&self) -> PyResult<FXChainState> {
+        match self.obj.get_state() {
+            Some(state) => Ok(FXChainState::new(state)),
+            None => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Failed to get state")),
+        }
+    }
+
+    fn get_state_str(&self) -> Option<String> {
+        self.obj.get_state_str()
+    }
+
+    fn get_audio_input_port(&self, idx: u32) -> Option<usize> {
+        self.obj.get_audio_input_port(idx).map(|ptr| ptr as usize)
+    }
+
+    fn get_audio_output_port(&self, idx: u32) -> Option<usize> {
+        self.obj.get_audio_output_port(idx).map(|ptr| ptr as usize)
+    }
+
+    fn get_midi_input_port(&self, idx: u32) -> Option<usize> {
+        self.obj.get_midi_input_port(idx).map(|ptr| ptr as usize)
+    }
+
+    fn restore_state(&self, state_str: &str) {
+        self.obj.restore_state(state_str);
+    }
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }
 }
