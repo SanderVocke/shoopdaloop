@@ -8,6 +8,39 @@ use crate::shoop_py_backend::backend_session::BackendSession;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
 
 #[pyclass]
+pub struct PyMidiPortState {
+    #[pyo3(get)]
+    pub n_input_events: u32,
+    #[pyo3(get)]
+    pub n_input_notes_active: u32,
+    #[pyo3(get)]
+    pub n_output_events: u32,
+    #[pyo3(get)]
+    pub n_output_notes_active: u32,
+    #[pyo3(get)]
+    pub muted: u32,
+    #[pyo3(get)]
+    pub passthrough_muted: u32,
+    #[pyo3(get)]
+    pub ringbuffer_n_samples: u32,
+    #[pyo3(get)]
+    pub name: String,
+}
+
+impl PyMidiPortState {
+    pub fn from_midi_port_state(state: backend_bindings::MidiPortState) -> Self {
+        PyMidiPortState {
+            n_input_events: state.n_input_events,
+            n_input_notes_active: state.n_input_notes_active,
+            n_output_events: state.n_output_events,
+            n_output_notes_active: state.n_output_notes_active,
+            muted: state.muted,
+            passthrough_muted: state.passthrough_muted,
+            ringbuffer_n_samples: state.ringbuffer_n_samples,
+            name: state.name,
+        }
+    }
+}
 pub struct MidiPort {
     pub obj : backend_bindings::MidiPort,
 }
@@ -54,5 +87,6 @@ pub fn open_driver_midi_port<'py>
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<MidiPort>()?;
     m.add_function(wrap_pyfunction!(open_driver_midi_port, m)?)?;
+    m.add_class::<PyMidiPortState>()?;
     Ok(())
 }
