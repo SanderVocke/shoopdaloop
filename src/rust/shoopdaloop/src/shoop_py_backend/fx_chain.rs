@@ -7,6 +7,24 @@ use backend_bindings;
 use crate::shoop_py_backend::backend_session::BackendSession;
 
 #[pyclass]
+pub struct FXChainState {
+    #[pyo3(get)]
+    pub ready: u32,
+    #[pyo3(get)]
+    pub active: u32,
+    #[pyo3(get)]
+    pub visible: u32,
+}
+
+impl FXChainState {
+    pub fn new(obj: backend_bindings::FXChainState) -> Self {
+        FXChainState {
+            ready: obj.ready,
+            active: obj.active,
+            visible: obj.visible,
+        }
+    }
+}
 pub struct FXChain {
     pub obj : backend_bindings::FXChain,
 }
