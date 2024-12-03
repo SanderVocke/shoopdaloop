@@ -10,6 +10,35 @@ pub struct MidiPort {
     obj : Mutex<*mut ffi::shoopdaloop_midi_port_t>,
 }
 
+#[derive(Debug)]
+pub struct MidiPortStateInfo {
+    pub n_input_events: u32,
+    pub n_input_notes_active: u32,
+    pub n_output_events: u32,
+    pub n_output_notes_active: u32,
+    pub muted: u32,
+    pub passthrough_muted: u32,
+    pub ringbuffer_n_samples: u32,
+    pub name: String,
+}
+
+impl MidiPortStateInfo {
+    pub fn from_ffi(ffi_state: &ffi::shoop_midi_port_state_info_t) -> Self {
+        unsafe {
+            MidiPortStateInfo {
+                n_input_events: ffi_state.n_input_events,
+                n_input_notes_active: ffi_state.n_input_notes_active,
+                n_output_events: ffi_state.n_output_events,
+                n_output_notes_active: ffi_state.n_output_notes_active,
+                muted: ffi_state.muted,
+                passthrough_muted: ffi_state.passthrough_muted,
+                ringbuffer_n_samples: ffi_state.ringbuffer_n_samples,
+                name: std::ffi::CStr::from_ptr(ffi_state.name).to_string_lossy().into_owned(),
+            }
+        }
+    }
+}
+
 unsafe impl Send for MidiPort {}
 unsafe impl Sync for MidiPort {}
 
