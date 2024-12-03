@@ -377,7 +377,13 @@ class Backend(ShoopQQuickItem):
 
     @ShoopSlot(str, int, int, result="QList<QVariant>")
     def findExternalPorts(self, maybe_name_regex, port_direction, data_type):
-        rval = [v.to_basic_dict() for v in self.find_external_ports(maybe_name_regex, port_direction, data_type)]
+        def to_basic_dict(desc):
+            return {
+                'name': desc.name,
+                'direction': int(desc.direction),
+                'data_type': int(desc.data_type)
+            }
+        rval = [to_basic_dict(v) for v in self.find_external_ports(maybe_name_regex, port_direction, data_type)]
         self.logger.debug(lambda: f"findExternalPorts: {json.dumps(rval)}")
         return rval
 

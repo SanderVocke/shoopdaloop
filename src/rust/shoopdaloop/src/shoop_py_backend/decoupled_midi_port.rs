@@ -1,10 +1,9 @@
 // See audio_port.rs from backend_bindings
 
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
 use pyo3::exceptions::PyValueError;
-use backend_bindings::{self, MidiEvent};
 
+use crate::shoop_py_backend::midi::MidiEvent;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
 
 #[pyclass]
@@ -19,15 +18,17 @@ impl DecoupledMidiPort {
     }
 
     fn maybe_next_message(&self) -> Option<MidiEvent> {
-        self.obj.maybe_next_message()
+        match self.obj.maybe_next_message() {
+            None => None,
+            Some(event) => Some(MidiEvent::from(event))
+        }
     }
 
     fn name(&self) -> String {
         self.obj.name()
     }
 
-    fn send_midi(&self, py: Python, msg: &PyBytes) -> PyResult<()> {
-        let msg_bytes = msg.as_bytes();
+    fn send_midi(&self, msg_bytes: &[u8]) -> PyResult<()> {
         if msg_bytes.is_empty() {
             return Err(PyValueError::new_err("MIDI message cannot be empty"));
         }
