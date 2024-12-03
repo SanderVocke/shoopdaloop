@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+use backend_bindings::MidiEvent as BackendMidiEvent;
 
 #[pyclass]
 #[derive(Clone)]
@@ -17,8 +18,8 @@ impl MidiEvent {
     }
 }
 
-impl From<backend_bindings::MidiEvent> for MidiEvent {
-    fn from(event: backend_bindings::MidiEvent) -> Self {
+impl From<BackendMidiEvent> for MidiEvent {
+    fn from(event: BackendMidiEvent) -> Self {
         MidiEvent {
             time: event.time,
             data: event.data,
