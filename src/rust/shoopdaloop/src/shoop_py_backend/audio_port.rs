@@ -51,14 +51,8 @@ pub fn open_driver_audio_port<'py>
                                 .unwrap() })
 }
 
-#[pyfunction]
-pub fn unsafe_audio_port_from_raw_ptr(ptr: usize) -> PyResult<AudioPort> {
-    Ok(AudioPort { obj: backend_bindings::AudioPort::unsafe_port_from_raw_ptr(ptr) })
-}
-
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<AudioPort>()?;
     m.add_function(wrap_pyfunction!(open_driver_audio_port, m)?)?;
-    m.add_function(wrap_pyfunction!(unsafe_audio_port_from_raw_ptr, m)?)?;
     Ok(())
 }
