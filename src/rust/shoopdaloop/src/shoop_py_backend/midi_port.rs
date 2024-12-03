@@ -64,7 +64,70 @@ impl MidiPort {
         Ok(self.obj.direction() as i32)
     }
     
-    fn unsafe_backend_ptr (&self) -> usize {
+    fn get_state(&self) -> PyResult<MidiPortState> {
+        let state = self.obj.get_state();
+        Ok(MidiPortState::new(state))
+    }
+
+    fn set_muted(&self, muted: bool) -> PyResult<()> {
+        self.obj.set_muted(muted);
+        Ok(())
+    }
+
+    fn set_passthrough_muted(&self, muted: bool) -> PyResult<()> {
+        self.obj.set_passthrough_muted(muted);
+        Ok(())
+    }
+
+    fn connect_internal(&self, other: &MidiPort) -> PyResult<()> {
+        self.obj.connect_internal(&other.obj);
+        Ok(())
+    }
+
+    fn dummy_clear_queues(&self) -> PyResult<()> {
+        self.obj.dummy_clear_queues();
+        Ok(())
+    }
+
+    fn dummy_queue_msg(&self, msg: &MidiEvent) -> PyResult<()> {
+        self.obj.dummy_queue_msg(msg);
+        Ok(())
+    }
+
+    fn dummy_queue_msgs(&self, msgs: Vec<MidiEvent>) -> PyResult<()> {
+        self.obj.dummy_queue_msgs(&msgs);
+        Ok(())
+    }
+
+    fn dummy_dequeue_data(&self) -> PyResult<Vec<MidiEvent>> {
+        Ok(self.obj.dummy_dequeue_data())
+    }
+
+    fn dummy_request_data(&self, n_frames: u32) -> PyResult<()> {
+        self.obj.dummy_request_data(n_frames);
+        Ok(())
+    }
+
+    fn get_connections_state(&self) -> PyResult<HashMap<String, bool>> {
+        Ok(self.obj.get_connections_state())
+    }
+
+    fn connect_external_port(&self, name: &str) -> PyResult<()> {
+        self.obj.connect_external_port(name);
+        Ok(())
+    }
+
+    fn disconnect_external_port(&self, name: &str) -> PyResult<()> {
+        self.obj.disconnect_external_port(name);
+        Ok(())
+    }
+
+    fn set_ringbuffer_n_samples(&self, n: u32) -> PyResult<()> {
+        self.obj.set_ringbuffer_n_samples(n);
+        Ok(())
+    }
+
+    fn unsafe_backend_ptr(&self) -> usize {
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }
 }
