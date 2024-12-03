@@ -21,6 +21,7 @@ impl JackAudioDriverSettings {
 #[pymethods]
 impl JackAudioDriverSettings {
     #[new]
+    #[pyo3(signature = (client_name_hint, maybe_server_name=None))]
     fn py_new(client_name_hint: String, maybe_server_name: Option<String>) -> Self {
         JackAudioDriverSettings { client_name_hint, maybe_server_name }
     }
