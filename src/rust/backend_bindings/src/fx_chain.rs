@@ -12,6 +12,21 @@ integer_enum! {
         CarlaPatchbay16x = ffi::shoop_fx_chain_type_t_Carla_Patchbay_16x,
         Test2x2x1 = ffi::shoop_fx_chain_type_t_Test2x2x1,
     }
+#[derive(Debug)]
+pub struct FXChainStateInfo {
+    pub ready: u32,
+    pub active: u32,
+    pub visible: u32,
+}
+
+impl FXChainStateInfo {
+    pub unsafe fn from_ffi(ptr: *const ffi::shoop_fx_chain_state_info_t) -> Self {
+        FXChainStateInfo {
+            ready: (*ptr).ready,
+            active: (*ptr).active,
+            visible: (*ptr).visible,
+        }
+    }
 }
 
 pub struct FXChain {
