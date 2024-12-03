@@ -6,12 +6,8 @@ use crate::backend_session::BackendSession;
 use crate::audio_driver::AudioDriver;
 use crate::port::{PortDirection, PortConnectability};
 
-pub struct MidiPort {
-    obj : Mutex<*mut ffi::shoopdaloop_midi_port_t>,
-}
-
 #[derive(Debug)]
-pub struct MidiPortStateInfo {
+pub struct MidiPortState {
     pub n_input_events: u32,
     pub n_input_notes_active: u32,
     pub n_output_events: u32,
@@ -22,10 +18,10 @@ pub struct MidiPortStateInfo {
     pub name: String,
 }
 
-impl MidiPortStateInfo {
+impl MidiPortState {
     pub fn from_ffi(ffi_state: &ffi::shoop_midi_port_state_info_t) -> Self {
         unsafe {
-            MidiPortStateInfo {
+            MidiPortState {
                 n_input_events: ffi_state.n_input_events,
                 n_input_notes_active: ffi_state.n_input_notes_active,
                 n_output_events: ffi_state.n_output_events,
@@ -37,6 +33,10 @@ impl MidiPortStateInfo {
             }
         }
     }
+}
+
+pub struct MidiPort {
+    obj : Mutex<*mut ffi::shoopdaloop_midi_port_t>,
 }
 
 unsafe impl Send for MidiPort {}
