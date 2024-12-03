@@ -51,7 +51,7 @@ mod midi;
 #[cfg(not(feature = "prebuild"))]
 mod midi_channel;
 #[cfg(not(feature = "prebuild"))]
-pub use midi_channel::{MidiChannel, MidiEvent};
+pub use midi_channel::{MidiChannel, MidiEvent, MidiChannelState};
 
 #[cfg(not(feature = "prebuild"))]
 mod midi_port;
