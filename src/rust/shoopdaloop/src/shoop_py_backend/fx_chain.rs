@@ -21,7 +21,6 @@ impl TryFrom<backend_bindings::FXChainType> for FXChainType {
             backend_bindings::FXChainType::CarlaPatchbay => Ok(FXChainType::CarlaPatchbay),
             backend_bindings::FXChainType::CarlaPatchbay16x => Ok(FXChainType::CarlaPatchbay16x),
             backend_bindings::FXChainType::Test2x2x1 => Ok(FXChainType::Test2x2x1),
-            _ => Err(anyhow::anyhow!("Invalid FXChainType")),
         }
     }
 }
