@@ -11,6 +11,14 @@ pub enum PortDirection {
 
 #[pymethods]
 impl PortDirection {
+    #[new]
+    fn py_new(value: u32) -> PyResult<Self> {
+        match backend_bindings::PortDirection::try_from(value) {
+            Ok(val) => Ok(PortDirection::try_from(val).unwrap()),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid PortDirection")),
+        }
+    }
+
     #[staticmethod]
     pub fn enum_items() -> std::collections::HashMap<&'static str, isize> {
         let mut items = std::collections::HashMap::new();
@@ -20,6 +28,8 @@ impl PortDirection {
         items
     }
 }
+
+impl TryFrom<backend_bindings::PortDirection> for PortDirection {
     type Error = anyhow::Error;
     fn try_from(value: backend_bindings::PortDirection) -> Result<Self, anyhow::Error> {
         match value {
@@ -40,6 +50,14 @@ pub enum PortDataType {
 
 #[pymethods]
 impl PortDataType {
+    #[new]
+    fn py_new(value: u32) -> PyResult<Self> {
+        match backend_bindings::PortDataType::try_from(value) {
+            Ok(val) => Ok(PortDataType::try_from(val).unwrap()),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid PortDataType")),
+        }
+    }
+
     #[staticmethod]
     pub fn enum_items() -> std::collections::HashMap<&'static str, isize> {
         let mut items = std::collections::HashMap::new();
@@ -49,6 +67,8 @@ impl PortDataType {
         items
     }
 }
+
+impl TryFrom<backend_bindings::PortDataType> for PortDataType { 
     type Error = anyhow::Error;
     fn try_from(value: backend_bindings::PortDataType) -> Result<Self, anyhow::Error> {
         match value {

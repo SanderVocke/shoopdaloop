@@ -53,31 +53,10 @@ class BackendResult(Enum):
     Success = bindings.Success
     Failure = bindings.Failure
 
-class PyLoopMode(Enum):
-    Unknown = int(shoop_py_backend.LoopMode.Unknown)
-    Stopped = int(shoop_py_backend.LoopMode.Stopped)
-    Playing = int(shoop_py_backend.LoopMode.Playing)
-    Recording = int(shoop_py_backend.LoopMode.Recording)
-    Replacing = int(shoop_py_backend.LoopMode.Replacing)
-    PlayingDryThroughWet = int(shoop_py_backend.LoopMode.PlayingDryThroughWet)
-    RecordingDryIntoWet = int(shoop_py_backend.LoopMode.RecordingDryIntoWet)
-
-class PyChannelMode(Enum):
-    Disabled = bindings.ChannelMode_Disabled
-    Direct = bindings.ChannelMode_Direct
-    Dry = bindings.ChannelMode_Dry
-    Wet = bindings.ChannelMode_Wet
-
 class PyAudioDriverType(Enum):
     Jack = bindings.Jack
     JackTest = bindings.JackTest
     Dummy = bindings.Dummy
-
-class PyFXChainType(Enum):
-    Carla_Rack = bindings.Carla_Rack
-    Carla_Patchbay = bindings.Carla_Patchbay
-    Carla_Patchbay_16x = bindings.Carla_Patchbay_16x
-    Test2x2x1 = bindings.Test2x2x1
 
 DontWaitForSync = -1
 DontAlignToSyncImmediately = -1

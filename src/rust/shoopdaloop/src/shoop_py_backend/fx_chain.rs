@@ -18,6 +18,14 @@ pub enum FXChainType {
 
 #[pymethods]
 impl FXChainType {
+    #[new]
+    fn py_new(value: u32) -> PyResult<Self> {
+        match backend_bindings::FXChainType::try_from(value) {
+            Ok(val) => Ok(FXChainType::try_from(val).unwrap()),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid FXChainType")),
+        }
+    }
+    
     #[staticmethod]
     fn enum_items() -> std::collections::HashMap<&'static str, isize> {
         let mut map = std::collections::HashMap::new();
@@ -37,17 +45,6 @@ impl TryFrom<backend_bindings::FXChainType> for FXChainType {
             backend_bindings::FXChainType::CarlaPatchbay => Ok(FXChainType::CarlaPatchbay),
             backend_bindings::FXChainType::CarlaPatchbay16x => Ok(FXChainType::CarlaPatchbay16x),
             backend_bindings::FXChainType::Test2x2x1 => Ok(FXChainType::Test2x2x1),
-        }
-    }
-}
-
-#[pymethods]
-impl FXChainType {
-    #[new]
-    fn py_new(value: u32) -> PyResult<Self> {
-        match backend_bindings::FXChainType::try_from(value) {
-            Ok(val) => Ok(FXChainType::try_from(val).unwrap()),
-            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid FXChainType")),
         }
     }
 }

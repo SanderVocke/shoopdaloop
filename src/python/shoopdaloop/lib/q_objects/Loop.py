@@ -251,7 +251,7 @@ class Loop(FindParentBackend):
         self._display_midi_events_triggered = (sum([c._n_events_triggered for c in midi_chans]) if len(midi_chans) > 0 else 0)
         
         if prev_mode != self._mode:
-            self.logger.debug(lambda: 'mode -> {}'.format(PyLoopMode(self._mode)))
+            self.logger.debug(lambda: 'mode -> {}'.format(shoop_py_backend.LoopMode(self._mode)))
             self.modeChangedUnsafe.emit(self._mode)
         if prev_length != self._length:
             self.logger.trace(lambda: 'length -> {}'.format(self._length))
@@ -260,7 +260,7 @@ class Loop(FindParentBackend):
             self.logger.trace(lambda: 'pos -> {}'.format(self._position))
             self.positionChangedUnsafe.emit(self._position)
         if prev_next_mode != self._next_mode:
-            self.logger.debug(lambda: 'next mode -> {}'.format(PyLoopMode(self._next_mode)))
+            self.logger.debug(lambda: 'next mode -> {}'.format(shoop_py_backend.LoopMode(self._next_mode)))
             self.nextModeChangedUnsafe.emit(self._next_mode)
         if prev_next_delay != self._next_transition_delay:
             self.logger.debug(lambda: 'next transition -> {}'.format(self._next_transition_delay))

@@ -14,6 +14,14 @@ pub enum ChannelMode {
 
 #[pymethods]
 impl ChannelMode {
+    #[new]
+    fn py_new(value: u32) -> PyResult<Self> {
+        match backend_bindings::ChannelMode::try_from(value) {
+            Ok(val) => Ok(ChannelMode::try_from(val).unwrap()),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid ChannelMode")),
+        }
+    }
+
     #[staticmethod]
     pub fn enum_items() -> HashMap<&'static str, isize> {
         let mut items = HashMap::new();
