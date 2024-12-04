@@ -1,9 +1,47 @@
 use pyo3::prelude::*;
 // use pyo3::exceptions::*;
 use backend_bindings;
+use std::collections::HashMap;
 use crate::shoop_py_backend::port;
 
-#[pyclass]
+#[pyclass(eq, eq_int)]
+#[derive(PartialEq, Clone)]
+pub enum AudioDriverType {
+    Jack = backend_bindings::AudioDriverType::Jack as isize,
+    JackTest = backend_bindings::AudioDriverType::JackTest as isize,
+    Dummy = backend_bindings::AudioDriverType::Dummy as isize,
+}
+
+#[pymethods]
+impl AudioDriverType {
+    #[new]
+    fn py_new(value: u32) -> PyResult<Self> {
+        match backend_bindings::AudioDriverType::try_from(value) {
+            Ok(val) => Ok(AudioDriverType::try_from(val).unwrap()),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid AudioDriverType")),
+        }
+    }
+
+    #[staticmethod]
+    pub fn enum_items() -> HashMap<&'static str, isize> {
+        let mut items = HashMap::new();
+        items.insert("Jack", AudioDriverType::Jack as isize);
+        items.insert("JackTest", AudioDriverType::JackTest as isize);
+        items.insert("Dummy", AudioDriverType::Dummy as isize);
+        items
+    }
+}
+
+impl TryFrom<backend_bindings::AudioDriverType> for AudioDriverType {
+    type Error = anyhow::Error;
+    fn try_from(value: backend_bindings::AudioDriverType) -> Result<Self, anyhow::Error> {
+        match value {
+            backend_bindings::AudioDriverType::Jack => Ok(AudioDriverType::Jack),
+            backend_bindings::AudioDriverType::JackTest => Ok(AudioDriverType::JackTest),
+            backend_bindings::AudioDriverType::Dummy => Ok(AudioDriverType::Dummy),
+        }
+    }
+}
 pub struct JackAudioDriverSettings {
     pub client_name_hint: String,
     pub maybe_server_name: Option<String>,
@@ -178,6 +216,7 @@ pub fn driver_type_supported(driver_type: u32) -> bool {
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<AudioDriver>()?;
+    m.add_class::<AudioDriverType>()?;
     m.add_class::<JackAudioDriverSettings>()?;
     m.add_class::<DummyAudioDriverSettings>()?;
     m.add_function(wrap_pyfunction!(driver_type_supported, m)?)?;
