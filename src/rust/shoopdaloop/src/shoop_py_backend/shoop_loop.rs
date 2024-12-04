@@ -7,6 +7,8 @@ use backend_bindings;
 use crate::shoop_py_backend::audio_channel::AudioChannel;
 use crate::shoop_py_backend::midi_channel::MidiChannel;
 
+use std::collections::HashMap;
+
 #[pyclass(eq, eq_int)]
 #[derive(PartialEq, Clone)]
 pub enum LoopMode {
@@ -17,6 +19,22 @@ pub enum LoopMode {
     Replacing = backend_bindings::LoopMode::Replacing as isize,
     PlayingDryThroughWet = backend_bindings::LoopMode::PlayingDryThroughWet as isize,
     RecordingDryIntoWet = backend_bindings::LoopMode::RecordingDryIntoWet as isize,
+}
+
+#[pymethods]
+impl LoopMode {
+    #[staticmethod]
+    pub fn enum_items() -> HashMap<&'static str, isize> {
+        let mut items = HashMap::new();
+        items.insert("Unknown", LoopMode::Unknown as isize);
+        items.insert("Stopped", LoopMode::Stopped as isize);
+        items.insert("Playing", LoopMode::Playing as isize);
+        items.insert("Recording", LoopMode::Recording as isize);
+        items.insert("Replacing", LoopMode::Replacing as isize);
+        items.insert("PlayingDryThroughWet", LoopMode::PlayingDryThroughWet as isize);
+        items.insert("RecordingDryIntoWet", LoopMode::RecordingDryIntoWet as isize);
+        items
+    }
 }
 
 impl TryFrom<backend_bindings::LoopMode> for LoopMode {
