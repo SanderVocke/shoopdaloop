@@ -16,6 +16,19 @@ pub enum FXChainType {
     Test2x2x1 = backend_bindings::FXChainType::Test2x2x1 as isize,
 }
 
+#[pymethods]
+impl FXChainType {
+    #[staticmethod]
+    fn enum_items() -> std::collections::HashMap<&'static str, isize> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("CarlaRack", FXChainType::CarlaRack as isize);
+        map.insert("CarlaPatchbay", FXChainType::CarlaPatchbay as isize);
+        map.insert("CarlaPatchbay16x", FXChainType::CarlaPatchbay16x as isize);
+        map.insert("Test2x2x1", FXChainType::Test2x2x1 as isize);
+        map
+    }
+}
+
 impl TryFrom<backend_bindings::FXChainType> for FXChainType {
     type Error = anyhow::Error;
     fn try_from(value: backend_bindings::FXChainType) -> Result<Self, anyhow::Error> {
