@@ -1,6 +1,8 @@
 use backend_bindings;
 use pyo3::prelude::*;
 
+use std::collections::HashMap;
+
 #[pyclass(eq, eq_int)]
 #[derive(PartialEq, Clone)]
 pub enum ChannelMode {
@@ -8,6 +10,19 @@ pub enum ChannelMode {
     Direct = backend_bindings::ChannelMode::Direct as isize,
     Dry = backend_bindings::ChannelMode::Dry as isize,
     Wet = backend_bindings::ChannelMode::Wet as isize,
+}
+
+#[pymethods]
+impl ChannelMode {
+    #[staticmethod]
+    pub fn enum_items() -> HashMap<&'static str, isize> {
+        let mut items = HashMap::new();
+        items.insert("Disabled", ChannelMode::Disabled as isize);
+        items.insert("Direct", ChannelMode::Direct as isize);
+        items.insert("Dry", ChannelMode::Dry as isize);
+        items.insert("Wet", ChannelMode::Wet as isize);
+        items
+    }
 }
 
 impl TryFrom<backend_bindings::ChannelMode> for ChannelMode {
