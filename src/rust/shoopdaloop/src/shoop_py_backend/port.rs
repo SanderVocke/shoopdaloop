@@ -9,7 +9,17 @@ pub enum PortDirection {
     Any = backend_bindings::PortDirection::Any as isize,
 }
 
-impl TryFrom<backend_bindings::PortDirection> for PortDirection {
+#[pymethods]
+impl PortDirection {
+    #[staticmethod]
+    pub fn enum_items() -> std::collections::HashMap<&'static str, isize> {
+        let mut items = std::collections::HashMap::new();
+        items.insert("Input", PortDirection::Input as isize);
+        items.insert("Output", PortDirection::Output as isize);
+        items.insert("Any", PortDirection::Any as isize);
+        items
+    }
+}
     type Error = anyhow::Error;
     fn try_from(value: backend_bindings::PortDirection) -> Result<Self, anyhow::Error> {
         match value {
@@ -28,7 +38,17 @@ pub enum PortDataType {
     Any = backend_bindings::PortDataType::Any as isize,
 }
 
-impl TryFrom<backend_bindings::PortDataType> for PortDataType {
+#[pymethods]
+impl PortDataType {
+    #[staticmethod]
+    pub fn enum_items() -> std::collections::HashMap<&'static str, isize> {
+        let mut items = std::collections::HashMap::new();
+        items.insert("Audio", PortDataType::Audio as isize);
+        items.insert("Midi", PortDataType::Midi as isize);
+        items.insert("Any", PortDataType::Any as isize);
+        items
+    }
+}
     type Error = anyhow::Error;
     fn try_from(value: backend_bindings::PortDataType) -> Result<Self, anyhow::Error> {
         match value {
