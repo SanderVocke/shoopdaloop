@@ -49,14 +49,6 @@ class PortDataType(Enum):
 class PortConnectability(Enum):
     Internal = bindings.ShoopPortConnectability_Internal
     External = bindings.ShoopPortConnectability_External
-class BackendResult(Enum):
-    Success = bindings.Success
-    Failure = bindings.Failure
-
-class PyAudioDriverType(Enum):
-    Jack = bindings.Jack
-    JackTest = bindings.JackTest
-    Dummy = bindings.Dummy
 
 DontWaitForSync = -1
 DontAlignToSyncImmediately = -1

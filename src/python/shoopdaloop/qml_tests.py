@@ -37,10 +37,11 @@ def run_qml_tests(args):
     from shoopdaloop.lib.qml_helpers import register_qml_class
     from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
     from shoopdaloop.lib.logging import Logger
-    from shoopdaloop.lib.backend_wrappers import AudioDriverType
     from shoopdaloop.lib.q_objects.QoverageCollectorFactory import QoverageCollectorFactory
     from shoopdaloop.lib.q_objects.Application import Application
     from shoopdaloop.lib.q_objects.TestRunner import TestRunner
+
+    import shoop_py_backend
 
     import argparse
     import re
@@ -61,7 +62,7 @@ def run_qml_tests(args):
     logger.info('Creating test application...')
 
     global_args = {
-        'backend_type': AudioDriverType.Dummy.value,
+        'backend_type': int(shoop_py_backend.AudioDriverType.Dummy),
         'load_session_on_startup': None,
         'test_grab_screens': None,
         'monkey_tester': False

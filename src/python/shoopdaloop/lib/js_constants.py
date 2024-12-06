@@ -1,6 +1,6 @@
 from PySide6.QtQml import QJSValue
 
-from .backend_wrappers import PyAudioDriverType, PortConnectability, DontWaitForSync, DontAlignToSyncImmediately
+from .backend_wrappers import PortConnectability, DontWaitForSync, DontAlignToSyncImmediately
 from .types import KeyEventType
 import shoop_py_backend
 
@@ -25,12 +25,12 @@ def create_js_constants(engine):
     
     add_rust_enum('LoopMode', shoop_py_backend.LoopMode)
     add_rust_enum('ChannelMode', shoop_py_backend.ChannelMode)
-    add_enum('AudioDriverType', PyAudioDriverType)
+    add_rust_enum('AudioDriverType', shoop_py_backend.AudioDriverType)
     add_rust_enum('PortDirection', shoop_py_backend.PortDirection)
     add_rust_enum('FXChainType', shoop_py_backend.FXChainType)
     add_enum('KeyEventType', KeyEventType)
     add_rust_enum('PortDataType', shoop_py_backend.PortDataType)
-    add_enum('PortConnectability', PortConnectability)
+    add_rust_enum('PortConnectability', shoop_py_backend.PortConnectability)
 
     # Other constants
     rval.setProperty('DontWaitForSync', DontWaitForSync)

@@ -42,6 +42,8 @@ impl TryFrom<backend_bindings::AudioDriverType> for AudioDriverType {
         }
     }
 }
+
+#[pyclass]
 pub struct JackAudioDriverSettings {
     pub client_name_hint: String,
     pub maybe_server_name: Option<String>,
