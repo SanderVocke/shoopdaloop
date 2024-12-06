@@ -100,7 +100,43 @@ impl ExternalPortDescriptor {
     }
 }
 
+#[pyclass]
+#[derive(Clone)]
+pub struct PortConnectability {
+    #[pyo3(get)]
+    pub internal: bool,
+    #[pyo3(get)]
+    pub external: bool,
+}
+
+#[pymethods]
+impl PortConnectability {
+    #[new]
+    pub fn new(internal: bool, external: bool) -> Self {
+        PortConnectability { internal, external }
+    }
+}
+
+impl From<backend_bindings::PortConnectability> for PortConnectability {
+    fn from(backend: backend_bindings::PortConnectability) -> Self {
+        PortConnectability {
+            internal: backend.internal,
+            external: backend.external,
+        }
+    }
+}
+
+impl From<PortConnectability> for backend_bindings::PortConnectability {
+    fn from(py: PortConnectability) -> Self {
+        backend_bindings::PortConnectability {
+            internal: py.internal,
+            external: py.external,
+        }
+    }
+}
+
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
+    m.add_class::<PortConnectability>()?;
     m.add_class::<PortDirection>()?;
     m.add_class::<PortDataType>()?;
     m.add_class::<ExternalPortDescriptor>()?;
