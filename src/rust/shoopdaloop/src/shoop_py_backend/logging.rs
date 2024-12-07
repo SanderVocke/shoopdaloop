@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
-use backend_bindings;
+use pyo3::exceptions::PyValueError;
+use backend_bindings::{self, Logger as BackendLogger};
 use std::collections::HashMap;
 
 #[pyclass(eq, eq_int)]
@@ -63,12 +64,35 @@ impl LogLevel {
     }
 }
 
-#[pyfunction]
+#[pyclass]
+pub struct PyLogger {
+    logger: BackendLogger,
+}
+
+#[pymethods]
+impl PyLogger {
+    #[new]
+    pub fn new(name: &str) -> PyResult<Self> {
+        match BackendLogger::new(name) {
+            Ok(logger) => Ok(PyLogger { logger }),
+            Err(_) => Err(PyValueError::new_err("Failed to create logger")),
+        }
+    }
+
+    pub fn log(&self, level: LogLevel, msg: &str) {
+        self.logger.log(level.to_ffi(), msg);
+    }
+
+    pub fn should_log(&self, level: LogLevel) -> bool {
+        self.logger.should_log(level.to_ffi())
+    }
+}
 pub fn set_global_logging_level(level : &LogLevel) {
     backend_bindings::set_global_logging_level(&level.to_ffi());
 }
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
+    m.add_class::<PyLogger>()?;
     m.add_function(wrap_pyfunction!(set_global_logging_level, m)?)?;
     Ok(())
 }
