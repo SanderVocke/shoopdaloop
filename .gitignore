@@ -18,3 +18,4 @@ py-build-cmake.cross.toml
 Cargo.lock
 target
 .aider*
+.env

@@ -25,6 +25,8 @@ from shoopdaloop.lib.logging import Logger
 from shoopdaloop.lib.smf import generate_smf, parse_smf
 import shoopdaloop.lib.backend_wrappers as backend_wrappers
 
+import shoop_py_backend
+
 def call_callable(callable, *args):
     if isinstance(callable, QJSValue):
         return callable.call(args)
@@ -64,17 +66,21 @@ class FileIO(ShoopQObject):
     def save_data_to_soundfile_impl(self, filename, sample_rate, data):
         try:
             lengths = set()
+            list_data = []
             for d in data:
-                if not isinstance(d, backend_wrappers.ShoopChannelAudioData) and not isinstance(d, list):
-                    self.logger.error(lambda: 'Cannot save audio: data is not a ShoopChannelAudioData object')
-                    return
-                lengths.add(len(d))
+                if isinstance(d, shoop_py_backend.AudioChannelData):
+                    list_data.push(d.data)
+                elif isinstance(d, list):
+                    list_data.push(d)
+                else:
+                    self.logger.error(lambda: 'Cannot save audio: unexpected data format')
+                lengths.add(len(list_data[-1]))
             if len(lengths) > 1:
                 self.logger.error(lambda: 'Cannot save audio: channel lengths are not equal ({})'.format(list(lengths)))
                 return
             # Soundfile wants NcxNs, not NsxNc
             _data = np.hstack(
-                [(np.squeeze(d.np_array) if isinstance(d, backend_wrappers.ShoopChannelAudioData) else np.array(d)).reshape(-1,1) for d in data]
+                [np.array(d).reshape(-1,1) for d in data]
             )
             sf.write(filename, _data, sample_rate)
         finally:

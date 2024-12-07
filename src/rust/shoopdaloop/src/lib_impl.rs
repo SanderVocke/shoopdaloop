@@ -32,6 +32,11 @@ fn shoopdaloop_main_impl<'py>(
             sys.getattr("modules")?.set_item("shoop_rust",
                                               shoop_rust_py_module)?;
         }
+        {
+            let shoop_py_backend_module = crate::shoop_py_backend::create_py_module(py).unwrap();
+            sys.getattr("modules")?.set_item("shoop_py_backend",
+                                              shoop_py_backend_module)?;
+        }
 
         // Call main
         let shoop = PyModule::import_bound(py, "shoopdaloop")?;

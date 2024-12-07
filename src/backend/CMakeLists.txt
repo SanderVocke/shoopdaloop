@@ -69,8 +69,6 @@ if (APPLE)
   message(STATUS "MacOS architectures included: ${CMAKE_OSX_ARCHITECTURES}")
 endif()
 
-set(CTYPESGEN_COMMAND ${PYTHON_CMD} -m ctypesgen)
-
 set(PREV_SETTING ${CMAKE_POSITION_INDEPENDENT_CODE})
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
@@ -168,8 +166,6 @@ add_custom_target(
 )
 
 set(EXTERNAL_DEPS_PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external_deps)
-
-# add_subdirectory(crashhandling)
 
 # Backend lib
 file(GLOB INTERNAL_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/*.cpp)
@@ -274,28 +270,11 @@ else()
   target_compile_definitions(shoopdaloop_backend_internals PUBLIC -DCOMPILE_LOG_LEVEL=${OVERRIDE_COMPILE_LOG_LEVEL})
 endif()
 
-# Generate libshoopdaloop_backend Python bindings into source dir
-set(GENERATED_BINDINGS_PY ${CMAKE_CURRENT_BINARY_DIR}/libshoopdaloop_backend_bindings.py)
-add_custom_command(
-  OUTPUT ${GENERATED_BINDINGS_PY}
-  COMMAND ${RUN_CMD_PREFIX} ${CMAKE_COMMAND} -E env ASAN_OPTIONS=detect_leaks=0 ${CTYPESGEN_COMMAND} --no-macro-warnings -lshoopdaloop_backend ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop_backend.h ${CMAKE_CURRENT_SOURCE_DIR}/types.h -o ${GENERATED_BINDINGS_PY}
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop_backend.h ${CMAKE_CURRENT_SOURCE_DIR}/libshoopdaloop_backend.cpp shoopdaloop_backend
-  COMMENT "Generating C bindings for libshoopdaloop_backend."
-  )
-add_custom_target(
-  c_bindings
-  ALL
-  DEPENDS ${GENERATED_BINDINGS_PY}
-  )
-
 # Generate javascript copy of enums into source dir
 set(PATH_SEP ":")
 if (WIN32)
   set(PATH_SEP $<SEMICOLON>)
 endif()
-
-install(FILES ${GENERATED_BINDINGS_PY}
-    DESTINATION .)
 
 # Generate and install version.txt and description.txt
 add_custom_command(
