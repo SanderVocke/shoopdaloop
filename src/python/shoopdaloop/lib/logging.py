@@ -1,23 +1,23 @@
 from shoopdaloop.lib.init_dynlibs import init_dynlibs
 init_dynlibs()
 
-from libshoopdaloop_backend_bindings import destroy_logger, get_logger, shoopdaloop_log, shoopdaloop_should_log
-
 from PySide6.QtQml import QJSValue
+
+import shoop_py_backend
 
 class Logger:
     def __init__(self, module_name):
         self._name = module_name
-        self._backend_handle = get_logger(self._name)
+        self._backend_handle = shoop_py_backend.Logger(self._name)
 
     def should_trace(self):
-        return shoopdaloop_should_log(self._backend_handle, log_level_always_trace)
+        return shoop_py_backend.should_log(self._backend_handle, shoop_py_backend.LogLevel.AlwaysTrace)
     
     def should_debug(self):
-        return shoopdaloop_should_log(self._backend_handle, log_level_debug)
+        return shoop_py_backend.should_log(self._backend_handle, shoop_py_backend.LogLevel.Debug)
     
     def resolve_log_msg(self, value, level):
-        if not shoopdaloop_should_log(self._backend_handle, level):
+        if not shoop_py_backend.should_log(self._backend_handle, shoop_py_backend.LogLevel(level)):
             return None
         
         _msg = value
@@ -45,27 +45,27 @@ class Logger:
         resolved = self.resolve_log_msg(msg, level)
         if resolved:
             if _id:
-                shoopdaloop_log(self._backend_handle, level, '[@{}] {}'.format(_id, resolved))
+                shoop_py_backend.log(self._backend_handle, shoop_py_backend.LogLevel(level), '[@{}] {}'.format(_id, resolved))
             else:
-                shoopdaloop_log(self._backend_handle, level, resolved)
+                shoop_py_backend.log(self._backend_handle, shoop_py_backend.LogLevel(level), resolved)
     
     def trace(self, msg, _id=None):
-        self.log(msg, log_level_always_trace, _id)
+        self.log(msg, shoop_py_backend.LogLevel.AlwaysTrace, _id)
     
     def debug(self, msg, _id=None):
-        self.log(msg, log_level_debug, _id)
+        self.log(msg, shoop_py_backend.LogLevel.Debug, _id)
     
     def info(self, msg, _id=None):
-        self.log(msg, log_level_info, _id)
+        self.log(msg, shoop_py_backend.LogLevel.Info, _id)
     
     def warning(self, msg, _id=None):
-        self.log(msg, log_level_warning, _id)
+        self.log(msg, shoop_py_backend.LogLevel.Warning, _id)
     
     def error(self, msg, _id=None):
-        self.log(msg, log_level_error, _id)
+        self.log(msg, shoop_py_backend.LogLevel.Error, _id)
     
     def throw_error(self, msg, _id=None):
-        self.log(msg, log_level_error, _id)
+        self.log(msg, shoop_py_backend.LogLevel.Error, _id)
         raise Exception(msg)
     
     def __del__(self):

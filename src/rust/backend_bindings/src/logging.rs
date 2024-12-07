@@ -44,7 +44,10 @@ impl Logger {
     pub fn should_log(&self, level: LogLevel) -> bool {                             
         unsafe { ffi::shoopdaloop_should_log(self.logger, level as ffi::shoop_log_level_t) != 0 }                           
     }                                                                                        
-}                                                                                            
+}   
+
+unsafe impl Send for Logger {}
+unsafe impl Sync for Logger {}
                                                                                              
 impl Drop for Logger {                                                                       
     fn drop(&mut self) {                                                                     
