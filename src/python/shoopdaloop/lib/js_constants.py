@@ -1,6 +1,6 @@
 from PySide6.QtQml import QJSValue
 
-from .backend_wrappers import PortConnectability, DontWaitForSync, DontAlignToSyncImmediately
+from .backend_wrappers import DontWaitForSync, DontAlignToSyncImmediately
 from .types import KeyEventType
 import shoop_py_backend
 
@@ -30,8 +30,7 @@ def create_js_constants(engine):
     add_rust_enum('FXChainType', shoop_py_backend.FXChainType)
     add_enum('KeyEventType', KeyEventType)
     add_rust_enum('PortDataType', shoop_py_backend.PortDataType)
-    add_rust_enum('PortConnectability', shoop_py_backend.PortConnectability)
-
+    
     # Other constants
     rval.setProperty('DontWaitForSync', DontWaitForSync)
     rval.setProperty('DontAlignToSyncImmediately', DontAlignToSyncImmediately)

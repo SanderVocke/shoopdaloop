@@ -13,7 +13,6 @@ from .Port import Port
 from .ShoopPyObject import *
 
 import shoop_py_backend
-from ..backend_wrappers import PortConnectability, PortDirection, PortDataType
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from ..logging import Logger
@@ -141,7 +140,7 @@ class MidiPort(Port):
     ##########
     
     def get_data_type(self):
-        return PortDataType.Midi.value
+        return int(shoop_py_backend.PortDataType.Midi)
     
     def maybe_initialize_internal(self, name_hint, input_connectability, output_connectability):
         # Internal ports are owned by FX chains.
@@ -164,7 +163,7 @@ class MidiPort(Port):
                     raise Exception('Could not find self in FX chain')
                 # Now request our backend object.
                 n_ringbuffer = self.n_ringbuffer_samples
-                if not (self.output_connectability & PortConnectability.Internal.value):
+                if not (self.output_connectability & int(shoop_py_backend.PortConnectabilityKind.Internal)):
                     self._backend_obj = maybe_fx_chain.get_backend_obj().get_midi_input_port(idx)
                     self.push_state()
                     self.set_min_n_ringbuffer_samples (n_ringbuffer)
@@ -174,7 +173,7 @@ class MidiPort(Port):
     def maybe_initialize_external(self, name_hint, input_connectability, output_connectability):
         if self._backend_obj:
             return # never initialize more than once
-        direction = PortDirection.Input.value if not (input_connectability & PortConnectability.Internal.value) else PortDirection.Output.value
+        direction = int(shoop_py_backend.PortDirection.Input) if not (input_connectability & int(shoop_py_backend.PortConnectabilityKind.Internal)) else int(shoop_py_backend.PortDirection.Output)
         self._backend_obj = self.backend.open_driver_midi_port(name_hint, direction, self.n_ringbuffer_samples)
         self.push_state()
 

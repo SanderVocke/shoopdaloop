@@ -7,6 +7,7 @@ mod backend_session;
 mod channel;
 mod decoupled_midi_port;
 mod fx_chain;
+mod logging;
 mod midi;
 mod midi_channel;
 mod midi_port;
@@ -26,6 +27,7 @@ pub fn create_py_module<'py>(
     channel::register_in_module(&m)?;
     decoupled_midi_port::register_in_module(&m)?;
     fx_chain::register_in_module(&m)?;
+    logging::register_in_module(&m)?;
     midi::register_in_module(&m)?;
     midi_channel::register_in_module(&m)?;
     midi_port::register_in_module(&m)?;

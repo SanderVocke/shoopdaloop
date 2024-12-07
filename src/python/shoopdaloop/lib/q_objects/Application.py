@@ -11,7 +11,6 @@ from PySide6.QtQuick import QQuickWindow
 
 from .ShoopPyObject import *
 from .Backend import close_all_backends
-import shoopdaloop.lib.crash_handling as crash_handling
 
 have_nsm = os.name == 'posix'
 if have_nsm:
@@ -116,7 +115,6 @@ class Application(ShoopQApplication):
                 self.logger.debug("Window created, installing event filter")
                 obj.installEventFilter(self)
         self.engine = QQmlApplicationEngine(parent=self)
-        crash_handling.register_js_engine(self.engine)
         self.engine.destroyed.connect(lambda: self.logger.debug("QML engine being destroyed."))
         self.engine.objectCreated.connect(lambda obj, _: maybe_install_event_filter(obj))
         self.engine.addImportPath(os.path.join(shoop_qml_dir))

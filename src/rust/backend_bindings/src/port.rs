@@ -41,6 +41,29 @@ integer_enum! {
     }
 }
 
+integer_enum! {
+    pub enum PortConnectabilityKind {
+        None = 0,
+        Internal = ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal,
+        External = ffi::shoop_port_connectability_t_ShoopPortConnectability_External,
+    }
+}
+
+impl PortConnectabilityKind {
+    pub fn from_ffi(ffi_kind : u32) -> Self {
+        match ffi_kind {
+            0 => PortConnectabilityKind::None,
+            ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal => PortConnectabilityKind::Internal,
+            ffi::shoop_port_connectability_t_ShoopPortConnectability_External => PortConnectabilityKind::External,
+            _ => panic!("Invalid PortConnectabilityKind value: {}", ffi_kind),
+        }
+    }
+
+    pub fn to_ffi(&self) -> u32 {
+        *self as u32
+    }
+}
+
 pub struct PortConnectability {
     pub internal : bool,
     pub external : bool,

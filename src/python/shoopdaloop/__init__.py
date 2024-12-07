@@ -45,11 +45,6 @@ def main():
         dev_group.add_argument('--qml-self-test', action='store_true', help='Run QML tests and exit. Pass additional args to the tester after "--".')
 
         args = parser.parse_args(bare_args[0])
-
-        from shoopdaloop.lib.q_objects.Application import Application
-        from shoopdaloop.lib.crash_handling import init_crash_handling
-        init_crash_handling()
-
         backends_map = {name.lower(): val for name, val in shoop_py_backend.AudioDriverType.enum_items().items()}
         args.backend = backends_map[args.backend]
 

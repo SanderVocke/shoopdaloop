@@ -45,6 +45,11 @@ mod fx_chain;
 pub use fx_chain::*;
 
 #[cfg(not(feature = "prebuild"))]
+mod logging;
+#[cfg(not(feature = "prebuild"))]
+pub use logging::*;
+
+#[cfg(not(feature = "prebuild"))]
 mod midi;
 #[cfg(not(feature = "prebuild"))]
 pub use midi::*;

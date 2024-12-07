@@ -13,7 +13,6 @@ from .ShoopPyObject import *
 from .Port import Port
 
 import shoop_py_backend
-from ..backend_wrappers import PortDirection, PortDataType, PortConnectability
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from ..logging import Logger
@@ -130,7 +129,7 @@ class AudioPort(Port):
     ##########
     
     def get_data_type(self):
-        return PortDataType.Audio.value
+        return int(shoop_py_backend.PortDataType.Audio)
     
     def maybe_initialize_internal(self, name_hint, input_connectability, output_connectability):
         # Internal ports are owned by FX chains.
@@ -153,7 +152,7 @@ class AudioPort(Port):
                     self.logger.throw_error('Could not find self in FX chain')
                 # Now request our backend object.
                 n_ringbuffer = self.n_ringbuffer_samples
-                if not (self.output_connectability & PortConnectability.Internal.value):
+                if not (self.output_connectability & int(shoop_py_backend.PortConnectabilityKind.Internal)):
                     self._backend_obj = maybe_fx_chain.get_backend_obj().get_audio_input_port(idx)
                 else:
                     self._backend_obj = maybe_fx_chain.get_backend_obj().get_audio_output_port(idx)
@@ -163,7 +162,7 @@ class AudioPort(Port):
     def maybe_initialize_external(self, name_hint, input_connectability, output_connectability):
         if self._backend_obj:
             return # never create_backend more than once
-        direction = PortDirection.Input.value if not (input_connectability & PortConnectability.Internal.value) else PortDirection.Output.value
+        direction = int(shoop_py_backend.PortDirection.Input) if not (input_connectability & int(shoop_py_backend.PortConnectabilityKind.Internal)) else int(shoop_py_backend.PortDirection.Output)
         self._backend_obj = self.backend.open_driver_audio_port(name_hint, direction, self.n_ringbuffer_samples)
         self.push_state()
 

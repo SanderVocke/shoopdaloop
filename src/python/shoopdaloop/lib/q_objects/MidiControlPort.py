@@ -134,7 +134,7 @@ class MidiControlPort(FindParentBackend):
     # dataType
     @ShoopProperty(int)
     def dataType(self):
-        return PortDataType.Midi.value
+        return int(shoop_py_backend.PortDataType.Midi)
 
     # may_open
     mayOpenChanged = ShoopSignal(bool)
@@ -175,7 +175,7 @@ class MidiControlPort(FindParentBackend):
         self.msgReceived.emit(msg)
 
     def get_data_type(self):
-        return PortDataType.Midi.value
+        return int(shoop_py_backend.PortDataType.Midi)
 
     ###########
     ## SLOTS
@@ -246,7 +246,7 @@ class MidiControlPort(FindParentBackend):
     def update_send_queue(self):
         def send(msg):
             self.logger.debug(lambda: "Sending: {}".format(msg))
-            if self._direction == PortDirection.Output.value and self._backend_obj:
+            if self._direction == int(shoop_py_backend.PortDirection.Output) and self._backend_obj:
                 self._backend_obj.send_midi(msg)
 
         if self._send_rate_limit_hz == 0:
@@ -355,7 +355,7 @@ class MidiControlPort(FindParentBackend):
             self._name = self._backend_obj.name()
             self.nameChanged.emit(self._name)
 
-            if self._direction == PortDirection.Input.value:
+            if self._direction == int(shoop_py_backend.PortDirection.Input):
                 self.timer = QTimer(self)
                 self.timer.setSingleShot(False)
                 self.timer.setInterval(10)

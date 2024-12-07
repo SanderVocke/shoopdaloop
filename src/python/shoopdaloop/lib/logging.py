@@ -2,7 +2,6 @@ from shoopdaloop.lib.init_dynlibs import init_dynlibs
 init_dynlibs()
 
 from libshoopdaloop_backend_bindings import destroy_logger, get_logger, shoopdaloop_log, shoopdaloop_should_log
-from libshoopdaloop_backend_bindings import log_level_debug_trace, log_level_always_trace, log_level_debug, log_level_info, log_level_warning, log_level_error
 
 from PySide6.QtQml import QJSValue
 
