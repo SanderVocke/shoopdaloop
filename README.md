@@ -1,4 +1,4 @@
-![Logo](./src/shoopdaloop/resources/logo-small.png)
+![Logo](./resources/logo-small.png)
 
 [![codecov](https://codecov.io/github/SanderVocke/shoopdaloop/graph/badge.svg?token=15RLMBAYV7)](https://codecov.io/github/SanderVocke/shoopdaloop)
 ![build](https://github.com/sandervocke/shoopdaloop/actions/workflows/build_and_test.yml/badge.svg)
