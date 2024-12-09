@@ -1,5 +1,5 @@
 app = 'shoopdaloop.app'
-icon = distribution/macos/icon.icns'
+icon = 'distribution/macos/icon.icns'
 background = 'builtin-arrow'
 icon_locations = {
         'shoopdaloop.app': (200, 190),
