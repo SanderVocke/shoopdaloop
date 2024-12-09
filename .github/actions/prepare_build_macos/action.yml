@@ -17,11 +17,11 @@ runs:
       brew install ninja libsndfile libtool automake autoconf cmake
       brew install jack liblo coreutils
       brew install python@3.9
-      brew install dmgbuild
 
       # Install Python packages
       $PIP install --upgrade pip build
       $PIP install -r build_python_requirements.txt
+      $PIP install dmgbuild
   - name: Install boost
     uses: MarkusJx/install-boost@v2.4.5
     id: install-boost
