@@ -1,13 +1,15 @@
 # dmgbuild settings for ShoopDaLoop
+import os
+pwd = os.getcwd()
 
 # Volume name
 volume_name = "ShoopDaLoop"
 
 # Icon for the volume
-icon = "distribution/macos/icon.icns"
+icon = "{}/distribution/macos/icon.icns".format(pwd)
 
-# Background image
-background = "path/to/background.png"  # Update with the actual path if needed
+# # Background image
+# background = "path/to/background.png"  # Update with the actual path if needed
 
 # Window position and size
 window_rect = ((200, 120), (800, 400))
@@ -16,7 +18,7 @@ window_rect = ((200, 120), (800, 400))
 icon_size = 100
 
 # Files to include
-files = ["shoopdaloop.app"]
+files = ["{}/shoopdaloop.app".format(pwd)]
 
 # Symlinks to create
 symlinks = {"Applications": "/Applications"}
