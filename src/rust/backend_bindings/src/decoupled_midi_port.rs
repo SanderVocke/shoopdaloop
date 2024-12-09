@@ -22,7 +22,7 @@ impl DecoupledMidiPort {
         let obj = unsafe { ffi::open_decoupled_midi_port
                                 (audio_driver.unsafe_backend_ptr(),
                                  name_hint_ptr,
-                                 *direction as u32) };
+                                 *direction as ffi::shoop_port_direction_t) };
         if obj.is_null() {
             return Err(anyhow::anyhow!("Failed to create audio port"));
         }

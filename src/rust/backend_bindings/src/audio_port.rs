@@ -54,7 +54,7 @@ impl AudioPort {
                                 (backend_session.unsafe_backend_ptr(),
                                  audio_driver.unsafe_backend_ptr(),
                                  name_hint_ptr,
-                                 *direction as u32,
+                                 *direction as ffi::shoop_port_direction_t,
                                  min_n_ringbuffer_samples) };
         if obj.is_null() {
             return Err(anyhow::anyhow!("Failed to create audio port"));

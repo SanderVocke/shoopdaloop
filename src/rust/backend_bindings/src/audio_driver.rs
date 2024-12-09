@@ -97,7 +97,7 @@ unsafe impl Sync for AudioDriver {}
 
 impl AudioDriver {
     pub fn new(driver_type : AudioDriverType) -> Result<Self, anyhow::Error> {
-        let obj = unsafe { ffi::create_audio_driver(driver_type as u32) };
+        let obj = unsafe { ffi::create_audio_driver(driver_type as ffi::shoop_audio_driver_type_t) };
         if obj.is_null() {
             Err(anyhow::anyhow!("create_audio_driver() failed"))
         } else {
@@ -173,8 +173,8 @@ impl AudioDriver {
             ffi::dummy_driver_add_external_mock_port(
                 *obj,
                 c_name.as_ptr(),
-                direction,
-                data_type,
+                direction as ffi::shoop_port_direction_t,
+                data_type as ffi::shoop_port_data_type_t,
             )
         };
     }
@@ -202,7 +202,7 @@ impl AudioDriver {
     pub fn find_external_ports(&self, maybe_name_regex: Option<&str>, port_direction: u32, data_type: u32) -> Vec<ExternalPortDescriptor> {
         let obj = self.lock();
         let regex_ptr = maybe_name_regex.map_or(std::ptr::null(), |s| s.as_ptr() as *const i8);
-        let result = unsafe { ffi::find_external_ports(*obj, regex_ptr, port_direction, data_type) };
+        let result = unsafe { ffi::find_external_ports(*obj, regex_ptr, port_direction as ffi::shoop_port_direction_t, data_type as ffi::shoop_port_data_type_t) };
         let ports = unsafe { std::slice::from_raw_parts((*result).ports, (*result).n_ports as usize) };
         let mut port_descriptors = Vec::new();
         unsafe {
@@ -244,5 +244,5 @@ impl Drop for AudioDriver {
 }
 
 pub fn driver_type_supported(driver_type : AudioDriverType) -> bool {
-    unsafe { ffi::driver_type_supported(driver_type as u32) != 0 }
+    unsafe { ffi::driver_type_supported(driver_type as ffi::shoop_audio_driver_type_t) != 0 }
 }

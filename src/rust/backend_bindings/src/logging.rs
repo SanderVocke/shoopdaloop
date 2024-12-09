@@ -15,7 +15,7 @@ integer_enum! {
 }
 
 pub fn set_global_logging_level(level: &LogLevel) {
-    unsafe { ffi::set_global_logging_level(*level as u32); }
+    unsafe { ffi::set_global_logging_level(*level as ffi::shoop_log_level_t); }
 }
 
 #[repr(C)]                                                                                   

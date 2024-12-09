@@ -121,7 +121,7 @@ impl AudioChannel {
 
     pub fn set_mode(&self, mode: ChannelMode) {
         unsafe {
-            ffi::set_audio_channel_mode(self.unsafe_backend_ptr(), mode as u32);
+            ffi::set_audio_channel_mode(self.unsafe_backend_ptr(), mode as ffi::shoop_channel_mode_t);
         }
     }
 

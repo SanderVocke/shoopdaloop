@@ -27,8 +27,8 @@ impl ExternalPortDescriptor {
     pub fn to_ffi(&self) -> ffi::shoop_external_port_descriptor_t {
         ffi::shoop_external_port_descriptor_t {
             name: std::ffi::CString::new(self.name.clone()).unwrap().into_raw(),
-            direction: self.direction as u32,
-            data_type: self.data_type as u32,
+            direction: self.direction as ffi::shoop_port_direction_t,
+            data_type: self.data_type as ffi::shoop_port_data_type_t,
         }
     }
 }
