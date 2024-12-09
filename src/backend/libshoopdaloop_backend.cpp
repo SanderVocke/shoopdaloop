@@ -2299,8 +2299,8 @@ void destroy_audio_driver(shoop_audio_driver_t *driver) {
   return api_impl<void, log_level_debug_trace>("destroy_audio_driver", [&]() {
       auto _driver = internal_audio_driver(driver);
       if (!_driver) { return; }
-      _driver->close();
       g_active_drivers.erase(_driver);
+      _driver->close();
   });
 }
 

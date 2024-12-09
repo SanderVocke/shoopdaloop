@@ -33,7 +33,7 @@ pub fn get_dependency_libs (executable : &Path,
     let includes : HashSet<&str> = includelist.lines().collect();
     let mut used_includes : HashSet<String> = HashSet::new();
     let ori_env_vars : Vec<(String, String)> = std::env::vars().collect();
-    let env_map : HashMap<String, String> = ori_env_vars.iter().cloned().collect();
+    let mut env_map : HashMap<String, String> = ori_env_vars.iter().cloned().collect();
 
     let command : String;
     let args: Vec<String>;
