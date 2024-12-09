@@ -18,6 +18,8 @@ runs:
   - name: Prepare Rust (non-Windows)
     if: always() && inputs.variant != 'windows'
     uses: dtolnay/rust-toolchain@nightly
+  - name: Install rustfmt
+      run: rustup component add rustfmt
   - name: Rust info
     shell: wrap-shell {0}
     run: |
