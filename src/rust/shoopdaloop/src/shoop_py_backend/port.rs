@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
 use backend_bindings;
+use std::collections::HashMap;
 
 #[pyclass(eq, eq_int)]
 #[derive(PartialEq, Clone)]
@@ -7,6 +8,45 @@ pub enum PortDirection {
     Input = backend_bindings::PortDirection::Input as isize,
     Output = backend_bindings::PortDirection::Output as isize,
     Any = backend_bindings::PortDirection::Any as isize,
+}
+
+#[pyclass(eq, eq_int)]
+#[derive(PartialEq, Clone)]
+pub enum PortConnectabilityKind {
+    None = backend_bindings::PortConnectabilityKind::None as isize,
+    Internal = backend_bindings::PortConnectabilityKind::Internal as isize,
+    External = backend_bindings::PortConnectabilityKind::External as isize,
+}
+
+#[pymethods]
+impl PortConnectabilityKind {
+    #[new]
+    fn py_new(value: u32) -> PyResult<Self> {
+        match backend_bindings::PortConnectabilityKind::try_from(value) {
+            Ok(val) => Ok(PortConnectabilityKind::try_from(val).unwrap()),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid PortConnectabilityKind")),
+        }
+    }
+
+    #[staticmethod]
+    pub fn enum_items() -> HashMap<&'static str, isize> {
+        let mut items = HashMap::new();
+        items.insert("None", PortConnectabilityKind::None as isize);
+        items.insert("Internal", PortConnectabilityKind::Internal as isize);
+        items.insert("External", PortConnectabilityKind::External as isize);
+        items
+    }
+}
+
+impl TryFrom<backend_bindings::PortConnectabilityKind> for PortConnectabilityKind {
+    type Error = anyhow::Error;
+    fn try_from(value: backend_bindings::PortConnectabilityKind) -> Result<Self, anyhow::Error> {
+        match value {
+            backend_bindings::PortConnectabilityKind::None => Ok(PortConnectabilityKind::None),
+            backend_bindings::PortConnectabilityKind::Internal => Ok(PortConnectabilityKind::Internal),
+            backend_bindings::PortConnectabilityKind::External => Ok(PortConnectabilityKind::External),
+        }
+    }
 }
 
 #[pymethods]
