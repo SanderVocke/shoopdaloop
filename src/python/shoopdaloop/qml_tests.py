@@ -33,14 +33,14 @@ def run_qml_tests(args):
     import json
     from xml.dom import minidom
 
-    from libshoopdaloop_backend_bindings import set_global_logging_level, log_level_error
     from shoopdaloop.lib.qml_helpers import register_qml_class
     from shoopdaloop.lib.q_objects.SchemaValidator import SchemaValidator
     from shoopdaloop.lib.logging import Logger
-    from shoopdaloop.lib.backend_wrappers import AudioDriverType
     from shoopdaloop.lib.q_objects.QoverageCollectorFactory import QoverageCollectorFactory
     from shoopdaloop.lib.q_objects.Application import Application
     from shoopdaloop.lib.q_objects.TestRunner import TestRunner
+
+    import shoop_py_backend
 
     import argparse
     import re
@@ -49,7 +49,7 @@ def run_qml_tests(args):
     parser.add_argument('test_file_glob_pattern', nargs=argparse.REMAINDER, help='Glob pattern(s) for test QML files.')
     parser.add_argument('--list', '-l', action='store_true', help="Don't run but list all found test functions.")
     parser.add_argument('--filter', '-f', default=None, help='Regex filter for testcases.')
-    parser.add_argument('--junit-xml', '-j', default=None, help='ShoopPortDirection_Output file for JUnit XML report.')
+    parser.add_argument('--junit-xml', '-j', default=None, help='Output file for JUnit XML report.')
     parser.add_argument('-d', '--qml-debug', metavar='PORT', type=int, help='Start QML debugging on PORT')
     parser.add_argument('-w', '--debug-wait', action='store_true', help='With QML debugging enabled, will wait until debugger connects.')
     args = parser.parse_args(args=args)
@@ -61,7 +61,7 @@ def run_qml_tests(args):
     logger.info('Creating test application...')
 
     global_args = {
-        'backend_type': AudioDriverType.Dummy.value,
+        'backend_type': int(shoop_py_backend.AudioDriverType.Dummy),
         'load_session_on_startup': None,
         'test_grab_screens': None,
         'monkey_tester': False
@@ -158,7 +158,7 @@ def run_qml_tests(args):
     '''.format(json.dumps(skipped_cases, indent=2))
 
     # TODO: this is nasty, but it's a quick hack to get the test results to show up last
-    set_global_logging_level(log_level_error)
+    shoop_py_backend.set_global_logging_level(shoop_py_backend.LogLevel.Err)
 
     exit_text = '''
     ========================================================

@@ -11,7 +11,6 @@ from PySide6.QtQuick import QQuickWindow
 
 from .ShoopPyObject import *
 from .Backend import close_all_backends
-import shoopdaloop.lib.crash_handling as crash_handling
 
 have_nsm = os.name == 'posix'
 if have_nsm:
@@ -19,7 +18,6 @@ if have_nsm:
 
 from ..qml_helpers import *
 from shoop_rust import shoop_rust_init
-from ..backend_wrappers import terminate_all_backends
 
 from ..logging import *
 from shoop_app_info import shoop_version, shoop_resource_dir, shoop_qml_dir
@@ -117,7 +115,6 @@ class Application(ShoopQApplication):
                 self.logger.debug("Window created, installing event filter")
                 obj.installEventFilter(self)
         self.engine = QQmlApplicationEngine(parent=self)
-        crash_handling.register_js_engine(self.engine)
         self.engine.destroyed.connect(lambda: self.logger.debug("QML engine being destroyed."))
         self.engine.objectCreated.connect(lambda obj, _: maybe_install_event_filter(obj))
         self.engine.addImportPath(os.path.join(shoop_qml_dir))
@@ -272,7 +269,6 @@ class Application(ShoopQApplication):
             else:
                 self.logger.debug("Terminating back-ends")
                 close_all_backends()
-                terminate_all_backends()
                 QTimer.singleShot(1, lambda: self.quit())
                 self.exec()
 
