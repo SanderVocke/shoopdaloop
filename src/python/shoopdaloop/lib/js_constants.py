@@ -30,6 +30,7 @@ def create_js_constants(engine):
     add_rust_enum('FXChainType', shoop_py_backend.FXChainType)
     add_enum('KeyEventType', KeyEventType)
     add_rust_enum('PortDataType', shoop_py_backend.PortDataType)
+    add_rust_enum('PortConnectability', shoop_py_backend.PortConnectabilityKind)
     
     # Other constants
     rval.setProperty('DontWaitForSync', DontWaitForSync)

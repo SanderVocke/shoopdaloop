@@ -158,7 +158,7 @@ def run_qml_tests(args):
     '''.format(json.dumps(skipped_cases, indent=2))
 
     # TODO: this is nasty, but it's a quick hack to get the test results to show up last
-    shoop_py_backend.set_global_logging_level(shoop_py_backend.LogLevel.Error)
+    shoop_py_backend.set_global_logging_level(shoop_py_backend.LogLevel.Err)
 
     exit_text = '''
     ========================================================

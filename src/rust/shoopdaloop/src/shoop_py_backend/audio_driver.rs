@@ -30,6 +30,14 @@ impl AudioDriverType {
         items.insert("Dummy", AudioDriverType::Dummy as isize);
         items
     }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            AudioDriverType::Jack => "Jack",
+            AudioDriverType::JackTest => "JackTest",
+            AudioDriverType::Dummy => "Dummy",
+        }
+    }
 }
 
 impl TryFrom<backend_bindings::AudioDriverType> for AudioDriverType {

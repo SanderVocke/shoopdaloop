@@ -95,6 +95,7 @@ pub fn set_global_logging_level(level : &LogLevel) {
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
     m.add_class::<Logger>()?;
+    m.add_class::<LogLevel>()?;
     m.add_function(wrap_pyfunction!(set_global_logging_level, m)?)?;
     Ok(())
 }

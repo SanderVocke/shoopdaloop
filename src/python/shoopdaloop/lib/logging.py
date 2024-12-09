@@ -11,13 +11,13 @@ class Logger:
         self._backend_handle = shoop_py_backend.Logger(self._name)
 
     def should_trace(self):
-        return shoop_py_backend.should_log(self._backend_handle, shoop_py_backend.LogLevel.AlwaysTrace)
+        return self._backend_handle.should_log(shoop_py_backend.LogLevel.AlwaysTrace)
     
     def should_debug(self):
-        return shoop_py_backend.should_log(self._backend_handle, shoop_py_backend.LogLevel.Debug)
+        return self._backend_handle.should_log(shoop_py_backend.LogLevel.Debug)
     
     def resolve_log_msg(self, value, level):
-        if not shoop_py_backend.should_log(self._backend_handle, shoop_py_backend.LogLevel(level)):
+        if not self._backend_handle.should_log(level):
             return None
         
         _msg = value
@@ -45,9 +45,9 @@ class Logger:
         resolved = self.resolve_log_msg(msg, level)
         if resolved:
             if _id:
-                shoop_py_backend.log(self._backend_handle, shoop_py_backend.LogLevel(level), '[@{}] {}'.format(_id, resolved))
+                self._backend_handle.log(level, '[@{}] {}'.format(_id, resolved))
             else:
-                shoop_py_backend.log(self._backend_handle, shoop_py_backend.LogLevel(level), resolved)
+                self._backend_handle.log(level, resolved)
     
     def trace(self, msg, _id=None):
         self.log(msg, shoop_py_backend.LogLevel.AlwaysTrace, _id)
@@ -59,18 +59,15 @@ class Logger:
         self.log(msg, shoop_py_backend.LogLevel.Info, _id)
     
     def warning(self, msg, _id=None):
-        self.log(msg, shoop_py_backend.LogLevel.Warning, _id)
+        self.log(msg, shoop_py_backend.LogLevel.Warn, _id)
     
     def error(self, msg, _id=None):
-        self.log(msg, shoop_py_backend.LogLevel.Error, _id)
+        self.log(msg, shoop_py_backend.LogLevel.Err, _id)
     
     def throw_error(self, msg, _id=None):
-        self.log(msg, shoop_py_backend.LogLevel.Error, _id)
+        self.log(msg, shoop_py_backend.LogLevel.Err, _id)
         raise Exception(msg)
     
     def __del__(self):
-        # TODO
-        #if self._backend_handle:
-        #    destroy_logger(self._backend_handle)
         self._backend_handle = None
         self._name = None

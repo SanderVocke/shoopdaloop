@@ -19,6 +19,18 @@ import shoop_py_backend
 from shoopdaloop.lib.init_dynlibs import init_dynlibs
 init_dynlibs()
 
+def midi_msg_dict_to_backend(msg):
+    return shoop_py_backend.MidiEvent(msg['time'], msg['data'])
+
+def midi_msgs_list_to_backend(msgs):
+    return [midi_msg_dict_to_backend(msg) for msg in msgs]
+
+def midi_msg_dict_from_backend(msg):
+    return {'time': msg.time, 'data': msg.data}
+
+def midi_msgs_list_from_backend(msgs):
+    return [midi_msg_dict_from_backend(msg) for msg in msgs]
+
 intmax = 2**31-1
 intmin = -intmax - 1
 def to_int(val):

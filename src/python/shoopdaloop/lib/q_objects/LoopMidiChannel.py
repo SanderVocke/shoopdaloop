@@ -15,6 +15,7 @@ from .LoopChannel import LoopChannel
 from .ShoopPyObject import *
 
 from ..midi_helpers import msgs_to_notes
+from ..backend_wrappers import *
 
 # Wraps a back-end loop midi channel.
 class LoopMidiChannel(LoopChannel):
@@ -77,31 +78,28 @@ class LoopMidiChannel(LoopChannel):
     @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
     def get_all_midi_data(self):
         if self._backend_obj:
-            return self._backend_obj.get_all_midi_data()
+            return midi_msgs_list_from_backend(self._backend_obj.get_all_midi_data())
         else:
             raise Exception("Getting data of un-loaded MIDI channel")
 
     @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
     def get_recorded_midi_msgs(self):
-        if self._backend_obj:
-            return self._backend_obj.get_recorded_midi_msgs()
-        else:
-            raise Exception("Getting data of un-loaded MIDI channel")
+        all = self.get_all_midi_data()
+        return [msg for msg in all if msg['time'] >= 0]
     
     @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
     def get_state_midi_msgs(self):
-        if self._backend_obj:
-            return self._backend_obj.get_state_midi_msgs()
-        else:
-            raise Exception("Getting data of un-loaded MIDI channel")
+        all = self.get_all_midi_data()
+        return [msg for msg in all if msg['time'] < 0]
 
     @ShoopSlot(list, thread_protection=ThreadProtectionType.AnyThread)
     def load_all_midi_data(self, data):
         self.requestBackendInit.emit()
+        converted = midi_msgs_list_to_backend(data)
         if self._backend_obj:
-            self._backend_obj.load_all_midi_data(data)
+            self._backend_obj.load_all_midi_data(converted)
         else:
-            self.initializedChanged.connect(lambda: self._backend_obj.load_all_midi_data(data))
+            self.initializedChanged.connect(lambda: self._backend_obj.load_all_midi_data(converted))
     
     @ShoopSlot()
     def reset_state_tracking(self):

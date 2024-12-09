@@ -10,6 +10,37 @@ pub enum PortDirection {
     Any = backend_bindings::PortDirection::Any as isize,
 }
 
+#[pymethods]
+impl PortDirection {
+    #[new]
+    fn py_new(value: u32) -> PyResult<Self> {
+        match backend_bindings::PortDirection::try_from(value) {
+            Ok(val) => Ok(PortDirection::try_from(val).unwrap()),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid PortDirection")),
+        }
+    }
+
+    #[staticmethod]
+    pub fn enum_items() -> std::collections::HashMap<&'static str, isize> {
+        let mut items = std::collections::HashMap::new();
+        items.insert("Input", PortDirection::Input as isize);
+        items.insert("Output", PortDirection::Output as isize);
+        items.insert("Any", PortDirection::Any as isize);
+        items
+    }
+}
+
+impl TryFrom<backend_bindings::PortDirection> for PortDirection {
+    type Error = anyhow::Error;
+    fn try_from(value: backend_bindings::PortDirection) -> Result<Self, anyhow::Error> {
+        match value {
+            backend_bindings::PortDirection::Input => Ok(PortDirection::Input),
+            backend_bindings::PortDirection::Output => Ok(PortDirection::Output),
+            backend_bindings::PortDirection::Any => Ok(PortDirection::Any),
+        }
+    }
+}
+
 #[pyclass(eq, eq_int)]
 #[derive(PartialEq, Clone)]
 pub enum PortConnectabilityKind {
@@ -45,37 +76,6 @@ impl TryFrom<backend_bindings::PortConnectabilityKind> for PortConnectabilityKin
             backend_bindings::PortConnectabilityKind::None => Ok(PortConnectabilityKind::None),
             backend_bindings::PortConnectabilityKind::Internal => Ok(PortConnectabilityKind::Internal),
             backend_bindings::PortConnectabilityKind::External => Ok(PortConnectabilityKind::External),
-        }
-    }
-}
-
-#[pymethods]
-impl PortDirection {
-    #[new]
-    fn py_new(value: u32) -> PyResult<Self> {
-        match backend_bindings::PortDirection::try_from(value) {
-            Ok(val) => Ok(PortDirection::try_from(val).unwrap()),
-            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid PortDirection")),
-        }
-    }
-
-    #[staticmethod]
-    pub fn enum_items() -> std::collections::HashMap<&'static str, isize> {
-        let mut items = std::collections::HashMap::new();
-        items.insert("Input", PortDirection::Input as isize);
-        items.insert("Output", PortDirection::Output as isize);
-        items.insert("Any", PortDirection::Any as isize);
-        items
-    }
-}
-
-impl TryFrom<backend_bindings::PortDirection> for PortDirection {
-    type Error = anyhow::Error;
-    fn try_from(value: backend_bindings::PortDirection) -> Result<Self, anyhow::Error> {
-        match value {
-            backend_bindings::PortDirection::Input => Ok(PortDirection::Input),
-            backend_bindings::PortDirection::Output => Ok(PortDirection::Output),
-            backend_bindings::PortDirection::Any => Ok(PortDirection::Any),
         }
     }
 }
@@ -176,6 +176,7 @@ impl From<PortConnectability> for backend_bindings::PortConnectability {
 }
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
+    m.add_class::<PortConnectabilityKind>()?;
     m.add_class::<PortConnectability>()?;
     m.add_class::<PortDirection>()?;
     m.add_class::<PortDataType>()?;

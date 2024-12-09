@@ -83,7 +83,7 @@ class Backend(ShoopQQuickItem):
     def actual_backend_type(self, n):
         if self._actual_driver_type != n:
             self._actual_driver_type = n
-            self.logger.instanceIdentifier = PyAudioDriverType(n).name
+            self.logger.instanceIdentifier = shoop_py_backend.AudioDriverType(n).name()
             self.actualBackendTypeChanged.emit(n)
 
     clientNameHintChanged = ShoopSignal(str)
@@ -403,7 +403,7 @@ class Backend(ShoopQQuickItem):
         if not self._backend_driver_obj:
             self.logger.throw_error("Failed to initialize back-end driver.")
 
-        if self._driver_type == PyAudioDriverType.Dummy.value:
+        if self._driver_type == int(shoop_py_backend.AudioDriverType.Dummy):
             sample_rate = (self._driver_setting_overrides['sample_rate'] if 'sample_rate' in self._driver_setting_overrides else 48000)
             buffer_size = (self._driver_setting_overrides['buffer_size'] if 'buffer_size' in self._driver_setting_overrides else 256)
             settings = shoop_py_backend.DummyAudioDriverSettings(
@@ -412,7 +412,7 @@ class Backend(ShoopQQuickItem):
                 buffer_size=buffer_size
             )
             self._backend_driver_obj.start_dummy(settings)
-        elif self._driver_type in [PyAudioDriverType.Jack.value, PyAudioDriverType.JackTest.value]:
+        elif self._driver_type in [int(shoop_py_backend.AudioDriverType.Jack), int(shoop_py_backend.AudioDriverType.JackTest)]:
             maybe_server_name = (self._driver_setting_overrides['jack_server'] if 'jack_server' in self._driver_setting_overrides else '')
             settings = shoop_py_backend.JackAudioDriverSettings(
                 client_name_hint = self._client_name_hint,

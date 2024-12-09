@@ -307,7 +307,7 @@ class Loop(FindParentBackend):
         if self._initialized:
             if maybe_delay >= 0 and not self._sync_source:
                 self.logger.warning(lambda: "Synchronous transition requested but no sync loop set")
-            self._backend_loop.transition(LoopMode(mode), maybe_delay, maybe_align_to_sync_at)
+            self._backend_loop.transition(mode, maybe_delay, maybe_align_to_sync_at)
     
     @ShoopSlot(list, int, int, int)
     def transition_multiple(self, loops, mode, maybe_delay, maybe_align_to_sync_at):

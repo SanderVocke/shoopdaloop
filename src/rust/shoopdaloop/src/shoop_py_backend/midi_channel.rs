@@ -113,7 +113,7 @@ impl MidiChannel {
         Ok(())
     }
 
-    fn clear(&self) -> PyResult<()> {
+    fn clear(&self, _length : u32) -> PyResult<()> {
         self.obj.clear();
         Ok(())
     }

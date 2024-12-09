@@ -44,8 +44,10 @@ def main():
         dev_group.add_argument('--monkey-tester', action='store_true', help='Start the monkey tester, which will randomly, rapidly perform actions on the session.')
         dev_group.add_argument('--qml-self-test', action='store_true', help='Run QML tests and exit. Pass additional args to the tester after "--".')
 
+        from shoopdaloop.lib.q_objects.Application import Application
+
         args = parser.parse_args(bare_args[0])
-        backends_map = {name.lower(): val for name, val in shoop_py_backend.AudioDriverType.enum_items().items()}
+        backends_map = {name.lower(): shoop_py_backend.AudioDriverType(val) for name, val in shoop_py_backend.AudioDriverType.enum_items().items()}
         args.backend = backends_map[args.backend]
 
         # For taskbar icon (see https://stackoverflow.com/a/1552105)
@@ -64,7 +66,7 @@ def main():
             sys.exit(0)
 
         global_args = {
-            'backend_type': args.backend.value,
+            'backend_type': int(args.backend),
             'load_session_on_startup': args.session_filename,
             'test_grab_screens': args.test_grab_screens,
             'developer': args.developer,

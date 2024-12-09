@@ -12,6 +12,8 @@ from PySide6.QtQuick import QQuickItem
 from .Port import Port
 from .ShoopPyObject import *
 
+from ..backend_wrappers import midi_msgs_list_to_backend, midi_msgs_list_from_backend
+
 import shoop_py_backend
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
@@ -121,11 +123,12 @@ class MidiPort(Port):
     
     @ShoopSlot(list)
     def dummy_queue_msgs(self, msgs):
-        self._backend_obj.dummy_queue_msgs(msgs)
+        converted = midi_msgs_list_to_backend(msgs)
+        self._backend_obj.dummy_queue_msgs(converted)
     
     @ShoopSlot(result=list)
     def dummy_dequeue_data(self):
-        return self._backend_obj.dummy_dequeue_data()
+        return midi_msgs_list_from_backend(self._backend_obj.dummy_dequeue_data())
     
     @ShoopSlot(int)
     def dummy_request_data(self, n_frames):
