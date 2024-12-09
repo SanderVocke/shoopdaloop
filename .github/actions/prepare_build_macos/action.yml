@@ -17,7 +17,7 @@ runs:
       brew install ninja libsndfile libtool automake autoconf cmake
       brew install jack liblo coreutils
       brew install python@3.9
-      brew install create-dmg
+      $PIP install dmgbuild
 
       # Install Python packages
       $PIP install --upgrade pip build
