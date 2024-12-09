@@ -79,7 +79,11 @@ impl MidiChannel {
             let events_ptr = (*sequence).events;
             for i in 0..msgs.len() {
                 let event_ptr = events_ptr.wrapping_add(i);
-                **event_ptr = msgs[i].to_ffi();
+                let event = msgs[i].to_ffi();
+                let new_event_ptr = ffi::alloc_midi_event(event.size);
+                std::ptr::copy_nonoverlapping(event.data, (*new_event_ptr).data, event.size as usize);
+                (*new_event_ptr).time = event.time;
+                *event_ptr = new_event_ptr;
             }
             ffi::load_midi_channel_data(self.unsafe_backend_ptr(), sequence);
             ffi::destroy_midi_sequence(sequence);

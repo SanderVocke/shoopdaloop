@@ -1733,7 +1733,9 @@ const char* get_fx_chain_internal_state(shoopdaloop_fx_chain_t *chain) {
         rval[str.size()] = 0;
         return (const char*)rval;
     } else {
-        return (const char*)"";
+        char * rval = (char*) malloc(1);
+        rval[0] = 0;
+        return (const char*)rval;
     }
   }, (const char*)"");
 }

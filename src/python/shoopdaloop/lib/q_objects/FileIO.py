@@ -69,9 +69,9 @@ class FileIO(ShoopQObject):
             list_data = []
             for d in data:
                 if isinstance(d, shoop_py_backend.AudioChannelData):
-                    list_data.push(d.data)
+                    list_data.append(d.data)
                 elif isinstance(d, list):
-                    list_data.push(d)
+                    list_data.append(d)
                 else:
                     self.logger.error(lambda: 'Cannot save audio: unexpected data format')
                 lengths.add(len(list_data[-1]))
@@ -79,10 +79,9 @@ class FileIO(ShoopQObject):
                 self.logger.error(lambda: 'Cannot save audio: channel lengths are not equal ({})'.format(list(lengths)))
                 return
             # Soundfile wants NcxNs, not NsxNc
-            _data = np.hstack(
-                [np.array(d).reshape(-1,1) for d in data]
-            )
-            sf.write(filename, _data, sample_rate)
+            arr = np.array(list_data)
+            arr = np.swapaxes(arr, 0, 1)
+            sf.write(filename, arr, sample_rate)
         finally:
             pass
         
@@ -93,7 +92,11 @@ class FileIO(ShoopQObject):
     def save_channels_to_soundfile_impl(self, filename, sample_rate, channels):
         datas = [c.get_data() for c in channels]
         self.save_data_to_soundfile_impl(filename, sample_rate, datas)
-        self.logger.info(lambda: "Saved {}-channel audio to {} ({} samples)".format(len(channels), filename, len(datas[0])))
+        def length(data):
+            if isinstance(data, shoop_py_backend.AudioChannelData):
+                return len(data.data)
+            return len(data)
+        self.logger.info(lambda: "Saved {}-channel audio to {} ({} samples)".format(len(channels), filename, length(datas[0])))
     
     def save_channel_to_midi_impl(self, filename, sample_rate, channel):
         try:
