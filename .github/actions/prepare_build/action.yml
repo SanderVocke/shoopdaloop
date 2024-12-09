@@ -15,12 +15,12 @@ runs:
     uses: dtolnay/rust-toolchain@nightly
     with:
        targets: x86_64-pc-windows-msvc
+  - name: Install rustfmt
+    shell: wrap-shell {0}
+    run: rustup component add rustfmt --toolchain nightly-x86_64-pc-windows-msvc
   - name: Prepare Rust (non-Windows)
     if: always() && inputs.variant != 'windows'
     uses: dtolnay/rust-toolchain@nightly
-  - name: Install rustfmt
-    shell: wrap-shell {0}
-    run: rustup component add rustfmt
   - name: Rust info
     shell: wrap-shell {0}
     run: |
