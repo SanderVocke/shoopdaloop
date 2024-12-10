@@ -185,7 +185,9 @@ runs:
       DMGFILE=shoopdaloop-${{ env.SHOOP_GIT_REV }}.$(uname -m).dmg
       RELEASE_DMGFILE=shoopdaloop-${{ env.SHOOP_VERSION }}.$(uname -m).dmg
       cp -r ${{ env.PORTABLE_DIR }} shoopdaloop.app
-      create-dmg \
+      max_tries=10
+      i=0
+      until create-dmg \
         --volname "ShoopDaLoop" \
         --volicon "distribution/macos/icon.icns" \
         --window-pos 200 120 \
@@ -196,6 +198,14 @@ runs:
         --app-drop-link 600 185 \
         $DMGFILE \
         shoopdaloop.app
+      do
+        if [ $i -eq $max_tries ]
+        then
+          echo 'Error: create-dmg did not succeed even after 10 tries.'
+          exit 1
+        fi
+        i=$((i+1))
+      done
       cp $DMGFILE $RELEASE_DMGFILE
 
       echo "BUILT_PACKAGE=$DMGFILE" | tee -a $GITHUB_ENV
