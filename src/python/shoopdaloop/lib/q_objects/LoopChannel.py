@@ -20,6 +20,8 @@ from ..backend_wrappers import *
 from ..findFirstParent import findFirstParent
 from ..logging import Logger
 
+from shoop_py_backend import ChannelMode
+
 import traceback
 
 # Wraps a back-end loop channel.
@@ -28,7 +30,7 @@ class LoopChannel(ShoopQQuickItem):
         super(LoopChannel, self).__init__(parent)
         self._backend_obj = None
         self._loop = None
-        self._mode = self._mode = ChannelMode.Disabled
+        self._mode = ChannelMode.Disabled
         self._connected_ports = []
         self._ports = []
         self._data_length = self._new_data_length = 0
@@ -96,17 +98,16 @@ class LoopChannel(ShoopQQuickItem):
     modeChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=modeChanged)
     def mode(self):
-        return self._mode.value
+        return int(self._mode)
     # indirect setter via back-end
     @ShoopSlot(int)
     def set_mode(self, mode):
-        _mode = ChannelMode(mode)
-        if _mode != self._mode:
+        if mode != self._mode:
             if self._backend_obj:
-                self.__logger.debug(lambda: 'Set mode -> {}'.format(_mode))
-                self._backend_obj.set_mode(_mode)
+                self.__logger.debug(lambda: 'Set mode -> {}'.format(mode))
+                self._backend_obj.set_mode(mode)
             else:
-                self.initializedChanged.connect(lambda: self.set_mode(_mode))
+                self.initializedChanged.connect(lambda: self.set_mode(mode))
     
     # data length
     dataLengthChanged = ShoopSignal(int)
@@ -194,7 +195,7 @@ class LoopChannel(ShoopQQuickItem):
     def clear(self):
         if self._backend_obj:
             self.__logger.debug(lambda: 'Clear')
-            self._backend_obj.clear()
+            self._backend_obj.clear(0)
         else:
             self.initializedChanged.connect(lambda: self.clear())
 
@@ -217,7 +218,7 @@ class LoopChannel(ShoopQQuickItem):
             self.__logger.debug(lambda: 'Connect to port')
             backend_channel = self._backend_obj
             backend_port = port.get_backend_obj()
-            if not (port.input_connectability & PortConnectability.Internal.value):
+            if not (port.input_connectability & int(shoop_py_backend.PortConnectabilityKind.Internal)):
                 backend_channel.connect_input(backend_port)
             else:
                 backend_channel.connect_output(backend_port)
@@ -263,7 +264,7 @@ class LoopChannel(ShoopQQuickItem):
 
         self._new_data_length = state.length
         self._new_start_offset = state.start_offset
-        self._new_mode = state.mode
+        self._new_mode = int(state.mode)
         self._new_data_dirty = state.data_dirty
         self._new_n_preplay_samples = state.n_preplay_samples
         self._new_played_back_sample = state.played_back_sample
@@ -290,7 +291,7 @@ class LoopChannel(ShoopQQuickItem):
         if self._new_mode != self._mode:
             self.__logger.debug(lambda: 'mode -> {}'.format(ChannelMode(self._new_mode)))
             self._mode = self._new_mode
-            self.modeChanged.emit(self._mode.value)
+            self.modeChanged.emit(int(self._mode))
         if self._new_data_dirty != self._data_dirty:
             self.__logger.debug(lambda: 'data dirty -> {}'.format(self._new_data_dirty))
             self._data_dirty = self._new_data_dirty
@@ -310,7 +311,6 @@ class LoopChannel(ShoopQQuickItem):
     def close(self):
         if self._backend_obj:
             self.__logger.debug(lambda: 'destroy')
-            self._backend_obj.destroy()
             self._backend_obj = None
     
     @ShoopSlot(result='QVariant')

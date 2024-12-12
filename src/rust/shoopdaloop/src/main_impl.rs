@@ -43,9 +43,9 @@ pub fn main() {
             bundled_python_lib_path.to_str().unwrap(),
             bundled_pythonpath_shoop_lib.to_str().unwrap(),
             bundled_python_site_packages.to_str().unwrap());
-        println!("using PYTHONPATH: {}", pythonpath.as_str());
+        // println!("using PYTHONPATH: {}", pythonpath.as_str());
         env::set_var("PYTHONPATH", pythonpath.as_str());
-        println!("using PYTHONHOME: {}", bundled_python_home.to_str().unwrap());
+        // println!("using PYTHONHOME: {}", bundled_python_home.to_str().unwrap());
         env::set_var("PYTHONHOME", bundled_python_home.to_str().unwrap());
     } else {
         println!("Warning: could not find python paths for ShoopDaLoop. Attempting to run with default Python environment.");
