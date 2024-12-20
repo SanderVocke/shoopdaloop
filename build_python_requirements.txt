@@ -1,5 +1,4 @@
 setuptools
-setuptools-scm 
-ctypesgen @ git+https://github.com/SanderVocke/ctypesgen@9b88a970cb85823de83423add2a4b21ea79b63d9
+setuptools-scm
 meson
 toml

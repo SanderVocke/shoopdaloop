@@ -7,7 +7,8 @@ from PySide6.QtQml import QJSValue
 from .FindParentBackend import FindParentBackend
 from .ShoopPyObject import *
 
-from ..backend_wrappers import *
+from ..backend_wrappers import DontWaitForSync, DontAlignToSyncImmediately
+
 from ..mode_helpers import is_playing_mode, is_running_mode, is_recording_mode
 from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
@@ -20,6 +21,8 @@ from collections.abc import Mapping, Sequence
 import traceback
 import math
 
+import shoop_py_backend
+
 # Manage a back-end composite loop, keeps running if GUI thread stalls
 class CompositeLoop(FindParentBackend):
     def __init__(self, parent=None):
@@ -30,8 +33,8 @@ class CompositeLoop(FindParentBackend):
         self._sync_loop = None
         self._running_loops = set()
         self._iteration = 0
-        self._mode = LoopMode.Stopped.value
-        self._next_mode = LoopMode.Stopped.value
+        self._mode = int(shoop_py_backend.LoopMode.Stopped)
+        self._next_mode = int(shoop_py_backend.LoopMode.Stopped)
         self._next_transition_delay = -1
         self._length = 0
         self._position = 0
@@ -426,16 +429,16 @@ class CompositeLoop(FindParentBackend):
             mode = elem['mode']
             
             current_cycle = None
-            if t['mode'] in [LoopMode.Playing.value, LoopMode.Replacing.value, LoopMode.PlayingDryThroughWet.value, LoopMode.RecordingDryIntoWet]:
+            if t['mode'] in [int(shoop_py_backend.LoopMode.Playing), int(shoop_py_backend.LoopMode.Replacing), int(shoop_py_backend.LoopMode.PlayingDryThroughWet), int(shoop_py_backend.LoopMode.RecordingDryIntoWet)]:
                 # loop around
                 current_cycle = n_cycles_ago % max(n_cycles, 1)
-            elif t['mode'] == LoopMode.Recording.value:
+            elif t['mode'] == int(shoop_py_backend.LoopMode.Recording):
                 # keep going indefinitely
                 current_cycle = n_cycles_ago
             
             self.logger.trace(lambda: f'loop {loop.instanceIdentifier} -> {mode}, goto cycle {current_cycle} ({elem["mode"]} triggered {n_cycles_ago} cycles ago, loop length {n_cycles} cycles)')
             loop.transition(mode, DontWaitForSync,
-                (current_cycle if mode != LoopMode.Stopped.value else DontAlignToSyncImmediately)
+                (current_cycle if mode != int(shoop_py_backend.LoopMode.Stopped) else DontAlignToSyncImmediately)
             )
         
         # Apply our own mode change
@@ -462,7 +465,7 @@ class CompositeLoop(FindParentBackend):
 
         # Proceed through the schedule up to the point we want to go by calling our trigger function with a callback just
         # recording the transitions.
-        transitions = self.list_transitions(LoopMode.Recording.value, 0, self._n_cycles)
+        transitions = self.list_transitions(int(shoop_py_backend.LoopMode.Recording), 0, self._n_cycles)
 
         if self.logger.should_trace():
             str = 'ringbuffer grab - virtual transition list:'
@@ -476,7 +479,7 @@ class CompositeLoop(FindParentBackend):
         loop_recording_ends = {}
         for it,ts in transitions.items():
             for t in ts:
-                if t['mode'] == LoopMode.Recording.value:
+                if t['mode'] == int(shoop_py_backend.LoopMode.Recording):
                     # Store only the first recording start.
                     loop_recording_starts[t['loop']] = min(
                         it,
@@ -484,7 +487,7 @@ class CompositeLoop(FindParentBackend):
                     ) if t['loop'] in loop_recording_starts.keys() else it
         for it,ts in transitions.items():
             for t in ts:
-                if t['mode'] != LoopMode.Recording.value and t['loop'] in loop_recording_starts.keys() and it > loop_recording_starts[t['loop']]:
+                if t['mode'] != int(shoop_py_backend.LoopMode.Recording) and t['loop'] in loop_recording_starts.keys() and it > loop_recording_starts[t['loop']]:
                     loop_recording_ends[t['loop']] = min(
                         it,
                         loop_recording_ends[t['loop']]
@@ -502,9 +505,9 @@ class CompositeLoop(FindParentBackend):
             self.logger.trace(f"to grab: {loop.instanceIdentifier} @ reverse start {reverse_start_offset}, n = {grab_n}")
 
         for item in to_grab:
-            item['loop'].adopt_ringbuffers(item['reverse_start'], item['n'], 0, LoopMode.Unknown.value)
+            item['loop'].adopt_ringbuffers(item['reverse_start'], item['n'], 0, int(shoop_py_backend.LoopMode.Unknown))
         
-        if go_to_mode != LoopMode.Unknown.value:
+        if go_to_mode != int(shoop_py_backend.LoopMode.Unknown):
             self.transition(go_to_mode, DontWaitForSync, go_to_cycle)
 
     def all_loops(self):
@@ -556,7 +559,7 @@ class CompositeLoop(FindParentBackend):
     def cancel_all(self):
         self.logger.trace(lambda: 'cancel_all')
         for loop in self._running_loops:
-            loop.transition(LoopMode.Stopped.value, 0, DontAlignToSyncImmediately)
+            loop.transition(int(shoop_py_backend.LoopMode.Stopped), 0, DontAlignToSyncImmediately)
         self.running_loops = []
 
     def handle_transition(self, mode):
@@ -591,7 +594,7 @@ class CompositeLoop(FindParentBackend):
             loops_start = elem['loops_start']
             for loop in loops_end:
                 self.logger.debug(lambda: f'loop end: {loop.instanceIdentifier}')
-                trigger_callback(self, loop, LoopMode.Stopped.value)
+                trigger_callback(self, loop, int(shoop_py_backend.LoopMode.Stopped))
                 if loop in self._running_loops:
                     self._running_loops.remove(loop)
                 self.runningLoopsChanged.emit(self._running_loops)
@@ -618,7 +621,7 @@ class CompositeLoop(FindParentBackend):
                                     if loop in other_starts:
                                         # We have already recorded this loop. Don't record it again.
                                         self.logger.debug(lambda: f'Not re-recording {loop}')
-                                        trigger_callback(self, loop, LoopMode.Stopped.value)
+                                        trigger_callback(self, loop, int(shoop_py_backend.LoopMode.Stopped))
                                         self._running_loops.remove(loop)
                                         self.runningLoopsChanged.emit(self._running_loops)
                                         handled = True
@@ -636,11 +639,11 @@ class CompositeLoop(FindParentBackend):
             self.logger.debug(lambda: 'extra trigger for cycle end')
             if self.kind == 'script' and not (self.next_transition_delay >= 0 and is_running_mode(self.next_mode)):
                 self.logger.debug(lambda: f'ending script {self.mode} {self.next_mode} {self.next_transition_delay}')
-                trigger_callback(self, self, LoopMode.Stopped.value)
+                trigger_callback(self, self, int(shoop_py_backend.LoopMode.Stopped))
             elif is_recording_mode(self.mode):
                 self.logger.debug(lambda: 'cycle: recording end')
                 # Recording ends next cycle, transition to playing or stopped
-                trigger_callback(self, self, (LoopMode.Playing.value if self._play_after_record else LoopMode.Stopped.value))
+                trigger_callback(self, self, (int(shoop_py_backend.LoopMode.Playing) if self._play_after_record else int(shoop_py_backend.LoopMode.Stopped)))
             else:
                 self.logger.debug(lambda: 'cycling')
                 # Will cycle around - trigger the actions for next cycle

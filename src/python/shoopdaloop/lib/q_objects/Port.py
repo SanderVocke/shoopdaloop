@@ -193,7 +193,6 @@ class Port(FindParentBackend):
         FindParentBackend.close(self)
         if self._backend_obj:
             self.logger.debug(lambda: "{}: Closing port {}".format(self, self._name))
-            self._backend_obj.destroy()
             self._backend_obj = None
             self._initialized = False
             self.initializedChanged.emit(False)

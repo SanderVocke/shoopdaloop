@@ -176,10 +176,8 @@ class FetchChannelData(ShoopQQuickItem):
     @ShoopSlot('QVariant', int)
     def fetch_finished(self, data, seq_nr):
         if seq_nr >= self._requested_sequence_nr:
-            print(f'finished fetching data: {data} with {data.data}')
-            if isinstance(data.data, ShoopChannelAudioData):
-                print(f'channel float data set')
-                self.channel_float_data = [float(e) for e in data.data.np_array]
+            if isinstance(data.data, shoop_py_backend.AudioChannelData):
+                self.channel_float_data = data.data.data
             else:
                 self.channel_float_data = []
             self.channel_data = data
