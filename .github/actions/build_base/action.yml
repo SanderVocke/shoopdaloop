@@ -16,6 +16,8 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
+      # FIXME REMOVE
+      rm -f /usr/bin/link.exe || true
       cargo build --features "shoopdaloop/prebuild packaging/prebuild" ${CARGO_BUILD_FLAGS}
 
   - name: Build main packages
