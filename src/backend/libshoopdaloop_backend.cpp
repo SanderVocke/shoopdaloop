@@ -403,8 +403,8 @@ shoop_result_t set_audio_driver(shoop_backend_session_t *backend, shoop_audio_dr
   }, Failure);
 }
 
-shoop_backend_session_state_info_t *get_backend_state(shoop_backend_session_t *backend) {
-  return api_impl<shoop_backend_session_state_info_t*, log_level_debug_trace, log_level_warning>("get_backend_state", [&]() -> shoop_backend_session_state_info_t* {
+shoop_backend_session_state_info_t *get_backend_session_state(shoop_backend_session_t *backend) {
+  return api_impl<shoop_backend_session_state_info_t*, log_level_debug_trace, log_level_warning>("get_backend_session_state", [&]() -> shoop_backend_session_state_info_t* {
     auto _backend = internal_backend_session(backend);
     if (_backend) {
       auto rval = new shoop_backend_session_state_info_t;
