@@ -33,7 +33,7 @@ PythonLoopMidiChannel {
         if (recording_started_at) { rval['recording_started_at'] = recording_started_at }
         if (recording_fx_chain_state_id) { rval['recording_fx_chain_state_id'] = recording_fx_chain_state_id }
 
-        if (do_save_data_files && data_length > 0) {
+        if (do_save_data_files && !root.empty) {
             var filename = obj_id + '.smf'
             var full_filename = data_files_dir + '/' + filename;
             var task = file_io.save_channel_to_midi_async(full_filename, get_backend().get_sample_rate(), root)
