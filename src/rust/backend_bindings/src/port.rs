@@ -51,10 +51,12 @@ integer_enum! {
 
 impl PortConnectabilityKind {
     pub fn from_ffi(ffi_kind : u32) -> Self {
+        const INTERNAL : u32 = ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal as u32;
+        const EXTERNAL : u32 = ffi::shoop_port_connectability_t_ShoopPortConnectability_External as u32;
         match ffi_kind {
             0 => PortConnectabilityKind::None,
-            ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal => PortConnectabilityKind::Internal,
-            ffi::shoop_port_connectability_t_ShoopPortConnectability_External => PortConnectabilityKind::External,
+            INTERNAL => PortConnectabilityKind::Internal,
+            EXTERNAL => PortConnectabilityKind::External,
             _ => panic!("Invalid PortConnectabilityKind value: {}", ffi_kind),
         }
     }
@@ -72,18 +74,18 @@ pub struct PortConnectability {
 impl PortConnectability {
     pub fn from_ffi(ffi_connectability : u32) -> Self {
         PortConnectability {
-            internal : ffi_connectability & ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal != 0,
-            external : ffi_connectability & ffi::shoop_port_connectability_t_ShoopPortConnectability_External != 0,
+            internal : ffi_connectability & (ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal as u32) != 0,
+            external : ffi_connectability & (ffi::shoop_port_connectability_t_ShoopPortConnectability_External as u32) != 0,
         }
     }
 
     pub fn to_ffi(&self) -> u32 {
-        let mut ffi_connectability = 0;
+        let mut ffi_connectability : u32 = 0;
         if self.internal {
-            ffi_connectability |= ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal;
+            ffi_connectability |= (ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal as u32);
         }
         if self.external {
-            ffi_connectability |= ffi::shoop_port_connectability_t_ShoopPortConnectability_External;
+            ffi_connectability |= (ffi::shoop_port_connectability_t_ShoopPortConnectability_External as u32);
         }
         ffi_connectability
     }

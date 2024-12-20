@@ -62,14 +62,14 @@ impl Loop {
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel, anyhow::Error> {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
-        let channel = unsafe { ffi::add_audio_channel(obj, mode as u32) };
+        let channel = unsafe { ffi::add_audio_channel(obj, (mode as u32).try_into().unwrap()) };
         AudioChannel::new(channel)
     }
 
     pub fn add_midi_channel(&self, mode: ChannelMode) -> Result<MidiChannel, anyhow::Error> {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
-        let channel = unsafe { ffi::add_midi_channel(obj, mode as u32) };
+        let channel = unsafe { ffi::add_midi_channel(obj, (mode as u32).try_into().unwrap()) };
         MidiChannel::new(channel)
     }
 
@@ -90,7 +90,7 @@ impl Loop {
             return Err(anyhow::anyhow!("Invalid backend object"));
         }
         unsafe {
-            ffi::loop_transition(obj, to_mode as u32, maybe_cycles_delay, maybe_to_sync_at_cycle)
+            ffi::loop_transition(obj, (to_mode as u32).try_into().unwrap(), maybe_cycles_delay, maybe_to_sync_at_cycle)
         };
         Ok(())
     }
@@ -176,7 +176,7 @@ impl Loop {
                 reverse_start_cycle,
                 cycles_length,
                 go_to_cycle,
-                go_to_mode as u32,
+                (go_to_mode as u32).try_into().unwrap(),
             )
         };
         Ok(())
@@ -201,7 +201,7 @@ pub fn transition_multiple_loops(
         ffi::loops_transition(
             handles.len() as u32,
             handles_ptr,
-            to_state as u32,
+            (to_state as u32).try_into().unwrap(),
             maybe_cycles_delay,
             maybe_to_sync_at_cycle,
         )
