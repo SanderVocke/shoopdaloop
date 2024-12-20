@@ -18,6 +18,7 @@ runs:
     run: |
       # FIXME REMOVE
       rm -f /usr/bin/link.exe || true
+      echo "link binary: $(which link)"
       cargo build --features "shoopdaloop/prebuild packaging/prebuild" ${CARGO_BUILD_FLAGS}
 
   - name: Build main packages
