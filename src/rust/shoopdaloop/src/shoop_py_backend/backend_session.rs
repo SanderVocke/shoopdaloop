@@ -55,7 +55,7 @@ impl BackendSession {
     }
 
     fn create_fx_chain(&self, chain_type: u32, title: &str) -> PyResult<FXChain> {
-        let obj = self.obj.create_fx_chain(chain_type, title);
+        let obj = self.obj.create_fx_chain(chain_type.try_into().unwrap(), title);
         if obj.is_err() {
             return Err(PyErr::new::<pyo3::exceptions::PyException, _>("Failed to create fx chain"));
         }
