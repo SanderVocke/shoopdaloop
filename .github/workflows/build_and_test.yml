@@ -459,9 +459,9 @@ jobs:
 
 
 
-  # # ##############################################################
-  # # ## Windows
-  # # ##############################################################
+  ##############################################################
+  ## Windows
+  ##############################################################
 
   build_windows:
     strategy:
@@ -497,7 +497,7 @@ jobs:
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-      # checkpoints_enabled: true
+      checkpoints_enabled: true
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
