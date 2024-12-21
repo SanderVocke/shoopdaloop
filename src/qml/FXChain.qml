@@ -43,9 +43,9 @@ PythonFXChain {
     Component.onCompleted: {
         if (descriptor) {
             switch(descriptor.type) {
-                case "carla_rack": chain_type = ShoopConstants.FXChainType.Carla_Rack; break;
-                case "carla_patchbay": chain_type = ShoopConstants.FXChainType.Carla_Patchbay; break;
-                case "carla_patchbay_16x": chain_type = ShoopConstants.FXChainType.Carla_Patchbay_16x; break;
+                case "carla_rack": chain_type = ShoopConstants.FXChainType.CarlaRack; break;
+                case "carla_patchbay": chain_type = ShoopConstants.FXChainType.CarlaPatchbay; break;
+                case "carla_patchbay_16x": chain_type = ShoopConstants.FXChainType.CarlaPatchbay16x; break;
                 case "test2x2x1": chain_type = ShoopConstants.FXChainType.Test2x2x1; break;
             }
 

@@ -47,6 +47,9 @@ def resample_audio(audio, target_n_frames):
         return audio
     
     audio_obj = shoop_py_backend.MultichannelAudio(n_channels, n_frames)
+    for chan in range(n_channels):
+        for frame in range(n_frames):
+            audio_obj.set(frame, chan, audio[frame, chan])
     resampled_obj = audio_obj.resample(target_n_frames)
     result = numpy.zeros_like(audio, shape=[target_n_frames, n_channels])
     for chan in range(n_channels):

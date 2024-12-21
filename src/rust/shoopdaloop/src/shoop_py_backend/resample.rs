@@ -29,6 +29,13 @@ impl MultichannelAudio {
             Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(format!("{}", e))),
         }
     }
+
+    fn set(&self, frame : u32, channel: u32, value: f32) -> PyResult<()> {
+        match self.obj.set(frame, channel, value) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(PyErr::new::<pyo3::exceptions::PyException, _>(format!("{}", e))),
+        }
+    }
 }
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {

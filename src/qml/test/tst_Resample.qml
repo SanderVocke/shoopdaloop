@@ -48,6 +48,11 @@ ShoopTestFile {
                 return r
             }
 
+            function calculateSignalPowerInvariant(audioSamples) {
+                const totalPower = audioSamples.reduce((sum, sample) => sum + sample ** 2, 0);
+                return totalPower / audioSamples.length
+            }
+
             test_fns: ({
 
                 "test_resample_1chan": () => {
@@ -74,6 +79,10 @@ ShoopTestFile {
 
                     let loaded = channel().get_data_list()
                     verify_eq(loaded.length, 12000)
+
+                    let ori_power = calculateSignalPowerInvariant(data)
+                    let resampled_power = calculateSignalPowerInvariant(loaded)
+                    verify_approx(ori_power, resampled_power, 0.1)
                 },
 
                 "test_resample_1chan_resize": () => {
@@ -100,6 +109,10 @@ ShoopTestFile {
 
                     let loaded = channel().get_data_list()
                     verify_eq(loaded.length, 13000)
+
+                    let ori_power = calculateSignalPowerInvariant(data)
+                    let resampled_power = calculateSignalPowerInvariant(loaded)
+                    verify_approx(ori_power, resampled_power, 0.1)
                 },
 
                 "test_resample_2chan_resize": () => {
@@ -130,6 +143,12 @@ ShoopTestFile {
                     let datas = loop2_channels().map(m => m.get_data_list())
                     verify_eq(datas[0].length, 13000)
                     verify_eq(datas[1].length, 13000)
+
+                    let ori_power = calculateSignalPowerInvariant(data)
+                    let resampled_power_0 = calculateSignalPowerInvariant(datas[0])
+                    let resampled_power_1 = calculateSignalPowerInvariant(datas[1])
+                    verify_approx(ori_power, resampled_power_0, 0.1)
+                    verify_approx(ori_power, resampled_power_1, 0.1)
                 },
             })
         }

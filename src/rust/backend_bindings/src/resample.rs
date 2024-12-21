@@ -38,6 +38,13 @@ impl MultichannelAudio {
         let value = unsafe { *(*self_obj).data.offset((frame * (*self_obj).n_channels + channel) as isize) };
         Ok(value)
     }
+
+    pub fn set(&self, frame : u32, channel: u32, value: f32) -> Result<(), anyhow::Error> {
+        let guard = self.obj.lock().unwrap();
+        let self_obj = *guard;
+        unsafe { *(*self_obj).data.offset((frame * (*self_obj).n_channels + channel) as isize) = value };
+        Ok(())
+    }
 }
 
 impl Drop for MultichannelAudio {

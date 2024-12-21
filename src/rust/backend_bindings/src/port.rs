@@ -82,10 +82,10 @@ impl PortConnectability {
     pub fn to_ffi(&self) -> u32 {
         let mut ffi_connectability : u32 = 0;
         if self.internal {
-            ffi_connectability |= (ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal as u32);
+            ffi_connectability |= ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal as u32;
         }
         if self.external {
-            ffi_connectability |= (ffi::shoop_port_connectability_t_ShoopPortConnectability_External as u32);
+            ffi_connectability |= ffi::shoop_port_connectability_t_ShoopPortConnectability_External as u32;
         }
         ffi_connectability
     }
