@@ -37,9 +37,10 @@ pub fn get_dependency_libs (executable : &Path,
 
     let (command, args, warning_patterns, skip_n_levels, dylib_filename_part) = get_os_specifics(executable, include_directory, &mut env_map)?;
     debug!("Running shell command for determining dependencies: {args:?}");
+    let env_map_clone = env_map.clone();
     let mut list_deps : &mut Command = &mut Command::new(&command);
     list_deps = list_deps.args(&args)
-                         .envs(env_map.clone())
+                         .envs(env_map_clone)
                          .current_dir(std::env::current_dir().unwrap());
     let list_deps_output = list_deps.output()
             .with_context(|| "Failed to run list_dependencies")?;
