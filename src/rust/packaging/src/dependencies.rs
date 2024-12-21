@@ -232,11 +232,11 @@ pub fn get_dependency_libs (executable : &Path,
     Ok(paths)
 }
 
-fn get_os_specifics(
-    executable: &Path,
-    include_directory: &Path,
-    env_map: &mut HashMap<String, String>,
-) -> Result<(String, Vec<String>, Vec<String>, usize, &str), anyhow::Error> {
+fn get_os_specifics<'a>(
+    executable: &'a Path,
+    include_directory: &'a Path,
+    env_map: &'a mut HashMap<String, String>,
+) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str), anyhow::Error> {
     #[cfg(target_os = "windows")]
     {
         get_windows_specifics(executable, env_map)
@@ -251,10 +251,10 @@ fn get_os_specifics(
     }
 }
 
-fn get_windows_specifics(
-    executable: &Path,
-    env_map: &mut HashMap<String, String>,
-) -> Result<(String, Vec<String>, Vec<String>, usize, &str), anyhow::Error> {
+fn get_windows_specifics<'a>(
+    executable: &'a Path,
+    env_map: &'a mut HashMap<String, String>,
+) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str), anyhow::Error> {
     let mut new_env_map: HashMap<String, String> = HashMap::new();
     for (k, v) in env_map.iter() {
         new_env_map.insert(k.to_uppercase(), v.clone());
@@ -282,10 +282,10 @@ fn get_windows_specifics(
     Ok((command, args, warning_patterns, skip_n_levels, dylib_filename_part))
 }
 
-fn get_linux_specifics(
-    executable: &Path,
-    include_directory: &Path,
-) -> Result<(String, Vec<String>, Vec<String>, usize, &str), anyhow::Error> {
+fn get_linux_specifics<'a>(
+    executable: &'a Path,
+    include_directory: &'a Path,
+) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str), anyhow::Error> {
     let command = String::from("sh");
     let commandstr = include_str!("scripts/linux_deps.sh");
     let args = vec![
