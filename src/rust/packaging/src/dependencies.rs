@@ -231,6 +231,7 @@ pub fn get_dependency_libs (executable : &Path,
     info!("Dependencies: {paths:?}");
     Ok(paths)
 }
+
 fn get_os_specifics(
     executable: &Path,
     include_directory: &Path,
