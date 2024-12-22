@@ -1,6 +1,8 @@
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use anyhow;
+use std::fs;
+use backend;
 
 // For now, Rust "back-end" is just a set of C bindings to the
 // C++ back-end.
@@ -14,8 +16,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     #[cfg(not(feature = "prebuild"))]
     {
         let bindings_header_path = "../../backend/libshoopdaloop_backend.h";
-        let lib_path =
-            PathBuf::from(env::var("LIBSHOOPDALOOP_DIR").unwrap_or(String::from("../../libshoopdaloop_backend")));
+        let lib_path = backend::backend_build_dir();
         let gen_lib_path = "src/codegen/libshoopdaloop_backend.rs";
 
         // Generate Rust bindings
@@ -32,6 +33,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rerun-if-changed=src/lib.rs");
 
         println!("cargo:rustc-link-search=native={}", lib_path.display());
+        println!("cargo:rustc-link-lib=dylib=shoopdaloop_backend");
 
         Ok(())
     }
