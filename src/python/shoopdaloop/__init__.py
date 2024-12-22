@@ -13,7 +13,7 @@ def main():
     from shoopdaloop.lib.logging import Logger
     logger = Logger("Frontend.Main")
     try:
-        from shoopdaloop.lib.backend_wrappers import AudioDriverType
+        import shoop_py_backend
         mains = [ os.path.basename(p).replace('.qml','') for p in glob.glob('{}/applications/*.qml'.format(shoop_qml_dir)) ]
 
         bare_args = []
@@ -32,7 +32,7 @@ def main():
         )
         parser.add_argument('session_filename', type=str, default=None, nargs='?', help='(optional) Load a session from a file upon startup.')
         parser.add_argument('-i', '--info', action='store_true', help='Show information about the ShoopDaLoop installation.')
-        parser.add_argument('-b', '--backend', type=str, default='jack', help='Choose an audio backend to use. Available backends (default = jack): {}'.format(', '.join([b.name.lower() for b in AudioDriverType])))
+        parser.add_argument('-b', '--backend', type=str, default='jack', help='Choose an audio backend to use. Available backends (default = jack): {}'.format(', '.join([name.lower() for name, val in shoop_py_backend.AudioDriverType.enum_items().items()])))
 
         dev_group = parser.add_argument_group('Developer options')
         dev_group.add_argument('-m', '--main', type=str, default='shoopdaloop_main', help='Choose a specific app main window to open. Any choice other than the default is usually for debugging. Available windows: {}'.format(', '.join(mains)))
@@ -44,13 +44,10 @@ def main():
         dev_group.add_argument('--monkey-tester', action='store_true', help='Start the monkey tester, which will randomly, rapidly perform actions on the session.')
         dev_group.add_argument('--qml-self-test', action='store_true', help='Run QML tests and exit. Pass additional args to the tester after "--".')
 
-        args = parser.parse_args(bare_args[0])
-
         from shoopdaloop.lib.q_objects.Application import Application
-        from shoopdaloop.lib.crash_handling import init_crash_handling
-        init_crash_handling()
 
-        backends_map = {b.name.lower(): b for b in AudioDriverType}
+        args = parser.parse_args(bare_args[0])
+        backends_map = {name.lower(): shoop_py_backend.AudioDriverType(val) for name, val in shoop_py_backend.AudioDriverType.enum_items().items()}
         args.backend = backends_map[args.backend]
 
         # For taskbar icon (see https://stackoverflow.com/a/1552105)
@@ -69,7 +66,7 @@ def main():
             sys.exit(0)
 
         global_args = {
-            'backend_type': args.backend.value,
+            'backend_type': int(args.backend),
             'load_session_on_startup': args.session_filename,
             'test_grab_screens': args.test_grab_screens,
             'developer': args.developer,

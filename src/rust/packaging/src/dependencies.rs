@@ -6,7 +6,6 @@ use indexmap::IndexMap;
 use std::process::Command;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::fs::read_to_string;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
@@ -34,74 +33,12 @@ pub fn get_dependency_libs (executable : &Path,
     let includes : HashSet<&str> = includelist.lines().collect();
     let mut used_includes : HashSet<String> = HashSet::new();
     let ori_env_vars : Vec<(String, String)> = std::env::vars().collect();
-    let mut env_map : HashMap<String, String> = ori_env_vars.iter().cloned().collect();
-
-    let command : String;
-    let args: Vec<String>;
-    let warning_patterns: Vec<String>;
-    let skip_n_levels: usize;
-    let dylib_filename_part: &str;
-    #[cfg(target_os = "windows")]
-    {
-        // make all env_map keys upper-case
-        let mut new_env_map : HashMap<String, String> = HashMap::new();
-        for (k, v) in env_map.iter() {
-            new_env_map.insert(k.to_uppercase(), v.clone());
-        }
-        env_map = new_env_map;
-
-        let file_path = PathBuf::from(file!());
-        let src_path = std::fs::canonicalize(file_path)?;
-        let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
-        let paths_file = src_path.join("distribution/windows/shoop.dllpaths");
-        let paths_str = read_to_string(&paths_file)
-            .with_context(|| format!("Cannot read {paths_file:?}"))?;
-        let executable_folder = executable.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
-        for relpath in paths_str.lines() {
-            let path = env_map.get("PATH").expect("No PATH env var found");
-            env_map.insert(String::from("PATH"), format!("{}/{};{}", executable_folder.to_str().unwrap(), relpath, path));
-        }
-        command = String::from("powershell.exe");
-        let commandstr = include_str!("scripts/windows_deps.ps1").replace("$args[0]", executable.to_str().unwrap());
-        args = vec!(String::from("-Command"), commandstr);
-        warning_patterns = vec!();
-        skip_n_levels = 0;
-        dylib_filename_part = ".dll";
-    }
-    #[cfg(target_os = "linux")]
-    {
-        // lddtree is nice but unaware of libraries loaded at run-time. It also becomes really slow
-        // if you give it multiple files.
-        // So we use patchelf to inject dependencies on all .so files that are already in the bundle.
-        // That way lddtree is forced to include all libraries that the main executable could potentially load.
-        command = String::from("sh");
-        let commandstr = include_str!("scripts/linux_deps.sh");
-        args = vec!(String::from("-c"),
-                    String::from(commandstr),
-                    String::from("dummy"), // Passing the command verbatim, first arg becomes $0 (unused)
-                    String::from(executable.to_str().unwrap()),
-                    String::from(include_directory.to_str().unwrap()));
-        warning_patterns = vec!(String::from("not found"));
-        skip_n_levels = 0;
-        dylib_filename_part = ".so";
-    }
-    #[cfg(target_os = "macos")]
-    {
-        command = String::from("sh");
-        let commandstr = include_str!("scripts/macos_deps.sh");
-        args = vec!(String::from("-c"),
-                    String::from(commandstr),
-                    String::from("dummy"), // Passing the command verbatim, first arg becomes $0 (unused)
-                    String::from(executable.to_str().unwrap()));
-        warning_patterns = vec!();
-        skip_n_levels = 0;
-        dylib_filename_part = "";
-    }
+    let env_map : HashMap<String, String> = ori_env_vars.iter().cloned().collect();
+    let (command, args, warning_patterns, skip_n_levels, dylib_filename_part, new_env_map) = get_os_specifics(executable, include_directory, &env_map)?;
     debug!("Running shell command for determining dependencies: {args:?}");
     let mut list_deps : &mut Command = &mut Command::new(&command);
-    let env_vars : Vec<(String, String)> = env_map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     list_deps = list_deps.args(&args)
-                         .envs(env_vars)
+                         .envs(new_env_map.iter())
                          .current_dir(std::env::current_dir().unwrap());
     let list_deps_output = list_deps.output()
             .with_context(|| "Failed to run list_dependencies")?;
@@ -291,4 +228,93 @@ pub fn get_dependency_libs (executable : &Path,
 
     info!("Dependencies: {paths:?}");
     Ok(paths)
+}
+
+fn get_os_specifics<'a>(
+    executable: &'a Path,
+    include_directory: &'a Path,
+    env_map: &'a HashMap<String, String>,
+) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str, HashMap<String, String>), anyhow::Error> {
+    #[cfg(target_os = "windows")]
+    {
+        get_windows_specifics(executable, env_map)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        get_linux_specifics(executable, include_directory, env_map)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        get_macos_specifics(executable, env_map)
+    }
+}
+
+fn get_windows_specifics<'a>(
+    executable: &'a Path,
+    env_map: &'a HashMap<String, String>,
+) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str, HashMap<String, String>), anyhow::Error> {
+    let mut new_env_map: HashMap<String, String> = HashMap::new();
+    for (k, v) in env_map.iter() {
+        new_env_map.insert(k.to_uppercase(), v.clone());
+    }
+
+    let file_path = PathBuf::from(file!());
+    let src_path = std::fs::canonicalize(file_path)?;
+    let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
+    let paths_file = src_path.join("distribution/windows/shoop.dllpaths");
+    let paths_str = std::fs::read_to_string(&paths_file)
+        .with_context(|| format!("Cannot read {paths_file:?}"))?;
+    let executable_folder = executable.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
+    for relpath in paths_str.lines() {
+        let path = new_env_map.get("PATH").expect("No PATH env var found");
+        new_env_map.insert(String::from("PATH"), format!("{}/{};{}", executable_folder.to_str().unwrap(), relpath, path));
+    }
+    let command = String::from("powershell.exe");
+    let commandstr = include_str!("scripts/windows_deps.ps1").replace("$args[0]", executable.to_str().unwrap());
+    let args = vec![String::from("-Command"), commandstr];
+    let warning_patterns = vec![];
+    let skip_n_levels = 0;
+    let dylib_filename_part = ".dll";
+
+    Ok((command, args, warning_patterns, skip_n_levels, dylib_filename_part, new_env_map))
+}
+
+fn get_linux_specifics<'a>(
+    executable: &'a Path,
+    include_directory: &'a Path,
+    env_map: &'a HashMap<String, String>,
+) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str, HashMap<String, String>), anyhow::Error> {
+    let command = String::from("sh");
+    let commandstr = include_str!("scripts/linux_deps.sh");
+    let args = vec![
+        String::from("-c"),
+        String::from(commandstr),
+        String::from("dummy"),
+        String::from(executable.to_str().unwrap()),
+        String::from(include_directory.to_str().unwrap()),
+    ];
+    let warning_patterns = vec![String::from("not found")];
+    let skip_n_levels = 0;
+    let dylib_filename_part = ".so";
+
+    Ok((command, args, warning_patterns, skip_n_levels, dylib_filename_part, env_map.clone()))
+}
+
+fn get_macos_specifics<'a>(
+    executable: &Path,
+    env_map: &'a HashMap<String, String>,
+) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str, HashMap<String, String>), anyhow::Error> {
+    let command = String::from("sh");
+    let commandstr = include_str!("scripts/macos_deps.sh");
+    let args = vec![
+        String::from("-c"),
+        String::from(commandstr),
+        String::from("dummy"),
+        String::from(executable.to_str().unwrap()),
+    ];
+    let warning_patterns = vec![];
+    let skip_n_levels = 0;
+    let dylib_filename_part = "";
+
+    Ok((command, args, warning_patterns, skip_n_levels, dylib_filename_part, env_map.clone()))
 }

@@ -69,7 +69,7 @@ class LoopAudioChannel(LoopChannel):
     @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
     def get_data_list(self):
         raw = self.get_data_naive()
-        return [float(x) for x in raw.np_array]
+        return [float(x) for x in raw.data]
 
     @ShoopSlot(result='QVariant', thread_protection=ThreadProtectionType.AnyThread)
     def get_data(self):

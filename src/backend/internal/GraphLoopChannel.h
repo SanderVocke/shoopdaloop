@@ -26,6 +26,7 @@ public:
 
     void connect_output_port(shoop_shared_ptr<GraphPort> port, bool thread_safe=true);
     void connect_input_port(shoop_shared_ptr<GraphPort> port, bool thread_safe=true);
+    void disconnect_port(shoop_shared_ptr<GraphPort> port, bool thread_safe=true);
     void disconnect_output_port(shoop_shared_ptr<GraphPort> port, bool thread_safe=true);
     void disconnect_output_ports(bool thread_safe=true);
     void disconnect_input_port(shoop_shared_ptr<GraphPort> port, bool thread_safe=true);

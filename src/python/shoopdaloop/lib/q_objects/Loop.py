@@ -19,6 +19,9 @@ from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from .Logger import Logger
 
+from shoop_py_backend import Loop as BackendLoop
+from shoop_py_backend import LoopMode, ChannelMode, AudioChannel, MidiChannel, transition_multiple_loops
+
 import traceback
 
 # Wraps a back-end loop.
@@ -30,8 +33,8 @@ class Loop(FindParentBackend):
     def __init__(self, parent=None):
         super(Loop, self).__init__(parent)
         self._position = 0
-        self._mode = LoopMode.Unknown.value
-        self._next_mode = LoopMode.Unknown.value
+        self._mode = int(LoopMode.Unknown)
+        self._next_mode = int(LoopMode.Unknown)
         self._next_transition_delay = -1
         self._length = self._new_length = 0
         self._sync_source = None
@@ -238,17 +241,17 @@ class Loop(FindParentBackend):
         prev_display_midi_events_triggered = self._display_midi_events_triggered
 
         state = self._backend_loop.get_state()
-        self._mode = state.mode
+        self._mode = int(state.mode)
         self._length = state.length
         self._position = state.position
-        self._next_mode = (state.maybe_next_mode if state.maybe_next_mode != None else state.mode)
-        self._next_transition_delay = (state.maybe_next_delay if state.maybe_next_delay != None else -1)
-        self._display_peaks = [c._output_peak for c in [a for a in audio_chans if a._mode in [ChannelMode.Direct.value, ChannelMode.Wet.value]]]
+        self._next_mode = (int(state.maybe_next_mode) if state.maybe_next_mode != None else int(state.mode))
+        self._next_transition_delay = (state.maybe_next_mode_delay if state.maybe_next_mode_delay != None else -1)
+        self._display_peaks = [c._output_peak for c in [a for a in audio_chans if a._mode in [int(ChannelMode.Direct), int(ChannelMode.Wet)]]]
         self._display_midi_notes_active = (sum([c._n_notes_active for c in midi_chans]) if len(midi_chans) > 0 else 0)
         self._display_midi_events_triggered = (sum([c._n_events_triggered for c in midi_chans]) if len(midi_chans) > 0 else 0)
         
         if prev_mode != self._mode:
-            self.logger.debug(lambda: 'mode -> {}'.format(LoopMode(self._mode)))
+            self.logger.debug(lambda: 'mode -> {}'.format(shoop_py_backend.LoopMode(self._mode)))
             self.modeChangedUnsafe.emit(self._mode)
         if prev_length != self._length:
             self.logger.trace(lambda: 'length -> {}'.format(self._length))
@@ -257,7 +260,7 @@ class Loop(FindParentBackend):
             self.logger.trace(lambda: 'pos -> {}'.format(self._position))
             self.positionChangedUnsafe.emit(self._position)
         if prev_next_mode != self._next_mode:
-            self.logger.debug(lambda: 'next mode -> {}'.format(LoopMode(self._next_mode)))
+            self.logger.debug(lambda: 'next mode -> {}'.format(shoop_py_backend.LoopMode(self._next_mode)))
             self.nextModeChangedUnsafe.emit(self._next_mode)
         if prev_next_delay != self._next_transition_delay:
             self.logger.debug(lambda: 'next transition -> {}'.format(self._next_transition_delay))
@@ -304,7 +307,7 @@ class Loop(FindParentBackend):
         if self._initialized:
             if maybe_delay >= 0 and not self._sync_source:
                 self.logger.warning(lambda: "Synchronous transition requested but no sync loop set")
-            self._backend_loop.transition(LoopMode(mode), maybe_delay, maybe_align_to_sync_at)
+            self._backend_loop.transition(mode, maybe_delay, maybe_align_to_sync_at)
     
     @ShoopSlot(list, int, int, int)
     def transition_multiple(self, loops, mode, maybe_delay, maybe_align_to_sync_at):
@@ -313,7 +316,7 @@ class Loop(FindParentBackend):
     def transition_multiple_impl(self, loops, mode, maybe_delay, maybe_align_to_sync_at):
         if self._initialized:
             backend_loops = [l._backend_loop for l in loops]
-            BackendLoop.transition_multiple(backend_loops, LoopMode(mode), maybe_delay, maybe_align_to_sync_at)
+            transition_multiple_loops(backend_loops, mode, maybe_delay, maybe_align_to_sync_at)
     
     @ShoopSlot('QVariant', 'QVariant', 'QVariant', int)
     def adopt_ringbuffers(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
@@ -331,17 +334,17 @@ class Loop(FindParentBackend):
             for c in self.get_midi_channels():
                 c.clear()
     
-    @ShoopSlot(int, result=BackendLoopMidiChannel)
+    @ShoopSlot(int, result=AudioChannel)
     def add_audio_channel(self, mode):
         if self.initialized:
             self.logger.debug(lambda: 'add audio channel')
-            return self._backend_loop.add_audio_channel(ChannelMode(mode))
+            return self._backend_loop.add_audio_channel(mode)
     
-    @ShoopSlot(int, result=BackendLoopMidiChannel)
+    @ShoopSlot(int, result=MidiChannel)
     def add_midi_channel(self, mode):
         if self.initialized:
             self.logger.debug(lambda: 'add midi channel')
-            return self._backend_loop.add_midi_channel(ChannelMode(mode))
+            return self._backend_loop.add_midi_channel(mode)
     
     @ShoopSlot(list)
     def load_audio_data(self, sound_channels):
@@ -362,7 +365,6 @@ class Loop(FindParentBackend):
             self.logger.debug(lambda: 'close')
             if self._backend:
                 self._backend.unregisterBackendObject(self)
-            self._backend_loop.destroy()
             self._backend_loop = None
             self._initialized = False
             self.initializedChanged.emit(False)

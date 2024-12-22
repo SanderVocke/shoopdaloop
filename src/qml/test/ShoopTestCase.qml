@@ -150,9 +150,9 @@ PythonTestCase {
         verify(result, failstring)
     }
 
-    function verify_approx(a, b, do_print=true) {
+    function verify_approx(a, b, margin=0.001, do_print=true) {
         var result;
-        function compare (a,b) { return (a == b || (Math.abs(a - b) < Math.max(Math.abs(a),Math.abs(b)) / 1000.0)) }
+        function compare (a,b) { return (a == b || (Math.abs(a - b) < Math.max(Math.abs(a),Math.abs(b)) * margin)) }
         let failstring = `verify_approx failed`
         if (do_print) {
             failstring += ` (a = ${a}, b = ${b})`

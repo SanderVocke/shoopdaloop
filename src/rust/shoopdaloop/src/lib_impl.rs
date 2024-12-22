@@ -32,18 +32,24 @@ fn shoopdaloop_main_impl<'py>(
             sys.getattr("modules")?.set_item("shoop_rust",
                                               shoop_rust_py_module)?;
         }
+        {
+            let shoop_py_backend_module = crate::shoop_py_backend::create_py_module(py).unwrap();
+            sys.getattr("modules")?.set_item("shoop_py_backend",
+                                              shoop_py_backend_module)?;
+        }
 
         // Call main
         let shoop = PyModule::import_bound(py, "shoopdaloop")?;
         let result = shoop
             .getattr("main")?
-            .call0()?;
-
-        result.extract::<i32>()
-              .map_err(|e| {
-                e.print(py);
+            .call0()
+            .map_err(|e| {
+                e.print_and_set_sys_last_vars(py);
                 anyhow::anyhow!("Python error (details printed)")
-              })
+            });
+
+        result?.extract::<i32>()
+            .map_err(|e| anyhow::anyhow!("Python error: {:?}", e))
     })
 }
 
@@ -52,7 +58,7 @@ pub fn shoopdaloop_main(app_info : ShoopAppInfo) -> i32 {
     match shoopdaloop_main_impl(app_info) {
         Ok(r) => { return r; }
         Err(e) => {
-            eprintln!("Python error: {:?}\nBacktrace:\n{:?}", e, e.backtrace());
+            println!("Error: {:?}\nBacktrace:\n{:?}", e, e.backtrace());
             return 1;
         }
     }

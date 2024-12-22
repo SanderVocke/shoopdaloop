@@ -303,19 +303,23 @@ void AudioChannel<SampleT>::PROC_exec_cmd(ProcessingCommand cmd) {
         auto first = (n > 0) ? ((SampleT*)rc.src)[0] : 0.0f;
     }
 
+    float output_peak;
+
     switch (cmd.cmd_type) {
     case ProcessingCommandType::RawCopy:
         memcpy(rc.dst, rc.src, rc.sz);
         break;
     case ProcessingCommandType::AdditiveCopy:
+        output_peak = ma_output_peak.load();
         for (uint32_t i = 0; i < ac.n_elems; i++) {
             auto sample = ac.dst[i] + ac.src[i] * ac.multiplier;
             ac.dst[i] = sample;
             if (ac.update_absmax) {
-                ma_output_peak = std::max((float)ma_output_peak.load(),
+                output_peak = std::max(output_peak,
                                           (float)std::abs(sample));
             }
         }
+        ma_output_peak = output_peak;
         break;
     default:
         throw_error<std::runtime_error>("Unknown processing command");
