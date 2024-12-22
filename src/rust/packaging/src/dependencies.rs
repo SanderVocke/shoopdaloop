@@ -33,14 +33,12 @@ pub fn get_dependency_libs (executable : &Path,
     let includes : HashSet<&str> = includelist.lines().collect();
     let mut used_includes : HashSet<String> = HashSet::new();
     let ori_env_vars : Vec<(String, String)> = std::env::vars().collect();
-    let mut env_map : HashMap<String, String> = ori_env_vars.iter().cloned().collect();
-
-    let env_map_clone = env_map.clone();
-    let (command, args, warning_patterns, skip_n_levels, dylib_filename_part) = get_os_specifics(executable, include_directory, &mut env_map)?;
+    let env_map : HashMap<String, String> = ori_env_vars.iter().cloned().collect();
+    let (command, args, warning_patterns, skip_n_levels, dylib_filename_part, new_env_map) = get_os_specifics(executable, include_directory, &env_map)?;
     debug!("Running shell command for determining dependencies: {args:?}");
     let mut list_deps : &mut Command = &mut Command::new(&command);
     list_deps = list_deps.args(&args)
-                         .envs(env_map_clone)
+                         .envs(new_env_map.iter())
                          .current_dir(std::env::current_dir().unwrap());
     let list_deps_output = list_deps.output()
             .with_context(|| "Failed to run list_dependencies")?;
@@ -235,31 +233,30 @@ pub fn get_dependency_libs (executable : &Path,
 fn get_os_specifics<'a>(
     executable: &'a Path,
     include_directory: &'a Path,
-    env_map: &'a mut HashMap<String, String>,
-) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str), anyhow::Error> {
+    env_map: &'a HashMap<String, String>,
+) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str, HashMap<String, String>), anyhow::Error> {
     #[cfg(target_os = "windows")]
     {
         get_windows_specifics(executable, env_map)
     }
     #[cfg(target_os = "linux")]
     {
-        get_linux_specifics(executable, include_directory)
+        get_linux_specifics(executable, include_directory, env_map)
     }
     #[cfg(target_os = "macos")]
     {
-        get_macos_specifics(executable)
+        get_macos_specifics(executable, env_map)
     }
 }
 
 fn get_windows_specifics<'a>(
     executable: &'a Path,
-    env_map: &'a mut HashMap<String, String>,
-) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str), anyhow::Error> {
+    env_map: &'a HashMap<String, String>,
+) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str, HashMap<String, String>), anyhow::Error> {
     let mut new_env_map: HashMap<String, String> = HashMap::new();
     for (k, v) in env_map.iter() {
         new_env_map.insert(k.to_uppercase(), v.clone());
     }
-    *env_map = new_env_map;
 
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
@@ -269,8 +266,8 @@ fn get_windows_specifics<'a>(
         .with_context(|| format!("Cannot read {paths_file:?}"))?;
     let executable_folder = executable.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
     for relpath in paths_str.lines() {
-        let path = env_map.get("PATH").expect("No PATH env var found");
-        env_map.insert(String::from("PATH"), format!("{}/{};{}", executable_folder.to_str().unwrap(), relpath, path));
+        let path = new_env_map.get("PATH").expect("No PATH env var found");
+        new_env_map.insert(String::from("PATH"), format!("{}/{};{}", executable_folder.to_str().unwrap(), relpath, path));
     }
     let command = String::from("powershell.exe");
     let commandstr = include_str!("scripts/windows_deps.ps1").replace("$args[0]", executable.to_str().unwrap());
@@ -279,13 +276,14 @@ fn get_windows_specifics<'a>(
     let skip_n_levels = 0;
     let dylib_filename_part = ".dll";
 
-    Ok((command, args, warning_patterns, skip_n_levels, dylib_filename_part))
+    Ok((command, args, warning_patterns, skip_n_levels, dylib_filename_part, new_env_map))
 }
 
 fn get_linux_specifics<'a>(
     executable: &'a Path,
     include_directory: &'a Path,
-) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str), anyhow::Error> {
+    env_map: &'a HashMap<String, String>,
+) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str, HashMap<String, String>), anyhow::Error> {
     let command = String::from("sh");
     let commandstr = include_str!("scripts/linux_deps.sh");
     let args = vec![
@@ -299,12 +297,13 @@ fn get_linux_specifics<'a>(
     let skip_n_levels = 0;
     let dylib_filename_part = ".so";
 
-    Ok((command, args, warning_patterns, skip_n_levels, dylib_filename_part))
+    Ok((command, args, warning_patterns, skip_n_levels, dylib_filename_part, env_map.clone()))
 }
 
-fn get_macos_specifics(
+fn get_macos_specifics<'a>(
     executable: &Path,
-) -> Result<(String, Vec<String>, Vec<String>, usize, &str), anyhow::Error> {
+    env_map: &'a HashMap<String, String>,
+) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str, HashMap<String, String>), anyhow::Error> {
     let command = String::from("sh");
     let commandstr = include_str!("scripts/macos_deps.sh");
     let args = vec![
@@ -317,5 +316,5 @@ fn get_macos_specifics(
     let skip_n_levels = 0;
     let dylib_filename_part = "";
 
-    Ok((command, args, warning_patterns, skip_n_levels, dylib_filename_part))
+    Ok((command, args, warning_patterns, skip_n_levels, dylib_filename_part, env_map.clone()))
 }
