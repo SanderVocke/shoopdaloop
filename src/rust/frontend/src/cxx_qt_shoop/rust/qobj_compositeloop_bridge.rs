@@ -55,6 +55,8 @@ pub mod ffi {
         #[qproperty(i32, position)]
         type CompositeLoop = super::CompositeLoopRust;
 
+        pub fn initialize_impl(self : Pin<&mut CompositeLoop>);
+
         #[inherit]
         #[qsignal]
         unsafe fn parent_changed(self : Pin<&mut CompositeLoop>, parent : *mut QQuickItem);
