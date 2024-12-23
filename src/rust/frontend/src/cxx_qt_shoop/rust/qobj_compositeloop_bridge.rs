@@ -58,32 +58,6 @@ pub mod ffi {
         #[qsignal]
         fn cycled(self : Pin<&mut CompositeLoop>, cycle_nr: i32);
 
-        #[qsignal]
-        fn iteration_changed(self: Pin<&mut CompositeLoop>, iteration: i32);
-
-        #[qsignal]
-        fn next_mode_changed(self: Pin<&mut CompositeLoop>, next_mode: i32);
-
-        #[qsignal]
-        fn next_transition_delay_changed(self: Pin<&mut CompositeLoop>, next_transition_delay: i32);
-
-        #[qsignal]
-        fn n_cycles_changed(self: Pin<&mut CompositeLoop>, n_cycles: i32);
-
-        #[qsignal]
-        fn length_changed(self: Pin<&mut CompositeLoop>, length: i32);
-
-        #[qsignal]
-        fn kind_changed(self: Pin<&mut CompositeLoop>, kind: &QString);
-
-        #[qsignal]
-        fn sync_position_changed(self: Pin<&mut CompositeLoop>, sync_position: i32);
-
-        #[qsignal]
-        fn sync_length_changed(self: Pin<&mut CompositeLoop>, sync_length: i32);
-
-        #[qsignal]
-        fn position_changed(self: Pin<&mut CompositeLoop>, position: i32);
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=(*mut QQuickItem,)> for CompositeLoop {}
