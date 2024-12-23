@@ -32,18 +32,18 @@ pub mod ffi {
         #[qproperty(*mut QObject, sync_loop)]
         #[qproperty(QVariant, schedule)]
         #[qproperty(QVariant, running_loops)]
-        #[qproperty(int, iteration)]
+        #[qproperty(i32, iteration)]
         #[qproperty(bool, play_after_record)]
         #[qproperty(bool, sync_mode_active)]
-        #[qproperty(int, mode)]
-        #[qproperty(int, next_mode)]
-        #[qproperty(int, next_transition_delay)]
-        #[qproperty(int, n_cycles)]
-        #[qproperty(int, length)]
-        #[qproperty(str, kind)]
-        #[qproperty(int, sync_position)]
-        #[qproperty(int, sync_length)]
-        #[qproperty(int, position)]
+        #[qproperty(i32, mode)]
+        #[qproperty(i32, next_mode)]
+        #[qproperty(i32, next_transition_delay)]
+        #[qproperty(i32, n_cycles)]
+        #[qproperty(i32, length)]
+        #[qproperty(QString, kind)]
+        #[qproperty(i32, sync_position)]
+        #[qproperty(i32, sync_length)]
+        #[qproperty(i32, position)]
         type CompositeLoop = super::CompositeLoopRust;
 
         pub fn initialize_impl(self : Pin<&mut CompositeLoop>);
@@ -59,22 +59,7 @@ pub mod ffi {
         fn cycled(self : Pin<&mut CompositeLoop>, cycle_nr: i32);
 
         #[qsignal]
-        fn schedule_changed(self: Pin<&mut CompositeLoop>, schedule: QVariant);
-
-        #[qsignal]
-        fn running_loops_changed(self: Pin<&mut CompositeLoop>, running_loops: QVariant);
-
-        #[qsignal]
         fn iteration_changed(self: Pin<&mut CompositeLoop>, iteration: i32);
-
-        #[qsignal]
-        fn play_after_record_changed(self: Pin<&mut CompositeLoop>, play_after_record: bool);
-
-        #[qsignal]
-        fn sync_mode_active_changed(self: Pin<&mut CompositeLoop>, sync_mode_active: bool);
-
-        #[qsignal]
-        fn mode_changed(self: Pin<&mut CompositeLoop>, mode: i32);
 
         #[qsignal]
         fn next_mode_changed(self: Pin<&mut CompositeLoop>, next_mode: i32);
@@ -89,7 +74,7 @@ pub mod ffi {
         fn length_changed(self: Pin<&mut CompositeLoop>, length: i32);
 
         #[qsignal]
-        fn kind_changed(self: Pin<&mut CompositeLoop>, kind: &str);
+        fn kind_changed(self: Pin<&mut CompositeLoop>, kind: &QString);
 
         #[qsignal]
         fn sync_position_changed(self: Pin<&mut CompositeLoop>, sync_position: i32);
