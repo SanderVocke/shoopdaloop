@@ -8,11 +8,20 @@ pub mod ffi {
         type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
         type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
 
+        #[rust_name="qquickitem_from_ref_compositeloop"]
+        unsafe fn qquickitemFromRef(obj : &CompositeLoop) -> &QQuickItem;
+
+        #[rust_name="qquickitem_from_ptr_compositeloop"]
+        unsafe fn qquickitemFromPtr(obj : *mut CompositeLoop) -> *mut QQuickItem;
+
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
+
+        include!("cxx-qt-lib/qmap.h");
+        type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
@@ -46,11 +55,6 @@ pub mod ffi {
         #[qproperty(i32, position)]
         type CompositeLoop = super::CompositeLoopRust;
 
-        pub fn initialize_impl(self : Pin<&mut CompositeLoop>);
-
-        #[qinvokable]
-        pub fn update(self : Pin<&mut CompositeLoop>);
-
         #[inherit]
         #[qsignal]
         unsafe fn parent_changed(self : Pin<&mut CompositeLoop>, parent : *mut QQuickItem);
@@ -83,7 +87,7 @@ pub struct CompositeLoopRust {
     pub next_transition_delay: i32,
     pub n_cycles: i32,
     pub length: i32,
-    pub kind: String,
+    pub kind: QString,
     pub sync_position: i32,
     pub sync_length: i32,
     pub position: i32,
@@ -103,7 +107,7 @@ impl Default for CompositeLoopRust {
             next_transition_delay: -1,
             n_cycles: 0,
             length: 0,
-            kind: String::from("regular"),
+            kind: QString::from("regular"),
             sync_position: 0,
             sync_length: 0,
             position: 0,
@@ -113,10 +117,10 @@ impl Default for CompositeLoopRust {
 
 impl crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem for CompositeLoop {
     unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {
-        qquickitem_from_ptr_autoconnect(self as *mut Self)
+        qquickitem_from_ptr_compositeloop(self as *mut Self)
     }
     unsafe fn ref_qquickitem_ptr(&self) -> *const QQuickItem {
-        qquickitem_from_ref_autoconnect(self) as *const QQuickItem
+        qquickitem_from_ref_compositeloop(self) as *const QQuickItem
     }
 }
 
