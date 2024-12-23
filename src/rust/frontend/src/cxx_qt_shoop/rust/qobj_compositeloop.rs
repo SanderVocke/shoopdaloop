@@ -41,7 +41,40 @@ impl CompositeLoop {
     }
 
     pub unsafe fn initialize_impl_with_result(mut self : Pin<&mut CompositeLoop>) -> Result<(), anyhow::Error> {
-        // Implement the logic to initialize
+        // Initialize properties
+        self.as_mut().set_schedule(QVariant::default());
+        self.as_mut().set_running_loops(QVariant::default());
+        self.as_mut().set_iteration(0);
+        self.as_mut().set_play_after_record(false);
+        self.as_mut().set_sync_mode_active(false);
+        self.as_mut().set_mode(0);
+        self.as_mut().set_next_mode(0);
+        self.as_mut().set_next_transition_delay(-1);
+        self.as_mut().set_n_cycles(0);
+        self.as_mut().set_length(0);
+        self.as_mut().set_kind(QString::from("regular"));
+        self.as_mut().set_sync_position(0);
+        self.as_mut().set_sync_length(0);
+        self.as_mut().set_position(0);
+
+        // Connect signals
+        self.as_mut().on_schedule_changed(|o| {
+            o.update_length();
+        }).release();
+
+        self.as_mut().on_sync_loop_changed(|o| {
+            o.update_sync_position();
+            o.update_sync_length();
+        }).release();
+
+        self.as_mut().on_iteration_changed(|o| {
+            o.update_position();
+        }).release();
+
+        self.as_mut().on_mode_changed(|o| {
+            o.update_position();
+        }).release();
+
         Ok(())
     }
 
