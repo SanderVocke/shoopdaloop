@@ -151,6 +151,10 @@ jobs:
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
+          - name: release_debian_appimage
+            python: python3
+            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+            package: shoopdaloop.*.release-linux-x64.AppImage
           # - name: coverage_debian_bullseye
           #   python: python3
           #   container: docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
