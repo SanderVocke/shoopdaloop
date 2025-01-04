@@ -69,10 +69,10 @@ pub mod ffi {
         pub fn initialize_impl(self: Pin<&mut Loop>);
 
         #[qinvokable]
-        pub fn updateOnNonGuiThread(self: Pin<&mut Loop>);
+        pub fn update_on_non_gui_thread(self: Pin<&mut Loop>);
 
         #[qinvokable]
-        pub fn updateOnGuiThread(self: Pin<&mut Loop>);
+        pub fn update_on_gui_thread(self: Pin<&mut Loop>);
 
         #[qsignal]
         fn cycled(self: Pin<&mut Loop>, cycle_nr: i32);
