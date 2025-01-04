@@ -13,9 +13,14 @@ impl Loop {
         println!("Initializing Loop");
     }
 
-    pub fn update(self: Pin<&mut Loop>) {
+    pub fn updateOnNonGuiThread(self: Pin<&mut Loop>) {
         // Stub implementation
-        println!("Updating Loop");
+        println!("Updating Loop on Non-GUI Thread");
+    }
+
+    pub fn updateOnGuiThread(self: Pin<&mut Loop>) {
+        // Stub implementation
+        println!("Updating Loop on GUI Thread");
     }
 }
 
