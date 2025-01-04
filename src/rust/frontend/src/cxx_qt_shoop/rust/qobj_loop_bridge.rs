@@ -37,6 +37,9 @@ pub mod ffi {
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
 
+        include!("cxx-qt-lib/qmap.h");
+        type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
+
         include!("cxx-qt-lib-shoop/invoke.h");
         #[rust_name = "invoke_with_return_variantmap"]
         unsafe fn invoke_with_return(obj: *mut QObject, method: String) -> Result<QMap_QString_QVariant>;
@@ -51,15 +54,15 @@ pub mod ffi {
         #[base = QQuickItem]
         #[qproperty(*mut QObject, backend)]
         #[qproperty(bool, initialized)]
-        #[qproperty(int, mode)]
-        #[qproperty(int, length)]
-        #[qproperty(int, position)]
-        #[qproperty(int, next_mode)]
-        #[qproperty(int, next_transition_delay)]
+        #[qproperty(i32, mode)]
+        #[qproperty(i32, length)]
+        #[qproperty(i32, position)]
+        #[qproperty(i32, next_mode)]
+        #[qproperty(i32, next_transition_delay)]
         #[qproperty(QVariant, sync_source)]
         #[qproperty(QVariant, display_peaks)]
-        #[qproperty(int, display_midi_notes_active)]
-        #[qproperty(int, display_midi_events_triggered)]
+        #[qproperty(i32, display_midi_notes_active)]
+        #[qproperty(i32, display_midi_events_triggered)]
         #[qproperty(QString, instance_identifier)]
         type Loop = super::LoopRust;
 

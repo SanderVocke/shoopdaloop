@@ -42,6 +42,7 @@ impl CompositeLoop {
 
     pub unsafe fn initialize_impl_with_result(mut self : Pin<&mut CompositeLoop>) -> Result<(), anyhow::Error> {
         // Implement initialization
+        Ok(())
     }
 
     pub fn initialize_impl(self : Pin<&mut CompositeLoop>) {
