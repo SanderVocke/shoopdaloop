@@ -17,16 +17,6 @@ impl Loop {
         // Stub implementation
         println!("Updating Loop");
     }
-
-    pub fn cycled(self: Pin<&mut Loop>, cycle_nr: i32) {
-        // Stub implementation
-        println!("Cycled: {}", cycle_nr);
-    }
-
-    pub fn cycled_unsafe(self: Pin<&mut Loop>, cycle_nr: i32) {
-        // Stub implementation
-        println!("Cycled Unsafe: {}", cycle_nr);
-    }
 }
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {
