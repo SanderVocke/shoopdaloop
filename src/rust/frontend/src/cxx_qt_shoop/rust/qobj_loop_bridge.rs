@@ -71,6 +71,7 @@ pub mod ffi {
         #[qinvokable]
         pub fn updateOnNonGuiThread(self: Pin<&mut Loop>);
 
+        #[qinvokable]
         pub fn updateOnGuiThread(self: Pin<&mut Loop>);
 
         #[qsignal]
