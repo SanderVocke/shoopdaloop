@@ -13,12 +13,12 @@ impl Loop {
         println!("Initializing Loop");
     }
 
-    pub fn updateOnNonGuiThread(self: Pin<&mut Loop>) {
+    pub fn update_on_non_gui_thread(self: Pin<&mut Loop>) {
         // Stub implementation
         println!("Updating Loop on Non-GUI Thread");
     }
 
-    pub fn updateOnGuiThread(self: Pin<&mut Loop>) {
+    pub fn update_on_gui_thread(self: Pin<&mut Loop>) {
         // Stub implementation
         println!("Updating Loop on GUI Thread");
     }
