@@ -79,6 +79,30 @@ pub mod ffi {
 
         #[qsignal]
         fn cycled_unsafe(self: Pin<&mut Loop>, cycle_nr: i32);
+
+        #[qsignal]
+        fn mode_changed_unsafe(self: Pin<&mut Loop>, mode: i32);
+
+        #[qsignal]
+        fn next_mode_changed_unsafe(self: Pin<&mut Loop>, next_mode: i32);
+
+        #[qsignal]
+        fn length_changed_unsafe(self: Pin<&mut Loop>, length: i32);
+
+        #[qsignal]
+        fn position_changed_unsafe(self: Pin<&mut Loop>, position: i32);
+
+        #[qsignal]
+        fn next_transition_delay_changed_unsafe(self: Pin<&mut Loop>, next_transition_delay: i32);
+
+        #[qsignal]
+        fn display_peaks_changed_unsafe(self: Pin<&mut Loop>, display_peaks: &QVariant);
+
+        #[qsignal]
+        fn display_midi_notes_active_changed_unsafe(self: Pin<&mut Loop>, display_midi_notes_active: i32);
+
+        #[qsignal]
+        fn display_midi_events_triggered_changed_unsafe(self: Pin<&mut Loop>, display_midi_events_triggered: i32);
     }
 
     unsafe extern "C++" {
