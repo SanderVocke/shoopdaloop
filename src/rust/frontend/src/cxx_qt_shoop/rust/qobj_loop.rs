@@ -37,7 +37,7 @@ impl Loop {
         let prev_display_midi_notes_active = self.display_midi_notes_active();
         let prev_display_midi_events_triggered = self.display_midi_events_triggered();
 
-        let state = self.backend_loop().get_state();
+        let state = self.backend_loop.unwrap().get_state();
         self.set_mode(state.get("mode").unwrap().to_int());
         self.set_length(state.get("length").unwrap().to_int());
         self.set_position(state.get("position").unwrap().to_int());
