@@ -1,5 +1,4 @@
 use cxx_qt_lib::QVariant;
-use crate::cxx_qt_shoop::qobj_compositeloop_bridge::CompositeLoopRust;
 
 pub use crate::cxx_qt_shoop::qobj_compositeloop_bridge::CompositeLoop;
 
