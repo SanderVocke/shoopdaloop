@@ -31,7 +31,6 @@
 */libfribidi.so*
 */libgcc_s.so*
 */libgdk-*.so*
-*/libgdk_pixbuf-*.so*
 */libgio-*.so*
 */libglib-*.so*
 */libgmodule*.so*
