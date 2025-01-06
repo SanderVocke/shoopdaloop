@@ -1,11 +1,3 @@
-use cxx_qt::CxxQtType;
-use crate::cxx_qt_shoop::qobj_loop_bridge::Loop;
-use crate::cxx_qt_shoop::qobj_loop_bridge::constants::*;
-use crate::cxx_qt_shoop::qobj_loop_bridge::ffi::*;
-use std::pin::Pin;
-use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem, qquickitem_to_qobject_mut};
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
-use crate::cxx_qt_lib_shoop::{qobject, qtimer};
 
 impl Loop {
     pub fn initialize_impl(self: Pin<&mut Loop>) {
