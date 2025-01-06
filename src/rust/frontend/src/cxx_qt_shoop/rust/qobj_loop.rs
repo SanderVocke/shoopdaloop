@@ -37,12 +37,12 @@ impl Loop {
         let prev_display_midi_notes_active = self.display_midi_notes_active();
         let prev_display_midi_events_triggered = self.display_midi_events_triggered();
 
-        let state = self.backend_loop.unwrap().get_state();
-        self.set_mode(state.get("mode").unwrap().to_int());
-        self.set_length(state.get("length").unwrap().to_int());
-        self.set_position(state.get("position").unwrap().to_int());
-        self.set_next_mode(state.get("maybe_next_mode").unwrap_or(&state.get("mode").unwrap()).to_int());
-        self.set_next_transition_delay(state.get("maybe_next_mode_delay").unwrap_or(&QVariant::from(-1)).to_int());
+        let state = self.backend_loop.unwrap().get_state().unwrap();
+        self.set_mode(state.mode as i32);
+        self.set_length(state.length as i32);
+        self.set_position(state.position as i32);
+        self.set_next_mode(state.maybe_next_mode.unwrap_or(state.mode) as i32);
+        self.set_next_transition_delay(state.maybe_next_mode_delay.unwrap_or(-1) as i32);
         self.set_display_peaks(audio_chans.iter().map(|c| c.output_peak()).collect());
         self.set_display_midi_notes_active(midi_chans.iter().map(|c| c.n_notes_active()).sum());
         self.set_display_midi_events_triggered(midi_chans.iter().map(|c| c.n_events_triggered()).sum());
