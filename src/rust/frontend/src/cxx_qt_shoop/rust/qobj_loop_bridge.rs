@@ -1,4 +1,5 @@
 use common::logging::macros::*;
+use backend_bindings::Loop as BackendLoop;
 shoop_log_unit!("Frontend.Loop");
 
 pub mod constants {
@@ -167,6 +168,9 @@ pub struct LoopRust {
     pub display_midi_notes_active: i32,
     pub display_midi_events_triggered: i32,
     pub instance_identifier: QString,
+
+    // Rust members
+    pub backend_loop : Option<BackendLoop>,
 }
 
 impl Default for LoopRust {
@@ -184,6 +188,7 @@ impl Default for LoopRust {
             display_midi_notes_active: 0,
             display_midi_events_triggered: 0,
             instance_identifier: QString::default(),
+            backend_loop: None,
         }
     }
 }
