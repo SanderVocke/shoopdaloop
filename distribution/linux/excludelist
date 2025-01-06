@@ -19,3 +19,4 @@
 */libstdc++.so*
 */libm.so*
 */libdrm.so*
+*/libgdk_pixbuf-*.so*
