@@ -187,7 +187,7 @@ Item {
             height: 40
             width: 30
             onClicked: {
-                var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget && o.mode !== ShoopConstants.LoopMode.Stopped)
+                var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.mode !== ShoopConstants.LoopMode.Stopped)
                 loops[0].transition_loops(
                     loops,
                     ShoopConstants.LoopMode.Stopped,
@@ -242,7 +242,7 @@ Item {
                     onClicked: {
                         confirm_clear_dialog.text = 'Clear ALL loop recordings?'
                         confirm_clear_dialog.action = () => {
-                            var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget && o.maybe_backend_loop)
+                            var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.maybe_backend_loop)
                             loops.forEach(l => l.clear())
                         }
                         confirm_clear_dialog.open()
@@ -253,7 +253,7 @@ Item {
                     onClicked: {
                         confirm_clear_dialog.text = 'Clear ALL loop recordings except sync?'
                         confirm_clear_dialog.action = () => {
-                            var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget && o.maybe_backend_loop && !o.is_sync)
+                            var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.maybe_backend_loop && !o.is_sync)
                             loops.forEach(l => l.clear())
                         }
                         confirm_clear_dialog.open()
@@ -264,7 +264,7 @@ Item {
                     onClicked: {
                         confirm_clear_dialog.text = 'Clear ALL loops?'
                         confirm_clear_dialog.action = () => {
-                            var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget)
+                            var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget")
                             loops.forEach(l => l.clear())
                         }
                         confirm_clear_dialog.open()
@@ -275,7 +275,7 @@ Item {
                     onClicked: {
                         confirm_clear_dialog.text = 'Clear ALL loops except sync?'
                         confirm_clear_dialog.action = () => {
-                            var loops = registries.objects_registry.select_values(o => o instanceof LoopWidget && !o.is_sync)
+                            var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && !o.is_sync)
                             loops.forEach(l => l.clear())
                         }
                         confirm_clear_dialog.open()

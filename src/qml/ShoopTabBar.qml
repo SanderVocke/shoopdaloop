@@ -7,7 +7,7 @@ Row {
     height: childrenRect.height
     width: childrenRect.width
 
-    property var buttons : Array.from(children).filter(c => c instanceof ShoopTabButton)
+    property var buttons : Array.from(children).filter(c => c.objectName === "Qml.ShoopTabButton")
     readonly property int currentIndex: {
         for (var i=0; i<buttons.length; i++) {
             if (selected_button_representative === buttons[i].representative) { return i; }

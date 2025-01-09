@@ -9,6 +9,7 @@ import 'js/mode_helpers.js' as ModeHelpers
 
 Item {
     id: root
+    objectName: "Qml.CompositeLoop"
 
     // Store the current playback iteration.
     onIterationChanged: root.logger.trace(() => `iteration -> ${iteration}`)
@@ -219,7 +220,7 @@ Item {
                     }
                     // If our target is a CompositeLoop, it does not directly inherit a Python loop.
                     // Instead it will be stored in its py_loop subobject.
-                    if (loop instanceof CompositeLoop) {
+                    if (loop.objectName === "Qml.CompositeLoop") {
                         loop = loop.py_loop
                     }
 
