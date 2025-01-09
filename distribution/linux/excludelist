@@ -20,3 +20,4 @@
 */libm.so*
 */libdrm.so*
 */libgdk_pixbuf-*.so*
+*/libgbm*.so*
