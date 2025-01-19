@@ -27,7 +27,7 @@ runs:
     id: install-boost
     with:
       boost_version: 1.86.0
-      platform_version: 12
+      platform_version: ${{ runner.os | replace('macos-', '') }}
   - name: Install PyEnv
     shell: wrap-shell {0}
     run: |
