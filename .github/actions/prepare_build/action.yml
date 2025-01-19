@@ -37,15 +37,15 @@ runs:
     if: always() && inputs.variant == 'windows'
     with:
       cache: true
-      version: 6.6.3
-      arch: win64_msvc2019_64
+      version: 6.8.1
+      arch: win64_msvc2022_64
       setup-python: false
   - name: Install Qt
     uses: jurplel/install-qt-action@v4
     if: always() && inputs.variant != 'windows'
     with:
       cache: true
-      version: 6.6.3
+      version: 6.8.1
       install-deps: false
       setup-python: false
   - name: Env for Qt

@@ -4,6 +4,7 @@ import QtQuick.Controls.Material 6.6
 
 Button {
     id: root
+    objectName: "Qml.ShoopTabButton"
 
     property var background_color : selected ? "#555555" : "#333333"
     property var tabbar : parent

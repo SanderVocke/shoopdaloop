@@ -147,9 +147,9 @@ def run_qml_tests(args):
     maybe_failures_string = ''
     if failed > 0:
         maybe_failures_string = '''
+        Failed cases: {}
+        '''.format(json.dumps(failed_cases, indent=2))
 
-    Failed cases: {}
-    '''.format(json.dumps(failed_cases, indent=2))
     maybe_skip_string = ''
     if skipped > 0:
         maybe_skip_string = '''
@@ -176,6 +176,8 @@ def run_qml_tests(args):
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGABRT, signal_handler)
+    
+    print(exit_text)
 
     if args.junit_xml:
         root = minidom.Document()

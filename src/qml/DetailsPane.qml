@@ -99,7 +99,7 @@ Item {
                         width: stack.width
                         height: childrenRect.height
 
-                        property var maybe_loop : details_item.mapped_item.item && details_item.mapped_item.item instanceof LoopWidget
+                        property var maybe_loop : details_item.mapped_item.item && details_item.mapped_item.item.objectName === "Qml.LoopWidget"
                         property var maybe_loop_with_backend :
                             (maybe_loop && details_item.mapped_item.item.maybe_backend_loop) ?
                             details_item.mapped_item.item : null

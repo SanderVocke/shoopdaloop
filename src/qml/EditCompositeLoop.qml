@@ -232,7 +232,7 @@ Item {
             anchors.fill: tracks_column
 
             Mapper {
-                model : cycle_header.children.filter(c => !(c instanceof Repeater))
+                model : cycle_header.children.filter(c => !(c.objectName === "Repeater"))
 
                 DropArea {
                     property int index
@@ -296,6 +296,7 @@ Item {
                
                 Repeater {
                     model : parent.render_n_cycles
+                    objectName: "Repeater"
 
                     Rectangle {
                         property int cycle : cycle_header.first_cycle_rendered + index
@@ -857,6 +858,7 @@ Item {
 
                         Repeater {
                             id: swimlanes
+                            objectName: "Repeater"
                             model: track_root.n_swimlanes
 
                             // background rectangle for the entire swimlane.
@@ -1042,6 +1044,7 @@ Item {
                                                 
                                                 Repeater {
                                                     model: mode_button.model
+                                                    objectName: "Repeater"
 
                                                     ShoopMenuItem {
                                                         height: 20

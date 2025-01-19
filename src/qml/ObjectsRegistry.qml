@@ -4,8 +4,8 @@ Registry {
     property var loop_widgets: []
     property var track_widgets: []
 
-    function update_loop_widgets() { loop_widgets = select(e => (e instanceof LoopWidget)) }
-    function update_track_widgets() { track_widgets = select(e => (e instanceof TrackWidget)) }
+    function update_loop_widgets() { loop_widgets = select(e => (e.objectName === "Qml.LoopWidget")) }
+    function update_track_widgets() { track_widgets = select(e => (e.objectName === "Qml.TrackWidget")) }
 
     Component.onCompleted: {
         update_loop_widgets()

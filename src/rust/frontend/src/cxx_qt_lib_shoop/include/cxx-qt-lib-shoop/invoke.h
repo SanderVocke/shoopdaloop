@@ -20,7 +20,7 @@ RetVal invoke_with_return(Obj * object,
     }
     QMetaMethod _method = meta->method(index);
     RetVal ret;
-    QMetaMethodReturnArgument _ret{_method.returnMetaType().iface(), nullptr, std::addressof(ret)};
+    QTemplatedMetaMethodReturnArgument<RetVal> _ret{_method.returnMetaType().iface(), nullptr, std::addressof(ret)};
     _method.invoke(qobj, Qt::DirectConnection, _ret);
     return ret;
 }
@@ -42,7 +42,7 @@ RetVal invoke_one_arg_with_return(
     }
     QMetaMethod _method = meta->method(index);
     RetVal ret;
-    QMetaMethodReturnArgument _ret{_method.returnMetaType().iface(), nullptr, std::addressof(ret)};
+    QTemplatedMetaMethodReturnArgument<RetVal> _ret{_method.returnMetaType().iface(), nullptr, std::addressof(ret)};
     _method.invoke(qobj, Qt::DirectConnection, _ret, arg1);
     return ret;
 }
@@ -64,7 +64,7 @@ RetVal invoke_two_args_with_return(
     }
     QMetaMethod _method = meta->method(index);
     RetVal ret;
-    QMetaMethodReturnArgument _ret{_method.returnMetaType().iface(), nullptr, std::addressof(ret)};
+    QTemplatedMetaMethodReturnArgument<RetVal> _ret{_method.returnMetaType().iface(), nullptr, std::addressof(ret)};
     _method.invoke(qobj, Qt::DirectConnection, _ret,
         arg1,
         arg2
@@ -89,7 +89,7 @@ RetVal invoke_three_args_with_return(
     }
     QMetaMethod _method = meta->method(index);
     RetVal ret;
-    QMetaMethodReturnArgument _ret{_method.returnMetaType().iface(), nullptr, std::addressof(ret)};
+    QTemplatedMetaMethodReturnArgument<RetVal> _ret{_method.returnMetaType().iface(), nullptr, std::addressof(ret)};
     _method.invoke(qobj, Qt::DirectConnection, _ret,
         arg1,
         arg2,
