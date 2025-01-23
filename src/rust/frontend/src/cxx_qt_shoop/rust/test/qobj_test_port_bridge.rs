@@ -61,7 +61,7 @@ pub mod ffi {
         pub fn connect_external_port(self: Pin<&mut TestPort>, name : QString) -> bool;
 
         #[qsignal]
-        pub fn external_connection_made(self: Pin<&mut TestPort>, port : QString);
+        pub fn externalConnectionMade(self: Pin<&mut TestPort>, port : QString);
     }
 
     unsafe extern "C++" {
