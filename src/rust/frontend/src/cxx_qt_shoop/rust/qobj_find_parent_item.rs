@@ -234,7 +234,7 @@ mod tests {
         unsafe {
             let mut parent = qobj_generic_test_item::make_unique();
             let parent_ptr = parent.as_mut().unwrap().pin_mut_qquickitem_ptr();
-            parent.as_mut().unwrap().set_bool_prop(true);
+            parent.as_mut().unwrap().set_boolProp(true);
 
             obj.as_mut().unwrap().set_itemBoolPropertyToCheck(QString::from("boolProp"));
             obj.as_mut().unwrap().set_parent_item(parent_ptr);
@@ -264,13 +264,13 @@ mod tests {
             assert!(obj.foundItemWithTrueCheckedProperty().is_null());
             assert_eq!(*obj.foundItemHasTrueCheckedProperty(), false);
 
-            parent.as_mut().unwrap().set_bool_prop(true);
+            parent.as_mut().unwrap().set_boolProp(true);
 
             assert_eq!(*obj.foundItem(), parent_ptr);
             assert_eq!(*obj.foundItemWithTrueCheckedProperty(), parent_ptr);
             assert_eq!(*obj.foundItemHasTrueCheckedProperty(), true);
 
-            parent.as_mut().unwrap().set_bool_prop(false);
+            parent.as_mut().unwrap().set_boolProp(false);
 
             assert_eq!(*obj.foundItem(), parent_ptr);
             assert!(obj.foundItemWithTrueCheckedProperty().is_null());

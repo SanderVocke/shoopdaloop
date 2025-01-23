@@ -234,7 +234,7 @@ mod tests {
                 }
                 "#).expect("Could not set connections state");
             port.pin_mut().set_direction(PortDirection::Input as i32);
-            port.pin_mut().set_data_type(PortDataType::Audio as i32);
+            port.pin_mut().set_dataType(PortDataType::Audio as i32);
             port.pin_mut().set_initialized(true);
             port.pin_mut().set_name(QString::from("my_port"));
 
@@ -266,7 +266,7 @@ mod tests {
             }
 
             obj.as_mut().unwrap().set_connectToPortRegex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
+            obj.as_mut().unwrap().set_internalPort(port_ptr);
             obj.as_mut().unwrap().set_parent_item(backend_ptr);
 
             assert_eq!(autoconnect_connected_spy.as_ref().unwrap().count().expect("Could not get count"), 1);
@@ -286,7 +286,7 @@ mod tests {
                 }
                 "#).expect("Could not set connections state");
             port.pin_mut().set_direction(PortDirection::Input as i32);
-            port.pin_mut().set_data_type(PortDataType::Audio as i32);
+            port.pin_mut().set_dataType(PortDataType::Audio as i32);
             port.pin_mut().set_initialized(true);
             port.pin_mut().set_name(QString::from("my_port"));
 
@@ -318,7 +318,7 @@ mod tests {
             }
 
             obj.as_mut().unwrap().set_connectToPortRegex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
+            obj.as_mut().unwrap().set_internalPort(port_ptr);
             obj.as_mut().unwrap().set_parent_item(backend_ptr);
 
             assert_eq!(autoconnect_connected_spy.as_ref().unwrap().count().expect("Could not get count"), 0);
@@ -338,7 +338,7 @@ mod tests {
                 }
                 "#).expect("Could not set connections state");
             port.pin_mut().set_direction(PortDirection::Input as i32);
-            port.pin_mut().set_data_type(PortDataType::Midi as i32);
+            port.pin_mut().set_dataType(PortDataType::Midi as i32);
             port.pin_mut().set_initialized(true);
             port.pin_mut().set_name(QString::from("my_port"));
 
@@ -370,7 +370,7 @@ mod tests {
             }
 
             obj.as_mut().unwrap().set_connectToPortRegex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
+            obj.as_mut().unwrap().set_internalPort(port_ptr);
             obj.as_mut().unwrap().set_parent_item(backend_ptr);
 
             assert_eq!(autoconnect_connected_spy.as_ref().unwrap().count().expect("Could not get count"), 0);
@@ -390,7 +390,7 @@ mod tests {
                 }
                 "#).expect("Could not set connections state");
             port.pin_mut().set_direction(PortDirection::Output as i32);
-            port.pin_mut().set_data_type(PortDataType::Audio as i32);
+            port.pin_mut().set_dataType(PortDataType::Audio as i32);
             port.pin_mut().set_initialized(true);
             port.pin_mut().set_name(QString::from("my_port"));
 
@@ -422,7 +422,7 @@ mod tests {
             }
 
             obj.as_mut().unwrap().set_connectToPortRegex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
+            obj.as_mut().unwrap().set_internalPort(port_ptr);
             obj.as_mut().unwrap().set_parent_item(backend_ptr);
 
             assert_eq!(autoconnect_connected_spy.as_ref().unwrap().count().expect("Could not get count"), 0);
@@ -440,7 +440,7 @@ mod tests {
                 {}
                 "#).expect("Could not set connections state");
             port.pin_mut().set_direction(PortDirection::Input as i32);
-            port.pin_mut().set_data_type(PortDataType::Audio as i32);
+            port.pin_mut().set_dataType(PortDataType::Audio as i32);
             port.pin_mut().set_initialized(true);
             port.pin_mut().set_name(QString::from("my_port"));
 
@@ -464,7 +464,7 @@ mod tests {
             }
 
             obj.as_mut().unwrap().set_connectToPortRegex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
+            obj.as_mut().unwrap().set_internalPort(port_ptr);
             obj.as_mut().unwrap().set_parent_item(backend_ptr);
 
             assert_eq!(autoconnect_connected_spy.as_ref().unwrap().count().expect("Could not get count"), 0);
