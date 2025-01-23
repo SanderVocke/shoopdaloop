@@ -9,7 +9,7 @@ runs:
     uses: Swatinem/rust-cache@v2
     if: runner.os != 'Windows'
     with:
-        prefix-key: v2
+        prefix-key: v3
         env-vars: "CARGO CC CFLAGS CXX CMAKE RUST PYO3"
 
   - name: Build dependencies
