@@ -1,5 +1,5 @@
 pub mod constants {
-    pub const INVOKABLE_DETERMINE_CONNECTIONS_STATE: &str = "determineConnectionsState()";
+    pub const INVOKABLE_DETERMINE_CONNECTIONS_STATE: &str = "determine_connections_state()";
     pub const INVOKABLE_BOOL_CONNECT_EXTERNAL_PORT: &str = "connectExternalPort(QString)";
 
     pub const PROP_DATA_TYPE: &str = "dataType";
