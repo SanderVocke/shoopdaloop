@@ -14,12 +14,12 @@ impl TestPort {
         let json_obj : UniquePtr<QJsonObject> = QJsonObject::from_json(json)?;
         let map : QMap_QString_QVariant = json_obj.as_ref()
             .unwrap().to_variant_map()?;
-        self.set_connections_state(map);
+        self.set_connectionsState(map);
         Ok(())
     }
 
     pub fn determine_connections_state(self: Pin<&mut TestPort>) -> QMap_QString_QVariant {
-        self.connections_state().clone().into()
+        self.connectionsState().clone().into()
     }
 
     pub fn connect_external_port(mut self: Pin<&mut TestPort>, name : QString) -> bool {

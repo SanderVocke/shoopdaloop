@@ -408,7 +408,7 @@ Dialog {
 
         function full_path(script_name) {
             var fullpath = script_name
-            if (!ShoopFileIO.isAbsolute(fullpath)) {
+            if (!ShoopFileIO.is_absolute(fullpath)) {
                 fullpath = builtins_path() + '/' + fullpath
             }
             if (!ShoopFileIO.exists(fullpath)) {

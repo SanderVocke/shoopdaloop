@@ -41,7 +41,7 @@ Item {
     }
 
     function maybe_docstring(script_path) {
-        let contents = ShoopFileIO.readFile(script_path)
+        let contents = ShoopFileIO.read_file(script_path)
         let lines = contents.split("\n")
         let docstring = ""
         var found = false

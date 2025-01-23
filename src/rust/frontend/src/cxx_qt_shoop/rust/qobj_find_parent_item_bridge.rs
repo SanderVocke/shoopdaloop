@@ -3,18 +3,18 @@ shoop_log_unit!("Frontend.FindParentItem");
 
 pub mod constants {
     pub const PROP_FOUND_ITEM : &str = "foundItem";
-    pub const PROP_ITEM_BOOL_PROPERTY_TO_CHECK : &str = "itemBoolPropertyToCheck";
-    pub const PROP_FOUND_ITEM_WITH_TRUE_CHECKED_PROPERTY : &str = "foundItemWithTrueCheckedProperty";
-    pub const PROP_FOUND_ITEM_HAS_TRUE_CHECKED_PROPERTY : &str = "foundItemHasTrueCheckedProperty";
+    pub const PROP_itemBoolPropertyToCheck : &str = "itemBoolPropertyToCheck";
+    pub const PROP_foundItemWithTrueCheckedProperty : &str = "foundItemWithTrueCheckedProperty";
+    pub const PROP_foundItemHasTrueCheckedProperty : &str = "foundItemHasTrueCheckedProperty";
 
     pub const SIGNAL_PARENT_CHANGED : &str = "onParentChanged()";
     pub const SIGNAL_FOUND_ITEM_CHANGED : &str = "foundItemChanged()";
-    pub const SIGNAL_ITEM_BOOL_PROPERTY_TO_CHECK_CHANGED : &str = "itemBoolPropertyToCheckChanged()";
-    pub const SIGNAL_FOUND_ITEM_WITH_TRUE_CHECKED_PROPERTY_CHANGED : &str = "foundItemWithTrueCheckedPropertyChanged()";
-    pub const SIGNAL_FOUND_ITEM_HAS_TRUE_CHECKED_PROPERTY_CHANGED : &str = "foundItemHasTrueCheckedPropertyChanged()";
+    pub const SIGNAL_itemBoolPropertyToCheck_CHANGED : &str = "itemBoolPropertyToCheckChanged()";
+    pub const SIGNAL_foundItemWithTrueCheckedProperty_CHANGED : &str = "foundItemWithTrueCheckedPropertyChanged()";
+    pub const SIGNAL_foundItemHasTrueCheckedProperty_CHANGED : &str = "foundItemHasTrueCheckedPropertyChanged()";
 
     pub const INVOKABLE_RESCAN : &str = "rescan()";
-    pub const INVOKABLE_UPDATE_FOUND_ITEM_BOOL_PROPERTY : &str = "updateFoundItemBoolProperty()";
+    pub const INVOKABLE_UPDATE_FOUND_ITEM_BOOL_PROPERTY : &str = "update_found_item_bool_property()";
 }
 
 #[cxx_qt::bridge]
@@ -31,17 +31,17 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[base = QQuickItem]
-        #[qproperty(*mut QQuickItem, found_item)]
-        #[qproperty(QString, item_bool_property_to_check)]
-        #[qproperty(*mut QQuickItem, found_item_with_true_checked_property)]
-        #[qproperty(bool, found_item_has_true_checked_property)]
+        #[qproperty(*mut QQuickItem, foundItem)]
+        #[qproperty(QString, itemBoolPropertyToCheck)]
+        #[qproperty(*mut QQuickItem, foundItemWithTrueCheckedProperty)]
+        #[qproperty(bool, foundItemHasTrueCheckedProperty)]
         type FindParentItem = super::FindParentItemRust;
 
         pub fn initialize_impl(self : Pin<&mut FindParentItem>);
 
         #[inherit]
         #[qsignal]
-        unsafe fn parent_changed(self : Pin<&mut FindParentItem>, parent : *mut QQuickItem);
+        unsafe fn parentChanged(self : Pin<&mut FindParentItem>, parent : *mut QQuickItem);
 
         #[qinvokable]
         unsafe fn rescan(self : Pin<&mut FindParentItem>);
@@ -85,20 +85,20 @@ type Predicate = dyn Fn(*mut QQuickItem) -> bool;
 type BoxedPredicate = Box<Predicate>;
 
 pub struct FindParentItemRust {
-    pub found_item : *mut QQuickItem,
-    pub item_bool_property_to_check : QString,
-    pub found_item_with_true_checked_property : *mut QQuickItem,
-    pub found_item_has_true_checked_property : bool,
+    pub foundItem : *mut QQuickItem,
+    pub itemBoolPropertyToCheck : QString,
+    pub foundItemWithTrueCheckedProperty : *mut QQuickItem,
+    pub foundItemHasTrueCheckedProperty : bool,
     pub find_predicate : Option<BoxedPredicate>,
 }
 
 impl Default for FindParentItemRust {
     fn default() -> FindParentItemRust {
         FindParentItemRust {
-            found_item : null_mut(),
-            item_bool_property_to_check : QString::from(""),
-            found_item_with_true_checked_property : null_mut(),
-            found_item_has_true_checked_property : false,
+            foundItem : null_mut(),
+            itemBoolPropertyToCheck : QString::from(""),
+            foundItemWithTrueCheckedProperty : null_mut(),
+            foundItemHasTrueCheckedProperty : false,
             find_predicate : None,
         }
     }

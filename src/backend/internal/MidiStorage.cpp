@@ -188,7 +188,7 @@ bool MidiStorageBase::append(uint32_t time, uint16_t size,
             m_tail = (m_tail + unsafe_at(m_tail)->offset_to_next) % m_data.size();
             n_removed += 1;
             new_n_events -= 1;
-            // FIXME test
+            // TODO test
         }
         if (n_removed > 0) {
             log<log_level_debug_trace>("append: removed {} messages to make space", n_removed);

@@ -269,7 +269,7 @@ ShoopTestFile {
                     // When saving this to disk and re-loading, the state stuff should still work
                     // and play back in the exact same way. That means the state itself should be
                     // somehow saved. Test here that it works.
-                    var filename = ShoopFileIO.generateTemporaryFilename() + '.smf'
+                    var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
                     file_io.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
                     chan.clear()
                     testcase.wait_updated(session.backend)
@@ -353,7 +353,7 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     // Save and re-load
-                    var filename = ShoopFileIO.generateTemporaryFilename() + '.smf'
+                    var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
                     file_io.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
                     chan.clear()
                     testcase.wait_updated(session.backend)

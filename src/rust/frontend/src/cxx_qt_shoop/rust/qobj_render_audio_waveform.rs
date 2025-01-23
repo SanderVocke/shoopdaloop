@@ -22,15 +22,15 @@ impl ffi::RenderAudioWaveform {
         {
             let s : &RenderAudioWaveformRust = self.rust();
             let mut p = s.pyramid.lock().unwrap();
-            debug!("Preprocessing input data with {} values", s.input_data.len());
+            debug!("Preprocessing input data with {} values", s.inputData.len());
             *p = audio_power_pyramid::create_audio_power_pyramid(
-                s.input_data.iter().copied(), 2048);
+                s.inputData.iter().copied(), 2048);
         }
         self.update();
     }
 
     pub unsafe fn paint(self: Pin<&mut Self>, painter: *mut ffi::QPainter) {
-        trace!("paint (offset {}, scale {})", self.samples_offset, self.samples_per_bin);
+        trace!("paint (offset {}, scale {})", self.samplesOffset, self.samplesPerBin);
         let s : &RenderAudioWaveformRust = self.rust();
         let p = s.pyramid.lock().unwrap();
 
@@ -47,7 +47,7 @@ impl ffi::RenderAudioWaveform {
                 let ii = p.levels.len() - 1 - i;
                 let subsampling_factor = p.levels[ii].subsampling_factor;
                 maybe_level = Some(&p.levels[ii]);
-                if subsampling_factor <= self.samples_per_bin as usize {
+                if subsampling_factor <= self.samplesPerBin as usize {
                     break;
                 }
             }
@@ -62,8 +62,8 @@ impl ffi::RenderAudioWaveform {
         lines.clear();
         trace!("  - {} line slots, {} samples", lines.len(), level.data.len());
         for i in 0..n_lines {
-            let sample_idx = (i as f64 + (self.samples_offset as f64 / self.samples_per_bin))
-                * self.samples_per_bin / level.subsampling_factor as f64;
+            let sample_idx = (i as f64 + (self.samplesOffset as f64 / self.samplesPerBin))
+                * self.samplesPerBin / level.subsampling_factor as f64;
             let under_idx =
                 i64::min(
                     n_samples as i64,
@@ -112,9 +112,9 @@ impl ffi::RenderAudioWaveform {
 
 impl cxx_qt::Initialize for RenderAudioWaveform {
     fn initialize(mut self: Pin<&mut Self>) {
-        self.as_mut().on_input_data_changed(|qobject| { qobject.preprocess(); }).release();
-        self.as_mut().on_samples_offset_changed(|qobject| qobject.update()).release();
-        self.as_mut().on_samples_per_bin_changed(|qobject| qobject.update()).release();
-        self.as_mut().on_width_changed(|q_object| q_object.update()).release();
+        self.as_mut().on_inputData_changed(|qobject| { qobject.preprocess(); }).release();
+        self.as_mut().on_samplesOffset_changed(|qobject| qobject.update()).release();
+        self.as_mut().on_samplesPerBin_changed(|qobject| qobject.update()).release();
+        self.as_mut().on_widthChanged(|q_object| q_object.update()).release();
     }
 }

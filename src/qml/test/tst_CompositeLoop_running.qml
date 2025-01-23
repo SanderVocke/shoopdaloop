@@ -704,7 +704,7 @@ ShoopTestFile {
                     // We started the process helper to process. Now, freeze the GUI
                     // while the loops continue in the background.
                     let d = 1000 * process_helper.total_duration * 2 // * 2 for overrun
-                    ShoopFileIO.waitBlocking(d)
+                    ShoopFileIO.wait_blocking(d)
                     process_helper.wait()
 
                     testcase.wait_updated(session.backend)

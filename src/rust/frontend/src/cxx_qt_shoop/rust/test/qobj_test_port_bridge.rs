@@ -47,8 +47,8 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[base = QQuickItem]
-        #[qproperty(QMap_QString_QVariant, connections_state)]
-        #[qproperty(i32, data_type)]
+        #[qproperty(QMap_QString_QVariant, connectionsState)]
+        #[qproperty(i32, dataType)]
         #[qproperty(i32, direction)]
         #[qproperty(QString, name)]
         #[qproperty(bool, initialized)]
@@ -89,8 +89,8 @@ use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
 use ffi::*;
 
 pub struct TestPortRust {
-    pub connections_state : QMap_QString_QVariant,
-    pub data_type: i32,
+    pub connectionsState : QMap_QString_QVariant,
+    pub dataType: i32,
     pub direction: i32,
     pub name: QString,
     pub initialized: bool,
@@ -100,8 +100,8 @@ pub struct TestPortRust {
 impl Default for TestPortRust {
     fn default() -> TestPortRust {
         TestPortRust {
-            connections_state : QMap_QString_QVariant::default(),
-            data_type : PortDataType::Audio as i32,
+            connectionsState : QMap_QString_QVariant::default(),
+            dataType : PortDataType::Audio as i32,
             direction : PortDirection::Input as i32,
             name: QString::from("unknown"),
             initialized: false,

@@ -18,6 +18,6 @@ pub struct ReleaseFocusNotifierRust {}
 impl ReleaseFocusNotifier {
     pub fn notify(self: Pin<&mut ReleaseFocusNotifier>) {
         debug!("Notified of focus release");
-        self.focus_released();
+        self.focusReleased();
     }
 }

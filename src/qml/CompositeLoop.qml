@@ -352,11 +352,15 @@ Item {
     // If we did find all our loops, listen to length changes to update the schedule
     Mapper {
         model: Array.from(all_loops)
-        Connections {
+
+        Item {
             property var mapped_item
             property int index
-            target: mapped_item
-            function onN_cyclesChanged() { update_schedule() }
+
+            Connections {
+                target: mapped_item
+                function onN_cyclesChanged() { root.update_schedule() }
+            }
         }
     }
 

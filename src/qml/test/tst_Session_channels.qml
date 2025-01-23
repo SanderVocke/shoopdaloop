@@ -74,7 +74,7 @@ ShoopTestFile {
                     verify_eq(loop().actual_session_descriptor().channels.length, 2)
                     testcase.wait_updated(session.backend)
 
-                    var filename = ShoopFileIO.generateTemporaryFilename() + '.shl'
+                    var filename = ShoopFileIO.generate_temporary_filename() + '.shl'
                     session.save_session(filename)
 
                     testcase.wait_session_io_done()
