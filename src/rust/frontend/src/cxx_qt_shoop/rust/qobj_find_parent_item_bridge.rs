@@ -3,15 +3,15 @@ shoop_log_unit!("Frontend.FindParentItem");
 
 pub mod constants {
     pub const PROP_FOUND_ITEM : &str = "foundItem";
-    pub const PROP_itemBoolPropertyToCheck : &str = "itemBoolPropertyToCheck";
-    pub const PROP_foundItemWithTrueCheckedProperty : &str = "foundItemWithTrueCheckedProperty";
-    pub const PROP_foundItemHasTrueCheckedProperty : &str = "foundItemHasTrueCheckedProperty";
+    pub const PROP_ITEMBOOLPROPERTYTOCHECK : &str = "itemBoolPropertyToCheck";
+    pub const PROP_FOUNDITEMWITHTRUECHECKEDPROPERTY : &str = "foundItemWithTrueCheckedProperty";
+    pub const PROP_FOUNDITEMHASTRUECHECKEDPROPERTY : &str = "foundItemHasTrueCheckedProperty";
 
     pub const SIGNAL_PARENT_CHANGED : &str = "onParentChanged()";
     pub const SIGNAL_FOUND_ITEM_CHANGED : &str = "foundItemChanged()";
-    pub const SIGNAL_itemBoolPropertyToCheck_CHANGED : &str = "itemBoolPropertyToCheckChanged()";
-    pub const SIGNAL_foundItemWithTrueCheckedProperty_CHANGED : &str = "foundItemWithTrueCheckedPropertyChanged()";
-    pub const SIGNAL_foundItemHasTrueCheckedProperty_CHANGED : &str = "foundItemHasTrueCheckedPropertyChanged()";
+    pub const SIGNAL_ITEMBOOLPROPERTYTOCHECK_CHANGED : &str = "itemBoolPropertyToCheckChanged()";
+    pub const SIGNAL_FOUNDITEMWITHTRUECHECKEDPROPERTY_CHANGED : &str = "foundItemWithTrueCheckedPropertyChanged()";
+    pub const SIGNAL_FOUNDITEMHASTRUECHECKEDPROPERTY_CHANGED : &str = "foundItemHasTrueCheckedPropertyChanged()";
 
     pub const INVOKABLE_RESCAN : &str = "rescan()";
     pub const INVOKABLE_UPDATE_FOUND_ITEM_BOOL_PROPERTY : &str = "update_found_item_bool_property()";

@@ -54,7 +54,7 @@ impl AutoConnect {
             finder.as_mut().set_parent_item(obj_qquickitem);
             connect_to_autoconnect(
                 finder_qquickitem,
-                String::from(qobj_find_parent_item::SIGNAL_foundItemWithTrueCheckedProperty_CHANGED),
+                String::from(qobj_find_parent_item::SIGNAL_FOUNDITEMWITHTRUECHECKEDPROPERTY_CHANGED),
                 obj_ptr,
                 String::from(constants::INVOKABLE_UPDATE))?;
             finder.as_mut().rescan();

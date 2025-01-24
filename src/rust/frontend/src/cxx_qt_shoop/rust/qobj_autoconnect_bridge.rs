@@ -3,11 +3,11 @@ shoop_log_unit!("Frontend.AutoConnect");
 
 pub mod constants {
     pub const PROP_INTERNAL_PORT : &str = "internalPort";
-    pub const PROP_connectToPortRegex : &str = "connectToPortRegex";
+    pub const PROP_CONNECTTOPORTREGEX : &str = "connectToPortRegex";
     pub const PROP_CLOSED : &str = "closed";
 
     pub const SIGNAL_INTERNAL_PORT_CHANGED : &str = "internalPortChanged()";
-    pub const SIGNAL_connectToPortRegex_CHANGED : &str = "connectToPortRegexChanged()";
+    pub const SIGNAL_CONNECTTOPORTREGEX_CHANGED : &str = "connectToPortRegexChanged()";
     pub const SIGNAL_CLOSED_CHANGED : &str = "closedChanged()";
 
     pub const SIGNAL_CONNECTED : &str = "connected()";
