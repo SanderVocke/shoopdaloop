@@ -26,16 +26,16 @@ impl AutoConnect {
     pub unsafe fn initialize_impl_with_result(mut self : Pin<&mut AutoConnect>) -> Result<(), anyhow::Error> {
         debug!("Initializing");
         {
-            self.as_mut().on_parent_changed(|o,_| {
+            self.as_mut().on_parentChanged(|o,_| {
                 let mut rust : Pin<&mut AutoConnectRust> = o.rust_mut();
                 rust.find_backend_wrapper.as_mut().unwrap().rescan();
             }).release();
-            self.as_mut().on_internal_port_changed(|o| {
-                debug!("internal_port -> {:?}", o.internal_port());
+            self.as_mut().on_internalPort_changed(|o| {
+                debug!("internalPort -> {:?}", o.internalPort());
                 o.update();
             }).release();
-            self.as_mut().on_connect_to_port_regex_changed(|o| {
-                debug!("connect_to_port_regex -> {:?}", o.connect_to_port_regex());
+            self.as_mut().on_connectToPortRegex_changed(|o| {
+                debug!("connectToPortRegex -> {:?}", o.connectToPortRegex());
                 o.update();
             }).release();
         }
@@ -54,7 +54,7 @@ impl AutoConnect {
             finder.as_mut().set_parent_item(obj_qquickitem);
             connect_to_autoconnect(
                 finder_qquickitem,
-                String::from(qobj_find_parent_item::SIGNAL_FOUND_ITEM_WITH_TRUE_CHECKED_PROPERTY_CHANGED),
+                String::from(qobj_find_parent_item::SIGNAL_FOUNDITEMWITHTRUECHECKEDPROPERTY_CHANGED),
                 obj_ptr,
                 String::from(constants::INVOKABLE_UPDATE))?;
             finder.as_mut().rescan();
@@ -75,27 +75,27 @@ impl AutoConnect {
     pub fn update_with_result(mut self: Pin<&mut Self>) -> Result<(), anyhow::Error> {
         debug!("Updating");
         {
-            if self.as_mut().is_closed().to_owned() {
+            if self.as_mut().isClosed().to_owned() {
                 debug!("Closed, skipping update");
                 return Ok(());
             }
         }
 
-        let internal_port : *mut QObject;
+        let internalPort : *mut QObject;
         {
-            internal_port = self.as_mut().internal_port().clone();
-            if internal_port.is_null() {
+            internalPort = self.as_mut().internalPort().clone();
+            if internalPort.is_null() {
                 debug!("Internal port not set, skipping update");
                 return Ok(());
             }
         }
 
         let mut rust = self.as_mut().rust_mut();
-        let regex_str = format!("^{}$", rust.connect_to_port_regex.to_string());
+        let regex_str = format!("^{}$", rust.connectToPortRegex.to_string());
         let finder = rust.find_backend_wrapper.as_mut().unwrap();
         let regex = Regex::new(regex_str.as_str())
                            .with_context(|| "Invalid regex")?;
-        let backend = finder.found_item_with_true_checked_property();
+        let backend = finder.foundItemWithTrueCheckedProperty();
         if backend.is_null() {
             debug!("Backend not present or ready, skipping update");
             return Ok(());
@@ -105,33 +105,33 @@ impl AutoConnect {
             let backend_qobj = backend.as_mut().unwrap().mut_qobject_ptr();
             let q_connections_state : QMap_QString_QVariant =
                 invoke_with_return_variantmap(
-                    internal_port,
+                    internalPort,
                     String::from(qobj_signature_port::constants::INVOKABLE_DETERMINE_CONNECTIONS_STATE))?;
-            let connections_state = fn_qvariantmap_helpers::try_as_hashmap_convertto::<bool>(&q_connections_state)?;
-            debug!("Got connections state: {:?}", connections_state);
+            let connectionsState = fn_qvariantmap_helpers::try_as_hashmap_convertto::<bool>(&q_connections_state)?;
+            debug!("Got connections state: {:?}", connectionsState);
 
             let my_data_type : PortDataType = qobject::qobject_property_int(
-                &*internal_port,
+                &*internalPort,
                 String::from(qobj_signature_port::constants::PROP_DATA_TYPE))
                 .map_err(|err| anyhow::anyhow!(err))
                 .and_then(|o| PortDataType::try_from(o))?;
             let my_direction : PortDirection = qobject::qobject_property_int(
-                &*internal_port,
+                &*internalPort,
                 String::from(qobj_signature_port::constants::PROP_DIRECTION))
                 .map_err(|err| anyhow::anyhow!(err))
                 .and_then(|o| PortDirection::try_from(o))?;
             let my_name : String = qobject::qobject_property_string(
-                &*internal_port,
+                &*internalPort,
                 String::from(qobj_signature_port::constants::PROP_NAME))
                 .and_then(|o| Ok(o.to_string()))?;
             let my_port_initialized : bool = qobject::qobject_property_bool(
-                &*internal_port,
+                &*internalPort,
                 String::from(qobj_signature_port::constants::PROP_INITIALIZED))?;
             let q_external_ports : QList_QVariant =
                 invoke_find_external_ports(
                     backend_qobj,
                     String::from(qobj_signature_backend_wrapper::constants::INVOKABLE_FIND_EXTERNAL_PORTS),
-                    self.as_mut().connect_to_port_regex().clone(),
+                    self.as_mut().connectToPortRegex().clone(),
                     if my_direction == PortDirection::Input { PortDirection::Output as i32 }
                                                        else  { PortDirection::Input as i32 },
                     my_data_type as i32)?;
@@ -140,7 +140,7 @@ impl AutoConnect {
 
             for candidate in external_candidates {
                 let candidate : &ExternalPortDescriptor = &candidate;
-                let maybe_entry : Option<bool> = connections_state.get(&candidate.name).map(|o| o.clone());
+                let maybe_entry : Option<bool> = connectionsState.get(&candidate.name).map(|o| o.clone());
                 let is_connected : bool = maybe_entry.unwrap_or(false);
                 let is_match : bool =
                     candidate.data_type == my_data_type &&
@@ -153,7 +153,7 @@ impl AutoConnect {
                 {
                     debug!("{} auto-connecting to {}", my_name, candidate.name);
                     let result : Result<bool, _> = invoke_connect_external_port(
-                        internal_port,
+                        internalPort,
                         String::from(qobj_signature_port::constants::INVOKABLE_BOOL_CONNECT_EXTERNAL_PORT),
                         QString::from(&candidate.name));
                     let result : Result<(), _> = match result {
@@ -173,7 +173,7 @@ impl AutoConnect {
                     debug!("{} already connected to {}", my_name, candidate.name);
                 } else if !my_port_initialized {
                     debug!("internal port {} not yet initialized", my_name);
-                    self.as_mut().only_external_found();
+                    self.as_mut().onlyExternalFound();
                 } else if !is_match {
                     debug!("found port is not a match");
                 }
@@ -234,7 +234,7 @@ mod tests {
                 }
                 "#).expect("Could not set connections state");
             port.pin_mut().set_direction(PortDirection::Input as i32);
-            port.pin_mut().set_data_type(PortDataType::Audio as i32);
+            port.pin_mut().set_dataType(PortDataType::Audio as i32);
             port.pin_mut().set_initialized(true);
             port.pin_mut().set_name(QString::from("my_port"));
 
@@ -265,8 +265,8 @@ mod tests {
                       .expect("Couldn't create spy");
             }
 
-            obj.as_mut().unwrap().set_connect_to_port_regex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
+            obj.as_mut().unwrap().set_connectToPortRegex(QString::from("port_1"));
+            obj.as_mut().unwrap().set_internalPort(port_ptr);
             obj.as_mut().unwrap().set_parent_item(backend_ptr);
 
             assert_eq!(autoconnect_connected_spy.as_ref().unwrap().count().expect("Could not get count"), 1);
@@ -286,7 +286,7 @@ mod tests {
                 }
                 "#).expect("Could not set connections state");
             port.pin_mut().set_direction(PortDirection::Input as i32);
-            port.pin_mut().set_data_type(PortDataType::Audio as i32);
+            port.pin_mut().set_dataType(PortDataType::Audio as i32);
             port.pin_mut().set_initialized(true);
             port.pin_mut().set_name(QString::from("my_port"));
 
@@ -317,8 +317,8 @@ mod tests {
                       .expect("Couldn't create spy");
             }
 
-            obj.as_mut().unwrap().set_connect_to_port_regex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
+            obj.as_mut().unwrap().set_connectToPortRegex(QString::from("port_1"));
+            obj.as_mut().unwrap().set_internalPort(port_ptr);
             obj.as_mut().unwrap().set_parent_item(backend_ptr);
 
             assert_eq!(autoconnect_connected_spy.as_ref().unwrap().count().expect("Could not get count"), 0);
@@ -338,7 +338,7 @@ mod tests {
                 }
                 "#).expect("Could not set connections state");
             port.pin_mut().set_direction(PortDirection::Input as i32);
-            port.pin_mut().set_data_type(PortDataType::Midi as i32);
+            port.pin_mut().set_dataType(PortDataType::Midi as i32);
             port.pin_mut().set_initialized(true);
             port.pin_mut().set_name(QString::from("my_port"));
 
@@ -369,8 +369,8 @@ mod tests {
                       .expect("Couldn't create spy");
             }
 
-            obj.as_mut().unwrap().set_connect_to_port_regex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
+            obj.as_mut().unwrap().set_connectToPortRegex(QString::from("port_1"));
+            obj.as_mut().unwrap().set_internalPort(port_ptr);
             obj.as_mut().unwrap().set_parent_item(backend_ptr);
 
             assert_eq!(autoconnect_connected_spy.as_ref().unwrap().count().expect("Could not get count"), 0);
@@ -390,7 +390,7 @@ mod tests {
                 }
                 "#).expect("Could not set connections state");
             port.pin_mut().set_direction(PortDirection::Output as i32);
-            port.pin_mut().set_data_type(PortDataType::Audio as i32);
+            port.pin_mut().set_dataType(PortDataType::Audio as i32);
             port.pin_mut().set_initialized(true);
             port.pin_mut().set_name(QString::from("my_port"));
 
@@ -421,8 +421,8 @@ mod tests {
                       .expect("Couldn't create spy");
             }
 
-            obj.as_mut().unwrap().set_connect_to_port_regex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
+            obj.as_mut().unwrap().set_connectToPortRegex(QString::from("port_1"));
+            obj.as_mut().unwrap().set_internalPort(port_ptr);
             obj.as_mut().unwrap().set_parent_item(backend_ptr);
 
             assert_eq!(autoconnect_connected_spy.as_ref().unwrap().count().expect("Could not get count"), 0);
@@ -440,7 +440,7 @@ mod tests {
                 {}
                 "#).expect("Could not set connections state");
             port.pin_mut().set_direction(PortDirection::Input as i32);
-            port.pin_mut().set_data_type(PortDataType::Audio as i32);
+            port.pin_mut().set_dataType(PortDataType::Audio as i32);
             port.pin_mut().set_initialized(true);
             port.pin_mut().set_name(QString::from("my_port"));
 
@@ -463,8 +463,8 @@ mod tests {
                       .expect("Couldn't create spy");
             }
 
-            obj.as_mut().unwrap().set_connect_to_port_regex(QString::from("port_1"));
-            obj.as_mut().unwrap().set_internal_port(port_ptr);
+            obj.as_mut().unwrap().set_connectToPortRegex(QString::from("port_1"));
+            obj.as_mut().unwrap().set_internalPort(port_ptr);
             obj.as_mut().unwrap().set_parent_item(backend_ptr);
 
             assert_eq!(autoconnect_connected_spy.as_ref().unwrap().count().expect("Could not get count"), 0);

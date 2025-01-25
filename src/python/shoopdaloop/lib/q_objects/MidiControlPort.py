@@ -191,7 +191,7 @@ class MidiControlPort(FindParentBackend):
             return dict()
 
     @ShoopSlot(result="QMap<QString,QVariant>")
-    def determineConnectionsState(self):
+    def determine_connections_state(self):
         rval = self.get_connections_state()
         self.logger.debug(lambda: f'connections state: {json.dumps(rval)}')
         return rval
@@ -203,11 +203,6 @@ class MidiControlPort(FindParentBackend):
             self._backend_obj.connect_external_port(name)
         else:
             self.logger.error(lambda: "Attempted to connect uninitialized port {}".format(self._name_hint))
-
-    @ShoopSlot(str, result=bool)
-    def connectExternalPort(self, name):
-        self.connect_external_port(name)
-        return True
 
     @ShoopSlot(str)
     def disconnect_external_port(self, name):

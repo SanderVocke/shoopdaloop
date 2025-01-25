@@ -11,6 +11,7 @@ import "./js/generate_session.js" as GenerateSession
 // loopers with shared settings/control).
 Item {
     id: root
+    objectName: "Qml.TrackWidget"
 
     width: width_adjuster.x + width_adjuster.width
     function setWidth(width) {
@@ -641,7 +642,7 @@ Item {
                             var idx=0
                             for(var i=0; i<children.length; i++) {
                                 let c = children[i]
-                                if (c instanceof LoopWidget) {
+                                if (c.objectName === "Qml.LoopWidget") {
                                     c.idx_in_track = idx;
                                     c.track_idx = root.track_idx;
                                     idx++;

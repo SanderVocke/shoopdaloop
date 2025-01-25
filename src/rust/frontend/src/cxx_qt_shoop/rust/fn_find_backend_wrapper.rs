@@ -13,7 +13,7 @@ pub fn create_find_parent_backend_wrapper() -> UniquePtr<FindParentItem> {
     let mut rval = qobj_find_parent_item::make_unique();
 
     rval.as_mut().unwrap()
-        .set_item_bool_property_to_check(QString::from("initialized"));
+        .set_itemBoolPropertyToCheck(QString::from("initialized"));
     rval.as_mut().unwrap()
         .set_find_predicate (Box::new(|q : *mut QQuickItem| {
             unsafe {

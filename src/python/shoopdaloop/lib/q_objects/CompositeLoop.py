@@ -94,15 +94,20 @@ class CompositeLoop(FindParentBackend):
         # The schedule may arrive as a JSValue and loops in the schedule may be JSValues too
         val = recursively_convert_jsvalue(val)
         def stringify_schedule (schedule):
+            def iid(obj):
+                if hasattr(obj, "instanceIdentifier"):
+                    return obj.instanceIdentifier
+                return "(unknown)"
+            
             rval = ''
             for iteration,elem in schedule.items():
                 rval += f'{iteration}:'
                 for to_stop in elem['loops_end']:
-                    rval += f'\n- {to_stop.instanceIdentifier} -> Stopped'
+                    rval += f'\n- {iid(to_stop)} -> Stopped'
                 for to_start in elem['loops_start']:
-                    rval += f'\n- {to_start[0].instanceIdentifier} -> {to_start[1] if to_start[1] != None else "Autostart"}'
+                    rval += f'\n- {iid(to_start[0])} -> {to_start[1] if to_start[1] != None else "Autostart"}'
                 for to_ignore in elem['loops_ignored']:
-                    rval += f'\n- {to_ignore.instanceIdentifier} ignored'
+                    rval += f'\n- {iid(to_ignore)} ignored'
                 rval += "\n"
             return rval
 

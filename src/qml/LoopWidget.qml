@@ -12,6 +12,7 @@ import 'js/qml_url_to_filename.js' as UrlToFilename
 // The loop widget allows manipulating a single loop within a track.
 Item {
     id: root
+    objectName: "Qml.LoopWidget"
 
     property var all_loops_in_track
     property var maybe_fx_chain
@@ -185,8 +186,8 @@ Item {
 
     // Internally controlled
     property var maybe_loop : null
-    readonly property var maybe_backend_loop : (maybe_loop && maybe_loop instanceof Loop) ? maybe_loop : null
-    readonly property var maybe_composite_loop : (maybe_loop && maybe_loop instanceof CompositeLoop) ? maybe_loop : null
+    readonly property var maybe_backend_loop : (maybe_loop && maybe_loop.objectName === "Qml.BackendLoopWithChannels") ? maybe_loop : null
+    readonly property var maybe_composite_loop : (maybe_loop && maybe_loop.objectName === "Qml.CompositeLoop") ? maybe_loop : null
     readonly property bool is_loaded : maybe_loop
     readonly property bool is_sync: sync_loop && sync_loop == this
     readonly property bool is_script: maybe_composite_loop && maybe_composite_loop.kind == 'script'
@@ -493,6 +494,34 @@ Item {
             }
         }
     }
+
+    // function create_backend_loop_impl() {
+    //     if (!maybe_loop) {
+    //         if (backend_loop_factory.status == Component.Error) {
+    //             throw new Error("BackendLoopWithChannels: Failed to load factory: " + backend_loop_factory.errorString())
+    //         } else if (backend_loop_factory.status != Component.Ready) {
+    //             throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
+    //         } else {
+    //             let gain = last_pushed_gain
+    //             let balance = last_pushed_stereo_balance
+    //             maybe_loop = backend_loop_factory.createObject(root, {
+    //                 'initial_descriptor': root.initial_descriptor,
+    //                 'sync_source': Qt.binding(() => (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null),
+    //             })
+    //             push_stereo_balance(balance)
+    //             push_gain(gain)
+    //             maybe_loop.onCycled.connect(root.cycled)
+    //         }
+    //     }
+    // }
+
+    // ExecuteNextCycle {
+    //     id: create_loop_next_cycle
+    //     onExecute: root.create_backend_loop_impl()
+    // }
+    // function create_backend_loop() {
+    //     create_loop_next_cycle.trigger()
+    // }
 
     Component {
         id: composite_loop_factory

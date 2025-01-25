@@ -8,6 +8,8 @@ import ShoopConstants
 // Wrap a Loop that may be dynamically loaded in a just-in-time way.
 Loop {
     id: root
+    objectName: "Qml.BackendLoopWithChannels"
+
     readonly property var loop : root
     readonly property var maybe_backend_loop: root
 

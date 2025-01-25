@@ -23,7 +23,6 @@
 */libdatrie.so*
 */libdbus*.so*
 */libdouble-conversion.so*
-*/libdrm.so*
 */libepoxy.so*
 */libexpat.so*
 */libffi*
@@ -32,7 +31,6 @@
 */libfribidi.so*
 */libgcc_s.so*
 */libgdk-*.so*
-*/libgdk_pixbuf-*.so*
 */libgio-*.so*
 */libglib-*.so*
 */libgmodule*.so*
@@ -57,7 +55,6 @@
 */libldap-*.so*
 */libltd*.so*
 */liblzma*
-*/libm.so*
 */libmd4c.so*
 */libmount.so*
 */libmvec.so*
@@ -83,7 +80,6 @@
 */libselinux.so*
 */libsqlite3*
 */libssl.so*
-*/libstdc++.so*
 */libtasn*.so*
 */libtcl8.6*
 */libthai.so*

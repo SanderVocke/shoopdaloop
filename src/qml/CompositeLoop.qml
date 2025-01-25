@@ -9,6 +9,7 @@ import 'js/mode_helpers.js' as ModeHelpers
 
 Item {
     id: root
+    objectName: "Qml.CompositeLoop"
 
     // Store the current playback iteration.
     onIterationChanged: root.logger.trace(() => `iteration -> ${iteration}`)
@@ -219,7 +220,7 @@ Item {
                     }
                     // If our target is a CompositeLoop, it does not directly inherit a Python loop.
                     // Instead it will be stored in its py_loop subobject.
-                    if (loop instanceof CompositeLoop) {
+                    if (loop.objectName === "Qml.CompositeLoop") {
                         loop = loop.py_loop
                     }
 
@@ -351,11 +352,15 @@ Item {
     // If we did find all our loops, listen to length changes to update the schedule
     Mapper {
         model: Array.from(all_loops)
-        Connections {
+
+        Item {
             property var mapped_item
             property int index
-            target: mapped_item
-            function onN_cyclesChanged() { update_schedule() }
+
+            Connections {
+                target: mapped_item
+                function onN_cyclesChanged() { root.update_schedule() }
+            }
         }
     }
 
