@@ -21,7 +21,10 @@ inline void report_method_not_found(QObject * obj, std::string method_name) {
     err += std::string(". Available methods:\n");
     for (int i=0; i<obj->metaObject()->methodCount(); i++) {
         err += "  - ";
-        err += std::string(obj->metaObject()->method(i).methodSignature());
+        err += std::string(
+            QMetaObject::normalizedSignature(
+                obj->metaObject()->method(i).methodSignature()
+        ));
         err += "\n";
     }
     throw std::runtime_error(err);

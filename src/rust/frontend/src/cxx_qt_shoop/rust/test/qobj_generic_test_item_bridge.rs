@@ -18,7 +18,7 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[base = QQuickItem]
-        #[qproperty(bool, bool_prop)]
+        #[qproperty(bool, boolProp)]
         type GenericTestItem = super::GenericTestItemRust;
     }
 
@@ -46,7 +46,7 @@ use ffi::QQuickItem;
 
 #[derive(Default)]
 pub struct GenericTestItemRust {
-    bool_prop : bool,
+    boolProp : bool,
 }
 
 impl cxx_qt::Constructor<(*mut QQuickItem,)> for GenericTestItem {

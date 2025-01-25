@@ -370,20 +370,16 @@ class Backend(ShoopQQuickItem):
     def abort_on_process_thread(self):
         if (self._backend_session_obj):
             self._backend_session_obj.abort_on_process_thread()
-
-    @ShoopSlot(str, int, int)
-    def find_external_ports(self, maybe_name_regex, port_direction, data_type):
-        return self._backend_driver_obj.find_external_ports(maybe_name_regex, port_direction, data_type)
-
+    
     @ShoopSlot(str, int, int, result="QList<QVariant>")
-    def findExternalPorts(self, maybe_name_regex, port_direction, data_type):
+    def find_external_ports(self, maybe_name_regex, port_direction, data_type):
         def to_basic_dict(desc):
             return {
                 'name': desc.name,
                 'direction': int(desc.direction),
                 'data_type': int(desc.data_type)
             }
-        rval = [to_basic_dict(v) for v in self.find_external_ports(maybe_name_regex, port_direction, data_type)]
+        rval = [to_basic_dict(v) for v in self._backend_driver_obj.find_external_ports(maybe_name_regex, port_direction, data_type)]
         self.logger.debug(lambda: f"findExternalPorts: {json.dumps(rval)}")
         return rval
 

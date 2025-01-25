@@ -41,7 +41,7 @@ Item {
     onScript_pathChanged: {
         if (script_path) {
             script_name = script_path
-            script_code = ShoopFileIO.readFile(script_path)
+            script_code = ShoopFileIO.read_file(script_path)
         }
     }
 

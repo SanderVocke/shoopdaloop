@@ -58,6 +58,7 @@ Item {
                 non_mapper_children.push (child);
             }
         }
+
         // Now re-insert our instances
         for(var cidx = 0; cidx < non_mapper_children.length; cidx++) {
             new_parent_children.push(non_mapper_children[cidx])

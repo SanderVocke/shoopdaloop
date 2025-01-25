@@ -104,21 +104,21 @@ Item {
                         ShoopMenuItem {
                             text: "Test thread panic (UI thread)"
                             onClicked: {
-                                ShoopOSUtils.causePanic()
+                                ShoopOSUtils.cause_panic()
                             }
                         }
 
                         ShoopMenuItem {
                             text: "Test segfault (UI thread)"
                             onClicked: {
-                                ShoopOSUtils.causeSegfault()
+                                ShoopOSUtils.cause_segfault()
                             }
                         }
 
                         ShoopMenuItem {
                             text: "Test abort (UI thread)"
                             onClicked: {
-                                ShoopOSUtils.causeAbort()
+                                ShoopOSUtils.cause_abort()
                             }
                         }
 

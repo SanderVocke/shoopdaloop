@@ -15,7 +15,7 @@ PythonTestCase {
     property string filename : 'UnknownTestFile'
     property var logger : PythonLogger { name: `Frontend.Qml.ShoopTestCase` }
 
-    property bool print_error_traces: ShoopOSUtils.getEnvVar("QMLTEST_NO_ERROR_TRACES") == null
+    property bool print_error_traces: ShoopOSUtils.get_env_var("QMLTEST_NO_ERROR_TRACES") == null
 
     // It seems the built-in test function filter of the QML test runner is not working.
     // Provide a means to only run a subset of tests.

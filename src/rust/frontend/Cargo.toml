@@ -16,14 +16,14 @@ anyhow = "1.0"
 ctor = "0.2"
 regex = "1"
 log = "0.4"
-cxx-qt = { git = "https://github.com/KDAB/cxx-qt.git", rev = "dff128ffebcb0ecf3635d81ee9a95581bc8cd37a" }
-cxx-qt-lib = { git = "https://github.com/KDAB/cxx-qt.git", rev = "dff128ffebcb0ecf3635d81ee9a95581bc8cd37a", features = ["full_qt"] }
+cxx-qt = "0.7.0"
+cxx-qt-lib = { version = "0.7.0", features = ["full"] }
 macros = { path = "../macros" }
 backend_bindings = { path = "../backend_bindings" }
 common = { path = "../common" }
 
 [build-dependencies]
-cxx-qt-build = { git = "https://github.com/KDAB/cxx-qt.git", rev = "dff128ffebcb0ecf3635d81ee9a95581bc8cd37a" }
+cxx-qt-build = "0.7.0"
 macros = { path = "../macros" }
 
 [features]

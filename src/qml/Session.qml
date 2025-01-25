@@ -192,7 +192,8 @@ Rectangle {
         root.logger.debug(() => `saving session to: ${filename}`)
         registries.state_registry.reset_saving_loading()
         registries.state_registry.save_action_started()
-        var tempdir = ShoopFileIO.createTemporaryFolder()
+        var tempdir = ShoopFileIO.create_temporary_folder()
+        root.logger.trace(() => `Temporary folder: ${tempdir}`)
         if (tempdir == null) {
             throw new Error("Failed to create temporary folder")
         }
@@ -201,20 +202,20 @@ Rectangle {
 
         // TODO make this step asynchronous
         var descriptor = actual_session_descriptor(true, tempdir, tasks)
-        if(!ShoopFileIO.writeFile(session_filename, JSON.stringify(descriptor, null, 2))) {
+        if(!ShoopFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
             throw new Error(`Failed to write session file ${session_filename}`)
         }
 
         tasks.when_finished(() => {
             try {
                 // TODO make this step asynchronous
-                if (!ShoopFileIO.makeTarfile(filename, tempdir)) {
+                if (!ShoopFileIO.make_tarfile(filename, tempdir)) {
                     throw new Error(`Failed to create tarfile ${filename}`)
                 }
                 root.logger.info(() => ("Session written to: " + filename))
             } finally {
                 registries.state_registry.save_action_finished()
-                ShoopFileIO.deleteRecursive(tempdir)
+                ShoopFileIO.delete_recursive(tempdir)
                 tasks.parent = null
                 tasks.destroy(30)
             }
@@ -267,16 +268,16 @@ Rectangle {
         root.logger.debug(() => `loading session: ${filename}`)
         registries.state_registry.reset_saving_loading()
         registries.state_registry.load_action_started()
-        var tempdir = ShoopFileIO.createTemporaryFolder()
+        var tempdir = ShoopFileIO.create_temporary_folder()
 
         try {
             var tasks = tasks_factory.create_tasks_obj(root)
 
-            ShoopFileIO.extractTarfile(filename, tempdir)
-            root.logger.debug(() => (`Extracted files: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*', true), null, 2)}`))
+            ShoopFileIO.extract_tarfile(filename, tempdir)
+            root.logger.debug(() => (`Extracted files: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`))
 
             var session_filename = tempdir + '/session.json'
-            var session_file_contents = ShoopFileIO.readFile(session_filename)
+            var session_file_contents = ShoopFileIO.read_file(session_filename)
             var descriptor = JSON.parse(session_file_contents)
             let our_sample_rate = session_backend.get_sample_rate()
             let incoming_sample_rate = descriptor.sample_rate
@@ -308,7 +309,7 @@ Rectangle {
 
                 tasks.when_finished(() => {
                     try {
-                        ShoopFileIO.deleteRecursive(tempdir)
+                        ShoopFileIO.delete_recursive(tempdir)
                     } finally {
                         root.logger.info(() => ("Session loaded from: " + filename))
                         registries.state_registry.load_action_finished()
@@ -331,7 +332,7 @@ Rectangle {
                 connectOnce(root.loadedChanged, finish_fn)
             }
         } catch(e) {
-            ShoopFileIO.deleteRecursive(tempdir)
+            ShoopFileIO.delete_recursive(tempdir)
             throw e;
         }
     }
