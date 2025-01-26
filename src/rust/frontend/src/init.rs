@@ -11,6 +11,7 @@ fn register_qml_types_and_singletons() {
     // Types
     qobj_render_audio_waveform::register_qml_type(&mdl, "ShoopRenderAudioWaveform");
     qobj_autoconnect::register_qml_type(&mdl, "ShoopAutoConnect");
+    qobj_loop::register_qml_type(&mdl, "ShoopLoop");
 }
 
 fn register_metatypes() {

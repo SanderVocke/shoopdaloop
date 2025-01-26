@@ -52,6 +52,7 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
+        #[qml_element]
         #[base = QQuickItem]
         #[qproperty(*mut QObject, backend)]
         #[qproperty(bool, initialized)]
@@ -75,35 +76,44 @@ pub mod ffi {
         #[qinvokable]
         pub fn update_on_gui_thread(self: Pin<&mut Loop>);
 
+        #[qinvokable]
+        pub fn queue_set_length(self: Pin<&mut Loop>, length: i32);
+
+        #[qinvokable]
+        pub fn queue_set_position(self: Pin<&mut Loop>, position: i32);
+
         #[qsignal]
         fn cycled(self: Pin<&mut Loop>, cycle_nr: i32);
 
         #[qsignal]
-        fn cycled_unsafe(self: Pin<&mut Loop>, cycle_nr: i32);
+        fn cycled_queued(self: Pin<&mut Loop>, cycle_nr: i32);
 
         #[qsignal]
-        fn mode_changed_unsafe(self: Pin<&mut Loop>, mode: i32);
+        fn starting_update_on_non_gui_thread(self: Pin<&mut Loop>);
 
         #[qsignal]
-        fn next_mode_changed_unsafe(self: Pin<&mut Loop>, next_mode: i32);
+        fn mode_changed_queued(self: Pin<&mut Loop>);
 
         #[qsignal]
-        fn length_changed_unsafe(self: Pin<&mut Loop>, length: i32);
+        fn next_mode_changed_queued(self: Pin<&mut Loop>);
 
         #[qsignal]
-        fn position_changed_unsafe(self: Pin<&mut Loop>, position: i32);
+        fn length_changed_queued(self: Pin<&mut Loop>);
 
         #[qsignal]
-        fn next_transition_delay_changed_unsafe(self: Pin<&mut Loop>, next_transition_delay: i32);
+        fn position_changed_queued(self: Pin<&mut Loop>);
 
         #[qsignal]
-        fn display_peaks_changed_unsafe(self: Pin<&mut Loop>, display_peaks: &QVariant);
+        fn next_transition_delay_changed_queued(self: Pin<&mut Loop>);
 
         #[qsignal]
-        fn display_midi_notes_active_changed_unsafe(self: Pin<&mut Loop>, display_midi_notes_active: i32);
+        fn display_peaks_changed_queued(self: Pin<&mut Loop>);
 
         #[qsignal]
-        fn display_midi_events_triggered_changed_unsafe(self: Pin<&mut Loop>, display_midi_events_triggered: i32);
+        fn display_midi_notes_active_changed_queued(self: Pin<&mut Loop>);
+
+        #[qsignal]
+        fn display_midi_events_triggered_changed_queued(self: Pin<&mut Loop>);
     }
 
     unsafe extern "C++" {
@@ -138,7 +148,6 @@ pub mod ffi {
                           slot: String) -> Result<()>;
 
         include!("cxx-qt-shoop/register_qml_type.h");
-
         #[rust_name = "register_qml_type_loop"]
         fn register_qml_type(inference_example: &Loop,
                              module_name: &mut String,

@@ -112,7 +112,6 @@ pub mod ffi {
                    slot : String) -> Result<()>;
 
         include!("cxx-qt-shoop/register_qml_type.h");
-
         #[rust_name = "register_qml_type_autoconnect"]
         fn register_qml_type(inference_example: &AutoConnect,
                              module_name : &mut String,
