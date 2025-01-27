@@ -19,7 +19,6 @@ pub mod ffi {
         #[base = QQuickItem]
         #[qproperty(bool, ready)]
         #[qproperty(i32, update_interval_ms)]
-        #[qproperty(bool, initialized)]
         #[qproperty(i32, actual_backend_type)]
         #[qproperty(QString, client_name_hint)]
         #[qproperty(i32, backend_type)]
@@ -50,8 +49,13 @@ pub mod ffi {
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=(*mut QQuickItem,)> for BackendWrapper {}
     impl cxx_qt::Constructor<(), NewArguments=()> for BackendWrapper {}
+}
+
+use ffi::*;
+pub use ffi::BackendWrapper;
+pub struct BackendWrapperRust {
+    ready : bool,
     update_interval_ms: i32,
-    initialized: bool,
     actual_backend_type: i32,
     client_name_hint: QString,
     backend_type: i32,
@@ -61,16 +65,18 @@ pub mod ffi {
     driver_setting_overrides: QVariant,
 }
 
-use ffi::*;
-pub use ffi::BackendWrapper;
-pub struct BackendWrapperRust {
-    ready : bool,
-}
-
 impl Default for BackendWrapperRust {
     fn default() -> BackendWrapperRust {
         BackendWrapperRust {
-            ready : false
+            ready : false,
+            update_interval_ms: 50,
+            actual_backend_type: 0,
+            client_name_hint: QString::default(),
+            backend_type: 0,
+            xruns: 0,
+            last_processed: 0,
+            dsp_load: 0.0,
+            driver_setting_overrides: QVariant::default(),
         }
     }
 }
