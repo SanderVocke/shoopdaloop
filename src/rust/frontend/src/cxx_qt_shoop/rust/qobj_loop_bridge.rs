@@ -42,7 +42,7 @@ pub mod ffi {
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
         include!("cxx-qt-lib-shoop/invoke.h");
-        #[rust_name = "invoke_with_return_variantmap"]
+        #[rust_name = "loop_invoke_with_return_variantmap"]
         unsafe fn invoke_with_return(obj: *mut QObject, method: String) -> Result<QMap_QString_QVariant>;
 
         include!("cxx-qt-lib-shoop/metatype.h");
@@ -156,7 +156,7 @@ pub mod ffi {
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=(*mut QQuickItem,)> for Loop {}
-    impl cxx_qt::Constructor<(), NewArguments=()> for Loop {}
+    impl cxx_qt::Constructor<()> for Loop {}
 }
 
 pub use ffi::Loop;

@@ -1,6 +1,7 @@
 use common::logging::macros::*;
 use cxx_qt::ConnectionType;
 use cxx_qt::CxxQtType;
+use crate::cxx_qt_lib_shoop::qobject::qobject_property_bool;
 use crate::cxx_qt_shoop::qobj_loop_bridge::Loop;                                   
 use crate::cxx_qt_shoop::qobj_loop_bridge::ffi::*;                                           
 use std::pin::Pin;
@@ -136,6 +137,22 @@ impl Loop {
     pub fn update_on_gui_thread(self: Pin<&mut Loop>) {
         // Stub implementation
         println!("Updating Loop on GUI Thread");
+    }
+
+    fn maybe_initialize(self: Pin<&mut Loop>) {
+        let initialize_condition : bool;
+
+        unsafe {
+            initialize_condition =
+               !self.initialized() &&
+                self.backend != std::ptr::null_mut() &&
+                qobject_property_bool(self.backend.as_ref().unwrap(), "initialized".to_string()).unwrap_or(false) &&
+                self.backend_loop.is_none();
+        }
+
+        if initialize_condition {
+            debug!("Found backend, initializing");
+        }
     }
 }
 

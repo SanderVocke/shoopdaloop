@@ -27,7 +27,7 @@ pub mod ffi {
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
 
         include!("cxx-qt-lib-shoop/invoke.h");
-        #[rust_name = "invoke_with_return_variantmap"]
+        #[rust_name = "compositeloop_invoke_with_return_variantmap"]
         unsafe fn invoke_with_return(obj : *mut QObject, method : String) -> Result<QMap_QString_QVariant>;
 
         include!("cxx-qt-lib-shoop/metatype.h");
@@ -59,7 +59,7 @@ pub mod ffi {
 
         #[inherit]
         #[qsignal]
-        unsafe fn parent_changed(self : Pin<&mut CompositeLoop>, parent : *mut QQuickItem);
+        unsafe fn parentChanged(self : Pin<&mut CompositeLoop>, parent : *mut QQuickItem);
 
         #[qsignal]
         fn cycled(self : Pin<&mut CompositeLoop>, cycle_nr: i32);
