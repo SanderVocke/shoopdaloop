@@ -12,6 +12,15 @@ pub mod ffi {
         #[qobject]
         #[base = QQuickItem]
         #[qproperty(bool, ready)]
+        #[qproperty(i32, update_interval_ms)]
+        #[qproperty(bool, initialized)]
+        #[qproperty(i32, actual_backend_type)]
+        #[qproperty(QString, client_name_hint)]
+        #[qproperty(i32, backend_type)]
+        #[qproperty(i32, xruns)]
+        #[qproperty(i32, last_processed)]
+        #[qproperty(f32, dsp_load)]
+        #[qproperty(QVariant, driver_setting_overrides)]
         type BackendWrapper = super::BackendWrapperRust;
     }
 
