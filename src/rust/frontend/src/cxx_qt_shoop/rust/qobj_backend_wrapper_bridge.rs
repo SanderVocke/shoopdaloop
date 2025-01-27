@@ -50,6 +50,15 @@ pub mod ffi {
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=(*mut QQuickItem,)> for BackendWrapper {}
     impl cxx_qt::Constructor<(), NewArguments=()> for BackendWrapper {}
+    update_interval_ms: i32,
+    initialized: bool,
+    actual_backend_type: i32,
+    client_name_hint: QString,
+    backend_type: i32,
+    xruns: i32,
+    last_processed: i32,
+    dsp_load: f32,
+    driver_setting_overrides: QVariant,
 }
 
 use ffi::*;
