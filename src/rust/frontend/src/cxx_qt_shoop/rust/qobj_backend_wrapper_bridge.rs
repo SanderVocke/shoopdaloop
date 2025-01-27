@@ -25,7 +25,6 @@ pub mod ffi {
         unsafe fn qquickitemFromPtr(obj : *mut BackendWrapper) -> *mut QQuickItem;
 
         include!("cxx-qt-shoop/make_unique.h");
-
         #[rust_name = "make_unique_backend_wrapper"]
         fn make_unique() -> UniquePtr<BackendWrapper>;
 
