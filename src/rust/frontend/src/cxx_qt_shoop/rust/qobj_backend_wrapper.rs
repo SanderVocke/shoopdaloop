@@ -1,35 +1,108 @@
+use std::pin::Pin;
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.BackendWrapper");
 
-pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper;
-pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::ffi::make_unique_backend_wrapper as make_unique;
+pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::*;
+pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::ffi::*;
+
+use cxx_qt::CxxQtType;
 
 impl BackendWrapper {
     
-    pub fn register_backend_object(self: Pin<&mut BackendWrapper>, _obj: QVariant) {
-        println!("register_backend_object called");
-    }
+    pub fn update_on_gui_thread(mut self: Pin<&mut BackendWrapper>) {
+        trace!("Update on GUI thread");
 
-    pub fn unregister_backend_object(self: Pin<&mut BackendWrapper>, _obj: QVariant) {
-        println!("unregister_backend_object called");
+        {
+            let ref_self = self.as_ref();
+            if !ref_self.ready() {
+                trace!("update_on_gui_thread called on a BackendWrapper that is not ready");
+                return;
+            }
+        }
+
+        let update_data : BackendWrapperUpdateData;
+        {
+            let mut rust = self.as_mut().rust_mut();
+            let maybe_update_data = rust.update_data.as_ref();
+            if maybe_update_data.is_none() {
+                return;
+            }
+            if rust.session.is_none() {
+                trace!("update_on_gui_thread called on a BackendWrapper with no session");
+                return;
+            }
+            update_data = *maybe_update_data.unwrap();
+            rust.update_data = None;
+        }
+
+        {
+            self.as_mut().set_xruns(update_data.xruns);
+            self.as_mut().set_dsp_load(update_data.dsp_load);
+            self.as_mut().set_last_processed(update_data.last_processed);
+        }
+
+        // Triggers other back-end objects to update as well
+        self.as_mut().updated_on_gui_thread();
     }
     
-    pub fn update_on_gui_thread(self: Pin<&mut BackendWrapper>) {
-        println!("update_on_gui_thread called");
+    pub fn update_on_other_thread(mut self: Pin<&mut BackendWrapper>) {
+        trace!("Update on back-end thread");
+
+        let current_xruns;
+        {
+            let ref_self = self.as_ref();
+            if !ref_self.ready() {
+                trace!("update_on_other_thread called on a BackendWrapper that is not ready");
+                return;
+            }
+            current_xruns = *self.xruns();
+        }
+
+        let driver_state;
+        {
+            let rust = self.as_mut().rust_mut();
+            if rust.driver.is_none() {
+                trace!("update_on_other_thread called on a BackendWrapper with no driver");
+                return;
+            }
+            driver_state = rust.driver.as_ref().unwrap().get_state();
+        }
+
+        let update_data = BackendWrapperUpdateData {
+            xruns: current_xruns + driver_state.xruns_since_last as i32,
+            dsp_load: driver_state.dsp_load_percent,
+            last_processed: driver_state.last_processed as i32,
+        };
+
+        {
+            let mut rust = self.as_mut().rust_mut();
+            rust.update_data = Some(update_data);
+        }
+
+        // Triggers other back-end objects to update as well
+        self.as_mut().updated_on_backend_thread();
     }
     
-    pub fn update_on_other_thread(self: Pin<&mut BackendWrapper>) {
-        println!("update_on_other_thread called");
+    pub fn get_sample_rate(mut self: Pin<&mut BackendWrapper>) -> i32 {
+        let mut_rust = self.as_mut().rust_mut();
+
+        if mut_rust.driver.is_none() {
+            warn!("get_sample_rate called on a BackendWrapper with no driver");
+            return 0;
+        }
+        
+        mut_rust.driver.as_ref().unwrap().get_sample_rate() as i32
     }
     
-    pub fn get_sample_rate(self: Pin<&mut BackendWrapper>) -> i32 {
-        println!("get_sample_rate called");
-        0
-    }
-    
-    pub fn get_buffer_size(self: Pin<&mut BackendWrapper>) -> i32 {
-        println!("get_buffer_size called");
-        0
+    pub fn get_buffer_size(mut self: Pin<&mut BackendWrapper>) -> i32 {
+        let mut_rust = self.as_mut().rust_mut();
+
+        if mut_rust.driver.is_none() {
+            warn!("get_sample_rate called on a BackendWrapper with no driver");
+            return 0;
+        }
+        
+        mut_rust.driver.as_ref().unwrap().get_buffer_size() as i32
     }
     
     pub fn close(self: Pin<&mut BackendWrapper>) {
@@ -132,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_class_name() {
-        let obj = super::make_unique();
+        let obj = super::make_unique_backend_wrapper();
         let classname = qobject_class_name_backend_wrapper (obj.as_ref().unwrap());
         assert_eq!(classname.unwrap(), "BackendWrapper");
     }

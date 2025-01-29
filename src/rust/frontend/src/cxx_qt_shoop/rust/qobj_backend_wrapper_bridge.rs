@@ -1,4 +1,6 @@
 use common::logging::macros::*;
+use backend_bindings::BackendSession;
+use backend_bindings::AudioDriver;
 shoop_log_unit!("Frontend.BackendWrapper");
 
 #[cxx_qt::bridge]
@@ -29,11 +31,11 @@ pub mod ffi {
         #[qproperty(QVariant, driver_setting_overrides)]
         type BackendWrapper = super::BackendWrapperRust;
 
-        #[qinvokable]
-        pub fn register_backend_object(self: Pin<&mut BackendWrapper>, _obj: QVariant);
+        #[qsignal]
+        pub fn updated_on_gui_thread(self: Pin<&mut BackendWrapper>);
 
-        #[qinvokable]
-        pub fn unregister_backend_object(self: Pin<&mut BackendWrapper>, _obj: QVariant);
+        #[qsignal]
+        pub fn updated_on_backend_thread(self: Pin<&mut BackendWrapper>);
 
         #[qinvokable]
         pub fn update_on_gui_thread(self: Pin<&mut BackendWrapper>);
@@ -136,7 +138,15 @@ pub mod ffi {
 
 use ffi::*;
 pub use ffi::BackendWrapper;
+
+#[derive(Copy, Clone)]
+pub struct BackendWrapperUpdateData {
+    pub xruns : i32,
+    pub dsp_load : f32,
+    pub last_processed : i32,
+}
 pub struct BackendWrapperRust {
+    // Properties
     ready : bool,
     update_interval_ms: i32,
     actual_backend_type: i32,
@@ -146,11 +156,17 @@ pub struct BackendWrapperRust {
     last_processed: i32,
     dsp_load: f32,
     driver_setting_overrides: QVariant,
+
+    // Rust-side only
+    pub driver : Option<AudioDriver>,
+    pub session : Option<BackendSession>,
+    pub update_data : Option<BackendWrapperUpdateData>,
 }
 
 impl Default for BackendWrapperRust {
     fn default() -> BackendWrapperRust {
         BackendWrapperRust {
+            // Properties
             ready : false,
             update_interval_ms: 50,
             actual_backend_type: 0,
@@ -160,6 +176,11 @@ impl Default for BackendWrapperRust {
             last_processed: 0,
             dsp_load: 0.0,
             driver_setting_overrides: QVariant::default(),
+
+            // Rust-side only
+            driver : None,
+            session : None,
+            update_data : None,
         }
     }
 }
