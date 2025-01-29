@@ -5,7 +5,7 @@ import QtQuick 6.6
 import ShoopConstants
 import 'js/mode_helpers.js' as ModeHelpers
 
-ShoopLoop {
+PythonLoop {
     property bool loaded : initialized
 
     readonly property PythonLogger logger: PythonLogger {

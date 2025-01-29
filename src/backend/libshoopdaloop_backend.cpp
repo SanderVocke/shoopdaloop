@@ -2348,7 +2348,9 @@ void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_set
       }
       JackAudioMidiDriverSettings s;
       s.client_name_hint = settings.client_name_hint;
-      s.maybe_server_name_hint = settings.maybe_server_name;
+      if(settings.maybe_server_name) {
+          s.maybe_server_name_hint = settings.maybe_server_name;
+      }
       jack->start(s);
     };
 

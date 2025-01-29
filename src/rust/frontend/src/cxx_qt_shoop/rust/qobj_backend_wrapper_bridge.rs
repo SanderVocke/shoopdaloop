@@ -3,6 +3,10 @@ use backend_bindings::BackendSession;
 use backend_bindings::AudioDriver;
 shoop_log_unit!("Frontend.BackendWrapper");
 
+pub mod constants {
+    pub const PROP_READY: &str = "ready";
+}
+
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
@@ -14,6 +18,12 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
+
+        include!("cxx-qt-lib/qlist.h");
+        type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
+
+        include!("cxx-qt-lib/qmap.h");
+        type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
     }
 
     unsafe extern "RustQt" {
@@ -28,7 +38,7 @@ pub mod ffi {
         #[qproperty(i32, xruns)]
         #[qproperty(i32, last_processed)]
         #[qproperty(f32, dsp_load)]
-        #[qproperty(QVariant, driver_setting_overrides)]
+        #[qproperty(QMap_QString_QVariant, driver_setting_overrides)]
         type BackendWrapper = super::BackendWrapperRust;
 
         #[qsignal]
@@ -51,12 +61,6 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn close(self: Pin<&mut BackendWrapper>);
-
-        #[qinvokable]
-        pub fn get_backend_driver_obj(self: Pin<&mut BackendWrapper>) -> QVariant;
-
-        #[qinvokable]
-        pub fn get_backend_session_obj(self: Pin<&mut BackendWrapper>) -> QVariant;
 
         #[qinvokable]
         pub fn dummy_enter_controlled_mode(self: Pin<&mut BackendWrapper>);
@@ -110,7 +114,7 @@ pub mod ffi {
         pub fn abort_on_process_thread(self: Pin<&mut BackendWrapper>);
 
         #[qinvokable]
-        pub fn find_external_ports(self: Pin<&mut BackendWrapper>, _maybe_name_regex: &str, _port_direction: i32, _data_type: i32) -> Vec<QVariant>;
+        pub fn find_external_ports(self: Pin<&mut BackendWrapper>, _maybe_name_regex: &str, _port_direction: i32, _data_type: i32) -> QList_QVariant;
     }
 
     unsafe extern "C++" {
@@ -129,6 +133,13 @@ pub mod ffi {
         include!("cxx-qt-shoop/qobject_classname.h");
         #[rust_name = "qobject_class_name_backend_wrapper"]
         fn qobject_class_name(obj : &BackendWrapper) -> Result<&str>;
+
+        include!("cxx-qt-shoop/register_qml_type.h");
+        #[rust_name = "register_qml_type_backend_wrapper"]
+        fn register_qml_type(inference_example: &BackendWrapper,
+                             module_name: &mut String,
+                             version_major: i64, version_minor: i64,
+                             type_name: &mut String);
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=(*mut QQuickItem,)> for BackendWrapper {}
@@ -155,12 +166,13 @@ pub struct BackendWrapperRust {
     xruns: i32,
     last_processed: i32,
     dsp_load: f32,
-    driver_setting_overrides: QVariant,
+    driver_setting_overrides: QMap_QString_QVariant,
 
     // Rust-side only
     pub driver : Option<AudioDriver>,
     pub session : Option<BackendSession>,
     pub update_data : Option<BackendWrapperUpdateData>,
+    pub closed : bool,
 }
 
 impl Default for BackendWrapperRust {
@@ -171,16 +183,17 @@ impl Default for BackendWrapperRust {
             update_interval_ms: 50,
             actual_backend_type: 0,
             client_name_hint: QString::default(),
-            backend_type: 0,
+            backend_type: -1,
             xruns: 0,
             last_processed: 0,
             dsp_load: 0.0,
-            driver_setting_overrides: QVariant::default(),
+            driver_setting_overrides: QMap_QString_QVariant::default(),
 
             // Rust-side only
             driver : None,
             session : None,
             update_data : None,
+            closed : false,
         }
     }
 }

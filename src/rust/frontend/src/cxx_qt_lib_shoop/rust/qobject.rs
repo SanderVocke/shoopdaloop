@@ -2,12 +2,13 @@ use std::pin::Pin;
 
 #[cxx_qt::bridge]
 mod ffi {
-
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib/qstring.h");
+        include!("cxx-qt-lib-shoop/qthread.h");
         type QObject;
         type QString = cxx_qt_lib::QString;
+        type QThread = crate::cxx_qt_lib_shoop::qthread::QThread;
 
         #[rust_name = "qobject_set_parent"]
         unsafe fn qobjectSetParent(item : *mut QObject, parent : *mut QObject) -> Result<()>;
@@ -32,6 +33,9 @@ mod ffi {
 
         #[rust_name = "qobject_set_object_name"]
         unsafe fn qobjectSetObjectName(obj: *mut QObject, name: String) -> Result<()>;
+
+        #[rust_name = "qobject_move_to_thread"]
+        unsafe fn qobjectMoveToThread(obj: *mut QObject, thread : *mut QThread) -> Result<bool>;
     }
 }
 

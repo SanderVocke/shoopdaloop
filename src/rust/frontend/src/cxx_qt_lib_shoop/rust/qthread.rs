@@ -12,11 +12,11 @@ mod ffi {
         #[rust_name = "qthread_start"]
         fn qthreadStart(thread: Pin<&mut QThread>);
 
-        #[rust_name = "qthread_quit"]
-        fn qthreadQuit(thread: Pin<&mut QThread>);
+        #[rust_name = "qthread_exit"]
+        fn qthreadExit(thread: Pin<&mut QThread>);
 
-        #[rust_name = "qthread_wait"]
-        fn qthreadWait(thread: Pin<&mut QThread>) -> bool;
+        #[rust_name = "qthread_is_running"]
+        fn qthreadIsRunning(thread: Pin<&mut QThread>) -> bool;
 
         include!("cxx-qt-shoop/make_raw.h");
         #[rust_name = "make_raw_qthread_with_parent"]
@@ -26,7 +26,6 @@ mod ffi {
 
 pub use ffi::QThread;
 pub use ffi::make_raw_qthread_with_parent as make_raw_with_parent;
-use ffi::QObject;
 
 #[repr(C)]
 pub struct QThreadRust {
@@ -42,11 +41,11 @@ impl QThread {
         ffi::qthread_start(self);
     }
 
-    pub fn quit(self: Pin<&mut Self>) {
-        ffi::qthread_quit(self);
+    pub fn exit(self: Pin<&mut Self>) {
+        ffi::qthread_exit(self);
     }
 
-    pub fn wait(self: Pin<&mut Self>) -> bool {
-        ffi::qthread_wait(self)
+    pub fn is_running(self: Pin<&mut Self>) -> bool {
+        ffi::qthread_is_running(self)
     }
 }

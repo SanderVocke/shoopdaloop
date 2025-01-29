@@ -26,7 +26,7 @@ class LoopMidiChannel(LoopChannel):
         self._n_notes_active = self._new_n_notes_active = 0
     
     def maybe_initialize(self):
-        if self._loop and self._loop.initialized and not self._backend_obj:
+        if self._loop and self._loop.property("initialized") and not self._backend_obj:
             self._backend_obj = self._loop.add_midi_channel(self.mode)
             self.initializedChanged.emit(True)
 

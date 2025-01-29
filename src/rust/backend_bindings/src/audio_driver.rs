@@ -2,8 +2,8 @@ use anyhow;
 use crate::integer_enum;
 use crate::ffi;
 use std::sync::Mutex;
-
 use crate::port::ExternalPortDescriptor;
+use std::fmt;
 
 integer_enum! {
     pub enum AudioDriverType {
@@ -38,6 +38,12 @@ impl JackAudioDriverSettings {
     }
 }
 
+impl fmt::Debug for JackAudioDriverSettings {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "JackAudioDriverSettings {{ client_name_hint: {}, maybe_server_name: {:?} }}", self.client_name_hint, self.maybe_server_name)
+    }
+}
+
 pub struct DummyAudioDriverSettings {
     pub client_name: String,
     pub sample_rate: u32,
@@ -58,6 +64,26 @@ impl DummyAudioDriverSettings {
             client_name: std::ffi::CString::new(self.client_name.clone()).unwrap().into_raw(),
             sample_rate: self.sample_rate,
             buffer_size: self.buffer_size,
+        }
+    }
+}
+
+impl fmt::Debug for DummyAudioDriverSettings {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "DummyAudioDriverSettings {{ client_name: {}, sample_rate: {}, buffer_size: {} }}", self.client_name, self.sample_rate, self.buffer_size)
+    }
+}
+
+pub enum AudioDriverSettings {
+    Jack(JackAudioDriverSettings),
+    Dummy(DummyAudioDriverSettings),
+}
+
+impl fmt::Debug for AudioDriverSettings {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            AudioDriverSettings::Jack(settings) => write!(f, "AudioDriverSettings::Jack({:?})", settings),
+            AudioDriverSettings::Dummy(settings) => write!(f, "AudioDriverSettings::Dummy({:?})", settings),
         }
     }
 }
@@ -114,6 +140,13 @@ impl AudioDriver {
     pub fn get_buffer_size(&self) -> u32 {
         let obj = self.lock();
         unsafe { ffi::get_buffer_size(*obj) }
+    }
+
+    pub fn start(&self, settings : &AudioDriverSettings) -> Result<(), anyhow::Error> {
+        match settings {
+            AudioDriverSettings::Jack(settings) => self.start_jack(settings),
+            AudioDriverSettings::Dummy(settings) => self.start_dummy(settings),
+        }
     }
 
     pub fn start_dummy(&self, settings: &DummyAudioDriverSettings) -> Result<(), anyhow::Error> {

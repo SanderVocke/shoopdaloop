@@ -19,6 +19,7 @@ fn main() {
             .file("src/cxx_qt_lib_shoop/rust/qobject.rs")
             .file("src/cxx_qt_lib_shoop/rust/qquickitem.rs")
             .file("src/cxx_qt_lib_shoop/rust/qsignalspy.rs")
+            .file("src/cxx_qt_lib_shoop/rust/qthread.rs")
             .file("src/cxx_qt_lib_shoop/rust/qtimer.rs")
             .file("src/cxx_qt_lib_shoop/rust/qvariant_helpers.rs")
             .file("src/cxx_qt_lib_shoop/rust/qvariant_qvariantmap.rs")
