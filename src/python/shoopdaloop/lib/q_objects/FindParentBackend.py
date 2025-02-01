@@ -19,6 +19,8 @@ class FindParentBackend(ShoopQQuickItem):
         self.rescan_parents()
         if not self._backend:
             self.parentChanged.connect(lambda: self.rescanBecauseParentChanged())
+        
+        self.logger.debug(lambda: f"{self.metaObject().className()}: Created, parent is {self.parent()}")
 
     ######################
     # PROPERTIES
