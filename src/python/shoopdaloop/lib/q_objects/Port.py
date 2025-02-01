@@ -38,7 +38,7 @@ class Port(FindParentBackend):
         self.logger = Logger("Frontend.Port")
 
         self.backendChanged.connect(lambda: self.maybe_initialize())
-        self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
+        self.backendReadyChanged.connect(lambda: self.maybe_initialize())
         self.initializedChanged.connect(lambda: self.update_internal_connections())
 
     ######################
@@ -233,8 +233,7 @@ class Port(FindParentBackend):
             self._muted != None and \
             self._passthrough_muted != None and \
             self._n_ringbuffer_samples != None and \
-            self._backend and \
-            self._backend.initialized:
+            self.backend_ready:
 
             self.logger.trace(lambda: "{}: Initializing port {}".format(self, self._name_hint))
             self.maybe_initialize_impl(self._name_hint, self._input_connectability, self._output_connectability, self._is_internal)

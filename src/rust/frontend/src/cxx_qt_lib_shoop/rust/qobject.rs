@@ -1,7 +1,7 @@
 use std::pin::Pin;
 
 #[cxx_qt::bridge]
-mod ffi {
+pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib/qstring.h");

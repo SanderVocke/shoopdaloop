@@ -292,7 +292,7 @@ void initialize_logging() {
 }
 
 shoop_backend_session_t *create_backend_session() {
-  return api_impl<shoop_backend_session_t*>("shoop_backend_session_t", [&]() {
+  return api_impl<shoop_backend_session_t*>("create_backend_session", [&]() {
     auto rval = shoop_make_shared<BackendSession>();
     g_active_backends.insert(rval);
     return external_backend_session(rval);

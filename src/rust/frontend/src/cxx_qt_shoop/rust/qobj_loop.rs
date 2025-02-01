@@ -12,15 +12,15 @@ impl Loop {
         debug!("Initializing");
 
         {
-            self.as_mut().connect_mode_changed(|o| { o.mode_changed_queued(); }, ConnectionType::QueuedConnection);
-            self.as_mut().connect_next_mode_changed(|o| { o.next_mode_changed_queued(); }, ConnectionType::QueuedConnection);
-            self.as_mut().connect_length_changed(|o| { o.length_changed_queued(); }, ConnectionType::QueuedConnection);
-            self.as_mut().connect_position_changed(|o| { o.position_changed_queued(); }, ConnectionType::QueuedConnection);
-            self.as_mut().connect_next_transition_delay_changed(|o| { o.next_transition_delay_changed_queued(); }, ConnectionType::QueuedConnection);
-            self.as_mut().connect_display_peaks_changed(|o| { o.display_peaks_changed_queued(); }, ConnectionType::QueuedConnection);
-            self.as_mut().connect_display_midi_notes_active_changed(|o| { o.display_midi_notes_active_changed_queued(); }, ConnectionType::QueuedConnection);
-            self.as_mut().connect_display_midi_events_triggered_changed(|o| { o.display_midi_events_triggered_changed_queued(); }, ConnectionType::QueuedConnection);
-            self.as_mut().connect_cycled(|o, cycle_nr| { o.cycled_queued(cycle_nr); }, ConnectionType::QueuedConnection);
+            self.as_mut().connect_mode_changed(|o| { o.mode_changed_queued(); }, ConnectionType::QueuedConnection).release();
+            self.as_mut().connect_next_mode_changed(|o| { o.next_mode_changed_queued(); }, ConnectionType::QueuedConnection).release();
+            self.as_mut().connect_length_changed(|o| { o.length_changed_queued(); }, ConnectionType::QueuedConnection).release();
+            self.as_mut().connect_position_changed(|o| { o.position_changed_queued(); }, ConnectionType::QueuedConnection).release();
+            self.as_mut().connect_next_transition_delay_changed(|o| { o.next_transition_delay_changed_queued(); }, ConnectionType::QueuedConnection).release();
+            self.as_mut().connect_display_peaks_changed(|o| { o.display_peaks_changed_queued(); }, ConnectionType::QueuedConnection).release();
+            self.as_mut().connect_display_midi_notes_active_changed(|o| { o.display_midi_notes_active_changed_queued(); }, ConnectionType::QueuedConnection).release();
+            self.as_mut().connect_display_midi_events_triggered_changed(|o| { o.display_midi_events_triggered_changed_queued(); }, ConnectionType::QueuedConnection).release();
+            self.as_mut().connect_cycled(|o, cycle_nr| { o.cycled_queued(cycle_nr); }, ConnectionType::QueuedConnection).release();
         }
     }
 

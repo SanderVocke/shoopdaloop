@@ -73,7 +73,7 @@ class CompositeLoop(FindParentBackend):
         self.modeChangedUnsafe.connect(self.update_position, Qt.DirectConnection)
 
         self.backendChanged.connect(lambda: self.maybe_initialize())
-        self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
+        self.backendReadyChanged.connect(lambda: self.maybe_initialize())
     
     cycled = ShoopSignal(int)
     cycledUnsafe = ShoopSignal(int)

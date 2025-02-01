@@ -1,17 +1,21 @@
 use common::logging::macros::*;
 use backend_bindings::BackendSession;
 use backend_bindings::AudioDriver;
+use crate::cxx_qt_lib_shoop::qthread::QThread;
+use crate::cxx_qt_lib_shoop::qtimer::QTimer;
 shoop_log_unit!("Frontend.BackendWrapper");
-
-pub mod constants {
-    pub const PROP_READY: &str = "ready";
-}
 
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
+
+        include!("cxx-qt-lib-shoop/qthread.h");
+        type QThread = crate::cxx_qt_lib_shoop::qthread::QThread;
+
+        include!("cxx-qt-lib-shoop/qtimer.h");
+        type QTimer = crate::cxx_qt_lib_shoop::qtimer::QTimer;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -81,10 +85,10 @@ pub mod ffi {
         pub fn dummy_run_requested_frames(self: Pin<&mut BackendWrapper>);
 
         #[qinvokable]
-        pub fn dummy_add_external_mock_port(self: Pin<&mut BackendWrapper>, _name: &str, _direction: i32, _data_type: i32);
+        pub fn dummy_add_external_mock_port(self: Pin<&mut BackendWrapper>, _name: QString, _direction: i32, _data_type: i32);
 
         #[qinvokable]
-        pub fn dummy_remove_external_mock_port(self: Pin<&mut BackendWrapper>, _name: &str);
+        pub fn dummy_remove_external_mock_port(self: Pin<&mut BackendWrapper>, _name: QString);
 
         #[qinvokable]
         pub fn dummy_remove_all_external_mock_ports(self: Pin<&mut BackendWrapper>);
@@ -102,10 +106,10 @@ pub mod ffi {
         pub fn backend_type_is_supported(self: Pin<&mut BackendWrapper>, _type: i32) -> bool;
 
         #[qinvokable]
-        pub fn open_driver_audio_port(self: Pin<&mut BackendWrapper>, _name_hint: &str, _direction: i32, _min_n_ringbuffer_samples: i32) -> QVariant;
+        pub fn open_driver_audio_port(self: Pin<&mut BackendWrapper>, _name_hint: QString, _direction: i32, _min_n_ringbuffer_samples: i32) -> QVariant;
 
         #[qinvokable]
-        pub fn open_driver_midi_port(self: Pin<&mut BackendWrapper>, _name_hint: &str, _direction: i32, _min_n_ringbuffer_samples: i32) -> QVariant;
+        pub fn open_driver_midi_port(self: Pin<&mut BackendWrapper>, _name_hint: QString, _direction: i32, _min_n_ringbuffer_samples: i32) -> QVariant;
 
         #[qinvokable]
         pub fn segfault_on_process_thread(self: Pin<&mut BackendWrapper>);
@@ -114,7 +118,7 @@ pub mod ffi {
         pub fn abort_on_process_thread(self: Pin<&mut BackendWrapper>);
 
         #[qinvokable]
-        pub fn find_external_ports(self: Pin<&mut BackendWrapper>, _maybe_name_regex: &str, _port_direction: i32, _data_type: i32) -> QList_QVariant;
+        pub fn find_external_ports(self: Pin<&mut BackendWrapper>, _maybe_name_regex: QString, _port_direction: i32, _data_type: i32) -> QList_QVariant;
     }
 
     unsafe extern "C++" {
@@ -173,6 +177,8 @@ pub struct BackendWrapperRust {
     pub session : Option<BackendSession>,
     pub update_data : Option<BackendWrapperUpdateData>,
     pub closed : bool,
+    pub update_timer : *mut QTimer,
+    pub update_thread : *mut QThread,
 }
 
 impl Default for BackendWrapperRust {
@@ -194,6 +200,8 @@ impl Default for BackendWrapperRust {
             session : None,
             update_data : None,
             closed : false,
+            update_timer : std::ptr::null_mut(),
+            update_thread : std::ptr::null_mut(),
         }
     }
 }

@@ -1,12 +1,18 @@
 use std::pin::Pin;
 use backend_bindings::*;
 use common::logging::macros::*;
+use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, qquickitem_to_qobject_mut};
+use crate::cxx_qt_lib_shoop::qobject::QObject;
+use crate::cxx_qt_lib_shoop::qthread::QThread;
+use crate::cxx_qt_lib_shoop::qtimer::QTimer;
+use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants;
+use std::slice;
 shoop_log_unit!("Frontend.BackendWrapper");
 
 pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::*;
 pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::ffi::*;
 
-use cxx_qt::CxxQtType;
+use cxx_qt::{ConnectionType, CxxQtType};
 
 fn audio_driver_settings_from_qvariantmap(map: &QMap_QString_QVariant,
                                           driver_type : &AudioDriverType) -> AudioDriverSettings
@@ -60,7 +66,7 @@ fn audio_driver_settings_from_qvariantmap(map: &QMap_QString_QVariant,
 }
 
 impl BackendWrapper {
-    pub fn init(mut self: Pin<&mut BackendWrapper>) {
+    pub fn init(mut self: Pin<&mut BackendWrapper>) -> Result<(), anyhow::Error>{
         let driver_type : AudioDriverType;
         let settings : AudioDriverSettings;
         let ready : bool;
@@ -84,24 +90,61 @@ impl BackendWrapper {
         }
 
         if ready {
-            error!("Trying to initialize when already ready.");
-            return;
+            return Err(anyhow::anyhow!("Already initialized"));
         }
 
         debug!("Initializing with type {:?}, settings {:?}",
                driver_type,
                settings);
+
         
-        {
+        let obj_qobject : *mut QObject;
+        unsafe {
+               let obj_qquickitem = self.as_mut().pin_mut_qquickitem_ptr();
+               obj_qobject = qquickitem_to_qobject_mut(obj_qquickitem);
+        }
+        
+        unsafe {
             let mut rust = self.as_mut().rust_mut();
+
             let local_driver = AudioDriver::new(driver_type).expect("Failed to create driver");
             local_driver.start(&settings).expect("Failed to start driver");
+
             rust.driver = Some(local_driver);
             rust.session = Some(BackendSession::new().expect("Unable to create session"));
             rust.closed = false;
+
+            rust.update_thread = QThread::make_raw_with_parent(obj_qobject);
+            let thread_mut_ref = &mut *rust.update_thread;
+            let thread_slice = slice::from_raw_parts_mut(thread_mut_ref, 1);
+            let mut thread : Pin<&mut QThread> = Pin::new_unchecked(&mut thread_slice[0]);
+
+            rust.update_timer = QTimer::make_raw();
+            let timer_mut_ref = &mut *rust.update_timer;
+            let timer_slice = slice::from_raw_parts_mut(timer_mut_ref, 1);
+            let mut timer : Pin<&mut QTimer> = Pin::new_unchecked(&mut timer_slice[0]);
+            if !timer.as_mut().move_to_thread(thread.as_mut().get_unchecked_mut())? {
+                return Err(anyhow::anyhow!("Failed to move timer to thread"));
+            }
+            timer.as_mut().set_interval(50);
+            timer.as_mut().set_single_shot(false);
+            timer.as_mut().connect_timeout(obj_qobject, String::from(constants::INVOKABLE_UPDATE_ON_OTHER_THREAD))?;
+            thread.as_mut().connect_started(timer.as_mut().qobject_from_ptr(), "start()".to_string())?;
+            thread.as_mut().start();
         }
 
-        error!("init unimplemented")
+        {
+            self.as_mut().connect_updated_on_backend_thread(
+                |this: Pin<&mut BackendWrapper>| {
+                    this.update_on_gui_thread();
+                },
+                ConnectionType::QueuedConnection)
+                .release();
+            self.as_mut().set_ready(true);
+        }
+
+        error!("Init not completely implemented");
+        Ok(())
     }
 
     pub fn maybe_init(self: Pin<&mut BackendWrapper>) {
@@ -125,7 +168,14 @@ impl BackendWrapper {
 
         if do_init {
             debug!("Initializing");
-            self.init();
+            match self.init() {
+                Ok(_) => {
+                    trace!("Initialized");
+                },
+                Err(e) => {
+                    error!("Failed to initialize: {:?}", e);
+                }
+            }
         } else if closed {
             trace!("Already closed");
         } else if ready {
@@ -301,26 +351,26 @@ impl BackendWrapper {
         }
     }
     
-    pub fn dummy_add_external_mock_port(mut self: Pin<&mut BackendWrapper>, name: &str, direction: i32, data_type: i32) {
+    pub fn dummy_add_external_mock_port(mut self: Pin<&mut BackendWrapper>, name: QString, direction: i32, data_type: i32) {
         let mut_rust = self.as_mut().rust_mut();
 
         if mut_rust.driver.is_none() {
             warn!("dummy_add_external_mock_port called on a BackendWrapper with no driver");
         } else {
             mut_rust.driver.as_ref().unwrap().dummy_add_external_mock_port
-                (name,
+                (name.to_string().as_str(),
                  direction as u32,
                  data_type as u32);
         }
     }
     
-    pub fn dummy_remove_external_mock_port(mut self: Pin<&mut BackendWrapper>, name: &str) {
+    pub fn dummy_remove_external_mock_port(mut self: Pin<&mut BackendWrapper>, name: QString) {
         let mut_rust = self.as_mut().rust_mut();
 
         if mut_rust.driver.is_none() {
             warn!("dummy_remove_external_mock_port called on a BackendWrapper with no driver");
         } else {
-            mut_rust.driver.as_ref().unwrap().dummy_remove_external_mock_port(name);
+            mut_rust.driver.as_ref().unwrap().dummy_remove_external_mock_port(name.to_string().as_str());
         }
     }
     
@@ -352,12 +402,12 @@ impl BackendWrapper {
         driver_type_supported(AudioDriverType::try_from(t).unwrap())
     }
     
-    pub fn open_driver_audio_port(self: Pin<&mut BackendWrapper>, _name_hint: &str, _direction: i32, _min_n_ringbuffer_samples: i32) -> QVariant {
+    pub fn open_driver_audio_port(self: Pin<&mut BackendWrapper>, _name_hint: QString, _direction: i32, _min_n_ringbuffer_samples: i32) -> QVariant {
         error!("open_driver_midi_port unimplemented");
         QVariant::default()
     }
     
-    pub fn open_driver_midi_port(self: Pin<&mut BackendWrapper>, _name_hint: &str, _direction: i32, _min_n_ringbuffer_samples: i32) -> QVariant {
+    pub fn open_driver_midi_port(self: Pin<&mut BackendWrapper>, _name_hint: QString, _direction: i32, _min_n_ringbuffer_samples: i32) -> QVariant {
         error!("open_driver_midi_port unimplemented");
         QVariant::default()
     }
@@ -382,9 +432,14 @@ impl BackendWrapper {
         }
     }
     
-    pub fn find_external_ports(self: Pin<&mut BackendWrapper>, _maybe_name_regex: &str, _port_direction: i32, _data_type: i32) -> QList_QVariant {
+    pub fn find_external_ports(self: Pin<&mut BackendWrapper>, _maybe_name_regex: QString, _port_direction: i32, _data_type: i32) -> QList_QVariant {
         error!("find_external_ports unimplemented");
         QList_QVariant::default()
+    }
+
+    pub fn create_loop(mut self: Pin<&mut BackendWrapper>) -> Loop {
+        let mut mut_rust = self.as_mut().rust_mut();
+        mut_rust.session.as_mut().unwrap().create_loop().unwrap()
     }
 }
 

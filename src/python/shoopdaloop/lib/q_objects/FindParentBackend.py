@@ -2,6 +2,7 @@ from typing import *
 
 from .ShoopPyObject import *
 from PySide6.QtQuick import QQuickItem
+from PySide6.QtCore import SIGNAL, SLOT, QObject
 
 from .Backend import Backend
 from ..logging import Logger
@@ -17,7 +18,7 @@ class FindParentBackend(ShoopQQuickItem):
         
         self.rescan_parents()
         if not self._backend:
-            self.parentChanged.connect(lambda: self.rescan_parents())
+            self.parentChanged.connect(lambda: self.rescanBecauseParentChanged())
 
     ######################
     # PROPERTIES
@@ -32,15 +33,16 @@ class FindParentBackend(ShoopQQuickItem):
     def backend(self, l):
         if l and l != self._backend:
             self._backend = l
-            self.logger.trace(lambda: f'Backend -> {l}')
-            self._backend.initializedChanged.connect(lambda: self.backendInitializedChanged.emit(self._backend.initialized))
+            self.logger.trace(lambda: f'{self.metaObject().className()}: Backend -> {l}')
+            QObject.connect(self._backend, SIGNAL("readyChanged()"), self, SLOT("update()")) 
             self.backendChanged.emit(l)
+            self.update()
     
-    # backend_initialized
-    backendInitializedChanged = ShoopSignal(bool)
-    @ShoopProperty(bool, notify=backendInitializedChanged)
-    def backend_initialized(self):
-        return self._backend.initialized
+    # backend_ready
+    backendReadyChanged = ShoopSignal(bool)
+    @ShoopProperty(bool, notify=backendReadyChanged)
+    def backend_ready(self):
+        return self._backend and self._backend.property("ready")
     
     ###########
     ## SLOTS
@@ -48,12 +50,21 @@ class FindParentBackend(ShoopQQuickItem):
 
     def close(self):
         if self._backend:
-            self._backend.unregisterBackendObject(self)
             self.backend = None
+            
+    @ShoopSlot()
+    def rescanBecauseParentChanged(self):
+        self.logger.debug(lambda: f"{self.metaObject().className()}: rescanBecauseParentChanged")
+        self.rescan_parents()
     
     @ShoopSlot()
+    def update(self):
+        value = self.backend_ready
+        self.backendReadyChanged.emit(value)
+            
+    @ShoopSlot()
     def rescan_parents(self):
-        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
+        maybe_backend = findFirstParent(self, lambda p: p and p.objectName() == "shoop_backend_wrapper" and self._backend == None)
+        self.logger.debug(lambda: f"{self.metaObject().className()}: rescan_parents found {maybe_backend}")
         if maybe_backend:
             self.backend = maybe_backend
-            self.backend.registerBackendObject(self)

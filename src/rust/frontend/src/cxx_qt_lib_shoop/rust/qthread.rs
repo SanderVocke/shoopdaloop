@@ -1,11 +1,13 @@
 use cxx::{type_id, ExternType};
 use cxx_qt;
 use std::pin::Pin;
+use crate::cxx_qt_lib_shoop::qobject::QObject;
 
 #[cxx_qt::bridge]
 mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qthread.h");
+        include!("cxx-qt-lib-shoop/qobject.h");
         type QThread = super::QThreadRust;
         type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
 
@@ -21,6 +23,12 @@ mod ffi {
         include!("cxx-qt-shoop/make_raw.h");
         #[rust_name = "make_raw_qthread_with_parent"]
         unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut QThread;
+
+        #[rust_name = "qobject_from_ptr_qthread"]
+        unsafe fn qobjectFromPtr(thread: *mut QThread) -> *mut QObject;
+
+        #[rust_name = "qthread_connect_started"]
+        unsafe fn qthreadConnectStarted(thread : Pin<&mut QThread>, receiver : *mut QObject, slot : String) -> Result<()>;
     }
 }
 
@@ -47,5 +55,13 @@ impl QThread {
 
     pub fn is_running(self: Pin<&mut Self>) -> bool {
         ffi::qthread_is_running(self)
+    }
+
+    pub fn make_raw_with_parent(parent: *mut QObject) -> *mut QThread {
+        unsafe { ffi::make_raw_qthread_with_parent(parent) }
+    }
+
+    pub fn connect_started(self : Pin<&mut Self>, receiver : *mut QObject, slot : String) -> Result<(), cxx::Exception> {
+        unsafe { ffi::qthread_connect_started(self, receiver, slot) }
     }
 }

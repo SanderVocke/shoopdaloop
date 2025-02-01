@@ -31,7 +31,7 @@ void connect(A * sender,
     QMetaMethod signalMethod = snd_meta->method(signalIndex);
     QMetaMethod slotMethod = rcv_meta->method(slotIndex);
 
-    if (!QObject::connect(qobj_sender, signalMethod, qobj_receiver, slotMethod)) {
+    if (!QObject::connect(qobj_sender, signalMethod, qobj_receiver, slotMethod, Qt::DirectConnection)) {
         throw std::runtime_error("Failed to connect");
     }
 }

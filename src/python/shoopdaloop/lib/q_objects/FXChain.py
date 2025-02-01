@@ -26,7 +26,7 @@ class FXChain(FindParentBackend):
         self.logger = Logger('Frontend.FXChain')
 
         self.backendChanged.connect(lambda: self.maybe_initialize())
-        self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
+        self.backendReadyChanged.connect(lambda: self.maybe_initialize())
         
         self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)

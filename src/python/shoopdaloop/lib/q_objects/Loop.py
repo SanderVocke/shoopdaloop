@@ -9,7 +9,7 @@ import sys
 from .ShoopPyObject import *
 from .FindParentBackend import FindParentBackend
 
-from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
 from ..backend_wrappers import *
@@ -64,7 +64,7 @@ class Loop(FindParentBackend):
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
         self.backendChanged.connect(lambda: self.maybe_initialize())
-        self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
+        self.backendReadyChanged.connect(lambda: self.maybe_initialize())
 
         self.initializedChanged.connect(lambda i: self.logger.debug("initialized -> {}".format(i)))
 
@@ -219,7 +219,6 @@ class Loop(FindParentBackend):
     # Update on back-end thread.
     @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
-        #self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
         if not self._initialized:
             return
         
@@ -287,7 +286,6 @@ class Loop(FindParentBackend):
     # Update on GUI thread.
     @ShoopSlot()
     def updateOnGuiThread(self):
-        #self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
         if not self._initialized or not self.isValid():
             return
         
@@ -363,8 +361,6 @@ class Loop(FindParentBackend):
     def close(self):
         if self._backend_loop:
             self.logger.debug(lambda: 'close')
-            if self._backend:
-                self._backend.unregisterBackendObject(self)
             self._backend_loop = None
             self._initialized = False
             self.initializedChanged.emit(False)
@@ -391,13 +387,15 @@ class Loop(FindParentBackend):
         pass
     
     def maybe_initialize(self):
-        if self._backend and self._backend.initialized and not self._backend_loop:
+        if self.backend_ready and not self._backend_loop:
+            from shoop_rust import shoop_rust_create_loop
+            from shiboken6 import getCppPointer
             self.logger.debug(lambda: 'Found backend, initializing')
-            self._backend_loop = self._backend.get_backend_session_obj().create_loop()
+            self._backend_loop = shoop_rust_create_loop(getCppPointer(self._backend)[0])
             if self._backend_loop:
                 self._initialized = True
-                self.update()
-                self._backend.registerBackendObject(self)
+                QObject.connect(self._backend, SIGNAL("updated_on_gui_thread()"), self, SLOT("updateOnGuiThread()"), Qt.DirectConnection)
+                QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
                 self.initializedChanged.emit(True)
             else:
                 self.logger.warning(lambda: 'Failed to create loop')

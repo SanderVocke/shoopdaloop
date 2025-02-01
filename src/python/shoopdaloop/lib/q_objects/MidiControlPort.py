@@ -59,7 +59,7 @@ class MidiControlPort(FindParentBackend):
         self._lua_obj = None
 
         self.backendChanged.connect(lambda: self.maybe_init())
-        self.backendInitializedChanged.connect(lambda: self.maybe_init())
+        self.backendReadyChanged.connect(lambda: self.maybe_init())
 
         self.msgReceived.connect(lambda msg: self.logger.debug(lambda: "Received: {}".format(msg)))
         self.connected.connect(lambda: self.logger.debug(lambda: "{}: connected".format(self._name_hint)))
@@ -331,9 +331,9 @@ class MidiControlPort(FindParentBackend):
     def maybe_init(self):
         if self._backend_obj:
             return
-        self.logger.trace(lambda: f'Attempting to initialize. Backend: {self._backend}. Backend init: {self._backend.initialized if self._backend else None}')
-        if self._backend and not self._backend.initialized:
-            self._backend.initializedChanged.connect(self.maybe_init)
+        self.logger.trace(lambda: f'Attempting to initialize. Backend: {self._backend}. Backend init: {self.backend_ready}')
+        if self._backend and not self.backend_ready:
+            self.backendReadyChanged.connect(self.maybe_init)
             return
         if self._name_hint and self._backend and self._direction != None and self._may_open:
             self.logger.debug(lambda: "Opening decoupled MIDI port {}".format(self._name_hint))

@@ -138,6 +138,7 @@ class AudioPort(Port):
             if not maybe_fx_chain.initialized:
                 maybe_fx_chain.initializedChanged.connect(lambda: self.maybe_initialize())
             else:
+                self.logger.debug("Initialize internal")
                 # Determine our index in the FX chain
                 def find_index():
                     idx = 0
@@ -162,8 +163,10 @@ class AudioPort(Port):
     def maybe_initialize_external(self, name_hint, input_connectability, output_connectability):
         if self._backend_obj:
             return # never create_backend more than once
+        self.logger.debug(lambda: "Initialize external")
         direction = int(shoop_py_backend.PortDirection.Input) if not (input_connectability & int(shoop_py_backend.PortConnectabilityKind.Internal)) else int(shoop_py_backend.PortDirection.Output)
         self._backend_obj = self.backend.open_driver_audio_port(name_hint, direction, self.n_ringbuffer_samples)
+        self.logger.trace(lambda: f'backend_obj = {self._backend_obj}')
         self.push_state()
 
     def push_state(self):

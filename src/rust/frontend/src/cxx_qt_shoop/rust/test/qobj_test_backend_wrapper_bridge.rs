@@ -1,18 +1,6 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.TestBackendWrapper");
 
-pub mod constants {
-    use super::*;
-    pub const PROP_INITIALIZED : &str
-        = qobj_signature_backend_wrapper::constants::PROP_INITIALIZED;
-
-    pub const SIGNAL_INITIALIZED_CHANGED: &str
-        = qobj_signature_backend_wrapper::constants::SIGNAL_INITIALIZED_CHANGED;
-
-    pub const INVOKABLE_FIND_EXTERNAL_PORTS: &str
-        = qobj_signature_backend_wrapper::constants::INVOKABLE_FIND_EXTERNAL_PORTS;
-}
-
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {

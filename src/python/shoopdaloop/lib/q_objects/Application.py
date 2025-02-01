@@ -10,7 +10,6 @@ from PySide6.QtQml import QQmlDebuggingEnabler
 from PySide6.QtQuick import QQuickWindow
 
 from .ShoopPyObject import *
-from .Backend import close_all_backends
 
 have_nsm = os.name == 'posix'
 if have_nsm:
@@ -267,8 +266,7 @@ class Application(ShoopQApplication):
             if self.engine:
                 self.unload_qml()
             else:
-                self.logger.debug("Terminating back-ends")
-                close_all_backends()
+                self.logger.debug("Quitting")
                 QTimer.singleShot(1, lambda: self.quit())
                 self.exec()
 
