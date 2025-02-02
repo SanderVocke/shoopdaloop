@@ -25,7 +25,7 @@ FocusReleasingScrollView {
     property var tracks : []
     property var track_initial_descriptors : []
 
-    property var backend
+    property var backend : null
 
     onTracksChanged: {
         // Keep indexes up to date

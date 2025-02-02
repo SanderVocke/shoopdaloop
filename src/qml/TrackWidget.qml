@@ -13,7 +13,7 @@ Item {
     id: root
     objectName: "Qml.TrackWidget"
 
-    property var backend
+    property var backend : null
 
     width: width_adjuster.x + width_adjuster.width
     function setWidth(width) {
@@ -323,7 +323,8 @@ Item {
         var loop_descriptor = GenerateSession.generate_loop(id, name, 0, false, channel_descriptors)
 
         root.add_loop({
-            initial_descriptor: loop_descriptor
+            initial_descriptor: loop_descriptor,
+            backend : Qt.binding( () => root.backend )
         });
     }
 

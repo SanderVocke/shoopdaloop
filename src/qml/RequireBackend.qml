@@ -5,7 +5,7 @@ Item {
         else {
             if (provider.backend) { return provider.backend; }
             else {
-                console.log(`Error: component ${parent} needs a "back-end" property which is set.`)
+                console.log(`Error: component ${parent} needs a "backend" property which is set.`)
             }
         }
     }

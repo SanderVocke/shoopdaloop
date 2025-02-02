@@ -677,6 +677,8 @@ Rectangle {
                     TrackWidget {
                         id: sync_loop_widget
 
+                        backend : session_backend
+
                         anchors {
                             left: parent.left
                             right: parent.right

@@ -10,7 +10,7 @@ PythonLoopMidiChannel {
     RequireBackend {}
 
     property var descriptor : null
-    property var backend
+    property var backend : null
 
     readonly property string obj_id : descriptor.id
 

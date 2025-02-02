@@ -20,8 +20,6 @@ from .Logger import Logger
 from shoop_py_backend import Loop as BackendLoop
 from shoop_py_backend import LoopMode, ChannelMode, AudioChannel, MidiChannel, transition_multiple_loops
 
-import traceback
-
 # Wraps a back-end loop.
 class Loop(ShoopQQuickItem):
     # Other signals
@@ -64,7 +62,7 @@ class Loop(ShoopQQuickItem):
 
         def on_backend_changed(backend):
             self.logger.debug(lambda: 'Backend changed')
-            backend.onReadyChanged.connect(lambda: self.maybe_initialize())
+            QObject.connect(backend, SIGNAL("readyChanged()"), self, SLOT("maybe_initialize()"))
             self.maybe_initialize()
         self.backendChanged.connect(lambda b: on_backend_changed(b))
         
@@ -382,6 +380,7 @@ class Loop(ShoopQQuickItem):
     def dependent_will_handle_sync_loop_cycle(self, cycle_nr):
         pass
     
+    @ShoopSlot(thread_protection = ThreadProtectionType.ObjectThread)
     def maybe_initialize(self):
         if self.backend and self.backend.property("ready") and not self._backend_loop:
             from shoop_rust import shoop_rust_create_loop
