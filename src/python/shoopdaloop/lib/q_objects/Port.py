@@ -7,10 +7,9 @@ import json
 from typing import *
 import sys
 
-from .FindParentBackend import FindParentBackend
 from .ShoopPyObject import *
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
 from .Backend import Backend
@@ -19,7 +18,7 @@ from ..logging import Logger
 from ..findFirstParent import findFirstParent
 
 # Wraps a back-end port.
-class Port(FindParentBackend):
+class Port(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(Port, self).__init__(parent)
         self._name_hint = None
@@ -36,14 +35,32 @@ class Port(FindParentBackend):
         self._ever_initialized = False
         self._n_ringbuffer_samples = None
         self.logger = Logger("Frontend.Port")
-
-        self.backendChanged.connect(lambda: self.maybe_initialize())
-        self.backendReadyChanged.connect(lambda: self.maybe_initialize())
+        
+        def on_backend_changed(backend):
+            self.logger.debug(lambda: 'Backend changed')
+            QObject.connect(backend, SIGNAL("readyChanged()"), self, SLOT("maybe_initialize()"))
+            self.maybe_initialize()
+        self.backendChanged.connect(lambda b: on_backend_changed(b))
         self.initializedChanged.connect(lambda: self.update_internal_connections())
 
     ######################
     # PROPERTIES
     ######################
+    
+    # backend
+    backendChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=backendChanged)
+    def backend(self):
+        return self._backend
+    @backend.setter
+    def backend(self, l):
+        if l and l != self._backend:
+            if self._backend or self._backend_loop:
+                self.logger.throw_error('May not change backend of existing loop')
+            self._backend = l
+            self.logger.trace(lambda: 'Set backend -> {}'.format(l))
+            self.backendChanged.emit(l)
+            self.maybe_initialize()
 
     # initialized
     initializedChanged = ShoopSignal(bool)
@@ -190,7 +207,6 @@ class Port(FindParentBackend):
 
     @ShoopSlot()
     def close(self):
-        FindParentBackend.close(self)
         if self._backend_obj:
             self.logger.debug(lambda: "{}: Closing port {}".format(self, self._name))
             self._backend_obj = None
