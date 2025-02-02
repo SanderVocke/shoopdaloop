@@ -16,6 +16,7 @@ Item {
 
     property var all_loops_in_track
     property var maybe_fx_chain
+    property var backend
 
     property var initial_descriptor : null
 
@@ -487,6 +488,7 @@ Item {
                 maybe_loop = backend_loop_factory.createObject(root, {
                     'initial_descriptor': root.initial_descriptor,
                     'sync_source': Qt.binding(() => (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null),
+                    'backend': Qt.binding(() => root.backend)
                 })
                 push_stereo_balance(balance)
                 push_gain(gain)

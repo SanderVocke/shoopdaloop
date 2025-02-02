@@ -20,7 +20,7 @@ class FindParentBackend(ShoopQQuickItem):
         if not self._backend:
             self.parentChanged.connect(lambda: self.rescanBecauseParentChanged())
         
-        self.logger.debug(lambda: f"{self.metaObject().className()}: Created, parent is {self.parent()}")
+        self.logger.debug(lambda: f"{self.metaObject().className()}: Created, Qt parent is {self.parent()}, parent item is {self.parentItem()}")
 
     ######################
     # PROPERTIES
@@ -67,6 +67,6 @@ class FindParentBackend(ShoopQQuickItem):
     @ShoopSlot()
     def rescan_parents(self):
         maybe_backend = findFirstParent(self, lambda p: p and p.objectName() == "shoop_backend_wrapper" and self._backend == None)
-        self.logger.debug(lambda: f"{self.metaObject().className()}: rescan_parents found {maybe_backend}")
+        self.logger.debug(lambda: f"{self.metaObject().className()}: rescan_parents with parent {self.property("parent")} found {maybe_backend}")
         if maybe_backend:
             self.backend = maybe_backend

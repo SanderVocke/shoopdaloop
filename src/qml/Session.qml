@@ -510,6 +510,8 @@ Rectangle {
         TracksWidget {
             id: tracks_widget
 
+            backend : session_backend
+
             anchors {
                 top: app_controls.bottom
                 left: parent.left

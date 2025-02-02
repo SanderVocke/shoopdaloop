@@ -4,6 +4,9 @@ import ShoopDaLoop.PythonMidiControlPort
 PythonMidiControlPort {
     property var lua_engine: null
     property bool all_initialized: false
+    id : root
+
+    RequireBackend {}
 
     function initialize_lua() {
         if (lua_engine && !all_initialized) {

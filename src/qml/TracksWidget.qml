@@ -25,6 +25,8 @@ FocusReleasingScrollView {
     property var tracks : []
     property var track_initial_descriptors : []
 
+    property var backend
+
     onTracksChanged: {
         // Keep indexes up to date
         tracks.forEach((c, idx) => { c.track_idx = idx } )
@@ -123,7 +125,8 @@ FocusReleasingScrollView {
         // Instantiate initial tracks
         root.initial_track_descriptors.forEach(desc => {
             var track = root.add_track({
-                initial_descriptor: desc
+                initial_descriptor: desc,
+                backend : Qt.binding ( () => root.backend )
             });
             if (track.loaded) { _n_loaded += 1 }
         })
@@ -321,7 +324,8 @@ FocusReleasingScrollView {
         get_max_loop_slots: () => root.max_slots()
         onAddTrackDescriptor: (desc) => {
             root.add_track({
-                initial_descriptor: desc
+                initial_descriptor: desc,
+                backend : Qt.binding ( () => root.backend )
             })
         }
     }

@@ -11,6 +11,8 @@ Item {
     id: root
     objectName: "Qml.CompositeLoop"
 
+    RequireBackend {}
+
     // Store the current playback iteration.
     onIterationChanged: root.logger.trace(() => `iteration -> ${iteration}`)
 

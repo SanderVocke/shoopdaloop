@@ -43,6 +43,7 @@ Loop {
             property int index
             loop: root.loop
             descriptor: mapped_item
+            backend : root.backend
         }
     }
     Mapper {
@@ -54,6 +55,7 @@ Loop {
             property int index
             loop: root.loop
             descriptor: mapped_item
+            backend : root.backend
         }
     }
 

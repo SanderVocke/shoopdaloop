@@ -8,8 +8,10 @@ import ShoopConstants
 PythonLoopAudioChannel {
     id: root
 
-    property var descriptor : null
+    RequireBackend {}
 
+    property var descriptor : null
+    property var backend
     readonly property string obj_id : descriptor.id
 
     readonly property string object_schema : 'channel.1'

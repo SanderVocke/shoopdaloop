@@ -13,6 +13,8 @@ Item {
     id: root
     objectName: "Qml.TrackWidget"
 
+    property var backend
+
     width: width_adjuster.x + width_adjuster.width
     function setWidth(width) {
         width_adjuster.x = width - width_adjuster.width
@@ -287,7 +289,8 @@ Item {
                 initial_descriptor: desc,
                 track_idx: Qt.binding( () => root.track_idx ),
                 all_loops_in_track: Qt.binding( () => root.loops ),
-                maybe_fx_chain: Qt.binding( () => root.maybe_fx_chain )
+                maybe_fx_chain: Qt.binding( () => root.maybe_fx_chain ),
+                backend: Qt.binding( () => root.backend )
             });
         })
     }

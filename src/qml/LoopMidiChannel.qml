@@ -7,7 +7,10 @@ import 'js/schema_conversions.js' as Conversions
 PythonLoopMidiChannel {
     id: root
 
+    RequireBackend {}
+
     property var descriptor : null
+    property var backend
 
     readonly property string obj_id : descriptor.id
 
