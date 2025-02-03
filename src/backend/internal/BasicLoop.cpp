@@ -1,4 +1,5 @@
 #include "BasicLoop.h"
+#include "LoggingBackend.h"
 #include "types.h"
 #include <cstring>
 #include <memory>

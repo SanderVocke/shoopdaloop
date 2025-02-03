@@ -110,9 +110,15 @@ impl BackendWrapper {
             let local_driver = AudioDriver::new(driver_type).expect("Failed to create driver");
             local_driver.start(&settings).expect("Failed to start driver");
 
+            let local_session = BackendSession::new().expect("Failed to create session");
+            local_session.set_audio_driver(&local_driver)?;
+
             rust.driver = Some(local_driver);
-            rust.session = Some(BackendSession::new().expect("Unable to create session"));
+            rust.session = Some(local_session);
             rust.closed = false;
+
+            rust.driver.as_mut().unwrap().wait_process();
+            rust.driver.as_mut().unwrap().get_state(); // Has implicit side-effect necessary for initialization
 
             rust.update_thread = QThread::make_raw_with_parent(obj_qobject);
             let thread_mut_ref = &mut *rust.update_thread;
