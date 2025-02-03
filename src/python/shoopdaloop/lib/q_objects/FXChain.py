@@ -1,9 +1,8 @@
 from typing import *
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
-from .FindParentBackend import FindParentBackend
 from .ShoopPyObject import *
 
 from ..backend_wrappers import *
@@ -12,21 +11,25 @@ from ..findFirstParent import findFirstParent
 from ..logging import Logger
 
 # Wraps a back-end FX chain.
-class FXChain(FindParentBackend):
+class FXChain(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(FXChain, self).__init__(parent)
         self._active = self._new_active = True
         self._ready = self._new_ready = False
         self._ui_visible = self._new_ui_visible = False
         self._initialized = False
+        self._backend = None
         self._backend_object = None
         self._chain_type = self._new_chain_type = None
         self._title = self._new_title = ""
         self._n_pending_updates = 0
         self.logger = Logger('Frontend.FXChain')
 
-        self.backendChanged.connect(lambda: self.maybe_initialize())
-        self.backendReadyChanged.connect(lambda: self.maybe_initialize())
+        def on_backend_changed(backend):
+            self.logger.debug(lambda: 'Backend changed')
+            QObject.connect(backend, SIGNAL("readyChanged()"), self, SLOT("maybe_initialize()"))
+            self.maybe_initialize()
+        self.backendChanged.connect(lambda b: on_backend_changed(b))
         
         self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
@@ -34,6 +37,21 @@ class FXChain(FindParentBackend):
     ######################
     # PROPERTIES
     ######################
+    
+    # backend
+    backendChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=backendChanged)
+    def backend(self):
+        return self._backend
+    @backend.setter
+    def backend(self, l):
+        if l and l != self._backend:
+            if self._backend or self._backend_object:
+                self.logger.throw_error('May not change backend of existing loop')
+            self._backend = l
+            self.logger.trace(lambda: 'Set backend -> {}'.format(l))
+            self.backendChanged.emit(l)
+            self.maybe_initialize()
     
     # initialized
     initializedChanged = ShoopSignal(bool)
@@ -145,13 +163,6 @@ class FXChain(FindParentBackend):
         if prev_active != self._active:
             self.logger.debug(lambda: f'active -> {self._active}')
             self.activeChanged.emit(self._active)
-    
-    @ShoopSlot(result='QVariant')
-    def get_backend(self):
-        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend'))
-        if maybe_backend:
-            return maybe_backend
-        self.logger.throw_error("Could not find backend!")
     
     @ShoopSlot(result='QVariant')
     def get_backend_obj(self):
