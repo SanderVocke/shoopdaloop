@@ -23,6 +23,7 @@ class Port(ShoopQQuickItem):
         super(Port, self).__init__(parent)
         self._name_hint = None
         self._backend_obj = None
+        self._backend = None
         self._input_connectability = None
         self._output_connectability = None
         self._initialized = False
@@ -55,7 +56,7 @@ class Port(ShoopQQuickItem):
     @backend.setter
     def backend(self, l):
         if l and l != self._backend:
-            if self._backend or self._backend_loop:
+            if self._backend or self._backend_obj:
                 self.logger.throw_error('May not change backend of existing loop')
             self._backend = l
             self.logger.trace(lambda: 'Set backend -> {}'.format(l))
@@ -249,7 +250,8 @@ class Port(ShoopQQuickItem):
             self._muted != None and \
             self._passthrough_muted != None and \
             self._n_ringbuffer_samples != None and \
-            self.backend_ready:
+            self._backend and \
+            self._backend.property('ready'):
 
             self.logger.trace(lambda: "{}: Initializing port {}".format(self, self._name_hint))
             self.maybe_initialize_impl(self._name_hint, self._input_connectability, self._output_connectability, self._is_internal)

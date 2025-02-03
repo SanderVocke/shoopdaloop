@@ -6,7 +6,7 @@ import json
 from typing import *
 import sys
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt, Q_ARG, Q_RETURN_ARG
 from PySide6.QtQuick import QQuickItem
 
 from .ShoopPyObject import *
@@ -164,8 +164,15 @@ class AudioPort(Port):
         if self._backend_obj:
             return # never create_backend more than once
         self.logger.debug(lambda: "Initialize external")
+        from shoop_rust import shoop_rust_open_driver_audio_port
+        from shiboken6 import getCppPointer
         direction = int(shoop_py_backend.PortDirection.Input) if not (input_connectability & int(shoop_py_backend.PortConnectabilityKind.Internal)) else int(shoop_py_backend.PortDirection.Output)
-        self._backend_obj = self.backend.open_driver_audio_port(name_hint, direction, self.n_ringbuffer_samples)
+        self._backend_obj = shoop_rust_open_driver_audio_port(
+            getCppPointer(self._backend)[0],
+            name_hint,
+            direction,
+            self.n_ringbuffer_samples
+        )
         self.logger.trace(lambda: f'backend_obj = {self._backend_obj}')
         self.push_state()
 

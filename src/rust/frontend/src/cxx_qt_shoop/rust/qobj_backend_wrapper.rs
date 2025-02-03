@@ -401,15 +401,47 @@ impl BackendWrapper {
     pub fn backend_type_is_supported(self: Pin<&mut BackendWrapper>, t: i32) -> bool {
         driver_type_supported(AudioDriverType::try_from(t).unwrap())
     }
-    
-    pub fn open_driver_audio_port(self: Pin<&mut BackendWrapper>, _name_hint: QString, _direction: i32, _min_n_ringbuffer_samples: i32) -> QVariant {
-        error!("open_driver_midi_port unimplemented");
-        QVariant::default()
+
+    pub fn open_driver_audio_port(mut self: Pin<&mut BackendWrapper>, name_hint: &str, direction: i32, min_n_ringbuffer_samples: i32) -> Result<AudioPort, anyhow::Error> {
+        let mut_rust = self.as_mut().rust_mut();
+
+        if mut_rust.session.is_none() {
+            return Err(anyhow::anyhow!("open_driver_audio_port called on a BackendWrapper with no session"));
+        }
+        if mut_rust.driver.is_none() {
+            return Err(anyhow::anyhow!("open_driver_audio_port called on a BackendWrapper with no driver"));
+        }
+
+        let port = backend_bindings::AudioPort::new_driver_port
+           (&mut_rust.session.as_ref().unwrap(),
+            &mut_rust.driver.as_ref().unwrap(),
+            name_hint.to_string().as_str(),
+            &PortDirection::try_from(direction).unwrap(),
+            min_n_ringbuffer_samples as u32)
+            .expect("Failed to create audio port");
+        
+        Ok(port)
     }
-    
-    pub fn open_driver_midi_port(self: Pin<&mut BackendWrapper>, _name_hint: QString, _direction: i32, _min_n_ringbuffer_samples: i32) -> QVariant {
-        error!("open_driver_midi_port unimplemented");
-        QVariant::default()
+
+    pub fn open_driver_midi_port(mut self: Pin<&mut BackendWrapper>, name_hint: &str, direction: i32, min_n_ringbuffer_samples: i32) -> Result<MidiPort, anyhow::Error> {
+        let mut_rust = self.as_mut().rust_mut();
+
+        if mut_rust.session.is_none() {
+            return Err(anyhow::anyhow!("open_driver_midi_port called on a BackendWrapper with no session"));
+        }
+        if mut_rust.driver.is_none() {
+            return Err(anyhow::anyhow!("open_driver_midi_port called on a BackendWrapper with no driver"));
+        }
+
+        let port = backend_bindings::MidiPort::new_driver_port
+           (&mut_rust.session.as_ref().unwrap(),
+            &mut_rust.driver.as_ref().unwrap(),
+            name_hint.to_string().as_str(),
+            &PortDirection::try_from(direction).unwrap(),
+            min_n_ringbuffer_samples as u32)
+            .expect("Failed to create midi port");
+        
+        Ok(port)
     }
     
     pub fn segfault_on_process_thread(mut self: Pin<&mut BackendWrapper>) {

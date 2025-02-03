@@ -344,6 +344,7 @@ Item {
             property int index
             descriptor: mapped_item
             is_internal: false
+            backend: root.backend
         }
     }
     MapperWithLoadedDetection {
@@ -357,6 +358,7 @@ Item {
             property int index
             descriptor: mapped_item
             is_internal: false
+            backend: root.backend
         }
     }
 

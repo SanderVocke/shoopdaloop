@@ -104,13 +104,6 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn backend_type_is_supported(self: Pin<&mut BackendWrapper>, _type: i32) -> bool;
-
-        #[qinvokable]
-        pub fn open_driver_audio_port(self: Pin<&mut BackendWrapper>, _name_hint: QString, _direction: i32, _min_n_ringbuffer_samples: i32) -> QVariant;
-
-        #[qinvokable]
-        pub fn open_driver_midi_port(self: Pin<&mut BackendWrapper>, _name_hint: QString, _direction: i32, _min_n_ringbuffer_samples: i32) -> QVariant;
-
         #[qinvokable]
         pub fn segfault_on_process_thread(self: Pin<&mut BackendWrapper>);
 

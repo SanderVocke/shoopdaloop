@@ -82,6 +82,7 @@ PythonFXChain {
             property int index
             descriptor: mapped_item
             is_internal: true
+            backend: root.backend
         }
     }
     Mapper {
@@ -93,6 +94,7 @@ PythonFXChain {
             property int index
             descriptor: mapped_item
             is_internal: true
+            backend: root.backend
         }
     }
 }
