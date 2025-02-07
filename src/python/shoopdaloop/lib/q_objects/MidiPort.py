@@ -177,7 +177,15 @@ class MidiPort(Port):
         if self._backend_obj:
             return # never initialize more than once
         direction = int(shoop_py_backend.PortDirection.Input) if not (input_connectability & int(shoop_py_backend.PortConnectabilityKind.Internal)) else int(shoop_py_backend.PortDirection.Output)
-        self._backend_obj = self.backend.open_driver_midi_port(name_hint, direction, self.n_ringbuffer_samples)
+        from shoop_rust import shoop_rust_open_driver_midi_port
+        from shiboken6 import getCppPointer
+        self._backend_obj = shoop_rust_open_driver_midi_port(
+            getCppPointer(self._backend)[0],
+            name_hint,
+            direction,
+            self.n_ringbuffer_samples
+        )
+        self.logger.trace(lambda: f'backend_obj = {self._backend_obj}')
         self.push_state()
 
     def maybe_initialize_impl(self, name_hint, input_connectability, output_connectability, is_internal):

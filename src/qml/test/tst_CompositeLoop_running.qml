@@ -1,6 +1,5 @@
 import QtQuick 6.6
 import QtTest 1.0
-import ShoopDaLoop.PythonBackend
 import ShoopDaLoop.PythonDummyProcessHelper
 
 import './testDeepEqual.js' as TestDeepEqual

@@ -237,7 +237,7 @@ PythonTestCase {
             function updated() {
                 done = true
             }
-            connectOnce(backend.updated, updated)
+            connectOnce(backend.updated_on_gui_thread, updated)
             wait_condition(() => done == true, 500, "Backend not updated in time")
         }
         wait_once()

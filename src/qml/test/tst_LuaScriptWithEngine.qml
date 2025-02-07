@@ -1,6 +1,5 @@
 import QtQuick 6.6
 import QtTest 1.0
-import ShoopDaLoop.PythonBackend
 
 import ShoopConstants
 import '../js/generate_session.js' as GenerateSession
