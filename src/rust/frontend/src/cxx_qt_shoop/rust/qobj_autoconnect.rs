@@ -9,6 +9,7 @@ pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::make_unique_autoconne
 use crate::cxx_qt_shoop::qobj_autoconnect_bridge::*;
 use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::*;
 
+use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper;
 use crate::cxx_qt_shoop::type_external_port_descriptor::ExternalPortDescriptor;
 use backend_bindings::{PortDataType, PortDirection};
 use std::pin::Pin;
@@ -103,6 +104,8 @@ impl AutoConnect {
 
         unsafe {
             let backend_qobj = backend.as_mut().unwrap().mut_qobject_ptr();
+            let backend_ptr : *mut BackendWrapper = BackendWrapper::from_qobject_ptr(backend_qobj);
+            let backend_pin : Pin<&mut BackendWrapper> = Pin::new_unchecked(&mut *backend_ptr);
             let q_connections_state : QMap_QString_QVariant =
                 invoke_with_return_variantmap(
                     internalPort,
@@ -128,13 +131,11 @@ impl AutoConnect {
                 &*internalPort,
                 String::from(qobj_signature_port::constants::PROP_INITIALIZED))?;
             let q_external_ports : QList_QVariant =
-                invoke_find_external_ports(
-                    backend_qobj,
-                    String::from(qobj_signature_backend_wrapper::constants::INVOKABLE_FIND_EXTERNAL_PORTS),
+                backend_pin.find_external_ports(
                     self.as_mut().connectToPortRegex().clone(),
                     if my_direction == PortDirection::Input { PortDirection::Output as i32 }
                                                        else  { PortDirection::Input as i32 },
-                    my_data_type as i32)?;
+                    my_data_type as i32);
             let external_candidates = fn_qlist_helpers::try_as_list_into::<ExternalPortDescriptor>(&q_external_ports)?;
             debug!("Queried for external ports: {:?}", external_candidates);
 

@@ -3,6 +3,7 @@ use backend_bindings::BackendSession;
 use backend_bindings::AudioDriver;
 use crate::cxx_qt_lib_shoop::qthread::QThread;
 use crate::cxx_qt_lib_shoop::qtimer::QTimer;
+use crate::cxx_qt_lib_shoop::qobject::QObject;
 shoop_log_unit!("Frontend.BackendWrapper");
 
 #[cxx_qt::bridge]
@@ -28,6 +29,9 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
+
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
     }
 
     unsafe extern "RustQt" {
@@ -137,6 +141,10 @@ pub mod ffi {
                              module_name: &mut String,
                              version_major: i64, version_minor: i64,
                              type_name: &mut String);
+        
+        include!("cxx-qt-shoop/cast_ptr.h");
+        #[rust_name = "qobject_ptr_to_backend_ptr"]
+        unsafe fn cast_qobject_ptr(obj : *mut QObject) -> *mut BackendWrapper;
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=(*mut QQuickItem,)> for BackendWrapper {}

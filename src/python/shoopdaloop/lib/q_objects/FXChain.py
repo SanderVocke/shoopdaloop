@@ -7,7 +7,6 @@ from .ShoopPyObject import *
 
 from ..backend_wrappers import *
 from ..q_objects.Backend import Backend
-from ..findFirstParent import findFirstParent
 from ..logging import Logger
 
 # Wraps a back-end FX chain.
@@ -113,9 +112,7 @@ class FXChain(ShoopQQuickItem):
             if self._chain_type:
                 self.logger.throw_error('May not change chain type of existing FX chain')
             self._chain_type = l
-            if not self._backend:
-                self.rescan_parents()
-            else:
+            if self._backend:
                 self.maybe_initialize()
     
     ###########

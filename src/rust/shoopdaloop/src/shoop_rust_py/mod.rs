@@ -11,5 +11,6 @@ pub fn create_py_module<'py>(
     m.add_function(wrap_pyfunction!(objects::shoop_rust_create_loop, &m)?)?;
     m.add_function(wrap_pyfunction!(objects::shoop_rust_open_driver_audio_port, &m)?)?;
     m.add_function(wrap_pyfunction!(objects::shoop_rust_open_driver_midi_port, &m)?)?;
+    m.add_function(wrap_pyfunction!(objects::shoop_rust_open_driver_decoupled_midi_port, &m)?)?;
     Ok(m)
 }

@@ -4,9 +4,10 @@ import ShoopDaLoop.PythonBackend
 
 import ShoopConstants
 import './testfilename.js' as TestFilename
+import '..'
 
 ShoopTestFile {
-    PythonBackend {
+    Backend {
         id: backend
         update_interval_ms: 30
         client_name_hint: 'shoop'

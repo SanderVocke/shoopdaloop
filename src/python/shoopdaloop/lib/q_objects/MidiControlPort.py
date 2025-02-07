@@ -6,7 +6,6 @@ import json
 from .ShoopPyObject import *
 
 from .Logger import Logger as BaseLogger
-from ..findFirstParent import findFirstParent
 
 from ..backend_wrappers import *
 from ..midi_helpers import *
@@ -348,14 +347,16 @@ class MidiControlPort(ShoopQQuickItem):
     def maybe_init(self):
         if self._backend_obj:
             return
-        self.logger.trace(lambda: f'Attempting to initialize. Backend: {self._backend}. Backend init: {self.backend_ready}')
-        if self._backend and not self.backend_ready:
-            self.backendReadyChanged.connect(self.maybe_init)
+        self.logger.trace(lambda: f'Attempting to initialize. Backend: {self._backend}. Backend init: {self._backend.property('ready') if self._backend else "None"}')
+        if self._backend and not self._backend.property('ready'):
+            QObject.connect(self._backend, SIGNAL("readyChanged()"), self, SLOT("maybe_init()"))
             return
         if self._name_hint and self._backend and self._direction != None and self._may_open:
             self.logger.debug(lambda: "Opening decoupled MIDI port {}".format(self._name_hint))
-            self._backend_obj = shoop_py_backend.open_driver_decoupled_midi_port(
-                    self._backend.get_backend_driver_obj(),
+            from shoop_rust import shoop_rust_open_driver_decoupled_midi_port
+            from shiboken6 import getCppPointer
+            self._backend_obj = shoop_rust_open_driver_decoupled_midi_port(
+                    getCppPointer(self._backend)[0],
                     self._name_hint,
                     self._direction
                 )

@@ -7,7 +7,7 @@ import './testfilename.js' as TestFilename
 import '..' 
 
 ShoopTestFile {
-    PythonBackend {
+    Backend {
         id: backend
         update_interval_ms: 30
         client_name_hint: 'shoop'
@@ -15,6 +15,7 @@ ShoopTestFile {
         driver_setting_overrides: ({})
 
         MidiControlPort {
+            backend: backend
             id: midi_control_port_in
             name_hint: "control_in"
             direction: ShoopConstants.PortDirection.Input
@@ -24,6 +25,7 @@ ShoopTestFile {
         }
 
         MidiControlPort {
+            backend: backend
             id: midi_control_port_out
             name_hint: "control_out"
             direction: ShoopConstants.PortDirection.Output

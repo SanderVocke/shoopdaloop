@@ -17,7 +17,6 @@ from .AudioPort import AudioPort
 from .Loop import Loop
 
 from ..backend_wrappers import *
-from ..findFirstParent import findFirstParent
 from ..logging import Logger
 
 from shoop_py_backend import ChannelMode
@@ -224,13 +223,6 @@ class LoopChannel(ShoopQQuickItem):
                 backend_channel.connect_output(backend_port)
             self._connected_ports.append(port)
             self.connectedPortsChanged.emit(self._connected_ports)
-    
-    @ShoopSlot(result='QVariant')
-    def get_backend(self):
-        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend'))
-        if maybe_backend:
-            return maybe_backend
-        self.__logger.throw_error("Could not find backend")
     
     @ShoopSlot('QVariant')
     def disconnect(self, port):

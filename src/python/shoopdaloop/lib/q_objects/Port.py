@@ -15,8 +15,6 @@ from PySide6.QtQuick import QQuickItem
 from .Backend import Backend
 from ..logging import Logger
 
-from ..findFirstParent import findFirstParent
-
 # Wraps a back-end port.
 class Port(ShoopQQuickItem):
     def __init__(self, parent=None):

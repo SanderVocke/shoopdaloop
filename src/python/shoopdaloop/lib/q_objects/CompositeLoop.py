@@ -9,8 +9,6 @@ from .ShoopPyObject import *
 from ..backend_wrappers import DontWaitForSync, DontAlignToSyncImmediately
 
 from ..mode_helpers import is_playing_mode, is_running_mode, is_recording_mode
-from ..findFirstParent import findFirstParent
-from ..findChildItems import findChildItems
 from ..recursive_jsvalue_convert import recursively_convert_jsvalue
 from ..q_objects.Backend import Backend
 from ..q_objects.Logger import Logger

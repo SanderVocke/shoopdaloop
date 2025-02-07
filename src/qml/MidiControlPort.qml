@@ -14,7 +14,7 @@ PythonMidiControlPort {
             all_initialized = Qt.binding(() => initialized) // Back-end also needs to be ready
         }
     }
-    Component.onCompleted: { initialize_lua(); rescan_parents() }
+    Component.onCompleted: initialize_lua()
     onLua_engineChanged: initialize_lua()
 
     Component.onDestruction: { close() }

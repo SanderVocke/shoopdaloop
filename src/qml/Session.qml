@@ -429,11 +429,13 @@ Rectangle {
         driver_setting_overrides: ({})
 
         SessionControlInterface {
+            backend: session_backend
             id: control_interface
             session: root
         }
 
         MidiControlPort {
+            backend: session_backend
             id: midi_control_port
             name_hint: "control"
             direction: ShoopConstants.PortDirection.Input

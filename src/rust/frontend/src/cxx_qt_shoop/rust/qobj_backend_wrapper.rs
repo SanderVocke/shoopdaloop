@@ -1,6 +1,7 @@
 use std::pin::Pin;
 use backend_bindings::*;
 use common::logging::macros::*;
+use crate::cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, qquickitem_to_qobject_mut};
 use crate::cxx_qt_lib_shoop::qobject::QObject;
 use crate::cxx_qt_lib_shoop::qthread::QThread;
@@ -20,7 +21,7 @@ fn audio_driver_settings_from_qvariantmap(map: &QMap_QString_QVariant,
     let mut settings : Option<AudioDriverSettings> = None;
 
     match driver_type {
-        AudioDriverType::Jack => {
+        AudioDriverType::Jack | AudioDriverType::JackTest => {
             let client_name_hint = map.get(&QString::from("client_name_hint"))
                  .expect("No client name setting for driver")
                  .value::<QString>()
@@ -149,7 +150,6 @@ impl BackendWrapper {
             self.as_mut().set_ready(true);
         }
 
-        error!("Init not completely implemented");
         Ok(())
     }
 
@@ -449,6 +449,25 @@ impl BackendWrapper {
         
         Ok(port)
     }
+
+    pub fn open_driver_decoupled_midi_port(mut self: Pin<&mut BackendWrapper>, name_hint: &str, direction: i32) -> Result<DecoupledMidiPort, anyhow::Error> {
+        let mut_rust = self.as_mut().rust_mut();
+
+        if mut_rust.session.is_none() {
+            return Err(anyhow::anyhow!("open_driver_decoupled_midi_port called on a BackendWrapper with no session"));
+        }
+        if mut_rust.driver.is_none() {
+            return Err(anyhow::anyhow!("open_driver_decoupled_midi_port called on a BackendWrapper with no driver"));
+        }
+
+        let port = backend_bindings::DecoupledMidiPort::new_driver_port
+           (&mut_rust.driver.as_ref().unwrap(),
+            name_hint.to_string().as_str(),
+            &PortDirection::try_from(direction).unwrap())
+            .expect("Failed to create decoupled midi port");
+        
+        Ok(port)
+    }
     
     pub fn segfault_on_process_thread(mut self: Pin<&mut BackendWrapper>) {
         let mut_rust = self.as_mut().rust_mut();
@@ -470,14 +489,40 @@ impl BackendWrapper {
         }
     }
     
-    pub fn find_external_ports(self: Pin<&mut BackendWrapper>, _maybe_name_regex: QString, _port_direction: i32, _data_type: i32) -> QList_QVariant {
-        error!("find_external_ports unimplemented");
-        QList_QVariant::default()
+    pub fn find_external_ports(self: Pin<&mut BackendWrapper>, maybe_name_regex: QString, port_direction: i32, data_type: i32) -> QList_QVariant {
+        let rust = self.rust();
+        let ports = rust.driver.as_ref().unwrap().find_external_ports(
+            Some(maybe_name_regex.to_string().as_str()),
+            port_direction as u32,
+            data_type as u32
+        );
+        let mut descriptors = QList_QVariant::default();
+
+        for port in ports.iter() {
+            let mut qmap = QMap_QString_QVariant::default();
+            qmap.insert(QString::from("name"), QVariant::from(&QString::from(&port.name)));
+            qmap.insert(QString::from("direction"), QVariant::from(&(port.direction as i32)));
+            qmap.insert(QString::from("data_type"), QVariant::from(&(port.data_type as i32)));
+
+            // TODO: indirect conversion because QMap as QVariant seems unsupported by cxx-qt
+            let json = QJsonObject::from_variant_map(&qmap).unwrap();
+            let variant = json.to_variant().unwrap();
+
+            descriptors.append(variant);
+        };
+
+        descriptors
     }
 
     pub fn create_loop(mut self: Pin<&mut BackendWrapper>) -> Loop {
         let mut mut_rust = self.as_mut().rust_mut();
         mut_rust.session.as_mut().unwrap().create_loop().unwrap()
+    }
+
+    pub fn from_qobject_ptr(obj: *mut QObject) -> *mut BackendWrapper {
+        unsafe {
+            qobject_ptr_to_backend_ptr(obj)
+        }
     }
 }
 
