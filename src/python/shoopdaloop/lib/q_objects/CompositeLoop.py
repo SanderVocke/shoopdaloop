@@ -670,9 +670,14 @@ class CompositeLoop(ShoopQQuickItem):
                 # Will cycle around - trigger the actions for next cycle
                 self.do_triggers(0, self.mode, trigger_callback, True)
     
+    def connect_backend_updates(self):
+        QObject.connect(self._backend, SIGNAL("updated_on_gui_thread()"), self, SLOT("updateOnGuiThread()"), Qt.DirectConnection)
+        QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
+    
     def maybe_initialize(self):
         if self._backend and self._backend.property('ready') and not self._initialized:
             self.logger.debug(lambda: 'Found backend, initializing')
+            self.connect_backend_updates()
             self.initializedChanged.emit(True)
     
     # Update from the back-end.

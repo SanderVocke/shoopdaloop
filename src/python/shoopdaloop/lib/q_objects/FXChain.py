@@ -178,7 +178,12 @@ class FXChain(ShoopQQuickItem):
             self._backend_object.restore_state(state_str)
         else:
             self.logger.throw_error("Restoring internal state of uninitialized FX chain")
+            
+    def connect_backend_updates(self):
+        QObject.connect(self._backend, SIGNAL("updated_on_gui_thread()"), self, SLOT("updateOnGuiThread()"), Qt.DirectConnection)
+        QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
     
+    @ShoopSlot()
     def maybe_initialize(self):
         if self._backend and self._backend.property('ready') and self._chain_type != None and not self._backend_object:
             self._backend_object = self._backend.get_backend_session_obj().create_fx_chain(self._chain_type, self._title)
@@ -187,4 +192,5 @@ class FXChain(ShoopQQuickItem):
                 self.set_active(self._active)
                 self.set_ui_visible(self._ui_visible)
                 self.update()
+                self.connect_backend_updates()
                 self.initializedChanged.emit(True)

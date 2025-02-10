@@ -6,7 +6,7 @@ import json
 from typing import *
 import sys
 
-from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
 from .Port import Port
@@ -170,6 +170,7 @@ class MidiPort(Port):
                     self._backend_obj = maybe_fx_chain.get_backend_obj().get_midi_input_port(idx)
                     self.push_state()
                     self.set_min_n_ringbuffer_samples (n_ringbuffer)
+                    self.connect_backend_updates()
                 else:
                     raise Exception('Input ports (FX outputs) of MIDI type not supported')
 
@@ -187,12 +188,17 @@ class MidiPort(Port):
         )
         self.logger.trace(lambda: f'backend_obj = {self._backend_obj}')
         self.push_state()
+        self.connect_backend_updates()
 
     def maybe_initialize_impl(self, name_hint, input_connectability, output_connectability, is_internal):
         if is_internal:
             self.maybe_initialize_internal(name_hint, input_connectability, output_connectability)
         else:
             self.maybe_initialize_external(name_hint, input_connectability, output_connectability)
+            
+    def connect_backend_updates(self):
+        QObject.connect(self._backend, SIGNAL("updated_on_gui_thread()"), self, SLOT("updateOnGuiThread()"), Qt.DirectConnection)
+        QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
     
     def push_state(self):
         self.set_muted(self.muted)

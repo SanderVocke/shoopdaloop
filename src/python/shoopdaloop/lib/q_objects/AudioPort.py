@@ -6,7 +6,7 @@ import json
 from typing import *
 import sys
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt, Q_ARG, Q_RETURN_ARG
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt, Q_ARG, Q_RETURN_ARG, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
 from .ShoopPyObject import *
@@ -100,11 +100,21 @@ class AudioPort(Port):
             return
         self.input_peak = self._new_input_peak
         self.output_peak = self._new_output_peak
-        self.name = self._new_name
-        self.gain = self._new_gain
-        self.muted = self._new_muted
-        self.passthrough_muted = self._new_passthrough_muted
-        self.n_ringbuffer_samples = self._n_ringbuffer_samples
+        if self.name != self._new_name:
+            self.logger.debug(lambda: f"name -> {self._new_name}")
+            self.name = self._new_name
+        if self.gain != self._new_gain:
+            self.logger.debug(lambda: f"gain -> {self._new_gain}")
+            self.gain = self._new_gain
+        if self.muted != self._new_muted:
+            self.logger.debug(lambda: f"muted -> {self._new_muted}")
+            self.muted = self._new_muted
+        if self.passthrough_muted != self._new_passthrough_muted:
+            self.logger.debug(lambda: f"passthrough_muted -> {self._new_passthrough_muted}")
+            self.passthrough_muted = self._new_passthrough_muted
+        if self.n_ringbuffer_samples != self._n_ringbuffer_samples:
+            self.logger.debug(lambda: f"n_ringbuffer_samples -> {self._n_ringbuffer_samples}")
+            self.n_ringbuffer_samples = self._n_ringbuffer_samples
         self._n_updates_pending = 0
     
     @ShoopSlot(float)
@@ -159,6 +169,7 @@ class AudioPort(Port):
                     self._backend_obj = maybe_fx_chain.get_backend_obj().get_audio_output_port(idx)
                 self.push_state()
                 self.set_min_n_ringbuffer_samples (n_ringbuffer)
+                self.connect_backend_updates()
 
     def maybe_initialize_external(self, name_hint, input_connectability, output_connectability):
         if self._backend_obj:
@@ -175,6 +186,11 @@ class AudioPort(Port):
         )
         self.logger.trace(lambda: f'backend_obj = {self._backend_obj}')
         self.push_state()
+        self.connect_backend_updates()
+    
+    def connect_backend_updates(self):
+        QObject.connect(self._backend, SIGNAL("updated_on_gui_thread()"), self, SLOT("updateOnGuiThread()"), Qt.DirectConnection)
+        QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
 
     def push_state(self):
         self.set_muted(self.muted)

@@ -7,7 +7,7 @@ import json
 from typing import *
 import sys
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
 from .MidiPort import MidiPort
@@ -24,10 +24,17 @@ class LoopMidiChannel(LoopChannel):
         super(LoopMidiChannel, self).__init__(parent)
         self._n_events_triggered = self._new_n_events_triggered = 0
         self._n_notes_active = self._new_n_notes_active = 0
+        self.logger = Logger("Frontend.MidiChannel")
+        
+    def connect_backend_updates(self):
+        QObject.connect(self._backend, SIGNAL("updated_on_gui_thread()"), self, SLOT("updateOnGuiThread()"), Qt.DirectConnection)
+        QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
     
     def maybe_initialize(self):
-        if self._loop and self._loop.property("initialized") and not self._backend_obj:
+        if self._backend and self._backend.property('ready') and self._loop and self._loop.property("initialized") and not self._backend_obj:
             self._backend_obj = self._loop.add_midi_channel(self.mode)
+            self.connect_backend_updates()
+            self.logger.debug(lambda: "Initialized back-end channel")
             self.initializedChanged.emit(True)
 
     ######################

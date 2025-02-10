@@ -416,6 +416,7 @@ Item {
         FXChain {
             id: chain
             descriptor: root.fx_chain_descriptor
+            backend: root.backend
 
             Component.onCompleted: {
                 root.fx_ready = Qt.binding(() => this.ready)
