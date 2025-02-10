@@ -4,6 +4,7 @@ use std::pin::Pin;
 use frontend::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper;
 
 use crate::shoop_py_backend::shoop_loop::Loop;
+use crate::shoop_py_backend::fx_chain::FXChain;
 use crate::shoop_py_backend::audio_port::AudioPort;
 use crate::shoop_py_backend::midi_port::MidiPort;
 use crate::shoop_py_backend::decoupled_midi_port::DecoupledMidiPort;
@@ -18,6 +19,16 @@ pub fn shoop_rust_create_loop(backend_addr : usize) -> Loop {
         let backend_mut : &mut BackendWrapper = backend_ptr.as_mut().unwrap();
         let backend_pin : Pin<&mut BackendWrapper> = Pin::new_unchecked(backend_mut);
         Loop { obj : backend_pin.create_loop() }
+    }
+}
+
+#[pyfunction]
+pub fn shoop_rust_create_fx_chain(backend_addr : usize, chain_type : u32, title : &str) -> PyResult<FXChain> {
+    unsafe {
+        let backend_ptr : *mut BackendWrapper = backend_addr as *mut BackendWrapper;
+        let backend_mut : &mut BackendWrapper = backend_ptr.as_mut().unwrap();
+        let backend_pin : Pin<&mut BackendWrapper> = Pin::new_unchecked(backend_mut);
+        Ok(FXChain { obj : backend_pin.create_fx_chain(chain_type, title) })
     }
 }
 

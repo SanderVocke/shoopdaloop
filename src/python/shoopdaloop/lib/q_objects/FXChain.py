@@ -186,7 +186,10 @@ class FXChain(ShoopQQuickItem):
     @ShoopSlot()
     def maybe_initialize(self):
         if self._backend and self._backend.property('ready') and self._chain_type != None and not self._backend_object:
-            self._backend_object = self._backend.get_backend_session_obj().create_fx_chain(self._chain_type, self._title)
+            from shoop_rust import shoop_rust_create_fx_chain
+            from shiboken6 import getCppPointer
+            self.logger.debug(lambda: 'Initializing')
+            self._backend_object = shoop_rust_create_fx_chain(getCppPointer(self._backend)[0], self._chain_type, self._title)
             if self._backend_object:
                 self._initialized = True
                 self.set_active(self._active)
