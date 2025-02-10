@@ -30,6 +30,7 @@ ShoopTestFile {
             'min_n_ringbuffer_samples': 0
         })
 
+        backend: backend
         is_internal: false
         id: audio_in
     }
@@ -51,6 +52,7 @@ ShoopTestFile {
 
             is_internal: false
             id: audio_out
+            backend: backend
         }
         MidiPort {
             descriptor: ({
@@ -69,6 +71,7 @@ ShoopTestFile {
 
             is_internal: false
             id: midi_in
+            backend: backend
         }
         MidiPort {
             descriptor: ({
@@ -87,6 +90,7 @@ ShoopTestFile {
 
             is_internal: false
             id: midi_out
+            backend: backend
         }
 
         ShoopTestCase {
@@ -102,7 +106,7 @@ ShoopTestFile {
                         skip("Backend was built without Jack support")
                         return
                     }
-                    verify(backend.initialized)
+                    verify(backend.ready)
 
                     wait(100)
 

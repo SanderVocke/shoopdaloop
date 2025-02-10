@@ -15,6 +15,10 @@ ShoopTestFile {
         property int n_cycles: 1
         property int position: 0
 
+        signal positionChangedUnsafe(position : int)
+        signal lengthChangedUnsafe(length : int)
+        signal cycledUnsafe()
+
         property var maybe_loop: this
         
         signal cycled(int cycle_nr)
@@ -77,6 +81,9 @@ ShoopTestFile {
 
         CompositeLoop {
             id: sequential_sched_lut
+            backend: Item {
+                property bool ready : true
+            }
 
             ShoopTestCase {
                 name: 'CompositeLoop_sequential_sched'

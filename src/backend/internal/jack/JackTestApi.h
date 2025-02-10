@@ -19,6 +19,8 @@ namespace jacktestapi_globals {
 // Note that only creation is supported. Closing clients and ports will not do anything.
 class JackTestApi {
 public:
+    static constexpr bool supports_processing = false;
+
     enum class Type {
         Audio,
         Midi
@@ -193,6 +195,9 @@ public:
     static const char** port_get_all_connections(const jack_client_t* client,const jack_port_t* port);
     static const char** port_get_connections(const jack_port_t* port);
     static int set_port_registration_callback(jack_client_t* client, JackPortRegistrationCallback cb, void* arg);
+
+    // FIXME?
+    // static int set_process_callback(jack_client_t* client, JackProcessCallback cb, void* arg);
 
     static void set_error_function(void (*fn)(const char*));
     static void set_info_function(void (*fn)(const char*));

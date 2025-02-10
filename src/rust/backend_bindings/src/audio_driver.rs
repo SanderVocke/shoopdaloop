@@ -234,8 +234,22 @@ impl AudioDriver {
 
     pub fn find_external_ports(&self, maybe_name_regex: Option<&str>, port_direction: u32, data_type: u32) -> Vec<ExternalPortDescriptor> {
         let obj = self.lock();
-        let regex_ptr = maybe_name_regex.map_or(std::ptr::null(), |s| s.as_ptr() as *const i8);
+        let maybe_name_regex_updated = match maybe_name_regex {
+            Some(s) => match s {
+                "" => None,
+                _ => Some(std::ffi::CString::new(s).unwrap()),
+            }
+            None => None,
+        };
+        let regex_ptr = maybe_name_regex_updated
+        .as_ref()
+        .map_or(std::ptr::null(), |s| {
+            s.as_ptr() as *const i8
+        });
         let result = unsafe { ffi::find_external_ports(*obj, regex_ptr, port_direction as ffi::shoop_port_direction_t, data_type as ffi::shoop_port_data_type_t) };
+        if result.is_null() {
+            return Vec::new();
+        }
         let ports = unsafe { std::slice::from_raw_parts((*result).ports, (*result).n_ports as usize) };
         let mut port_descriptors = Vec::new();
         unsafe {

@@ -180,7 +180,7 @@ class FXChain(ShoopQQuickItem):
             self.logger.throw_error("Restoring internal state of uninitialized FX chain")
     
     def maybe_initialize(self):
-        if self._backend and self._backend.initialized and self._chain_type != None and not self._backend_object:
+        if self._backend and self._backend.property('ready') and self._chain_type != None and not self._backend_object:
             self._backend_object = self._backend.get_backend_session_obj().create_fx_chain(self._chain_type, self._title)
             if self._backend_object:
                 self._initialized = True

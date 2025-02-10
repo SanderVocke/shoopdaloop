@@ -671,7 +671,7 @@ class CompositeLoop(ShoopQQuickItem):
                 self.do_triggers(0, self.mode, trigger_callback, True)
     
     def maybe_initialize(self):
-        if self._backend and self._backend.initialized and not self._initialized:
+        if self._backend and self._backend.property('ready') and not self._initialized:
             self.logger.debug(lambda: 'Found backend, initializing')
             self.initializedChanged.emit(True)
     

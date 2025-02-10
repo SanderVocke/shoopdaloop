@@ -24,6 +24,12 @@ mod ffi {
         #[rust_name = "qtimer_stop"]
         fn qtimerStop(timer : Pin<&mut QTimer>);
 
+        #[rust_name = "qtimer_stop_queued"]
+        fn qtimerStopQueued(timer : Pin<&mut QTimer>);
+
+        #[rust_name = "qtimer_is_active"]
+        fn qtimerIsActive(timer : &QTimer) -> bool;
+
         #[rust_name = "qtimer_connect_timeout"]
         unsafe fn qtimerConnectTimeout(timer : Pin<&mut QTimer>, receiver : *mut QObject, slot : String) -> Result<()>;
 
@@ -66,6 +72,14 @@ impl QTimer {
 
     pub fn stop(self : Pin<&mut Self>) {
         ffi::qtimer_stop(self);
+    }
+
+    pub fn stop_queued(self : Pin<&mut Self>) {
+        ffi::qtimer_stop_queued(self);
+    }
+
+    pub fn is_active(self : &Self) -> bool {
+        ffi::qtimer_is_active(self)
     }
 
     pub fn connect_timeout(self : Pin<&mut Self>, receiver : *mut QObject, slot : String) -> Result<(), cxx::Exception> {

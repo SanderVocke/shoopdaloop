@@ -19,7 +19,7 @@ ShoopTestFile {
 
             test_fns: ({
                 'test_backend': () => {
-                    verify(backend.initialized)
+                    verify(backend.ready)
                     backend.close()
                 }
             })

@@ -265,7 +265,7 @@ ShoopTestFile {
 
                 "test_save_load_session_audio_and_midi_resampled": () => {
                     check_backend()
-                    verify(other_session.backend && other_session.backend.initialized, "resampled backend not initialized")
+                    verify(other_session.backend && other_session.backend.ready, "resampled backend not initialized")
 
                     let midichan = [
                         { 'time': 120, 'data': [0x90, 70,  70]  },

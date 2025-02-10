@@ -8,6 +8,7 @@ use crate::cxx_qt_lib_shoop::qthread::QThread;
 use crate::cxx_qt_lib_shoop::qtimer::QTimer;
 use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants;
 use std::slice;
+use std::time::Duration;
 shoop_log_unit!("Frontend.BackendWrapper");
 
 pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::*;
@@ -141,6 +142,7 @@ impl BackendWrapper {
         }
 
         {
+            self.as_mut().set_actual_backend_type(driver_type as i32);
             self.as_mut().connect_updated_on_backend_thread(
                 |this: Pin<&mut BackendWrapper>| {
                     this.update_on_gui_thread();
@@ -195,8 +197,43 @@ impl BackendWrapper {
         }
     }
 
-    pub fn close(self: Pin<&mut BackendWrapper>) {
-        error!("close unimplemented")
+    pub fn close(mut self: Pin<&mut BackendWrapper>) {
+        let closed : bool;
+        {
+            let ref_self = self.as_ref();
+            closed = ref_self.rust().closed;
+        }
+
+        if closed {
+            trace!("Already closed");
+            return;
+        }
+
+        debug!("Closing");
+
+        unsafe {
+            let mut rust = self.as_mut().rust_mut();
+            if !rust.update_timer.is_null() {
+                let timer_mut_ref = &mut *rust.update_timer;
+                let timer_slice = slice::from_raw_parts_mut(timer_mut_ref, 1);
+                let mut timer : Pin<&mut QTimer> = Pin::new_unchecked(&mut timer_slice[0]);
+                timer.as_mut().stop_queued();
+                while timer.as_mut().is_active() {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+            }
+            if !rust.update_thread.is_null() {
+                let thread_mut_ref = &mut *rust.update_thread;
+                let thread_slice = slice::from_raw_parts_mut(thread_mut_ref, 1);
+                let thread : Pin<&mut QThread> = Pin::new_unchecked(&mut thread_slice[0]);
+                thread.exit();
+            }
+            rust.closed = true;
+        }
+
+        {
+            self.as_mut().set_ready(false);
+        }
     }
     
     pub fn update_on_gui_thread(mut self: Pin<&mut BackendWrapper>) {
@@ -491,8 +528,9 @@ impl BackendWrapper {
     
     pub fn find_external_ports(self: Pin<&mut BackendWrapper>, maybe_name_regex: QString, port_direction: i32, data_type: i32) -> QList_QVariant {
         let rust = self.rust();
+        let name_regex = maybe_name_regex.to_string();
         let ports = rust.driver.as_ref().unwrap().find_external_ports(
-            Some(maybe_name_regex.to_string().as_str()),
+            Some(name_regex.as_str()),
             port_direction as u32,
             data_type as u32
         );

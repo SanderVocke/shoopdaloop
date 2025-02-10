@@ -7,6 +7,13 @@
 
 #include "LoggingEnabled.h"
 
+#ifdef _WIN32
+    #include <windows.h>
+#elif defined(__linux__) || defined(__APPLE__)
+    #include <pthread.h>
+#endif
+
+
 // A class which manages a queue of audio objects which can be
 // consumed lock-free. The queue is continuously replenished with newly allocated
 // objects asynchronously.
@@ -40,6 +47,19 @@ public:
         // Start auto-replenishment
         m_replenish_thread = std::thread(
             [this]() { this->replenish_thread_fn(); });
+        
+#ifdef _WIN32
+        HANDLE handle = m_replenish_thread.native_handle();
+        int winPriority = THREAD_PRIORITY_ABOVE_NORMAL;
+        SetThreadPriority(handle, winPriority);
+#elif defined(__linux__) || defined(__APPLE__)
+        pthread_t handle = m_replenish_thread.native_handle();
+        struct sched_param sch;
+        int policy;
+        pthread_getschedparam(handle, &policy, &sch);
+        sch.sched_priority = 4; // "above normal" priority
+        pthread_setschedparam(handle, SCHED_FIFO, &sch);
+#endif
     }
 
     ~ObjectPool() {

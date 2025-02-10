@@ -22,6 +22,8 @@ from .Logger import Logger
 
 all_active_backend_objs = set()
 
+# FIXME delete this file
+
 # Wraps the back-end session + driver in a single object.
 class Backend(ShoopQQuickItem):
     def __init__(self, parent=None):

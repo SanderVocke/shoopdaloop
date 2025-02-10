@@ -369,7 +369,9 @@ shoop_external_port_descriptors_t *find_external_ports(
   shoop_port_direction_t maybe_port_direction_filter,
   shoop_port_data_type_t maybe_data_type_filter)
 {
-  return api_impl<shoop_external_port_descriptors_t*>("find_external_ports", [&]() -> shoop_external_port_descriptors_t* {
+  std::string name_regex = maybe_name_regex ? maybe_name_regex : "";
+  std::string fn_name = "find_external_ports (regex \"" + name_regex + "\")";
+  return api_impl<shoop_external_port_descriptors_t*>(fn_name.c_str(), [&]() -> shoop_external_port_descriptors_t* {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return nullptr; }
     auto ports = _driver->find_external_ports(
