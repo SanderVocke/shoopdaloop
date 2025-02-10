@@ -671,7 +671,6 @@ class CompositeLoop(ShoopQQuickItem):
                 self.do_triggers(0, self.mode, trigger_callback, True)
     
     def connect_backend_updates(self):
-        QObject.connect(self._backend, SIGNAL("updated_on_gui_thread()"), self, SLOT("updateOnGuiThread()"), Qt.DirectConnection)
         QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
     
     def maybe_initialize(self):
