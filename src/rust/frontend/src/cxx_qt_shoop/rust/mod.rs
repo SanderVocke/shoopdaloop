@@ -8,6 +8,8 @@ pub mod qobj_backend_wrapper_bridge;
 pub mod qobj_backend_wrapper;
 pub mod qobj_compositeloop_bridge;
 pub mod qobj_compositeloop;
+pub mod qobj_dummy_process_helper_bridge;
+pub mod qobj_dummy_process_helper;
 pub mod qobj_file_io_bridge;
 pub mod qobj_file_io;
 pub mod qobj_find_parent_item_bridge;

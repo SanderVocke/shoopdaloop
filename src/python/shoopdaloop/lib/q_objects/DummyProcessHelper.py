@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Q_ARG
 from PySide6.QtQuick import QQuickItem
 
 from .ShoopPyObject import *
@@ -22,6 +22,7 @@ class DummyProcessHelper(ShoopQQuickItem):
         self._backend = None
         self._active = False
         self.logger = Logger('Frontend.DummyProcessHelper')
+        self.logger.debug("created")
 
     
     ##############
@@ -102,12 +103,16 @@ class DummyProcessHelper(ShoopQQuickItem):
         def fn(samples_per_iter=self._samples_per_iter, backend=self._backend, wait_start=self._wait_start, wait_interval=self._wait_interval, n_iters=self._n_iters):
             time.sleep(wait_start)
             for i in range(n_iters):
+                #FIXME 
                 self.logger.debug('trigger')
                 backend.wait_process()
-                backend.dummy_request_controlled_frames(samples_per_iter)
+                self.logger.debug('a')
+                backend.metaObject().invokeMethod(backend, 'dummy_request_controlled_frames', Qt.ConnectionType.DirectConnection, Q_ARG('::std::int32_t', samples_per_iter))
+                self.logger.debug('b')
                 if i < (n_iters-1):
                     time.sleep(wait_interval)
             backend.wait_process()
+            self.logger.debug('finished')
             self.active = False
         
         self._thread = threading.Thread(target=fn)

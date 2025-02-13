@@ -237,7 +237,7 @@ impl BackendWrapper {
     }
     
     pub fn update_on_gui_thread(mut self: Pin<&mut BackendWrapper>) {
-        trace!("Update on GUI thread");
+        trace!("Start update on GUI thread");
 
         {
             let ref_self = self.as_ref();
@@ -270,10 +270,12 @@ impl BackendWrapper {
 
         // Triggers other back-end objects to update as well
         self.as_mut().updated_on_gui_thread();
+
+        trace!("End update on GUI thread");
     }
     
     pub fn update_on_other_thread(mut self: Pin<&mut BackendWrapper>) {
-        trace!("Update on back-end thread");
+        trace!("Begin update on back-end thread");
 
         let current_xruns;
         {
@@ -308,6 +310,8 @@ impl BackendWrapper {
 
         // Triggers other back-end objects to update as well
         self.as_mut().updated_on_backend_thread();
+
+        trace!("End update on back-end thread");
     }
     
     pub fn get_sample_rate(mut self: Pin<&mut BackendWrapper>) -> i32 {
@@ -364,6 +368,7 @@ impl BackendWrapper {
     }
     
     pub fn dummy_request_controlled_frames(mut self: Pin<&mut BackendWrapper>, n: i32) {
+        trace!("dummy_request_controlled_frames {}", n);
         let mut_rust = self.as_mut().rust_mut();
 
         if mut_rust.driver.is_none() {
@@ -371,6 +376,7 @@ impl BackendWrapper {
         } else {
             mut_rust.driver.as_ref().unwrap().dummy_request_controlled_frames(n as u32);
         }
+        trace!("dummy_request_controlled_frames done");
     }
     
     pub fn dummy_n_requested_frames(mut self: Pin<&mut BackendWrapper>) -> i32 {
