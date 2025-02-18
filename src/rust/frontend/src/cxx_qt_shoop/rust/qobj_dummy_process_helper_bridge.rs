@@ -1,8 +1,4 @@
-use cxx_qt::Constructor;
-use cxx_qt::QObject;
-use cxx_qt::QVariant;
-use cxx_qt::QString;
-use cxx_qt::QQuickItem;
+use cxx_qt_lib;
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -29,26 +25,18 @@ pub mod ffi {
         #[qproperty(bool, active)]
         type DummyProcessHelper = super::DummyProcessHelperRust;
 
-        #[qsignal]
-        pub fn wait_start_changed(self: Pin<&mut DummyProcessHelper>);
-
-        #[qsignal]
-        pub fn wait_interval_changed(self: Pin<&mut DummyProcessHelper>);
-
-        #[qsignal]
-        pub fn n_iters_changed(self: Pin<&mut DummyProcessHelper>);
-
-        #[qsignal]
-        pub fn samples_per_iter_changed(self: Pin<&mut DummyProcessHelper>);
-
-        #[qsignal]
-        pub fn backend_changed(self: Pin<&mut DummyProcessHelper>);
-
-        #[qsignal]
-        pub fn active_changed(self: Pin<&mut DummyProcessHelper>);
-
         #[qinvokable]
         pub fn start(self: Pin<&mut DummyProcessHelper>);
+    }
+
+    unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qquickitem.h");
+
+        #[rust_name="qquickitem_from_ref_dummy_process_helper"]
+        unsafe fn qquickitemFromRef(obj : &DummyProcessHelper) -> &QQuickItem;
+
+        #[rust_name="qquickitem_from_ptr_dummy_process_helper"]
+        unsafe fn qquickitemFromPtr(obj : *mut DummyProcessHelper) -> *mut QQuickItem;
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=(*mut QQuickItem,)> for DummyProcessHelper {}
