@@ -14,6 +14,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <algorithm>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 template <typename NodesType>
 void insert_all(NodesType &n, std::set<GraphNode *> &nodes) {
     for (auto &item : n.all_graph_nodes()) {

@@ -8,6 +8,11 @@
 #include "MidiMessage.h"
 #include <vector>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 namespace jacktestapi_globals {
     extern JackPortRegistrationCallback port_registration_callback;
     extern void* port_registration_callback_arg;

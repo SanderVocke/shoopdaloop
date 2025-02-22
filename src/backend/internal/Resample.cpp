@@ -17,6 +17,11 @@
 #endif
 #include <zita-resampler/vresampler.h>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 float* resample_multi(float* in, unsigned n_channels_inner, unsigned n_frames_outer, unsigned target_n_frames) {
     if (target_n_frames == 0 || n_channels_inner == 0) { return nullptr; }
 
