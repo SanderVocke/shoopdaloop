@@ -565,7 +565,7 @@ impl BackendWrapper {
 
     pub fn create_fx_chain(mut self: Pin<&mut BackendWrapper>, chain_type: u32, title: &str) -> FXChain {
         let mut mut_rust = self.as_mut().rust_mut();
-        mut_rust.session.as_mut().unwrap().create_fx_chain(chain_type, title).unwrap()
+        mut_rust.session.as_mut().unwrap().create_fx_chain(chain_type as i32, title).unwrap()
     }
 
     pub fn from_qobject_ptr(obj: *mut QObject) -> *mut BackendWrapper {
