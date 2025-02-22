@@ -146,7 +146,7 @@ impl Loop {
             initialize_condition =
                !self.initialized() &&
                 self.backend != std::ptr::null_mut() &&
-                qobject_property_bool(self.backend.as_ref().unwrap(), "initialized".to_string()).unwrap_or(false) &&
+                qobject_property_bool(self.backend.as_ref().unwrap(), "ready".to_string()).unwrap_or(false) &&
                 self.backend_loop.is_none();
         }
 

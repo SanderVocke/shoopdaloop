@@ -20,7 +20,7 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[base = QQuickItem]
-        #[qproperty(bool, initialized)]
+        #[qproperty(bool, ready)]
         type TestBackendWrapper = super::TestBackendWrapperRust;
 
         pub fn initialize_impl(self : Pin<&mut TestBackendWrapper>);
@@ -58,7 +58,7 @@ use crate::cxx_qt_shoop::qobj_signature_backend_wrapper;
 
 #[derive(Default)]
 pub struct TestBackendWrapperRust {
-    pub initialized: bool,
+    pub ready: bool,
     pub mock_external_ports: Vec<ExternalPortDescriptor>,
 }
 
