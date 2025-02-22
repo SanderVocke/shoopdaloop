@@ -347,7 +347,7 @@ class MidiControlPort(ShoopQQuickItem):
     def maybe_init(self):
         if self._backend_obj:
             return
-        self.logger.trace(lambda: f'Attempting to initialize. Backend: {self._backend}. Backend init: {self._backend.property('ready') if self._backend else "None"}')
+        self.logger.trace(lambda: f'Attempting to initialize. Backend: {self._backend}. Backend init: {self._backend.property("ready") if self._backend else "None"}')
         if self._backend and not self._backend.property('ready'):
             QObject.connect(self._backend, SIGNAL("readyChanged()"), self, SLOT("maybe_init()"))
             return
