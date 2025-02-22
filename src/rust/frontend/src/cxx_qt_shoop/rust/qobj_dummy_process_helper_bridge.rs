@@ -5,6 +5,7 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
+        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -27,16 +28,36 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn start(self: Pin<&mut DummyProcessHelper>);
+
+        #[qinvokable]
+        pub fn finish(self: Pin<&mut DummyProcessHelper>);
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-lib-shoop/qquickitem.h");
-
         #[rust_name="qquickitem_from_ref_dummy_process_helper"]
         unsafe fn qquickitemFromRef(obj : &DummyProcessHelper) -> &QQuickItem;
 
         #[rust_name="qquickitem_from_ptr_dummy_process_helper"]
         unsafe fn qquickitemFromPtr(obj : *mut DummyProcessHelper) -> *mut QQuickItem;
+
+        include!("cxx-qt-lib-shoop/invoke.h");
+
+        #[rust_name = "dummy_process_helper_invoke"]
+        unsafe fn invoke(obj : *mut QObject, method : String) -> ();
+
+        #[rust_name = "dummy_process_helper_invoke_direct_with_int_arg"]
+        unsafe fn invoke_one_arg(obj : *mut QObject, method : String, arg : i32) -> ();
+
+        include!("cxx-qt-shoop/make_unique.h");
+        #[rust_name = "make_unique_dummy_process_helper"]
+        fn make_unique() -> UniquePtr<DummyProcessHelper>;
+
+        include!("cxx-qt-shoop/register_qml_type.h");
+        #[rust_name = "register_qml_type_dummy_process_helper"]
+        fn register_qml_type(inference_example: &DummyProcessHelper,
+                             module_name: &mut String,
+                             version_major: i64, version_minor: i64,
+                             type_name: &mut String);
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=(*mut QQuickItem,)> for DummyProcessHelper {}

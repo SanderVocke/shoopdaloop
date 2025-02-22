@@ -682,10 +682,6 @@ class CompositeLoop(ShoopQQuickItem):
     # Update from the back-end.
     @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
-        #FIXME
-        print("begin cl update")
-        from ..qquickitem_stack import format_qml_stack_for_qquickitem
-        # print(format_qml_stack_for_qquickitem(self))
         if self._backend:
             for cycle_nr in self._pending_cycles:
                 self.handle_sync_loop_trigger_impl(cycle_nr)
@@ -693,7 +689,6 @@ class CompositeLoop(ShoopQQuickItem):
                 self.transition_impl(*transition)
             self._pending_transitions = []
             self._pending_cycles = []
-    print("end cl update")
 
     # Another loop which references this loop (composite) can notify this loop that it is
     # about to handle a sync loop cycle in advance, to ensure a deterministic ordering.

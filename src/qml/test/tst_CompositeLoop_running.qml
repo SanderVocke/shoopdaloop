@@ -1,6 +1,5 @@
 import QtQuick 6.6
 import QtTest 1.0
-import ShoopDaLoop.PythonDummyProcessHelper
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -143,7 +142,7 @@ ShoopTestFile {
                 process_helper.start()
             }
 
-            PythonDummyProcessHelper {
+            ShoopDummyProcessHelper {
                 id: process_helper
                 backend: session.backend
 
