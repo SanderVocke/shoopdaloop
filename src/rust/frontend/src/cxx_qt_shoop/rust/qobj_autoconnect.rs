@@ -241,7 +241,7 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_initialized(true);
+            backend.as_mut().unwrap().set_ready(true);
             {
                 let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
@@ -293,7 +293,7 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_initialized(true);
+            backend.as_mut().unwrap().set_ready(true);
             {
                 let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
@@ -345,7 +345,7 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_initialized(true);
+            backend.as_mut().unwrap().set_ready(true);
             {
                 let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
@@ -397,7 +397,7 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_initialized(true);
+            backend.as_mut().unwrap().set_ready(true);
             {
                 let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
