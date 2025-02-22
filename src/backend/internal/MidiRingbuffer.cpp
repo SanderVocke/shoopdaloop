@@ -4,6 +4,11 @@
 #include <algorithm>
 #include <cstdint>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 MidiRingbuffer::MidiRingbuffer(uint32_t data_size)
     : Storage(data_size)
     , n_samples(0)

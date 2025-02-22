@@ -8,6 +8,11 @@
 #include <optional>
 
 #ifdef _WIN32
+#undef min
+#undef max
+#endif
+
+#ifdef _WIN32
 #define HAVE_STRUCT_TIMESPEC
 #endif
 #include <zita-resampler/vresampler.h>

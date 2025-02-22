@@ -9,6 +9,11 @@
 #include <optional>
 #include <iostream>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 BasicLoop::BasicLoop() :
         WithCommandQueue(100),
         mp_next_poi(std::nullopt),

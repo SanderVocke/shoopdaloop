@@ -14,6 +14,11 @@
 #include <algorithm>
 #include <regex>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 const std::map<DummyAudioMidiDriverMode, const char*> mode_names = {
     {DummyAudioMidiDriverMode::Automatic, "Automatic"},
     {DummyAudioMidiDriverMode::Controlled, "Controlled"}
