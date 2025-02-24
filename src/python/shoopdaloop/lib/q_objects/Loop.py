@@ -161,7 +161,7 @@ class Loop(ShoopQQuickItem):
                 self._sync_source = loop
                 self._backend_loop.set_sync_source(loop.get_backend_loop() if loop else None)
                 self.syncSourceChanged.emit(loop)
-        if self.initialized:
+        if self.initialized and self._backend_loop:
             do_set()
         else:
             self.logger.debug(lambda: 'Defer set sync source -> {}'.format(loop))
@@ -366,9 +366,9 @@ class Loop(ShoopQQuickItem):
     def close(self):
         if self._backend_loop:
             self.logger.debug(lambda: 'close')
-            self._backend_loop = None
             self._initialized = False
             self.initializedChanged.emit(False)
+            self._backend_loop = None
     
     @ShoopSlot(result="QVariant")
     def get_backend_loop(self):
