@@ -201,7 +201,7 @@ impl AudioDriver {
 
     pub fn dummy_add_external_mock_port(&self, name: &str, direction: u32, data_type: u32) {
         let obj = self.lock();
-        let c_name = std::ffi::CString::new(name).unwrap();
+        let c_name = std::ffi::CString::new(name).expect("Failed to create CString");
         unsafe {
             ffi::dummy_driver_add_external_mock_port(
                 *obj,
@@ -237,8 +237,8 @@ impl AudioDriver {
         let maybe_name_regex_updated = match maybe_name_regex {
             Some(s) => match s {
                 "" => None,
-                _ => Some(std::ffi::CString::new(s).unwrap()),
-            }
+                _ => Some(std::ffi::CString::new(s).expect("Failed to create CString")),
+            },
             None => None,
         };
         let regex_ptr = maybe_name_regex_updated
