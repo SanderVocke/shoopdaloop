@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QMetaObject>
+#include <QMetaMethod>
 #include <qobjectdefs.h>
 #include <rust/cxx.h>
 #include <string>

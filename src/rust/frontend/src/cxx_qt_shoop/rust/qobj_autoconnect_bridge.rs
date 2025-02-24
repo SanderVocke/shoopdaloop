@@ -43,11 +43,6 @@ pub mod ffi {
         #[rust_name = "invoke_with_return_variantmap"]
         unsafe fn invoke_with_return(obj : *mut QObject, method : String) -> Result<QMap_QString_QVariant>;
 
-        #[rust_name = "invoke_find_external_ports"]
-        unsafe fn invoke_three_args_with_return(
-            obj: *mut QObject, method: String, arg1: QString, arg2: i32, arg3: i32)
-            -> Result<QList_QVariant>;
-
         #[rust_name = "invoke_connect_external_port"]
         unsafe fn invoke_one_arg_with_return(
             obj: *mut QObject, method: String, arg1: QString) -> Result<bool>;

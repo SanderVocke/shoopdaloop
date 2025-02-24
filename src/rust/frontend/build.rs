@@ -15,6 +15,7 @@ fn main() {
             .qt_module("Gui")
             .qt_module("Network")
             .qt_module("Test")
+            .file("src/cxx_qt_lib_shoop/rust/invokable.rs")
             .file("src/cxx_qt_lib_shoop/rust/qjsonobject.rs")
             .file("src/cxx_qt_lib_shoop/rust/qobject.rs")
             .file("src/cxx_qt_lib_shoop/rust/qquickitem.rs")

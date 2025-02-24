@@ -1,3 +1,4 @@
+pub mod invokable;
 pub mod qjsonobject;
 pub mod qobject;
 pub mod qquickitem;

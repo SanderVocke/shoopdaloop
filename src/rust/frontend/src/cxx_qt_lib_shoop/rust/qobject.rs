@@ -60,6 +60,9 @@ pub trait AsQObject {
 
     unsafe fn qobject_mut (self: &mut Self) -> &mut QObject {
         let obj = self.mut_qobject_ptr();
+        if obj.is_null() {
+            panic!("qobject_mut: null pointer");
+        }
         &mut *obj
     }
 }
