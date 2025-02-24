@@ -43,6 +43,7 @@ Item {
     property alias length : py_loop.length
     property alias py_loop : py_loop
     property alias backend : py_loop.backend
+
     PythonCompositeLoop {
         id: py_loop
         iteration: 0

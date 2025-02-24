@@ -155,6 +155,9 @@ class Loop(ShoopQQuickItem):
         def do_set():
             if loop != self._sync_source:
                 self.logger.debug(lambda: 'Set sync source -> {}'.format(loop))
+                if not self._backend_loop:
+                    self.logger.warning(lambda: 'No back-end loop to set sync source')
+                    return
                 self._sync_source = loop
                 self._backend_loop.set_sync_source(loop.get_backend_loop() if loop else None)
                 self.syncSourceChanged.emit(loop)

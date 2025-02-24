@@ -16,7 +16,7 @@ Item {
 
     property var all_loops_in_track
     property var maybe_fx_chain
-    property var backend
+    property var backend : null
 
     property var initial_descriptor : null
 
@@ -167,6 +167,9 @@ Item {
     }
 
     function init() {
+        if (!root.backend) {
+            return
+        }
         if (is_sync) {
             root.logger.debug("Initializing back-end for sync loop")
             create_backend_loop()
@@ -179,6 +182,7 @@ Item {
 
     Component.onCompleted: init()
     onInitial_descriptorChanged: init()
+    onBackendChanged: init()
 
     property var additional_context_menu_options : null // dict of option name -> functor
 
@@ -501,7 +505,6 @@ Item {
         id: composite_loop_factory
         CompositeLoop {
             loop_widget: root
-            backend: root.backend
         }
     }
     function create_composite_loop(composition={
@@ -529,7 +532,8 @@ Item {
         } else {
             maybe_loop = composite_loop_factory.createObject(root, {
                 initial_composition_descriptor: composition,
-                obj_id: root.obj_id
+                obj_id: root.obj_id,
+                backend: Qt.binding(() => root.backend)
             })
             maybe_loop.onCycled.connect(root.cycled)
         }

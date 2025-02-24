@@ -206,7 +206,7 @@ Dialog {
             onClicked: () => {
                 if (root.loop) {
                     root.loop.create_backend_loop()
-                    var srate = root.loop.maybe_loaded_loop.get_backend().get_sample_rate()
+                    var srate = root.loop.maybe_loaded_loop.backend.get_sample_rate()
                     var _bpm = n_beats / (root.loop.length / srate / 60.0)
                     bpm_field.text = _bpm.toFixed(2)
                 }
