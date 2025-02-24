@@ -223,7 +223,8 @@ class Loop(ShoopQQuickItem):
     # Update on back-end thread.
     @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
-        if not self._initialized:
+        backend_loop = self._backend_loop
+        if not self._initialized or not backend_loop:
             return
         
         audio_chans = self.get_audio_channels_impl()
@@ -243,7 +244,7 @@ class Loop(ShoopQQuickItem):
         prev_display_midi_notes_active = self._display_midi_notes_active
         prev_display_midi_events_triggered = self._display_midi_events_triggered
 
-        state = self._backend_loop.get_state()
+        state = backend_loop.get_state()
         self._mode = int(state.mode)
         self._length = state.length
         self._position = state.position
