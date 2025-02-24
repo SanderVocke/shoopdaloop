@@ -32,3 +32,7 @@ inline std::unique_ptr<QJsonObject> qjsonobjectFromJson(::rust::String const& js
 inline void dummy(std::unique_ptr<QJsonObject> o) {
     (void) o;
 }
+
+inline QVariant qjsonobjectToVariant(QJsonObject const& o) {
+    return QJsonDocument(o).toVariant();
+}

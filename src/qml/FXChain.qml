@@ -8,6 +8,8 @@ PythonFXChain {
     id: root
     property bool loaded : initialized
 
+    RequireBackend {}
+
     readonly property var logger : PythonLogger { name: "Frontend.Qml.FXChain" }
 
     property var descriptor : null
@@ -80,6 +82,7 @@ PythonFXChain {
             property int index
             descriptor: mapped_item
             is_internal: true
+            backend: root.backend
         }
     }
     Mapper {
@@ -91,6 +94,7 @@ PythonFXChain {
             property int index
             descriptor: mapped_item
             is_internal: true
+            backend: root.backend
         }
     }
 }

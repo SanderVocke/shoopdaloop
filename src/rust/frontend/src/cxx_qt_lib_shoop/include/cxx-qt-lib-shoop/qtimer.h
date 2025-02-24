@@ -1,5 +1,6 @@
 #pragma once
 #include <QTimer>
+#include <QMetaObject>
 #include "connect.h"
 
 inline void qtimerSetSingleShot(QTimer &timer, bool singleShot) {
@@ -16,6 +17,15 @@ inline void qtimerSetInterval(QTimer &timer, int interval) {
 
 inline void qtimerStop(QTimer &timer) {
     timer.stop();
+}
+
+inline void qtimerStopQueued(QTimer &timer) {
+    QMetaMethod method = timer.metaObject()->method(timer.metaObject()->indexOfMethod("stop()"));
+    method.invoke(&timer, Qt::QueuedConnection);
+}
+
+inline bool qtimerIsActive(QTimer const& timer) {
+    return timer.isActive();
 }
 
 template<typename A>

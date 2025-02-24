@@ -3,10 +3,12 @@
 #include "LoggingBackend.h"
 #include "MidiPort.h"
 #include "PortInterface.h"
+#include <chrono>
 #include <cstring>
 #include <stdexcept>
 #include <memory>
 #include <atomic>
+#include <thread>
 #include "jack/types.h"
 #include "run_in_thread_with_timeout.h"
 #include "JackAudioPort.h"
@@ -240,6 +242,15 @@ std::vector<ExternalPortDescriptor> GenericJackAudioMidiDriver<API>::find_extern
     }
 
     return rval;
+}
+
+template<typename API>
+void GenericJackAudioMidiDriver<API>::wait_process() {
+    if (API::supports_processing) {
+        AudioMidiDriver::wait_process();
+    } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 }
 
 template class GenericJackAudioMidiDriver<JackApi>;

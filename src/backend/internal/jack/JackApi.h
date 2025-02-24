@@ -9,6 +9,8 @@
 // TODO: this does not contain the complete API, only what we use
 class JackApi {
 public:
+    static constexpr bool supports_processing = true;
+
     static auto get_ports(auto ...args) { return jack_get_ports(args...); }
     static auto port_by_name(auto ...args) { return jack_port_by_name(args...); }
     static auto port_flags(auto ...args) { return jack_port_flags(args...); }

@@ -1,12 +1,12 @@
 import QtQuick 6.6
 import QtTest 1.0
-import ShoopDaLoop.PythonBackend
 
 import ShoopConstants
 import './testfilename.js' as TestFilename
+import '..'
 
 ShoopTestFile {
-    PythonBackend {
+    Backend {
         id: backend
         update_interval_ms: 30
         client_name_hint: 'shoop'
@@ -17,7 +17,11 @@ ShoopTestFile {
         ShoopTestCase {
             name: 'JackBackend'
             filename : TestFilename.test_filename()
-            when: backend.initialized || backend.backend_type == null
+            when: {
+                let ready = backend.ready || backend.backend_type == null
+                console.log("Backend ready: " + ready)
+                return ready
+            }
 
             test_fns: ({
                 'test_backend_jack': () => {
@@ -27,7 +31,7 @@ ShoopTestFile {
                         return
                     }
 
-                    verify(backend.initialized)
+                    verify(backend.ready)
                     wait(1000)
                     verify_eq(
                         backend.actual_backend_type,

@@ -8,6 +8,8 @@ import 'js/mode_helpers.js' as ModeHelpers
 PythonLoop {
     property bool loaded : initialized
 
+    RequireBackend {}
+
     readonly property PythonLogger logger: PythonLogger {
         name: "Frontend.Qml.Loop"
         instanceIdentifier: obj_id

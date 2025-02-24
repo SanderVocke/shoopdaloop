@@ -11,6 +11,8 @@ Item {
     id: root
     objectName: "Qml.CompositeLoop"
 
+    RequireBackend {}
+
     // Store the current playback iteration.
     onIterationChanged: root.logger.trace(() => `iteration -> ${iteration}`)
 
@@ -40,6 +42,8 @@ Item {
     property alias sync_position : py_loop.sync_position
     property alias length : py_loop.length
     property alias py_loop : py_loop
+    property alias backend : py_loop.backend
+
     PythonCompositeLoop {
         id: py_loop
         iteration: 0

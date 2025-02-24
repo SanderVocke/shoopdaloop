@@ -249,6 +249,7 @@ fn get_os_specifics<'a>(
     }
 }
 
+#[allow(dead_code)]
 fn get_windows_specifics<'a>(
     executable: &'a Path,
     env_map: &'a HashMap<String, String>,
@@ -279,6 +280,7 @@ fn get_windows_specifics<'a>(
     Ok((command, args, warning_patterns, skip_n_levels, dylib_filename_part, new_env_map))
 }
 
+#[allow(dead_code)]
 fn get_linux_specifics<'a>(
     executable: &'a Path,
     include_directory: &'a Path,
@@ -300,6 +302,7 @@ fn get_linux_specifics<'a>(
     Ok((command, args, warning_patterns, skip_n_levels, dylib_filename_part, env_map.clone()))
 }
 
+#[allow(dead_code)]
 fn get_macos_specifics<'a>(
     executable: &Path,
     env_map: &'a HashMap<String, String>,

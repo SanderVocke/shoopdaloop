@@ -9,6 +9,7 @@ pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::make_unique_autoconne
 use crate::cxx_qt_shoop::qobj_autoconnect_bridge::*;
 use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::*;
 
+use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper;
 use crate::cxx_qt_shoop::type_external_port_descriptor::ExternalPortDescriptor;
 use backend_bindings::{PortDataType, PortDirection};
 use std::pin::Pin;
@@ -102,7 +103,6 @@ impl AutoConnect {
         }
 
         unsafe {
-            let backend_qobj = backend.as_mut().unwrap().mut_qobject_ptr();
             let q_connections_state : QMap_QString_QVariant =
                 invoke_with_return_variantmap(
                     internalPort,
@@ -128,13 +128,13 @@ impl AutoConnect {
                 &*internalPort,
                 String::from(qobj_signature_port::constants::PROP_INITIALIZED))?;
             let q_external_ports : QList_QVariant =
-                invoke_find_external_ports(
-                    backend_qobj,
-                    String::from(qobj_signature_backend_wrapper::constants::INVOKABLE_FIND_EXTERNAL_PORTS),
-                    self.as_mut().connectToPortRegex().clone(),
-                    if my_direction == PortDirection::Input { PortDirection::Output as i32 }
+                qobj_signature_backend_wrapper::invoke_find_external_ports
+                   (backend.as_mut().unwrap(),
+                   self.as_mut().connectToPortRegex().clone(),
+                   if my_direction == PortDirection::Input { PortDirection::Output as i32 }
                                                        else  { PortDirection::Input as i32 },
-                    my_data_type as i32)?;
+                                                       my_data_type as i32)
+                     .map_err(|err| anyhow::anyhow!(err))?;
             let external_candidates = fn_qlist_helpers::try_as_list_into::<ExternalPortDescriptor>(&q_external_ports)?;
             debug!("Queried for external ports: {:?}", external_candidates);
 
@@ -240,7 +240,7 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_initialized(true);
+            backend.as_mut().unwrap().set_ready(true);
             {
                 let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
@@ -292,7 +292,7 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_initialized(true);
+            backend.as_mut().unwrap().set_ready(true);
             {
                 let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
@@ -344,7 +344,7 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_initialized(true);
+            backend.as_mut().unwrap().set_ready(true);
             {
                 let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
@@ -396,7 +396,7 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_initialized(true);
+            backend.as_mut().unwrap().set_ready(true);
             {
                 let mut backend_rust = backend.pin_mut().rust_mut();
                 backend_rust.mock_external_ports.push(ExternalPortDescriptor {
@@ -446,7 +446,7 @@ mod tests {
 
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
-            backend.as_mut().unwrap().set_initialized(true);
+            backend.as_mut().unwrap().set_ready(true);
             let backend_ptr = backend.as_mut().unwrap().pin_mut_qquickitem_ptr();
 
             // Instantiate the connector
