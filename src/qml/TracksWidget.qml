@@ -56,6 +56,8 @@ FocusReleasingScrollView {
     }
 
     function add_track(properties) {
+        // Add backend to the properties list
+        properties.backend = Qt.binding(() => root.backend)
         if (factory.status == Component.Error) {
             throw new Error("TracksWidget: Failed to load track factory: " + factory.errorString())
         } else if (factory.status != Component.Ready) {
@@ -126,7 +128,6 @@ FocusReleasingScrollView {
         root.initial_track_descriptors.forEach(desc => {
             var track = root.add_track({
                 initial_descriptor: desc,
-                backend : Qt.binding ( () => root.backend )
             });
             if (track.loaded) { _n_loaded += 1 }
         })
@@ -324,8 +325,7 @@ FocusReleasingScrollView {
         get_max_loop_slots: () => root.max_slots()
         onAddTrackDescriptor: (desc) => {
             root.add_track({
-                initial_descriptor: desc,
-                backend : Qt.binding ( () => root.backend )
+                initial_descriptor: desc
             })
         }
     }

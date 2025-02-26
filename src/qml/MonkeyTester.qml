@@ -10,6 +10,7 @@ Item {
 
     property var session: null
     property var tracks: session ? session.main_tracks : []
+    property var backend: session ? session.backend : null
 
     property var default_actions_distribution: ({
         'add_track': 0.3,
