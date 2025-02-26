@@ -6,6 +6,7 @@ import 'js/schema_conversions.js' as Conversions
 
 PythonLoopMidiChannel {
     id: root
+    objectName: "LoopMidiChannel"
 
     RequireBackend {}
 

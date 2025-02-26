@@ -96,8 +96,8 @@ class LoopChannel(ShoopQQuickItem):
                 raise Exception('May not change loop of existing channel')
             self._loop = l
             self.loopChanged.emit(self._loop)
-            self._loop.modeChanged.connect(self.loopModeChanged)
-            self.loopModeChanged.emit(self._loop.mode)
+            QObject.connect(self._loop, SIGNAL("modeChanged()"), lambda: self.loopModeChanged.emit(self._loop.property('mode')), Qt.DirectConnection)
+            self.loopModeChanged.emit(self._loop.property('mode'))
             self.maybe_initialize()
     
     # loop_mode

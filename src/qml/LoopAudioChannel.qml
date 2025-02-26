@@ -7,6 +7,7 @@ import ShoopConstants
 
 PythonLoopAudioChannel {
     id: root
+    objectName: "LoopAudioChannel"
 
     RequireBackend {}
 

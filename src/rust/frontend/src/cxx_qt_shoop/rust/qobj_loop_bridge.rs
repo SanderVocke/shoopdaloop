@@ -78,6 +78,12 @@ pub mod ffi {
         #[qinvokable]
         pub fn queue_set_position(self: Pin<&mut Loop>, position: i32);
 
+        #[qinvokable]
+        pub fn get_audio_channels(self: Pin<&mut Loop>) -> QList_QVariant;
+
+        #[qinvokable]
+        pub fn get_midi_channels(self: Pin<&mut Loop>) -> QList_QVariant;
+
         #[qsignal]
         fn cycled(self: Pin<&mut Loop>, cycle_nr: i32);
 

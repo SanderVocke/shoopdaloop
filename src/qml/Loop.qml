@@ -5,7 +5,7 @@ import QtQuick 6.6
 import ShoopConstants
 import 'js/mode_helpers.js' as ModeHelpers
 
-ShoopLoop {
+PythonLoop {
     property bool loaded : initialized
 
     RequireBackend {}
@@ -14,7 +14,7 @@ ShoopLoop {
         name: "Frontend.Qml.Loop"
         instanceIdentifier: obj_id
     }
-    onObj_idChanged: instanceIdentifier = obj_id
+    // onObj_idChanged: instanceIdentifier = obj_id // FIXME: worked with Python loop only
 
     property var maybe_fx_chain: null
     property var loop_widget : null

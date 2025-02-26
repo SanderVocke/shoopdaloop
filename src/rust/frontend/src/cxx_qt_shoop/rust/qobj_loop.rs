@@ -1,9 +1,13 @@
 use common::logging::macros::*;
 use cxx_qt::ConnectionType;
 use cxx_qt::CxxQtType;
+use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
 use crate::cxx_qt_lib_shoop::qobject::qobject_property_bool;
+use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
+use crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_loop_bridge::Loop;                                   
-use crate::cxx_qt_shoop::qobj_loop_bridge::ffi::*;                                           
+use crate::cxx_qt_shoop::qobj_loop_bridge::ffi::*;      
+use cxx_qt_lib::{QList, QVariant, QString};                                    
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Loop");
 
@@ -153,6 +157,31 @@ impl Loop {
         if initialize_condition {
             debug!("Found backend, initializing");
         }
+    }
+
+    pub fn get_children_with_object_name(self: Pin<&mut Loop>, object_name: &str) -> QList<QVariant> {
+        let mut result = QList_QVariant::default();
+        unsafe {
+            let ref_self = self.as_ref();
+            let qquickitem = ref_self.qquickitem_ref();
+            for child in qquickitem.child_items().iter()
+                            .filter(|child| {
+                                qobject_object_name
+                                   (qvariant_to_qobject_ptr(child)
+                                     .unwrap()
+                                     .as_ref()
+                                     .unwrap()).unwrap() == object_name
+                            }) { result.append(child.clone()); }
+        }
+        result
+    }
+
+    pub fn get_audio_channels(self: Pin<&mut Loop>) -> QList<QVariant> {
+        self.get_children_with_object_name("LoopAudioChannel")
+    }
+
+    pub fn get_midi_channels(self: Pin<&mut Loop>) -> QList<QVariant> {
+        self.get_children_with_object_name("LoopMidiChannel")
     }
 }
 
