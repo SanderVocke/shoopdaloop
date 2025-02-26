@@ -4,6 +4,9 @@ use cxx_qt_lib::{QList, QVariant, QString};
 
 use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 
+const AUTO_CONNECTION : u32 = 0;
+const 
+
 #[cxx_qt::bridge]
 mod ffi {
     unsafe extern "C++" {
@@ -27,18 +30,28 @@ mod ffi {
         include!("cxx-qt-lib-shoop/invoke.h");
 
         #[rust_name = "invoke_noreturn_noargs"]
-        unsafe fn invoke(obj: *mut QObject, method : String) -> Result<()>;
+        unsafe fn invoke(obj: *mut QObject,
+                         method : String,
+                         connection_type : u32) -> Result<()>;
 
         #[rust_name = "invoke_i32_noargs"]
-        unsafe fn invoke_with_return(obj: *mut QObject, method : String) -> Result<i32>;
+        unsafe fn invoke_with_return(obj: *mut QObject,
+                                     method : String,
+                                     connection_type : u32) -> Result<i32>;
 
         #[rust_name = "invoke_qlistqvariant_qstring_i32_i32"]
-        unsafe fn invoke_three_args_with_return(obj: *mut QObject, method : String, arg1 : QString, arg2 : i32, arg3 : i32) -> Result<QList_QVariant>;
+        unsafe fn invoke_three_args_with_return(obj: *mut QObject,
+                                                method : String,
+                                                connection_type : u32,
+                                                arg1 : QString, arg2 : i32, arg3 : i32) -> Result<QList_QVariant>;
     }
 }
 
 trait Invokable<RetVal, Args> {
-    fn invoke_fn_qobj(&mut self, method : String, args : &Args) -> Result<RetVal, Exception> {
+    fn invoke_fn_qobj(&mut self,
+                      method : String,
+                      connection_type : u32,
+                      args : &Args) -> Result<RetVal, Exception> {
         panic!("Invokable not implemented for return type {} and arguments type {}", std::any::type_name::<RetVal>(), std::any::type_name::<Args>());
     }
 }
@@ -47,45 +60,55 @@ trait Invokable<RetVal, Args> {
 // the project.
 
 impl Invokable<(), ()> for ffi::QObject {
-    fn invoke_fn_qobj(&mut self, method : String, _args : &()) -> Result<(), Exception> {
+    fn invoke_fn_qobj(&mut self,
+                      method : String,
+                      connection_type : u32,
+                      _args : &()) -> Result<(), Exception> {
         unsafe { ffi::invoke_noreturn_noargs(self as *mut ffi::QObject, method) }
     }
 }
 
 impl Invokable<i32, ()> for ffi::QObject {
-    fn invoke_fn_qobj(&mut self, method : String, _args : &()) -> Result<i32, Exception> {
+    fn invoke_fn_qobj(&mut self,
+                      method : String,
+                      connection_type : u32,
+                      _args : &()) -> Result<i32, Exception> {
         unsafe { ffi::invoke_i32_noargs(self as *mut ffi::QObject, method) }
     }
 }
 
 impl Invokable<QList<QVariant>, (QString, i32, i32)> for ffi::QObject {
-    fn invoke_fn_qobj(&mut self, method : String, args : &(ffi::QString, i32, i32)) -> Result<QList<QVariant>, Exception> {
+    fn invoke_fn_qobj(&mut self,
+                      method : String,
+                      connection_type : u32,
+                      args : &(ffi::QString, i32, i32)) -> Result<QList<QVariant>, Exception> {
         unsafe { ffi::invoke_qlistqvariant_qstring_i32_i32(self as *mut ffi::QObject, method, args.0.clone(), args.1, args.2) }
     }
 }
 
 trait Invoker<RetVal, Args> {
-    fn invoke(&mut self, method: String, args: &Args) -> Result<RetVal, Exception>;
+    fn invoke(&mut self, method: String, connection_type : u32, args: &Args) -> Result<RetVal, Exception>;
 }
 
 impl<RetVal, Args> Invoker<RetVal, Args> for ffi::QObject
 where
     Self: Invokable<RetVal, Args>,
 {
-    fn invoke(&mut self, method: String, args: &Args) -> Result<RetVal, Exception> {
-        self.invoke_fn_qobj(method, args)
+    fn invoke(&mut self, method: String, connection_type : u32, args: &Args) -> Result<RetVal, Exception> {
+        self.invoke_fn_qobj(method, connection_type, args)
     }
 }
 
 fn invoke_fn_qobj<RetVal, Args>(
     obj: &mut ffi::QObject,
     method: String,
+    connection_type : u32,
     args: &Args,
 ) -> Result<RetVal, Exception>
 where
     ffi::QObject: Invoker<RetVal, Args>,
 {
-    obj.invoke(method, args)
+    obj.invoke(method, connection_type, args)
 }
 
 // Generically invoke a method using Qt's meta-object system. The Object should implement
@@ -95,6 +118,7 @@ where
 pub fn invoke<Object, RetVal, Args>(
     obj: &mut Object,
     method: String,
+    connection_type : u32,
     args: &Args,
 ) -> Result<RetVal, Exception>
 where
@@ -103,6 +127,6 @@ where
 {
     unsafe {
         let qobj = obj.qobject_mut();
-        invoke_fn_qobj(qobj, method, args)
+        invoke_fn_qobj(qobj, method, connection_type, args)
     }
 }
