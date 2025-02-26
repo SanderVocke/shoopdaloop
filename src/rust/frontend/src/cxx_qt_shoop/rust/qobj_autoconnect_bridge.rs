@@ -39,14 +39,6 @@ pub mod ffi {
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
 
-        include!("cxx-qt-lib-shoop/invoke.h");
-        #[rust_name = "invoke_with_return_variantmap"]
-        unsafe fn invoke_with_return(obj : *mut QObject, method : String) -> Result<QMap_QString_QVariant>;
-
-        #[rust_name = "invoke_connect_external_port"]
-        unsafe fn invoke_one_arg_with_return(
-            obj: *mut QObject, method: String, arg1: QString) -> Result<bool>;
-
         include!("cxx-qt-lib-shoop/metatype.h");
         #[rust_name = "autoconnect_metatype_name"]
         unsafe fn meta_type_name(obj: &AutoConnect) -> Result<&str>;

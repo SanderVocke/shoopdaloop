@@ -42,12 +42,6 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/invoke.h");
 
-        #[rust_name = "dummy_process_helper_invoke"]
-        unsafe fn invoke(obj : *mut QObject, method : String) -> ();
-
-        #[rust_name = "dummy_process_helper_invoke_direct_with_int_arg"]
-        unsafe fn invoke_one_arg(obj : *mut QObject, method : String, arg : i32) -> ();
-
         include!("cxx-qt-shoop/make_unique.h");
         #[rust_name = "make_unique_dummy_process_helper"]
         fn make_unique() -> UniquePtr<DummyProcessHelper>;

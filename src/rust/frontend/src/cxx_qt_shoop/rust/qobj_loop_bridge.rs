@@ -41,10 +41,6 @@ pub mod ffi {
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
-        include!("cxx-qt-lib-shoop/invoke.h");
-        #[rust_name = "loop_invoke_with_return_variantmap"]
-        unsafe fn invoke_with_return(obj: *mut QObject, method: String) -> Result<QMap_QString_QVariant>;
-
         include!("cxx-qt-lib-shoop/metatype.h");
         #[rust_name = "loop_metatype_name"]
         unsafe fn meta_type_name(obj: &Loop) -> Result<&str>;

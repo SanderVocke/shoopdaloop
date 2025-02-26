@@ -2,6 +2,7 @@ use common::logging::macros::*;
 use cxx_qt::CxxQtType;
 shoop_log_unit!("Frontend.AutoConnect");
 
+use crate::cxx_qt_lib_shoop::invokable;
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::AutoConnect;
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::constants::*;
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::make_raw_autoconnect as make_raw;
@@ -104,9 +105,9 @@ impl AutoConnect {
 
         unsafe {
             let q_connections_state : QMap_QString_QVariant =
-                invoke_with_return_variantmap(
-                    internalPort,
-                    String::from(qobj_signature_port::constants::INVOKABLE_DETERMINE_CONNECTIONS_STATE))?;
+                qobj_signature_port::invoke_determine_connections_state
+                    (internalPort.as_mut().unwrap(),
+                    invokable::DIRECT_CONNECTION)?;
             let connectionsState = fn_qvariantmap_helpers::try_as_hashmap_convertto::<bool>(&q_connections_state)?;
             debug!("Got connections state: {:?}", connectionsState);
 
@@ -130,6 +131,7 @@ impl AutoConnect {
             let q_external_ports : QList_QVariant =
                 qobj_signature_backend_wrapper::invoke_find_external_ports
                    (backend.as_mut().unwrap(),
+                   invokable::DIRECT_CONNECTION,
                    self.as_mut().connectToPortRegex().clone(),
                    if my_direction == PortDirection::Input { PortDirection::Output as i32 }
                                                        else  { PortDirection::Input as i32 },
@@ -152,9 +154,9 @@ impl AutoConnect {
                     my_port_initialized
                 {
                     debug!("{} auto-connecting to {}", my_name, candidate.name);
-                    let result : Result<bool, _> = invoke_connect_external_port(
-                        internalPort,
-                        String::from(qobj_signature_port::constants::INVOKABLE_BOOL_CONNECT_EXTERNAL_PORT),
+                    let result : Result<bool, _> = qobj_signature_port::invoke_connect_external_port
+                       (internalPort.as_mut().unwrap(),
+                        invokable::DIRECT_CONNECTION,
                         QString::from(&candidate.name));
                     let result : Result<(), _> = match result {
                         Ok(o) => if o { Ok (()) } else { Err(anyhow::anyhow!("Connection failed")) },

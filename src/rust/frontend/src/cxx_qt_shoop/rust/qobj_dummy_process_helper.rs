@@ -9,9 +9,11 @@ use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.DummyProcessHelper");
 
+use crate::cxx_qt_lib_shoop::invokable;
 use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 use crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_dummy_process_helper_bridge::ffi::*;
+use crate::cxx_qt_shoop::qobj_signature_backend_wrapper;
 
 impl DummyProcessHelper {
     pub fn start(mut self: Pin<&mut Self>) {
@@ -49,17 +51,25 @@ impl DummyProcessHelper {
             for _ in 0..n_iters {
                 unsafe {
                     debug!("requesting {} frames", samples_per_iter);
-                    dummy_process_helper_invoke(backend_thread_ptr, "wait_process()".to_string());
-                    dummy_process_helper_invoke_direct_with_int_arg(backend_thread_ptr, "dummy_request_controlled_frames(::std::int32_t)".to_string(), samples_per_iter);
+                    qobj_signature_backend_wrapper::invoke_wait_process
+                        (backend_thread_ptr.as_mut().unwrap(),
+                         invokable::DIRECT_CONNECTION);
+                    qobj_signature_backend_wrapper::invoke_dummy_request_controlled_frames
+                        (backend_thread_ptr.as_mut().unwrap(),
+                         invokable::DIRECT_CONNECTION,
+                         samples_per_iter);
                 }
                 // Simulate backend processing
                 thread::sleep(Duration::from_secs_f32(wait_interval));
             }
 
             unsafe {
-                dummy_process_helper_invoke(backend_thread_ptr, "wait_process()".to_string());
+                qobj_signature_backend_wrapper::invoke_wait_process
+                        (backend_thread_ptr.as_mut().unwrap(),
+                         invokable::DIRECT_CONNECTION);
                 debug!("Invoking finish");
-                dummy_process_helper_invoke(self_thread_ptr, "finish()".to_string());
+                let _dummy : Result<(), _> =
+                    invokable::invoke(self_thread_ptr.as_mut().unwrap(), "finish()".to_string(), invokable::DIRECT_CONNECTION, &());
             }
         });
     }
