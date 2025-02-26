@@ -71,7 +71,7 @@ mod ffi {
     }
 }
 
-trait Invokable<RetVal, Args> {
+pub trait Invokable<RetVal, Args> {
     fn invoke_fn_qobj(&mut self,
                       method : String,
                       connection_type : u32,

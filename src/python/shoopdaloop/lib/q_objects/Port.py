@@ -55,7 +55,7 @@ class Port(ShoopQQuickItem):
     def backend(self, l):
         if l and l != self._backend:
             if self._backend or self._backend_obj:
-                self.logger.throw_error('May not change backend of existing loop')
+                self.logger.throw_error('May not change backend of existing port')
             self._backend = l
             self.logger.trace(lambda: 'Set backend -> {}'.format(l))
             self.backendChanged.emit(l)

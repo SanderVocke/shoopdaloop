@@ -24,7 +24,7 @@ void invoke(Obj * object,
         report_method_not_found(object, method.operator std::string());
     }
     QMetaMethod _method = meta->method(index);
-    _method.invoke(qobj, connection_type);
+    _method.invoke(qobj, (Qt::ConnectionType) connection_type);
 }
 
 template<typename Obj, typename RetVal>
@@ -42,7 +42,7 @@ RetVal invoke_with_return(Obj * object,
     QMetaMethod _method = meta->method(index);
     RetVal ret;
     QTemplatedMetaMethodReturnArgument<RetVal> _ret{_method.returnMetaType().iface(), nullptr, std::addressof(ret)};
-    _method.invoke(qobj, connection_type, _ret);
+    _method.invoke(qobj, (Qt::ConnectionType) connection_type, _ret);
     return ret;
 }
 
@@ -65,7 +65,7 @@ RetVal invoke_one_arg_with_return(
     QMetaMethod _method = meta->method(index);
     RetVal ret;
     QTemplatedMetaMethodReturnArgument<RetVal> _ret{_method.returnMetaType().iface(), nullptr, std::addressof(ret)};
-    _method.invoke(qobj, connection_type, _ret, arg1);
+    _method.invoke(qobj, (Qt::ConnectionType) connection_type, _ret, arg1);
     return ret;
 }
 
@@ -85,7 +85,7 @@ void invoke_one_arg(
         report_method_not_found(object, method.operator std::string());
     }
     QMetaMethod _method = meta->method(index);
-    _method.invoke(qobj, connection_type, arg1);
+    _method.invoke(qobj, (Qt::ConnectionType) connection_type, arg1);
 }
 
 template<typename Obj,
@@ -107,7 +107,7 @@ RetVal invoke_two_args_with_return(
     QMetaMethod _method = meta->method(index);
     RetVal ret;
     QTemplatedMetaMethodReturnArgument<RetVal> _ret{_method.returnMetaType().iface(), nullptr, std::addressof(ret)};
-    _method.invoke(qobj, connection_type, _ret,
+    _method.invoke(qobj, (Qt::ConnectionType) connection_type, _ret,
         arg1,
         arg2
     );
@@ -133,7 +133,7 @@ RetVal invoke_three_args_with_return(
     QMetaMethod _method = meta->method(index);
     RetVal ret;
     QTemplatedMetaMethodReturnArgument<RetVal> _ret{_method.returnMetaType().iface(), nullptr, std::addressof(ret)};
-    _method.invoke(qobj, connection_type, _ret,
+    _method.invoke(qobj, (Qt::ConnectionType) connection_type, _ret,
         arg1,
         arg2,
         arg3);
