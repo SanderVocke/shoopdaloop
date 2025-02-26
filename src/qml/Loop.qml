@@ -8,11 +8,13 @@ import 'js/mode_helpers.js' as ModeHelpers
 PythonLoop {
     property bool loaded : initialized
 
+    RequireBackend {}
+
     readonly property PythonLogger logger: PythonLogger {
         name: "Frontend.Qml.Loop"
         instanceIdentifier: obj_id
     }
-    onObj_idChanged: instanceIdentifier = obj_id
+    // onObj_idChanged: instanceIdentifier = obj_id // FIXME: worked with Python loop only
 
     property var maybe_fx_chain: null
     property var loop_widget : null

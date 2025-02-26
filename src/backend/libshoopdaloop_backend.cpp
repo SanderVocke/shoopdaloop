@@ -292,7 +292,7 @@ void initialize_logging() {
 }
 
 shoop_backend_session_t *create_backend_session() {
-  return api_impl<shoop_backend_session_t*>("shoop_backend_session_t", [&]() {
+  return api_impl<shoop_backend_session_t*>("create_backend_session", [&]() {
     auto rval = shoop_make_shared<BackendSession>();
     g_active_backends.insert(rval);
     return external_backend_session(rval);
@@ -369,7 +369,9 @@ shoop_external_port_descriptors_t *find_external_ports(
   shoop_port_direction_t maybe_port_direction_filter,
   shoop_port_data_type_t maybe_data_type_filter)
 {
-  return api_impl<shoop_external_port_descriptors_t*>("find_external_ports", [&]() -> shoop_external_port_descriptors_t* {
+  std::string name_regex = maybe_name_regex ? maybe_name_regex : "";
+  std::string fn_name = "find_external_ports (regex \"" + name_regex + "\")";
+  return api_impl<shoop_external_port_descriptors_t*>(fn_name.c_str(), [&]() -> shoop_external_port_descriptors_t* {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return nullptr; }
     auto ports = _driver->find_external_ports(
@@ -2348,7 +2350,9 @@ void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_set
       }
       JackAudioMidiDriverSettings s;
       s.client_name_hint = settings.client_name_hint;
-      s.maybe_server_name_hint = settings.maybe_server_name;
+      if(settings.maybe_server_name) {
+          s.maybe_server_name_hint = settings.maybe_server_name;
+      }
       jack->start(s);
     };
 

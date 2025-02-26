@@ -1,5 +1,6 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.AutoConnect");
+use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper;
 
 pub mod constants {
     pub const PROP_INTERNAL_PORT : &str = "internalPort";
@@ -37,19 +38,6 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
-
-        include!("cxx-qt-lib-shoop/invoke.h");
-        #[rust_name = "invoke_with_return_variantmap"]
-        unsafe fn invoke_with_return(obj : *mut QObject, method : String) -> Result<QMap_QString_QVariant>;
-
-        #[rust_name = "invoke_find_external_ports"]
-        unsafe fn invoke_three_args_with_return(
-            obj: *mut QObject, method: String, arg1: QString, arg2: i32, arg3: i32)
-            -> Result<QList_QVariant>;
-
-        #[rust_name = "invoke_connect_external_port"]
-        unsafe fn invoke_one_arg_with_return(
-            obj: *mut QObject, method: String, arg1: QString) -> Result<bool>;
 
         include!("cxx-qt-lib-shoop/metatype.h");
         #[rust_name = "autoconnect_metatype_name"]
@@ -112,7 +100,6 @@ pub mod ffi {
                    slot : String) -> Result<()>;
 
         include!("cxx-qt-shoop/register_qml_type.h");
-
         #[rust_name = "register_qml_type_autoconnect"]
         fn register_qml_type(inference_example: &AutoConnect,
                              module_name : &mut String,

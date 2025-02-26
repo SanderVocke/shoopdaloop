@@ -7,7 +7,7 @@ pub mod constants {
     pub const PROP_FOUNDITEMWITHTRUECHECKEDPROPERTY : &str = "foundItemWithTrueCheckedProperty";
     pub const PROP_FOUNDITEMHASTRUECHECKEDPROPERTY : &str = "foundItemHasTrueCheckedProperty";
 
-    pub const SIGNAL_PARENT_CHANGED : &str = "onParentChanged()";
+    pub const SIGNAL_PARENT_CHANGED : &str = "parentChanged()";
     pub const SIGNAL_FOUND_ITEM_CHANGED : &str = "foundItemChanged()";
     pub const SIGNAL_ITEMBOOLPROPERTYTOCHECK_CHANGED : &str = "itemBoolPropertyToCheckChanged()";
     pub const SIGNAL_FOUNDITEMWITHTRUECHECKEDPROPERTY_CHANGED : &str = "foundItemWithTrueCheckedPropertyChanged()";

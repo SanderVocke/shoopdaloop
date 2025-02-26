@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <QThread>
 #include <QVariant>
 #include <rust/cxx.h>
 #include <iostream>
@@ -92,4 +93,8 @@ inline rust::Str qobjectObjectName(QObject const& obj) {
 
 inline void qobjectSetObjectName(QObject *obj, ::rust::String name) {
     obj->setObjectName(name.c_str());
+}
+
+inline bool qobjectMoveToThread(QObject *obj, QThread *targetThread) {
+    return obj->moveToThread(targetThread);
 }

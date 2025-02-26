@@ -25,6 +25,8 @@ FocusReleasingScrollView {
     property var tracks : []
     property var track_initial_descriptors : []
 
+    property var backend : null
+
     onTracksChanged: {
         // Keep indexes up to date
         tracks.forEach((c, idx) => { c.track_idx = idx } )
@@ -54,6 +56,8 @@ FocusReleasingScrollView {
     }
 
     function add_track(properties) {
+        // Add backend to the properties list
+        properties.backend = Qt.binding(() => root.backend)
         if (factory.status == Component.Error) {
             throw new Error("TracksWidget: Failed to load track factory: " + factory.errorString())
         } else if (factory.status != Component.Ready) {
@@ -123,7 +127,7 @@ FocusReleasingScrollView {
         // Instantiate initial tracks
         root.initial_track_descriptors.forEach(desc => {
             var track = root.add_track({
-                initial_descriptor: desc
+                initial_descriptor: desc,
             });
             if (track.loaded) { _n_loaded += 1 }
         })

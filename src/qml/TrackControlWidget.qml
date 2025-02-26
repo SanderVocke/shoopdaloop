@@ -89,12 +89,12 @@ Item {
         return r
     }
     readonly property var audio_out_ports : {
-        var r = ports.filter((p) => p && is_audio(p.descriptor) && is_out(p.descriptor))
+        var r = root.ports.filter((p) => p && is_audio(p.descriptor) && is_out(p.descriptor))
         r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
         return r
     }
     readonly property var fx_out_ports : {
-        var r = fx_ports.filter((p) => p && is_audio(p.descriptor) && p.descriptor.id.match(/_out_/))
+        var r = root.fx_ports.filter((p) => p && is_audio(p.descriptor) && p.descriptor.id.match(/_out_/))
         r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
         return r
     }
@@ -137,10 +137,10 @@ Item {
         initial_input_gain_dB = convert_gain.dB
     }
     onMidi_in_portsChanged: {
-        midi_in_ports.forEach((m) => m.nInputNotesActiveChanged.connect(update_midi))
-        midi_out_ports.forEach((m) => m.nOutputNotesActiveChanged.connect(update_midi))
-        midi_in_ports.forEach((m) => m.nInputEventsChanged.connect(update_midi))
-        midi_out_ports.forEach((m) => m.nOutputEventsChanged.connect(update_midi))
+        if (Array.isArray(midi_in_ports)) { midi_in_ports.forEach((m) => m.nInputNotesActiveChanged.connect(update_midi)) }
+        if (Array.isArray(midi_out_ports)) { midi_out_ports.forEach((m) => m.nOutputNotesActiveChanged.connect(update_midi)) }
+        if (Array.isArray(midi_in_ports)) { midi_in_ports.forEach((m) => m.nInputEventsChanged.connect(update_midi)) }
+        if (Array.isArray(midi_out_ports)) { midi_out_ports.forEach((m) => m.nOutputEventsChanged.connect(update_midi)) }
     }
     onGain_dBChanged: push_out_gains()
     onInput_gain_dBChanged: push_in_gains()
@@ -330,8 +330,20 @@ Item {
         if (mute === undefined) {
             throw new Error("Cannot push undefined mute")
         }
-        audio_out_ports.forEach((p) => {if (p) { p.set_muted(mute) } else { logger.warn("Undefined audio out port") }})
-        midi_out_ports.forEach((p) => {if (p) { p.set_muted(mute) } else { logger.warn("Undefined audio out port") }})
+        if (Array.isArray(root.audio_out_ports)) {
+            root.audio_out_ports.forEach((p) => {
+                if (p) {
+                    p.set_muted(mute)
+                } else { logger.warn("Undefined audio out port") }
+            })
+        }
+        if (Array.isArray(root.midi_out_ports)) {
+            root.midi_out_ports.forEach((p) => {
+                if (p) {
+                    p.set_muted(mute)
+                } else { logger.warn("Undefined audio out port") }
+            })
+        }
     }
     function push_monitor() {
         if (monitor === undefined) {
