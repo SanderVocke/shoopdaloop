@@ -5,10 +5,13 @@ use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
 use crate::cxx_qt_lib_shoop::qobject::qobject_property_bool;
 use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
+use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
 use crate::cxx_qt_shoop::qobj_loop_bridge::Loop;                                   
 use crate::cxx_qt_shoop::qobj_loop_bridge::ffi::*;      
 use cxx_qt_lib::{QList, QVariant, QString};                                    
+use std::ops::Deref;
 use std::pin::Pin;
+use std::sync::{Arc, Mutex, MutexGuard};
 shoop_log_unit!("Frontend.Loop");
 
 impl Loop {
@@ -25,20 +28,28 @@ impl Loop {
             self.as_mut().connect_display_midi_notes_active_changed(|o| { o.display_midi_notes_active_changed_queued(); }, ConnectionType::QueuedConnection).release();
             self.as_mut().connect_display_midi_events_triggered_changed(|o| { o.display_midi_events_triggered_changed_queued(); }, ConnectionType::QueuedConnection).release();
             self.as_mut().connect_cycled(|o, cycle_nr| { o.cycled_queued(cycle_nr); }, ConnectionType::QueuedConnection).release();
+
+            // FIXME: Now this will only initialize the loop
+            // if the backend was already initialized. Check the "ready"
+            // property and if not ready, connect a one-time signal to initialize
+            // when ready.
+            self.as_mut().connect_backend_changed(|o| { o.maybe_initialize_backend(); }, ConnectionType::QueuedConnection).release();
         }
     }
 
     pub fn queue_set_length(mut self: Pin<&mut Loop>, length: i32) {
         debug!("queue set length -> {}", length);
         let mut rust = self.as_mut().rust_mut();
-        let loop_obj = rust.backend_loop.as_mut().expect("Backend loop not set");
+        let loop_arc = rust.backend_loop.as_mut().expect("Backend loop not set").clone();
+        let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
         loop_obj.set_length(length as u32);
     }
 
     pub fn queue_set_position(mut self: Pin<&mut Loop>, position: i32) {
         debug!("queue set position -> {}", position);
         let mut rust = self.as_mut().rust_mut();
-        let loop_obj = rust.backend_loop.as_mut().expect("Backend loop not set");
+        let loop_arc = rust.backend_loop.as_mut().expect("Backend loop not set").clone();
+        let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
         loop_obj.set_position(position as u32);
     }
 
@@ -60,7 +71,8 @@ impl Loop {
         //     channel.update_on_non_gui_thread();
         // }
 
-        let loop_obj = self.backend_loop.as_ref().expect("Backend loop not set");
+        let loop_arc = self.as_mut().backend_loop.as_ref().expect("Backend loop not set").clone();
+        let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
         let state = loop_obj.get_state().unwrap();
 
         let mut rust = self.as_mut().rust_mut();
@@ -143,7 +155,7 @@ impl Loop {
         println!("Updating Loop on GUI Thread");
     }
 
-    fn maybe_initialize(self: Pin<&mut Loop>) {
+    pub fn maybe_initialize_backend(mut self: Pin<&mut Loop>) {
         let initialize_condition : bool;
 
         unsafe {
@@ -156,6 +168,26 @@ impl Loop {
 
         if initialize_condition {
             debug!("Found backend, initializing");
+            let backend_qobj = self.backend();
+            unsafe {
+                let backend_ptr = qobject_ptr_to_backend_ptr(*backend_qobj);
+                if backend_ptr.is_null() {
+                    error!("Failed to convert backend QObject to backend pointer");
+                } else {
+                    // FIXME: unwraps
+                    let backend_session = backend_ptr.as_mut()
+                                                  .unwrap()
+                                                  .session
+                                                  .as_ref()
+                                                  .unwrap();
+                    let backend_loop = backend_session.create_loop().unwrap();
+                    let mut rust_mut = self.as_mut().rust_mut();
+                    rust_mut.backend_loop = Some(Arc::new(Mutex::new(backend_loop)));
+                    self.set_initialized(true);
+                }
+            }
+        } else {
+            debug!("Not initializing as not all conditions are met");
         }
     }
 
@@ -182,6 +214,72 @@ impl Loop {
 
     pub fn get_midi_channels(self: Pin<&mut Loop>) -> QList<QVariant> {
         self.get_children_with_object_name("LoopMidiChannel")
+    }
+
+    pub fn transition_multiple(self: Pin<&mut Loop>,
+        loops: QList_QVariant,
+        to_mode: i32,
+        maybe_cycles_delay: i32,
+        maybe_to_sync_at_cycle: i32)
+    {
+        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
+            let mut backend_loop_arcs : Vec<Arc<Mutex<backend_bindings::Loop>>> = Vec::new();
+            let mut backend_loop_guards : Vec<MutexGuard<backend_bindings::Loop>> = Vec::new();
+            let mut backend_loop_refs : Vec<&backend_bindings::Loop> = Vec::new();
+            backend_loop_arcs.reserve(loops.len() as usize);
+            backend_loop_guards.reserve(loops.len() as usize);
+            backend_loop_refs.reserve(loops.len() as usize);
+
+            // Increment the reference count for all loops involved
+            loops.iter().map(|loop_variant| -> Result<(), anyhow::Error> {
+                unsafe {
+                    let loop_qobj : *mut QObject =
+                        qvariant_to_qobject_ptr(loop_variant)
+                        .ok_or(anyhow::anyhow!("Failed to convert QVariant to QObject pointer"))?;
+                    let loop_ptr : *mut Loop =
+                        qobject_to_loop_ptr(loop_qobj);
+                    let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
+                        loop_ptr.as_ref()
+                                .unwrap()
+                                .backend_loop
+                                .as_ref()
+                                .ok_or(anyhow::anyhow!("Backend loop not set"))?
+                                .clone();
+                    backend_loop_arcs.push(backend_loop_arc);
+                    Ok(())
+                }
+            }).for_each(|result| {
+                match result {
+                    Ok(_) => (),
+                    Err(err) => {
+                        error!("Failed to increment reference count for loop: {:?}", err);
+                    }
+                }
+            });
+
+            // Lock all backend loops
+            backend_loop_arcs.iter().for_each(|backend_loop_arc| {
+                let backend_loop_guard = backend_loop_arc.lock().unwrap();
+                backend_loop_guards.push(backend_loop_guard);
+            });
+
+            // Get references to all backend loops
+            backend_loop_guards.iter().for_each(|backend_loop_guard| {
+                backend_loop_refs.push(backend_loop_guard.deref());
+            });
+
+            backend_bindings::transition_multiple_loops(
+                &backend_loop_refs,
+                to_mode.try_into()?,
+                maybe_cycles_delay,
+                maybe_to_sync_at_cycle)
+        })();
+        match result {
+            Ok(_) => (),
+            Err(err) => {
+                error!("Failed to transition multiple loops: {:?}", err);
+            }
+        }
     }
 }
 

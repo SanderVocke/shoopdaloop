@@ -414,8 +414,8 @@ Item {
         last_pushed_stereo_balance = balance
     }
 
-    function set_length(length) {
-        maybe_loop && maybe_loop.set_length(length)
+    function queue_set_length(length) {
+        maybe_loop && maybe_loop.queue_set_length(length)
     }
 
     function record_n(delay_start, n) {
@@ -1807,7 +1807,7 @@ Item {
                 text: "Push Length To Sync"
                 shown: !root.is_sync
                 onClicked: {
-                    if (sync_loop) { sync_loop.set_length(root.length) }
+                    if (sync_loop) { sync_loop.queue_set_length(root.length) }
                 }
             }
             ShoopMenuItem {

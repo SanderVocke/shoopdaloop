@@ -84,6 +84,16 @@ pub mod ffi {
         #[qinvokable]
         pub fn get_midi_channels(self: Pin<&mut Loop>) -> QList_QVariant;
 
+        #[qinvokable]
+        pub fn transition_multiple(self: Pin<&mut Loop>,
+                                   loops: QList_QVariant,
+                                   to_mode: i32,
+                                   maybe_cycles_delay: i32,
+                                   maybe_to_sync_at_cycle: i32);
+        
+        #[qinvokable]
+        pub fn maybe_initialize_backend(self: Pin<&mut Loop>);
+
         #[qsignal]
         fn cycled(self: Pin<&mut Loop>, cycle_nr: i32);
 
@@ -135,6 +145,10 @@ pub mod ffi {
         #[rust_name = "make_raw_loop"]
         fn make_raw() -> *mut Loop;
 
+        include!("cxx-qt-shoop/cast_ptr.h");
+        #[rust_name = "qobject_to_loop_ptr"]
+        unsafe fn cast_qobject_ptr(obj : *mut QObject) -> *mut Loop;
+
         include!("cxx-qt-shoop/qobject_classname.h");
         #[rust_name = "qobject_class_name_loop"]
         fn qobject_class_name(obj: &Loop) -> Result<&str>;
@@ -165,6 +179,8 @@ pub use ffi::Loop;
 use ffi::*;
 use cxx::UniquePtr;
 use crate::cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
+use std::sync::{Arc, Mutex};
+
 pub struct LoopRust {
     // Properties
     pub backend: *mut QObject,
@@ -181,7 +197,7 @@ pub struct LoopRust {
     pub instance_identifier: QString,
 
     // Rust members
-    pub backend_loop : Option<BackendLoop>,
+    pub backend_loop : Option<Arc<Mutex<BackendLoop>>>,
 }
 
 impl Default for LoopRust {
