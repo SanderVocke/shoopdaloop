@@ -1,3 +1,5 @@
+use backend_bindings::AudioChannel;
+use backend_bindings::MidiChannel;
 use common::logging::macros::*;
 use cxx_qt::ConnectionType;
 use cxx_qt::CxxQtType;
@@ -222,6 +224,7 @@ impl Loop {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32)
     {
+        debug!("Transitioning {} loops to {}", loops.len(), to_mode);
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             let mut backend_loop_arcs : Vec<Arc<Mutex<backend_bindings::Loop>>> = Vec::new();
             let mut backend_loop_guards : Vec<MutexGuard<backend_bindings::Loop>> = Vec::new();
@@ -280,6 +283,32 @@ impl Loop {
                 error!("Failed to transition multiple loops: {:?}", err);
             }
         }
+    }
+
+    pub fn add_audio_channel(self: Pin<&mut Loop>, mode: i32) -> Result<AudioChannel, anyhow::Error> {
+        let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
+                self.as_ref()
+                    .backend_loop
+                    .as_ref()
+                    .ok_or(anyhow::anyhow!("Backend loop not set"))?
+                    .clone();
+        let channel = backend_loop_arc.lock()
+                        .unwrap()
+                        .add_audio_channel(mode.try_into()?)?;
+        Ok(channel)
+    }
+
+    pub fn add_midi_channel(self: Pin<&mut Loop>, mode: i32) -> Result<MidiChannel, anyhow::Error> {
+        let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
+                self.as_ref()
+                    .backend_loop
+                    .as_ref()
+                    .ok_or(anyhow::anyhow!("Backend loop not set"))?
+                    .clone();
+        let channel = backend_loop_arc.lock()
+                        .unwrap()
+                        .add_midi_channel(mode.try_into()?)?;
+        Ok(channel)
     }
 }
 
