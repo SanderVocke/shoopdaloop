@@ -3,13 +3,14 @@ use backend_bindings::MidiChannel;
 use common::logging::macros::*;
 use cxx_qt::ConnectionType;
 use cxx_qt::CxxQtType;
+use crate::cxx_qt_lib_shoop;
 use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
 use crate::cxx_qt_lib_shoop::qobject::qobject_property_bool;
 use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
 use crate::cxx_qt_shoop::qobj_loop_bridge::Loop;                                   
-use crate::cxx_qt_shoop::qobj_loop_bridge::ffi::*;      
+use crate::cxx_qt_shoop::qobj_loop_bridge::ffi::*;     
 use cxx_qt_lib::{QList, QVariant, QString};                                    
 use std::ops::Deref;
 use std::pin::Pin;
@@ -154,7 +155,6 @@ impl Loop {
 
     pub fn update_on_gui_thread(self: Pin<&mut Loop>) {
         // Stub implementation
-        println!("Updating Loop on GUI Thread");
     }
 
     pub fn maybe_initialize_backend(mut self: Pin<&mut Loop>) {
@@ -185,6 +185,21 @@ impl Loop {
                     let backend_loop = backend_session.create_loop().unwrap();
                     let mut rust_mut = self.as_mut().rust_mut();
                     rust_mut.backend_loop = Some(Arc::new(Mutex::new(backend_loop)));
+
+                    // Connect signals
+                    cxx_qt_lib_shoop::connect::connect
+                       (backend_ptr.as_mut().unwrap(),
+                        "updated_on_backend_thread()".to_string(),
+                        self.as_mut().get_unchecked_mut(),
+                        "update_on_non_gui_thread()".to_string(),
+                        cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
+                    cxx_qt_lib_shoop::connect::connect
+                        (backend_ptr.as_mut().unwrap(),
+                         "updated_on_gui_thread()".to_string(),
+                         self.as_mut().get_unchecked_mut(),
+                         "update_on_gui_thread()".to_string(),
+                         cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
+
                     self.set_initialized(true);
                 }
             }

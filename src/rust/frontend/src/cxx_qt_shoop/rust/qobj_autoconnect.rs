@@ -2,6 +2,7 @@ use common::logging::macros::*;
 use cxx_qt::CxxQtType;
 shoop_log_unit!("Frontend.AutoConnect");
 
+use crate::cxx_qt_lib_shoop;
 use crate::cxx_qt_lib_shoop::invokable;
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::AutoConnect;
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::constants::*;
@@ -51,14 +52,15 @@ impl AutoConnect {
         {
             let mut rust_finder_access = rust.as_mut();
             let mut finder = rust_finder_access.find_backend_wrapper.as_mut().unwrap();
-            let finder_qquickitem = finder.as_mut().pin_mut_qquickitem_ptr();
+            let finder_qobj = finder.as_mut().pin_mut_qobject_ptr();
 
             finder.as_mut().set_parent_item(obj_qquickitem);
-            connect_to_autoconnect(
-                finder_qquickitem,
+            cxx_qt_lib_shoop::connect::connect(
+                finder_qobj.as_mut().unwrap(),
                 String::from(qobj_find_parent_item::SIGNAL_FOUNDITEMWITHTRUECHECKEDPROPERTY_CHANGED),
-                obj_ptr,
-                String::from(constants::INVOKABLE_UPDATE))?;
+                obj_qobject.as_mut().unwrap(),
+                String::from(constants::INVOKABLE_UPDATE),
+                cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION)?;
             finder.as_mut().rescan();
         }
 

@@ -1,4 +1,5 @@
 #pragma once
+#include <Qt>
 #include <QThread>
 #include "connect.h"
 
@@ -16,5 +17,5 @@ inline bool qthreadIsRunning(QThread &thread) {
 
 template<typename A>
 inline void qthreadConnectStarted(QThread &timer, A *receiver, ::rust::String member) {
-    connect(&timer, "started()", receiver, member);
+    connect(&timer, "started()", receiver, member, Qt::DirectConnection);
 }

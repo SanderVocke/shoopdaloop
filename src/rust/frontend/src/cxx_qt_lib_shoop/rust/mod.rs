@@ -1,3 +1,5 @@
+pub mod connect;
+pub mod connection_types;
 pub mod invokable;
 pub mod qjsonobject;
 pub mod qobject;

@@ -92,13 +92,6 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qjsonobject.h");
         type QJsonObject = crate::cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 
-        include!("cxx-qt-lib-shoop/connect.h");
-        #[rust_name = "connect_to_autoconnect"]
-        unsafe fn connect(sender : *mut QQuickItem,
-                   signal : String,
-                   receiver : *mut AutoConnect,
-                   slot : String) -> Result<()>;
-
         include!("cxx-qt-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_autoconnect"]
         fn register_qml_type(inference_example: &AutoConnect,

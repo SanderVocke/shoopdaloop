@@ -2,6 +2,7 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.FindParentItem");
 
+use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::FindParentItem;
 pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::constants::*;
 pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::ffi::make_unique_find_parent_item as make_unique;
@@ -15,6 +16,8 @@ use crate::cxx_qt_lib_shoop::qobject::qobject_object_name;
 use crate::cxx_qt_lib_shoop::qquickitem;
 
 use cxx_qt::CxxQtType;
+
+use crate::cxx_qt_lib_shoop;
 
 type Predicate = dyn Fn(*mut QQuickItem) -> bool;
 type BoxedPredicate = Box<Predicate>;
@@ -81,11 +84,12 @@ impl FindParentItem {
         self.as_mut().set_foundItem(item);
         self.as_mut().update_found_item_bool_property();
         if !item.is_null() && !self.itemBoolPropertyToCheck().is_empty() {
-            ffi::connect_to_find_parent_item(
-                item,
+            cxx_qt_lib_shoop::connect::connect(
+                item.as_mut().unwrap(),
                 String::from(format!("{}Changed()", self.itemBoolPropertyToCheck())),
-                self.as_mut().get_unchecked_mut(),
-                String::from(constants::INVOKABLE_UPDATE_FOUND_ITEM_BOOL_PROPERTY))?;
+                self.as_mut().pin_mut_qobject_ptr().as_mut().unwrap(),
+                String::from(constants::INVOKABLE_UPDATE_FOUND_ITEM_BOOL_PROPERTY),
+                cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION)?;
         }
         debug!("Rescanning done. Non-null parent item found: {}. Bool property: {}",
               !item.is_null(), self.as_mut().foundItemHasTrueCheckedProperty());

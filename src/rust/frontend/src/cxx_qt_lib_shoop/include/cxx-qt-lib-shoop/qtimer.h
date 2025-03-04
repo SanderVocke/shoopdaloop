@@ -1,5 +1,6 @@
 #pragma once
 #include <QTimer>
+#include <Qt>
 #include <QMetaObject>
 #include "connect.h"
 
@@ -30,5 +31,5 @@ inline bool qtimerIsActive(QTimer const& timer) {
 
 template<typename A>
 inline void qtimerConnectTimeout(QTimer &timer, A *receiver, ::rust::String member) {
-    connect(&timer, "timeout()", receiver, member);
+    connect(&timer, "timeout()", receiver, member, Qt::DirectConnection);
 }
