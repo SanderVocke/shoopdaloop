@@ -63,17 +63,6 @@ impl Loop {
 
         self.as_mut().starting_update_on_non_gui_thread();
 
-        // FIXME: do this with signal/slot connection initiated from
-        //        channels instead
-        // let audio_chans = self.get_audio_channels_impl();
-        // let midi_chans = self.get_midi_channels_impl();
-        // for channel in &audio_chans {
-        //     channel.update_on_non_gui_thread();
-        // }
-        // for channel in &midi_chans {
-        //     channel.update_on_non_gui_thread();
-        // }
-
         let loop_arc = self.as_mut().backend_loop.as_ref().expect("Backend loop not set").clone();
         let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
         let state = loop_obj.get_state().unwrap();
@@ -85,9 +74,9 @@ impl Loop {
         let prev_length = rust.length;
         let prev_next_mode = rust.next_mode;
         let prev_next_delay = rust.next_transition_delay;
-        // let prev_display_peaks = self.display_peaks().clone();
-        // let prev_display_midi_notes_active = *self.display_midi_notes_active();
-        // let prev_display_midi_events_triggered = *self.display_midi_events_triggered();
+        let prev_display_peaks = rust.display_peaks.clone();
+        let prev_display_midi_notes_active = rust.display_midi_notes_active.clone();
+        let prev_display_midi_events_triggered = rust.display_midi_events_triggered.clone();
 
         let new_mode = state.mode as i32;
         let new_next_mode = state.maybe_next_mode.unwrap_or(state.mode) as i32;

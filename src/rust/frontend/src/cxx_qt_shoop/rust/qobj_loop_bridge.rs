@@ -37,6 +37,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
+        type QList_f32 = cxx_qt_lib::QList<f32>;
 
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
@@ -57,8 +58,8 @@ pub mod ffi {
         #[qproperty(i32, position)]
         #[qproperty(i32, next_mode)]
         #[qproperty(i32, next_transition_delay)]
-        #[qproperty(QVariant, sync_source)]
-        #[qproperty(QVariant, display_peaks)]
+        #[qproperty(*mut QObject, sync_source)]
+        #[qproperty(QList_f32, display_peaks)]
         #[qproperty(i32, display_midi_notes_active)]
         #[qproperty(i32, display_midi_events_triggered)]
         #[qproperty(QString, instance_identifier)]
@@ -183,8 +184,8 @@ pub struct LoopRust {
     pub position: i32,
     pub next_mode: i32,
     pub next_transition_delay: i32,
-    pub sync_source: QVariant,
-    pub display_peaks: QVariant,
+    pub sync_source: *mut QObject,
+    pub display_peaks: ffi::QList_f32,
     pub display_midi_notes_active: i32,
     pub display_midi_events_triggered: i32,
     pub instance_identifier: QString,
@@ -203,8 +204,8 @@ impl Default for LoopRust {
             position: 0,
             next_mode: 0,
             next_transition_delay: 0,
-            sync_source: QVariant::default(),
-            display_peaks: QVariant::default(),
+            sync_source: std::ptr::null_mut(),
+            display_peaks: ffi::QList_f32::default(),
             display_midi_notes_active: 0,
             display_midi_events_triggered: 0,
             instance_identifier: QString::default(),
