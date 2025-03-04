@@ -55,6 +55,20 @@ inline int qobjectPropertyInt(QObject const& obj, ::rust::String name) {
     return result.toInt();
 }
 
+inline float qobjectPropertyFloat(QObject const& obj, ::rust::String name) {
+    auto result = obj.property(name.c_str());
+    if (!result.isValid()) {
+        std::string err = "getting property ";
+        err += name.operator std::string();
+        err += " yielded invalid result";
+        throw std::runtime_error(err);
+    }
+    if (!result.canConvert<float>()) {
+        throw std::runtime_error("not convertible to int");
+    }
+    return result.toFloat();
+}
+
 inline QString qobjectPropertyString(QObject const& obj, ::rust::String name) {
     auto result = obj.property(name.c_str());
     if (!result.isValid()) {

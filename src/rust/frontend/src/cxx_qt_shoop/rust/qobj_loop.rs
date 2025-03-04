@@ -5,7 +5,7 @@ use cxx_qt::ConnectionType;
 use cxx_qt::CxxQtType;
 use crate::cxx_qt_lib_shoop;
 use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
-use crate::cxx_qt_lib_shoop::qobject::qobject_property_bool;
+use crate::cxx_qt_lib_shoop::qobject::{qobject_property_bool, qobject_property_float, qobject_property_int};
 use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
@@ -67,6 +67,19 @@ impl Loop {
         let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
         let state = loop_obj.get_state().unwrap();
 
+        let audio_chans : Vec<*mut QObject>;
+        let midi_chans : Vec<*mut QObject>;
+        unsafe {
+            audio_chans = self.as_mut().get_audio_channels()
+                                       .iter()
+                                       .map(|v| qvariant_to_qobject_ptr(v).unwrap())
+                                       .collect();
+            midi_chans = self.as_mut().get_midi_channels()
+                                      .iter()
+                                      .map(|v| qvariant_to_qobject_ptr(v).unwrap())
+                                      .collect();
+        }
+
         let mut rust = self.as_mut().rust_mut();
         
         let prev_position = rust.position;
@@ -74,7 +87,7 @@ impl Loop {
         let prev_length = rust.length;
         let prev_next_mode = rust.next_mode;
         let prev_next_delay = rust.next_transition_delay;
-        let prev_display_peaks = rust.display_peaks.clone();
+        let prev_display_peaks : Vec<f32> = rust.display_peaks.iter().map(|f| f.clone()).collect();
         let prev_display_midi_notes_active = rust.display_midi_notes_active.clone();
         let prev_display_midi_events_triggered = rust.display_midi_events_triggered.clone();
 
@@ -83,6 +96,23 @@ impl Loop {
         let new_length = state.length as i32;
         let new_position = state.position as i32;
         let new_next_transition_delay = state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32;
+        let new_display_peaks : Vec<f32> =
+           audio_chans.iter()
+           .filter(|qobj| {
+                unsafe {
+                    let mode = qobject_property_int(qobj.as_ref().unwrap(), "mode".to_string()).unwrap();
+                    mode == backend_bindings::ChannelMode::Direct as i32 ||
+                       mode == backend_bindings::ChannelMode::Wet as i32
+                }
+             })
+              .map(|qobj| {
+                 unsafe {
+                      let peak = qobject_property_float(qobj.as_ref().unwrap(), "output_peak".to_string()).unwrap();
+                      peak as f32
+                 }
+                }).collect();
+        let new_display_peaks_qlist = QList::from(new_display_peaks.clone());
+
         // self.set_display_peaks(audio_chans.iter().map(|c| c.output_peak()).collect());
         // self.set_display_midi_notes_active(midi_chans.iter().map(|c| c.n_notes_active()).sum());
         // self.set_display_midi_events_triggered(midi_chans.iter().map(|c| c.n_events_triggered()).sum());
@@ -96,6 +126,7 @@ impl Loop {
         rust.position = new_position;
         rust.next_mode = new_next_mode;
         rust.next_transition_delay = new_next_transition_delay;
+        rust.display_peaks = QList::from(new_display_peaks);
 
         if prev_mode != new_mode {
             debug!("mode: {} -> {}", prev_mode, new_mode);
@@ -117,9 +148,9 @@ impl Loop {
             debug!("next delay: {} -> {}", prev_next_delay, new_next_transition_delay);
             self.as_mut().next_transition_delay_changed();
         }
-        // if prev_display_peaks != display_peaks {
-        //     self.as_mut().display_peaks_changed_unsafe(&display_peaks);
-        // }
+        if prev_display_peaks != new_display_peaks {
+            self.as_mut().display_peaks_changed_unsafe(&new_display_peaks_qlist);
+        }
         // if prev_display_midi_notes_active != display_midi_notes_active {
         //     self.as_mut().display_midi_notes_active_changed_unsafe(display_midi_notes_active);
         // }
