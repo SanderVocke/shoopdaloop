@@ -28,9 +28,9 @@ unsafe fn find_parent_item(item : *mut QQuickItem,
     unsafe fn fmt_object(obj : *mut QQuickItem) -> String {
         let obj : *mut QObject = qquickitem::qquickitem_to_qobject_mut(obj);
         let class_name = qobject_class_name(obj.as_ref().unwrap()).unwrap_or("(unknown)");
-        let object_name = qobject_object_name(obj.as_ref().unwrap()).unwrap_or("(unknown)");
-        let full_object_name = match object_name {
-            "" => "(no name)",
+        let object_name = qobject_object_name(obj.as_ref().unwrap()).unwrap_or("(unknown)".to_string());
+        let full_object_name = match object_name.as_str() {
+            "" => "(no name)".to_string(),
             _ => object_name
         };
         return format!("{}: {} @ {:p}", full_object_name, class_name, obj);

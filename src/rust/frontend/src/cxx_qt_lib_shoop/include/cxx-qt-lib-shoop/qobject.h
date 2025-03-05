@@ -101,7 +101,7 @@ inline bool qobjectHasProperty(QObject const& obj, ::rust::String name) {
     return idx >= 0;
 }
 
-inline rust::Str qobjectObjectName(QObject const& obj) {
+inline ::rust::String qobjectObjectName(QObject const& obj) {
     return rust::String(obj.objectName().toStdString());
 }
 

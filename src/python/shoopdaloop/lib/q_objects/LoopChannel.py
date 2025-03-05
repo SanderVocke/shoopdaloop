@@ -119,7 +119,7 @@ class LoopChannel(ShoopQQuickItem):
 
     # mode
     modeChanged = ShoopSignal(int)
-    @ShoopProperty(int, notify=modeChanged)
+    @ShoopProperty(int, notify=modeChanged, thread_protection=ThreadProtectionType.AnyThread)
     def mode(self):
         return int(self._mode)
     # indirect setter via back-end

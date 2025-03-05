@@ -32,7 +32,7 @@ pub mod ffi {
         unsafe fn qobjectPropertyString(obj: &QObject, name : String) -> Result<QString>;
 
         #[rust_name = "qobject_object_name"]
-        unsafe fn qobjectObjectName(obj: &QObject) -> Result<&str>;
+        unsafe fn qobjectObjectName(obj: &QObject) -> Result<String>;
 
         #[rust_name = "qobject_set_object_name"]
         unsafe fn qobjectSetObjectName(obj: *mut QObject, name: String) -> Result<()>;
@@ -77,7 +77,7 @@ pub unsafe fn qobject_property_bool(obj: &QObject, name: String) -> Result<bool,
 pub unsafe fn qobject_property_int(obj: &QObject, name: String) -> Result<i32, cxx::Exception> { ffi::qobject_property_int(obj, name) }
 pub unsafe fn qobject_property_float(obj: &QObject, name: String) -> Result<f32, cxx::Exception> { ffi::qobject_property_float(obj, name) }
 pub unsafe fn qobject_property_string(obj: &QObject, name: String) -> Result<QString, cxx::Exception> { ffi::qobject_property_string(obj, name) }
-pub unsafe fn qobject_object_name(obj: &QObject) -> Result<&str, cxx::Exception> { ffi::qobject_object_name(obj) }
+pub unsafe fn qobject_object_name(obj: &QObject) -> Result<String, cxx::Exception> { ffi::qobject_object_name(obj) }
 pub unsafe fn qobject_set_object_name(obj: *mut QObject, name : String) -> Result<(), cxx::Exception> { ffi::qobject_set_object_name(obj, name) }
 pub trait IsQObject : AsQObject {
     unsafe fn set_parent(self : Pin<&mut Self>, parent : *mut QObject) -> Result<(), cxx::Exception> {
@@ -110,7 +110,7 @@ pub trait IsQObject : AsQObject {
         qobject_property_string(obj, name)
     }
 
-    unsafe fn object_name(self: &Self) -> Result<&str, cxx::Exception> {
+    unsafe fn object_name(self: &Self) -> Result<String, cxx::Exception> {
         let obj = self.qobject_ref();
         qobject_object_name(obj)
     }

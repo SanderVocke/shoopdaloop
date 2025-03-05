@@ -48,7 +48,7 @@ class LoopAudioChannel(LoopChannel):
 
     # output peak
     outputPeakChanged = ShoopSignal(float)
-    @ShoopProperty(float, notify=outputPeakChanged)
+    @ShoopProperty(float, notify=outputPeakChanged, thread_protection=ThreadProtectionType.AnyThread)
     def output_peak(self):
         return self._output_peak
 

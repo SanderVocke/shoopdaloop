@@ -126,7 +126,7 @@ impl Loop {
         rust.position = new_position;
         rust.next_mode = new_next_mode;
         rust.next_transition_delay = new_next_transition_delay;
-        rust.display_peaks = QList::from(new_display_peaks);
+        rust.display_peaks = QList::from(new_display_peaks.clone());
 
         if prev_mode != new_mode {
             debug!("mode: {} -> {}", prev_mode, new_mode);
@@ -149,7 +149,7 @@ impl Loop {
             self.as_mut().next_transition_delay_changed();
         }
         if prev_display_peaks != new_display_peaks {
-            self.as_mut().display_peaks_changed_unsafe(&new_display_peaks_qlist);
+            self.as_mut().display_peaks_changed();
         }
         // if prev_display_midi_notes_active != display_midi_notes_active {
         //     self.as_mut().display_midi_notes_active_changed_unsafe(display_midi_notes_active);
@@ -228,18 +228,20 @@ impl Loop {
         }
     }
 
-    pub fn get_children_with_object_name(self: Pin<&mut Loop>, object_name: &str) -> QList<QVariant> {
+    pub fn get_children_with_object_name(self: Pin<&mut Loop>, find_object_name: &str) -> QList<QVariant> {
         let mut result = QList_QVariant::default();
         unsafe {
             let ref_self = self.as_ref();
             let qquickitem = ref_self.qquickitem_ref();
             for child in qquickitem.child_items().iter()
                             .filter(|child| {
+                                let object_name = 
                                 qobject_object_name
                                    (qvariant_to_qobject_ptr(child)
                                      .unwrap()
                                      .as_ref()
-                                     .unwrap()).unwrap() == object_name
+                                     .unwrap()).unwrap();
+                                object_name == find_object_name
                             }) { result.append(child.clone()); }
         }
         result

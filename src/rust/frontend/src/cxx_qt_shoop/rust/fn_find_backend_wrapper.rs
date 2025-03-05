@@ -20,7 +20,7 @@ pub fn create_find_parent_backend_wrapper() -> UniquePtr<FindParentItem> {
             unsafe {
                 let qobj = qquickitem_to_qobject_mut(q);
                 let obj_name = qobject_object_name(qobj.as_ref().unwrap());
-                let match_obj_name = obj_name.unwrap_or("") == String::from("shoop_backend_wrapper");
+                let match_obj_name = obj_name.unwrap_or("".to_string()) == String::from("shoop_backend_wrapper");
                 let class_name_re = Regex::new(r"Backend(?:_QMLTYPE)?.*").unwrap();
                 let match_class_name = class_name_re.is_match(
                     qobject_class_name(qobj.as_ref().unwrap()).unwrap()
