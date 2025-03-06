@@ -4,6 +4,8 @@ use common::logging::macros::*;
 use cxx_qt::ConnectionType;
 use cxx_qt::CxxQtType;
 use crate::cxx_qt_lib_shoop;
+use crate::cxx_qt_lib_shoop::connection_types;
+use crate::cxx_qt_lib_shoop::invokable::invoke;
 use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
 use crate::cxx_qt_lib_shoop::qobject::{qobject_property_bool, qobject_property_float, qobject_property_int};
 use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
@@ -67,18 +69,14 @@ impl Loop {
         let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
         let state = loop_obj.get_state().unwrap();
 
-        let audio_chans : Vec<*mut QObject>;
-        let midi_chans : Vec<*mut QObject>;
-        unsafe {
-            audio_chans = self.as_mut().get_audio_channels()
+        let audio_chans : Vec<*mut QObject> = self.as_mut().get_audio_channels()
                                        .iter()
                                        .map(|v| qvariant_to_qobject_ptr(v).unwrap())
                                        .collect();
-            midi_chans = self.as_mut().get_midi_channels()
+        let midi_chans : Vec<*mut QObject> = self.as_mut().get_midi_channels()
                                       .iter()
                                       .map(|v| qvariant_to_qobject_ptr(v).unwrap())
                                       .collect();
-        }
 
         let mut rust = self.as_mut().rust_mut();
         
@@ -111,22 +109,28 @@ impl Loop {
                       peak as f32
                  }
                 }).collect();
-        let new_display_peaks_qlist = QList::from(new_display_peaks.clone());
-
-        // self.set_display_peaks(audio_chans.iter().map(|c| c.output_peak()).collect());
-        // self.set_display_midi_notes_active(midi_chans.iter().map(|c| c.n_notes_active()).sum());
-        // self.set_display_midi_events_triggered(midi_chans.iter().map(|c| c.n_events_triggered()).sum());
-
-        // let display_peaks = self.display_peaks().clone();
-        // let display_midi_notes_active = *self.display_midi_notes_active();
-        // let display_midi_events_triggered = *self.display_midi_events_triggered();
+        let display_peaks_changed = prev_display_peaks != new_display_peaks;
+        let new_display_midi_notes_active : i32 = midi_chans.iter().map(|qobj| -> i32 {
+            unsafe {
+                let n_notes_active = qobject_property_int(qobj.as_ref().unwrap(), "n_notes_active".to_string()).unwrap();
+                n_notes_active
+            }
+        }).sum();
+        let new_display_midi_events_triggered : i32 = midi_chans.iter().map(|qobj| -> i32 {
+            unsafe {
+                let n_events_triggered = qobject_property_int(qobj.as_ref().unwrap(), "n_events_triggered".to_string()).unwrap();
+                n_events_triggered
+            }
+        }).sum();
 
         rust.mode = new_mode;
         rust.length = new_length;
         rust.position = new_position;
         rust.next_mode = new_next_mode;
         rust.next_transition_delay = new_next_transition_delay;
-        rust.display_peaks = QList::from(new_display_peaks.clone());
+        rust.display_peaks = QList::from(new_display_peaks);
+        rust.display_midi_notes_active = new_display_midi_notes_active;
+        rust.display_midi_events_triggered = new_display_midi_events_triggered;
 
         if prev_mode != new_mode {
             debug!("mode: {} -> {}", prev_mode, new_mode);
@@ -148,24 +152,18 @@ impl Loop {
             debug!("next delay: {} -> {}", prev_next_delay, new_next_transition_delay);
             self.as_mut().next_transition_delay_changed();
         }
-        if prev_display_peaks != new_display_peaks {
+        if display_peaks_changed {
+            trace!("display peaks changed");
             self.as_mut().display_peaks_changed();
         }
-        // if prev_display_midi_notes_active != display_midi_notes_active {
-        //     self.as_mut().display_midi_notes_active_changed_unsafe(display_midi_notes_active);
-        // }
-        // if prev_display_midi_events_triggered != display_midi_events_triggered {
-        //     self.as_mut().display_midi_events_triggered_changed_unsafe(display_midi_events_triggered);
-        // }
-
-        // for transition in self.pending_transitions() {
-        //     if transition.is_list() {
-        //         self.transition_multiple_impl(transition);
-        //     } else {
-        //         self.transition_impl(transition);
-        //     }
-        // }
-        // self.clear_pending_transitions();
+        if prev_display_midi_notes_active != new_display_midi_notes_active {
+            trace!("midi notes active: {} -> {}", prev_display_midi_notes_active, new_display_midi_notes_active);
+            self.as_mut().display_midi_notes_active_changed();
+        }
+        if prev_display_midi_events_triggered != new_display_midi_events_triggered {
+            trace!("midi events triggered: {} -> {}", prev_display_midi_events_triggered, new_display_midi_events_triggered);
+            self.as_mut().display_midi_events_triggered_changed();
+        }
 
         // if self.position() < prev_position && is_playing_mode(prev_mode) && is_playing_mode(self.mode()) {
         //     self.increment_cycle_nr();
@@ -346,6 +344,36 @@ impl Loop {
                         .unwrap()
                         .add_midi_channel(mode.try_into()?)?;
         Ok(channel)
+    }
+
+    pub fn clear(mut self: Pin<&mut Loop>, length : i32) {
+        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
+            let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
+                self.as_ref()
+                    .backend_loop
+                    .as_ref()
+                    .ok_or(anyhow::anyhow!("Backend loop not set"))?
+                    .clone();
+            backend_loop_arc.lock().unwrap().clear(length as u32)?;
+
+            let audio_chans = self.as_mut().get_audio_channels();
+            let midi_chans = self.as_mut().get_midi_channels();
+            let all_channels_iter = audio_chans.iter().chain(midi_chans.iter());
+            for child in all_channels_iter {
+                unsafe {
+                    let channel_ptr = qvariant_to_qobject_ptr(child).unwrap();
+                    invoke::<_,(),_>(channel_ptr.as_mut().unwrap(), "clear()".to_string(), connection_types::DIRECT_CONNECTION, &())?;
+                }
+            }
+
+            Ok(())
+        })();
+        match result {
+            Ok(_) => (),
+            Err(err) => {
+                error!("Failed to clear loop: {:?}", err);
+            }
+        }
     }
 }
 

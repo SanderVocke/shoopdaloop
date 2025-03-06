@@ -95,6 +95,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn maybe_initialize_backend(self: Pin<&mut Loop>);
 
+        #[qinvokable]
+        pub fn clear(self: Pin<&mut Loop>, length: i32);
+
         #[qsignal]
         fn cycled(self: Pin<&mut Loop>, cycle_nr: i32);
 

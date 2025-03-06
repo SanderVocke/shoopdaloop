@@ -48,13 +48,13 @@ class LoopMidiChannel(LoopChannel):
 
     # # of events triggered since last update
     nEventsTriggeredChanged = ShoopSignal(int)
-    @ShoopProperty(int, notify=nEventsTriggeredChanged)
+    @ShoopProperty(int, notify=nEventsTriggeredChanged, thread_protection=ThreadProtectionType.AnyThread)
     def n_events_triggered(self):
         return self._n_events_triggered
     
     # # number of notes currently being played
     nNotesActiveChanged = ShoopSignal(int)
-    @ShoopProperty(int, notify=nNotesActiveChanged)
+    @ShoopProperty(int, notify=nNotesActiveChanged, thread_protection=ThreadProtectionType.AnyThread)
     def n_notes_active(self):
         return self._n_notes_active
     
