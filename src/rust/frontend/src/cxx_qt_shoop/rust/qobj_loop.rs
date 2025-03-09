@@ -4,6 +4,8 @@ use common::logging::macros::*;
 use cxx_qt::ConnectionType;
 use cxx_qt::CxxQtType;
 use crate::cxx_qt_lib_shoop;
+use crate::cxx_qt_lib_shoop::connect;
+use crate::cxx_qt_lib_shoop::connect::connect;
 use crate::cxx_qt_lib_shoop::connection_types;
 use crate::cxx_qt_lib_shoop::invokable::invoke;
 use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
@@ -43,17 +45,25 @@ impl Loop {
     }
 
     pub fn queue_set_length(mut self: Pin<&mut Loop>, length: i32) {
+        if !self.initialized() {
+            error!("queue_set_position: not initialized");
+            return;
+        }
         debug!("queue set length -> {}", length);
         let mut rust = self.as_mut().rust_mut();
-        let loop_arc = rust.backend_loop.as_mut().expect("Backend loop not set").clone();
+        let loop_arc = rust.backend_loop.as_mut().unwrap().clone();
         let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
         loop_obj.set_length(length as u32);
     }
 
     pub fn queue_set_position(mut self: Pin<&mut Loop>, position: i32) {
+        if !self.initialized() {
+            error!("queue_set_position: not initialized");
+            return;
+        }
         debug!("queue set position -> {}", position);
         let mut rust = self.as_mut().rust_mut();
-        let loop_arc = rust.backend_loop.as_mut().expect("Backend loop not set").clone();
+        let loop_arc = rust.backend_loop.as_mut().unwrap().clone();
         let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
         loop_obj.set_position(position as u32);
     }
@@ -259,7 +269,8 @@ impl Loop {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32)
     {
-        debug!("Transitioning {} loops to {}", loops.len(), to_mode);
+        debug!("Transitioning {} loops to {} with delay {}, sync at cycle {}",
+           loops.len(), to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             let mut backend_loop_arcs : Vec<Arc<Mutex<backend_bindings::Loop>>> = Vec::new();
             let mut backend_loop_guards : Vec<MutexGuard<backend_bindings::Loop>> = Vec::new();
@@ -373,6 +384,97 @@ impl Loop {
             Err(err) => {
                 error!("Failed to clear loop: {:?}", err);
             }
+        }
+    }
+
+    pub fn adopt_ringbuffers(mut self: Pin<&mut Loop>,
+        maybe_reverse_start_cycle : QVariant,
+        maybe_cycles_length : QVariant,
+        maybe_go_to_cycle : QVariant,
+        go_to_mode : i32)
+    {
+        debug!("Adopting ringbuffers");
+        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
+            let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
+                self.as_ref()
+                    .backend_loop
+                    .as_ref()
+                    .ok_or(anyhow::anyhow!("Backend loop not set"))?
+                    .clone();
+            backend_loop_arc.lock().unwrap().adopt_ringbuffer_contents
+               (maybe_reverse_start_cycle.value::<i32>(),
+                maybe_cycles_length.value::<i32>(),
+                maybe_go_to_cycle.value::<i32>(),
+                go_to_mode.try_into()?)?;
+            Ok(())
+        })();
+        match result {
+            Ok(_) => (),
+            Err(err) => {
+                error!("Failed to adopt ringbuffers: {:?}", err);
+            }
+        }
+    }
+
+    pub fn update_backend_sync_source(self: Pin<&mut Loop>) {
+        if !self.initialized() {
+            debug!("update_backend_sync_source: not initialized");
+            return;
+        }
+        if self.rust().sync_source.is_null() {
+            debug!("update_backend_sync_source: sync source is null");
+            return;
+        }
+        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
+            let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
+                self.as_ref()
+                    .backend_loop
+                    .as_ref()
+                    .ok_or(anyhow::anyhow!("Backend loop not set"))?
+                    .clone();
+            let sync_source_backend_loop;
+            unsafe {
+                let sync_source_as_loop = qobject_to_loop_ptr(self.sync_source);
+                if sync_source_as_loop.is_null() {
+                    return Err(anyhow::anyhow!("Failed to cast sync source QObject to Loop"));
+                }
+                sync_source_backend_loop = sync_source_as_loop.as_ref().unwrap().backend_loop.as_ref().unwrap().clone();
+            }
+            backend_loop_arc.lock().unwrap().set_sync_source
+               (Some(sync_source_backend_loop.lock().unwrap().deref()))?;
+            Ok(())
+        })();
+        match result {
+            Ok(_) => (),
+            Err(err) => {
+                error!("Failed to update backend sync source: {:?}", err);
+            }
+        }
+    }
+
+    pub unsafe fn set_sync_source(mut self: Pin<&mut Loop>, sync_source: *mut QObject) {
+        if !sync_source.is_null() {
+            let loop_ptr = qobject_to_loop_ptr(sync_source);
+            if loop_ptr.is_null() {
+                error!("Failed to cast sync source QObject to Loop");
+                return;
+            }
+        }
+
+        if *self.initialized() {
+            self.as_mut().update_backend_sync_source();
+        } else {
+            connect(self.as_mut().get_unchecked_mut(),
+                    "initialized_changed(bool)".to_string(), self.as_mut().get_unchecked_mut(),
+                    "update_backend_sync_source()".to_string(), connection_types::QUEUED_CONNECTION | connection_types::SINGLE_SHOT_CONNECTION)
+               .unwrap();
+        }
+
+        let changed = self.as_mut().rust_mut().sync_source != sync_source;
+        self.as_mut().rust_mut().sync_source = sync_source;
+
+        if changed {
+            self.as_mut().sync_source_changed();
         }
     }
 }

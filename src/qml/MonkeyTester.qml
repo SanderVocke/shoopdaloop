@@ -116,7 +116,7 @@ Item {
             let sync_loop = session.sync_track.loops[0]
             if (!sync_loop) { return }
             if (sync_loop.length == 0) {
-                sync_loop.set_length(24000)
+                sync_loop.queue_set_length(24000)
             }
             sync_loop.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately, false)
 

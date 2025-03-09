@@ -124,7 +124,7 @@ ShoopTestFile {
                     clear()
 
                     first_loop().create_backend_loop()
-                    first_loop().set_length(48000)
+                    first_loop().queue_set_length(48000)
                     registries.state_registry.set_sync_active(false)
                     testcase.wait_updated(session.backend)
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -146,8 +146,8 @@ ShoopTestFile {
 
                     first_loop().create_backend_loop()
                     second_loop().create_backend_loop()
-                    first_loop().set_length(100)
-                    second_loop().set_length(100)
+                    first_loop().queue_set_length(100)
+                    second_loop().queue_set_length(100)
                     testcase.wait_updated(session.backend)
 
                     // Start playback on both loops
@@ -176,9 +176,9 @@ ShoopTestFile {
 
                     // Set up so that sync loop is playing and will cycle 50 samples from now
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -213,11 +213,11 @@ ShoopTestFile {
 
                     // Set up so that sync loop is playing and will cycle 50 samples from now
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     second_loop().create_backend_loop()
-                    second_loop().set_length(1000)
+                    second_loop().queue_set_length(1000)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
 
@@ -261,11 +261,11 @@ ShoopTestFile {
                     // Set up so that sync loop is playing and will cycle 50 samples from now.
                     // Second loop is 3 cycles long and in its first cycle.
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     second_loop().create_backend_loop()
-                    second_loop().set_length(300)
+                    second_loop().queue_set_length(300)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -305,11 +305,11 @@ ShoopTestFile {
                     // Set up so that sync loop is playing and will cycle 50 samples from now.
                     // Second loop is 3 cycles long and in its first cycle.
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     second_loop().create_backend_loop()
-                    second_loop().set_length(300)
+                    second_loop().queue_set_length(300)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -353,7 +353,7 @@ ShoopTestFile {
                     clear()
 
                     first_loop().create_backend_loop()
-                    first_loop().set_length(48000)
+                    first_loop().queue_set_length(48000)
                     registries.state_registry.set_sync_active(false)
                     testcase.wait_updated(session.backend)
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -375,8 +375,8 @@ ShoopTestFile {
 
                     first_loop().create_backend_loop()
                     second_loop().create_backend_loop()
-                    first_loop().set_length(100)
-                    second_loop().set_length(100)
+                    first_loop().queue_set_length(100)
+                    second_loop().queue_set_length(100)
                     testcase.wait_updated(session.backend)
 
                     // Start playback on both loops
@@ -405,9 +405,9 @@ ShoopTestFile {
 
                     // Set up so that sync loop is playing and will cycle 50 samples from now
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -442,11 +442,11 @@ ShoopTestFile {
 
                     // Set up so that sync loop is playing and will cycle 50 samples from now
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     second_loop().create_backend_loop()
-                    second_loop().set_length(1000)
+                    second_loop().queue_set_length(1000)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
 
@@ -490,11 +490,11 @@ ShoopTestFile {
                     // Set up so that sync loop is playing and will cycle 50 samples from now.
                     // Second loop is 3 cycles long and in its first cycle.
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     second_loop().create_backend_loop()
-                    second_loop().set_length(300)
+                    second_loop().queue_set_length(300)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -534,11 +534,11 @@ ShoopTestFile {
                     // Set up so that sync loop is playing and will cycle 50 samples from now.
                     // Second loop is 3 cycles long and in its first cycle.
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     second_loop().create_backend_loop()
-                    second_loop().set_length(300)
+                    second_loop().queue_set_length(300)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -582,7 +582,7 @@ ShoopTestFile {
                     clear()
 
                     first_loop().create_backend_loop()
-                    first_loop().set_length(48000)
+                    first_loop().queue_set_length(48000)
                     registries.state_registry.set_sync_active(false)
                     testcase.wait_updated(session.backend)
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
@@ -598,9 +598,9 @@ ShoopTestFile {
 
                     // Set up so that sync loop is playing and will cycle 50 samples from now
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -636,9 +636,9 @@ ShoopTestFile {
 
                     // Set up so that sync loop is playing and will cycle 50 samples from now
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -685,9 +685,9 @@ ShoopTestFile {
 
                     // Set up so that sync loop is playing and will cycle 50 samples from now
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -735,11 +735,11 @@ ShoopTestFile {
                     // Set up so that sync loop is playing and will cycle 50 samples from now.
                     // Second loop is 3 cycles long and in its first cycle.
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     second_loop().create_backend_loop()
-                    second_loop().set_length(300)
+                    second_loop().queue_set_length(300)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -789,11 +789,11 @@ ShoopTestFile {
                     // Set up so that sync loop is playing and will cycle 50 samples from now.
                     // Second loop is 3 cycles long and in its first cycle.
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     second_loop().create_backend_loop()
-                    second_loop().set_length(300)
+                    second_loop().queue_set_length(300)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -848,8 +848,8 @@ ShoopTestFile {
 
                     first_loop().create_backend_loop()
                     second_loop().create_backend_loop()
-                    first_loop().set_length(100)
-                    second_loop().set_length(100)
+                    first_loop().queue_set_length(100)
+                    second_loop().queue_set_length(100)
                     testcase.wait_updated(session.backend)
 
                     // Start playback on both loops
@@ -930,8 +930,8 @@ ShoopTestFile {
 
                     first_loop().create_backend_loop()
                     second_loop().create_backend_loop()
-                    first_loop().set_length(100)
-                    second_loop().set_length(100)
+                    first_loop().queue_set_length(100)
+                    second_loop().queue_set_length(100)
                     testcase.wait_updated(session.backend)
 
                     // Start playback on both loops
@@ -964,9 +964,9 @@ ShoopTestFile {
 
                     // Set up so that sync loop is playing and will cycle 50 samples from now
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -1002,9 +1002,9 @@ ShoopTestFile {
 
                     // Set up so that sync loop is playing and will cycle 50 samples from now
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -1053,11 +1053,11 @@ ShoopTestFile {
 
                     // Set up so that sync loop is playing and will cycle 50 samples from now
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     second_loop().create_backend_loop()
-                    second_loop().set_length(300)
+                    second_loop().queue_set_length(300)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -1113,11 +1113,11 @@ ShoopTestFile {
 
                     // Set up so that sync loop is playing and will cycle 50 samples from now
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     second_loop().create_backend_loop()
-                    second_loop().set_length(300)
+                    second_loop().queue_set_length(300)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -1156,7 +1156,7 @@ ShoopTestFile {
                     clear()
 
                     first_loop().create_backend_loop()
-                    first_loop().set_length(48000)
+                    first_loop().queue_set_length(48000)
                     registries.state_registry.set_sync_active(false)
                     first_loop().transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
@@ -1173,9 +1173,9 @@ ShoopTestFile {
 
                     // Set up so that sync and first loop is playing and sync will cycle 50 samples from now
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
@@ -1213,11 +1213,11 @@ ShoopTestFile {
                     // First loop is playing.
                     // Second loop is 3 cycles long and in its first cycle.
                     first_loop().create_backend_loop()
-                    first_loop().set_length(1000)
+                    first_loop().queue_set_length(1000)
                     second_loop().create_backend_loop()
-                    second_loop().set_length(300)
+                    second_loop().queue_set_length(300)
                     sync_loop().create_backend_loop()
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)

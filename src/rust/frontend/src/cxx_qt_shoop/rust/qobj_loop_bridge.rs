@@ -24,6 +24,7 @@ pub mod constants {
 
 #[cxx_qt::bridge]
 pub mod ffi {
+
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
@@ -58,7 +59,7 @@ pub mod ffi {
         #[qproperty(i32, position)]
         #[qproperty(i32, next_mode)]
         #[qproperty(i32, next_transition_delay)]
-        #[qproperty(*mut QObject, sync_source)]
+        #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY)]
         #[qproperty(QList_f32, display_peaks)]
         #[qproperty(i32, display_midi_notes_active)]
         #[qproperty(i32, display_midi_events_triggered)]
@@ -98,6 +99,16 @@ pub mod ffi {
         #[qinvokable]
         pub fn clear(self: Pin<&mut Loop>, length: i32);
 
+        #[qinvokable]
+        pub fn adopt_ringbuffers(self: Pin<&mut Loop>,
+                                 maybe_reverse_start_cycle : QVariant,
+                                 maybe_cycles_length : QVariant,
+                                 maybe_go_to_cycle : QVariant,
+                                 go_to_mode : i32);
+
+        #[qinvokable]
+        pub fn update_backend_sync_source(self: Pin<&mut Loop>);
+
         #[qsignal]
         fn cycled(self: Pin<&mut Loop>, cycle_nr: i32);
 
@@ -130,6 +141,9 @@ pub mod ffi {
 
         #[qsignal]
         fn display_midi_events_triggered_changed_queued(self: Pin<&mut Loop>);
+
+        // Custom getter/setting for sync source property
+        pub unsafe fn set_sync_source(self: Pin<&mut Loop>, sync_source: *mut QObject);
     }
 
     unsafe extern "C++" {

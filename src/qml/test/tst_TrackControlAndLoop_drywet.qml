@@ -344,7 +344,7 @@ ShoopTestFile {
                     dry_channels()[1].load_data([80, 70, 60, 50])
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -385,7 +385,7 @@ ShoopTestFile {
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
                     midi_channel().load_all_midi_data(midichan)
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -435,7 +435,7 @@ ShoopTestFile {
                     dry_channels()[1].load_data([80, 70, 60, 50])
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -477,7 +477,7 @@ ShoopTestFile {
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
                     midi_channel().load_all_midi_data(midichan)
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -532,7 +532,7 @@ ShoopTestFile {
                     dry_channels()[1].load_data([80, 70, 60, 50])
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -578,7 +578,7 @@ ShoopTestFile {
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
                     midi_channel().load_all_midi_data(midichan)
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(lut.mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
@@ -641,7 +641,7 @@ ShoopTestFile {
                     dry_channels()[1].load_data([80, 70, 60, 50])
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -682,7 +682,7 @@ ShoopTestFile {
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
                     midi_channel().load_all_midi_data(midichan)
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -745,7 +745,7 @@ ShoopTestFile {
                     dry_channels()[1].load_data([80, 70, 60, 50])
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -787,7 +787,7 @@ ShoopTestFile {
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
                     midi_channel().load_all_midi_data(midichan)
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -849,7 +849,7 @@ ShoopTestFile {
                     dry_channels()[1].load_data([80, 70, 60, 50])
                     wet_channels()[0].load_data([5, 6, 7, 8])
                     wet_channels()[1].load_data([8, 7, 6, 5])
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -891,7 +891,7 @@ ShoopTestFile {
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
                     midi_channel().load_all_midi_data(midichan)
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 

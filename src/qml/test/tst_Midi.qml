@@ -145,7 +145,7 @@ ShoopTestFile {
                     tut_control().mute = false
 
                     // Set sync loop so that it will trigger in 2 frames from now
-                    syncloop.set_length(4)
+                    syncloop.queue_set_length(4)
                     syncloop.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(2)
@@ -202,7 +202,7 @@ ShoopTestFile {
                     tut_control().mute = false
 
                     // Set sync loop so that it will trigger in 20 frames from now
-                    syncloop.set_length(20)
+                    syncloop.queue_set_length(20)
                     syncloop.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)

@@ -215,7 +215,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
 
                     l0().create_backend_loop()
                     l1().create_backend_loop()
@@ -223,8 +223,8 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    l0().set_length(200)
-                    l1().set_length(300)
+                    l0().queue_set_length(200)
+                    l1().queue_set_length(300)
 
                     c().create_composite_loop({
                         'playlists': [
@@ -313,7 +313,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
 
                     testcase.wait_updated(session.backend)
 
@@ -406,9 +406,9 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    s().set_length(100)
-                    l0().set_length(200)
-                    l1().set_length(100)
+                    s().queue_set_length(100)
+                    l0().queue_set_length(200)
+                    l1().queue_set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
@@ -485,7 +485,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
 
                     testcase.wait_updated(session.backend)
 
@@ -574,15 +574,15 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
                     l0().create_backend_loop()
                     l1().create_backend_loop()
                     s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l0().set_length(200)
-                    l1().set_length(300)
+                    l0().queue_set_length(200)
+                    l1().queue_set_length(300)
 
                     c().create_composite_loop({
                         'playlists': [
@@ -624,15 +624,15 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(12000) // 1/4s
+                    s().queue_set_length(12000) // 1/4s
                     l0().create_backend_loop()
                     l1().create_backend_loop()
                     s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l0().set_length(12000) // 1/4s
-                    l1().set_length(12000)
+                    l0().queue_set_length(12000) // 1/4s
+                    l1().queue_set_length(12000)
 
                     c().create_composite_loop({
                         'playlists': [
@@ -671,15 +671,15 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(12000) // 1/4s
+                    s().queue_set_length(12000) // 1/4s
                     l0().create_backend_loop()
                     l1().create_backend_loop()
                     s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l0().set_length(12000) // 1/4s
-                    l1().set_length(12000)
+                    l0().queue_set_length(12000) // 1/4s
+                    l1().queue_set_length(12000)
 
                     c().create_composite_loop({
                         'playlists': [
@@ -716,14 +716,14 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
 
                     l0().create_backend_loop()
                     s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l0().set_length(200)
+                    l0().queue_set_length(200)
 
                     // use c as the composite (triggers the script)
                     c().create_composite_loop({
@@ -797,14 +797,14 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
 
                     l0().create_backend_loop()
                     s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
 
-                    l0().set_length(200)
+                    l0().queue_set_length(200)
 
                     // use c as the composite (triggers the loop)
                     c().create_composite_loop({
@@ -878,7 +878,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
                     s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
@@ -912,7 +912,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
                     s().create_backend_loop()
 
                     testcase.wait_updated(session.backend)
@@ -933,7 +933,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
 
                     l0().create_backend_loop()
                     s().create_backend_loop()
@@ -956,7 +956,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
 
                     l0().create_backend_loop()
                     l1().create_backend_loop()
@@ -965,9 +965,9 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    l0().set_length(200)
-                    l1().set_length(300)
-                    l2().set_length(100)
+                    l0().queue_set_length(200)
+                    l1().queue_set_length(300)
+                    l2().queue_set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
@@ -1023,7 +1023,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
 
                     l0().create_backend_loop()
                     l1().create_backend_loop()
@@ -1032,9 +1032,9 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    l0().set_length(200)
-                    l1().set_length(300)
-                    l2().set_length(100)
+                    l0().queue_set_length(200)
+                    l1().queue_set_length(300)
+                    l2().queue_set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
@@ -1088,7 +1088,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
 
                     l0().create_backend_loop()
                     l1().create_backend_loop()
@@ -1097,9 +1097,9 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    l0().set_length(200)
-                    l1().set_length(300)
-                    l2().set_length(100)
+                    l0().queue_set_length(200)
+                    l1().queue_set_length(300)
+                    l2().queue_set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
@@ -1151,7 +1151,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
 
                     l0().create_backend_loop()
                     l1().create_backend_loop()
@@ -1160,9 +1160,9 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    l0().set_length(200)
-                    l1().set_length(300)
-                    l2().set_length(100)
+                    l0().queue_set_length(200)
+                    l1().queue_set_length(300)
+                    l2().queue_set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
@@ -1217,7 +1217,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
 
                     l0().create_backend_loop()
                     l1().create_backend_loop()
@@ -1228,8 +1228,8 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    l0().set_length(100)
-                    l1().set_length(100)
+                    l0().queue_set_length(100)
+                    l1().queue_set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
@@ -1284,7 +1284,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
 
                     l0().create_backend_loop()
                     l1().create_backend_loop()
@@ -1295,8 +1295,8 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    l0().set_length(100)
-                    l1().set_length(100)
+                    l0().queue_set_length(100)
+                    l1().queue_set_length(100)
 
                     c().create_composite_loop({
                         'playlists': [
@@ -1398,7 +1398,7 @@ ShoopTestFile {
                     testcase.wait_controlled_mode(session.backend)
                     testcase.wait_updated(session.backend)
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
                     s().create_backend_loop()
                     s().on_play_clicked()
                     testcase.wait_updated(session.backend)
@@ -1453,7 +1453,7 @@ ShoopTestFile {
                     testcase.wait_controlled_mode(session.backend)
                     testcase.wait_updated(session.backend)
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
                     s().create_backend_loop()
                     s().on_play_clicked()
                     testcase.wait_updated(session.backend)
@@ -1508,7 +1508,7 @@ ShoopTestFile {
                     testcase.wait_controlled_mode(session.backend)
                     testcase.wait_updated(session.backend)
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
                     s().create_backend_loop()
                     s().on_play_clicked()
                     testcase.wait_updated(session.backend)
@@ -1565,7 +1565,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     testcase.section('play sync loop 50 frames')
-                    s().set_length(100)
+                    s().queue_set_length(100)
                     s().create_backend_loop()
                     s().on_play_clicked()
                     testcase.wait_updated(session.backend)
@@ -1650,7 +1650,7 @@ ShoopTestFile {
                     testcase.wait_controlled_mode(session.backend)
                     testcase.wait_updated(session.backend)
 
-                    s().set_length(100)
+                    s().queue_set_length(100)
                     s().create_backend_loop()
                     s().on_play_clicked()
                     testcase.wait_updated(session.backend)

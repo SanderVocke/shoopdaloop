@@ -221,12 +221,12 @@ ShoopTestFile {
                     dwt_dry_loop_channels()[1].load_data([0.8, 0.7, 0.6, 0.5])
                     dwt_wet_loop_channels()[0].load_data([0.9, 0.10, 0.11, 0.12])
                     dwt_wet_loop_channels()[1].load_data([0.12, 0.11, 0.10, 0.9])
-                    dt_loop().set_length(2)
+                    dt_loop().queue_set_length(2)
                     dt_loop_channels()[0].set_n_preplay_samples(1)
                     dt_loop_channels()[0].set_start_offset(2)
                     dt_loop_channels()[1].set_n_preplay_samples(1)
                     dt_loop_channels()[1].set_start_offset(2)
-                    dwt_loop().set_length(4)
+                    dwt_loop().queue_set_length(4)
                     testcase.wait_updated(session.backend)
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.shl'
@@ -286,12 +286,12 @@ ShoopTestFile {
                     dwt_dry_loop_channels()[1].load_data(_data)
                     dwt_wet_loop_channels()[0].load_data(_data)
                     dwt_wet_loop_channels()[1].load_data(_data)
-                    dt_loop().set_length(6)
+                    dt_loop().queue_set_length(6)
                     dt_loop_channels()[0].set_n_preplay_samples(4)
                     dt_loop_channels()[0].set_start_offset(4)
                     dt_loop_channels()[1].set_n_preplay_samples(12)
                     dt_loop_channels()[1].set_start_offset(12)
-                    dwt_loop().set_length(12)
+                    dwt_loop().queue_set_length(12)
                     testcase.wait_updated(session.backend)
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.shl'
