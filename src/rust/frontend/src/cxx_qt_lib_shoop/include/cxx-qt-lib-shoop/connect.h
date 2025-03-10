@@ -8,14 +8,14 @@
 #include <cxx-qt-lib-shoop/reporting.h>
 
 template<typename A, typename B>
-void connect(A * sender,
+void connect(A const* sender,
              ::rust::String signal,
-             B * receiver,
+             B const* receiver,
              ::rust::String slot,
              unsigned connection_type)
 {
-    auto qobj_sender = static_cast<QObject*>(sender);
-    auto qobj_receiver = static_cast<QObject*>(receiver);
+    auto qobj_sender = static_cast<QObject const*>(sender);
+    auto qobj_receiver = static_cast<QObject const*>(receiver);
     auto snd_meta = sender->metaObject();
     auto rcv_meta = receiver->metaObject();
 

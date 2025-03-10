@@ -1,6 +1,6 @@
 from typing import *
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QMetaObject, Qt, SIGNAL, SLOT
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QMetaObject, Qt, SIGNAL, SLOT, Q_ARG
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtQml import QJSValue
 
@@ -14,6 +14,8 @@ from ..q_objects.Backend import Backend
 from ..q_objects.Logger import Logger
 
 from collections.abc import Mapping, Sequence
+
+from ..loop_helpers import transition_loop, transition_loops
 
 import traceback
 import math
@@ -445,8 +447,8 @@ class CompositeLoop(ShoopQQuickItem):
         for loop,elem in last_loop_transitions.items():
             n_cycles_ago = sync_cycle - elem['iteration']
             n_cycles = 1
-            if loop.sync_source:
-                n_cycles = math.ceil(loop.length / loop.sync_source.length)
+            if loop.property('sync_source'):
+                n_cycles = math.ceil(loop.property('length') / loop.property('sync_source').property('length'))
             mode = elem['mode']
             
             current_cycle = None
@@ -458,9 +460,10 @@ class CompositeLoop(ShoopQQuickItem):
                 current_cycle = n_cycles_ago
             
             self.logger.trace(lambda: f'loop {loop.instanceIdentifier} -> {mode}, goto cycle {current_cycle} ({elem["mode"]} triggered {n_cycles_ago} cycles ago, loop length {n_cycles} cycles)')
-            loop.transition(mode, DontWaitForSync,
-                (current_cycle if mode != int(shoop_py_backend.LoopMode.Stopped) else DontAlignToSyncImmediately)
-            )
+            transition_loop(loop,
+                            mode,
+                            DontWaitForSync,
+                            (current_cycle if mode != int(shoop_py_backend.LoopMode.Stopped) else DontAlignToSyncImmediately))
         
         # Apply our own mode change
         self.mode = mode
@@ -579,8 +582,10 @@ class CompositeLoop(ShoopQQuickItem):
     
     def cancel_all(self):
         self.logger.trace(lambda: 'cancel_all')
-        for loop in self._running_loops:
-            loop.transition(int(shoop_py_backend.LoopMode.Stopped), 0, DontAlignToSyncImmediately)
+        transition_loops(self._running_loops,
+                         int(shoop_py_backend.LoopMode.Stopped),
+                         0,
+                         DontAlignToSyncImmediately)
         self.running_loops = []
 
     def handle_transition(self, mode):
@@ -600,7 +605,7 @@ class CompositeLoop(ShoopQQuickItem):
             # composites always trigger themselves first, then get triggered by others.
             # This is desired (e.g. if a script wants to stop, but a composite wants it to
             # continue playing next cycle)
-            QTimer.singleShot(0, lambda loop=loop, mode=mode: loop.transition(mode, 0, DontAlignToSyncImmediately))
+            QTimer.singleShot(0, lambda loop=loop, mode=mode: transition_loop(loop, mode, 0, DontAlignToSyncImmediately))
 
     # In preparation for the given upcoming iteration, create the triggers for our child loops.
     # Instead of executing them directly, each trigger will call the callback with (loop, mode).

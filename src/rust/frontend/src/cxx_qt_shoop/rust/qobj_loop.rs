@@ -331,6 +331,34 @@ impl Loop {
         }
     }
 
+    pub fn transition(self: Pin<&mut Loop>,
+        to_mode: i32,
+        maybe_cycles_delay: i32,
+        maybe_to_sync_at_cycle: i32)
+    {
+        debug!("Transitioning to {} with delay {}, sync at cycle {}",
+           to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
+        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
+            let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
+                self.as_ref()
+                    .backend_loop
+                    .as_ref()
+                    .ok_or(anyhow::anyhow!("Backend loop not set"))?
+                    .clone();
+            backend_loop_arc.lock().unwrap().transition
+               (to_mode.try_into()?,
+                maybe_cycles_delay,
+                maybe_to_sync_at_cycle)?;
+            Ok(())
+        })();
+        match result {
+            Ok(_) => (),
+            Err(err) => {
+                error!("Failed to transition loop: {:?}", err);
+            }
+        }
+    }
+
     pub fn add_audio_channel(self: Pin<&mut Loop>, mode: i32) -> Result<AudioChannel, anyhow::Error> {
         let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
                 self.as_ref()
@@ -438,10 +466,27 @@ impl Loop {
                 if sync_source_as_loop.is_null() {
                     return Err(anyhow::anyhow!("Failed to cast sync source QObject to Loop"));
                 }
-                sync_source_backend_loop = sync_source_as_loop.as_ref().unwrap().backend_loop.as_ref().unwrap().clone();
+                let maybe_sync_source_backend_loop = sync_source_as_loop
+                                              .as_ref()
+                                              .unwrap()
+                                              .backend_loop
+                                              .as_ref();
+                if maybe_sync_source_backend_loop.is_none() {
+                    debug!("update_backend_sync_source: sync source back-end loop not set, deferring");
+                    let sync_source_loop_ref = sync_source_as_loop.as_ref().unwrap();
+                    connect(sync_source_loop_ref,
+                            "initializedChanged()".to_string(), self.as_ref().get_ref(),
+                            "update_backend_sync_source()".to_string(), connection_types::QUEUED_CONNECTION | connection_types::SINGLE_SHOT_CONNECTION)?;
+                    return Ok(());
+                }
+                sync_source_backend_loop = maybe_sync_source_backend_loop
+                                              .unwrap()
+                                              .clone();
             }
+            let locked = sync_source_backend_loop.lock().unwrap();
+            debug!("Setting back-end sync source");
             backend_loop_arc.lock().unwrap().set_sync_source
-               (Some(sync_source_backend_loop.lock().unwrap().deref()))?;
+               (Some(locked.deref()))?;
             Ok(())
         })();
         match result {
@@ -453,6 +498,8 @@ impl Loop {
     }
 
     pub unsafe fn set_sync_source(mut self: Pin<&mut Loop>, sync_source: *mut QObject) {
+        debug!("sync source -> {:?}", sync_source);
+
         if !sync_source.is_null() {
             let loop_ptr = qobject_to_loop_ptr(sync_source);
             if loop_ptr.is_null() {
@@ -464,8 +511,10 @@ impl Loop {
         if *self.initialized() {
             self.as_mut().update_backend_sync_source();
         } else {
-            connect(self.as_mut().get_unchecked_mut(),
-                    "initialized_changed(bool)".to_string(), self.as_mut().get_unchecked_mut(),
+            debug!("Defer updating back-end sync source: loop not initialized");
+            let loop_ref = self.as_ref().get_ref();
+            connect(loop_ref,
+                    "initializedChanged()".to_string(), loop_ref,
                     "update_backend_sync_source()".to_string(), connection_types::QUEUED_CONNECTION | connection_types::SINGLE_SHOT_CONNECTION)
                .unwrap();
         }

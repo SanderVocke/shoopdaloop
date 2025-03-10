@@ -94,6 +94,12 @@ pub mod ffi {
                                    maybe_to_sync_at_cycle: i32);
         
         #[qinvokable]
+        pub fn transition(self: Pin<&mut Loop>,
+                          to_mode: i32,
+                          maybe_cycles_delay: i32,
+                          maybe_to_sync_at_cycle: i32);
+        
+        #[qinvokable]
         pub fn maybe_initialize_backend(self: Pin<&mut Loop>);
 
         #[qinvokable]

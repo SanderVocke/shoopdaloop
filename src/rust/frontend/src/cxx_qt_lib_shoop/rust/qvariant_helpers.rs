@@ -16,6 +16,9 @@ mod ffi {
 
         #[rust_name = "qvariant_to_qobject_ptr"]
         fn qvariantToQObjectPtr(variant: &QVariant) -> Result<*mut QObject>;
+
+        #[rust_name = "qobject_ptr_to_qvariant"]
+        unsafe fn qobjectPtrToQVariant(obj : *mut QObject) -> Result<QVariant>;
     }
 }
 
@@ -37,5 +40,11 @@ pub fn qvariant_to_qobject_ptr(variant: &QVariant) -> Option<*mut ffi::QObject> 
             println!("Failed to convert QVariant to QObject pointer: {:?}", err);
             None
         },
+    }
+}
+
+pub fn qobject_ptr_to_qvariant(obj : *mut ffi::QObject) -> QVariant {
+    unsafe {
+        ffi::qobject_ptr_to_qvariant(obj).unwrap()
     }
 }
