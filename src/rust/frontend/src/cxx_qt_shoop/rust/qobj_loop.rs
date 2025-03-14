@@ -1,6 +1,6 @@
 use backend_bindings::AudioChannel;
 use backend_bindings::MidiChannel;
-use common::logging::macros::*;
+use common::logging::macros::{shoop_log_unit, debug as raw_debug, trace as raw_trace, error as raw_error};
 use cxx_qt::ConnectionType;
 use cxx_qt::CxxQtType;
 use crate::cxx_qt_lib_shoop;
@@ -21,9 +21,27 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard};
 shoop_log_unit!("Frontend.Loop");
 
+macro_rules! trace {
+    ($self:ident, $($arg:tt)*) => {
+        raw_trace!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+    };
+}
+
+macro_rules! debug {
+    ($self:ident, $($arg:tt)*) => {
+        raw_debug!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+    };
+}
+
+macro_rules! error {
+    ($self:ident, $($arg:tt)*) => {
+        raw_error!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+    };
+}
+
 impl Loop {
     pub fn initialize_impl(mut self: Pin<&mut Loop>) {
-        debug!("Initializing");
+        debug!(self, "Initializing");
 
         {
             self.as_mut().connect_mode_changed(|o| { o.mode_changed_queued(); }, ConnectionType::QueuedConnection).release();
@@ -46,10 +64,10 @@ impl Loop {
 
     pub fn queue_set_length(mut self: Pin<&mut Loop>, length: i32) {
         if !self.initialized() {
-            error!("queue_set_position: not initialized");
+            error!(self, "queue_set_position: not initialized");
             return;
         }
-        debug!("queue set length -> {}", length);
+        debug!(self, "queue set length -> {}", length);
         let mut rust = self.as_mut().rust_mut();
         let loop_arc = rust.backend_loop.as_mut().unwrap().clone();
         let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
@@ -58,10 +76,10 @@ impl Loop {
 
     pub fn queue_set_position(mut self: Pin<&mut Loop>, position: i32) {
         if !self.initialized() {
-            error!("queue_set_position: not initialized");
+            error!(self, "queue_set_position: not initialized");
             return;
         }
-        debug!("queue set position -> {}", position);
+        debug!(self, "queue set position -> {}", position);
         let mut rust = self.as_mut().rust_mut();
         let loop_arc = rust.backend_loop.as_mut().unwrap().clone();
         let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
@@ -143,35 +161,35 @@ impl Loop {
         rust.display_midi_events_triggered = new_display_midi_events_triggered;
 
         if prev_mode != new_mode {
-            debug!("mode: {} -> {}", prev_mode, new_mode);
+            debug!(self, "mode: {} -> {}", prev_mode, new_mode);
             self.as_mut().mode_changed();
         }
         if prev_length != new_length {
-            debug!("length: {} -> {}", prev_length, new_length);
+            debug!(self, "length: {} -> {}", prev_length, new_length);
             self.as_mut().length_changed();
         }
         if prev_position != new_position {
-            debug!("position: {} -> {}", prev_position, new_position);
+            debug!(self, "position: {} -> {}", prev_position, new_position);
             self.as_mut().position_changed();
         }
         if prev_next_mode != new_next_mode {
-            debug!("next mode: {} -> {}", prev_next_mode, new_next_mode);
+            debug!(self, "next mode: {} -> {}", prev_next_mode, new_next_mode);
             self.as_mut().next_mode_changed();
         }
         if prev_next_delay != new_next_transition_delay {
-            debug!("next delay: {} -> {}", prev_next_delay, new_next_transition_delay);
+            debug!(self, "next delay: {} -> {}", prev_next_delay, new_next_transition_delay);
             self.as_mut().next_transition_delay_changed();
         }
         if display_peaks_changed {
-            trace!("display peaks changed");
+            trace!(self, "display peaks changed");
             self.as_mut().display_peaks_changed();
         }
         if prev_display_midi_notes_active != new_display_midi_notes_active {
-            trace!("midi notes active: {} -> {}", prev_display_midi_notes_active, new_display_midi_notes_active);
+            trace!(self, "midi notes active: {} -> {}", prev_display_midi_notes_active, new_display_midi_notes_active);
             self.as_mut().display_midi_notes_active_changed();
         }
         if prev_display_midi_events_triggered != new_display_midi_events_triggered {
-            trace!("midi events triggered: {} -> {}", prev_display_midi_events_triggered, new_display_midi_events_triggered);
+            trace!(self, "midi events triggered: {} -> {}", prev_display_midi_events_triggered, new_display_midi_events_triggered);
             self.as_mut().display_midi_events_triggered_changed();
         }
 
@@ -197,12 +215,12 @@ impl Loop {
         }
 
         if initialize_condition {
-            debug!("Found backend, initializing");
+            debug!(self, "Found backend, initializing");
             let backend_qobj = self.backend();
             unsafe {
                 let backend_ptr = qobject_ptr_to_backend_ptr(*backend_qobj);
                 if backend_ptr.is_null() {
-                    error!("Failed to convert backend QObject to backend pointer");
+                    error!(self, "Failed to convert backend QObject to backend pointer");
                 } else {
                     // FIXME: unwraps
                     let backend_session = backend_ptr.as_mut()
@@ -232,7 +250,7 @@ impl Loop {
                 }
             }
         } else {
-            debug!("Not initializing as not all conditions are met");
+            debug!(self, "Not initializing as not all conditions are met");
         }
     }
 
@@ -269,7 +287,7 @@ impl Loop {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32)
     {
-        debug!("Transitioning {} loops to {} with delay {}, sync at cycle {}",
+        debug!(self, "Transitioning {} loops to {} with delay {}, sync at cycle {}",
            loops.len(), to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             let mut backend_loop_arcs : Vec<Arc<Mutex<backend_bindings::Loop>>> = Vec::new();
@@ -301,7 +319,7 @@ impl Loop {
                 match result {
                     Ok(_) => (),
                     Err(err) => {
-                        error!("Failed to increment reference count for loop: {:?}", err);
+                        error!(self, "Failed to increment reference count for loop: {:?}", err);
                     }
                 }
             });
@@ -326,7 +344,7 @@ impl Loop {
         match result {
             Ok(_) => (),
             Err(err) => {
-                error!("Failed to transition multiple loops: {:?}", err);
+                error!(self, "Failed to transition multiple loops: {:?}", err);
             }
         }
     }
@@ -336,7 +354,7 @@ impl Loop {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32)
     {
-        debug!("Transitioning to {} with delay {}, sync at cycle {}",
+        debug!(self, "Transitioning to {} with delay {}, sync at cycle {}",
            to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
@@ -354,7 +372,7 @@ impl Loop {
         match result {
             Ok(_) => (),
             Err(err) => {
-                error!("Failed to transition loop: {:?}", err);
+                error!(self, "Failed to transition loop: {:?}", err);
             }
         }
     }
@@ -410,7 +428,7 @@ impl Loop {
         match result {
             Ok(_) => (),
             Err(err) => {
-                error!("Failed to clear loop: {:?}", err);
+                error!(self, "Failed to clear loop: {:?}", err);
             }
         }
     }
@@ -421,7 +439,7 @@ impl Loop {
         maybe_go_to_cycle : QVariant,
         go_to_mode : i32)
     {
-        debug!("Adopting ringbuffers");
+        debug!(self, "Adopting ringbuffers");
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
                 self.as_ref()
@@ -439,18 +457,18 @@ impl Loop {
         match result {
             Ok(_) => (),
             Err(err) => {
-                error!("Failed to adopt ringbuffers: {:?}", err);
+                error!(self, "Failed to adopt ringbuffers: {:?}", err);
             }
         }
     }
 
     pub fn update_backend_sync_source(self: Pin<&mut Loop>) {
         if !self.initialized() {
-            debug!("update_backend_sync_source: not initialized");
+            debug!(self, "update_backend_sync_source: not initialized");
             return;
         }
         if self.rust().sync_source.is_null() {
-            debug!("update_backend_sync_source: sync source is null");
+            debug!(self, "update_backend_sync_source: sync source is null");
             return;
         }
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
@@ -472,7 +490,7 @@ impl Loop {
                                               .backend_loop
                                               .as_ref();
                 if maybe_sync_source_backend_loop.is_none() {
-                    debug!("update_backend_sync_source: sync source back-end loop not set, deferring");
+                    debug!(self, "update_backend_sync_source: sync source back-end loop not set, deferring");
                     let sync_source_loop_ref = sync_source_as_loop.as_ref().unwrap();
                     connect(sync_source_loop_ref,
                             "initializedChanged()".to_string(), self.as_ref().get_ref(),
@@ -484,7 +502,7 @@ impl Loop {
                                               .clone();
             }
             let locked = sync_source_backend_loop.lock().unwrap();
-            debug!("Setting back-end sync source");
+            debug!(self, "Setting back-end sync source");
             backend_loop_arc.lock().unwrap().set_sync_source
                (Some(locked.deref()))?;
             Ok(())
@@ -492,18 +510,18 @@ impl Loop {
         match result {
             Ok(_) => (),
             Err(err) => {
-                error!("Failed to update backend sync source: {:?}", err);
+                error!(self, "Failed to update backend sync source: {:?}", err);
             }
         }
     }
 
     pub unsafe fn set_sync_source(mut self: Pin<&mut Loop>, sync_source: *mut QObject) {
-        debug!("sync source -> {:?}", sync_source);
+        debug!(self, "sync source -> {:?}", sync_source);
 
         if !sync_source.is_null() {
             let loop_ptr = qobject_to_loop_ptr(sync_source);
             if loop_ptr.is_null() {
-                error!("Failed to cast sync source QObject to Loop");
+                error!(self, "Failed to cast sync source QObject to Loop");
                 return;
             }
         }
@@ -511,7 +529,7 @@ impl Loop {
         if *self.initialized() {
             self.as_mut().update_backend_sync_source();
         } else {
-            debug!("Defer updating back-end sync source: loop not initialized");
+            debug!(self, "Defer updating back-end sync source: loop not initialized");
             let loop_ref = self.as_ref().get_ref();
             connect(loop_ref,
                     "initializedChanged()".to_string(), loop_ref,
