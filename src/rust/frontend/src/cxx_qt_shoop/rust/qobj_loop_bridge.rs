@@ -116,6 +116,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn update_backend_sync_source(self: Pin<&mut Loop>);
 
+        #[qinvokable]
+        pub fn dependent_will_handle_sync_loop_cycle(self: Pin<&mut Loop>, loop_cycle: i32);
+        
         #[qsignal]
         fn cycle_nr_changed_queued(self: Pin<&mut Loop>);
 

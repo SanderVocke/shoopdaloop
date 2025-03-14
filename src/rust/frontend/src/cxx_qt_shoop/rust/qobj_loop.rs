@@ -553,6 +553,10 @@ impl Loop {
             self.as_mut().sync_source_changed();
         }
     }
+
+    pub fn dependent_will_handle_sync_loop_cycle(self: Pin<&mut Loop>, _cycle_nr: i32) {
+        ()
+    }
 }
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {
