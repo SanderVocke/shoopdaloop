@@ -193,10 +193,11 @@ impl Loop {
             self.as_mut().display_midi_events_triggered_changed();
         }
 
-        // if self.position() < prev_position && is_playing_mode(prev_mode) && is_playing_mode(self.mode()) {
-        //     self.increment_cycle_nr();
-        //     self.cycled_unsafe(self.cycle_nr());
-        // }
+        if self.position() < prev_position && is_playing_mode(prev_mode) && is_playing_mode(self.mode()) {
+            self.increment_cycle_nr();
+            debug!(self, "cycled -> nr {}", self.cycle_nr());
+            self.cycled_unsafe(self.cycle_nr());
+        }
     }
 
     pub fn update_on_gui_thread(self: Pin<&mut Loop>) {
