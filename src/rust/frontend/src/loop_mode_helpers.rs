@@ -1,7 +1,5 @@
 use backend_bindings::LoopMode;
 
-use backend_bindings::LoopMode;
-
 pub fn is_playing_mode(mode: LoopMode) -> bool {
     matches!(mode, LoopMode::Playing | LoopMode::PlayingDryThroughWet)
 }

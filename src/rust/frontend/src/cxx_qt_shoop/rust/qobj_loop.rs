@@ -14,7 +14,8 @@ use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
 use crate::cxx_qt_shoop::qobj_loop_bridge::Loop;                                   
-use crate::cxx_qt_shoop::qobj_loop_bridge::ffi::*;     
+use crate::cxx_qt_shoop::qobj_loop_bridge::ffi::*;  
+use crate::loop_mode_helpers::*;   
 use cxx_qt_lib::{QList, QVariant, QString};                                    
 use std::ops::Deref;
 use std::pin::Pin;
@@ -52,6 +53,7 @@ impl Loop {
             self.as_mut().connect_display_peaks_changed(|o| { o.display_peaks_changed_queued(); }, ConnectionType::QueuedConnection).release();
             self.as_mut().connect_display_midi_notes_active_changed(|o| { o.display_midi_notes_active_changed_queued(); }, ConnectionType::QueuedConnection).release();
             self.as_mut().connect_display_midi_events_triggered_changed(|o| { o.display_midi_events_triggered_changed_queued(); }, ConnectionType::QueuedConnection).release();
+            self.as_mut().connect_cycle_nr_changed(|o| { o.cycle_nr_changed_queued(); }, ConnectionType::QueuedConnection).release();
             self.as_mut().connect_cycled(|o, cycle_nr| { o.cycled_queued(cycle_nr); }, ConnectionType::QueuedConnection).release();
 
             // FIXME: Now this will only initialize the loop
@@ -116,6 +118,7 @@ impl Loop {
         let prev_display_peaks : Vec<f32> = rust.display_peaks.iter().map(|f| f.clone()).collect();
         let prev_display_midi_notes_active = rust.display_midi_notes_active.clone();
         let prev_display_midi_events_triggered = rust.display_midi_events_triggered.clone();
+        let prev_cycle_nr : i32 = rust.cycle_nr;
 
         let new_mode = state.mode as i32;
         let new_next_mode = state.maybe_next_mode.unwrap_or(state.mode) as i32;
@@ -150,6 +153,11 @@ impl Loop {
                 n_events_triggered
             }
         }).sum();
+        let new_cycle_nr : i32 = 
+            if (new_position < prev_position &&
+                is_playing_mode(prev_mode.try_into().unwrap()) &&
+                is_playing_mode(new_mode.try_into().unwrap())) 
+            { prev_cycle_nr + 1 } else { prev_cycle_nr };
 
         rust.mode = new_mode;
         rust.length = new_length;
@@ -159,6 +167,7 @@ impl Loop {
         rust.display_peaks = QList::from(new_display_peaks);
         rust.display_midi_notes_active = new_display_midi_notes_active;
         rust.display_midi_events_triggered = new_display_midi_events_triggered;
+        rust.cycle_nr = new_cycle_nr;
 
         if prev_mode != new_mode {
             debug!(self, "mode: {} -> {}", prev_mode, new_mode);
@@ -192,11 +201,10 @@ impl Loop {
             trace!(self, "midi events triggered: {} -> {}", prev_display_midi_events_triggered, new_display_midi_events_triggered);
             self.as_mut().display_midi_events_triggered_changed();
         }
-
-        if self.position() < prev_position && is_playing_mode(prev_mode) && is_playing_mode(self.mode()) {
-            self.increment_cycle_nr();
-            debug!(self, "cycled -> nr {}", self.cycle_nr());
-            self.cycled_unsafe(self.cycle_nr());
+        if prev_cycle_nr != new_cycle_nr {
+            debug!(self, "cycle nr: {} -> {}", prev_cycle_nr, new_cycle_nr);
+            self.as_mut().cycle_nr_changed();
+            self.as_mut().cycled(new_cycle_nr);
         }
     }
 

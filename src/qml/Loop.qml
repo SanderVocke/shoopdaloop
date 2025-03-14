@@ -14,7 +14,7 @@ ShoopLoop {
         name: "Frontend.Qml.Loop"
         instanceIdentifier: obj_id
     }
-    // onObj_idChanged: instanceIdentifier = obj_id // FIXME: worked with Python loop only
+    onObj_idChanged: instance_identifier = obj_id
 
     property var maybe_fx_chain: null
     property var loop_widget : null

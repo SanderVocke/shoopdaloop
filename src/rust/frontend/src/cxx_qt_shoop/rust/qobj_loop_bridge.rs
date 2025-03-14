@@ -64,6 +64,7 @@ pub mod ffi {
         #[qproperty(i32, display_midi_notes_active)]
         #[qproperty(i32, display_midi_events_triggered)]
         #[qproperty(QString, instance_identifier)]
+        #[qproperty(i32, cycle_nr)]
         type Loop = super::LoopRust;
 
         pub fn initialize_impl(self: Pin<&mut Loop>);
@@ -114,6 +115,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn update_backend_sync_source(self: Pin<&mut Loop>);
+
+        #[qsignal]
+        fn cycle_nr_changed_queued(self: Pin<&mut Loop>);
 
         #[qsignal]
         fn cycled(self: Pin<&mut Loop>, cycle_nr: i32);
@@ -212,6 +216,7 @@ pub struct LoopRust {
     pub display_midi_notes_active: i32,
     pub display_midi_events_triggered: i32,
     pub instance_identifier: QString,
+    pub cycle_nr : i32,
 
     // Rust members
     pub backend_loop : Option<Arc<Mutex<BackendLoop>>>,
@@ -231,7 +236,8 @@ impl Default for LoopRust {
             display_peaks: ffi::QList_f32::default(),
             display_midi_notes_active: 0,
             display_midi_events_triggered: 0,
-            instance_identifier: QString::default(),
+            instance_identifier: QString::from("unknown"),
+            cycle_nr : 0,
             backend_loop: None,
         }
     }
