@@ -530,7 +530,8 @@ class CompositeLoop(ShoopQQuickItem):
         # Before we start, give any of the loops in our schedule a chance to handle the cycle
         # first. This ensures a deterministic ordering of execution.
         for l in self.all_loops():
-            QMetaObject.invokeMethod(l, "dependent_will_handle_sync_loop_cycle", Qt.DirectConnection, Q_ARG(int, cycle_nr))
+            if hasattr(l, "dependent_will_handle_sync_loop_cycle"):
+                l.dependent_will_handle_sync_loop_cycle(cycle_nr)
 
         if self._next_transition_delay == 0:
             self.handle_transition(self.next_mode)
