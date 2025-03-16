@@ -296,7 +296,16 @@ impl Loop {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32)
     {
-        debug!(self, "Transitioning {} loops to {} with delay {}, sync at cycle {}",
+        Loop::transition_multiple_impl(loops, to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
+    }
+
+    pub fn transition_multiple_impl(
+        loops: QList_QVariant,
+        to_mode: i32,
+        maybe_cycles_delay: i32,
+        maybe_to_sync_at_cycle: i32)
+    {
+        raw_debug!("Transitioning {} loops to {} with delay {}, sync at cycle {}",
            loops.len(), to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             let mut backend_loop_arcs : Vec<Arc<Mutex<backend_bindings::Loop>>> = Vec::new();
@@ -328,7 +337,7 @@ impl Loop {
                 match result {
                     Ok(_) => (),
                     Err(err) => {
-                        error!(self, "Failed to increment reference count for loop: {:?}", err);
+                        raw_error!("Failed to increment reference count for loop: {:?}", err);
                     }
                 }
             });
@@ -353,7 +362,7 @@ impl Loop {
         match result {
             Ok(_) => (),
             Err(err) => {
-                error!(self, "Failed to transition multiple loops: {:?}", err);
+                raw_error!("Failed to transition multiple loops: {:?}", err);
             }
         }
     }

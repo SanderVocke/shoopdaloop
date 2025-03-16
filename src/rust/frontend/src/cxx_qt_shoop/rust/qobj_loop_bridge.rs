@@ -20,6 +20,7 @@ pub mod constants {
     pub const SIGNAL_CYCLED_UNSAFE: &str = "cycledUnsafe()";
 
     pub const INVOKABLE_UPDATE: &str = "update()";
+    pub const INVOKABLE_TRANSITION: &str = "transition(::std::int32_t,::std::int32_t,::std::int32_t)";
 }
 
 #[cxx_qt::bridge]

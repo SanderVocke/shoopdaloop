@@ -15,7 +15,7 @@ from ..q_objects.Logger import Logger
 
 from collections.abc import Mapping, Sequence
 
-from ..loop_helpers import transition_loop, transition_loops
+from ..loop_helpers import transition_loop, transition_loops, loop_adopt_ringbuffers
 
 import traceback
 import math
@@ -30,6 +30,10 @@ def iid(obj):
 
 # Manage a back-end composite loop, keeps running if GUI thread stalls
 class CompositeLoop(ShoopQQuickItem):
+    # FIXME marker
+    def is_composite_loop(self):
+        pass
+    
     def __init__(self, parent=None):
         super(CompositeLoop, self).__init__(parent)
         self._schedule = {}
@@ -505,7 +509,7 @@ class CompositeLoop(ShoopQQuickItem):
             self.logger.trace(f"to grab: {iid(loop)} @ reverse start {reverse_start_offset}, n = {grab_n}")
 
         for item in to_grab:
-            item['loop'].adopt_ringbuffers(item['reverse_start'], item['n'], 0, int(shoop_py_backend.LoopMode.Unknown))
+            loop_adopt_ringbuffers(item['loop'], item['reverse_start'], item['n'], 0, int(shoop_py_backend.LoopMode.Unknown))
         
         if go_to_mode != int(shoop_py_backend.LoopMode.Unknown):
             self.transition(go_to_mode, DontWaitForSync, go_to_cycle)

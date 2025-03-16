@@ -17,5 +17,6 @@ pub fn create_py_module<'py>(
     m.add_function(wrap_pyfunction!(objects::shoop_rust_open_driver_decoupled_midi_port, &m)?)?;
     m.add_function(wrap_pyfunction!(objects::shoop_rust_transition_loop, &m)?)?;
     m.add_function(wrap_pyfunction!(objects::shoop_rust_transition_loops, &m)?)?;
+    m.add_function(wrap_pyfunction!(objects::shoop_rust_loop_adopt_ringbuffers, &m)?)?;
     Ok(m)
 }

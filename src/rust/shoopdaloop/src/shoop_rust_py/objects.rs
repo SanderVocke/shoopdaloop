@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use std::pin::Pin;
 
 use frontend::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper as CxxQtBackendWrapper;
-use frontend::cxx_qt_shoop::qobj_loop_bridge::Loop as CxxQtLoop;
+use frontend::cxx_qt_shoop::qobj_loop_bridge::{Loop as CxxQtLoop};
 use frontend::cxx_qt_shoop::qobj_loop_bridge::ffi::{QObject, QVariant, QList_QVariant};
 
 use frontend::cxx_qt_lib_shoop::qvariant_helpers::qobject_ptr_to_qvariant;
@@ -105,6 +105,14 @@ pub fn shoop_rust_transition_loop(loop_addr : usize,
                                   maybe_align_to_sync_at : i32) -> PyResult<()>
 {
     unsafe {
+        // FIXME: start to implement generically
+        // let loop_qobj : *mut QObject = loop_addr as *mut QObject;
+        // invoke::<_,(),_>(loop_qobj.as_mut().unwrap(),
+        //                  qobj_loop_bridge::constants::INVOKABLE_TRANSITION.to_string(),
+        //                  connection_types::DIRECT_CONNECTION,
+        //                 &(mode, maybe_delay, maybe_align_to_sync_at));
+
+
         let loop_ptr : *mut CxxQtLoop = loop_addr as *mut CxxQtLoop;
         let loop_mut : &mut CxxQtLoop = loop_ptr.as_mut().unwrap();
         let loop_pin : Pin<&mut CxxQtLoop> = Pin::new_unchecked(loop_mut);
@@ -119,12 +127,30 @@ pub fn shoop_rust_transition_loops(loop_addrs : Vec<usize>,
                                    maybe_delay : i32,
                                    maybe_align_to_sync_at : i32) -> PyResult<()>
 {
+    let loop_variants : Vec<QVariant> =
+        loop_addrs.iter()
+                    .map(|addr| qobject_ptr_to_qvariant(*addr as *mut QObject))
+                    .collect();
+    let loops_list : QList_QVariant = QList_QVariant::from(loop_variants);
+    CxxQtLoop::transition_multiple_impl(loops_list, mode, maybe_delay, maybe_align_to_sync_at);
+    Ok(())
+}
+
+#[pyfunction]
+pub fn shoop_rust_loop_adopt_ringbuffers(loop_addr : usize,
+                                         reverse_start : i32,
+                                         n_cycles : i32,
+                                         go_to_cycle : i32,
+                                         go_to_mode : i32)
+{
     unsafe {
-        let loop_variants : Vec<QVariant> =
-            loop_addrs.iter()
-                      .map(|addr| qobject_ptr_to_qvariant(*addr as *mut QObject))
-                      .collect();
-        let loops_list : QList_QVariant = QList_QVariant::from(loop_variants);
-        Ok(())
+        let loop_ptr : *mut CxxQtLoop = loop_addr as *mut CxxQtLoop;
+        let loop_mut : &mut CxxQtLoop = loop_ptr.as_mut().unwrap();
+        let loop_pin : Pin<&mut CxxQtLoop> = Pin::new_unchecked(loop_mut);
+        loop_pin.adopt_ringbuffers(
+            if reverse_start >= 0 { QVariant::from(&reverse_start) } else { QVariant::default() },
+            if n_cycles >= 0 { QVariant::from(&n_cycles) } else { QVariant::default() },
+            if go_to_cycle >= 0 { QVariant::from(&go_to_cycle) } else { QVariant::default() },
+            go_to_mode);
     }
 }
