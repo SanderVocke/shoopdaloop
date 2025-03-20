@@ -52,7 +52,8 @@ impl MidiPort {
                            direction : &PortDirection,
                         min_n_ringbuffer_samples : u32) -> Result<Self, anyhow::Error>
     {
-        let name_hint_ptr = name_hint.as_ptr() as *const i8;
+        let c_name_hint = CString::new(name_hint).expect("CString::new failed");
+        let name_hint_ptr = c_name_hint.as_ptr();
         let obj = unsafe { ffi::open_driver_midi_port
                                 (backend_session.unsafe_backend_ptr(),
                                 audio_driver.unsafe_backend_ptr(),
@@ -167,7 +168,7 @@ impl MidiPort {
     pub fn connect_external_port(&self, name: &str) {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
-        let c_name = CString::new(name).unwrap();
+        let c_name = CString::new(name).expect("CString::new failed");
         unsafe { ffi::connect_midi_port_external(obj, c_name.as_ptr()) };
     }
 

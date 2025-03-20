@@ -7,25 +7,21 @@ from typing import *
 import sys
 
 from .ShoopPyObject import *
-from .FindParentBackend import FindParentBackend
 
-from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
 from ..backend_wrappers import *
 from ..mode_helpers import is_playing_mode
 from ..q_objects.Backend import Backend
-from ..findFirstParent import findFirstParent
 from ..findChildItems import findChildItems
 from .Logger import Logger
 
 from shoop_py_backend import Loop as BackendLoop
 from shoop_py_backend import LoopMode, ChannelMode, AudioChannel, MidiChannel, transition_multiple_loops
 
-import traceback
-
 # Wraps a back-end loop.
-class Loop(FindParentBackend):
+class Loop(ShoopQQuickItem):
     # Other signals
     cycled = ShoopSignal(int)
     cycledUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.OtherThread)
@@ -39,6 +35,7 @@ class Loop(FindParentBackend):
         self._length = self._new_length = 0
         self._sync_source = None
         self._initialized = False
+        self._backend = None
         self._backend_loop = None
         self._display_peaks = []
         self._display_midi_notes_active = 0
@@ -63,9 +60,12 @@ class Loop(FindParentBackend):
         self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
 
-        self.backendChanged.connect(lambda: self.maybe_initialize())
-        self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
-
+        def on_backend_changed(backend):
+            self.logger.debug(lambda: 'Backend changed')
+            QObject.connect(backend, SIGNAL("readyChanged()"), self, SLOT("maybe_initialize()"))
+            self.maybe_initialize()
+        self.backendChanged.connect(lambda b: on_backend_changed(b))
+        
         self.initializedChanged.connect(lambda i: self.logger.debug("initialized -> {}".format(i)))
 
     update = ShoopSignal()
@@ -75,8 +75,8 @@ class Loop(FindParentBackend):
     ######################
     
     # backend
-    backendChanged = ShoopSignal(Backend)
-    @ShoopProperty(Backend, notify=backendChanged)
+    backendChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=backendChanged)
     def backend(self):
         return self._backend
     @backend.setter
@@ -86,6 +86,7 @@ class Loop(FindParentBackend):
                 self.logger.throw_error('May not change backend of existing loop')
             self._backend = l
             self.logger.trace(lambda: 'Set backend -> {}'.format(l))
+            self.backendChanged.emit(l)
             self.maybe_initialize()
     
     # initialized
@@ -154,10 +155,13 @@ class Loop(FindParentBackend):
         def do_set():
             if loop != self._sync_source:
                 self.logger.debug(lambda: 'Set sync source -> {}'.format(loop))
+                if not self._backend_loop:
+                    self.logger.warning(lambda: 'No back-end loop to set sync source')
+                    return
                 self._sync_source = loop
                 self._backend_loop.set_sync_source(loop.get_backend_loop() if loop else None)
                 self.syncSourceChanged.emit(loop)
-        if self.initialized:
+        if self.initialized and self._backend_loop:
             do_set()
         else:
             self.logger.debug(lambda: 'Defer set sync source -> {}'.format(loop))
@@ -219,8 +223,8 @@ class Loop(FindParentBackend):
     # Update on back-end thread.
     @ShoopSlot(thread_protection = ThreadProtectionType.OtherThread)
     def updateOnOtherThread(self):
-        #self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
-        if not self._initialized:
+        backend_loop = self._backend_loop
+        if not self._initialized or not backend_loop:
             return
         
         audio_chans = self.get_audio_channels_impl()
@@ -240,7 +244,7 @@ class Loop(FindParentBackend):
         prev_display_midi_notes_active = self._display_midi_notes_active
         prev_display_midi_events_triggered = self._display_midi_events_triggered
 
-        state = self._backend_loop.get_state()
+        state = backend_loop.get_state()
         self._mode = int(state.mode)
         self._length = state.length
         self._position = state.position
@@ -287,7 +291,6 @@ class Loop(FindParentBackend):
     # Update on GUI thread.
     @ShoopSlot()
     def updateOnGuiThread(self):
-        #self.logger.trace(lambda: f'update on GUI thread (# {self._n_updates_pending}, initialized {self._initialized})')
         if not self._initialized or not self.isValid():
             return
         
@@ -363,18 +366,9 @@ class Loop(FindParentBackend):
     def close(self):
         if self._backend_loop:
             self.logger.debug(lambda: 'close')
-            if self._backend:
-                self._backend.unregisterBackendObject(self)
-            self._backend_loop = None
             self._initialized = False
             self.initializedChanged.emit(False)
-    
-    @ShoopSlot(result='QVariant')
-    def get_backend(self):
-        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend'))
-        if maybe_backend:
-            return maybe_backend
-        self.logger.throw_error("Could not find backend!")
+            self._backend_loop = None
     
     @ShoopSlot(result="QVariant")
     def get_backend_loop(self):
@@ -390,14 +384,17 @@ class Loop(FindParentBackend):
     def dependent_will_handle_sync_loop_cycle(self, cycle_nr):
         pass
     
+    @ShoopSlot(thread_protection = ThreadProtectionType.ObjectThread)
     def maybe_initialize(self):
-        if self._backend and self._backend.initialized and not self._backend_loop:
-            self.logger.debug(lambda: 'Found backend, initializing')
-            self._backend_loop = self._backend.get_backend_session_obj().create_loop()
+        if self.backend and self.backend.property("ready") and not self._backend_loop:
+            from shoop_rust import shoop_rust_create_loop
+            from shiboken6 import getCppPointer
+            self.logger.debug(lambda: 'Initializing')
+            self._backend_loop = shoop_rust_create_loop(getCppPointer(self._backend)[0])
             if self._backend_loop:
                 self._initialized = True
-                self.update()
-                self._backend.registerBackendObject(self)
+                QObject.connect(self._backend, SIGNAL("updated_on_gui_thread()"), self, SLOT("updateOnGuiThread()"), Qt.DirectConnection)
+                QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
                 self.initializedChanged.emit(True)
             else:
                 self.logger.warning(lambda: 'Failed to create loop')

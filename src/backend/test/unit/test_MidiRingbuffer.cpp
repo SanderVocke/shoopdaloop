@@ -7,6 +7,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 namespace Catch {
     template<>
     struct StringMaker<std::vector<uint8_t>> {

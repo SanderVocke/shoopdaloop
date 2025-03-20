@@ -7,6 +7,11 @@
 #include <cstring>
 #include <iostream>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 template<typename API>
 GenericJackAudioPort<API>::GenericJackAudioPort(std::string name, shoop_port_direction_t direction,
                              jack_client_t *client, shoop_shared_ptr<GenericJackAllPorts<API>> all_ports_tracker,

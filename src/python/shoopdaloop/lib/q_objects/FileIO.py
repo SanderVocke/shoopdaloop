@@ -12,7 +12,7 @@ import glob
 import json
 import inspect
 
-from PySide6.QtCore import QObject, Slot, Signal, QThread, QMetaObject, Qt
+from PySide6.QtCore import QObject, Slot, Signal, QThread, QMetaObject, Qt, Q_ARG
 from PySide6.QtQml import QJSValue
 
 from .Task import Task
@@ -203,7 +203,7 @@ class FileIO(ShoopQObject):
                     channel.set_n_preplay_samples(maybe_set_n_preplay_samples)
             
             if maybe_update_loop_to_datalength:
-                maybe_update_loop_to_datalength.set_length(total_sample_time)
+                QMetaObject.invokeMethod(maybe_update_loop_to_datalength, 'queue_set_length_qml', Qt.DirectConnection, Q_ARG('QVariant', total_sample_time))
             
             self.logger.info(lambda: "Loaded MIDI from {} into channel ({} recorded messages, {} state messages, {} samples)".format(
                 filename,
@@ -317,7 +317,7 @@ class FileIO(ShoopQObject):
                     self.logger.debug(lambda: f"load channel: {len(data_channel)} samples, resulting channel data length {channel.data_length}")  
                     
             if maybe_update_loop_to_datalength != None:
-                maybe_update_loop_to_datalength.set_length(len(resampled[0]))
+                QMetaObject.invokeMethod(maybe_update_loop_to_datalength, 'queue_set_length_qml', Qt.DirectConnection, Q_ARG('QVariant', len(resampled[0])))
        
             self.logger.info(lambda: "Loaded {}-channel audio from {} ({} samples)".format(len(resampled), filename, len(resampled[0])))
         finally:

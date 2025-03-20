@@ -1,6 +1,5 @@
 import QtQuick 6.6
 import QtTest 1.0
-import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -270,7 +269,7 @@ ShoopTestFile {
                     let chans = lut.get_audio_output_channels()
                     chans[0].load_data([5, 6, 7, 8])
                     chans[1].load_data([8, 7, 6, 5])
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -310,7 +309,7 @@ ShoopTestFile {
                     tut_control().mute = false
                     let chan = lut.get_midi_output_channels()[0]
                     chan.load_all_midi_data(loop)
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -342,7 +341,7 @@ ShoopTestFile {
                     let chans = lut.get_audio_output_channels()
                     chans[0].load_data([5, 6, 7, 8])
                     chans[1].load_data([8, 7, 6, 5])
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
@@ -387,7 +386,7 @@ ShoopTestFile {
                     tut_control().mute = false
                     let chan = lut.get_midi_output_channels()[0]
                     chan.load_all_midi_data(loop)
-                    lut.set_length(4)
+                    lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 

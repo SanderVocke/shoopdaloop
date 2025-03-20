@@ -1,30 +1,39 @@
 from typing import *
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QMetaObject, Qt
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QMetaObject, Qt, SIGNAL, SLOT, Q_ARG
 from PySide6.QtQuick import QQuickItem
 from PySide6.QtQml import QJSValue
 
-from .FindParentBackend import FindParentBackend
 from .ShoopPyObject import *
 
 from ..backend_wrappers import DontWaitForSync, DontAlignToSyncImmediately
 
 from ..mode_helpers import is_playing_mode, is_running_mode, is_recording_mode
-from ..findFirstParent import findFirstParent
-from ..findChildItems import findChildItems
 from ..recursive_jsvalue_convert import recursively_convert_jsvalue
 from ..q_objects.Backend import Backend
 from ..q_objects.Logger import Logger
 
 from collections.abc import Mapping, Sequence
 
+from ..loop_helpers import transition_loop, transition_loops, loop_adopt_ringbuffers
+
 import traceback
 import math
 
 import shoop_py_backend
 
+def iid(obj):
+    if hasattr(obj, "instanceIdentifier"):
+        return obj.instanceIdentifier
+    else:
+        return obj.property("instance_identifier")
+
 # Manage a back-end composite loop, keeps running if GUI thread stalls
-class CompositeLoop(FindParentBackend):
+class CompositeLoop(ShoopQQuickItem):
+    # FIXME marker
+    def is_composite_loop(self):
+        pass
+    
     def __init__(self, parent=None):
         super(CompositeLoop, self).__init__(parent)
         self._schedule = {}
@@ -33,6 +42,7 @@ class CompositeLoop(FindParentBackend):
         self._sync_loop = None
         self._running_loops = set()
         self._iteration = 0
+        self._backend = None
         self._mode = int(shoop_py_backend.LoopMode.Stopped)
         self._next_mode = int(shoop_py_backend.LoopMode.Stopped)
         self._next_transition_delay = -1
@@ -72,8 +82,11 @@ class CompositeLoop(FindParentBackend):
         self.iterationChangedUnsafe.connect(self.update_position, Qt.DirectConnection)
         self.modeChangedUnsafe.connect(self.update_position, Qt.DirectConnection)
 
-        self.backendChanged.connect(lambda: self.maybe_initialize())
-        self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
+        def on_backend_changed(backend):
+            self.logger.debug(lambda: 'Backend changed')
+            QObject.connect(backend, SIGNAL("readyChanged()"), self, SLOT("maybe_initialize()"))
+            self.maybe_initialize()
+        self.backendChanged.connect(lambda b: on_backend_changed(b))
     
     cycled = ShoopSignal(int)
     cycledUnsafe = ShoopSignal(int)
@@ -81,6 +94,21 @@ class CompositeLoop(FindParentBackend):
     ######################
     ## PROPERTIES
     ######################
+    
+    # backend
+    backendChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=backendChanged)
+    def backend(self):
+        return self._backend
+    @backend.setter
+    def backend(self, l):
+        if l and l != self._backend:
+            if self._backend:
+                self.logger.throw_error('May not change backend of existing loop')
+            self._backend = l
+            self.logger.trace(lambda: 'Set backend -> {}'.format(l))
+            self.backendChanged.emit(l)
+            self.maybe_initialize()
 
     # schedule
     # See CompositeLoop.qml for the format of this property.
@@ -93,12 +121,7 @@ class CompositeLoop(FindParentBackend):
     def schedule(self, val):
         # The schedule may arrive as a JSValue and loops in the schedule may be JSValues too
         val = recursively_convert_jsvalue(val)
-        def stringify_schedule (schedule):
-            def iid(obj):
-                if hasattr(obj, "instanceIdentifier"):
-                    return obj.instanceIdentifier
-                return "(unknown)"
-            
+        def stringify_schedule (schedule):            
             rval = ''
             for iteration,elem in schedule.items():
                 rval += f'{iteration}:'
@@ -141,16 +164,10 @@ class CompositeLoop(FindParentBackend):
                 self._sync_loop.disconnect(self)
             self._sync_loop = val
             if val:
-                if hasattr(val, 'positionChangedUnsafe'):
-                    self.logger.debug(lambda: 'connecting to sync loop (back-end thread)')
-                    val.positionChangedUnsafe.connect(self.update_sync_position_with_value, Qt.DirectConnection)
-                    val.lengthChangedUnsafe.connect(self.update_sync_length_with_value, Qt.DirectConnection)
-                    val.cycledUnsafe.connect(self.handle_sync_loop_trigger, Qt.DirectConnection)
-                else:
-                    self.logger.warning(lambda: 'connecting to sync loop on GUI thread. Sync loop: {val}')
-                    val.positionChanged.connect(self.update_sync_position, Qt.AutoConnection)
-                    val.lengthChanged.connect(self.update_sync_length, Qt.AutoConnection)
-                    val.cycled.connect(self.handle_sync_loop_trigger, Qt.AutoConnection)
+                self.logger.debug(lambda: 'connecting to sync loop')
+                QObject.connect(val, SIGNAL("positionChanged()"), self, SLOT("update_sync_position()"), Qt.DirectConnection)
+                QObject.connect(val, SIGNAL("lengthChanged()"), self, SLOT("update_sync_length()"), Qt.DirectConnection)
+                QObject.connect(val, SIGNAL("cycled(int)"), self, SLOT("handle_sync_loop_trigger(int)"), Qt.DirectConnection)
                 self.update_sync_position()
                 self.update_sync_length()
             self.syncLoopChanged.emit(self._sync_loop)
@@ -296,18 +313,9 @@ class CompositeLoop(FindParentBackend):
             self.logger.instanceIdentifier = l
             self.instanceIdentifierChanged.emit(l)
     
-    @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
-    def update_sync_position_with_value(self, v):
-        self.logger.trace(lambda: 'updating sync position with value from signal')
-        if v != self._sync_position:
-            self.logger.trace(lambda: f'sync_position -> {v}')
-            self._sync_position = v
-            self.syncPositionChangedUnsafe.emit(v)
-            self.update_position()
-    
-    @ShoopSlot()
+    @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def update_sync_position(self, *args):
-        self.logger.trace(lambda: 'updating sync position synchronously')
+        self.logger.trace(lambda: 'updating sync position')
         v = 0
         if self.sync_loop:
             v = self.sync_loop.property('position')
@@ -324,19 +332,9 @@ class CompositeLoop(FindParentBackend):
     syncLengthChangedUnsafe = ShoopSignal(int, thread_protection=ThreadProtectionType.AnyThread) # Signal will be triggered on any thread
     syncLengthChanged = ShoopSignal(int) # on GUI thread only, for e.g. bindings
     
-    @ShoopSlot(int, thread_protection=ThreadProtectionType.AnyThread)
-    def update_sync_length_with_value(self, v):
-        self.logger.trace(lambda: 'updating sync length with value from signal')
-        if v != self._sync_length:
-            self.logger.trace(lambda: f'sync_length -> {v}')
-            self._sync_length = v
-            self.syncLengthChangedUnsafe.emit(v)
-            self.update_length()
-            self.update_position()
-    
-    @ShoopSlot()
+    @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
     def update_sync_length(self, *args):
-        self.logger.trace(lambda: 'updating sync length synchronously')
+        self.logger.trace(lambda: 'updating sync length')
         v = 0
         if self.sync_loop:
             v = self.sync_loop.property('length')
@@ -416,7 +414,7 @@ class CompositeLoop(FindParentBackend):
             str = 'immediate sync transition - virtual transition list:'
             for iteration,ts in transitions.items():
                 for t in ts:
-                    str = str + f'\n - iteration {iteration}: {t["loop"].instanceIdentifier} -> {t["mode"]}'
+                    str = str + f'\n - iteration {iteration}: {iid(t["loop"])} -> {t["mode"]}'
             self.logger.trace(lambda: str)
         
         # Find the last transition for each loop up until this point.
@@ -429,8 +427,8 @@ class CompositeLoop(FindParentBackend):
         for loop,elem in last_loop_transitions.items():
             n_cycles_ago = sync_cycle - elem['iteration']
             n_cycles = 1
-            if loop.sync_source:
-                n_cycles = math.ceil(loop.length / loop.sync_source.length)
+            if loop.property('sync_source'):
+                n_cycles = math.ceil(loop.property('length') / loop.property('sync_source').property('length'))
             mode = elem['mode']
             
             current_cycle = None
@@ -441,10 +439,11 @@ class CompositeLoop(FindParentBackend):
                 # keep going indefinitely
                 current_cycle = n_cycles_ago
             
-            self.logger.trace(lambda: f'loop {loop.instanceIdentifier} -> {mode}, goto cycle {current_cycle} ({elem["mode"]} triggered {n_cycles_ago} cycles ago, loop length {n_cycles} cycles)')
-            loop.transition(mode, DontWaitForSync,
-                (current_cycle if mode != int(shoop_py_backend.LoopMode.Stopped) else DontAlignToSyncImmediately)
-            )
+            self.logger.trace(lambda: f'loop {iid(loop)} -> {mode}, goto cycle {current_cycle} ({elem["mode"]} triggered {n_cycles_ago} cycles ago, loop length {n_cycles} cycles)')
+            transition_loop(loop,
+                            mode,
+                            DontWaitForSync,
+                            (current_cycle if mode != int(shoop_py_backend.LoopMode.Stopped) else DontAlignToSyncImmediately))
         
         # Apply our own mode change
         self.mode = mode
@@ -476,7 +475,7 @@ class CompositeLoop(FindParentBackend):
             str = 'ringbuffer grab - virtual transition list:'
             for iteration,ts in transitions.items():
                 for t in ts:
-                    str = str + f'\n - iteration {iteration}: {t["loop"].instanceIdentifier} -> {t["mode"]}'
+                    str = str + f'\n - iteration {iteration}: {iid(t["loop"])} -> {t["mode"]}'
             self.logger.trace(lambda: str)
         
         # Find the first recording range for each loop.
@@ -507,10 +506,10 @@ class CompositeLoop(FindParentBackend):
                 # If sync mode is inactive, we want to end up inside the last cycle.
                 reverse_start_offset = max(0, reverse_start_offset - 1)
             to_grab.append({'loop': loop, 'reverse_start': reverse_start_offset, 'n': grab_n})
-            self.logger.trace(f"to grab: {loop.instanceIdentifier} @ reverse start {reverse_start_offset}, n = {grab_n}")
+            self.logger.trace(f"to grab: {iid(loop)} @ reverse start {reverse_start_offset}, n = {grab_n}")
 
         for item in to_grab:
-            item['loop'].adopt_ringbuffers(item['reverse_start'], item['n'], 0, int(shoop_py_backend.LoopMode.Unknown))
+            loop_adopt_ringbuffers(item['loop'], item['reverse_start'], item['n'], 0, int(shoop_py_backend.LoopMode.Unknown))
         
         if go_to_mode != int(shoop_py_backend.LoopMode.Unknown):
             self.transition(go_to_mode, DontWaitForSync, go_to_cycle)
@@ -535,7 +534,8 @@ class CompositeLoop(FindParentBackend):
         # Before we start, give any of the loops in our schedule a chance to handle the cycle
         # first. This ensures a deterministic ordering of execution.
         for l in self.all_loops():
-            l.dependent_will_handle_sync_loop_cycle(cycle_nr)
+            if hasattr(l, "dependent_will_handle_sync_loop_cycle"):
+                l.dependent_will_handle_sync_loop_cycle(cycle_nr)
 
         if self._next_transition_delay == 0:
             self.handle_transition(self.next_mode)
@@ -563,8 +563,10 @@ class CompositeLoop(FindParentBackend):
     
     def cancel_all(self):
         self.logger.trace(lambda: 'cancel_all')
-        for loop in self._running_loops:
-            loop.transition(int(shoop_py_backend.LoopMode.Stopped), 0, DontAlignToSyncImmediately)
+        transition_loops(self._running_loops,
+                         int(shoop_py_backend.LoopMode.Stopped),
+                         0,
+                         DontAlignToSyncImmediately)
         self.running_loops = []
 
     def handle_transition(self, mode):
@@ -584,7 +586,7 @@ class CompositeLoop(FindParentBackend):
             # composites always trigger themselves first, then get triggered by others.
             # This is desired (e.g. if a script wants to stop, but a composite wants it to
             # continue playing next cycle)
-            QTimer.singleShot(0, lambda loop=loop, mode=mode: loop.transition(mode, 0, DontAlignToSyncImmediately))
+            QTimer.singleShot(0, lambda loop=loop, mode=mode: transition_loop(loop, mode, 0, DontAlignToSyncImmediately))
 
     # In preparation for the given upcoming iteration, create the triggers for our child loops.
     # Instead of executing them directly, each trigger will call the callback with (loop, mode).
@@ -598,7 +600,7 @@ class CompositeLoop(FindParentBackend):
             loops_end = elem['loops_end']
             loops_start = elem['loops_start']
             for loop in loops_end:
-                self.logger.debug(lambda: f'loop end: {loop.instanceIdentifier}')
+                self.logger.debug(lambda: f'loop end: {iid(loop)}')
                 trigger_callback(self, loop, int(shoop_py_backend.LoopMode.Stopped))
                 if loop in self._running_loops:
                     self._running_loops.remove(loop)
@@ -635,7 +637,7 @@ class CompositeLoop(FindParentBackend):
                         if handled:
                             continue
 
-                    self.logger.debug(lambda: f'generate loop start: {loop.instanceIdentifier}')
+                    self.logger.debug(lambda: f'generate loop start: {iid(loop)}')
                     trigger_callback(self, loop, loop_mode)
                     self._running_loops.add(loop)
                     self.runningLoopsChangedUnsafe.emit(self._running_loops)
@@ -654,9 +656,13 @@ class CompositeLoop(FindParentBackend):
                 # Will cycle around - trigger the actions for next cycle
                 self.do_triggers(0, self.mode, trigger_callback, True)
     
+    def connect_backend_updates(self):
+        QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
+    
     def maybe_initialize(self):
-        if self._backend and self._backend.initialized and not self._initialized:
+        if self._backend and self._backend.property('ready') and not self._initialized:
             self.logger.debug(lambda: 'Found backend, initializing')
+            self.connect_backend_updates()
             self.initializedChanged.emit(True)
     
     # Update from the back-end.

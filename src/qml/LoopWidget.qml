@@ -16,6 +16,7 @@ Item {
 
     property var all_loops_in_track
     property var maybe_fx_chain
+    property var backend : null
 
     property var initial_descriptor : null
 
@@ -166,6 +167,9 @@ Item {
     }
 
     function init() {
+        if (!root.backend) {
+            return
+        }
         if (is_sync) {
             root.logger.debug("Initializing back-end for sync loop")
             create_backend_loop()
@@ -178,6 +182,7 @@ Item {
 
     Component.onCompleted: init()
     onInitial_descriptorChanged: init()
+    onBackendChanged: init()
 
     property var additional_context_menu_options : null // dict of option name -> functor
 
@@ -409,8 +414,8 @@ Item {
         last_pushed_stereo_balance = balance
     }
 
-    function set_length(length) {
-        maybe_loop && maybe_loop.set_length(length)
+    function queue_set_length(length) {
+        maybe_loop && maybe_loop.queue_set_length(length)
     }
 
     function record_n(delay_start, n) {
@@ -472,6 +477,7 @@ Item {
         BackendLoopWithChannels {
             maybe_fx_chain: root.maybe_fx_chain
             loop_widget: root
+            backend: root.backend ? root.backend : null
         }
     }
 
@@ -494,34 +500,6 @@ Item {
             }
         }
     }
-
-    // function create_backend_loop_impl() {
-    //     if (!maybe_loop) {
-    //         if (backend_loop_factory.status == Component.Error) {
-    //             throw new Error("BackendLoopWithChannels: Failed to load factory: " + backend_loop_factory.errorString())
-    //         } else if (backend_loop_factory.status != Component.Ready) {
-    //             throw new Error("BackendLoopWithChannels: Factory not ready: " + backend_loop_factory.status.toString())
-    //         } else {
-    //             let gain = last_pushed_gain
-    //             let balance = last_pushed_stereo_balance
-    //             maybe_loop = backend_loop_factory.createObject(root, {
-    //                 'initial_descriptor': root.initial_descriptor,
-    //                 'sync_source': Qt.binding(() => (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null),
-    //             })
-    //             push_stereo_balance(balance)
-    //             push_gain(gain)
-    //             maybe_loop.onCycled.connect(root.cycled)
-    //         }
-    //     }
-    // }
-
-    // ExecuteNextCycle {
-    //     id: create_loop_next_cycle
-    //     onExecute: root.create_backend_loop_impl()
-    // }
-    // function create_backend_loop() {
-    //     create_loop_next_cycle.trigger()
-    // }
 
     Component {
         id: composite_loop_factory
@@ -554,7 +532,8 @@ Item {
         } else {
             maybe_loop = composite_loop_factory.createObject(root, {
                 initial_composition_descriptor: composition,
-                obj_id: root.obj_id
+                obj_id: root.obj_id,
+                backend: Qt.binding(() => root.backend)
             })
             maybe_loop.onCycled.connect(root.cycled)
         }
@@ -1828,7 +1807,7 @@ Item {
                 text: "Push Length To Sync"
                 shown: !root.is_sync
                 onClicked: {
-                    if (sync_loop) { sync_loop.set_length(root.length) }
+                    if (sync_loop) { sync_loop.queue_set_length(root.length) }
                 }
             }
             ShoopMenuItem {

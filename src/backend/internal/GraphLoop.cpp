@@ -9,6 +9,11 @@
 #include <memory>
 #include <fmt/format.h>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 void GraphLoop::PROC_prepare(uint32_t n_frames) {
     for (auto &chan : mp_audio_channels) {
         chan->PROC_prepare(n_frames);

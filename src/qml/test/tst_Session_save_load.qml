@@ -1,6 +1,5 @@
 import QtQuick 6.6
 import QtTest 1.0
-import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -222,12 +221,12 @@ ShoopTestFile {
                     dwt_dry_loop_channels()[1].load_data([0.8, 0.7, 0.6, 0.5])
                     dwt_wet_loop_channels()[0].load_data([0.9, 0.10, 0.11, 0.12])
                     dwt_wet_loop_channels()[1].load_data([0.12, 0.11, 0.10, 0.9])
-                    dt_loop().set_length(2)
+                    dt_loop().queue_set_length(2)
                     dt_loop_channels()[0].set_n_preplay_samples(1)
                     dt_loop_channels()[0].set_start_offset(2)
                     dt_loop_channels()[1].set_n_preplay_samples(1)
                     dt_loop_channels()[1].set_start_offset(2)
-                    dwt_loop().set_length(4)
+                    dwt_loop().queue_set_length(4)
                     testcase.wait_updated(session.backend)
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.shl'
@@ -266,7 +265,7 @@ ShoopTestFile {
 
                 "test_save_load_session_audio_and_midi_resampled": () => {
                     check_backend()
-                    verify(other_session.backend && other_session.backend.initialized, "resampled backend not initialized")
+                    verify(other_session.backend && other_session.backend.ready, "resampled backend not initialized")
 
                     let midichan = [
                         { 'time': 120, 'data': [0x90, 70,  70]  },
@@ -287,12 +286,12 @@ ShoopTestFile {
                     dwt_dry_loop_channels()[1].load_data(_data)
                     dwt_wet_loop_channels()[0].load_data(_data)
                     dwt_wet_loop_channels()[1].load_data(_data)
-                    dt_loop().set_length(6)
+                    dt_loop().queue_set_length(6)
                     dt_loop_channels()[0].set_n_preplay_samples(4)
                     dt_loop_channels()[0].set_start_offset(4)
                     dt_loop_channels()[1].set_n_preplay_samples(12)
                     dt_loop_channels()[1].set_start_offset(12)
-                    dwt_loop().set_length(12)
+                    dwt_loop().queue_set_length(12)
                     testcase.wait_updated(session.backend)
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.shl'
