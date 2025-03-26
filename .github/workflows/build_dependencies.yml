@@ -208,9 +208,9 @@ jobs:
       - name: Build catch
         uses: ./.github/actions/build_and_upload_cmake_dependency
         with:
-           name: catch2-v3.7.0-release-${{ matrix.name-suffix }}
+           name: catch2-v3.8.0-release-${{ matrix.name-suffix }}
            repo: https://github.com/catchorg/Catch2.git
-           git_rev: v3.7.0
+           git_rev: v3.8.0
            configure_options: -DCMAKE_BUILD_TYPE=Release
            build_options: --config Release
 

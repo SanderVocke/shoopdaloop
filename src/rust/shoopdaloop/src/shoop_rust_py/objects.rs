@@ -2,8 +2,8 @@ use pyo3::prelude::*;
 use std::pin::Pin;
 
 use frontend::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper as CxxQtBackendWrapper;
-use frontend::cxx_qt_shoop::qobj_loop_bridge::{Loop as CxxQtLoop};
-use frontend::cxx_qt_shoop::qobj_loop_bridge::ffi::{QObject, QVariant, QList_QVariant};
+use frontend::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
+use frontend::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::{QObject, QVariant, QList_QVariant};
 
 use frontend::cxx_qt_lib_shoop::qvariant_helpers::qobject_ptr_to_qvariant;
 
@@ -77,9 +77,9 @@ pub fn shoop_rust_open_driver_decoupled_midi_port(backend_addr : usize, name_hin
 #[pyfunction]
 pub fn shoop_rust_add_loop_audio_channel(loop_addr : usize, mode : i32) -> PyResult<AudioChannel> {
     unsafe {
-        let loop_ptr : *mut CxxQtLoop = loop_addr as *mut CxxQtLoop;
-        let loop_mut : &mut CxxQtLoop = loop_ptr.as_mut().unwrap();
-        let loop_pin : Pin<&mut CxxQtLoop> = Pin::new_unchecked(loop_mut);
+        let loop_ptr : *mut LoopGui = loop_addr as *mut LoopGui;
+        let loop_mut : &mut LoopGui = loop_ptr.as_mut().unwrap();
+        let loop_pin : Pin<&mut LoopGui> = Pin::new_unchecked(loop_mut);
         Ok(AudioChannel { obj : loop_pin.add_audio_channel(mode)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyException, _>(e.to_string()))?
         })
@@ -89,9 +89,9 @@ pub fn shoop_rust_add_loop_audio_channel(loop_addr : usize, mode : i32) -> PyRes
 #[pyfunction]
 pub fn shoop_rust_add_loop_midi_channel(loop_addr : usize, mode : i32) -> PyResult<MidiChannel> {
     unsafe {
-        let loop_ptr : *mut CxxQtLoop = loop_addr as *mut CxxQtLoop;
-        let loop_mut : &mut CxxQtLoop = loop_ptr.as_mut().unwrap();
-        let loop_pin : Pin<&mut CxxQtLoop> = Pin::new_unchecked(loop_mut);
+        let loop_ptr : *mut LoopGui = loop_addr as *mut LoopGui;
+        let loop_mut : &mut LoopGui = loop_ptr.as_mut().unwrap();
+        let loop_pin : Pin<&mut LoopGui> = Pin::new_unchecked(loop_mut);
         Ok(MidiChannel { obj : loop_pin.add_midi_channel(mode)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyException, _>(e.to_string()))?
         })
@@ -113,9 +113,9 @@ pub fn shoop_rust_transition_loop(loop_addr : usize,
         //                 &(mode, maybe_delay, maybe_align_to_sync_at));
 
 
-        let loop_ptr : *mut CxxQtLoop = loop_addr as *mut CxxQtLoop;
-        let loop_mut : &mut CxxQtLoop = loop_ptr.as_mut().unwrap();
-        let loop_pin : Pin<&mut CxxQtLoop> = Pin::new_unchecked(loop_mut);
+        let loop_ptr : *mut LoopGui = loop_addr as *mut LoopGui;
+        let loop_mut : &mut LoopGui = loop_ptr.as_mut().unwrap();
+        let loop_pin : Pin<&mut LoopGui> = Pin::new_unchecked(loop_mut);
         loop_pin.transition(mode, maybe_delay, maybe_align_to_sync_at);
         Ok(())
     }
@@ -132,7 +132,7 @@ pub fn shoop_rust_transition_loops(loop_addrs : Vec<usize>,
                     .map(|addr| qobject_ptr_to_qvariant(*addr as *mut QObject))
                     .collect();
     let loops_list : QList_QVariant = QList_QVariant::from(loop_variants);
-    CxxQtLoop::transition_multiple_impl(loops_list, mode, maybe_delay, maybe_align_to_sync_at);
+    LoopGui::transition_multiple_impl(loops_list, mode, maybe_delay, maybe_align_to_sync_at);
     Ok(())
 }
 
@@ -144,9 +144,9 @@ pub fn shoop_rust_loop_adopt_ringbuffers(loop_addr : usize,
                                          go_to_mode : i32)
 {
     unsafe {
-        let loop_ptr : *mut CxxQtLoop = loop_addr as *mut CxxQtLoop;
-        let loop_mut : &mut CxxQtLoop = loop_ptr.as_mut().unwrap();
-        let loop_pin : Pin<&mut CxxQtLoop> = Pin::new_unchecked(loop_mut);
+        let loop_ptr : *mut LoopGui = loop_addr as *mut LoopGui;
+        let loop_mut : &mut LoopGui = loop_ptr.as_mut().unwrap();
+        let loop_pin : Pin<&mut LoopGui> = Pin::new_unchecked(loop_mut);
         loop_pin.adopt_ringbuffers(
             if reverse_start >= 0 { QVariant::from(&reverse_start) } else { QVariant::default() },
             if n_cycles >= 0 { QVariant::from(&n_cycles) } else { QVariant::default() },

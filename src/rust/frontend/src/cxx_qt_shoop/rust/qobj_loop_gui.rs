@@ -13,8 +13,8 @@ use crate::cxx_qt_lib_shoop::qobject::{qobject_property_bool, qobject_property_f
 use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
-use crate::cxx_qt_shoop::qobj_loop_bridge::Loop;                                   
-use crate::cxx_qt_shoop::qobj_loop_bridge::ffi::*;  
+use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;                                   
+use crate::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::*;  
 use crate::loop_mode_helpers::*;   
 use cxx_qt_lib::{QList, QVariant, QString};                                    
 use std::ops::Deref;
@@ -40,8 +40,8 @@ macro_rules! error {
     };
 }
 
-impl Loop {
-    pub fn initialize_impl(mut self: Pin<&mut Loop>) {
+impl LoopGui {
+    pub fn initialize_impl(mut self: Pin<&mut LoopGui>) {
         debug!(self, "Initializing");
 
         {
@@ -64,7 +64,7 @@ impl Loop {
         }
     }
 
-    pub fn queue_set_length(mut self: Pin<&mut Loop>, length: i32) {
+    pub fn queue_set_length(mut self: Pin<&mut LoopGui>, length: i32) {
         if !self.initialized() {
             error!(self, "queue_set_position: not initialized");
             return;
@@ -76,7 +76,7 @@ impl Loop {
         loop_obj.set_length(length as u32);
     }
 
-    pub fn queue_set_position(mut self: Pin<&mut Loop>, position: i32) {
+    pub fn queue_set_position(mut self: Pin<&mut LoopGui>, position: i32) {
         if !self.initialized() {
             error!(self, "queue_set_position: not initialized");
             return;
@@ -88,7 +88,7 @@ impl Loop {
         loop_obj.set_position(position as u32);
     }
 
-    pub fn update_on_non_gui_thread(mut self: Pin<&mut Loop>) {
+    pub fn update_on_non_gui_thread(mut self: Pin<&mut LoopGui>) {
         if !self.initialized() {
             return;
         }
@@ -208,11 +208,11 @@ impl Loop {
         }
     }
 
-    pub fn update_on_gui_thread(self: Pin<&mut Loop>) {
+    pub fn update_on_gui_thread(self: Pin<&mut LoopGui>) {
         // Stub implementation
     }
 
-    pub fn maybe_initialize_backend(mut self: Pin<&mut Loop>) {
+    pub fn maybe_initialize_backend(mut self: Pin<&mut LoopGui>) {
         let initialize_condition : bool;
 
         unsafe {
@@ -263,7 +263,7 @@ impl Loop {
         }
     }
 
-    pub fn get_children_with_object_name(self: Pin<&mut Loop>, find_object_name: &str) -> QList<QVariant> {
+    pub fn get_children_with_object_name(self: Pin<&mut LoopGui>, find_object_name: &str) -> QList<QVariant> {
         let mut result = QList_QVariant::default();
         unsafe {
             let ref_self = self.as_ref();
@@ -282,21 +282,21 @@ impl Loop {
         result
     }
 
-    pub fn get_audio_channels(self: Pin<&mut Loop>) -> QList<QVariant> {
+    pub fn get_audio_channels(self: Pin<&mut LoopGui>) -> QList<QVariant> {
         self.get_children_with_object_name("LoopAudioChannel")
     }
 
-    pub fn get_midi_channels(self: Pin<&mut Loop>) -> QList<QVariant> {
+    pub fn get_midi_channels(self: Pin<&mut LoopGui>) -> QList<QVariant> {
         self.get_children_with_object_name("LoopMidiChannel")
     }
 
-    pub fn transition_multiple(self: Pin<&mut Loop>,
+    pub fn transition_multiple(self: Pin<&mut LoopGui>,
         loops: QList_QVariant,
         to_mode: i32,
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32)
     {
-        Loop::transition_multiple_impl(loops, to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
+        LoopGui::transition_multiple_impl(loops, to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
     }
 
     pub fn transition_multiple_impl(
@@ -321,7 +321,7 @@ impl Loop {
                     let loop_qobj : *mut QObject =
                         qvariant_to_qobject_ptr(loop_variant)
                         .ok_or(anyhow::anyhow!("Failed to convert QVariant to QObject pointer"))?;
-                    let loop_ptr : *mut Loop =
+                    let loop_ptr : *mut LoopGui =
                         qobject_to_loop_ptr(loop_qobj);
                     let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
                         loop_ptr.as_ref()
@@ -367,7 +367,7 @@ impl Loop {
         }
     }
 
-    pub fn transition(self: Pin<&mut Loop>,
+    pub fn transition(self: Pin<&mut LoopGui>,
         to_mode: i32,
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32)
@@ -395,7 +395,7 @@ impl Loop {
         }
     }
 
-    pub fn add_audio_channel(self: Pin<&mut Loop>, mode: i32) -> Result<AudioChannel, anyhow::Error> {
+    pub fn add_audio_channel(self: Pin<&mut LoopGui>, mode: i32) -> Result<AudioChannel, anyhow::Error> {
         let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
                 self.as_ref()
                     .backend_loop
@@ -408,7 +408,7 @@ impl Loop {
         Ok(channel)
     }
 
-    pub fn add_midi_channel(self: Pin<&mut Loop>, mode: i32) -> Result<MidiChannel, anyhow::Error> {
+    pub fn add_midi_channel(self: Pin<&mut LoopGui>, mode: i32) -> Result<MidiChannel, anyhow::Error> {
         let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
                 self.as_ref()
                     .backend_loop
@@ -421,7 +421,7 @@ impl Loop {
         Ok(channel)
     }
 
-    pub fn clear(mut self: Pin<&mut Loop>, length : i32) {
+    pub fn clear(mut self: Pin<&mut LoopGui>, length : i32) {
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
                 self.as_ref()
@@ -451,7 +451,7 @@ impl Loop {
         }
     }
 
-    pub fn adopt_ringbuffers(mut self: Pin<&mut Loop>,
+    pub fn adopt_ringbuffers(mut self: Pin<&mut LoopGui>,
         maybe_reverse_start_cycle : QVariant,
         maybe_cycles_length : QVariant,
         maybe_go_to_cycle : QVariant,
@@ -480,7 +480,7 @@ impl Loop {
         }
     }
 
-    pub fn update_backend_sync_source(self: Pin<&mut Loop>) {
+    pub fn update_backend_sync_source(self: Pin<&mut LoopGui>) {
         if !self.initialized() {
             debug!(self, "update_backend_sync_source: not initialized");
             return;
@@ -533,7 +533,7 @@ impl Loop {
         }
     }
 
-    pub unsafe fn set_sync_source(mut self: Pin<&mut Loop>, sync_source: *mut QObject) {
+    pub unsafe fn set_sync_source(mut self: Pin<&mut LoopGui>, sync_source: *mut QObject) {
         debug!(self, "sync source -> {:?}", sync_source);
 
         if !sync_source.is_null() {

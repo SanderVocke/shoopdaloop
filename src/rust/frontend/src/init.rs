@@ -12,7 +12,7 @@ fn register_qml_types_and_singletons() {
     qobj_dummy_process_helper::register_qml_type(&mdl, "ShoopDummyProcessHelper");
     qobj_render_audio_waveform::register_qml_type(&mdl, "ShoopRenderAudioWaveform");
     qobj_autoconnect::register_qml_type(&mdl, "ShoopAutoConnect");
-    qobj_loop::register_qml_type(&mdl, "ShoopLoop");
+    qobj_loop_gui::register_qml_type(&mdl, "ShoopLoop");
     qobj_backend_wrapper::register_qml_type(&mdl, "ShoopBackendWrapper");
 }
 
