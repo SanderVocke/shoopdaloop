@@ -14,6 +14,8 @@ pub mod qobj_file_io_bridge;
 pub mod qobj_file_io;
 pub mod qobj_find_parent_item_bridge;
 pub mod qobj_find_parent_item;
+pub mod qobj_loop_backend_bridge;
+pub mod qobj_loop_backend;
 pub mod qobj_loop_gui_bridge;
 pub mod qobj_loop_gui;
 pub mod qobj_os_utils_bridge;

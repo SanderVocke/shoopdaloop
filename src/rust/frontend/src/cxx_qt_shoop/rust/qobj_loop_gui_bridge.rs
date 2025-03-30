@@ -45,7 +45,7 @@ pub mod ffi {
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
         include!("cxx-qt-lib-shoop/metatype.h");
-        #[rust_name = "loop_metatype_name"]
+        #[rust_name = "loop_gui_metatype_name"]
         unsafe fn meta_type_name(obj: &LoopGui) -> Result<&str>;
     }
 
@@ -54,18 +54,18 @@ pub mod ffi {
         #[qml_element]
         #[base = QQuickItem]
         #[qproperty(*mut QObject, backend)]
-        #[qproperty(bool, initialized)]
-        #[qproperty(i32, mode)]
-        #[qproperty(i32, length)]
-        #[qproperty(i32, position)]
-        #[qproperty(i32, next_mode)]
-        #[qproperty(i32, next_transition_delay)]
+        #[qproperty(bool, initialized, READ, NOTIFY)]
+        #[qproperty(i32, mode, READ, NOTIFY)]
+        #[qproperty(i32, length, READ, NOTIFY)]
+        #[qproperty(i32, position, READ, NOTIFY)]
+        #[qproperty(i32, next_mode, READ, NOTIFY)]
+        #[qproperty(i32, next_transition_delay, READ, NOTIFY)]
         #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY)]
-        #[qproperty(QList_f32, display_peaks)]
-        #[qproperty(i32, display_midi_notes_active)]
-        #[qproperty(i32, display_midi_events_triggered)]
+        #[qproperty(QList_f32, display_peaks, READ, NOTIFY)]
+        #[qproperty(i32, display_midi_notes_active, READ, NOTIFY)]
+        #[qproperty(i32, display_midi_events_triggered, READ, NOTIFY)]
         #[qproperty(QString, instance_identifier)]
-        #[qproperty(i32, cycle_nr)]
+        #[qproperty(i32, cycle_nr, READ, NOTIFY)]
         type LoopGui = super::LoopGuiRust;
 
         pub fn initialize_impl(self: Pin<&mut LoopGui>);
