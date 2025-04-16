@@ -37,7 +37,7 @@ runs:
     if: always() && inputs.variant == 'windows'
     with:
       cache: true
-      version: 6.8.1
+      version: 6.8.3
       arch: win64_msvc2022_64
       setup-python: false
   - name: Install Qt
@@ -45,7 +45,7 @@ runs:
     if: always() && inputs.variant != 'windows'
     with:
       cache: true
-      version: 6.8.1
+      version: 6.8.3
       install-deps: false
       setup-python: false
   - name: Env for Qt
