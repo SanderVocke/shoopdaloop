@@ -106,7 +106,7 @@ runs:
 
   - name: Run sccache-cache only on non-release runs
     if: always() && github.event_name != 'release' && github.event_name != 'workflow_dispatch'
-    uses: mozilla-actions/sccache-action@v0.0.5
+    uses: mozilla-actions/sccache-action@v0.0.8
   - name: Set Rust caching env vars only on non-release runs
     shell: wrap-shell {0}
     if: always() && github.event_name != 'release' && github.event_name != 'workflow_dispatch'
