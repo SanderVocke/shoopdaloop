@@ -13,7 +13,7 @@
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 
-using namespace std::chrono_literals;
+using namespace std::chrono;
 using namespace logging;
 
 template <typename SampleT>
