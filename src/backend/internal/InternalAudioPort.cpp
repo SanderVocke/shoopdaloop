@@ -6,6 +6,11 @@
 #include <iostream>
 #include "types.h"
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 template <typename SampleT>
 InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
                                               uint32_t n_frames,

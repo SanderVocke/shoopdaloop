@@ -1,7 +1,4 @@
-use std::env;
-use std::path::{Path, PathBuf};
 use anyhow;
-use std::fs;
 use backend;
 
 // For now, Rust "back-end" is just a set of C bindings to the

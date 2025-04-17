@@ -7,7 +7,7 @@ import time
 from typing import *
 import sys
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
 from .AudioPort import AudioPort
@@ -24,13 +24,23 @@ class LoopAudioChannel(LoopChannel):
         self._gain = self._new_gain = 1.0
         self._initial_gain_pushed = False
         self.logger = Logger("Frontend.AudioChannel")
+        
+    def connect_backend_updates(self):
+        QObject.connect(self._backend, SIGNAL("updated_on_gui_thread()"), self, SLOT("updateOnGuiThread()"), Qt.DirectConnection)
+        QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
 
     def maybe_initialize(self):
-        if self._loop and self._loop.initialized and not self._backend_obj:
-            self._backend_obj = self._loop.add_audio_channel(self.mode)
+        if self._backend and self._backend.property('ready') and self._loop and self._loop.property("initialized") and not self._backend_obj:
+            from shoop_rust import shoop_rust_add_loop_audio_channel
+            from shiboken6 import getCppPointer
+            self._backend_obj = shoop_rust_add_loop_audio_channel(
+                getCppPointer(self._loop)[0],
+                int(self.mode)
+            )
             self.logger.debug(lambda: "Initialized back-end channel")
             self.initializedChanged.emit(True)
             self.set_gain(self._gain)
+            self.connect_backend_updates()
 
     ######################
     # PROPERTIES
@@ -38,7 +48,7 @@ class LoopAudioChannel(LoopChannel):
 
     # output peak
     outputPeakChanged = ShoopSignal(float)
-    @ShoopProperty(float, notify=outputPeakChanged)
+    @ShoopProperty(float, notify=outputPeakChanged, thread_protection=ThreadProtectionType.AnyThread)
     def output_peak(self):
         return self._output_peak
 
@@ -98,6 +108,7 @@ class LoopAudioChannel(LoopChannel):
             self.outputPeakChanged.emit(self._output_peak)
         else:
             if self._gain != self._new_gain:
+                self.logger.debug(lambda: f"gain -> {self._new_gain}")
                 self._gain = self._new_gain
                 self.gainChanged.emit(self._gain)
 

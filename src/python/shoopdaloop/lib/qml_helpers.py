@@ -40,7 +40,6 @@ from .q_objects.SettingsIO import SettingsIO
 from .q_objects.TestScreenGrabber import TestScreenGrabber
 from .q_objects.RenderMidiSequence import RenderMidiSequence
 from .q_objects.TestCase import TestCase
-from .q_objects.DummyProcessHelper import DummyProcessHelper
 from .q_objects.CompositeLoop import CompositeLoop
 
 from .logging import Logger as BareLogger
@@ -109,7 +108,6 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(TestScreenGrabber, 'TestScreenGrabber')
     register_qml_class(RenderMidiSequence, 'RenderMidiSequence')
     register_qml_class(TestCase, 'TestCase')
-    register_qml_class(DummyProcessHelper, 'DummyProcessHelper')
     register_qml_class(CompositeLoop, 'CompositeLoop')
 
     qmlRegisterSingletonType("ShoopConstants", 1, 0, "ShoopConstants", create_constants_instance)

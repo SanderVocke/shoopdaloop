@@ -3,6 +3,11 @@
 #include "types.h"
 #include <iostream>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 template<typename SampleT>
 BufferQueue<SampleT>::BufferQueue(shoop_shared_ptr<BufferPool> pool, uint32_t max_buffers) : pool(pool)
 {

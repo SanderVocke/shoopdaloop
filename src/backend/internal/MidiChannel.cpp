@@ -14,6 +14,11 @@
 #include <thread>
 #include <fmt/format.h>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 using namespace std::chrono_literals;
 using namespace logging;
 

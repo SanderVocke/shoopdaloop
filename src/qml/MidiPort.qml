@@ -8,6 +8,8 @@ PythonMidiPort {
     property var descriptor : null
     property bool loaded : initialized
 
+    RequireBackend {}
+
     function parse_connectability(conn) {
         var rval = 0
         if (conn.includes('internal')) {

@@ -11,6 +11,11 @@
 #include <vector>
 #include <fmt/format.h>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 using namespace logging;
 
 uint32_t MidiStateTracker::cc_index(uint8_t channel, uint8_t cc) {

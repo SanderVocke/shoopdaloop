@@ -429,11 +429,13 @@ Rectangle {
         driver_setting_overrides: ({})
 
         SessionControlInterface {
+            backend: session_backend
             id: control_interface
             session: root
         }
 
         MidiControlPort {
+            backend: session_backend
             id: midi_control_port
             name_hint: "control"
             direction: ShoopConstants.PortDirection.Input
@@ -509,6 +511,8 @@ Rectangle {
 
         TracksWidget {
             id: tracks_widget
+
+            backend : session_backend
 
             anchors {
                 top: app_controls.bottom
@@ -674,6 +678,8 @@ Rectangle {
 
                     TrackWidget {
                         id: sync_loop_widget
+
+                        backend : session_backend
 
                         anchors {
                             left: parent.left
