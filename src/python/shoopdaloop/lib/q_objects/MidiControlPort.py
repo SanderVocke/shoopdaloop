@@ -258,7 +258,7 @@ class MidiControlPort(ShoopQQuickItem):
         def send(msg):
             self.logger.debug(lambda: "Sending: {}".format(msg))
             if self._direction == int(shoop_py_backend.PortDirection.Output) and self._backend_obj:
-                self._backend_obj.send_midi(msg)
+                self._backend_obj.send_midi(bytes(msg))
 
         if self._send_rate_limit_hz == 0:
             while len(self._send_queue) > 0:

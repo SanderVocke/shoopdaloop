@@ -18,7 +18,7 @@
 #undef max
 #endif
 
-using namespace std::chrono_literals;
+using namespace std::chrono;
 using namespace logging;
 
 template <typename SampleT>

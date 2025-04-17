@@ -211,7 +211,7 @@ jobs:
            name: catch2-v3.8.0-release-${{ matrix.name-suffix }}
            repo: https://github.com/catchorg/Catch2.git
            git_rev: v3.8.0
-           configure_options: -DCMAKE_BUILD_TYPE=Release
+           configure_options: -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON
            build_options: --config Release
 
       - name: Build zita-resampler
