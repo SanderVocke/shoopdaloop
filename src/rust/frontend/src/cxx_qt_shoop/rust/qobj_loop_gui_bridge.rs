@@ -66,15 +66,10 @@ pub mod ffi {
         #[qproperty(i32, display_midi_events_triggered, READ, NOTIFY)]
         #[qproperty(QString, instance_identifier)]
         #[qproperty(i32, cycle_nr, READ, NOTIFY)]
+        #[qproperty(*mut QObject, backend_loop_wrapper, READ, NOTIFY)]
         type LoopGui = super::LoopGuiRust;
 
         pub fn initialize_impl(self: Pin<&mut LoopGui>);
-
-        #[qinvokable]
-        pub fn update_on_non_gui_thread(self: Pin<&mut LoopGui>);
-
-        #[qinvokable]
-        pub fn update_on_gui_thread(self: Pin<&mut LoopGui>);
 
         #[qinvokable]
         pub fn queue_set_length(self: Pin<&mut LoopGui>, length: i32);
@@ -114,44 +109,8 @@ pub mod ffi {
                                  maybe_go_to_cycle : QVariant,
                                  go_to_mode : i32);
 
-        #[qinvokable]
-        pub fn update_backend_sync_source(self: Pin<&mut LoopGui>);
-
-        #[qsignal]
-        fn cycle_nr_changed_queued(self: Pin<&mut LoopGui>);
-
         #[qsignal]
         fn cycled(self: Pin<&mut LoopGui>, cycle_nr: i32);
-
-        #[qsignal]
-        fn cycled_queued(self: Pin<&mut LoopGui>, cycle_nr: i32);
-
-        #[qsignal]
-        fn starting_update_on_non_gui_thread(self: Pin<&mut LoopGui>);
-
-        #[qsignal]
-        fn mode_changed_queued(self: Pin<&mut LoopGui>);
-
-        #[qsignal]
-        fn next_mode_changed_queued(self: Pin<&mut LoopGui>);
-
-        #[qsignal]
-        fn length_changed_queued(self: Pin<&mut LoopGui>);
-
-        #[qsignal]
-        fn position_changed_queued(self: Pin<&mut LoopGui>);
-
-        #[qsignal]
-        fn next_transition_delay_changed_queued(self: Pin<&mut LoopGui>);
-
-        #[qsignal]
-        fn display_peaks_changed_queued(self: Pin<&mut LoopGui>);
-
-        #[qsignal]
-        fn display_midi_notes_active_changed_queued(self: Pin<&mut LoopGui>);
-
-        #[qsignal]
-        fn display_midi_events_triggered_changed_queued(self: Pin<&mut LoopGui>);
 
         // Custom getter/setting for sync source property
         pub unsafe fn set_sync_source(self: Pin<&mut LoopGui>, sync_source: *mut QObject);
@@ -171,7 +130,7 @@ pub mod ffi {
         fn make_unique() -> UniquePtr<LoopGui>;
 
         include!("cxx-qt-shoop/make_raw.h");
-        #[rust_name = "make_raw_loop"]
+        #[rust_name = "make_raw_loop_gui"]
         fn make_raw() -> *mut LoopGui;
 
         include!("cxx-qt-shoop/cast_ptr.h");
@@ -203,6 +162,8 @@ use cxx::UniquePtr;
 use crate::cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
 use std::sync::{Arc, Mutex};
 
+use super::qobj_loop_backend_bridge::LoopBackend;
+
 pub struct LoopGuiRust {
     // Properties
     pub backend: *mut QObject,
@@ -218,9 +179,7 @@ pub struct LoopGuiRust {
     pub display_midi_events_triggered: i32,
     pub instance_identifier: QString,
     pub cycle_nr : i32,
-
-    // Rust members
-    pub backend_loop : Option<Arc<Mutex<BackendLoop>>>,
+    pub backend_loop_wrapper : *mut LoopBackend,
 }
 
 impl Default for LoopGuiRust {
@@ -239,7 +198,7 @@ impl Default for LoopGuiRust {
             display_midi_events_triggered: 0,
             instance_identifier: QString::from("unknown"),
             cycle_nr : 0,
-            backend_loop: None,
+            backend_loop_wrapper : std::ptr::null_mut(),
         }
     }
 }

@@ -2,17 +2,23 @@ use backend_bindings::AudioChannel;
 use backend_bindings::MidiChannel;
 use common::logging::macros::{shoop_log_unit, debug as raw_debug, trace as raw_trace, error as raw_error};
 use cxx_qt::ConnectionType;
+use cxx_qt::Constructor;
 use cxx_qt::CxxQtType;
 use crate::cxx_qt_lib_shoop;
 use crate::cxx_qt_lib_shoop::connect;
 use crate::cxx_qt_lib_shoop::connect::connect;
+use crate::cxx_qt_lib_shoop::connect::QObjectOrConvertible;
 use crate::cxx_qt_lib_shoop::connection_types;
+use crate::cxx_qt_lib_shoop::connection_types::QUEUED_CONNECTION;
 use crate::cxx_qt_lib_shoop::invokable::invoke;
 use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
 use crate::cxx_qt_lib_shoop::qobject::{qobject_property_bool, qobject_property_float, qobject_property_int};
 use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
+use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::loop_backend_qobject_from_ptr;
+use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::make_raw_loop_backend;
+use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;                                   
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::*;  
 use crate::loop_mode_helpers::*;   
@@ -45,17 +51,6 @@ impl LoopGui {
         debug!(self, "Initializing");
 
         {
-            self.as_mut().connect_mode_changed(|o| { o.mode_changed_queued(); }, ConnectionType::QueuedConnection).release();
-            self.as_mut().connect_next_mode_changed(|o| { o.next_mode_changed_queued(); }, ConnectionType::QueuedConnection).release();
-            self.as_mut().connect_length_changed(|o| { o.length_changed_queued(); }, ConnectionType::QueuedConnection).release();
-            self.as_mut().connect_position_changed(|o| { o.position_changed_queued(); }, ConnectionType::QueuedConnection).release();
-            self.as_mut().connect_next_transition_delay_changed(|o| { o.next_transition_delay_changed_queued(); }, ConnectionType::QueuedConnection).release();
-            self.as_mut().connect_display_peaks_changed(|o| { o.display_peaks_changed_queued(); }, ConnectionType::QueuedConnection).release();
-            self.as_mut().connect_display_midi_notes_active_changed(|o| { o.display_midi_notes_active_changed_queued(); }, ConnectionType::QueuedConnection).release();
-            self.as_mut().connect_display_midi_events_triggered_changed(|o| { o.display_midi_events_triggered_changed_queued(); }, ConnectionType::QueuedConnection).release();
-            self.as_mut().connect_cycle_nr_changed(|o| { o.cycle_nr_changed_queued(); }, ConnectionType::QueuedConnection).release();
-            self.as_mut().connect_cycled(|o, cycle_nr| { o.cycled_queued(cycle_nr); }, ConnectionType::QueuedConnection).release();
-
             // FIXME: Now this will only initialize the loop
             // if the backend was already initialized. Check the "ready"
             // property and if not ready, connect a one-time signal to initialize
@@ -65,148 +60,152 @@ impl LoopGui {
     }
 
     pub fn queue_set_length(mut self: Pin<&mut LoopGui>, length: i32) {
-        if !self.initialized() {
+        if !self.initialized() || self.backend_loop_wrapper().is_null() {
             error!(self, "queue_set_position: not initialized");
             return;
         }
         debug!(self, "queue set length -> {}", length);
-        let mut rust = self.as_mut().rust_mut();
-        let loop_arc = rust.backend_loop.as_mut().unwrap().clone();
-        let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
-        loop_obj.set_length(length as u32);
+        unsafe {
+            invoke(self.backend_loop_wrapper().as_mut().unwrap().qobject_mut().as_mut().unwrap(),
+                "set_length(::std::int32_t)".to_string(),
+                QUEUED_CONNECTION,
+                &length).unwrap();
+        }
     }
 
     pub fn queue_set_position(mut self: Pin<&mut LoopGui>, position: i32) {
-        if !self.initialized() {
+        if !self.initialized() || self.backend_loop_wrapper().is_null(){
             error!(self, "queue_set_position: not initialized");
             return;
         }
         debug!(self, "queue set position -> {}", position);
-        let mut rust = self.as_mut().rust_mut();
-        let loop_arc = rust.backend_loop.as_mut().unwrap().clone();
-        let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
-        loop_obj.set_position(position as u32);
+        unsafe {
+            invoke(self.backend_loop_wrapper().as_mut().unwrap().qobject_mut().as_mut().unwrap(),
+                "set_position(::std::int32_t)".to_string(),
+                QUEUED_CONNECTION,
+                &position).unwrap();
+        }
     }
 
-    pub fn update_on_non_gui_thread(mut self: Pin<&mut LoopGui>) {
-        if !self.initialized() {
-            return;
-        }
+    // pub fn update_on_non_gui_thread(mut self: Pin<&mut LoopGui>) {
+    //     if !self.initialized() {
+    //         return;
+    //     }
 
-        self.as_mut().starting_update_on_non_gui_thread();
+    //     self.as_mut().starting_update_on_non_gui_thread();
 
-        let loop_arc = self.as_mut().backend_loop.as_ref().expect("Backend loop not set").clone();
-        let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
-        let state = loop_obj.get_state().unwrap();
+    //     let loop_arc = self.as_mut().backend_loop.as_ref().expect("Backend loop not set").clone();
+    //     let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
+    //     let state = loop_obj.get_state().unwrap();
 
-        let audio_chans : Vec<*mut QObject> = self.as_mut().get_audio_channels()
-                                       .iter()
-                                       .map(|v| qvariant_to_qobject_ptr(v).unwrap())
-                                       .collect();
-        let midi_chans : Vec<*mut QObject> = self.as_mut().get_midi_channels()
-                                      .iter()
-                                      .map(|v| qvariant_to_qobject_ptr(v).unwrap())
-                                      .collect();
+    //     let audio_chans : Vec<*mut QObject> = self.as_mut().get_audio_channels()
+    //                                    .iter()
+    //                                    .map(|v| qvariant_to_qobject_ptr(v).unwrap())
+    //                                    .collect();
+    //     let midi_chans : Vec<*mut QObject> = self.as_mut().get_midi_channels()
+    //                                   .iter()
+    //                                   .map(|v| qvariant_to_qobject_ptr(v).unwrap())
+    //                                   .collect();
 
-        let mut rust = self.as_mut().rust_mut();
+    //     let mut rust = self.as_mut().rust_mut();
         
-        let prev_position = rust.position;
-        let prev_mode = rust.mode;
-        let prev_length = rust.length;
-        let prev_next_mode = rust.next_mode;
-        let prev_next_delay = rust.next_transition_delay;
-        let prev_display_peaks : Vec<f32> = rust.display_peaks.iter().map(|f| f.clone()).collect();
-        let prev_display_midi_notes_active = rust.display_midi_notes_active.clone();
-        let prev_display_midi_events_triggered = rust.display_midi_events_triggered.clone();
-        let prev_cycle_nr : i32 = rust.cycle_nr;
+    //     let prev_position = rust.position;
+    //     let prev_mode = rust.mode;
+    //     let prev_length = rust.length;
+    //     let prev_next_mode = rust.next_mode;
+    //     let prev_next_delay = rust.next_transition_delay;
+    //     let prev_display_peaks : Vec<f32> = rust.display_peaks.iter().map(|f| f.clone()).collect();
+    //     let prev_display_midi_notes_active = rust.display_midi_notes_active.clone();
+    //     let prev_display_midi_events_triggered = rust.display_midi_events_triggered.clone();
+    //     let prev_cycle_nr : i32 = rust.cycle_nr;
 
-        let new_mode = state.mode as i32;
-        let new_next_mode = state.maybe_next_mode.unwrap_or(state.mode) as i32;
-        let new_length = state.length as i32;
-        let new_position = state.position as i32;
-        let new_next_transition_delay = state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32;
-        let new_display_peaks : Vec<f32> =
-           audio_chans.iter()
-           .filter(|qobj| {
-                unsafe {
-                    let mode = qobject_property_int(qobj.as_ref().unwrap(), "mode".to_string()).unwrap();
-                    mode == backend_bindings::ChannelMode::Direct as i32 ||
-                       mode == backend_bindings::ChannelMode::Wet as i32
-                }
-             })
-              .map(|qobj| {
-                 unsafe {
-                      let peak = qobject_property_float(qobj.as_ref().unwrap(), "output_peak".to_string()).unwrap();
-                      peak as f32
-                 }
-                }).collect();
-        let display_peaks_changed = prev_display_peaks != new_display_peaks;
-        let new_display_midi_notes_active : i32 = midi_chans.iter().map(|qobj| -> i32 {
-            unsafe {
-                let n_notes_active = qobject_property_int(qobj.as_ref().unwrap(), "n_notes_active".to_string()).unwrap();
-                n_notes_active
-            }
-        }).sum();
-        let new_display_midi_events_triggered : i32 = midi_chans.iter().map(|qobj| -> i32 {
-            unsafe {
-                let n_events_triggered = qobject_property_int(qobj.as_ref().unwrap(), "n_events_triggered".to_string()).unwrap();
-                n_events_triggered
-            }
-        }).sum();
-        let new_cycle_nr : i32 = 
-            if (new_position < prev_position &&
-                is_playing_mode(prev_mode.try_into().unwrap()) &&
-                is_playing_mode(new_mode.try_into().unwrap())) 
-            { prev_cycle_nr + 1 } else { prev_cycle_nr };
+    //     let new_mode = state.mode as i32;
+    //     let new_next_mode = state.maybe_next_mode.unwrap_or(state.mode) as i32;
+    //     let new_length = state.length as i32;
+    //     let new_position = state.position as i32;
+    //     let new_next_transition_delay = state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32;
+    //     let new_display_peaks : Vec<f32> =
+    //        audio_chans.iter()
+    //        .filter(|qobj| {
+    //             unsafe {
+    //                 let mode = qobject_property_int(qobj.as_ref().unwrap(), "mode".to_string()).unwrap();
+    //                 mode == backend_bindings::ChannelMode::Direct as i32 ||
+    //                    mode == backend_bindings::ChannelMode::Wet as i32
+    //             }
+    //          })
+    //           .map(|qobj| {
+    //              unsafe {
+    //                   let peak = qobject_property_float(qobj.as_ref().unwrap(), "output_peak".to_string()).unwrap();
+    //                   peak as f32
+    //              }
+    //             }).collect();
+    //     let display_peaks_changed = prev_display_peaks != new_display_peaks;
+    //     let new_display_midi_notes_active : i32 = midi_chans.iter().map(|qobj| -> i32 {
+    //         unsafe {
+    //             let n_notes_active = qobject_property_int(qobj.as_ref().unwrap(), "n_notes_active".to_string()).unwrap();
+    //             n_notes_active
+    //         }
+    //     }).sum();
+    //     let new_display_midi_events_triggered : i32 = midi_chans.iter().map(|qobj| -> i32 {
+    //         unsafe {
+    //             let n_events_triggered = qobject_property_int(qobj.as_ref().unwrap(), "n_events_triggered".to_string()).unwrap();
+    //             n_events_triggered
+    //         }
+    //     }).sum();
+    //     let new_cycle_nr : i32 = 
+    //         if (new_position < prev_position &&
+    //             is_playing_mode(prev_mode.try_into().unwrap()) &&
+    //             is_playing_mode(new_mode.try_into().unwrap())) 
+    //         { prev_cycle_nr + 1 } else { prev_cycle_nr };
 
-        rust.mode = new_mode;
-        rust.length = new_length;
-        rust.position = new_position;
-        rust.next_mode = new_next_mode;
-        rust.next_transition_delay = new_next_transition_delay;
-        rust.display_peaks = QList::from(new_display_peaks);
-        rust.display_midi_notes_active = new_display_midi_notes_active;
-        rust.display_midi_events_triggered = new_display_midi_events_triggered;
-        rust.cycle_nr = new_cycle_nr;
+    //     rust.mode = new_mode;
+    //     rust.length = new_length;
+    //     rust.position = new_position;
+    //     rust.next_mode = new_next_mode;
+    //     rust.next_transition_delay = new_next_transition_delay;
+    //     rust.display_peaks = QList::from(new_display_peaks);
+    //     rust.display_midi_notes_active = new_display_midi_notes_active;
+    //     rust.display_midi_events_triggered = new_display_midi_events_triggered;
+    //     rust.cycle_nr = new_cycle_nr;
 
-        if prev_mode != new_mode {
-            debug!(self, "mode: {} -> {}", prev_mode, new_mode);
-            self.as_mut().mode_changed();
-        }
-        if prev_length != new_length {
-            debug!(self, "length: {} -> {}", prev_length, new_length);
-            self.as_mut().length_changed();
-        }
-        if prev_position != new_position {
-            debug!(self, "position: {} -> {}", prev_position, new_position);
-            self.as_mut().position_changed();
-        }
-        if prev_next_mode != new_next_mode {
-            debug!(self, "next mode: {} -> {}", prev_next_mode, new_next_mode);
-            self.as_mut().next_mode_changed();
-        }
-        if prev_next_delay != new_next_transition_delay {
-            debug!(self, "next delay: {} -> {}", prev_next_delay, new_next_transition_delay);
-            self.as_mut().next_transition_delay_changed();
-        }
-        if display_peaks_changed {
-            trace!(self, "display peaks changed");
-            self.as_mut().display_peaks_changed();
-        }
-        if prev_display_midi_notes_active != new_display_midi_notes_active {
-            trace!(self, "midi notes active: {} -> {}", prev_display_midi_notes_active, new_display_midi_notes_active);
-            self.as_mut().display_midi_notes_active_changed();
-        }
-        if prev_display_midi_events_triggered != new_display_midi_events_triggered {
-            trace!(self, "midi events triggered: {} -> {}", prev_display_midi_events_triggered, new_display_midi_events_triggered);
-            self.as_mut().display_midi_events_triggered_changed();
-        }
-        if prev_cycle_nr != new_cycle_nr {
-            debug!(self, "cycle nr: {} -> {}", prev_cycle_nr, new_cycle_nr);
-            self.as_mut().cycle_nr_changed();
-            self.as_mut().cycled(new_cycle_nr);
-        }
-    }
+    //     if prev_mode != new_mode {
+    //         debug!(self, "mode: {} -> {}", prev_mode, new_mode);
+    //         self.as_mut().mode_changed();
+    //     }
+    //     if prev_length != new_length {
+    //         debug!(self, "length: {} -> {}", prev_length, new_length);
+    //         self.as_mut().length_changed();
+    //     }
+    //     if prev_position != new_position {
+    //         debug!(self, "position: {} -> {}", prev_position, new_position);
+    //         self.as_mut().position_changed();
+    //     }
+    //     if prev_next_mode != new_next_mode {
+    //         debug!(self, "next mode: {} -> {}", prev_next_mode, new_next_mode);
+    //         self.as_mut().next_mode_changed();
+    //     }
+    //     if prev_next_delay != new_next_transition_delay {
+    //         debug!(self, "next delay: {} -> {}", prev_next_delay, new_next_transition_delay);
+    //         self.as_mut().next_transition_delay_changed();
+    //     }
+    //     if display_peaks_changed {
+    //         trace!(self, "display peaks changed");
+    //         self.as_mut().display_peaks_changed();
+    //     }
+    //     if prev_display_midi_notes_active != new_display_midi_notes_active {
+    //         trace!(self, "midi notes active: {} -> {}", prev_display_midi_notes_active, new_display_midi_notes_active);
+    //         self.as_mut().display_midi_notes_active_changed();
+    //     }
+    //     if prev_display_midi_events_triggered != new_display_midi_events_triggered {
+    //         trace!(self, "midi events triggered: {} -> {}", prev_display_midi_events_triggered, new_display_midi_events_triggered);
+    //         self.as_mut().display_midi_events_triggered_changed();
+    //     }
+    //     if prev_cycle_nr != new_cycle_nr {
+    //         debug!(self, "cycle nr: {} -> {}", prev_cycle_nr, new_cycle_nr);
+    //         self.as_mut().cycle_nr_changed();
+    //         self.as_mut().cycled(new_cycle_nr);
+    //     }
+    // }
 
     pub fn update_on_gui_thread(self: Pin<&mut LoopGui>) {
         // Stub implementation
@@ -220,42 +219,34 @@ impl LoopGui {
                !self.initialized() &&
                 self.backend != std::ptr::null_mut() &&
                 qobject_property_bool(self.backend.as_ref().unwrap(), "ready".to_string()).unwrap_or(false) &&
-                self.backend_loop.is_none();
+                self.backend_loop_wrapper().is_null();
         }
 
         if initialize_condition {
             debug!(self, "Found backend, initializing");
-            let backend_qobj = self.backend();
+            let mut rust_mut = self.as_mut().rust_mut();
+            let backend_qobj = rust_mut.backend;
             unsafe {
-                let backend_ptr = qobject_ptr_to_backend_ptr(*backend_qobj);
-                if backend_ptr.is_null() {
-                    error!(self, "Failed to convert backend QObject to backend pointer");
+                if backend_qobj.is_null() {
+                    raw_error!(self, "Failed to convert backend QObject to backend pointer");
                 } else {
-                    // FIXME: unwraps
-                    let backend_session = backend_ptr.as_mut()
-                                                  .unwrap()
-                                                  .session
-                                                  .as_ref()
-                                                  .unwrap();
-                    let backend_loop = backend_session.create_loop().unwrap();
-                    let mut rust_mut = self.as_mut().rust_mut();
-                    rust_mut.backend_loop = Some(Arc::new(Mutex::new(backend_loop)));
+                    rust_mut.backend_loop_wrapper = loop_backend_qobject_from_ptr(make_raw_loop_backend(backend_qobj));
 
                     // Connect signals
-                    cxx_qt_lib_shoop::connect::connect
-                       (backend_ptr.as_mut().unwrap(),
-                        "updated_on_backend_thread()".to_string(),
-                        self.as_mut().get_unchecked_mut(),
-                        "update_on_non_gui_thread()".to_string(),
-                        cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
-                    cxx_qt_lib_shoop::connect::connect
-                        (backend_ptr.as_mut().unwrap(),
-                         "updated_on_gui_thread()".to_string(),
-                         self.as_mut().get_unchecked_mut(),
-                         "update_on_gui_thread()".to_string(),
-                         cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
+                    // cxx_qt_lib_shoop::connect::connect
+                    //    (backend_ptr.as_mut().unwrap(),
+                    //     "updated_on_backend_thread()".to_string(),
+                    //     self.as_mut().get_unchecked_mut(),
+                    //     "update_on_non_gui_thread()".to_string(),
+                    //     cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
+                    // cxx_qt_lib_shoop::connect::connect
+                    //     (backend_ptr.as_mut().unwrap(),
+                    //      "updated_on_gui_thread()".to_string(),
+                    //      self.as_mut().get_unchecked_mut(),
+                    //      "update_on_gui_thread()".to_string(),
+                    //      cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
 
-                    self.set_initialized(true);
+                    rust_mut.initialized = true;
                 }
             }
         } else {
@@ -305,59 +296,61 @@ impl LoopGui {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32)
     {
-        raw_debug!("Transitioning {} loops to {} with delay {}, sync at cycle {}",
-           loops.len(), to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
+        error!(self, "transition_multiple_impl: unimplemented");
+        // raw_debug!("Transitioning {} loops to {} with delay {}, sync at cycle {}",
+        //    loops.len(), to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            let mut backend_loop_arcs : Vec<Arc<Mutex<backend_bindings::Loop>>> = Vec::new();
-            let mut backend_loop_guards : Vec<MutexGuard<backend_bindings::Loop>> = Vec::new();
-            let mut backend_loop_refs : Vec<&backend_bindings::Loop> = Vec::new();
-            backend_loop_arcs.reserve(loops.len() as usize);
-            backend_loop_guards.reserve(loops.len() as usize);
-            backend_loop_refs.reserve(loops.len() as usize);
+        //     let mut backend_loop_arcs : Vec<Arc<Mutex<backend_bindings::Loop>>> = Vec::new();
+        //     let mut backend_loop_guards : Vec<MutexGuard<backend_bindings::Loop>> = Vec::new();
+        //     let mut backend_loop_refs : Vec<&backend_bindings::Loop> = Vec::new();
+        //     backend_loop_arcs.reserve(loops.len() as usize);
+        //     backend_loop_guards.reserve(loops.len() as usize);
+        //     backend_loop_refs.reserve(loops.len() as usize);
 
-            // Increment the reference count for all loops involved
-            loops.iter().map(|loop_variant| -> Result<(), anyhow::Error> {
-                unsafe {
-                    let loop_qobj : *mut QObject =
-                        qvariant_to_qobject_ptr(loop_variant)
-                        .ok_or(anyhow::anyhow!("Failed to convert QVariant to QObject pointer"))?;
-                    let loop_ptr : *mut LoopGui =
-                        qobject_to_loop_ptr(loop_qobj);
-                    let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-                        loop_ptr.as_ref()
-                                .unwrap()
-                                .backend_loop
-                                .as_ref()
-                                .ok_or(anyhow::anyhow!("Backend loop not set"))?
-                                .clone();
-                    backend_loop_arcs.push(backend_loop_arc);
-                    Ok(())
-                }
-            }).for_each(|result| {
-                match result {
-                    Ok(_) => (),
-                    Err(err) => {
-                        raw_error!("Failed to increment reference count for loop: {:?}", err);
-                    }
-                }
-            });
+        //     // Increment the reference count for all loops involved
+        //     loops.iter().map(|loop_variant| -> Result<(), anyhow::Error> {
+        //         unsafe {
+        //             let loop_qobj : *mut QObject =
+        //                 qvariant_to_qobject_ptr(loop_variant)
+        //                 .ok_or(anyhow::anyhow!("Failed to convert QVariant to QObject pointer"))?;
+        //             let loop_ptr : *mut LoopGui =
+        //                 qobject_to_loop_ptr(loop_qobj);
+        //             let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
+        //                 loop_ptr.as_ref()
+        //                         .unwrap()
+        //                         .backend_loop
+        //                         .as_ref()
+        //                         .ok_or(anyhow::anyhow!("Backend loop not set"))?
+        //                         .clone();
+        //             backend_loop_arcs.push(backend_loop_arc);
+        //             Ok(())
+        //         }
+        //     }).for_each(|result| {
+        //         match result {
+        //             Ok(_) => (),
+        //             Err(err) => {
+        //                 raw_error!("Failed to increment reference count for loop: {:?}", err);
+        //             }
+        //         }
+        //     });
 
-            // Lock all backend loops
-            backend_loop_arcs.iter().for_each(|backend_loop_arc| {
-                let backend_loop_guard = backend_loop_arc.lock().unwrap();
-                backend_loop_guards.push(backend_loop_guard);
-            });
+        //     // Lock all backend loops
+        //     backend_loop_arcs.iter().for_each(|backend_loop_arc| {
+        //         let backend_loop_guard = backend_loop_arc.lock().unwrap();
+        //         backend_loop_guards.push(backend_loop_guard);
+        //     });
 
-            // Get references to all backend loops
-            backend_loop_guards.iter().for_each(|backend_loop_guard| {
-                backend_loop_refs.push(backend_loop_guard.deref());
-            });
+        //     // Get references to all backend loops
+        //     backend_loop_guards.iter().for_each(|backend_loop_guard| {
+        //         backend_loop_refs.push(backend_loop_guard.deref());
+        //     });
 
-            backend_bindings::transition_multiple_loops(
-                &backend_loop_refs,
-                to_mode.try_into()?,
-                maybe_cycles_delay,
-                maybe_to_sync_at_cycle)
+        //     backend_bindings::transition_multiple_loops(
+        //         &backend_loop_refs,
+        //         to_mode.try_into()?,
+        //         maybe_cycles_delay,
+        //         maybe_to_sync_at_cycle)
+            Ok(())
         })();
         match result {
             Ok(_) => (),

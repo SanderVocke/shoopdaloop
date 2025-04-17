@@ -147,6 +147,10 @@ pub mod ffi {
 
         #[rust_name = "loop_backend_qobject_from_ref"]
         fn qobjectFromRef(obj : &LoopBackend) -> &QObject;
+
+        include!("cxx-qt-shoop/make_raw.h");
+        #[rust_name = "make_raw_loop_backend"]
+        unsafe fn make_raw_with_one_arg(backend_qobject : *mut QObject) -> *mut LoopBackend;
     }
 
     impl cxx_qt::Constructor<(*mut QObject,), // (Backend object)
