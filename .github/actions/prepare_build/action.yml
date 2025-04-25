@@ -41,8 +41,8 @@ runs:
       arch: win64_msvc2022_64
       setup-python: false
       # Version pinning needed to keep Python 3.9 compatibility
-      aqtversion: "==3.1.*"
-      py7zrversion: "==0.20.*"
+      aqtversion: "==3.1.19"
+      py7zrversion: "==0.20.8"
   - name: Install Qt
     uses: jurplel/install-qt-action@v4
     if: always() && inputs.variant != 'windows'
@@ -52,8 +52,8 @@ runs:
       install-deps: false
       setup-python: false
       # Version pinning needed to keep Python 3.9 compatibility
-      aqtversion: "==3.1.*"
-      py7zrversion: "==0.20.*"
+      aqtversion: "==3.1.19"
+      py7zrversion: "==0.20.8"
   - name: Env for Qt
     if: always()
     shell: wrap-shell {0}
