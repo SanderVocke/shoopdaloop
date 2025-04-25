@@ -7,7 +7,7 @@ runs:
   - uses: actions/setup-python@v4
     if: always()
     with:
-      python-version: '3.9'
+      python-version: '3.11'
   - name: Report python version
     if: always()
     shell: wrap-shell {0}

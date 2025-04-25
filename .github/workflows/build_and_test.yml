@@ -127,7 +127,7 @@ jobs:
         release_build: ${{ matrix.kind.release_build }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: 'linux'
-        python: python3.9
+        python: python3.11
         package_kind: ${{ matrix.kind.package_kind }}
         second_package_kind: ${{ matrix.kind.second_package_kind }}
         third_package_kind: ${{ matrix.kind.third_package_kind }}
@@ -258,7 +258,7 @@ jobs:
   #       cmake_build_type: ${{ matrix.kind.build_type }}
   #       cmake_opts: ${{ matrix.kind.cmake_opts }}
   #       prepare_kind: 'linux'
-  #       python: python3.9
+  #       python: python3.11
   #       package_kind: ${{ matrix.kind.package_kind }}
   #       second_package_kind: ${{ matrix.kind.package_kind }}
   #       coverage: ${{ matrix.kind.coverage }}
@@ -379,7 +379,7 @@ jobs:
         cmake_build_type: ${{ matrix.kind.build_type }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
         prepare_kind: 'macos'
-        python: python3.9
+        python: python3.11
         appbundle: ${{ matrix.kind.appbundle }}
         package_kind: ${{ matrix.kind.package_kind }}
         second_package_kind: ${{ matrix.kind.second_package_kind }}
