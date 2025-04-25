@@ -11,12 +11,12 @@ jobs:
         include:
           - runs-on: ubuntu-latest
             name-suffix: linux-x64
-            container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest"
+            container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bookworm_x86_64:latest"
             python: python3
             os-kind: linux
           - runs-on: ubuntu-latest
             name-suffix: linux-arm
-            container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest"
+            container: "docker.io/sandervocke/shoopdaloop_build_base_debian_bookworm_arm64:latest"
             python: python3
             arch: arm64
             os-kind: linux

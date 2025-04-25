@@ -31,6 +31,12 @@ runs:
       cargo version --verbose
       echo "==== Rust toolchain list ===="
       rustup toolchain list
+  
+  - name: Setup Python
+    uses: actions/setup-python@v4
+    with:
+      python-version: "3.10"
+      cache: true
 
   - name: Install Qt (Windows)
     uses: jurplel/install-qt-action@v4
@@ -40,9 +46,6 @@ runs:
       version: 6.8.3
       arch: win64_msvc2022_64
       setup-python: false
-      # Version pinning needed to keep Python 3.9 compatibility
-      aqtversion: "==3.1.19"
-      py7zrversion: "==0.20.8"
   - name: Install Qt
     uses: jurplel/install-qt-action@v4
     if: always() && inputs.variant != 'windows'
@@ -51,9 +54,6 @@ runs:
       version: 6.8.3
       install-deps: false
       setup-python: false
-      # Version pinning needed to keep Python 3.9 compatibility
-      aqtversion: "==3.1.19"
-      py7zrversion: "==0.20.8"
   - name: Env for Qt
     if: always()
     shell: wrap-shell {0}
