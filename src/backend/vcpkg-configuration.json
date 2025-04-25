@@ -1,0 +1,17 @@
+{
+  "default-registry": {
+    "kind": "git",
+    "baseline": "760bfd0c8d7c89ec640aec4df89418b7c2745605",
+    "repository": "https://github.com/Microsoft/vcpkg"
+  },
+  "registries": [
+    {
+      "kind": "git",
+      "baseline": "fd52ef8f452faa4730dc9b6be61ec2b719dfb01d",
+      "repository": "https://github.com/SanderVocke/shoopdaloop-vcpkg-registry.git",
+      "packages": [
+        "zita-resampler"
+      ]
+    }
+  ]
+}

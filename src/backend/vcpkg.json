@@ -1,0 +1,42 @@
+{
+  "name": "shoopdaloop-backend",
+  "version": "0.0.0",
+  "dependencies": [
+    {
+      "name": "lilv"
+    },
+    {
+      "name": "lv2"
+    },
+    {
+      "name": "jack2"
+    },
+    {
+      "name": "pthreads"
+    },
+    {
+      "name": "boost-headers"
+    },
+    {
+      "name": "boost-system"
+    },
+    {
+      "name": "catch2"
+    },
+    {
+      "name": "pkgconf"
+    },
+    {
+      "name": "vcpkg-tool-ninja"
+    },
+    {
+      "name": "nlohmann-json"
+    },
+    {
+      "name": "fmt"
+    },
+    {
+      "name": "zita-resampler"
+    }
+  ]
+}
