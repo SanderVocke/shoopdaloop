@@ -7,7 +7,7 @@
   "registries": [
     {
       "kind": "git",
-      "baseline": "fd52ef8f452faa4730dc9b6be61ec2b719dfb01d",
+      "baseline": "f9ce8635c466d9472383f1242433b9201b6b2f0a",
       "repository": "https://github.com/SanderVocke/shoopdaloop-vcpkg-registry.git",
       "packages": [
         "zita-resampler"

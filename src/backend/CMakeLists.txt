@@ -182,7 +182,7 @@ if (BACKEND_JACK)
   # list(APPEND INTERNAL_SOURCES ${JACK_SOURCES})
   # include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
   # find_package(jack2 REQUIRED)
-  pkg_search_module(jack2 REQUIRED IMPORTED_TARGET GLOBAL jack2)
+  pkg_search_module(jack REQUIRED IMPORTED_TARGET GLOBAL jack)
 endif()
 
 # Find libzita-resampler
