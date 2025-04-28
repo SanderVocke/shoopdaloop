@@ -50,91 +50,134 @@ fn main_impl() -> Result<(), anyhow::Error> {
             println!("Found built wheel: {}", wheel.to_str().unwrap());
         }
         let py_env_dir = Path::new(&out_dir).join("shoop_pyenv");
-        let pyenv_root_dir = Path::new(&out_dir).join("pyenv_root");
+        let py_root_dir = Path::new(&out_dir).join("portable_python");
 
         if py_env_dir.exists() {
             std::fs::remove_dir_all(&py_env_dir)
                 .with_context(|| format!("Failed to remove Py env: {:?}", &py_env_dir))?;
         }
-        if !pyenv_root_dir.exists() {
-            std::fs::create_dir(&pyenv_root_dir)?;
+        if !py_root_dir.exists() {
+            std::fs::create_dir(&py_root_dir)?;
         }
 
         // Create a env in OUT_DIR
         println!("Creating portable Python...");
         let py_version = Command::new(host_python)
                                 .args(&["-c",
-                                        "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"])
+                                        "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"])
                                 .output()
                                 .with_context(|| format!("Failed to print python version: sh ${args:?}"))?;
         let py_version = std::str::from_utf8(&py_version.stdout)?;
         let py_version = py_version.trim();
         let mut py_location : String;
-        println!("Using pyenv to install {} to {}...", py_version, pyenv_root_dir.to_str().unwrap());
-        let args = &["install", "--skip-existing", py_version];
-        let pyenv = env::var("PYENV").unwrap_or(String::from("pyenv"));
+
+        // println!("Using pyenv to install {} to {}...", py_version, py_root_dir.to_str().unwrap());
+        // let args = &["install", "--skip-existing", py_version];
+        // let pyenv = env::var("PYENV").unwrap_or(String::from("pyenv"));
+        // let mut install_env : HashMap<String, String> = env::vars().collect();
+        // install_env.insert("PYENV_ROOT".to_string(), py_root_dir.to_str().unwrap().to_string());
+        // install_env.insert("PYTHON_CONFIGURE_OPTS".to_string(), "--enable-shared".to_string());
+        // println!("   {pyenv:?} {args:?}");
+        // println!("   with PYENV_ROOT={py_root_dir:?}");
+        // println!("   with PYTHON_CONFIGURE_OPTS=--enable-shared");
+        // Command::new(&pyenv)
+        //         .args(args)
+        //         .envs(install_env)
+        //         .status()
+        //         .with_context(|| format!("Failed to install Python using pyenv: {pyenv:?} {args:?}"))?;
+
+        println!("Using uv to install {} to {}...", py_version, py_root_dir.to_str().unwrap());
+        let args = &["python", "install", py_version];
+        // let pyenv = env::var("PYENV").unwrap_or(String::from("pyenv"));
         let mut install_env : HashMap<String, String> = env::vars().collect();
-        install_env.insert("PYENV_ROOT".to_string(), pyenv_root_dir.to_str().unwrap().to_string());
-        install_env.insert("PYTHON_CONFIGURE_OPTS".to_string(), "--enable-shared".to_string());
-        println!("   {pyenv:?} {args:?}");
-        println!("   with PYENV_ROOT={pyenv_root_dir:?}");
-        println!("   with PYTHON_CONFIGURE_OPTS=--enable-shared");
-        Command::new(&pyenv)
+        install_env.insert("UV_PYTHON_INSTALL_DIR".to_string(), py_root_dir.to_str().unwrap().to_string());
+        // install_env.insert("PYTHON_CONFIGURE_OPTS".to_string(), "--enable-shared".to_string());
+        // println!("   {pyenv:?} {args:?}");
+        println!("   with UV_PYTHON_INSTALL_DIR={py_root_dir:?}");
+        // println!("   with PYTHON_CONFIGURE_OPTS=--enable-shared");
+        Command::new("uv")
                 .args(args)
                 .envs(install_env)
                 .status()
-                .with_context(|| format!("Failed to install Python using pyenv: {pyenv:?} {args:?}"))?;
-        let py_location_output = Command::new(&pyenv)
-                                        .args(&["prefix", &py_version])
-                                        .env("PYENV_ROOT", &pyenv_root_dir)
-                                        .output()
-                                        .with_context(|| "Failed to get python location output using pyenv")?;
-        py_location = String::from(std::str::from_utf8(&py_location_output.stdout)?);
-        if !py_location_output.status.success() {
-            let maybe_root = env::var("PYENV_ROOT");
-            if maybe_root.is_ok() {
-                let maybe_root = maybe_root.unwrap();
-                let root = Path::new(&maybe_root);
-                let maybe_py_location = root.join("versions").join(py_version);
-                if maybe_py_location.exists() {
-                    println!("pyenv prefix command failed. Using guessed prefix {maybe_py_location:?}");
-                    py_location = String::from(maybe_py_location.to_str().unwrap());
-                } else {
-                    return Err(anyhow::anyhow!("Could not find Python location in pyenv root"));
-                }
-            } else {
-                return Err(anyhow::anyhow!("Could not find Python location in pyenv root"));
-            }
-        }
-        let py_location = py_location.trim();
-        println!("Using Python from: {}. Installing to: {}", py_location, py_env_dir.to_str().unwrap());
-        copy_dir(&py_location, &py_env_dir)
-            .with_context(|| format!("Failed to copy Python env from {:?} to {:?}", &py_location, &py_env_dir))?;
+                .with_context(|| format!("Failed to install Python using uv: uv {args:?}"))?;
+
+        // let py_location_output = Command::new(&pyenv)
+        //                                 .args(&["prefix", &py_version])
+        //                                 .env("PYENV_ROOT", &py_root_dir)
+        //                                 .output()
+        //                                 .with_context(|| "Failed to get python location output using pyenv")?;
+
+        // let py_location_output = Command::new("uv")
+        //     .args(&["python", "dir"])
+        //     .env("UV_PYTHON_INSTALL_DIR", &py_root_dir)
+        //     .output()
+        //     .with_context(|| "Failed to get python location output using uv")?;
+
+        // py_location = String::from(std::str::from_utf8(&py_location_output.stdout)?);
+        // if !py_location_output.status.success() {
+        //     let maybe_root = env::var("PYENV_ROOT");
+        //     if maybe_root.is_ok() {
+        //         let maybe_root = maybe_root.unwrap();
+        //         let root = Path::new(&maybe_root);
+        //         let maybe_py_location = root.join("versions").join(py_version);
+        //         if maybe_py_location.exists() {
+        //             println!("pyenv prefix command failed. Using guessed prefix {maybe_py_location:?}");
+        //             py_location = String::from(maybe_py_location.to_str().unwrap());
+        //         } else {
+        //             return Err(anyhow::anyhow!("Could not find Python location in pyenv root"));
+        //         }
+        //     } else {
+        //         return Err(anyhow::anyhow!("Could not find Python location in pyenv root"));
+        //     }
+        // }
+        // let py_location = py_location.trim();
 
         // Install ShoopDaLoop wheel in env
+        let portable_py_executable : PathBuf;
+        let portable_py_dir : PathBuf;
         let py_env_python : PathBuf;
         #[cfg(target_os = "windows")]
         {
-            py_env_python = py_env_dir.join("python.exe").to_owned();
+            // Glob for **/python.exe and use it to set py_env_python
+            let py_glob = format!("{}/**/cpython-*/python.exe", py_root_dir.to_str().unwrap());
+            let mut py_glob = glob(&py_glob)?;
+            portable_py_executable = py_glob.next()
+                .expect("No python found")
+                .with_context(|| "Failed to glob for python")?;
+            portable_py_dir = PathBuf::from(portable_py_executable.parent().unwrap());
+            py_env_python = PathBuf::from(format!("{}/python.exe", py_env_dir.to_str().unwrap()));
         }
         #[cfg(target_os = "linux")]
         {
-            py_env_python = py_env_dir.join("bin").join("python").to_owned();
+            // Glob for **/bin/python and use it to set py_env_python
+            let py_glob = format!("{}/**/cpython-*/bin/python", py_root_dir.to_str().unwrap());
+            let mut py_glob = glob(&py_glob)?;
+            portable_py_executable = py_glob.next()
+                .expect("No python found")
+                .with_context(|| "Failed to glob for python")?;
+            portable_py_dir = PathBuf::from(portable_py_executable.parent().unwrap().parent().unwrap());
+            py_env_python = PathBuf::from(format!("{}/bin/python", py_env_dir.to_str().unwrap()));
         }
         #[cfg(target_os = "macos")]
         {
             // Glob for **/bin/python and use it to set py_env_python
-            let py_glob = format!("{}/**/bin/python", py_env_dir.to_str().unwrap());
+            let py_glob = format!("{}/**/cpython-*/bin/python", py_root_dir.to_str().unwrap());
             let mut py_glob = glob(&py_glob)?;
-            py_env_python = py_glob.next()
+            portable_py_executable = py_glob.next()
                 .expect("No python found")
                 .with_context(|| "Failed to glob for python")?;
+            portable_py_dir = PathBuf::from(portable_py_executable.parent().unwrap().parent().unwrap());
+            py_env_python = PathBuf::from(format!("{}/bin/python", py_env_dir.to_str().unwrap()));
         }
+        println!("Using Python from: {}. Installing to: {}", portable_py_dir.to_str().unwrap(), py_env_dir.to_str().unwrap());
+        copy_dir(&portable_py_dir, &py_env_dir)
+            .with_context(|| format!("Failed to copy Python env from {:?} to {:?}", &portable_py_dir, &py_env_dir))?;
+
         println!("Using installed Python interpreter: {}", py_env_python.to_str().unwrap());
         println!("Installing into python env...");
         Command::new(&py_env_python)
             .args(
-                &["-m", "pip", "install", "--no-input", "--upgrade", "pip"]
+                &["-m", "pip", "install", "--break-system-packages", "--no-input", "--upgrade", "pip"]
             )
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
@@ -142,7 +185,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .with_context(|| "Failed to upgrade pip")?;
         Command::new(&py_env_python)
             .args(
-                &["-m", "pip", "install", "--no-input", "pytest"]
+                &["-m", "pip", "install", "--break-system-packages", "--no-input", "pytest"]
             )
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
@@ -150,7 +193,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .with_context(|| "Failed to upgrade pip")?;
         Command::new(&py_env_python)
             .args(
-                &["-m", "pip", "install", "--no-input", "--force-reinstall", wheel.to_str().expect("Could not get wheel path")]
+                &["-m", "pip", "install", "--break-system-packages", "--no-input", "--force-reinstall", wheel.to_str().expect("Could not get wheel path")]
             )
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())

@@ -46,6 +46,14 @@
     },
     {
       "name": "zita-resampler"
+    },
+    {
+      "name": "qtbase",
+      "version>=": "6.8.3"
+    },
+    {
+      "name": "qtdeclarative",
+      "version>=": "6.8.3"
     }
   ]
 }
