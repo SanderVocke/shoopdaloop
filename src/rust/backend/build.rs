@@ -22,22 +22,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
         let profile = std::env::var("PROFILE").unwrap();
         let cmake_output_dir = out_dir.join("cmake_build");
 
-        // FIXME: remove if already builtin
-        // Use CMake toolchain file from env if set
-        // let toolchain_file : Option<String>;
-        // {
-        //     let maybe_toolchain_file = env::var("CMAKE_TOOLCHAIN_FILE");
-        //     toolchain_file = if maybe_toolchain_file.is_ok() {
-        //         let toolchain_file_str : String = maybe_toolchain_file.unwrap();
-        //         println!("using CMAKE_TOOLCHAIN_FILE: {}", toolchain_file_str);
-        //         Some(toolchain_file_str)
-        //     } else {
-        //         println!("Note: No CMAKE_TOOLCHAIN_FILE override set");
-        //         None
-        //     }
-        // } 
-
-
         if !["debug", "release"].contains(&profile.as_str()) {
             return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
         }
@@ -48,10 +32,8 @@ fn main_impl() -> Result<(), anyhow::Error> {
             let mut cmake_config: Config = Config::new(cmake_backend_dir);
             let cmake_config_mut : &mut Config = cmake_config.out_dir(&cmake_output_dir)
                                             .generator("Ninja")
-                                            .configure_arg(format!("-DCMAKE_INSTALL_PREFIX={}",install_dir.to_str().unwrap()));
-            // if toolchain_file.is_some() {
-            //     cmake_config_mut = cmake_config_mut.configure_arg(format!("-DCMAKE_TOOLCHAIN_FILE={}", toolchain_file.unwrap()));
-            // }
+                                            .configure_arg(format!("-DCMAKE_INSTALL_PREFIX={}",install_dir.to_str().unwrap()))
+                                            .configure_arg(format!("-DCMAKE_BUILD_TYPE={}", if profile == "debug" { "Debug" } else { "Release" }));
             let _ = cmake_config_mut.build();
         }
 

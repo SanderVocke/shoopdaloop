@@ -13,44 +13,44 @@ runs:
     shell: wrap-shell {0}
     run: |
       echo "Default python version is $($PYTHON --version)"
-  - name: Install boost
-    uses: MarkusJx/install-boost@v2.4.5
-    id: install-boost
-    with:
-      boost_version: 1.86.0
-      platform_version: 2022
-      toolset: msvc
-  - name: Install pkgconfig lite
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-      curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pkg-config-lite-0.28-1_bin-win32.zip --output pkg-config-lite-0.28-1_bin-win32.zip
-      unzip pkg-config-lite-0.28-1_bin-win32.zip
-      cp pkg-config-lite-0.28-1/bin/* /c/mingw64/bin
-  - name: Install JACK
-    if: always()
-    shell: pwsh
-    run: |
-      curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/jack2-win64-v1.9.22-assets.zip --output jack2-win64-v1.9.22-assets.zip
-      unzip jack2-win64-v1.9.22-assets.zip -d jack
-  - name: Install pthreads4w
-    if: always()
-    shell: pwsh
-    run: |
-      curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pthreads4w.zip --output pthreads4w.zip
-      unzip pthreads4w.zip -d pthreads4w
+  # - name: Install boost
+  #   uses: MarkusJx/install-boost@v2.4.5
+  #   id: install-boost
+  #   with:
+  #     boost_version: 1.86.0
+  #     platform_version: 2022
+  #     toolset: msvc
+  # - name: Install pkgconfig lite
+  #   if: always()
+  #   shell: wrap-shell {0}
+  #   run: |
+  #     curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pkg-config-lite-0.28-1_bin-win32.zip --output pkg-config-lite-0.28-1_bin-win32.zip
+  #     unzip pkg-config-lite-0.28-1_bin-win32.zip
+  #     cp pkg-config-lite-0.28-1/bin/* /c/mingw64/bin
+  # - name: Install JACK
+  #   if: always()
+  #   shell: pwsh
+  #   run: |
+  #     curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/jack2-win64-v1.9.22-assets.zip --output jack2-win64-v1.9.22-assets.zip
+  #     unzip jack2-win64-v1.9.22-assets.zip -d jack
+  # - name: Install pthreads4w
+  #   if: always()
+  #   shell: pwsh
+  #   run: |
+  #     curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pthreads4w.zip --output pthreads4w.zip
+  #     unzip pthreads4w.zip -d pthreads4w
 
-  - name: Path conversion
-    if: always()
-    id: pathconvert
-    shell: wrap-shell {0}
-    run: |
-      JACK_DIR=$(cygpath -w $(pwd)/jack)
-      PTHREADS_DIR=$(cygpath -w $(pwd)/pthreads4w/pthreads4w)
-      BOOST_DIR=$(cygpath -w $(cygpath -u '${{ steps.install-boost.outputs.BOOST_ROOT }}')/lib/cmake/Boost-1.86.0)
-      echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH;$BOOST_DIR;$JACK_DIR;$PTHREADS_DIR" | tee -a $GITHUB_ENV
-      echo "PTHREADS4W_PATH=$PTHREADS_DIR" | tee -a $GITHUB_ENV
-      echo "$PTHREADS_DIR" | tee -a $GITHUB_PATH
+  # - name: Path conversion
+  #   if: always()
+  #   id: pathconvert
+  #   shell: wrap-shell {0}
+  #   run: |
+  #     JACK_DIR=$(cygpath -w $(pwd)/jack)
+  #     PTHREADS_DIR=$(cygpath -w $(pwd)/pthreads4w/pthreads4w)
+  #     BOOST_DIR=$(cygpath -w $(cygpath -u '${{ steps.install-boost.outputs.BOOST_ROOT }}')/lib/cmake/Boost-1.86.0)
+  #     echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH;$BOOST_DIR;$JACK_DIR;$PTHREADS_DIR" | tee -a $GITHUB_ENV
+  #     echo "PTHREADS4W_PATH=$PTHREADS_DIR" | tee -a $GITHUB_ENV
+  #     echo "$PTHREADS_DIR" | tee -a $GITHUB_PATH
 
   - name: Setup dependencies
     if: always()
