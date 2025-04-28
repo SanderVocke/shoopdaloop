@@ -72,24 +72,28 @@ runs:
       cat meson.sh
       echo "MESON=$(pwd)/meson.sh" | tee -a $GITHUB_ENV
 
-  - name: Install pre-built dependencies
+  # - name: Install pre-built dependencies
+  #   if: always()
+  #   shell: wrap-shell {0}
+  #   run: |
+  #       URL=https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/all_dependencies-${{ matrix.kind.platform }}.zip
+  #       curl -L -o all_dependencies.zip $URL
+  #       unzip all_dependencies.zip -d prebuilt_dependencies
+  #       PREFIX_PATH=$(${{ env.CONVERT_PATH_FN }} "$(pwd)/prebuilt_dependencies")
+  #       for d in $(find $(pwd)/prebuilt_dependencies -name "*.cmake" -o -name "*.pc" | xargs -n1 dirname | sort | uniq); do
+  #          PREFIX_PATH=$PREFIX_PATH${PATH_SEPARATOR}$(${{ env.CONVERT_PATH_FN }} $d)
+  #       done
+  #       INCLUDE_PATH=$(${{ env.CONVERT_PATH_FN }} "$(pwd)/prebuilt_dependencies/include")
+  #       LIB_PATH=$(${{ env.CONVERT_PATH_FN }} "$(pwd)/prebuilt_dependencies/lib")
+  #       echo "CMAKE_PREFIX_PATH=${PREFIX_PATH}${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
+  #       echo "PKG_CONFIG_PATH=${PREFIX_PATH}${PATH_SEPARATOR}${PKG_CONFIG_PATH}" | tee -a $GITHUB_ENV
+  #       echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${LIB_PATH}" | tee -a $GITHUB_ENV
+  #       echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${LIB_PATH}" | tee -a $GITHUB_ENV
+  #       echo "$(pwd)/prebuilt_dependencies/bin" | tee -a $GITHUB_PATH
+
+  - name: Prepare vcpkg
     if: always()
-    shell: wrap-shell {0}
-    run: |
-        URL=https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/all_dependencies-${{ matrix.kind.platform }}.zip
-        curl -L -o all_dependencies.zip $URL
-        unzip all_dependencies.zip -d prebuilt_dependencies
-        PREFIX_PATH=$(${{ env.CONVERT_PATH_FN }} "$(pwd)/prebuilt_dependencies")
-        for d in $(find $(pwd)/prebuilt_dependencies -name "*.cmake" -o -name "*.pc" | xargs -n1 dirname | sort | uniq); do
-           PREFIX_PATH=$PREFIX_PATH${PATH_SEPARATOR}$(${{ env.CONVERT_PATH_FN }} $d)
-        done
-        INCLUDE_PATH=$(${{ env.CONVERT_PATH_FN }} "$(pwd)/prebuilt_dependencies/include")
-        LIB_PATH=$(${{ env.CONVERT_PATH_FN }} "$(pwd)/prebuilt_dependencies/lib")
-        echo "CMAKE_PREFIX_PATH=${PREFIX_PATH}${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
-        echo "PKG_CONFIG_PATH=${PREFIX_PATH}${PATH_SEPARATOR}${PKG_CONFIG_PATH}" | tee -a $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${LIB_PATH}" | tee -a $GITHUB_ENV
-        echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${LIB_PATH}" | tee -a $GITHUB_ENV
-        echo "$(pwd)/prebuilt_dependencies/bin" | tee -a $GITHUB_PATH
+    uses: ./.github/actions/vcpkg_prepare
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'

@@ -21,6 +21,15 @@
       "name": "boost-system"
     },
     {
+      "name": "boost-lockfree"
+    },
+    {
+      "name": "boost-container"
+    },
+    {
+      "name": "boost-stacktrace"
+    },
+    {
       "name": "catch2"
     },
     {

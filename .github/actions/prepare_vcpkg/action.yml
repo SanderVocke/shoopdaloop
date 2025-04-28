@@ -1,0 +1,38 @@
+name: prepare_vcpkg
+description: Prepare vcpkg
+
+runs:
+  using: "composite"
+  steps:
+
+  - name: Export GitHub Actions cache environment variables
+    if: always()
+    uses: actions/github-script@v7
+    with:
+    script: |
+      core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+      core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+  
+  - name: Binary caching setting
+    if: always()
+    run: |
+      echo "VCPKG_BINARY_SOURCES=clear;x-gha,readwrite" > ./.github/workflows/vcpkg.yml"
+
+  - name: Checkout
+    if: always()
+    run: |
+       git clone --depth 1 --branch 2025.04.09 https://github.com/microsoft/vcpkg.git
+  
+  - name: Bootstrap
+    if: always()
+    run: |
+      cd vcpkg && ./bootstrap-vcpkg.sh
+  
+  - name: Set env vars
+    if: always()
+    run: |
+     echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
+     echo "$(pwd)/vcpkg" >> $GITHUB_PATH
+     echo "CMAKE_TOOLCHAIN_FILE=$(pwd)/vcpkg/scripts/buildsystems/vcpkg.cmake" >> $GITHUB_ENV
+
+ 
