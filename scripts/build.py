@@ -142,9 +142,11 @@ def build(args):
     print("\nBuild finished.")
 
     dev_exe = os.path.join(".", "target", build_mode, "shoopdaloop_dev.exe")
+    dev_launcher = os.path.join(".", "target", build_mode, "shoopdaloop_windows_launcher.exe")
+    run_dev = (dev_launcher if sys.platform == "win32" else dev_exe)
 
     print("You can now run the project in dev mode by running:")
-    print(f"\n   {dev_exe}\n")
+    print(f"\n   {run_dev}\n")
     print("To explore packaging options, run:")
     print(f"\n   [build.ps1|build.sh|build.py] package --help\n")
 

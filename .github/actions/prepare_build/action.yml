@@ -32,45 +32,45 @@ runs:
       echo "==== Rust toolchain list ===="
       rustup toolchain list
 
-  - name: Install Qt (Windows)
-    uses: jurplel/install-qt-action@v4
-    if: always() && inputs.variant == 'windows'
-    with:
-      cache: true
-      version: 6.8.3
-      arch: win64_msvc2022_64
-      setup-python: true
-  - name: Install Qt
-    uses: jurplel/install-qt-action@v4
-    if: always() && inputs.variant != 'windows'
-    with:
-      cache: true
-      version: 6.8.3
-      install-deps: false
-      setup-python: true
-  - name: Env for Qt
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-      echo "QMAKE=$QT_ROOT_DIR/bin/qmake" | tee -a $GITHUB_ENV
-      QT_PREFIX_PATH=$(${{ env.CONVERT_PATH_FN }} "$QT_ROOT_DIR/lib/cmake/Qt6")
-      echo "CMAKE_PREFIX_PATH=$QT_PREFIX_PATH${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
+  # - name: Install Qt (Windows)
+  #   uses: jurplel/install-qt-action@v4
+  #   if: always() && inputs.variant == 'windows'
+  #   with:
+  #     cache: true
+  #     version: 6.8.3
+  #     arch: win64_msvc2022_64
+  #     setup-python: true
+  # - name: Install Qt
+  #   uses: jurplel/install-qt-action@v4
+  #   if: always() && inputs.variant != 'windows'
+  #   with:
+  #     cache: true
+  #     version: 6.8.3
+  #     install-deps: false
+  #     setup-python: true
+  # - name: Env for Qt
+  #   if: always()
+  #   shell: wrap-shell {0}
+  #   run: |
+  #     echo "QMAKE=$QT_ROOT_DIR/bin/qmake" | tee -a $GITHUB_ENV
+  #     QT_PREFIX_PATH=$(${{ env.CONVERT_PATH_FN }} "$QT_ROOT_DIR/lib/cmake/Qt6")
+  #     echo "CMAKE_PREFIX_PATH=$QT_PREFIX_PATH${PATH_SEPARATOR}${CMAKE_PREFIX_PATH}" | tee -a $GITHUB_ENV
 
-  - name: Install Meson
-    if: always()
-    shell: wrap-shell {0}
-    env:
-      PIP_BREAK_SYSTEM_PACKAGES: 1
-    run: |
-      echo "find_package(Python3)" > /tmp/script.cmake
-      export CMAKE_PYTHON=$(cmake -P /tmp/script.cmake | sed -r 's/.*Found Python3: ([^ ]*) .*/\1/g')
-      echo "python: $CMAKE_PYTHON"
-      $CMAKE_PYTHON -m pip install meson
-      printf "#!/bin/sh\n$PYTHON -m mesonbuild.mesonmain \$@\n" > meson.sh
-      chmod a+x meson.sh
-      echo "meson.sh:"
-      cat meson.sh
-      echo "MESON=$(pwd)/meson.sh" | tee -a $GITHUB_ENV
+  # - name: Install Meson
+  #   if: always()
+  #   shell: wrap-shell {0}
+  #   env:
+  #     PIP_BREAK_SYSTEM_PACKAGES: 1
+  #   run: |
+  #     echo "find_package(Python3)" > /tmp/script.cmake
+  #     export CMAKE_PYTHON=$(cmake -P /tmp/script.cmake | sed -r 's/.*Found Python3: ([^ ]*) .*/\1/g')
+  #     echo "python: $CMAKE_PYTHON"
+  #     $CMAKE_PYTHON -m pip install meson
+  #     printf "#!/bin/sh\n$PYTHON -m mesonbuild.mesonmain \$@\n" > meson.sh
+  #     chmod a+x meson.sh
+  #     echo "meson.sh:"
+  #     cat meson.sh
+  #     echo "MESON=$(pwd)/meson.sh" | tee -a $GITHUB_ENV
 
   # - name: Install pre-built dependencies
   #   if: always()
@@ -94,6 +94,9 @@ runs:
   - name: Prepare vcpkg
     if: always()
     uses: ./.github/actions/vcpkg_prepare
+  
+  - name: Install the latest version of uv
+    uses: astral-sh/setup-uv@v6
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'

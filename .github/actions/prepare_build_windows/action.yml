@@ -52,13 +52,13 @@ runs:
   #     echo "PTHREADS4W_PATH=$PTHREADS_DIR" | tee -a $GITHUB_ENV
   #     echo "$PTHREADS_DIR" | tee -a $GITHUB_PATH
 
-  - name: Setup dependencies
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-       curl -L https://github.com/lucasg/Dependencies/releases/download/v1.11.1/Dependencies_x64_Release.zip --output dependencies.zip
-       unzip dependencies.zip -d dependencies
-       echo "$(cygpath -w $(pwd)/dependencies)" | tee -a $GITHUB_PATH
+  # - name: Setup dependencies
+  #   if: always()
+  #   shell: wrap-shell {0}
+  #   run: |
+  #      curl -L https://github.com/lucasg/Dependencies/releases/download/v1.11.1/Dependencies_x64_Release.zip --output dependencies.zip
+  #      unzip dependencies.zip -d dependencies
+  #      echo "$(cygpath -w $(pwd)/dependencies)" | tee -a $GITHUB_PATH
 
   - name: Allow running powershell scripts
     if: always()
@@ -73,12 +73,12 @@ runs:
     with:
        arch: x64
 
-  - name: Install PyEnv
-    shell: wrap-shell {0}
-    run: |
-      powershell -Command "Invoke-WebRequest -UseBasicParsing -Uri \"https://raw.githubusercontent.com/pyenv-win/pyenv-win/master/pyenv-win/install-pyenv-win.ps1\" -OutFile \"./install-pyenv-win.ps1\"; &\"./install-pyenv-win.ps1\""
-      echo "PYENV=$(cygpath -w /c/Users/runneradmin/.pyenv/pyenv-win/bin/pyenv.bat)" | tee -a $GITHUB_ENV
-      echo "PYENV_ROOT=$(cygpath -w /c/Users/runneradmin/.pyenv/pyenv-win)" | tee -a $GITHUB_ENV
+  # - name: Install PyEnv
+  #   shell: wrap-shell {0}
+  #   run: |
+  #     powershell -Command "Invoke-WebRequest -UseBasicParsing -Uri \"https://raw.githubusercontent.com/pyenv-win/pyenv-win/master/pyenv-win/install-pyenv-win.ps1\" -OutFile \"./install-pyenv-win.ps1\"; &\"./install-pyenv-win.ps1\""
+  #     echo "PYENV=$(cygpath -w /c/Users/runneradmin/.pyenv/pyenv-win/bin/pyenv.bat)" | tee -a $GITHUB_ENV
+  #     echo "PYENV_ROOT=$(cygpath -w /c/Users/runneradmin/.pyenv/pyenv-win)" | tee -a $GITHUB_ENV
 
   - name: Remove GNU link which aliases with MSVC
     if: always()
@@ -87,10 +87,10 @@ runs:
       rm -f /c/mingw64/bin/link.exe
       rm -f /usr/bin/link.exe
 
-  - name: Install dependencies
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-      $PIP install build virtualenv pytest
-      $PIP install -r build_python_requirements.txt
-      choco install -y ninja
+  # - name: Install dependencies
+  #   if: always()
+  #   shell: wrap-shell {0}
+  #   run: |
+  #     $PIP install build virtualenv pytest
+  #     $PIP install -r build_python_requirements.txt
+  #     choco install -y ninja
