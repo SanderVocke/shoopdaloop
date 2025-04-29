@@ -193,7 +193,7 @@ def package(args, remainder):
                 zip_file)
             with zipfile.ZipFile(zip_file, 'r') as zip_ref:
                 zip_ref.extractall(dependencies_folder)
-        package_env['PATH'] = f'{package_env['PATH']};{dependencies_folder}'
+        package_env['PATH'] = f"{package_env['PATH']};{dependencies_folder}"
     
     # Find QMake
     vcpkg_installed_dir = os.path.join(base_path, "build", "vcpkg_installed")
@@ -206,7 +206,7 @@ def package(args, remainder):
 
     tool_args = [a for a in sys.argv[1:] if a not in ['package', '--debug', '--release']]
     cmd = [package_exe, *tool_args]
-    print(f'Running: {' '.join(cmd)}')
+    print(f'Running: {" ".join(cmd)}')
     print('')
     print(f'{package_exe} output:')
     print('')

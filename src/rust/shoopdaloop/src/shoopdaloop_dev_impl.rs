@@ -51,8 +51,10 @@ pub fn main() {
                          bundled_python_site_packages.join("win32").join("lib").to_str().unwrap(),
                          shoop_lib_dir.to_str().unwrap(),
                          );
-    println!("using PYTHONPATH: {}", pythonpath.as_str());
+    // println!("using PYTHONPATH: {}", pythonpath.as_str());
     env::set_var("PYTHONPATH", pythonpath.as_str());
+    // println!("using PYTHONHOME: {}", bundled_python_home.to_str().unwrap());
+    env::set_var("PYTHONHOME", bundled_python_home.to_str().unwrap());
     add_lib_search_path(&shoop_lib_dir);
 
     let mut app_info = shoop_app_info::ShoopAppInfo::default();
