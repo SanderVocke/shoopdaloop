@@ -47,6 +47,8 @@ def add_build_parser(subparsers):
     build_parser.add_argument("--skip-python", action='store_true', help="Don't install Python and create a virtual environment (it should already be there from a previous build).")
     build_parser.add_argument("--skip-vcpkg", action='store_true', help="Don't install vcpkg packages (they should already be there from a previous build).")
     build_parser.add_argument("--incremental", action='store_true', help="Implies --skip-python and --skip-vcpkg.")
+    
+    build_parser.add_argument('--cargo-args', '-c', type=str, help='Pass additional arguments to cargo build.', default='')
 
 def build(args):
     build_env = os.environ.copy()
@@ -134,7 +136,7 @@ def build(args):
 
     # Run the build
     print("Preparations and checks done. Starting the cargo build.")
-    run_and_print(f"cargo build {('--release' if build_mode == 'release' else '')}",
+    run_and_print(f"cargo build {('--release' if build_mode == 'release' else '')} {args.cargo_args}",
                     env=build_env,
                     err="Failed to build the project.")
     print("\nBuild finished.")
