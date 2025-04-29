@@ -85,6 +85,9 @@ def build(args):
     # Setup venv
     venv_path = os.path.join(base_path, "build", "venv")
     python_command = os.path.join(venv_path, "bin", "python") if sys.platform != "win32" else os.path.join(venv_path, "Scripts", "python.exe")
+    python_base_prefix = subprocess.check_output([python_command, '-c', 'import sys; print(sys.base_prefix)'], stderr=subprocess.DEVNULL).decode().strip()
+    python_base_interpreter = os.path.join(python_base_prefix, "bin", "python") if sys.platform != "win32" else os.path.join(python_base_prefix, "python.exe")
+
     if args.skip_python:
         print(f"Skipping venv setup: assuming build/venv is already installed.")
     else:
@@ -97,7 +100,7 @@ def build(args):
                         env=build_env,
                         err="Couldn't find/install python dependencies.")
     build_env["PYTHON"] = python_command
-    build_env["PYO3_PYTHON"] = python_command
+    build_env["PYO3_PYTHON"] = python_base_interpreter
 
     # Setup cargo
     try:

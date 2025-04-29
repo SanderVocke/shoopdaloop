@@ -232,6 +232,8 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rerun-if-changed=src");
         println!("cargo:rerun-if-changed={}/shoopdaloop", python_src_dir);
         println!("cargo:rerun-if-changed={}/pyproject.toml", python_src_dir);
+        println!("cargo:rerun-if-env-changed=PYTHON");
+        println!("cargo:rerun-if-env-changed=PYO3_PYTHON");
 
         println!("cargo:rustc-env=SHOOP_PY_ENV_DIR={}", py_env_dir.to_str().unwrap());
         println!("cargo:rustc-env=SHOOP_PY_INTERPRETER={}", py_env_python.to_str().unwrap());
