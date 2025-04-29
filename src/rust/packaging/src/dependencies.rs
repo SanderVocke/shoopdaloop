@@ -47,6 +47,8 @@ pub fn get_dependency_libs (executable : &Path,
     debug!("Command stderr:\n{}", command_output);
     debug!("Command stdout:\n{}", deps_output);
     if !list_deps_output.status.success() {
+        error!("Command stderr:\n{}", command_output);
+        error!("Command stdout:\n{}", deps_output);
         return Err(anyhow::anyhow!("list_dependencies returned nonzero exit code"));
     }
     for line in command_output.lines() {

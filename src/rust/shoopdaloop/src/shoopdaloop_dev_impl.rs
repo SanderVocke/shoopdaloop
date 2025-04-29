@@ -36,7 +36,7 @@ pub fn main() {
             ).unwrap();
     }
 
-    let shoop_src_root_dir = normalize_path(PathBuf::from(SRC_DIR).join("../../.."));    
+    let shoop_src_root_dir = normalize_path(PathBuf::from(SRC_DIR).join("../../.."));
     let pythonpath_to_src = normalize_path(
         shoop_src_root_dir.join("src/python"));
     let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
@@ -53,7 +53,6 @@ pub fn main() {
                          );
     // println!("using PYTHONPATH: {}", pythonpath.as_str());
     env::set_var("PYTHONPATH", pythonpath.as_str());
-
     add_lib_search_path(&shoop_lib_dir);
 
     let mut app_info = shoop_app_info::ShoopAppInfo::default();

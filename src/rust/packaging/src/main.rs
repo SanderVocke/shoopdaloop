@@ -25,6 +25,9 @@ enum Commands {
 
         #[arg(short, long, action = clap::ArgAction::SetTrue)]
         release: bool,
+
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        replace: bool,
     },
     BuildAppImage {
         #[arg(short='t', long, value_name="/path/to/appimagetool", required = true)]
@@ -35,6 +38,9 @@ enum Commands {
 
         #[arg(short, long, value_name="File.AppImage", required = true)]
         output: PathBuf,
+
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        replace: bool,
     },
     BuildTestBinaries {
         #[arg(short, long, value_name="/path/to/folder", required = true)]
@@ -42,6 +48,9 @@ enum Commands {
 
         #[arg(short, long, action = clap::ArgAction::SetTrue)]
         release: bool,
+
+        #[arg(long, action = clap::ArgAction::SetTrue)]
+        replace: bool,
     }
 }
 
@@ -77,9 +86,13 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                               })?;
 
     match &args.command {
-        Some(Commands::BuildPortableFolder { output_dir, release }) => {
+        Some(Commands::BuildPortableFolder { output_dir, release , replace}) => {
             #[cfg(target_os = "linux")]
             {
+                if *replace && std::fs::exists(output_dir)? {
+                    info!("Removing existing directory: {}", output_dir.display());
+                    std::fs::remove_dir_all(output_dir)?;
+                }
                 packaging::linux_appdir::build_appdir
                            (Path::new(out_dir.as_str()),
                             main_exe.as_path(),
@@ -89,6 +102,10 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
             }
             #[cfg(target_os = "macos")]
             {
+                if *replace && std::fs::exists(output_dir)? {
+                    info!("Removing existing directory: {}", output_dir.display());
+                    std::fs::remove_dir_all(output_dir)?;
+                }
                 packaging::macos_appbundle::build_appbundle(
                             Path::new(out_dir.as_str()),
                             main_exe.as_path(),
@@ -98,6 +115,10 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
             }
             #[cfg(target_os = "windows")]
             {
+                if *replace && std::fs::exists(output_dir)? {
+                    info!("Removing existing directory: {}", output_dir.display());
+                    std::fs::remove_dir_all(output_dir)?;
+                }
                 let launcher_exe : PathBuf = exe_dir.join("shoopdaloop_windows_launcher.exe");
                 packaging::windows_portable_folder::build_portable_folder(
                             Path::new(out_dir.as_str()),
@@ -108,20 +129,28 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                             *release)
             }
         },
-        Some(Commands::BuildTestBinaries { output_dir, release }) => {
+        Some(Commands::BuildTestBinaries { output_dir, release , replace}) => {
+            if *replace && std::fs::exists(output_dir)? {
+                info!("Removing existing directory: {}", output_dir.display());
+                std::fs::remove_dir_all(output_dir)?;
+            }
             build_test_binaries_folder
                         (Path::new(out_dir.as_str()),
                         output_dir.as_path(),
                         *release)
         },
-        Some(Commands::BuildAppImage { appimagetool, appdir, output }) => {
+        Some(Commands::BuildAppImage { appimagetool, appdir, output , replace}) => {
             #[cfg(target_os = "linux")]
             {
+                if *replace && std::fs::exists(output)? {
+                    info!("Removing existing file: {}", output.display());
+                    std::fs::remove_file(output)?;
+                }
                 packaging::linux_appimage::build_appimage(appimagetool, appdir, output)
             }
             #[cfg(not(target_os = "linux"))]
             {
-                let _ = (appimagetool, appdir, output);
+                let _ = (appimagetool, appdir, output, replace);
                 Err(anyhow::anyhow!("AppImage packaging is only supported on Linux systems."))
             }
         },

@@ -1,0 +1,228 @@
+import argparse
+import os
+import subprocess
+import sys
+import threading
+import glob
+import urllib.request
+import shutil
+import zipfile
+
+script_path = os.path.dirname(os.path.realpath(__file__))
+base_path = script_path + '/..'
+
+def stream_reader(stream, mirror_stream):
+    for c in iter(lambda: stream.read(1), b""):
+        mirror_stream.write(c)
+
+def run_and_print(command, env=None, err="Command failed.", cwd=None):
+    print(f"-> Running command: {command}")
+    result = subprocess.run(command, shell=True, env=env, cwd=cwd)
+    if result.returncode != 0:
+        print(f"-> Error: {err}")
+        exit(1)
+
+def find_qmake(directory):
+    tail = os.path.join("Qt6", "bin", "qmake.exe") if sys.platform == "win32" else os.path.join("Qt6", "bin", "qmake")
+    pattern = f'{directory}/**/{tail}'
+    print(f"Looking for qmake at: {pattern}")
+    qmake_paths = glob.glob(pattern, recursive=True)
+    if not qmake_paths:
+        return None
+    qmake_path = qmake_paths[0]
+    return qmake_path
+
+def add_build_parser(subparsers):
+    build_parser = subparsers.add_parser('build', help='Build the project')
+
+    maybe_vcpkg_root = os.environ.get('VCPKG_ROOT')
+    default_python_version = os.environ.get('PYTHON_VERSION', '3.9')
+
+    build_parser.add_argument('--python-version', type=str, required=False, default=default_python_version, help='Python version to embed into ShoopDaLoop. Will be installed with uv if not already present.')
+    build_parser.add_argument('--vcpkg-root', type=str, required=False, default=os.environ.get('VCPKG_ROOT'), help='Path to the VCPKG root directory. Default is VCPKG_ROOT environment variable.')
+    build_mode_group = build_parser.add_mutually_exclusive_group()
+    build_mode_group.add_argument('--debug', action='store_true', help='Build in debug mode.')
+    build_mode_group.add_argument('--release', action='store_true', help='Build in release mode.')
+
+    build_parser.add_argument("--skip-python", action='store_true', help="Don't install Python and create a virtual environment (it should already be there from a previous build).")
+    build_parser.add_argument("--skip-vcpkg", action='store_true', help="Don't install vcpkg packages (they should already be there from a previous build).")
+    build_parser.add_argument("--incremental", action='store_true', help="Implies --skip-python and --skip-vcpkg.")
+
+def build(args):
+    build_env = os.environ.copy()
+    build_mode = ('release' if args.release else 'debug')
+    print(f"Building in {build_mode} mode.")
+
+    if args.incremental:
+        args.skip_vcpkg = True
+        args.skip_python = True
+
+    # Setup vcpkg
+    try:
+        result = subprocess.check_output('vcpkg --help', shell=True, env=build_env)
+    except subprocess.CalledProcessError:
+        print("Error: vcpkg not found in PATH. Please install it and ensure it is in the PATH.")
+
+    # Setup VCPKG_ROOT and toolchain file
+    if not args.vcpkg_root:
+        print(f"Error: VCPKG_ROOT environment variable is not set, nor passed using --vcpkg-root. Please install vcpkg and pass its root accordingly.")
+        exit(1)
+    build_env['VCPKG_ROOT'] = args.vcpkg_root
+    build_env["CMAKE_TOOLCHAIN_FILE"] = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
+    print(f"Using VCPKG_ROOT: {build_env['VCPKG_ROOT']}")
+
+    # Setup Python version
+    python_version = args.python_version
+    print(f"Using Python version: {python_version}")
+    if args.skip_python:
+        print(f"Skipping Python installation: assuming Python {python_version} is already installed.")
+    else:
+        run_and_print(f"uv python install {python_version}",
+                        env=build_env,
+                        err="Couldn't find find/install Python version.")
+        print(f"-> Python {python_version} found.")
+
+    # Setup venv
+    venv_path = os.path.join(base_path, "build", "venv")
+    python_command = os.path.join(venv_path, "bin", "python") if sys.platform != "win32" else os.path.join(venv_path, "Scripts", "python.exe")
+    if args.skip_python:
+        print(f"Skipping venv setup: assuming build/venv is already installed.")
+    else:
+        print(f"Setting up build venv")
+        print(f"-> Venv path: {venv_path}")
+        run_and_print(f"uv venv --python {python_version} {venv_path}",
+                        env=build_env,
+                        err="Couldn't create/check venv.")
+        run_and_print(f"uv pip install --python {python_command} -r {base_path}/build_python_requirements.txt",
+                        env=build_env,
+                        err="Couldn't find/install python dependencies.")
+    build_env["PYTHON"] = python_command
+
+    # Setup cargo
+    try:
+        result = subprocess.check_output('cargo -V', shell=True, env=build_env)
+    except subprocess.CalledProcessError:
+        print("Error: cargo not found in PATH. Please install it and ensure it is in the PATH.")
+
+
+    print("Tool and environment checks done.")
+
+    # Install vcpkg packages first
+    vcpkg_installed_dir = os.path.join(base_path, "build", "vcpkg_installed")
+    build_env["VCPKG_INSTALLED_DIR"] = vcpkg_installed_dir
+    if args.skip_vcpkg:
+        print("Skipping vcpkg setup: assuming build/vcpkg_installed is already installed.")
+    else:
+        print("Installing vcpkg packages...")
+        run_and_print(f"vcpkg install --x-install-root={vcpkg_installed_dir}",
+                        env=build_env,
+                        cwd=os.path.join(base_path, 'src', 'backend'),
+                        err="Failed to fetch/build/install vcpkg packages.")
+        print("vcpkg packages installed.")
+
+    # Find qmake
+    qmake_path = find_qmake(vcpkg_installed_dir)
+    if not qmake_path:
+        print("Error: qmake not found in vcpkg packages.")
+        sys.exit(1)
+    print(f"Found qmake at: {qmake_path}")
+    build_env["QMAKE"] = qmake_path
+
+    # Run the build
+    print("Preparations and checks done. Starting the cargo build.")
+    run_and_print(f"cargo build {('--release' if build_mode == 'release' else '')}",
+                    env=build_env,
+                    err="Failed to build the project.")
+    print("\nBuild finished.")
+
+    dev_exe = os.path.join(".", "target", build_mode, "shoopdaloop_dev.exe")
+
+    print("You can now run the project in dev mode by running:")
+    print(f"\n   {dev_exe}\n")
+    print("To explore packaging options, run:")
+    print(f"\n   [build.ps1|build.sh|build.py] package --help\n")
+
+def add_package_parser(subparsers):
+    package_parser = subparsers.add_parser('package', add_help=False)
+    package_parser.add_argument('--help', '-h', action='store_true')
+
+    build_mode_group = package_parser.add_mutually_exclusive_group()
+    build_mode_group.add_argument('--debug', action='store_true')
+    build_mode_group.add_argument('--release', action='store_true')
+
+def package(args, remainder):
+    package_env = os.environ.copy()
+    build_mode = ('release' if args.release else 'debug')
+    package_exe = os.path.join(".", "target", build_mode, ("package.exe" if sys.platform == 'win32' else "package"))
+    print_help = args.help and len(remainder) == 0
+
+    if print_help:
+        print('Usage: build.py package (--debug|--release) [options]')
+        print('')
+        print('This script is a wrapper around the target/(debug|release)/package(.exe) tool built in the build step.')
+        print('Arguments are passed to package.exe, after doing some env setup and checks first.')
+        print('Passing --debug or --release chooses the package.exe from the debug or release build.')
+        print('')
+
+    if not os.path.exists(package_exe):
+        print(f'Error: {package_exe} does not exist. Please run a build first.')
+        sys.exit(1)
+    
+    if print_help:
+        print(f"Following is the output of {package_exe} --help. You can directly pass these options to this script.")
+        print('')
+        subprocess.run([package_exe, "--help"])
+        sys.exit(0)
+
+    # Check for Dependencies.exe, which is needed for basically any packaging step on windows.
+    if sys.platform == 'win32' and not shutil.which('Dependencies.exe'):
+        dependencies_folder = os.path.join(base_path, 'build', 'Dependencies.exe')
+        dependencies_executable = os.path.join(dependencies_folder, 'Dependencies.exe')
+        if not os.path.exists(dependencies_executable):
+            print('Did not find Dependencies.exe - downloading.')
+            os.makedirs(dependencies_folder)
+            zip_file = os.path.join(dependencies_folder, 'dependencies.zip')
+            urllib.request.urlretrieve(
+                'https://github.com/lucasg/Dependencies/releases/download/v1.11.1/Dependencies_x64_Release.zip',
+                zip_file)
+            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+                zip_ref.extractall(dependencies_folder)
+        package_env['PATH'] = f'{package_env['PATH']};{dependencies_folder}'
+    
+    # Find QMake
+    vcpkg_installed_dir = os.path.join(base_path, "build", "vcpkg_installed")
+    qmake_path = find_qmake(vcpkg_installed_dir)
+    if not qmake_path:
+        print("Error: qmake not found in vcpkg packages.")
+        sys.exit(1)
+    print(f"Found qmake at: {qmake_path}")
+    package_env["QMAKE"] = qmake_path
+
+    tool_args = [a for a in sys.argv[1:] if a not in ['package', '--debug', '--release']]
+    cmd = [package_exe, *tool_args]
+    print(f'Running: {' '.join(cmd)}')
+    print('')
+    print(f'{package_exe} output:')
+    print('')
+    result = subprocess.run(cmd, env=package_env)
+    sys.exit(result.returncode)
+    
+def main():
+    parser = argparse.ArgumentParser(description='ShoopDaLoop build script')
+    subparsers = parser.add_subparsers(dest='command')
+
+    # Add sub-parsers
+    add_build_parser(subparsers)
+    add_package_parser(subparsers)
+
+    (args, remainder) = parser.parse_known_args(sys.argv[1:])
+
+    if args.command == 'build':
+        # Strict parsing
+        args = parser.parse_args(sys.argv[1:])
+        build(args)
+    elif args.command == 'package':
+        package(args, remainder)
+
+if __name__ == '__main__':
+    main()

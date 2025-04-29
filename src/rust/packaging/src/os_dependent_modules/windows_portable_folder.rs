@@ -51,6 +51,7 @@ fn populate_folder(
     info!("Bundling additional assets...");
     for (src,dst) in [
         ("distribution/windows/shoop.dllpaths", "shoop.dllpaths"),
+        ("distribution/windows/shoop.executable", "shoop.executable"),
         (launcher_path.to_str().expect("Failed to convert launcher path"), "shoopdaloop_launcher.exe"),
     ] {
         let from = src_path.join(src);

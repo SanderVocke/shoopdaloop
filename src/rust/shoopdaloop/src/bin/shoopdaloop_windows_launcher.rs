@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::process::{Command, exit};
 use std::io;
 
-const EXECUTABLE_NAME: &str = "shoopdaloop.exe"; // The executable to launch
 const PATHS_FILE: &str = "shoop.dllpaths"; // The paths file
+const EXECUTABLE_FILE: &str = "shoop.executable"; // The executable descriptor
 
 fn main() -> io::Result<()> {
     // Get the launcher's directory.
@@ -18,6 +18,10 @@ fn main() -> io::Result<()> {
     let paths_file_path = launcher_dir.join(PATHS_FILE);
     let paths_content = fs::read_to_string(&paths_file_path)
         .expect("Failed to read paths file");
+
+    let executable_file_path = launcher_dir.join(EXECUTABLE_FILE);
+    let executable = fs::read_to_string(&executable_file_path)
+        .expect("Failed to read executable file");
 
     // Collect paths and prepare to add them to PATH.
     let additional_paths: Vec<PathBuf> = paths_content
@@ -45,7 +49,7 @@ fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().skip(1).collect();
 
     // Prepare to launch the executable in the modified environment with arguments.
-    let status = Command::new(launcher_dir.join(EXECUTABLE_NAME))
+    let status = Command::new(launcher_dir.join(executable))
         .args(&args) // Pass the arguments here
         .spawn()?
         .wait()?;

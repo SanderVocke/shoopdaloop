@@ -1,7 +1,11 @@
 use std::path::Path;
 use std::env;
+use common::logging::macros::*;
+shoop_log_unit!("LibSearchPaths");
 
 pub fn add_lib_search_path(path : &Path) {
+    debug!("adding lib search path: {:?}", path);
+
     let path_separator = if cfg!(target_os = "windows") { ";" } else { ":" };
     let mut name : &str = "";
     if cfg!(target_os = "windows") {

@@ -39,42 +39,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
             let _ = cmake_config_mut.build();
         }
 
-        let qmake : PathBuf;
-        #[cfg(target_os = "windows")]
-        {
-            // Glob for **/qmake.exe
-            let py_glob = format!("{}/qmake.exe", cmake_output_dir.to_str().unwrap());
-            let mut py_glob = glob(&py_glob)?;
-            qmake = py_glob.next()
-                .expect("No qmake found")
-                .with_context(|| "Failed to glob for qmake")?;
-        }
-        #[cfg(target_os = "linux")]
-        {
-            // Glob for **/bin/qmake
-            let py_glob = format!("{}/bin/qmake", cmake_output_dir.to_str().unwrap());
-            let mut py_glob = glob(&py_glob)?;
-            qmake = py_glob.next()
-                .expect("No qmake found")
-                .with_context(|| "Failed to glob for qmake")?;
-        }
-        #[cfg(target_os = "macos")]
-        {
-            // Glob for **/bin/qmake
-            let py_glob = format!("{}/bin/qmake", cmake_output_dir.to_str().unwrap());
-            let mut py_glob = glob(&py_glob)?;
-            qmake = py_glob.next()
-                .expect("No qmake found")
-                .with_context(|| "Failed to glob for qmake")?;
-        }
-
         println!("cargo:rerun-if-changed={}", cmake_backend_dir);
         println!("cargo:rerun-if-changed=src");
         println!("cargo:rerun-if-changed=build.rs");
 
         println!("cargo:rustc-env=SHOOP_BACKEND_DIR={}", install_dir.to_str().unwrap());
-        println!("cargo:rustc-env=SHOOP_QT_QMAKE_PATH={}", qmake.to_str().unwrap());
-
 
         println!("cargo:rustc-link-search=native={}", lib_path.display());
 
