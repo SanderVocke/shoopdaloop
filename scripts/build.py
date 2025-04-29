@@ -97,6 +97,7 @@ def build(args):
                         env=build_env,
                         err="Couldn't find/install python dependencies.")
     build_env["PYTHON"] = python_command
+    build_env["PYO3_PYTHON"] = python_command
 
     # Setup cargo
     try:
