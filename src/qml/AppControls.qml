@@ -3,7 +3,7 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import Qt.labs.platform as LabsPlatform
 import ShoopDaLoop.PythonLogger
-import ShoopDaLoop.Rust
+// import ShoopDaLoop.Rust
 
 import ShoopConstants
 

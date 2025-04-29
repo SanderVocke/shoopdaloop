@@ -20,12 +20,6 @@ fn shoopdaloop_main_impl<'py>(
             .map(|arg| PyString::new_bound(py, &arg).to_object(py))
             .collect();
         sys.setattr("argv", PyList::new_bound(py, &py_args))?;
-        
-        let re = PyModule::import_bound(py, "re")
-            .map_err(|e| {
-                e.print_and_set_sys_last_vars(py);
-                anyhow::anyhow!("Python error (details printed)")
-            })?;
 
         // Expose Rust functionality to Python modules
         {
