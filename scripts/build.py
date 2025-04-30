@@ -35,7 +35,7 @@ def find_qmake(directory):
 def add_build_parser(subparsers):
     build_parser = subparsers.add_parser('build', help='Build the project')
 
-    default_python_version = os.environ.get('PYTHON_VERSION', '3.9')
+    default_python_version = os.environ.get('PYTHON_VERSION', '3.10')
 
     build_parser.add_argument('--python-version', type=str, required=False, default=default_python_version, help='Python version to embed into ShoopDaLoop. Will be installed with uv if not already present.')
     build_parser.add_argument('--vcpkg-root', type=str, required=False, default=os.environ.get('VCPKG_ROOT'), help='Path to the VCPKG root directory. Default is VCPKG_ROOT environment variable.')
@@ -74,10 +74,11 @@ def build(args):
     if maybe_vcpkg_root and not args.vcpkg_root:
         print(f"Using VCPKG_ROOT from env: {maybe_vcpkg_root}")
         args.vcpkg_root = maybe_vcpkg_root
+    vcpkg_exe = os.path.join(args.vcpkg_root, "vcpkg")
 
     # Setup vcpkg
     try:
-        result = subprocess.check_output('vcpkg --help', shell=True, env=apply_build_env(build_env))
+        result = subprocess.check_output(f'{vcpkg_exe} --help', shell=True, env=apply_build_env(build_env))
     except subprocess.CalledProcessError:
         print("Error: vcpkg not found in PATH. Please install it and ensure it is in the PATH.")
 
@@ -136,7 +137,7 @@ def build(args):
         print(f"Skipping vcpkg setup: assuming packages are already in {vcpkg_installed_dir}.")
     else:
         print("Installing vcpkg packages...")
-        run_and_print(f"vcpkg install --x-install-root={vcpkg_installed_dir}",
+        run_and_print(f"{vcpkg_exe} install --x-install-root={vcpkg_installed_dir}",
                         env=apply_build_env(build_env),
                         cwd=os.path.join(base_path, 'src', 'backend'),
                         err="Failed to fetch/build/install vcpkg packages.")
