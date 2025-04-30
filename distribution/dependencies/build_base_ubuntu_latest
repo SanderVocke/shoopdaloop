@@ -13,6 +13,7 @@ rpm
 libarchive-tools
 desktop-file-utils
 mono-complete
+autoconf
 
 # libraries
 libglib2.0-0

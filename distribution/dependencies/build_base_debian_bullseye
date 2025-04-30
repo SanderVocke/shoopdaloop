@@ -15,6 +15,7 @@ libclang-dev
 desktop-file-utils
 strace
 mono-complete
+autoconf
 
 # libraries
 libglib2.0-0
