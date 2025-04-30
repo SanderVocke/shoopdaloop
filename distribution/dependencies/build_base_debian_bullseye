@@ -14,6 +14,7 @@ libarchive-tools
 libclang-dev
 desktop-file-utils
 strace
+mono-complete
 
 # libraries
 libglib2.0-0

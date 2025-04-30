@@ -12,6 +12,7 @@ ruby
 rpm
 libarchive-tools
 desktop-file-utils
+mono-complete
 
 # libraries
 libglib2.0-0
