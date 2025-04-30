@@ -16,6 +16,8 @@ desktop-file-utils
 strace
 mono-complete
 autoconf
+automake
+libtool
 
 # libraries
 libglib2.0-0
