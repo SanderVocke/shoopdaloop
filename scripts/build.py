@@ -227,6 +227,7 @@ def package(args, remainder):
         sys.exit(0)
 
     # Check for Dependencies.exe, which is needed for basically any packaging step on windows.
+    print(f"FIXME: sys.platform == {sys.platform}, shutil.which('Dependencies.exe') == {shutil.which('Dependencies.exe')}")
     if sys.platform == 'win32' and not shutil.which('Dependencies.exe'):
         dependencies_folder = os.path.join(base_path, 'build', 'Dependencies.exe')
         dependencies_executable = os.path.join(dependencies_folder, 'Dependencies.exe')

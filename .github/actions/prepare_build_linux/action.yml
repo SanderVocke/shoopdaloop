@@ -10,3 +10,6 @@ runs:
     run: |
       $PIP install --upgrade pip build auditwheel patchelf
       $PIP install -r build_python_requirements.txt
+
+  - name: Free Disk Space
+    uses: jlumbroso/free-disk-space@main
