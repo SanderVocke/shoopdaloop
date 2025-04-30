@@ -24,7 +24,7 @@ runs:
     shell: wrap-shell {0}
     run: |
        git clone --depth 1 --branch 2025.04.09 https://github.com/microsoft/vcpkg.git /tmp/vcpkg
-       echo "VCPKG_ROOT=$(pwd)/vcpkg" | tee -a $GITHUB_ENV
+       echo "VCPKG_ROOT=/tmp/vcpkg" | tee -a $GITHUB_ENV
   
   - name: Bootstrap
     if: always()
@@ -45,7 +45,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-     echo "$(pwd)/vcpkg" | tee -a $GITHUB_PATH
+     echo "$VCPKG_ROOT" | tee -a $GITHUB_PATH
      LOCAL_FEED_URL="https://nuget.pkg.github.com/SanderVocke/index.json"
      echo "FEED_URL=$LOCAL_FEED_URL" | tee -a $GITHUB_ENV
      echo "VCPKG_BINARY_SOURCES=clear;nuget,$LOCAL_FEED_URL,readwrite" | tee -a $GITHUB_ENV
