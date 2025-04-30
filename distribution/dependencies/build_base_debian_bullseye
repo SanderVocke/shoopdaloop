@@ -18,6 +18,7 @@ mono-complete
 autoconf
 automake
 libtool
+bison
 
 # libraries
 libglib2.0-0
