@@ -33,8 +33,8 @@ runs:
       ./vcpkg fetch nuget
       echo "NUGET_EXE=$(./vcpkg fetch nuget)" | tee -a $GITHUB_ENV
 
-  - name: Add mono to NUGET if on linux
-    if: runner.os == 'Linux'
+  - name: Add mono to NUGET command
+    if: runner.os == 'Linux' || runner.os == 'macOS'
     shell: wrap-shell {0}
     run: |
      echo "NUGET_EXE=mono ${NUGET_EXE}" | tee -a $GITHUB_ENV
