@@ -22,6 +22,7 @@ libc-bin
 autoconf-archive
 libarchive-dev
 libcryptsetup-dev
+python3-jinja2
 
 # libraries
 libglib2.0-0
