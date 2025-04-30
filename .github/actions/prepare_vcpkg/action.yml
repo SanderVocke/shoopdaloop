@@ -41,7 +41,7 @@ runs:
      echo "$(pwd)/vcpkg" | tee -a $GITHUB_PATH
      LOCAL_FEED_URL="https://nuget.pkg.github.com/SanderVocke/index.json"
      echo "FEED_URL=$LOCAL_FEED_URL" | tee -a $GITHUB_ENV
-     echo "clear;nuget,$LOCAL_FEED_URL,readwrite" > ./.github/workflows/vcpkg.yml
+     echo "VCPKG_BINARY_SOURCES=clear;nuget,$LOCAL_FEED_URL,readwrite" | tee -a $GITHUB_ENV
   
   - name: Setup NuGet sources
     if: always()
