@@ -239,7 +239,7 @@ def package(args, remainder):
                 zip_file)
             with zipfile.ZipFile(zip_file, 'r') as zip_ref:
                 zip_ref.extractall(dependencies_folder)
-        package_env['PATH'] = f"{package_env['PATH']};{dependencies_folder}"
+        package_env['PATH'] = f"{os.environ['PATH']};{dependencies_folder}"
     
     # Find QMake
     vcpkg_installed_dir = os.path.join(base_path, "build", "vcpkg_installed")
