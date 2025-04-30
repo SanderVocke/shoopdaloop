@@ -14,45 +14,45 @@ runs:
       fi
 
       # Install packages
-      brew install ninja libsndfile libtool automake autoconf cmake
-      brew install jack liblo coreutils
+      brew install libtool automake autoconf cmake
+      brew install liblo coreutils
       brew install python@3.9
       brew install create-dmg
 
-      # Install Python packages
-      $PIP install --upgrade pip build
-      $PIP install -r build_python_requirements.txt
-  - name: Install boost
-    uses: MarkusJx/install-boost@v2.4.5
-    id: install-boost
-    with:
-      boost_version: 1.86.0
-      platform_version: 13
-  - name: Install PyEnv
-    shell: wrap-shell {0}
-    run: |
-      curl https://pyenv.run | bash
-      echo "$HOME/.pyenv/bin" | tee -a $GITHUB_PATH
-  - name: Symlink Qt include folders
-    shell: wrap-shell {0}
-    if: always()
-    run: |
-      cd $QT_ROOT_DIR/include
-      ln -s ../lib/QtCore.framework/Headers QtCore
-      ln -s ../lib/QtGui.framework/Headers QtGui
-      ln -s ../lib/QtQml.framework/Headers QtQml
-      ln -s ../lib/QtNetwork.framework/Headers QtNetwork
-      ln -s ../lib/QtQuick.framework/Headers QtQuick
-      ln -s ../lib/QtQuickControls2.framework/Headers QtQuickControls2
-      ln -s ../lib/QtTest.framework/Headers QtTest
-  - name: Set outputs
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-      touch _macos_prepared
-      echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:${{ steps.install-boost.outputs.BOOST_ROOT }}/lib/cmake/Boost-1.86.0" | tee -a $GITHUB_ENV
-      echo "DYLD_FRAMEWORK_PATH=$QT_ROOT_DIR/lib" | tee -a $GITHUB_ENV
-      echo "CMAKE_INCLUDE_PATH=$CMAKE_INCLUDE_PATH:${{ github.workspace }}/includes:${{ github.workspace }}/boost/boost/include" | tee -a $GITHUB_ENV
-      echo "LDFLAGS=$LDFLAGS -L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib" | tee -a $GITHUB_ENV
-      echo "CFLAGS=$CFLAGS -I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include -I/Users/runner/work/shoopdaloop/shoopdaloop/boost/boost/include" | tee -a $GITHUB_ENV
-      echo "CPPFLAGS=$CPPFLAGS -isystem/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include -I/Users/runner/work/shoopdaloop/shoopdaloop/boost/boost/include" | tee -a $GITHUB_ENV
+  #    # Install Python packages
+  #    $PIP install --upgrade pip build
+  #    $PIP install -r build_python_requirements.txt
+  # - name: Install boost
+  #   uses: MarkusJx/install-boost@v2.4.5
+  #   id: install-boost
+  #   with:
+  #     boost_version: 1.86.0
+  #     platform_version: 13
+  # - name: Install PyEnv
+  #   shell: wrap-shell {0}
+  #   run: |
+  #     curl https://pyenv.run | bash
+  #     echo "$HOME/.pyenv/bin" | tee -a $GITHUB_PATH
+  # - name: Symlink Qt include folders
+  #   shell: wrap-shell {0}
+  #   if: always()
+  #   run: |
+  #     cd $QT_ROOT_DIR/include
+  #     ln -s ../lib/QtCore.framework/Headers QtCore
+  #     ln -s ../lib/QtGui.framework/Headers QtGui
+  #     ln -s ../lib/QtQml.framework/Headers QtQml
+  #     ln -s ../lib/QtNetwork.framework/Headers QtNetwork
+  #     ln -s ../lib/QtQuick.framework/Headers QtQuick
+  #     ln -s ../lib/QtQuickControls2.framework/Headers QtQuickControls2
+  #     ln -s ../lib/QtTest.framework/Headers QtTest
+  # - name: Set outputs
+  #   if: always()
+  #   shell: wrap-shell {0}
+  #   run: |
+  #     touch _macos_prepared
+  #     echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:${{ steps.install-boost.outputs.BOOST_ROOT }}/lib/cmake/Boost-1.86.0" | tee -a $GITHUB_ENV
+  #     echo "DYLD_FRAMEWORK_PATH=$QT_ROOT_DIR/lib" | tee -a $GITHUB_ENV
+  #     echo "CMAKE_INCLUDE_PATH=$CMAKE_INCLUDE_PATH:${{ github.workspace }}/includes:${{ github.workspace }}/boost/boost/include" | tee -a $GITHUB_ENV
+  #     echo "LDFLAGS=$LDFLAGS -L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib" | tee -a $GITHUB_ENV
+  #     echo "CFLAGS=$CFLAGS -I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include -I/Users/runner/work/shoopdaloop/shoopdaloop/boost/boost/include" | tee -a $GITHUB_ENV
+  #     echo "CPPFLAGS=$CPPFLAGS -isystem/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include -I/Users/runner/work/shoopdaloop/shoopdaloop/boost/boost/include" | tee -a $GITHUB_ENV

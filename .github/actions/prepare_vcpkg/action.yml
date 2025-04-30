@@ -12,12 +12,6 @@ runs:
       script: |
         core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
         core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-  
-  - name: Binary caching setting
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-      echo "VCPKG_BINARY_SOURCES=clear;x-gha,readwrite" > ./.github/workflows/vcpkg.yml
 
   - name: Checkout
     if: always()
@@ -29,13 +23,23 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      cd vcpkg && ./bootstrap-vcpkg.sh
+      cd vcpkg
+      ./bootstrap-vcpkg.sh
+      echo "NUGET_EXE=$(./vcpkg fetch nuget)" >> $GITHUB_ENV
   
   - name: Set env vars
     if: always()
     shell: wrap-shell {0}
     run: |
-     echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
-     echo "$(pwd)/vcpkg" >> $GITHUB_PATH
-
- 
+     echo "VCPKG_ROOT=$(pwd)/vcpkg" | tee -a $GITHUB_ENV
+     echo "$(pwd)/vcpkg" | tee -a $GITHUB_PATH
+     LOCAL_FEED_URL="https://nuget.pkg.github.com/${{ env.USERNAME }}/index.json"
+     echo "FEED_URL=$LOCAL_FEED_URL" | tee -a $GITHUB_ENV
+     echo "clear;nuget,$LOCAL_FEED_URL,readwrite" > ./.github/workflows/vcpkg.yml
+  
+  - name: Setup NuGet sources
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+      ${NUGET_EXE} sources add -Username ${{ env.USERNAME }} -Password ${{ secrets.GITHUB_TOKEN }} -StorePasswordInClearText -Name GitHub -Source "${{ env.FEED_URL }}"
+      ${NUGET_EXE} setapikey ${{ secrets.GITHUB_TOKEN }} -Source "${{ env.FEED_URL }}"
