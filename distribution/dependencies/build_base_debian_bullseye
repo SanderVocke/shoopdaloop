@@ -21,6 +21,7 @@ libtool
 bison
 flex
 libc-bin
+autoconf-archive
 
 # libraries
 libglib2.0-0
