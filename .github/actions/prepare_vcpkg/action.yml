@@ -34,7 +34,7 @@ runs:
       echo "NUGET_EXE=$(./vcpkg fetch nuget)" | tee -a $GITHUB_ENV
 
   - name: Add mono to NUGET if on linux
-    if: runner.os == "Linux"
+    if: runner.os == 'Linux'
     shell: wrap-shell {0}
     run: |
      echo "NUGET_EXE=mono ${NUGET_EXE}" | tee -a $GITHUB_ENV
