@@ -93,7 +93,7 @@ runs:
 
   - name: Prepare vcpkg
     if: always()
-    uses: ./.github/actions/vcpkg_prepare
+    uses: ./.github/actions/prepare_vcpkg
   
   - name: Install the latest version of uv
     uses: astral-sh/setup-uv@v6
