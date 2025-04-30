@@ -39,7 +39,7 @@ runs:
     run: |
      echo "VCPKG_ROOT=$(pwd)/vcpkg" | tee -a $GITHUB_ENV
      echo "$(pwd)/vcpkg" | tee -a $GITHUB_PATH
-     LOCAL_FEED_URL="https://nuget.pkg.github.com/${{ env.USERNAME }}/index.json"
+     LOCAL_FEED_URL="https://nuget.pkg.github.com/SanderVocke/index.json"
      echo "FEED_URL=$LOCAL_FEED_URL" | tee -a $GITHUB_ENV
      echo "clear;nuget,$LOCAL_FEED_URL,readwrite" > ./.github/workflows/vcpkg.yml
   
@@ -47,5 +47,5 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      ${NUGET_EXE} sources add -Username ${{ env.USERNAME }} -Password ${{ inputs.GITHUB_TOKEN }} -StorePasswordInClearText -Name GitHub -Source "${{ env.FEED_URL }}"
+      ${NUGET_EXE} sources add -Username SanderVocke -Password ${{ inputs.GITHUB_TOKEN }} -StorePasswordInClearText -Name GitHub -Source "${{ env.FEED_URL }}"
       ${NUGET_EXE} setapikey ${{ inputs.GITHUB_TOKEN }} -Source "${{ env.FEED_URL }}"
