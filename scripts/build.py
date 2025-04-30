@@ -35,7 +35,6 @@ def find_qmake(directory):
 def add_build_parser(subparsers):
     build_parser = subparsers.add_parser('build', help='Build the project')
 
-    maybe_vcpkg_root = os.environ.get('VCPKG_ROOT')
     default_python_version = os.environ.get('PYTHON_VERSION', '3.9')
 
     build_parser.add_argument('--python-version', type=str, required=False, default=default_python_version, help='Python version to embed into ShoopDaLoop. Will be installed with uv if not already present.')
@@ -70,6 +69,11 @@ def build(args):
         args.skip_vcpkg = True
         args.skip_python = True
 
+    maybe_vcpkg_root = os.environ.get('VCPKG_ROOT')
+    if maybe_vcpkg_root and not args.vcpkg_root:
+        print(f"Using VCPKG_ROOT from env: {maybe_vcpkg_root}")
+        args.vcpkg_root = maybe_vcpkg_root
+
     # Setup vcpkg
     try:
         result = subprocess.check_output('vcpkg --help', shell=True, env=apply_build_env(build_env))
@@ -98,8 +102,6 @@ def build(args):
     # Setup venv
     venv_path = os.path.join(base_path, "build", "venv")
     python_command = os.path.join(venv_path, "bin", "python") if sys.platform != "win32" else os.path.join(venv_path, "Scripts", "python.exe")
-    python_base_prefix = subprocess.check_output([python_command, '-c', 'import sys; print(sys.base_prefix)'], stderr=subprocess.DEVNULL).decode().strip()
-    python_base_interpreter = os.path.join(python_base_prefix, "bin", "python") if sys.platform != "win32" else os.path.join(python_base_prefix, "python.exe")
 
     if args.skip_python:
         print(f"Skipping venv setup: assuming build/venv is already installed.")
@@ -112,6 +114,8 @@ def build(args):
         run_and_print(f"uv pip install --python {python_command} -r {base_path}/build_python_requirements.txt",
                         env=apply_build_env(build_env),
                         err="Couldn't find/install python dependencies.")
+    python_base_prefix = subprocess.check_output([python_command, '-c', 'import sys; print(sys.base_prefix)'], stderr=subprocess.DEVNULL).decode().strip()
+    python_base_interpreter = os.path.join(python_base_prefix, "bin", "python") if sys.platform != "win32" else os.path.join(python_base_prefix, "python.exe")
     build_env["PYTHON"] = python_command
     build_env["PYO3_PYTHON"] = python_base_interpreter
 

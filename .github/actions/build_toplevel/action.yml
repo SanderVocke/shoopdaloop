@@ -91,20 +91,6 @@ runs:
       variant: ${{ inputs.prepare_kind }}
   - uses: ./.github/actions/checkpoint
     if: always()
-  - name: More env settings (non-Mac)
-    shell: wrap-shell {0}
-    if: always() && runner.os != 'macOS'
-    run: |
-      echo "PYO3_PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
-  - name: Use pyenv python (Mac)
-    shell: wrap-shell {0}
-    if: always() && runner.os == 'macOS'
-    run: |
-      pyenv install --skip-existing 3.10
-      pyenv_py=$(pyenv prefix 3.10)/bin/python
-      $pyenv_py -m pip install --upgrade pip
-      $pyenv_py -m pip install build
-      echo "PYO3_PYTHON=$pyenv_py" | tee -a $GITHUB_ENV
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
