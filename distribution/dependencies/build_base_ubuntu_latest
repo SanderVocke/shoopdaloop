@@ -18,6 +18,7 @@ automake
 libtool
 bison
 flex
+libc-bin
 
 # libraries
 libglib2.0-0
