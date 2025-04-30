@@ -70,13 +70,13 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: linux_release
-            release_build: true
-            package_kind: portable_folder
-            second_package_kind: appimage
-            third_package_kind: test_binaries
-            upload_release_assets: true
-            platform: linux-x64
+          # - name: linux_release
+          #   release_build: true
+          #   package_kind: portable_folder
+          #   second_package_kind: appimage
+          #   third_package_kind: test_binaries
+          #   upload_release_assets: true
+          #   platform: linux-x64
           - name: linux_debug
             release_build: false
             package_kind: portable_folder
@@ -108,7 +108,7 @@ jobs:
     env:
       PATH_SEPARATOR: ":"
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-      # checkpoints_enabled: true
+      checkpoints_enabled: true
     needs: maybe_create_release
     #if: false
     steps:

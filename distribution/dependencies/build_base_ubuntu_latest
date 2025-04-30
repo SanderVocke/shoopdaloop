@@ -20,8 +20,6 @@ bison
 flex
 libc-bin
 autoconf-archive
-libarchive-dev
-libcryptsetup-dev
 python3-jinja2
 
 # libraries
@@ -31,6 +29,9 @@ jackd2
 libxkbcommon-dev
 libboost-dev
 libjack-jackd2-dev
+libx11-xcb-dev
+libarchive-dev
+libcryptsetup-dev
 
 # libraries for running / coverage
 libportaudio2
