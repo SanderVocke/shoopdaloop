@@ -158,7 +158,7 @@ def build(args):
         with open(env_file, "w") as f:
             for key, value in build_env.items():
                 f.write(f'$env:{key}="{value}"\n')
-        print(f'\nWrote the build env to {env_filename}. Apply it using:')
+        print(f'\nWrote the build env to {env_file}. Apply it using:')
         print(f'\n    . ./{env_filename}')
         print('\nThen build using cargo, e.g.:')
         print('\n    cargo build --release')
@@ -171,7 +171,7 @@ def build(args):
         with open(env_file, "w") as f:
             for key, value in build_env.items():
                 f.write(f'export {key}="{value}"\n')
-        print(f'\nWrote the build env to {env_filename}. Apply it using:')
+        print(f'\nWrote the build env to {env_file}. Apply it using:')
         print(f'\n    . ./{env_filename}')
         print('\nThen build using cargo, e.g.:')
         print('\n    cargo build --release')
