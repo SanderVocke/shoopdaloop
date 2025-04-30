@@ -1,5 +1,10 @@
 name: Build Base
-description: Do a basic Cargo build in the checked out repository
+description: Do a build in the checked out repository
+
+inputs:
+  release_build:
+    description: "if true, does a release build. Otherwise, a debug build."
+    default: 'false'
 
 runs:
   using: "composite"
@@ -11,21 +16,46 @@ runs:
     with:
         prefix-key: v4
         env-vars: "CARGO CC CFLAGS CXX CMAKE RUST PYO3"
+  
+  - name: Set release flags
+    if: always() && inputs.release_build == 'true'
+    shell: wrap-shell {0}
+    run: |
+        echo "CARGO_BUILD_FLAGS=--release" | tee -a $GITHUB_ENV
+        echo "BUILD_SCRIPT_FLAGS=--release" | tee -a $GITHUB_ENV
+        echo "BUILD_ENV_FILE=./build-env-debug.sh" | tee -a $GITHUB_ENV
 
-  - name: Build dependencies
+  - name: Set debug flags
+    if: always() && inputs.release_build != 'true'
+    shell: wrap-shell {0}
+    run: |
+        echo "CARGO_BUILD_FLAGS=" | tee -a $GITHUB_ENV
+        echo "BUILD_SCRIPT_FLAGS=--release" | tee -a $GITHUB_ENV
+        echo "BUILD_ENV_FILE=./build-env-release.sh" | tee -a $GITHUB_ENV
+
+  - name: Setup Python, build env and build vcpkg packages
+    if: always()
+    shell: wrap-shell {0}\
+    run: |
+        ./build.sh ${BUILD_SCRIPT_FLAGS} --python-version 3.9 --skip-cargo --write-build-env-sh
+
+  - name: Build Cargo dependencies
     if: always()
     shell: wrap-shell {0}
     run: |
+      . ${BUILD_ENV_FILE}
       cargo build --features "shoopdaloop/prebuild packaging/prebuild" ${CARGO_BUILD_FLAGS}
 
   - name: Build main packages
     if: always()
     shell: wrap-shell {0}
     run: |
+      . ${BUILD_ENV_FILE}
       cargo build -vv ${CARGO_BUILD_FLAGS}
   
   - name: Build test code
     if: always()
     shell: wrap-shell {0}
     run: |
+      . ${BUILD_ENV_FILE}
       cargo test -vv --no-run ${CARGO_BUILD_FLAGS}

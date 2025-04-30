@@ -46,12 +46,23 @@ def add_build_parser(subparsers):
 
     build_parser.add_argument("--skip-python", action='store_true', help="Don't install Python and create a virtual environment (it should already be there from a previous build).")
     build_parser.add_argument("--skip-vcpkg", action='store_true', help="Don't install vcpkg packages (they should already be there from a previous build).")
+    build_parser.add_argument('--skip-cargo', action='store_true', help="Don't build anything after the preparation steps.")
     build_parser.add_argument("--incremental", action='store_true', help="Implies --skip-python and --skip-vcpkg.")
     
     build_parser.add_argument('--cargo-args', '-c', type=str, help='Pass additional arguments to cargo build.', default='')
 
+    build_parser.add_argument('--write-build-env-ps1', action='store_true', help="Write a sourcable script that sets the build env so cargo can be run manually. Implies --skip-cargo.")
+    build_parser.add_argument('--write-build-env-sh', action='store_true', help="Write a bash script that sets the build env so cargo can be run manually. Implies --skip-cargo.")
+
 def build(args):
-    build_env = os.environ.copy()
+    build_env = dict()
+
+    def apply_build_env(env_dict):
+        env = os.environ.copy()
+        for key, value in env_dict.items():
+            os.environ[key] = value
+        return env
+
     build_mode = ('release' if args.release else 'debug')
     print(f"Building in {build_mode} mode.")
 
@@ -61,7 +72,7 @@ def build(args):
 
     # Setup vcpkg
     try:
-        result = subprocess.check_output('vcpkg --help', shell=True, env=build_env)
+        result = subprocess.check_output('vcpkg --help', shell=True, env=apply_build_env(build_env))
     except subprocess.CalledProcessError:
         print("Error: vcpkg not found in PATH. Please install it and ensure it is in the PATH.")
 
@@ -80,7 +91,7 @@ def build(args):
         print(f"Skipping Python installation: assuming Python {python_version} is already installed.")
     else:
         run_and_print(f"uv python install {python_version}",
-                        env=build_env,
+                        env=apply_build_env(build_env),
                         err="Couldn't find find/install Python version.")
         print(f"-> Python {python_version} found.")
 
@@ -96,17 +107,17 @@ def build(args):
         print(f"Setting up build venv")
         print(f"-> Venv path: {venv_path}")
         run_and_print(f"uv venv --python {python_version} {venv_path}",
-                        env=build_env,
+                        env=apply_build_env(build_env),
                         err="Couldn't create/check venv.")
         run_and_print(f"uv pip install --python {python_command} -r {base_path}/build_python_requirements.txt",
-                        env=build_env,
+                        env=apply_build_env(build_env),
                         err="Couldn't find/install python dependencies.")
     build_env["PYTHON"] = python_command
     build_env["PYO3_PYTHON"] = python_base_interpreter
 
     # Setup cargo
     try:
-        result = subprocess.check_output('cargo -V', shell=True, env=build_env)
+        result = subprocess.check_output('cargo -V', shell=True, env=apply_build_env(build_env))
     except subprocess.CalledProcessError:
         print("Error: cargo not found in PATH. Please install it and ensure it is in the PATH.")
 
@@ -121,7 +132,7 @@ def build(args):
     else:
         print("Installing vcpkg packages...")
         run_and_print(f"vcpkg install --x-install-root={vcpkg_installed_dir}",
-                        env=build_env,
+                        env=apply_build_env(build_env),
                         cwd=os.path.join(base_path, 'src', 'backend'),
                         err="Failed to fetch/build/install vcpkg packages.")
         print("vcpkg packages installed.")
@@ -134,21 +145,48 @@ def build(args):
     print(f"Found qmake at: {qmake_path}")
     build_env["QMAKE"] = qmake_path
 
-    # Run the build
-    print("Preparations and checks done. Starting the cargo build.")
-    run_and_print(f"cargo build {('--release' if build_mode == 'release' else '')} {args.cargo_args}",
-                    env=build_env,
-                    err="Failed to build the project.")
-    print("\nBuild finished.")
+    if args.write_build_env_ps1:
+        args.skip_cargo = True
+        env_filename = f".build-env-{build_mode}.ps1"
+        env_file = os.path.join(base_path, env_filename)
+        print("Writing the build env to a .ps1 file.")
+        with open(env_file, "w") as f:
+            for key, value in build_env.items():
+                f.write(f'$env:{key}="{value}"\n')
+        print(f'\nWrote the build env to {env_filename}. Apply it using:')
+        print(f'\n    . ./{env_filename}')
+        print('\nThen build using cargo, e.g.:')
+        print('\n    cargo build --release')
 
-    dev_exe = os.path.join(".", "target", build_mode, "shoopdaloop_dev.exe")
-    dev_launcher = os.path.join(".", "target", build_mode, "shoopdaloop_windows_launcher.exe")
-    run_dev = (dev_launcher if sys.platform == "win32" else dev_exe)
+    if args.write_build_env_sh:
+        args.skip_cargo = True
+        env_filename = f".build-env-{build_mode}.sh"
+        env_file = os.path.join(base_path, env_filename)
+        print("Writing the build env to a .sh file.")
+        with open(env_file, "w") as f:
+            for key, value in build_env.items():
+                f.write(f'export {key}="{value}"\n')
+        print(f'\nWrote the build env to {env_filename}. Apply it using:')
+        print(f'\n    . ./{env_filename}')
+        print('\nThen build using cargo, e.g.:')
+        print('\n    cargo build --release')
 
-    print("You can now run the project in dev mode by running:")
-    print(f"\n   {run_dev}\n")
-    print("To explore packaging options, run:")
-    print(f"\n   [build.ps1|build.sh|build.py] package --help\n")
+    if not args.skip_cargo:
+        # Run the build
+        print("Preparations and checks done. Starting the cargo build.")
+        run_and_print(f"cargo build {('--release' if build_mode == 'release' else '')} {args.cargo_args}",
+                        env=apply_build_env(build_env),
+                        err="Failed to build the project.")
+        print("\nBuild finished.")
+
+        dev_exe = os.path.join(".", "target", build_mode, "shoopdaloop_dev.exe")
+        dev_launcher = os.path.join(".", "target", build_mode, "shoopdaloop_windows_launcher.exe")
+        run_dev = (dev_launcher if sys.platform == "win32" else dev_exe)
+
+        print("You can now run the project in dev mode by running:")
+        print(f"\n   {run_dev}\n")
+        print("To explore packaging options, run:")
+        print(f"\n   [build.ps1|build.sh|build.py] package --help\n")
 
 def add_package_parser(subparsers):
     package_parser = subparsers.add_parser('package', add_help=False)
