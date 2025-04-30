@@ -161,7 +161,7 @@ def build(args):
         print(f'\nWrote the build env to {env_file}. Apply it using:')
         print(f'\n    . ./{env_filename}')
         print('\nThen build using cargo, e.g.:')
-        print('\n    cargo build --release')
+        print('\n    cargo build')
 
     if args.write_build_env_sh:
         args.skip_cargo = True
@@ -174,7 +174,7 @@ def build(args):
         print(f'\nWrote the build env to {env_file}. Apply it using:')
         print(f'\n    . ./{env_filename}')
         print('\nThen build using cargo, e.g.:')
-        print('\n    cargo build --release')
+        print('\n    cargo build')
 
     if not args.skip_cargo:
         # Run the build
