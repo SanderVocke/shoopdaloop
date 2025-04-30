@@ -1,6 +1,11 @@
 name: prepare_vcpkg
 description: Prepare vcpkg
 
+inputs:
+  GITHUB_TOKEN:
+    required: true
+    description: "GitHub token"
+
 runs:
   using: "composite"
   steps:
@@ -41,5 +46,5 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      ${NUGET_EXE} sources add -Username ${{ env.USERNAME }} -Password ${{ secrets.GITHUB_TOKEN }} -StorePasswordInClearText -Name GitHub -Source "${{ env.FEED_URL }}"
-      ${NUGET_EXE} setapikey ${{ secrets.GITHUB_TOKEN }} -Source "${{ env.FEED_URL }}"
+      ${NUGET_EXE} sources add -Username ${{ env.USERNAME }} -Password ${{ inputs.GITHUB_TOKEN }} -StorePasswordInClearText -Name GitHub -Source "${{ env.FEED_URL }}"
+      ${NUGET_EXE} setapikey ${{ inputs.GITHUB_TOKEN }} -Source "${{ env.FEED_URL }}"

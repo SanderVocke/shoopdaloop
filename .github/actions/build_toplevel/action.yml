@@ -30,6 +30,9 @@ inputs:
   upload_release_assets:
     default: 'false'
     description: "Whether to attempt uploading assets to a tag release."
+  GITHUB_TOKEN:
+    required: true
+    description: "GitHub token"
 
 runs:
   using: "composite"
@@ -88,7 +91,8 @@ runs:
     id: prepare
     uses: ./.github/actions/prepare_build
     with:
-      variant: ${{ inputs.prepare_kind }}
+      variant: ${{ inputs.prepare_kind }}\
+      GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
   - uses: ./.github/actions/checkpoint
     if: always()
   - uses: ./.github/actions/checkpoint

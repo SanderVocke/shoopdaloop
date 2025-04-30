@@ -6,6 +6,9 @@ inputs:
   variant:
     required: true
     description: "platform variant"
+  GITHUB_TOKEN:
+    required: true
+    description: "GitHub token"
 
 runs:
   using: "composite"
@@ -94,6 +97,8 @@ runs:
   - name: Prepare vcpkg
     if: always()
     uses: ./.github/actions/prepare_vcpkg
+    with:
+        GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
   
   - name: Install the latest version of uv
     uses: astral-sh/setup-uv@v6
