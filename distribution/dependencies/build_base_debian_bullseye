@@ -19,6 +19,7 @@ autoconf
 automake
 libtool
 bison
+flex
 
 # libraries
 libglib2.0-0
