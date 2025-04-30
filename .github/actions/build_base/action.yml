@@ -37,7 +37,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-        ./build.sh ${BUILD_SCRIPT_FLAGS} --python-version 3.9 --skip-cargo --write-build-env-sh
+        ./build.sh build ${BUILD_SCRIPT_FLAGS} --python-version 3.9 --skip-cargo --write-build-env-sh
 
   - name: Build Cargo dependencies
     if: always()
