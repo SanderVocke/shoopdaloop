@@ -17,7 +17,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      echo "VCPKG_BINARY_SOURCES=clear;x-gha,readwrite" > ./.github/workflows/vcpkg.yml"
+      echo "VCPKG_BINARY_SOURCES=clear;x-gha,readwrite" > ./.github/workflows/vcpkg.yml
 
   - name: Checkout
     if: always()
