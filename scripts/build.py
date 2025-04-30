@@ -135,7 +135,7 @@ def build(args):
         print("Skipping vcpkg setup: assuming build/vcpkg_installed is already installed.")
     else:
         print("Installing vcpkg packages...")
-        run_and_print(f"vcpkg install --debug --x-install-root={vcpkg_installed_dir}",
+        run_and_print(f"vcpkg install --x-install-root={vcpkg_installed_dir}",
                         env=apply_build_env(build_env),
                         cwd=os.path.join(base_path, 'src', 'backend'),
                         err="Failed to fetch/build/install vcpkg packages.")

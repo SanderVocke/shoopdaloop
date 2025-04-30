@@ -31,7 +31,13 @@ runs:
       cd vcpkg
       ./bootstrap-vcpkg.sh
       ./vcpkg fetch nuget
-      echo "NUGET_EXE=$(./vcpkg fetch nuget)" >> $GITHUB_ENV
+      echo "NUGET_EXE=$(./vcpkg fetch nuget)" | tee -a $GITHUB_ENV
+
+  - name: Add mono to NUGET if on linux
+    if: runner.os == "Linux"
+    shell: wrap-shell {0}
+    run: |
+     echo "NUGET_EXE=mono ${NUGET_EXE}" | tee -a $GITHUB_ENV
   
   - name: Set env vars
     if: always()
@@ -42,7 +48,7 @@ runs:
      LOCAL_FEED_URL="https://nuget.pkg.github.com/SanderVocke/index.json"
      echo "FEED_URL=$LOCAL_FEED_URL" | tee -a $GITHUB_ENV
      echo "VCPKG_BINARY_SOURCES=clear;nuget,$LOCAL_FEED_URL,readwrite" | tee -a $GITHUB_ENV
-  
+
   - name: Setup NuGet sources
     if: always()
     shell: wrap-shell {0}
