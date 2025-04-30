@@ -30,6 +30,7 @@ runs:
     run: |
       cd vcpkg
       ./bootstrap-vcpkg.sh
+      ./vcpkg fetch nuget
       echo "NUGET_EXE=$(./vcpkg fetch nuget)" >> $GITHUB_ENV
   
   - name: Set env vars
