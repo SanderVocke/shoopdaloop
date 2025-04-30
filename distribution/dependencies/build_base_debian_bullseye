@@ -22,6 +22,8 @@ bison
 flex
 libc-bin
 autoconf-archive
+libarchive-dev
+libcryptsetup-dev
 
 # libraries
 libglib2.0-0
