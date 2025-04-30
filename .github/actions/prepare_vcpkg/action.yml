@@ -18,13 +18,24 @@ runs:
         core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
         core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-  # Note: put in /tmp because short paths are needed for qtdeclarative build on Windows
+  - name: Set default location
+    if: runner.os == 'Linux' || runner.os == 'macOS'
+    shell: wrap-shell {0}
+    run: |
+     echo "VCPKG_ROOT=$(pwd)/vcpkg" | tee -a $GITHUB_ENV
+
+  # Note: put in a different spot because short paths are needed for qtdeclarative build on Windows
+  - name: Set default location
+    if: runner.os == 'Windows'
+    shell: wrap-shell {0}
+    run: |
+     echo "VCPKG_ROOT=/d/a/vcpkg" | tee -a $GITHUB_ENV
+
   - name: Checkout
     if: always()
     shell: wrap-shell {0}
     run: |
-       git clone --depth 1 --branch 2025.04.09 https://github.com/microsoft/vcpkg.git /tmp/vcpkg
-       echo "VCPKG_ROOT=/tmp/vcpkg" | tee -a $GITHUB_ENV
+       git clone --depth 1 --branch 2025.04.09 https://github.com/microsoft/vcpkg.git $VCPKG_ROOT
   
   - name: Bootstrap
     if: always()
