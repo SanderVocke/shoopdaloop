@@ -18,17 +18,19 @@ runs:
         core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
         core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
+  # Note: put in /tmp because short paths are needed for qtdeclarative build on Windows
   - name: Checkout
     if: always()
     shell: wrap-shell {0}
     run: |
-       git clone --depth 1 --branch 2025.04.09 https://github.com/microsoft/vcpkg.git
+       git clone --depth 1 --branch 2025.04.09 https://github.com/microsoft/vcpkg.git /tmp/vcpkg
+       echo "VCPKG_ROOT=$(pwd)/vcpkg" | tee -a $GITHUB_ENV
   
   - name: Bootstrap
     if: always()
     shell: wrap-shell {0}
     run: |
-      cd vcpkg
+      cd $VCPKG_ROOT
       ./bootstrap-vcpkg.sh
       ./vcpkg fetch nuget
       echo "NUGET_EXE=$(./vcpkg fetch nuget)" | tee -a $GITHUB_ENV
@@ -43,7 +45,6 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-     echo "VCPKG_ROOT=$(pwd)/vcpkg" | tee -a $GITHUB_ENV
      echo "$(pwd)/vcpkg" | tee -a $GITHUB_PATH
      LOCAL_FEED_URL="https://nuget.pkg.github.com/SanderVocke/index.json"
      echo "FEED_URL=$LOCAL_FEED_URL" | tee -a $GITHUB_ENV

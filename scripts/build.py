@@ -47,6 +47,7 @@ def add_build_parser(subparsers):
     build_parser.add_argument("--skip-vcpkg", action='store_true', help="Don't install vcpkg packages (they should already be there from a previous build).")
     build_parser.add_argument('--skip-cargo', action='store_true', help="Don't build anything after the preparation steps.")
     build_parser.add_argument("--incremental", action='store_true', help="Implies --skip-python and --skip-vcpkg.")
+    build_parser.add_argument("--vcpkg-installed-dir", type=str, default=os.path.join(base_path, "build", "vcpkg_installed"), help="Path where to install/find vcpkg packages.")
     
     build_parser.add_argument('--cargo-args', '-c', type=str, help='Pass additional arguments to cargo build.', default='')
 
@@ -129,10 +130,10 @@ def build(args):
     print("Tool and environment checks done.")
 
     # Install vcpkg packages first
-    vcpkg_installed_dir = os.path.join(base_path, "build", "vcpkg_installed")
+    vcpkg_installed_dir = args.vcpkg_installed_dir
     build_env["VCPKG_INSTALLED_DIR"] = vcpkg_installed_dir
     if args.skip_vcpkg:
-        print("Skipping vcpkg setup: assuming build/vcpkg_installed is already installed.")
+        print(f"Skipping vcpkg setup: assuming packages are already in {vcpkg_installed_dir}.")
     else:
         print("Installing vcpkg packages...")
         run_and_print(f"vcpkg install --x-install-root={vcpkg_installed_dir}",
