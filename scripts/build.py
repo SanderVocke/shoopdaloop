@@ -77,7 +77,7 @@ def build(args):
     def apply_build_env(env_dict):
         env = os.environ.copy()
         for key, value in env_dict.items():
-            os.environ[key] = value
+            env[key] = value
         return env
 
     build_mode = ('release' if args.release else 'debug')
