@@ -10,6 +10,7 @@ import zipfile
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 base_path = script_path + '/..'
+default_vcpkgs_installed_path = os.path.join(base_path, "build", "vcpkg_installed")
 
 def stream_reader(stream, mirror_stream):
     for c in iter(lambda: stream.read(1), b""):
@@ -32,7 +33,23 @@ def find_qmake(directory):
     qmake_path = qmake_paths[0]
     return qmake_path
 
+def find_vcpkg_dynlibs_paths(installed_dir):
+    # TODO: handle MacOS
+    tail = os.path.join("bin", "zita-resampler.dll") if sys.platform == "win32" \
+           else os.path.join("lib", "libzita-resampler.so")
+    pattern = f'{installed_dir}/**/{tail}'
+    print(f"Looking for dynamic libraries by searching for zita-resampler at: {pattern}")
+    zita_paths = glob.glob(pattern, recursive=True)
+    if not zita_paths:
+        return None
+    zita_path = zita_paths[0]
+    dynlib_path = os.path.dirname(zita_path)
+    print(f"Found dynamic library path at: {dynlib_path}")
+    return dynlib_path
+
 def add_build_parser(subparsers):
+    global default_vcpkgs_installed_path
+
     build_parser = subparsers.add_parser('build', help='Build the project')
 
     default_python_version = os.environ.get('PYTHON_VERSION', '3.10')
@@ -47,7 +64,7 @@ def add_build_parser(subparsers):
     build_parser.add_argument("--skip-vcpkg", action='store_true', help="Don't install vcpkg packages (they should already be there from a previous build).")
     build_parser.add_argument('--skip-cargo', action='store_true', help="Don't build anything after the preparation steps.")
     build_parser.add_argument("--incremental", action='store_true', help="Implies --skip-python and --skip-vcpkg.")
-    build_parser.add_argument("--vcpkg-installed-dir", type=str, default=os.path.join(base_path, "build", "vcpkg_installed"), help="Path where to install/find vcpkg packages.")
+    build_parser.add_argument("--vcpkg-installed-dir", type=str, default=default_vcpkgs_installed_path, help="Path where to install/find vcpkg packages. WARNING: if used, this should be passed identically to the 'package' command.")
     
     build_parser.add_argument('--cargo-args', '-c', type=str, help='Pass additional arguments to cargo build.', default='')
 
@@ -195,8 +212,12 @@ def build(args):
         print(f"\n   [build.ps1|build.sh|build.py] package --help\n")
 
 def add_package_parser(subparsers):
+    global default_vcpkgs_installed_path
+
     package_parser = subparsers.add_parser('package', add_help=False)
     package_parser.add_argument('--help', '-h', action='store_true')
+
+    package_parser.add_argument("--vcpkg-installed-dir", type=str, default=default_vcpkgs_installed_path, help="Path where to install/find vcpkg packages built in the build stage.")
 
     build_mode_group = package_parser.add_mutually_exclusive_group()
     build_mode_group.add_argument('--debug', action='store_true')
@@ -227,7 +248,6 @@ def package(args, remainder):
         sys.exit(0)
 
     # Check for Dependencies.exe, which is needed for basically any packaging step on windows.
-    print(f"FIXME: sys.platform == {sys.platform}, shutil.which('Dependencies.exe') == {shutil.which('Dependencies.exe')}")
     if sys.platform == 'win32' and not shutil.which('Dependencies.exe'):
         dependencies_folder = os.path.join(base_path, 'build', 'Dependencies.exe')
         dependencies_executable = os.path.join(dependencies_folder, 'Dependencies.exe')
@@ -240,16 +260,18 @@ def package(args, remainder):
                 zip_file)
             with zipfile.ZipFile(zip_file, 'r') as zip_ref:
                 zip_ref.extractall(dependencies_folder)
-        package_env['PATH'] = f"{os.environ['PATH']};{dependencies_folder}"
+        package_env['PATH'] = f"{package_env['PATH']};{dependencies_folder}"
     
     # Find QMake
-    vcpkg_installed_dir = os.path.join(base_path, "build", "vcpkg_installed")
-    qmake_path = find_qmake(vcpkg_installed_dir)
+    qmake_path = find_qmake(args.vcpkg_installed_dir)
     if not qmake_path:
         print("Error: qmake not found in vcpkg packages.")
         sys.exit(1)
     print(f"Found qmake at: {qmake_path}")
     package_env["QMAKE"] = qmake_path
+
+    # Find dynamic library folders and add to path
+    package_env['PATH'] = f"{package_env['PATH']}{os.pathsep}{find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir)}"
 
     tool_args = [a for a in sys.argv[1:] if a not in ['package', '--debug', '--release']]
     cmd = [package_exe, *tool_args]
