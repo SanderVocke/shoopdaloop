@@ -70,13 +70,13 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: linux_release
-            release_build: true
-            package_kind: portable_folder
-            second_package_kind: appimage
-            third_package_kind: test_binaries
-            upload_release_assets: true
-            platform: linux-x64
+          # - name: linux_release
+          #   release_build: true
+          #   package_kind: portable_folder
+          #   second_package_kind: appimage
+          #   third_package_kind: test_binaries
+          #   upload_release_assets: true
+          #   platform: linux-x64
           - name: linux_debug
             release_build: false
             package_kind: portable_folder
@@ -143,20 +143,20 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: release_debian_stable
-            python: python3
-            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-            package: shoopdaloop.*.release-linux-x64.portable.tar.gz
-            second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
+          # - name: release_debian_stable
+          #   python: python3
+          #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+          #   package: shoopdaloop.*.release-linux-x64.portable.tar.gz
+          #   second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
           - name: debug_debian_stable
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
-          - name: release_debian_appimage
-            python: python3
-            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-            package: shoopdaloop.*.release-linux-x64.AppImage
+          # - name: release_debian_appimage
+          #   python: python3
+          #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+          #   package: shoopdaloop.*.release-linux-x64.AppImage
           # - name: coverage_debian_bullseye
           #   python: python3
           #   container: docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
@@ -330,14 +330,14 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: macos_release
-            release_build: true
-            package_kind: portable_folder
-            #second_package_kind: dmg
-            third_package_kind: test_binaries
-            os: macos-13
-            upload_release_assets: true
-            platform: macos-x64
+          # - name: macos_release
+          #   release_build: true
+          #   package_kind: portable_folder
+          #   #second_package_kind: dmg
+          #   third_package_kind: test_binaries
+          #   os: macos-13
+          #   upload_release_assets: true
+          #   platform: macos-x64
           - name: macos_debug
             release_build: false
             package_kind: portable_folder
@@ -345,28 +345,28 @@ jobs:
             os: macos-13
             upload_release_assets: true
             platform: macos-x64
-          - name: macos_release_arm
-            release_build: true
-            package_kind: portable_folder
-            #second_package_kind: dmg
-            third_package_kind: test_binaries
-            os: macos-14
-            upload_release_assets: true
-            platform: macos-arm
-          - name: macos_debug_arm
-            release_build: false
-            package_kind: portable_folder
-            second_package_kind: test_binaries
-            os: macos-14
-            upload_release_assets: true
-            platform: macos-arm
+          # - name: macos_release_arm
+          #   release_build: true
+          #   package_kind: portable_folder
+          #   #second_package_kind: dmg
+          #   third_package_kind: test_binaries
+          #   os: macos-14
+          #   upload_release_assets: true
+          #   platform: macos-arm
+          # - name: macos_debug_arm
+          #   release_build: false
+          #   package_kind: portable_folder
+          #   second_package_kind: test_binaries
+          #   os: macos-14
+          #   upload_release_assets: true
+          #   platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
     #if: false
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-      #  checkpoints_enabled: true
+       checkpoints_enabled: true
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -400,24 +400,24 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: release_macos_arm
-            python: python3
-            container: null
-            os: macos-14
-            package: shoopdaloop.*.release-macos-arm.portable.tar.gz
-            second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
-          - name: debug_macos_arm
-            python: python3
-            container: null
-            os: macos-14
-            package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
-            second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
-          - name: release_macos
-            python: python3
-            container: null
-            os: macos-13
-            package: shoopdaloop.*.release-macos-x64.portable.tar.gz
-            second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
+          # - name: release_macos_arm
+          #   python: python3
+          #   container: null
+          #   os: macos-14
+          #   package: shoopdaloop.*.release-macos-arm.portable.tar.gz
+          #   second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
+          # - name: debug_macos_arm
+          #   python: python3
+          #   container: null
+          #   os: macos-14
+          #   package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
+          #   second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
+          # - name: release_macos
+          #   python: python3
+          #   container: null
+          #   os: macos-13
+          #   package: shoopdaloop.*.release-macos-x64.portable.tar.gz
+          #   second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
           - name: debug_macos
             python: python3
             container: null
