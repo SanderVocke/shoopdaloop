@@ -49,7 +49,7 @@ runs:
       RELEASE_PORTABLE_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.portable
       echo "PORTABLE_DIR=$PORTABLE_DIR" | tee -a $GITHUB_ENV
       echo "RELEASE_PORTABLE_DIR=$RELEASE_PORTABLE_DIR" | tee -a $GITHUB_ENV
-      ./build.sh package build-portable-folder -o $PORTABLE_DIR ${CARGO_BUILD_FLAGS}
+      ${CARGO_ARTIFACTS_DIR}/package build-portable-folder -o $PORTABLE_DIR ${CARGO_BUILD_FLAGS}
   - name: Make relocatable (MacOS)
     if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
     uses: ./.github/actions/macos_make_relocatable
@@ -100,9 +100,9 @@ runs:
       TEST_BINARIES_DIR=$(pwd)/shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.test_binaries
       RELEASE_TEST_BINARIES_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.test_binaries
       echo "TEST_BINARIES_DIR=$TEST_BINARIES_DIR" | tee -a $GITHUB_ENV
-      USE_PACKAGE_BINARY_PATH=$(${{ env.CONVERT_PATH_FN }} $(pwd)/build.sh)
+      USE_PACKAGE_BINARY_PATH=$(${{ env.CONVERT_PATH_FN }} ${CARGO_ARTIFACTS_DIR}/package)
       USE_OUT_DIRECTORY_PATH=$(${{ env.CONVERT_PATH_FN }} $TEST_BINARIES_DIR)
-      ${NATIVE_SHELL_CMD} "${USE_PACKAGE_BINARY_PATH} package build-test-binaries -o ${USE_OUT_DIRECTORY_PATH} ${CARGO_BUILD_FLAGS}"
+      ${NATIVE_SHELL_CMD} "${USE_PACKAGE_BINARY_PATH} build-test-binaries -o ${USE_OUT_DIRECTORY_PATH} ${CARGO_BUILD_FLAGS}"
       cp -r $TEST_BINARIES_DIR $RELEASE_TEST_BINARIES_DIR
       COMPRESSED_TEST_BINARIES_DIR=$(${{ env.COMPRESS_FOLDER_FN }} ${TEST_BINARIES_DIR})
       COMPRESSED_RELEASE_TEST_BINARIES_DIR=$(${{ env.COMPRESS_FOLDER_FN }} ${RELEASE_TEST_BINARIES_DIR})
@@ -131,7 +131,7 @@ runs:
       chmod a+x appimagetool.sh
       APPIMAGE_NAME=shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.AppImage
       RELEASE_APPIMAGE_NAME=shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.AppImage
-      ./build.sh package build-app-image --appimagetool $(pwd)/appimagetool.sh -o $APPIMAGE_NAME --appdir ${{ env.PORTABLE_DIR }}
+      ${CARGO_ARTIFACTS_DIR}/package build-app-image --appimagetool $(pwd)/appimagetool.sh -o $APPIMAGE_NAME --appdir ${{ env.PORTABLE_DIR }}
       cp $APPIMAGE_NAME $RELEASE_APPIMAGE_NAME
       echo "BUILT_PACKAGE=$APPIMAGE_NAME" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$RELEASE_APPIMAGE_NAME" | tee -a $GITHUB_ENV
