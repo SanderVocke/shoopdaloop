@@ -131,8 +131,13 @@ def build(args):
         print(f"Error: VCPKG_ROOT environment variable is not set, nor passed using --vcpkg-root. Please install vcpkg and pass its root accordingly.")
         exit(1)
     build_env['VCPKG_ROOT'] = args.vcpkg_root
-    build_env["CMAKE_TOOLCHAIN_FILE"] = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
-    build_env["VCPKG_TARGET_TRIPLET"] = detect_vcpkg_triplet()
+    vcpkg_toolchain = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
+    vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg.cmake")
+    # TODO: for some reason, in particular for MacOS on ARM, we need to
+    # pass the target triplet. Env vars or cache entries don't work, so make a toolchain file wrapper
+    with open(vcpkg_toolchain_wrapper, "w") as f:
+        f.write(f"""set(VCPKG_TARGET_TRIPLET "{detect_vcpkg_triplet()}")\n""")
+    build_env["CMAKE_TOOLCHAIN_FILE"] = vcpkg_toolchain_wrapper
     print(f"Using VCPKG_ROOT: {build_env['VCPKG_ROOT']}")
 
     # Setup Python version
@@ -230,7 +235,7 @@ def build(args):
                         err="Failed to build the project.")
         print("\nBuild finished.")
 
-        dev_exe = os.path.join(".", "target", build_mode, "shoopdaloop_dev.exe")
+        dev_exe = os.path.join(".", "target", build_mode, "shoopdaloop_dev")
         dev_launcher = os.path.join(".", "target", build_mode, "shoopdaloop_windows_launcher.exe")
         run_dev = (dev_launcher if sys.platform == "win32" else dev_exe)
 
