@@ -135,8 +135,10 @@ def build(args):
     vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg.cmake")
     # TODO: for some reason, in particular for MacOS on ARM, we need to
     # pass the target triplet. Env vars or cache entries don't work, so make a toolchain file wrapper
+    os.makedirs(os.path.dirname(vcpkg_toolchain_wrapper), exist_ok=True)
     with open(vcpkg_toolchain_wrapper, "w") as f:
         f.write(f"""set(VCPKG_TARGET_TRIPLET "{detect_vcpkg_triplet()}")\n""")
+        f.write(f"""include("{vcpkg_toolchain.replace('\\', '\\\\')}")\n""")
     build_env["CMAKE_TOOLCHAIN_FILE"] = vcpkg_toolchain_wrapper
     print(f"Using VCPKG_ROOT: {build_env['VCPKG_ROOT']}")
 
