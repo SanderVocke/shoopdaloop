@@ -93,12 +93,6 @@ runs:
   #       echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${LIB_PATH}" | tee -a $GITHUB_ENV
   #       echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${LIB_PATH}" | tee -a $GITHUB_ENV
   #       echo "$(pwd)/prebuilt_dependencies/bin" | tee -a $GITHUB_PATH
-
-  - name: Prepare vcpkg
-    if: always()
-    uses: ./.github/actions/prepare_vcpkg
-    with:
-        GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
   
   - name: Install the latest version of uv
     uses: astral-sh/setup-uv@v6
@@ -125,3 +119,9 @@ runs:
     run: |
       echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
       echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+  
+  - name: Prepare vcpkg
+    if: always()
+    uses: ./.github/actions/prepare_vcpkg
+    with:
+        GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
