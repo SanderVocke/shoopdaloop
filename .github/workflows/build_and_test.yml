@@ -131,7 +131,7 @@ jobs:
       run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV
     - uses: ./.github/actions/checkpoint_setup
       with:
-        shell: "${{ env.WRAP_SHELL }} --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail"
+        shell: '"${{ env.WRAP_SHELL }} --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail"'
     - name: Build
       if: always()
       uses: ./.github/actions/build_toplevel
