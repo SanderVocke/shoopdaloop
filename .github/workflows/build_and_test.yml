@@ -126,12 +126,12 @@ jobs:
         arch: ${{ matrix.arch }}
     - name: Setup Shell Wrapper
       uses: sandervocke/setup-shell-wrapper@v1
-    - name: Use container shell
-      shell: bash
-      run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV
     - uses: ./.github/actions/checkpoint_setup
       with:
-        shell: '"${{ env.WRAP_SHELL }} --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail"'
+        shell: '"bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail"'
+    - name: Use container shell
+      shell: bash
+      run: echo "WRAP_SHELL=run-in-container.sh --shell '${{ env.WRAP_SHELL }}'" >> $GITHUB_ENV
     - name: Build
       if: always()
       uses: ./.github/actions/build_toplevel
