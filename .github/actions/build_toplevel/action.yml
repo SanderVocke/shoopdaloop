@@ -91,7 +91,7 @@ runs:
     id: prepare
     uses: ./.github/actions/prepare_build
     with:
-      variant: ${{ inputs.prepare_kind }}\
+      variant: ${{ inputs.prepare_kind }}
       GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
   - uses: ./.github/actions/checkpoint
     if: always()
