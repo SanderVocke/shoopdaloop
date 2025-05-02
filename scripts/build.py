@@ -92,6 +92,8 @@ def build(args):
         print(f"Using VCPKG_ROOT from env: {maybe_vcpkg_root}")
         args.vcpkg_root = maybe_vcpkg_root
     vcpkg_exe = os.path.join(args.vcpkg_root, "vcpkg")
+    if sys.platform == 'win32':
+        vcpkg_exe += ".exe"
 
     # Setup vcpkg
     try:
