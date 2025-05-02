@@ -33,6 +33,31 @@ def find_qmake(directory):
     qmake_path = qmake_paths[0]
     return qmake_path
 
+import platform
+import sys
+
+def detect_vcpkg_triplet():
+    system = platform.system()
+    machine = platform.machine().lower()
+    # Normalize architecture names
+    arch = {
+        'amd64': 'x64',
+        'x86_64': 'x64',
+        'arm64': 'arm64',
+        'aarch64': 'arm64',
+    }.get(machine, machine)
+    # Match OS and arch to triplets
+    if system == 'Windows':
+        if arch in ('x64', 'arm64'):
+            return f'{arch}-windows'
+    elif system == 'Linux':
+        if arch in ('x64', 'arm64'):
+            return f'{arch}-linux'
+    elif system == 'Darwin':
+        if arch in ('x64', 'arm64'):
+            return f'{arch}-osx'
+    return 'unknown-unknown'
+
 def find_vcpkg_dynlibs_paths(installed_dir):
     # TODO: handle MacOS
     tail = os.path.join("bin", "zita-resampler.dll") if sys.platform == "win32" \
@@ -107,6 +132,7 @@ def build(args):
         exit(1)
     build_env['VCPKG_ROOT'] = args.vcpkg_root
     build_env["CMAKE_TOOLCHAIN_FILE"] = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
+    build_env["VCPKG_TARGET_TRIPLET"] = detect_vcpkg_triplet()
     print(f"Using VCPKG_ROOT: {build_env['VCPKG_ROOT']}")
 
     # Setup Python version
