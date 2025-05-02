@@ -419,12 +419,12 @@ jobs:
           #   os: macos-14
           #   package: shoopdaloop.*.release-macos-arm.portable.tar.gz
           #   second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
-          # - name: debug_macos_arm
-          #   python: python3
-          #   container: null
-          #   os: macos-14
-          #   package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
+          - name: debug_macos_arm
+            python: python3
+            container: null
+            os: macos-14
+            package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
+            second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
           # - name: release_macos
           #   python: python3
           #   container: null
@@ -512,16 +512,16 @@ jobs:
             package_kind: portable_folder
             second_package_kind: test_binaries
             platform: windows-msvc-x64
-          - name: windows_arm_debug
-            os: windows-11-arm
-            python: python.exe
-            pip: python.exe -m pip
-            container_image: null
-            prepare: 'windows'
-            release_build: false
-            package_kind: portable_folder
-            second_package_kind: test_binaries
-            platform: windows-msvc-arm
+          # - name: windows_arm_debug
+          #   os: windows-11-arm
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container_image: null
+          #   prepare: 'windows'
+          #   release_build: false
+          #   package_kind: portable_folder
+          #   second_package_kind: test_binaries
+          #   platform: windows-msvc-arm
     runs-on: ${{ matrix.kind.os}}
     needs: maybe_create_release
     env:
