@@ -512,6 +512,16 @@ jobs:
             package_kind: portable_folder
             second_package_kind: test_binaries
             platform: windows-msvc-x64
+          - name: windows_arm_debug
+            os: windows-11-arm
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            platform: windows-msvc-arm
     runs-on: ${{ matrix.kind.os}}
     needs: maybe_create_release
     env:
