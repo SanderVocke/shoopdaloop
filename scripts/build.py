@@ -69,6 +69,8 @@ def find_vcpkg_dynlibs_paths(installed_dir):
         return None
     zita_path = zita_paths[0]
     dynlib_path = os.path.dirname(zita_path)
+    if sys.platform == "win32":
+        dynlib_path = dynlib_path.replace('/', '\\')
     print(f"Found dynamic library path at: {dynlib_path}")
     return dynlib_path
 
@@ -208,12 +210,12 @@ def build(args):
     # Find dynamic library folders and add to path
     dynlib_path = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir)
     if sys.platform == 'win32':
-        build_env['PATH'] = f"{(build_env['PATH'] + os.pathsep) if 'PATH' in build_env else (os.environ['PATH'] + os.pathsep)}{dynlib_path}"
-    elif sys.plagform == 'linux':
-        build_env['LD_LIBRARY_PATH'] = f"{(build_env['LD_LIBRARY_PATH'] + os.pathsep) if 'LD_LIBRARY_PATH' in build_env else (os.environ['LD_LIBRARY_PATH'] + os.pathsep)}{dynlib_path}"
+        build_env['PATH'] = f"{build_env['PATH'] if 'PATH' in build_env else os.environ['PATH']}{os.pathsep}{dynlib_path}"
+    elif sys.platform == 'linux':
+        build_env['LD_LIBRARY_PATH'] = f"{build_env['LD_LIBRARY_PATH'] if 'LD_LIBRARY_PATH' in build_env else os.environ['LD_LIBRARY_PATH']}{os.pathsep}{dynlib_path}"
         build_env['SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH'] = dynlib_path
     elif sys.platform == 'darwin':
-        build_env['DYLD_LIBRARY_PATH'] = f"{(build_env['DYLD_LIBRARY_PATH'] + os.pathsep) if 'DYLD_LIBRARY_PATH' in build_env else (os.environ['DYLD_LIBRARY_PATH'] + os.pathsep)}{dynlib_path}"
+        build_env['DYLD_LIBRARY_PATH'] = f"{build_env['DYLD_LIBRARY_PATH'] if 'DYLD_LIBRARY_PATH' in build_env else os.environ['DYLD_LIBRARY_PATH']}{os.pathsep}{dynlib_path}"
         build_env['SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH'] = dynlib_path      
 
     if args.write_build_env_ps1:
@@ -325,7 +327,7 @@ def package(args, remainder):
     dynlib_path = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir)
     if sys.platform == 'win32':
         build_env['PATH'] = f"{package_env['PATH']}{os.pathsep}{dynlib_path}"
-    elif sys.plagform == 'linux':
+    elif sys.platform == 'linux':
         package_env['LD_LIBRARY_PATH'] = dynlib_path
     elif sys.platform == 'darwin':
         package_env['DYLD_LIBRARY_PATH'] = dynlib_path   
