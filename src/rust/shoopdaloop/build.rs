@@ -111,6 +111,12 @@ fn main_impl() -> Result<(), anyhow::Error> {
             py_env_to_site_packages.to_str().unwrap()); // For the Qt distribution that comes with PySide6
         println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", shoop_lib_dir.to_str().unwrap());
 
+        // The build env may pass additional RPATHs for the dev executable to work (e.g. for vcpkg dependencies)
+        let maybe_extra_path = std::env::var("SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH");
+        if maybe_extra_path.is_ok() {
+            println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", maybe_extra_path.unwrap());
+        }
+
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");
         println!("cargo:rerun-if-changed=src");

@@ -132,14 +132,16 @@ def build(args):
         exit(1)
     build_env['VCPKG_ROOT'] = args.vcpkg_root
     vcpkg_toolchain = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
-    vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg.cmake")
-    # TODO: for some reason, in particular for MacOS on ARM, we need to
-    # pass the target triplet. Env vars or cache entries don't work, so make a toolchain file wrapper
-    os.makedirs(os.path.dirname(vcpkg_toolchain_wrapper), exist_ok=True)
-    with open(vcpkg_toolchain_wrapper, "w") as f:
-        f.write(f"""set(VCPKG_TARGET_TRIPLET "{detect_vcpkg_triplet()}")\n""")
-        f.write(f"""include("{vcpkg_toolchain.replace('\\', '\\\\')}")\n""")
-    build_env["CMAKE_TOOLCHAIN_FILE"] = vcpkg_toolchain_wrapper
+    if sys.platform == 'macOS':
+        vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg.cmake")
+        # TODO: for some reason, in particular for MacOS on ARM, we need to
+        # pass the target triplet. Env vars or cache entries don't work, so make a toolchain file wrapper
+        os.makedirs(os.path.dirname(vcpkg_toolchain_wrapper), exist_ok=True)
+        with open(vcpkg_toolchain_wrapper, "w") as f:
+            f.write(f"""set(VCPKG_TARGET_TRIPLET "{detect_vcpkg_triplet()}")\n""")
+            f.write(f"""include("{vcpkg_toolchain}")\n""")
+        vcpkg_toolchain = vcpkg_toolchain_wrapper
+    build_env["CMAKE_TOOLCHAIN_FILE"] = vcpkg_toolchain
     print(f"Using VCPKG_ROOT: {build_env['VCPKG_ROOT']}")
 
     # Setup Python version
@@ -203,6 +205,17 @@ def build(args):
     print(f"Found qmake at: {qmake_path}")
     build_env["QMAKE"] = qmake_path
 
+    # Find dynamic library folders and add to path
+    dynlib_path = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir)
+    if sys.platform == 'win32':
+        build_env['PATH'] = f"{(build_env['PATH'] + os.pathsep) if 'PATH' in build_env else (os.environ['PATH'] + os.pathsep)}{dynlib_path}"
+    elif sys.plagform == 'linux':
+        build_env['LD_LIBRARY_PATH'] = f"{(build_env['LD_LIBRARY_PATH'] + os.pathsep) if 'LD_LIBRARY_PATH' in build_env else (os.environ['LD_LIBRARY_PATH'] + os.pathsep)}{dynlib_path}"
+        build_env['SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH'] = dynlib_path
+    elif sys.platform == 'darwin':
+        build_env['DYLD_LIBRARY_PATH'] = f"{(build_env['DYLD_LIBRARY_PATH'] + os.pathsep) if 'DYLD_LIBRARY_PATH' in build_env else (os.environ['DYLD_LIBRARY_PATH'] + os.pathsep)}{dynlib_path}"
+        build_env['SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH'] = dynlib_path      
+
     if args.write_build_env_ps1:
         args.skip_cargo = True
         env_filename = f".build-env-{build_mode}.ps1"
@@ -242,8 +255,11 @@ def build(args):
         run_dev = (dev_launcher if sys.platform == "win32" else dev_exe)
 
         print("You can now run the project in dev mode by running:")
-        print(f"\n   {run_dev}\n")
-        print("To explore packaging options, run:")
+        print(f"\n   {run_dev}")
+        if sys.platform == 'win32':
+            print("\nWith the following in your PATH:")
+            print(f"\n   {dynlib_path}")
+        print("\nTo explore packaging options, run:")
         print(f"\n   [build.ps1|build.sh|build.py] package --help\n")
 
 def add_package_parser(subparsers):
@@ -306,7 +322,13 @@ def package(args, remainder):
     package_env["QMAKE"] = qmake_path
 
     # Find dynamic library folders and add to path
-    package_env['PATH'] = f"{package_env['PATH']}{os.pathsep}{find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir)}"
+    dynlib_path = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir)
+    if sys.platform == 'win32':
+        build_env['PATH'] = f"{package_env['PATH']}{os.pathsep}{dynlib_path}"
+    elif sys.plagform == 'linux':
+        package_env['LD_LIBRARY_PATH'] = dynlib_path
+    elif sys.platform == 'darwin':
+        package_env['DYLD_LIBRARY_PATH'] = dynlib_path   
 
     tool_args = [a for a in sys.argv[1:] if a not in ['package', '--debug', '--release']]
     cmd = [package_exe, *tool_args]
