@@ -359,7 +359,7 @@ jobs:
             os: macos-13
             upload_release_assets: true
             platform: macos-x64
-            macosx_target: 13.0
+            macosx_target: "13.0"
           # - name: macos_release_arm
           #   release_build: true
           #   package_kind: portable_folder
@@ -376,7 +376,7 @@ jobs:
             os: macos-14
             upload_release_assets: true
             platform: macos-arm
-            macosx_target: 14.0
+            macosx_target: "14.0"
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
     #if: false
