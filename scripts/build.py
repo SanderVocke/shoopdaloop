@@ -98,6 +98,9 @@ def add_build_parser(subparsers):
 
     build_parser.add_argument('--write-build-env-ps1', action='store_true', help="Write a sourcable script that sets the build env so cargo can be run manually. Implies --skip-cargo.")
     build_parser.add_argument('--write-build-env-sh', action='store_true', help="Write a bash script that sets the build env so cargo can be run manually. Implies --skip-cargo.")
+    
+    if sys.platform == 'darwin':
+        build_parser.add_argument('--macosx_target', type=str, default=None, help='Set the macosx deployment target. Example: 11.0')
 
 def build(args):
     build_env = dict()
@@ -142,7 +145,10 @@ def build(args):
         os.makedirs(os.path.dirname(vcpkg_toolchain_wrapper), exist_ok=True)
         with open(vcpkg_toolchain_wrapper, "w") as f:
             f.write(f"""set(VCPKG_TARGET_TRIPLET "{detect_vcpkg_triplet()}")\n""")
+            f.write(f"""set(VCPKG_OSX_DEPLOYMENT_TARGET "{args.macosx_target if args.macosx_target else ''}")\n""")
             f.write(f"""include("{vcpkg_toolchain}")\n""")
+        with open(vcpkg_toolchain_wrapper, 'r') as f:
+            print(f"Using toolchain file wrapper with contents:\n--------{f.read()}\n--------")
         vcpkg_toolchain = vcpkg_toolchain_wrapper
     build_env["CMAKE_TOOLCHAIN_FILE"] = vcpkg_toolchain
     print(f"Using VCPKG_ROOT: {build_env['VCPKG_ROOT']}")
