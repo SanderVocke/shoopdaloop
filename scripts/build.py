@@ -61,7 +61,8 @@ def detect_vcpkg_triplet():
 def find_vcpkg_dynlibs_paths(installed_dir):
     # TODO: handle MacOS
     tail = os.path.join("bin", "zita-resampler.dll") if sys.platform == "win32" \
-           else os.path.join("lib", "libzita-resampler.so")
+           else os.path.join("lib", "libzita-resampler.so") if sys.platform == "linux" \
+           else os.path.join("lib", "libzita-resampler.dylib")
     pattern = f'{installed_dir}/**/{tail}'
     print(f"Looking for dynamic libraries by searching for zita-resampler at: {pattern}")
     zita_paths = glob.glob(pattern, recursive=True)
@@ -134,7 +135,7 @@ def build(args):
         exit(1)
     build_env['VCPKG_ROOT'] = args.vcpkg_root
     vcpkg_toolchain = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
-    if sys.platform == 'macOS':
+    if sys.platform == 'darwin':
         vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg.cmake")
         # TODO: for some reason, in particular for MacOS on ARM, we need to
         # pass the target triplet. Env vars or cache entries don't work, so make a toolchain file wrapper
