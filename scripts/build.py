@@ -212,10 +212,10 @@ def build(args):
     if sys.platform == 'win32':
         build_env['PATH'] = f"{build_env['PATH'] if 'PATH' in build_env else os.environ['PATH']}{os.pathsep}{dynlib_path}"
     elif sys.platform == 'linux':
-        build_env['LD_LIBRARY_PATH'] = f"{build_env['LD_LIBRARY_PATH'] if 'LD_LIBRARY_PATH' in build_env else os.environ['LD_LIBRARY_PATH']}{os.pathsep}{dynlib_path}"
+        build_env['LD_LIBRARY_PATH'] = dynlib_path
         build_env['SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH'] = dynlib_path
     elif sys.platform == 'darwin':
-        build_env['DYLD_LIBRARY_PATH'] = f"{build_env['DYLD_LIBRARY_PATH'] if 'DYLD_LIBRARY_PATH' in build_env else os.environ['DYLD_LIBRARY_PATH']}{os.pathsep}{dynlib_path}"
+        build_env['DYLD_LIBRARY_PATH'] = dynlib_path
         build_env['SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH'] = dynlib_path      
 
     if args.write_build_env_ps1:
