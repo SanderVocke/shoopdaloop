@@ -139,17 +139,29 @@ def build(args):
     build_env['VCPKG_ROOT'] = args.vcpkg_root
     vcpkg_toolchain = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
     if sys.platform == 'darwin':
+        vcpkg_triplet = os.path.join(build_env['VCPKG_ROOT'], "triplets", detect_vcpkg_triplet())
+        if args.macosx_target:
+            vcpkg_triplet_wrapper = os.path.join(base_path, "build", "vcpkg_triplet.cmake")
+            os.makedirs(os.path.dirname(vcpkg_triplet_wrapper), exist_ok=True)
+            with open(vcpkg_triplet_wrapper, "w") as f:
+                f.write(f"""set(VCPKG_OSX_DEPLOYMENT_TARGET "{args.macosx_target}")\n""")
+                f.write(f"""include("{vcpkg_triplet}")\n""")
+            with open(vcpkg_triplet_wrapper, 'r') as f:
+                print(f"Using triplet file wrapper with contents:\n--------{f.read()}\n--------")
+            vcpkg_triplet = vcpkg_triplet_wrapper
+        
         vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg.cmake")
         # TODO: for some reason, in particular for MacOS on ARM, we need to
-        # pass the target triplet. Env vars or cache entries don't work, so make a toolchain file wrapper
+        # pass the target triplet - even if we don't use a custom one.
+        # Env vars or cache entries don't work, so make a toolchain file wrapper
         os.makedirs(os.path.dirname(vcpkg_toolchain_wrapper), exist_ok=True)
         with open(vcpkg_toolchain_wrapper, "w") as f:
-            f.write(f"""set(VCPKG_TARGET_TRIPLET "{detect_vcpkg_triplet()}")\n""")
-            f.write(f"""set(VCPKG_OSX_DEPLOYMENT_TARGET "{args.macosx_target if args.macosx_target else ''}")\n""")
+            f.write(f"""set(VCPKG_TARGET_TRIPLET "{vcpkg_triplet}")\n""")
             f.write(f"""include("{vcpkg_toolchain}")\n""")
         with open(vcpkg_toolchain_wrapper, 'r') as f:
             print(f"Using toolchain file wrapper with contents:\n--------{f.read()}\n--------")
         vcpkg_toolchain = vcpkg_toolchain_wrapper
+        
     build_env["CMAKE_TOOLCHAIN_FILE"] = vcpkg_toolchain
     print(f"Using VCPKG_ROOT: {build_env['VCPKG_ROOT']}")
 
