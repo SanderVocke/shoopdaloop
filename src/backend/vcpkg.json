@@ -33,10 +33,12 @@
       "name": "catch2"
     },
     {
-      "name": "pkgconf"
+      "name": "pkgconf",
+      "host": true
     },
     {
-      "name": "vcpkg-tool-ninja"
+      "name": "vcpkg-tool-ninja",
+      "host": true
     },
     {
       "name": "nlohmann-json"

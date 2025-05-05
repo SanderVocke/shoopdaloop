@@ -181,6 +181,7 @@ def build(args):
         
     build_env["CMAKE_TOOLCHAIN_FILE"] = vcpkg_toolchain
     print(f"Using VCPKG_ROOT: {build_env['VCPKG_ROOT']}")
+    print(f"Using CMAKE_TOOLCHAIN_FILE: {build_env['CMAKE_TOOLCHAIN_FILE']}")
 
     # Setup Python version
     python_version = args.python_version
