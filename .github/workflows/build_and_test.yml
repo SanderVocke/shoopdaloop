@@ -351,7 +351,7 @@ jobs:
           #   os: macos-13
           #   upload_release_assets: true
           #   platform: macos-x64
-          #   maosx_target: 13.0
+          #   xcode: 13
           - name: macos_debug
             release_build: false
             package_kind: portable_folder
@@ -359,7 +359,7 @@ jobs:
             os: macos-13
             upload_release_assets: true
             platform: macos-x64
-            macosx_target: "13.0"
+            xcode: "13"
           # - name: macos_release_arm
           #   release_build: true
           #   package_kind: portable_folder
@@ -368,7 +368,7 @@ jobs:
           #   os: macos-14
           #   upload_release_assets: true
           #   platform: macos-arm
-          #   macosx_target: 14.0
+          #   xcode: 14
           - name: macos_debug_arm
             release_build: false
             package_kind: portable_folder
@@ -376,7 +376,7 @@ jobs:
             os: macos-14
             upload_release_assets: true
             platform: macos-arm
-            macosx_target: "14.0"
+            xcode: "14"
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
     #if: false
@@ -408,7 +408,7 @@ jobs:
         release_build: ${{ matrix.kind.release_build }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-        macosx_target: ${{ matrix.kind.macosx_target }}
+        xcode: ${{ matrix.kind.xcode }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: ./.github/actions/checkpoint
       if: always()

@@ -5,8 +5,6 @@ inputs:
   release_build:
     description: "if true, does a release build. Otherwise, a debug build."
     default: 'false'
-  macosx_target:
-    description: "macosx target version"
 
 runs:
   using: "composite"
@@ -34,24 +32,12 @@ runs:
         echo "CARGO_BUILD_FLAGS=" | tee -a $GITHUB_ENV
         echo "BUILD_SCRIPT_FLAGS=--debug" | tee -a $GITHUB_ENV
         echo "BUILD_ENV_FILE=./.build-env-debug.sh" | tee -a $GITHUB_ENV
-  
-  - name: Macos argument default empty
-    if: always() && runner.os != 'macOS'
-    shell: wrap-shell {0}
-    run: |
-        echo "MACOSX_TARGET_ARG=" | tee -a $GITHUB_ENV
-  
-  - name: Macos argument (MacOS)
-    if: always() && runner.os == 'macOS'
-    shell: wrap-shell {0}
-    run: |
-        echo "MACOSX_TARGET_ARG=--macosx-target ${{ inputs.macosx_target }}" | tee -a $GITHUB_ENV
 
   - name: Setup Python, build env and build vcpkg packages
     if: always()
     shell: wrap-shell {0}
     run: |
-        ./build.sh build ${BUILD_SCRIPT_FLAGS} --python-version 3.10 --skip-cargo ${MACOSX_TARGET_ARG} --write-build-env-sh 2>&1 | tee vcpkg_build_output.txt
+        ./build.sh build ${BUILD_SCRIPT_FLAGS} --python-version 3.10 --skip-cargo --write-build-env-sh 2>&1 | tee vcpkg_build_output.txt
         echo ""
         sh ./scripts/detect_vcpkg_failure_logs.sh vcpkg_build_output.txt
         echo ""

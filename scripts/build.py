@@ -51,28 +51,6 @@ def windows_to_bash_paths(windows_paths):
 import platform
 import sys
 
-def detect_vcpkg_triplet():
-    system = platform.system()
-    machine = platform.machine().lower()
-    # Normalize architecture names
-    arch = {
-        'amd64': 'x64',
-        'x86_64': 'x64',
-        'arm64': 'arm64',
-        'aarch64': 'arm64',
-    }.get(machine, machine)
-    # Match OS and arch to triplets
-    if system == 'Windows':
-        if arch in ('x64', 'arm64'):
-            return f'{arch}-windows'
-    elif system == 'Linux':
-        if arch in ('x64', 'arm64'):
-            return f'{arch}-linux'
-    elif system == 'Darwin':
-        if arch in ('x64', 'arm64'):
-            return f'{arch}-osx'
-    return 'unknown-unknown'
-
 def find_vcpkg_dynlibs_paths(installed_dir):
     # TODO: handle MacOS
     tail = os.path.join("bin", "zita-resampler.dll") if sys.platform == "win32" \
@@ -114,9 +92,6 @@ def add_build_parser(subparsers):
     build_parser.add_argument('--write-build-env-ps1', action='store_true', help="Write a sourcable script that sets the build env so cargo can be run manually. Implies --skip-cargo.")
     build_parser.add_argument('--write-build-env-sh', action='store_true', help="Write a bash script that sets the build env so cargo can be run manually. Implies --skip-cargo.")
     
-    if sys.platform == 'darwin':
-        build_parser.add_argument('--macosx-target', type=str, default=None, help='Set the macosx deployment target. Example: 11.0')
-
 def build(args):
     build_env = dict()
 
@@ -155,17 +130,6 @@ def build(args):
     vcpkg_toolchain = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
     if sys.platform == 'darwin':
         vcpkg_triplet = detect_vcpkg_triplet()
-        custom_triplet_dir = os.path.join(base_path, 'build')
-        vcpkg_triplet_dir = os.path.join(build_env['VCPKG_ROOT'], "triplets")
-        if args.macosx_target:
-            vcpkg_triplet_wrapper = os.path.join(custom_triplet_dir, f"{vcpkg_triplet}.cmake")
-            os.makedirs(os.path.dirname(vcpkg_triplet_wrapper), exist_ok=True)
-            with open(vcpkg_triplet_wrapper, "w") as f:
-                f.write(f"""set(VCPKG_OSX_DEPLOYMENT_TARGET "{args.macosx_target}")\n""")
-                f.write(f"""include("{os.path.join(vcpkg_triplet_dir, vcpkg_triplet)}.cmake")\n""")
-            with open(vcpkg_triplet_wrapper, 'r') as f:
-                print(f"Using triplet file wrapper with contents:\n--------\n{f.read()}\n--------")
-        
         vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg.cmake")
         # TODO: for some reason, in particular for MacOS on ARM, we need to
         # pass the target triplet - even if we don't use a custom one.
@@ -173,8 +137,6 @@ def build(args):
         os.makedirs(os.path.dirname(vcpkg_toolchain_wrapper), exist_ok=True)
         with open(vcpkg_toolchain_wrapper, "w") as f:
             f.write(f"""set(VCPKG_TARGET_TRIPLET "{vcpkg_triplet}")\n""")
-            if args.macosx_target:
-                f.write(f"""set(VCPKG_OVERLAY_TRIPLETS "{custom_triplet_dir}")\n""")
             f.write(f"""include("{vcpkg_toolchain}")\n""")
         with open(vcpkg_toolchain_wrapper, 'r') as f:
             print(f"Using toolchain file wrapper with contents:\n--------\n{f.read()}\n--------")
@@ -364,7 +326,7 @@ def package(args, remainder):
     # Find dynamic library folders and add to path
     dynlib_path = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir)
     if sys.platform == 'win32':
-        build_env['PATH'] = f"{package_env['PATH']}{os.pathsep}{dynlib_path}"
+        package_env['PATH'] = f"{package_env['PATH']}{os.pathsep}{dynlib_path}"
     elif sys.platform == 'linux':
         package_env['LD_LIBRARY_PATH'] = dynlib_path
     elif sys.platform == 'darwin':

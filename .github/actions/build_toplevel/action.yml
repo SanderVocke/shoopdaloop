@@ -33,8 +33,9 @@ inputs:
   GITHUB_TOKEN:
     required: true
     description: "GitHub token"
-  macosx_target:
-    description: "macosx target version (e.g. 14.0)"
+  xcode:
+    description: "Xcode version to use"
+    default: null
 
 runs:
   using: "composite"
@@ -95,6 +96,7 @@ runs:
     with:
       variant: ${{ inputs.prepare_kind }}
       GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
+      xcode: ${{ inputs.xcode }}
   - uses: ./.github/actions/checkpoint
     if: always()
   - uses: ./.github/actions/checkpoint
@@ -113,7 +115,6 @@ runs:
     uses: ./.github/actions/build_base
     with:
         release_build: ${{ inputs.release_build }}
-        macosx_target: ${{ inputs.macosx_target }}
   - name: Qoverage - Instrument QML files
     if: always() && inputs.coverage
     uses: ./.github/actions/qoverage_instrument
