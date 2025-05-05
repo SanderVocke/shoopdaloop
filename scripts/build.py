@@ -45,6 +45,28 @@ def windows_to_bash_path(windows_path):
         # If no drive letter prefix, return with backslashes converted
         return windows_path.replace('\\', '/')
     
+def detect_vcpkg_triplet():
+    system = platform.system()
+    machine = platform.machine().lower()
+    # Normalize architecture names
+    arch = {
+        'amd64': 'x64',
+        'x86_64': 'x64',
+        'arm64': 'arm64',
+        'aarch64': 'arm64',
+    }.get(machine, machine)
+    # Match OS and arch to triplets
+    if system == 'Windows':
+        if arch in ('x64', 'arm64'):
+            return f'{arch}-windows'
+    elif system == 'Linux':
+        if arch in ('x64', 'arm64'):
+            return f'{arch}-linux'
+    elif system == 'Darwin':
+        if arch in ('x64', 'arm64'):
+            return f'{arch}-osx'
+    return 'unknown-unknown'
+    
 def windows_to_bash_paths(windows_paths):
     return ':'.join(windows_to_bash_path(path) for path in windows_paths.split(';')) if windows_paths else windows_paths
 
