@@ -46,7 +46,7 @@ def windows_to_bash_path(windows_path):
         return windows_path.replace('\\', '/')
     
 def windows_to_bash_paths(windows_paths):
-    return ';'.join(windows_to_bash_path(path) for path in windows_paths.split(';')) if windows_paths else windows_paths
+    return ':'.join(windows_to_bash_path(path) for path in windows_paths.split(';')) if windows_paths else windows_paths
 
 import platform
 import sys
