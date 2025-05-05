@@ -44,6 +44,9 @@ def windows_to_bash_path(windows_path):
     else:
         # If no drive letter prefix, return with backslashes converted
         return windows_path.replace('\\', '/')
+    
+def windows_to_bash_paths(windows_paths):
+    return ';'.join(windows_to_bash_path(path) for path in windows_paths.split(';')) if windows_paths else windows_paths
 
 import platform
 import sys
@@ -275,7 +278,7 @@ def build(args):
         print("Writing the build env to a .sh file.")
         with open(env_file, "w") as f:
             for key, value in build_env.items():
-                f.write(f"""export {key}="{windows_to_bash_path(value) if sys.platform == 'win32' else value}"\n""")
+                f.write(f"""export {key}="{windows_to_bash_paths(value) if sys.platform == 'win32' else value}"\n""")
         print(f'\nWrote the build env to {env_file}. Apply it using:')
         print(f'\n    . ./{env_filename}')
         print('\nThen build using cargo, e.g.:')
