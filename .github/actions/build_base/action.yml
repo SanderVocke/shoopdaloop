@@ -61,12 +61,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      echo "PATH BEFORE:"
-      echo "$PATH"
-      echo "cargo: $(which cargo)"
       . ${BUILD_ENV_FILE}
-      echo "PATH AFTER:"
-      echo "$PATH"
       echo "cargo: $(which cargo)"
       cargo build --features "shoopdaloop/prebuild packaging/prebuild" ${CARGO_BUILD_FLAGS}
 

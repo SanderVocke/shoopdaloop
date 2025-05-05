@@ -7,6 +7,7 @@ import glob
 import urllib.request
 import shutil
 import zipfile
+import re
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 base_path = script_path + '/..'
@@ -32,6 +33,17 @@ def find_qmake(directory):
         return None
     qmake_path = qmake_paths[0]
     return qmake_path
+
+def windows_to_bash_path(windows_path):
+    # Match drive letter at the beginning of the path (e.g., C:\ or D:/)
+    match = re.match(r'^([A-Za-z]):[\\/](.*)', windows_path)
+    if match:
+        drive = match.group(1).lower()
+        rest = match.group(2).replace('\\', '/')
+        return f'/{drive}/{rest}'
+    else:
+        # If no drive letter prefix, return with backslashes converted
+        return windows_path.replace('\\', '/')
 
 import platform
 import sys
@@ -139,16 +151,19 @@ def build(args):
     build_env['VCPKG_ROOT'] = args.vcpkg_root
     vcpkg_toolchain = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
     if sys.platform == 'darwin':
-        vcpkg_triplet = os.path.join(build_env['VCPKG_ROOT'], "triplets", detect_vcpkg_triplet())
+        vcpkg_triplet = detect_vcpkg_triplet()
+        custom_triplet = 'macos-custom'
+        custom_triplet_dir = os.path.join(base_path, 'build')
+        vcpkg_triplet_dir = os.path.join(build_env['VCPKG_ROOT'], "triplets")
         if args.macosx_target:
-            vcpkg_triplet_wrapper = os.path.join(base_path, "build", "vcpkg_triplet.cmake")
+            vcpkg_triplet_wrapper = os.path.join(custom_triplet_dir, f"{custom_triplet}.cmake")
             os.makedirs(os.path.dirname(vcpkg_triplet_wrapper), exist_ok=True)
             with open(vcpkg_triplet_wrapper, "w") as f:
                 f.write(f"""set(VCPKG_OSX_DEPLOYMENT_TARGET "{args.macosx_target}")\n""")
-                f.write(f"""include("{vcpkg_triplet}")\n""")
+                f.write(f"""include("{os.path.join(vcpkg_triplet_dir, vcpkg_triplet)}")\n""")
             with open(vcpkg_triplet_wrapper, 'r') as f:
                 print(f"Using triplet file wrapper with contents:\n--------{f.read()}\n--------")
-            vcpkg_triplet = vcpkg_triplet_wrapper
+            vcpkg_triplet = 'macos-custom'
         
         vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg.cmake")
         # TODO: for some reason, in particular for MacOS on ARM, we need to
@@ -157,6 +172,8 @@ def build(args):
         os.makedirs(os.path.dirname(vcpkg_toolchain_wrapper), exist_ok=True)
         with open(vcpkg_toolchain_wrapper, "w") as f:
             f.write(f"""set(VCPKG_TARGET_TRIPLET "{vcpkg_triplet}")\n""")
+            if args.macosx_target:
+                f.write(f"""set(VCPKG_OVERLAY_TRIPLETS "{custom_triplet_dir}")\n""")
             f.write(f"""include("{vcpkg_toolchain}")\n""")
         with open(vcpkg_toolchain_wrapper, 'r') as f:
             print(f"Using toolchain file wrapper with contents:\n--------{f.read()}\n--------")
@@ -257,7 +274,7 @@ def build(args):
         print("Writing the build env to a .sh file.")
         with open(env_file, "w") as f:
             for key, value in build_env.items():
-                f.write(f'export {key}="{value}"\n')
+                f.write(f'export {key}="{windows_to_bash_path(value) if sys.platform == 'win32' else value}"\n')
         print(f'\nWrote the build env to {env_file}. Apply it using:')
         print(f'\n    . ./{env_filename}')
         print('\nThen build using cargo, e.g.:')
