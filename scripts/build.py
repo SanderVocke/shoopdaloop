@@ -165,7 +165,6 @@ def build(args):
                 f.write(f"""include("{os.path.join(vcpkg_triplet_dir, vcpkg_triplet)}.cmake")\n""")
             with open(vcpkg_triplet_wrapper, 'r') as f:
                 print(f"Using triplet file wrapper with contents:\n--------\n{f.read()}\n--------")
-            vcpkg_triplet = 'macos-custom'
         
         vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg.cmake")
         # TODO: for some reason, in particular for MacOS on ARM, we need to
