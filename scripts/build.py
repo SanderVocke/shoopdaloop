@@ -160,9 +160,9 @@ def build(args):
             os.makedirs(os.path.dirname(vcpkg_triplet_wrapper), exist_ok=True)
             with open(vcpkg_triplet_wrapper, "w") as f:
                 f.write(f"""set(VCPKG_OSX_DEPLOYMENT_TARGET "{args.macosx_target}")\n""")
-                f.write(f"""include("{os.path.join(vcpkg_triplet_dir, vcpkg_triplet)}")\n""")
+                f.write(f"""include("{os.path.join(vcpkg_triplet_dir, vcpkg_triplet)}.cmake")\n""")
             with open(vcpkg_triplet_wrapper, 'r') as f:
-                print(f"Using triplet file wrapper with contents:\n--------{f.read()}\n--------")
+                print(f"Using triplet file wrapper with contents:\n--------\n{f.read()}\n--------")
             vcpkg_triplet = 'macos-custom'
         
         vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg.cmake")
@@ -176,7 +176,7 @@ def build(args):
                 f.write(f"""set(VCPKG_OVERLAY_TRIPLETS "{custom_triplet_dir}")\n""")
             f.write(f"""include("{vcpkg_toolchain}")\n""")
         with open(vcpkg_toolchain_wrapper, 'r') as f:
-            print(f"Using toolchain file wrapper with contents:\n--------{f.read()}\n--------")
+            print(f"Using toolchain file wrapper with contents:\n--------\n{f.read()}\n--------")
         vcpkg_toolchain = vcpkg_toolchain_wrapper
         
     build_env["CMAKE_TOOLCHAIN_FILE"] = vcpkg_toolchain
@@ -274,7 +274,7 @@ def build(args):
         print("Writing the build env to a .sh file.")
         with open(env_file, "w") as f:
             for key, value in build_env.items():
-                f.write(f'export {key}="{windows_to_bash_path(value) if sys.platform == 'win32' else value}"\n')
+                f.write(f"""export {key}="{windows_to_bash_path(value) if sys.platform == 'win32' else value}"\n""")
         print(f'\nWrote the build env to {env_file}. Apply it using:')
         print(f'\n    . ./{env_filename}')
         print('\nThen build using cargo, e.g.:')
