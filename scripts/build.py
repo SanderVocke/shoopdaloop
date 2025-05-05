@@ -155,11 +155,10 @@ def build(args):
     vcpkg_toolchain = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
     if sys.platform == 'darwin':
         vcpkg_triplet = detect_vcpkg_triplet()
-        custom_triplet = 'macos-custom'
         custom_triplet_dir = os.path.join(base_path, 'build')
         vcpkg_triplet_dir = os.path.join(build_env['VCPKG_ROOT'], "triplets")
         if args.macosx_target:
-            vcpkg_triplet_wrapper = os.path.join(custom_triplet_dir, f"{custom_triplet}.cmake")
+            vcpkg_triplet_wrapper = os.path.join(custom_triplet_dir, f"{vcpkg_triplet}.cmake")
             os.makedirs(os.path.dirname(vcpkg_triplet_wrapper), exist_ok=True)
             with open(vcpkg_triplet_wrapper, "w") as f:
                 f.write(f"""set(VCPKG_OSX_DEPLOYMENT_TARGET "{args.macosx_target}")\n""")
