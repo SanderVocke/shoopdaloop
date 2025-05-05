@@ -100,7 +100,7 @@ def add_build_parser(subparsers):
     build_parser.add_argument('--write-build-env-sh', action='store_true', help="Write a bash script that sets the build env so cargo can be run manually. Implies --skip-cargo.")
     
     if sys.platform == 'darwin':
-        build_parser.add_argument('--macosx_target', type=str, default=None, help='Set the macosx deployment target. Example: 11.0')
+        build_parser.add_argument('--macosx-target', type=str, default=None, help='Set the macosx deployment target. Example: 11.0')
 
 def build(args):
     build_env = dict()
