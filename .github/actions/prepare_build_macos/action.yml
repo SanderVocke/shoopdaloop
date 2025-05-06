@@ -2,9 +2,6 @@ name: prepare_build_macos
 description: Prepare MacOS for building Shoopdaloop wheels
 
 inputs:
-  xcode:
-    required: true
-    description: "Xcode version"
 
 runs:
   using: "composite"
@@ -23,10 +20,6 @@ runs:
       brew install liblo coreutils
       brew install python@3.9
       brew install create-dmg
-  
-  - uses: maxim-lobanov/setup-xcode@v1
-    with:
-      xcode-version: ${{ inputs.xcode }}
     
   #    # Install Python packages
   #    $PIP install --upgrade pip build

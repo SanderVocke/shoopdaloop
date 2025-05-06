@@ -9,9 +9,9 @@ inputs:
   GITHUB_TOKEN:
     required: true
     description: "GitHub token"
-  xcode:
+  macos_target_version:
     required: false
-    description: "Xcode version"
+    description: "macOS target version"
 
 runs:
   using: "composite"
@@ -111,8 +111,6 @@ runs:
   - name: Prepare MacOS
     if: always() && inputs.variant == 'macos'
     uses: ./.github/actions/prepare_build_macos
-    with:
-      xcode: ${{ inputs.xcode }}
   - name: Prepare Windows
     if: always() && inputs.variant == 'windows'
     uses: ./.github/actions/prepare_build_windows
@@ -132,3 +130,4 @@ runs:
     uses: ./.github/actions/prepare_vcpkg
     with:
         GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
+        macos_target_version: ${{ inputs.macos_target_version }}
