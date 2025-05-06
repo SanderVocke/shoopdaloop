@@ -139,7 +139,7 @@ jobs:
       run: |
           echo "${{ env.WRAP_SHELL }} \"$@\"" >> __wrap_shell.sh
           chmod a+x __wrap_shell.sh
-          echo "WRAP_SHELL=run-in-container.sh --shell __wrap_shell.sh" >> $GITHUB_ENV
+          echo "WRAP_SHELL=run-in-container.sh --shell ./__wrap_shell.sh" >> $GITHUB_ENV
     - name: Build
       if: always()
       uses: ./.github/actions/build_toplevel
