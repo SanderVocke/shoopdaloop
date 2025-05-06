@@ -102,9 +102,9 @@ jobs:
         arch: [ x86_64 ]
         manylinux_arch: [ x86_64 ]
     runs-on: ubuntu-latest
-    # container:
-    #   image: ${{ matrix.container }}
-    #   options: ${{ matrix.container_options }}
+    container:
+      image: ${{ matrix.container }}
+      options: ${{ matrix.container_options }}
     env:
       PATH_SEPARATOR: ":"
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
@@ -116,28 +116,28 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Free Disk Space
-      uses: jlumbroso/free-disk-space@main
-    - name: Start QEMU container (just to have the free disk space command before)
-      if: matrix.container
-      uses: sandervocke/setup-qemu-container@v1
-      with:
-        container: ${{ matrix.container }}
-        arch: ${{ matrix.arch }}
-        verbose: true
-    - name: Setup Shell Wrapper
-      uses: sandervocke/setup-shell-wrapper@v1
-      with:
-         verbose: true
-    # Note: need a wrapper shell because multiple arguments in the shell command are not supported
-    # by setup-shell-wrapper / setup-qemu-container
-    - name: Use container shell
-      shell: bash
-      run: |
-          echo "#!/bin/sh" > __wrap_shell.sh
-          echo "run-in-container.sh --shell bash \"$@\"" >> __wrap_shell.sh
-          chmod a+x __wrap_shell.sh
-          echo "WRAP_SHELL=" >> $GITHUB_ENV
+    # - name: Free Disk Space
+    #   uses: jlumbroso/free-disk-space@main
+    # - name: Start QEMU container (just to have the free disk space command before)
+    #   if: matrix.container
+    #   uses: sandervocke/setup-qemu-container@v1
+    #   with:
+    #     container: ${{ matrix.container }}
+    #     arch: ${{ matrix.arch }}
+    #     verbose: true
+    # - name: Setup Shell Wrapper
+    #   uses: sandervocke/setup-shell-wrapper@v1
+    #   with:
+    #      verbose: true
+    # # Note: need a wrapper shell because multiple arguments in the shell command are not supported
+    # # by setup-shell-wrapper / setup-qemu-container
+    # - name: Use container shell
+    #   shell: bash
+    #   run: |
+    #       echo "#!/bin/sh" > __wrap_shell.sh
+    #       echo "run-in-container.sh --shell bash \"$@\"" >> __wrap_shell.sh
+    #       chmod a+x __wrap_shell.sh
+    #       echo "WRAP_SHELL=" >> $GITHUB_ENV
     - uses: ./.github/actions/checkpoint_setup
       with:
         shell: "./__wrap_shell.sh"
