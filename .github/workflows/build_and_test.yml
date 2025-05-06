@@ -127,10 +127,11 @@ jobs:
         verbose: true
     - name: Setup Shell Wrapper
       uses: sandervocke/setup-shell-wrapper@v1
+      with:
+         verbose: true
     - uses: ./.github/actions/checkpoint_setup
       with:
         shell: "bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail"
-        verbose: true
     - name: Use container shell
       shell: bash
       run: echo "WRAP_SHELL=run-in-container.sh --shell \"${{ env.WRAP_SHELL }}\"" >> $GITHUB_ENV
