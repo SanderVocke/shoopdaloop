@@ -132,9 +132,14 @@ jobs:
     - uses: ./.github/actions/checkpoint_setup
       with:
         shell: "bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail"
+    # Note: need a wrapper shell because multiple arguments in the shell command are not supported
+    # by setup-shell-wrapper / setup-qemu-container
     - name: Use container shell
       shell: bash
-      run: echo "WRAP_SHELL=run-in-container.sh --shell \"${{ env.WRAP_SHELL }}\"" >> $GITHUB_ENV
+      run: |
+          echo "${{ env.WRAP_SHELL }} \"$@\"" >> __wrap_shell.sh
+          chmod a+x __wrap_shell.sh
+          echo "WRAP_SHELL=run-in-container.sh --shell __wrap_shell.sh" >> $GITHUB_ENV
     - name: Build
       if: always()
       uses: ./.github/actions/build_toplevel
