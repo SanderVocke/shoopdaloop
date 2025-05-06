@@ -28,6 +28,8 @@ runs:
   - name: Prepare Rust (non-Windows)
     if: always() && inputs.variant != 'windows'
     uses: dtolnay/rust-toolchain@nightly
+    with:
+      components: rustfmt
   - name: Rust info
     shell: wrap-shell {0}
     run: |
