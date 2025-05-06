@@ -69,8 +69,8 @@ runs:
     run: |
       ARCH=$(scripts/determine_host_arch.sh)
       mkdir -p build/vcpkg_triplets
-      echo "if(PORT MATCHES \"qt.*\")" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
-      echo "  message(STATUS \"Disabling precompiled headers for ${PORT}\")" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
+      echo "if(PORT MATCHES \"^qt\")" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
+      echo "  message(STATUS \"Disabling precompiled headers for \${PORT}\")" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
       echo "  set(VCPKG_CMAKE_CONFIGURE_OPTIONS \"-DCBUILD_WITH_PCH=OFF\")" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
       echo "endif()" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
       echo "include(${VCPKG_ROOT}/triplets/${ARCH}-linux.cmake)" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
