@@ -60,6 +60,16 @@ runs:
      LOCAL_FEED_URL="https://nuget.pkg.github.com/SanderVocke/index.json"
      echo "FEED_URL=$LOCAL_FEED_URL" | tee -a $GITHUB_ENV
      echo "VCPKG_BINARY_SOURCES=clear;nuget,$LOCAL_FEED_URL,readwrite" | tee -a $GITHUB_ENV
+  
+  - name: Disable qtbase precompiled headers to save space (Linux only)
+    if: runner.os == 'Linux'
+    shell: wrap-shell {0}
+    run: |
+      ARCH=$(scripts/determine_host_arch.sh)
+      mkdir -p build/vcpkg_triplets
+      echo "set(BUILD_WITH_PCH OFF)" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
+      echo "include(${VCPKG_ROOT}/triplets/${ARCH}-linux.cmake)" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
+      echo "VCPKG_OVERLAY_TRIPLETS=$(pwd)/build/vcpkg_triplets" | tee -a $GITHUB_ENV
 
   - name: Setup NuGet sources
     if: always()
