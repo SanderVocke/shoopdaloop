@@ -109,7 +109,7 @@ def add_build_parser(subparsers):
     build_parser.add_argument("--incremental", action='store_true', help="Implies --skip-python and --skip-vcpkg.")
     
     build_parser.add_argument("--vcpkg-installed-dir", type=str, default=default_vcpkgs_installed_path, help="Path where to install/find vcpkg packages. WARNING: if used, this should be passed identically to the 'package' command.")
-    build_parser.add_argument("--vcpkg-args", type=str, help="Additional arguments to pass to vcpkg install.", default="")
+    build_parser.add_argument("--vcpkg-args", type=str, help="Additional arguments to pass to vcpkg install.", default=None)
     
     build_parser.add_argument('--cargo-args', '-c', type=str, help='Pass additional arguments to cargo build.', default='')
 
@@ -218,7 +218,7 @@ def build(args):
     else:
         print("Installing vcpkg packages...")
         extra_args = args.vcpkg_args if args.vcpkg_args else ''
-        run_and_print(f"{vcpkg_exe} install --x-install-root={vcpkg_installed_dir} ${extra_args}",
+        run_and_print(f"{vcpkg_exe} install --x-install-root={vcpkg_installed_dir} {extra_args}",
                         env=apply_build_env(build_env),
                         cwd=os.path.join(base_path, 'src', 'backend'),
                         err="Failed to fetch/build/install vcpkg packages.")
