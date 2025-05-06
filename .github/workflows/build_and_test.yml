@@ -140,7 +140,7 @@ jobs:
     #       echo "WRAP_SHELL=" >> $GITHUB_ENV
     - uses: ./.github/actions/checkpoint_setup
       with:
-        shell: "./__wrap_shell.sh"
+        shell: "bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail"
     - name: Build
       if: always()
       uses: ./.github/actions/build_toplevel
