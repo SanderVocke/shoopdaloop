@@ -71,7 +71,7 @@ runs:
       mkdir -p build/vcpkg_triplets
       echo "if(PORT MATCHES \"^qt\")" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
       echo "  message(STATUS \"Disabling precompiled headers for \${PORT}\")" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
-      echo "  set(VCPKG_CMAKE_CONFIGURE_OPTIONS \"-DCBUILD_WITH_PCH=OFF\")" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
+      echo "  set(VCPKG_CMAKE_CONFIGURE_OPTIONS \"-DBUILD_WITH_PCH=OFF\")" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
       echo "endif()" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
       echo "include(${VCPKG_ROOT}/triplets/${ARCH}-linux.cmake)" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
       echo "VCPKG_OVERLAY_TRIPLETS=$(pwd)/build/vcpkg_triplets" | tee -a $GITHUB_ENV
