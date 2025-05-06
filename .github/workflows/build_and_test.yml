@@ -101,6 +101,7 @@ jobs:
           - image: docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
             volumes:
               - /var/run/docker.sock:/var/run/docker.sock
+              - /tmp/container:/tmp/host
             options: --privileged --pid=host --user root --workdir /
         arch: [ x86_64 ]
         manylinux_arch: [ x86_64 ]
@@ -124,8 +125,8 @@ jobs:
       shell: bash
       run: |
         apt install util-linux
-        nsenter -t 1 -m -u -n -i bash -c "echo Hellooooo"
-        nsenter -t 1 -m -u -n -i bash scripts/third_party/gha_ubuntu_free_disk_space.sh
+        cp scripts/third_party/gha_ubuntu_free_disk_space.sh /tmp/host
+        nsenter -t 1 -m -u -n -i bash /tmp/container/gha_ubuntu_free_disk_space.sh
     # - name: Free Disk Space
     #   uses: jlumbroso/free-disk-space@main
     # - name: Start QEMU container (just to have the free disk space command before)
