@@ -1,8 +1,6 @@
 name: prepare_build_macos
 description: Prepare MacOS for building Shoopdaloop wheels
 
-inputs:
-
 runs:
   using: "composite"
   steps:
@@ -12,6 +10,7 @@ runs:
     run: |
       # Skip if already done (local act builds)
       if [ -f _macos_prepared ]; then
+        echo "Already prepared MacOS build, skipping."
         exit 0
       fi
 

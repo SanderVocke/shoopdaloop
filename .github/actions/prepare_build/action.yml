@@ -39,6 +39,8 @@ runs:
       cargo version --verbose
       echo "==== Rust toolchain list ===="
       rustup toolchain list
+      echo "==== Rust component list ===="
+      rustup component list
 
   # - name: Install Qt (Windows)
   #   uses: jurplel/install-qt-action@v4
