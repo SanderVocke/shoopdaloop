@@ -97,8 +97,11 @@ jobs:
           #   package_kind: appimage
           #   coverage: true
           #   platform: linux-x64
-        container: [ "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest" ]
-        container_options: [ "--user root --workdir /" ]
+        container:
+          - image: docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
+            volumes:
+              - /var/run/docker.sock:/var/run/docker.sock
+            options: --privileged --pid=host --user root --workdir /
         arch: [ x86_64 ]
         manylinux_arch: [ x86_64 ]
     runs-on: ubuntu-latest
@@ -116,6 +119,12 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
+    - name: Free disk space on host
+      shell: bash
+      run: |
+        apt install util-linux
+        nsenter -t 1 -m -u -n -i bash -c "echo Hellooooo"
+        nsenter -t 1 -m -u -n -i bash scripts/third_party/gha_ubuntu_free_disk_space.sh
     # - name: Free Disk Space
     #   uses: jlumbroso/free-disk-space@main
     # - name: Start QEMU container (just to have the free disk space command before)
