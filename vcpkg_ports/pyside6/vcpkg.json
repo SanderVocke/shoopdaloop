@@ -12,9 +12,6 @@
             "name": "vcpkg-cmake-config"
         },
         {
-            "name": "vcpkg-get-python"
-        },
-        {
             "name": "vcpkg-get-python-packages"
         },
         {
