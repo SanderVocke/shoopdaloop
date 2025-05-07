@@ -62,11 +62,12 @@ vcpkg_extract_archive(
     DESTINATION ${LIBCLANG_EXTRACTED}
 )
 
+set(ENV{LLVM_INSTALL_DIR} "${LIBCLANG_EXTRACTED}/libclang")
+
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
         -DPython_EXECUTABLE="${PYTHON3_IN_VENV}"
-        -DClang_DIR="${LIBCLANG_EXTRACTED}/libclang/lib/cmake/clang"
         -DFORCE_LIMITED_API=yes
 )
 vcpkg_cmake_install()
