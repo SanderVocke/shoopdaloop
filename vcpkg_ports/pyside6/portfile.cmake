@@ -70,4 +70,23 @@ vcpkg_cmake_configure(
         -DPython_EXECUTABLE="${PYTHON3_IN_VENV}"
         -DFORCE_LIMITED_API=yes
 )
-vcpkg_cmake_install()
+vcpkg_cmake_build()
+
+message(STATUS "Creating wheels...")
+set(COMMAND "${PYTHON3_IN_VENV} create_wheels.py --build-dir=${VCPKG_CMAKE_BUILD_DIR}")
+execute_process(
+    COMMAND ${COMMAND}
+    WORKING_DIRECTORY ${VCPKG_CMAKE_BUILD_DIR}
+    OUTPUT_VARIABLE _out
+    ERROR_VARIABLE _err
+    RESULT_VARIABLE _res
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_STRIP_TRAILING_WHITESPACE
+)
+
+message(STATUS "Command: ${COMMAND}")
+message(STATUS "Working directory: ${VCPKG_CMAKE_BUILD_DIR}")
+message(STATUS "Output code: ${_res}")
+message(STATUS "stdout: ${_out}")
+message(STATUS "stderr: ${_err}")
+message(STATUS "Exit code: ${_res}")
