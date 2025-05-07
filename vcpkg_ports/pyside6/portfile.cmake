@@ -1,0 +1,21 @@
+vcpkg_from_git(
+    OUT_SOURCE_PATH SOURCE_PATH
+    URL https://code.qt.io/pyside/pyside-setup
+    REF "v6.8.3"
+)
+
+include("${CURRENT_INSTALLED_DIR}/share/vcpkg-get-python/vcpkg-port-config.cmake")
+vcpkg_get_vcpkg_installed_python(PYTHON3)
+
+x_vcpkg_get_python_packages(
+    PYTHON_EXECUTABLE "${PYTHON3}"
+    REQUIREMENTS_FILE "${SOURCE_PATH}/requirements.txt"
+    OUT_PYTHON_VAR PYTHON3_IN_VENV
+)
+
+vcpkg_cmake_configure(
+    SOURCE_PATH "${SOURCE_PATH}"
+    OPTIONS
+        -DPython_EXECUTABLE ="${PYTHON3_IN_VENV}"
+)
+vcpkg_cmake_install()
