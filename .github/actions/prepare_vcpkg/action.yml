@@ -75,7 +75,7 @@ runs:
       echo "  set(VCPKG_CMAKE_CONFIGURE_OPTIONS \"-DBUILD_WITH_PCH=OFF\")"    | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
       echo "endif()"                                                          | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
       echo "include(${VCPKG_ROOT}/triplets/${ARCH}-linux.cmake)"              | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
-      echo "set(VCPKG_LIBRARY_LINKAGE DYNAMIC)"                               | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
+      echo "set(VCPKG_LIBRARY_LINKAGE dynamic)"                               | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
 
       echo "VCPKG_OVERLAY_TRIPLETS=$(pwd)/build/vcpkg_triplets" | tee -a $GITHUB_ENV
 
@@ -89,7 +89,7 @@ runs:
 
       echo "set(VCPKG_OSX_DEPLOYMENT_TARGET ${TARGET})"         | tee -a build/vcpkg_triplets/${ARCH}-osx.cmake
       echo "include(${VCPKG_ROOT}/triplets/${ARCH}-osx.cmake)"  | tee -a build/vcpkg_triplets/${ARCH}-osx.cmake
-      echo "set(VCPKG_LIBRARY_LINKAGE DYNAMIC)"                 | tee -a build/vcpkg_triplets/${ARCH}-osx.cmake
+      echo "set(VCPKG_LIBRARY_LINKAGE dynamic)"                 | tee -a build/vcpkg_triplets/${ARCH}-osx.cmake
 
       echo "VCPKG_OVERLAY_TRIPLETS=$(pwd)/build/vcpkg_triplets" | tee -a $GITHUB_ENV
 
