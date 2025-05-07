@@ -62,36 +62,6 @@ runs:
      LOCAL_FEED_URL="https://nuget.pkg.github.com/SanderVocke/index.json"
      echo "FEED_URL=$LOCAL_FEED_URL" | tee -a $GITHUB_ENV
      echo "VCPKG_BINARY_SOURCES=clear;nuget,$LOCAL_FEED_URL,readwrite" | tee -a $GITHUB_ENV
-  
-  - name: Disable qtbase precompiled headers to save space, also set dynamic linkage (Linux only)
-    if: runner.os == 'Linux'
-    shell: wrap-shell {0}
-    run: |
-      ARCH=$(scripts/determine_host_arch.sh)
-      mkdir -p build/vcpkg_triplets
-
-      echo "if(PORT MATCHES \"^qt\")"                                         | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
-      echo "  message(STATUS \"Disabling precompiled headers for \${PORT}\")" | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
-      echo "  set(VCPKG_CMAKE_CONFIGURE_OPTIONS \"-DBUILD_WITH_PCH=OFF\")"    | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
-      echo "endif()"                                                          | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
-      echo "include(${VCPKG_ROOT}/triplets/${ARCH}-linux.cmake)"              | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
-      echo "set(VCPKG_LIBRARY_LINKAGE dynamic)"                               | tee -a build/vcpkg_triplets/${ARCH}-linux.cmake
-
-      echo "VCPKG_OVERLAY_TRIPLETS=$(pwd)/build/vcpkg_triplets" | tee -a $GITHUB_ENV
-
-  - name: Explicit MacOS deployment target in a triplet file wrapper, also set dynamic linkage (macOS only)
-    if: runner.os == 'macOS'
-    shell: wrap-shell {0}
-    run: |
-      TARGET="${{ inputs.macos_target_version }}"
-      ARCH=$(scripts/determine_host_arch.sh)
-      mkdir -p build/vcpkg_triplets
-
-      echo "set(VCPKG_OSX_DEPLOYMENT_TARGET ${TARGET})"         | tee -a build/vcpkg_triplets/${ARCH}-osx.cmake
-      echo "include(${VCPKG_ROOT}/triplets/${ARCH}-osx.cmake)"  | tee -a build/vcpkg_triplets/${ARCH}-osx.cmake
-      echo "set(VCPKG_LIBRARY_LINKAGE dynamic)"                 | tee -a build/vcpkg_triplets/${ARCH}-osx.cmake
-
-      echo "VCPKG_OVERLAY_TRIPLETS=$(pwd)/build/vcpkg_triplets" | tee -a $GITHUB_ENV
 
   - name: Setup NuGet sources
     if: always()

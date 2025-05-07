@@ -146,15 +146,17 @@ def build(args):
     except subprocess.CalledProcessError:
         print("Error: vcpkg not found in PATH. Please install it and ensure it is in the PATH.")
 
-    # Setup VCPKG_ROOT and toolchain file
+    # Setup VCPKG_ROOT and toolchain file and triplets
+    # Note that we use our own triplets that ensure dynamic linkage of libraries and MacOS version choosing.
     if not args.vcpkg_root:
         print(f"Error: VCPKG_ROOT environment variable is not set, nor passed using --vcpkg-root. Please install vcpkg and pass its root accordingly.")
         exit(1)
     build_env['VCPKG_ROOT'] = args.vcpkg_root
+    build_env['VCPKG_OVERLAY_TRIPLETS'] = os.path.join(base_path, "src", "backend", "vcpkg", "triplets")
     vcpkg_toolchain = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
     if sys.platform == 'darwin':
         vcpkg_triplet = detect_vcpkg_triplet()
-        vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg.cmake")
+        vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg-toolchain.cmake")
         # TODO: for some reason, in particular for MacOS on ARM, we need to
         # pass the target triplet - even if we don't use a custom one.
         # Env vars or cache entries don't work, so make a toolchain file wrapper
