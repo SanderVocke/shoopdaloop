@@ -70,13 +70,13 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: linux_release
-          #   release_build: true
-          #   package_kind: portable_folder
-          #   second_package_kind: appimage
-          #   third_package_kind: test_binaries
-          #   upload_release_assets: true
-          #   platform: linux-x64
+          - name: linux_release
+            release_build: true
+            package_kind: portable_folder
+            second_package_kind: appimage
+            third_package_kind: test_binaries
+            upload_release_assets: true
+            platform: linux-x64
           - name: linux_debug
             release_build: false
             package_kind: portable_folder
@@ -113,7 +113,7 @@ jobs:
     env:
       PATH_SEPARATOR: ":"
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-      checkpoints_enabled: true
+      # checkpoints_enabled: true
     needs: maybe_create_release
     #if: false
     steps:
@@ -127,28 +127,6 @@ jobs:
         apt install util-linux
         cp scripts/third_party/gha_ubuntu_free_disk_space.sh /tmp/host
         nsenter -t 1 -m -u -n -i bash /tmp/container/gha_ubuntu_free_disk_space.sh
-    # - name: Free Disk Space
-    #   uses: jlumbroso/free-disk-space@main
-    # - name: Start QEMU container (just to have the free disk space command before)
-    #   if: matrix.container
-    #   uses: sandervocke/setup-qemu-container@v1
-    #   with:
-    #     container: ${{ matrix.container }}
-    #     arch: ${{ matrix.arch }}
-    #     verbose: true
-    # - name: Setup Shell Wrapper
-    #   uses: sandervocke/setup-shell-wrapper@v1
-    #   with:
-    #      verbose: true
-    # # Note: need a wrapper shell because multiple arguments in the shell command are not supported
-    # # by setup-shell-wrapper / setup-qemu-container
-    # - name: Use container shell
-    #   shell: bash
-    #   run: |
-    #       echo "#!/bin/sh" > __wrap_shell.sh
-    #       echo "run-in-container.sh --shell bash \"$@\"" >> __wrap_shell.sh
-    #       chmod a+x __wrap_shell.sh
-    #       echo "WRAP_SHELL=" >> $GITHUB_ENV
     - uses: ./.github/actions/checkpoint_setup
       with:
         shell: "bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail"
@@ -176,20 +154,20 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: release_debian_stable
-          #   python: python3
-          #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-          #   package: shoopdaloop.*.release-linux-x64.portable.tar.gz
-          #   second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
+          - name: release_debian_stable
+            python: python3
+            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+            package: shoopdaloop.*.release-linux-x64.portable.tar.gz
+            second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
           - name: debug_debian_stable
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
-          # - name: release_debian_appimage
-          #   python: python3
-          #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-          #   package: shoopdaloop.*.release-linux-x64.AppImage
+          - name: release_debian_appimage
+            python: python3
+            container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+            package: shoopdaloop.*.release-linux-x64.AppImage
           # - name: coverage_debian_bullseye
           #   python: python3
           #   container: docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
@@ -235,259 +213,136 @@ jobs:
     - uses: ./.github/actions/checkpoint
       if: always()
 
-
-
-
-
-
-
-  ##############################################################
-  ## Linux (ARM emulated)
-  ##############################################################
-
-  # build_linux_arm:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       container: [ "docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_arm64:latest" ]
-  #       arch: [ arm64 ]
-  #       manylinux_arch: [ aarch64 ]
-  #
-  #       kind:
-  #         - name: linux_arm_release
-  #           release_build: true
-  #           package_kind: portable_folder
-  #           second_package_kind: appimage
-  #           upload_release_assets: true
-  #           platform: linux-arm
-  #         - name: linux_arm_debug
-  #           build_type: 'Debug'
-  #           platform: linux-arm
-  #   runs-on: ubuntu-latest
-  #   needs: maybe_create_release
-  #   env:
-  #     PATH_SEPARATOR: ":"
-  #     COMPRESS_PORTABLE_FOLDER: 'bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czvf \$OUT \$FOLDER > /dev/null; echo \$OUT"'
-  #   #if: false
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #     with:
-  #       submodules: recursive
-  #   - name: Start QEMU container
-  #     if: matrix.container
-  #     uses: sandervocke/setup-qemu-container@v1
-  #     with:
-  #       container: ${{ matrix.container }}
-  #       arch: ${{ matrix.arch }}
-  #   - name: Setup Shell Wrapper
-  #     uses: sandervocke/setup-shell-wrapper@v1
-  #   - name: Use container shell
-  #     shell: bash
-  #     run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV !!!!!!! fix
-  #   - name: Build
-  #     uses: ./.github/actions/build_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       platform: ${{ matrix.kind.platform }}
-  #       cmake_build_type: ${{ matrix.kind.build_type }}
-  #       cmake_opts: ${{ matrix.kind.cmake_opts }}
-  #       prepare_kind: 'linux'
-  #       python: python3.9
-  #       package_kind: ${{ matrix.kind.package_kind }}
-  #       second_package_kind: ${{ matrix.kind.package_kind }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-  #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-
-
-  # test_linux_arm:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       container_arch: [ arm64 ]
-  #       kind:
-  #         - name: release_wheel_debian_bullseye_arm
-  #           python: python3
-  #           container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_arm64:latest
-  #           package: wheel_linux_arm_release
-  #         - name: release_deb_ubuntu_latest_arm
-  #           python: python3
-  #           container: docker.io/sandervocke/shoopdaloop_run_base_ubuntu_latest_arm64:latest
-  #           package: package_linux_arm_release_deb
-  #           install_with_sudo: 'true'
-  #   runs-on: ubuntu-latest
-  #   needs: build_linux_arm
-  #   #if: false
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #   - name: Start QEMU container
-  #     uses: sandervocke/setup-qemu-container@v1
-  #     with:
-  #       container: ${{ matrix.kind.container }}
-  #       arch: ${{ matrix.container_arch }}
-  #   - name: Setup Shell Wrapper
-  #     uses: sandervocke/setup-shell-wrapper@v1
-  #   - name: Use container shell
-  #     shell: bash
-  #     run: echo "WRAP_SHELL=run-in-container.sh --shell bash" >> $GITHUB_ENV    !!!!!!! fix this
-  #   - name: Test
-  #     uses: ./.github/actions/test_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       package: ${{ matrix.kind.package }}
-  #       asan: ${{ matrix.kind.asan }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       python: ${{ matrix.kind.python }}
-  #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
-  #       install_with_sudo: ${{ matrix.kind.install_with_sudo }}
-  #       do_qml_tests: false # Too slow on ARM emulation
-  #   - uses: ./.github/actions/checkpoint
-
-
-
-
-
-
-
-
-
   ##############################################################
   ## MacOS
   ##############################################################
 
-  # build_macos:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         # - name: macos_release
-  #         #   release_build: true
-  #         #   package_kind: portable_folder
-  #         #   #second_package_kind: dmg
-  #         #   third_package_kind: test_binaries
-  #         #   os: macos-13
-  #         #   upload_release_assets: true
-  #         #   platform: macos-x64
-  #         #   macos_target_version: 13.0
-  #         - name: macos_debug
-  #           release_build: false
-  #           package_kind: portable_folder
-  #           second_package_kind: test_binaries
-  #           os: macos-13
-  #           upload_release_assets: true
-  #           platform: macos-x64
-  #           macos_target_version: 13.0
-  #         # - name: macos_release_arm
-  #         #   release_build: true
-  #         #   package_kind: portable_folder
-  #         #   #second_package_kind: dmg
-  #         #   third_package_kind: test_binaries
-  #         #   os: macos-14
-  #         #   upload_release_assets: true
-  #         #   platform: macos-arm
-  #         #   macos_target_version: 14.0
-  #         - name: macos_debug_arm
-  #           release_build: false
-  #           package_kind: portable_folder
-  #           second_package_kind: test_binaries
-  #           os: macos-14
-  #           upload_release_assets: true
-  #           platform: macos-arm
-  #           macos_target_version: 14.0
-  #   runs-on: ${{ matrix.kind.os }}
-  #   needs: maybe_create_release
-  #   #if: false
-  #   env:
-  #      PATH_SEPARATOR: ":"
-  #      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-  #      checkpoints_enabled: true
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #     with:
-  #       submodules: recursive
-  #   - uses: ./.github/actions/checkpoint_setup
-  #     with:
-  #       shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
-  #   - name: Build
-  #     uses: ./.github/actions/build_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       platform: ${{ matrix.kind.platform }}
-  #       cmake_build_type: ${{ matrix.kind.build_type }}
-  #       cmake_opts: ${{ matrix.kind.cmake_opts }}
-  #       prepare_kind: 'macos'
-  #       python: python3.9
-  #       appbundle: ${{ matrix.kind.appbundle }}
-  #       package_kind: ${{ matrix.kind.package_kind }}
-  #       second_package_kind: ${{ matrix.kind.second_package_kind }}
-  #       third_package_kind: ${{ matrix.kind.third_package_kind }}
-  #       release_build: ${{ matrix.kind.release_build }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-  #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #       macos_target_version: ${{ matrix.kind.macos_target_version }}
-  #   - uses: ./.github/actions/checkpoint
-  #     if: always()
+  build_macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          - name: macos_release
+            release_build: true
+            package_kind: portable_folder
+            #second_package_kind: dmg
+            third_package_kind: test_binaries
+            os: macos-13
+            upload_release_assets: true
+            platform: macos-x64
+          - name: macos_debug
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            os: macos-13
+            upload_release_assets: true
+            platform: macos-x64
+          - name: macos_release_arm
+            release_build: true
+            package_kind: portable_folder
+            #second_package_kind: dmg
+            third_package_kind: test_binaries
+            os: macos-14
+            upload_release_assets: true
+            platform: macos-arm
+          - name: macos_debug_arm
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            os: macos-14
+            upload_release_assets: true
+            platform: macos-arm
+    runs-on: ${{ matrix.kind.os }}
+    needs: maybe_create_release
+    #if: false
+    env:
+       PATH_SEPARATOR: ":"
+       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
+      #  checkpoints_enabled: true
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
+    - name: Build
+      uses: ./.github/actions/build_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        platform: ${{ matrix.kind.platform }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: 'macos'
+        python: python3.9
+        appbundle: ${{ matrix.kind.appbundle }}
+        package_kind: ${{ matrix.kind.package_kind }}
+        second_package_kind: ${{ matrix.kind.second_package_kind }}
+        third_package_kind: ${{ matrix.kind.third_package_kind }}
+        release_build: ${{ matrix.kind.release_build }}
+        coverage: ${{ matrix.kind.coverage }}
+        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        macos_target_version: ${{ matrix.kind.macos_target_version }}
+    - uses: ./.github/actions/checkpoint
+      if: always()
 
-  # test_macos:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         # - name: release_macos_arm
-  #         #   python: python3
-  #         #   container: null
-  #         #   os: macos-14
-  #         #   package: shoopdaloop.*.release-macos-arm.portable.tar.gz
-  #         #   second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
-  #         - name: debug_macos_arm
-  #           python: python3
-  #           container: null
-  #           os: macos-14
-  #           package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
-  #           second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
-  #         # - name: release_macos
-  #         #   python: python3
-  #         #   container: null
-  #         #   os: macos-13
-  #         #   package: shoopdaloop.*.release-macos-x64.portable.tar.gz
-  #         #   second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
-  #         - name: debug_macos
-  #           python: python3
-  #           container: null
-  #           os: macos-13
-  #           package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
-  #           second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
-  #   runs-on: ${{ matrix.kind.os }}
-  #   needs: build_macos
-  #   #if: false
-  #   container:
-  #     image: ${{ matrix.kind.container }}
-  #     options: --user root --workdir / # Note: this gets disregarded if container is null
-  #   env:
-  #     PATH_SEPARATOR: ":"
-  #     # checkpoints_enabled: true
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #   - uses: ./.github/actions/checkpoint_setup
-  #     with:
-  #       shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
-  #   - name: Test
-  #     uses: ./.github/actions/test_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       package: ${{ matrix.kind.package }}
-  #       second_package: ${{ matrix.kind.second_package }}
-  #       asan: ${{ matrix.kind.asan }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       python: ${{ matrix.kind.python }}
-  #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
-  #   - uses: ./.github/actions/checkpoint
+  test_macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          - name: release_macos_arm
+            python: python3
+            container: null
+            os: macos-14
+            package: shoopdaloop.*.release-macos-arm.portable.tar.gz
+            second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
+          - name: debug_macos_arm
+            python: python3
+            container: null
+            os: macos-14
+            package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
+            second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
+          - name: release_macos
+            python: python3
+            container: null
+            os: macos-13
+            package: shoopdaloop.*.release-macos-x64.portable.tar.gz
+            second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
+          - name: debug_macos
+            python: python3
+            container: null
+            os: macos-13
+            package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
+            second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
+    runs-on: ${{ matrix.kind.os }}
+    needs: build_macos
+    #if: false
+    container:
+      image: ${{ matrix.kind.container }}
+      options: --user root --workdir / # Note: this gets disregarded if container is null
+    env:
+      PATH_SEPARATOR: ":"
+      # checkpoints_enabled: true
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
+    - name: Test
+      uses: ./.github/actions/test_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        package: ${{ matrix.kind.package }}
+        second_package: ${{ matrix.kind.second_package }}
+        asan: ${{ matrix.kind.asan }}
+        coverage: ${{ matrix.kind.coverage }}
+        python: ${{ matrix.kind.python }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
+    - uses: ./.github/actions/checkpoint
 
 
 
@@ -510,130 +365,130 @@ jobs:
   ## Windows
   ##############################################################
 
-  # build_windows:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         - name: windows_release
-  #           os: windows-2022
-  #           python: python.exe
-  #           pip: python.exe -m pip
-  #           container_image: null
-  #           prepare: 'windows'
-  #           release_build: true
-  #           package_kind: portable_folder
-  #           second_package_kind: innosetup
-  #           third_package_kind: test_binaries
-  #           upload_release_assets: true
-  #           platform: windows-msvc-x64
-  #         - name: windows_debug
-  #           os: windows-2022
-  #           python: python.exe
-  #           pip: python.exe -m pip
-  #           container_image: null
-  #           prepare: 'windows'
-  #           release_build: false
-  #           package_kind: portable_folder
-  #           second_package_kind: test_binaries
-  #           platform: windows-msvc-x64
-  #         # - name: windows_arm_debug
-  #         #   os: windows-11-arm
-  #         #   python: python.exe
-  #         #   pip: python.exe -m pip
-  #         #   container_image: null
-  #         #   prepare: 'windows'
-  #         #   release_build: false
-  #         #   package_kind: portable_folder
-  #         #   second_package_kind: test_binaries
-  #         #   platform: windows-msvc-arm
-  #   runs-on: ${{ matrix.kind.os}}
-  #   needs: maybe_create_release
-  #   env:
-  #     NATIVE_SHELL_CMD: "powershell -Command"
-  #     PATH_SEPARATOR: ";"
-  #     CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
-  #     COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-  #     checkpoints_enabled: true
-  #   container:
-  #     image: ${{ matrix.kind.container_image }}
-  #     options: --user root --workdir /
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #     with:
-  #       submodules: recursive
-  #   - uses: ./.github/actions/checkpoint_setup
-  #     with:
-  #       shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
-  #   - name: Build
-  #     uses: ./.github/actions/build_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       platform: ${{ matrix.kind.platform }}
-  #       cmake_build_type: ${{ matrix.kind.build_type }}
-  #       cmake_opts: ${{ matrix.kind.cmake_opts }}
-  #       prepare_kind: ${{ matrix.kind.prepare }}
-  #       python: ${{ matrix.kind.python }}
-  #       package_kind: ${{ matrix.kind.package_kind }}
-  #       second_package_kind: ${{ matrix.kind.second_package_kind }}
-  #       third_package_kind: ${{ matrix.kind.third_package_kind }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       release_build: ${{ matrix.kind.release_build }}
-  #       upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-  #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #   - uses: ./.github/actions/checkpoint
+  build_windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          - name: windows_release
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            release_build: true
+            package_kind: portable_folder
+            second_package_kind: innosetup
+            third_package_kind: test_binaries
+            upload_release_assets: true
+            platform: windows-msvc-x64
+          - name: windows_debug
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            platform: windows-msvc-x64
+          # - name: windows_arm_debug
+          #   os: windows-11-arm
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container_image: null
+          #   prepare: 'windows'
+          #   release_build: false
+          #   package_kind: portable_folder
+          #   second_package_kind: test_binaries
+          #   platform: windows-msvc-arm
+    runs-on: ${{ matrix.kind.os}}
+    needs: maybe_create_release
+    env:
+      NATIVE_SHELL_CMD: "powershell -Command"
+      PATH_SEPARATOR: ";"
+      CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
+      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
+      # checkpoints_enabled: true
+    container:
+      image: ${{ matrix.kind.container_image }}
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
+    - name: Build
+      uses: ./.github/actions/build_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        platform: ${{ matrix.kind.platform }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: ${{ matrix.kind.prepare }}
+        python: ${{ matrix.kind.python }}
+        package_kind: ${{ matrix.kind.package_kind }}
+        second_package_kind: ${{ matrix.kind.second_package_kind }}
+        third_package_kind: ${{ matrix.kind.third_package_kind }}
+        coverage: ${{ matrix.kind.coverage }}
+        release_build: ${{ matrix.kind.release_build }}
+        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - uses: ./.github/actions/checkpoint
 
-  # test_windows:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         - name: release_windows
-  #           python: python.exe
-  #           container: null
-  #           os: windows-2022
-  #           package: shoopdaloop.*.release-windows-msvc-x64.portable.tar.gz
-  #           second_package: shoopdaloop.*.release-windows-msvc-x64.test_binaries.tar.gz
-  #           pathconvert: "| cygpath -u -f -"
-  #         # - name: release_windows_innosetup
-  #         #   python: python.exe
-  #         #   container: null
-  #         #   os: windows-2022
-  #         #   package: package_windows_release
-  #         #   pathconvert: "| cygpath -u -f -"
-  #         - name: debug_windows
-  #           python: python.exe
-  #           container: null
-  #           os: windows-2022
-  #           package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
-  #           second_package: shoopdaloop.*.debug-windows-msvc-x64.test_binaries.tar.gz
-  #           pathconvert: "| cygpath -u -f -"
-  #   runs-on: ${{ matrix.kind.os }}
-  #   needs: build_windows
-  #   # env:
-  #     #  checkpoints_enabled: true
-  #   #if: false
-  #   container:
-  #     image: ${{ matrix.kind.container }}
-  #     options: --user root --workdir / # Note: this gets disregarded if container is null
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #   - uses: ./.github/actions/checkpoint_setup
-  #     with:
-  #       shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
-  #   - name: Test
-  #     uses: ./.github/actions/test_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       package: ${{ matrix.kind.package }}
-  #       second_package: ${{ matrix.kind.second_package }}
-  #       asan: ${{ matrix.kind.asan }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       python: ${{ matrix.kind.python }}
-  #       codecov_token: ${{ secrets.CODECOV_TOKEN }}
-  #   - uses: ./.github/actions/checkpoint
+  test_windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          - name: release_windows
+            python: python.exe
+            container: null
+            os: windows-2022
+            package: shoopdaloop.*.release-windows-msvc-x64.portable.tar.gz
+            second_package: shoopdaloop.*.release-windows-msvc-x64.test_binaries.tar.gz
+            pathconvert: "| cygpath -u -f -"
+          - name: release_windows_innosetup
+            python: python.exe
+            container: null
+            os: windows-2022
+            package: package_windows_release
+            pathconvert: "| cygpath -u -f -"
+          - name: debug_windows
+            python: python.exe
+            container: null
+            os: windows-2022
+            package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
+            second_package: shoopdaloop.*.debug-windows-msvc-x64.test_binaries.tar.gz
+            pathconvert: "| cygpath -u -f -"
+    runs-on: ${{ matrix.kind.os }}
+    needs: build_windows
+    # env:
+      #  checkpoints_enabled: true
+    #if: false
+    container:
+      image: ${{ matrix.kind.container }}
+      options: --user root --workdir / # Note: this gets disregarded if container is null
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
+    - name: Test
+      uses: ./.github/actions/test_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        package: ${{ matrix.kind.package }}
+        second_package: ${{ matrix.kind.second_package }}
+        asan: ${{ matrix.kind.asan }}
+        coverage: ${{ matrix.kind.coverage }}
+        python: ${{ matrix.kind.python }}
+        codecov_token: ${{ secrets.CODECOV_TOKEN }}
+    - uses: ./.github/actions/checkpoint
 
 
 
@@ -660,12 +515,10 @@ jobs:
     needs:
       - build_linux
       - test_linux
-      # - build_linux_arm
-      # - test_linux_arm
-      # - build_macos
-      # - test_macos
-      # - build_windows
-      # - test_windows
+      - build_macos
+      - test_macos
+      - build_windows
+      - test_windows
     if: always()
     container:
       image: archlinux:latest
