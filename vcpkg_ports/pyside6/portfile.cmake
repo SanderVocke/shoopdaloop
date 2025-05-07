@@ -1,7 +1,8 @@
 vcpkg_from_git(
     OUT_SOURCE_PATH SOURCE_PATH
     URL https://code.qt.io/pyside/pyside-setup
-    REF "v6.8.3"
+    REF 7055552166500415d7d472099d8429a2d46031d4
+    FETCH_REF "v6.8.3"
 )
 
 include("${CURRENT_INSTALLED_DIR}/share/vcpkg-get-python/vcpkg-port-config.cmake")
