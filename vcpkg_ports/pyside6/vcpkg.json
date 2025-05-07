@@ -15,6 +15,9 @@
             "name": "vcpkg-get-python"
         },
         {
+            "name": "vcpkg-get-python-packages"
+        },
+        {
             "name": "qtbase",
             "version>=": "6.8.3"
         }
