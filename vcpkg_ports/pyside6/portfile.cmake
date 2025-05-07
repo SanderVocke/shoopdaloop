@@ -11,6 +11,62 @@ x_vcpkg_get_python_packages(
     OUT_PYTHON_VAR PYTHON3_IN_VENV
 )
 
+if(VCPKG_TARGET_IS_WINDOWS AND VCPKG_TARGET_IS_MINGW)
+    if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
+        set(ARCHIVE_NAME "libclang-release_140-based-windows-mingw_64-regular.7z")
+        set(ARCHIVE_SHA512 "ac1d6b4751673a71b6e9c4d69e5e14e43f730290c8d01b0c658d7ad0451f104560bae1f406ca09607a4bdc6a78c4d46ef380be823fea5a06fabe325e9b6c86f4")
+    else()
+        message(FATAL_ERROR "Unsupported architecture for MinGW: ${VCPKG_TARGET_ARCHITECTURE}")
+    endif()
+elseif(VCPKG_TARGET_IS_WINDOWS)
+    if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
+        set(ARCHIVE_NAME "libclang-release_140-based-windows-vs2019_64.7z")
+        set(ARCHIVE_SHA512 "ebc8f23969b6ee8a6a919f04918da2c4172b6826f6b3c91d1987a4787970fcd503d20b551a013fae0a4b0fa0131d1a2e645adc6b28b47371f949612509a568e1")
+    else()
+        message(FATAL_ERROR "Unsupported architecture for MSVC: ${VCPKG_TARGET_ARCHITECTURE}")
+    endif()
+elseif(VCPKG_TARGET_IS_LINUX)
+    if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
+        if(VCPKG_DETECTED_CMAKE_SYSTEM_NAME MATCHES ".*Ubuntu.*")
+            set(ARCHIVE_NAME "libclang-release_140-based-linux-Ubuntu20.04-gcc9.3-x86_64.7z")
+            set(ARCHIVE_SHA512 "9c31aab0f106a11339b892c240365e9f9143491af3f6b74cfadaa7e74be4e7753d617fea7a0b6936591b42954aa3b9f65699e55a2a118aeaa94d3215e105e72b")
+        else()
+            set(ARCHIVE_NAME "libclang-release_140-based-linux-Rhel8.2-gcc9.2-x86_64.7z")
+            set(ARCHIVE_SHA512 "cd1d76ca70e68f4fcde0b7d7dbb0264db9817e357234c7bb5c031115e15b3850c03e903af0fdc3d78526362383f69ff7b0198cb81eca688941ee04959cd08d41")
+        endif()
+    else()
+        message(FATAL_ERROR "Unsupported architecture for Linux: ${VCPKG_TARGET_ARCHITECTURE}")
+    endif()
+elseif(VCPKG_TARGET_IS_OSX)
+    set(ARCHIVE_NAME "libclang-release_140-based-macos-universal.7z")
+    set(ARCHIVE_SHA512 "59c776759987c15c9719473e5459d246bb5ee92e64881b50de4ee13d9875499909afbf7852e5ba3a5692fda017f3fc0ebcf499204178e53091705d41ea69e406")
+else()
+    message(FATAL_ERROR "Unsupported platform (no Qt-supplied prebuilt libclang available)")
+endif()
+
+set(URL "https://download.qt.io/development_releases/prebuilt/libclang/${ARCHIVE_NAME}")
+
+vcpkg_download_distfile(ARCHIVE_PATH
+    URLS ${URL}
+    FILENAME ${ARCHIVE_NAME}
+    SHA512 "${ARCHIVE_SHA512}"
+)
+
+vcpkg_extract_source_archive(
+    OUT_SOURCE_PATH LIBCLANG_PATH
+    ARCHIVE ${ARCHIVE_PATH}
+)
+
+# Copy files into the package
+file(INSTALL ${LIBCLANG_PATH} DESTINATION ${CURRENT_PACKAGES_DIR}/tools/libclang)
+
+# Optionally symlink or define CMake config hints if libclang provides cmake files
+set(VCPKG_ENV_PASSTHROUGH_PATH "${CURRENT_PACKAGES_DIR}/tools/libclang/bin")
+
+# Help CMake find libclang
+file(WRITE "${CURRENT_PACKAGES_DIR}/share/${PORT}/libclang-config.cmake"
+"set(CMAKE_PREFIX_PATH \"\${CMAKE_PREFIX_PATH};\${CMAKE_CURRENT_LIST_DIR}/../../tools/libclang\")\n")
+
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
