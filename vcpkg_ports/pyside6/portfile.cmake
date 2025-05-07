@@ -46,30 +46,27 @@ endif()
 
 set(URL "https://download.qt.io/development_releases/prebuilt/libclang/${ARCHIVE_NAME}")
 
-vcpkg_download_distfile(ARCHIVE_PATH
+vcpkg_download_distfile(
+    ARCHIVE_PATH
     URLS ${URL}
     FILENAME ${ARCHIVE_NAME}
     SHA512 "${ARCHIVE_SHA512}"
 )
 
-vcpkg_extract_source_archive(
-    OUT_SOURCE_PATH LIBCLANG_PATH
+set(LIBCLANG_EXTRACTED "${CURRENT_BUILDTREES_DIR}/libclang-downloaded")
+if(EXISTS "${LIBCLANG_EXTRACTED}")
+    file(REMOVE_RECURSE "${LIBCLANG_EXTRACTED}")
+endif()
+vcpkg_extract_archive(
     ARCHIVE ${ARCHIVE_PATH}
+    DESTINATION ${LIBCLANG_EXTRACTED}
 )
-
-# Copy files into the package
-file(INSTALL ${LIBCLANG_PATH} DESTINATION ${CURRENT_PACKAGES_DIR}/tools/libclang)
-
-# Optionally symlink or define CMake config hints if libclang provides cmake files
-set(VCPKG_ENV_PASSTHROUGH_PATH "${CURRENT_PACKAGES_DIR}/tools/libclang/bin")
-
-# Help CMake find libclang
-file(WRITE "${CURRENT_PACKAGES_DIR}/share/${PORT}/libclang-config.cmake"
-"set(CMAKE_PREFIX_PATH \"\${CMAKE_PREFIX_PATH};\${CMAKE_CURRENT_LIST_DIR}/../../tools/libclang\")\n")
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
         -DPython_EXECUTABLE="${PYTHON3_IN_VENV}"
+        -DClang_DIR="${LIBCLANG_EXTRACTED}/libclang/lib/cmake/clang"
+        -DFORCE_LIMITED_API=yes
 )
 vcpkg_cmake_install()
