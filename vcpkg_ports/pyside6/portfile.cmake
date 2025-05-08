@@ -79,15 +79,20 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-vcpkg_cmake_configure(
-    SOURCE_PATH "${SOURCE_PATH}"
-    OPTIONS
-        -DPython_EXECUTABLE="${PYTHON3_IN_VENV}"
-        -DPython_INCLUDE_DIRS="${PYTHON3_INCLUDE}"
-        -DPython_LIBRARIES="${PYTHON3_LIBDIR}"
-        -DFORCE_LIMITED_API=yes
+# vcpkg_cmake_configure(
+#     SOURCE_PATH "${SOURCE_PATH}"
+#     OPTIONS
+#         -DPython_EXECUTABLE="${PYTHON3_IN_VENV}"
+#         -DPython_INCLUDE_DIRS="${PYTHON3_INCLUDE}"
+#         -DPython_LIBRARIES="${PYTHON3_LIBDIR}"
+#         -DFORCE_LIMITED_API=yes
+# )
+# vcpkg_cmake_build()
+
+execute_process(
+    COMMAND /usr/bin/python setup.py build --standalone --limited-api=yes --qtpaths=${CURRENT_INSTALLED_DIR}/tools/Qt6/bin/qtpaths
+    WORKING_DIRECTORY ${SOURCE_PATH}
 )
-vcpkg_cmake_build()
 
 message(STATUS "Creating wheels...")
 set(COMMAND "${PYTHON3_IN_VENV} create_wheels.py --build-dir=${VCPKG_CMAKE_BUILD_DIR}")

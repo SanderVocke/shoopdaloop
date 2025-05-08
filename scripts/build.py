@@ -149,7 +149,7 @@ def build(args):
             if sys.platform == 'win32':
                 subprocess.run('bootstrap-vcpkg.bat', cwd=os.path.join(base_path, "build", "vcpkg"), shell=True)
             else:
-                subprocess.run('bootstrap-vcpkg.sh', cwd=os.path.join(base_path, "build", "vcpkg"), shell=True)
+                subprocess.run('./bootstrap-vcpkg.sh', cwd=os.path.join(base_path, "build", "vcpkg"), shell=True)
             args.vcpkg_root = os.path.join(base_path, "build", "vcpkg")
     vcpkg_exe = os.path.join(args.vcpkg_root, "vcpkg")
     if sys.platform == 'win32':
