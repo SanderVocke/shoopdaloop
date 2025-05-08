@@ -3,6 +3,9 @@ vcpkg_from_git(
     URL https://code.qt.io/pyside/pyside-setup
     REF 7055552166500415d7d472099d8429a2d46031d4
     FETCH_REF "v6.8.3"
+    PATCHES
+        fix_example_icons_python_include.patch
+        fix_shiboken_module_path.patch
 )
 
 x_vcpkg_get_python_packages(
@@ -64,10 +67,24 @@ vcpkg_extract_archive(
 
 set(ENV{LLVM_INSTALL_DIR} "${LIBCLANG_EXTRACTED}/libclang")
 
+execute_process(
+    COMMAND ${PYTHON3_IN_VENV} -c "import sysconfig; print(sysconfig.get_path('include'))"
+    OUTPUT_VARIABLE PYTHON3_INCLUDE
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+execute_process(
+    COMMAND ${PYTHON3_IN_VENV} -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
+    OUTPUT_VARIABLE PYTHON3_LIBDIR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
         -DPython_EXECUTABLE="${PYTHON3_IN_VENV}"
+        -DPython_INCLUDE_DIRS="${PYTHON3_INCLUDE}"
+        -DPython_LIBRARIES="${PYTHON3_LIBDIR}"
         -DFORCE_LIMITED_API=yes
 )
 vcpkg_cmake_build()

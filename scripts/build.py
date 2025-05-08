@@ -136,6 +136,21 @@ def build(args):
     if maybe_vcpkg_root and not args.vcpkg_root:
         print(f"Using VCPKG_ROOT from env: {maybe_vcpkg_root}")
         args.vcpkg_root = maybe_vcpkg_root
+    elif not args.vcpkg_root:
+        if os.path.exists(os.path.join(base_path, "build", "vcpkg")):
+            print(f"Using VCPKG_ROOT from build dir: {os.path.join(base_path, 'build', 'vcpkg')}")
+            args.vcpkg_root = os.path.join(base_path, "build", "vcpkg")
+        else:
+            print(f"vcpkg not found. Bootstrapping...")
+            # clone the vcpkg repo into build/vcpkg
+            os.makedirs(os.path.join(base_path, "build"), exist_ok=True)
+            subprocess.run(f'git clone https://github.com/microsoft/vcpkg.git {os.path.join(base_path, "build", "vcpkg")}', shell=True)
+            # bootstrap vcpkg
+            if sys.platform == 'win32':
+                subprocess.run('bootstrap-vcpkg.bat', cwd=os.path.join(base_path, "build", "vcpkg"), shell=True)
+            else:
+                subprocess.run('bootstrap-vcpkg.sh', cwd=os.path.join(base_path, "build", "vcpkg"), shell=True)
+            args.vcpkg_root = os.path.join(base_path, "build", "vcpkg")
     vcpkg_exe = os.path.join(args.vcpkg_root, "vcpkg")
     if sys.platform == 'win32':
         vcpkg_exe += ".exe"
@@ -175,13 +190,22 @@ def build(args):
 
     # Setup Python version
     python_version = args.python_version
+    uv_python_dir = os.path.join(base_path, "build", 'uv_python')
+    build_env['UV_PYTHON_INSTALL_DIR'] = uv_python_dir
     print(f"Using Python version: {python_version}")
     if args.skip_python:
-        print(f"Skipping Python installation: assuming Python {python_version} is already installed.")
+        print(f"Skipping Python installation: assuming Python {python_version} is already installed and prepared.")
     else:
+        os.makedirs(os.path.join(base_path, 'build'), exist_ok=True)
+        if os.path.exists(uv_python_dir):
+            print(f"Deleting existing Python at: {uv_python_dir}")
+            shutil.rmtree(uv_python_dir)
         run_and_print(f"uv python install {python_version}",
                         env=apply_build_env(build_env),
                         err="Couldn't find find/install Python version.")
+        run_and_print(f"uv run --managed-python -m pip install -r {os.path.join(base_path, 'build_python_requirements.txt')} --break-system-packages",
+                        env=apply_build_env(build_env),
+                        err="Couldn't install build requirements.")
         print(f"-> Python {python_version} found.")
 
     # Setup venv

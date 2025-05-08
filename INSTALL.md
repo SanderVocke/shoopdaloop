@@ -30,32 +30,34 @@ Make sure all the subrepositories are checked out (`git submodule init; git subm
 
 ### Building from source
 
-ShoopDaLoop's build is governed by Cargo. To build, simply run `cargo build` in the root directory. This generates `target/.../shoopdaloop(.exe)` and `target/.../shoopdaloop_dev(.exe)`. `shoopdaloop_dev` can be directly used to run within the source tree. For installation options, see below.
+ShoopDaLoop's build is governed by Cargo. However, a build wrapper script is provided for convenience: `build.sh` / `build.ps1`.
 
-Be aware that a complex combination of build systems is hidden behind this cargo build front-end. It involves C/C++ compilers, `cmake`, `meson`, Python `setuptools`, code generation and more. I am working on reducing the dependencies and tools involved, but YMMV in having to install additional tools to run the build successfully.
+This script is a wrapper around Cargo's build system that does some careful environment setup and bootstrapping, which is required because of multiple packaging and build systems involved behind the scenes:
 
-Until this is all more stable and simple, the golden reference for how to build ShoopDaLoop is in the GitHub Actions build scripts included in the repo (`.github/workflows/...`).
+- `vcpkg` for building C++ dependencies, including `Qt`.
+- `Qt` requires special attention, because its `qmake` needs to be findable during the cargo build, creating a chicken-and-egg problem (the build script solves this by first installing the `vcpkg` package dependencies, then invoking `cargo`).
+- A suitable Python version should be installed and found.
+
+The build script has two subcommands: `build` for building and `package` for packaging a completed build. Run these with `--help` for more information.
+An example simple build command could be:
+
+```
+./build.sh build --debug
+```
+
+After which executables can be found in `target/debug`. The first time building, you might get some errors along the way which are usually solved by installing system packages required for the C++ compilation to succeed.
+
+As a reference, you can have a look at `.github/actions/build_base` for how the build script is invoked in CI, and at `distribution/dependencies/...` for the dependencies that are installed by default in the CI runner.
 
 ### Building redistributable binaries
 
-After building ShoopDaLoop in-tree as described above, there are several redistributable options to build. The in-tree build produces an executable called `package` which can help build these packages as follows:
-
-#### AppDir / AppImage (Linux)
-
-```
-package
-  build-appimage
-  --executable=target/debug/shoopdaloop
-  --dev-executable=target/debug/shoopdaloop_dev
-  --appimagetool=/path/to/appimagetool
-  [--include-tests]
-  --output=ShoopDaLoop.AppImage
-```
+After building ShoopDaLoop in-tree as described above, there are several redistributable options to build. `build.sh package` is the command that builds these packages. See `.github/actions/build_package/action.yml` for example invocations to produce various packages.
 
 ### Editable development build
 
 Since ShoopDaLoop partly consists of interpreted / JIT-compiled scripts (in Lua, Python and QML), for a large part developers can make changes without having to rebuild.
 
-In order to run ShoopDaLoop in "editable" mode (using the scripts in the repository as opposed to installing them into the system), simply run the `shoopdaloop_dev` executable compiled by Cargo instead of the regular `shoopdaloop` one.
+In order to run ShoopDaLoop in "editable" mode (using the scripts in the repository as opposed to installing them into the system), simply run:
 
-`shoopdaloop_dev` is also the only executable that works (i.e. is able to find all of its files) without installing the software.
+- `target/[debug/release]/shoopdaloop_dev` on Linux and macOS
+- `target/[debug/release]/shoopdaloop_windows_launcher.exe` on Windows

@@ -1,3 +1,4 @@
 setuptools
 toml
 build
+jinja2
