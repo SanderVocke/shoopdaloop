@@ -69,40 +69,30 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
         #[cfg(target_os = "windows")]
         {
-            // force linkage by manually importing a symbol
+            // force linkage by manually importing an arbitrary symbol
             println!("cargo:rustc-link-arg-bin=shoopdaloop=/INCLUDE:create_audio_driver");
             println!("cargo:rustc-link-lib=shoopdaloop_backend");
         }
 
+        // Configure RPATHs 
+        let path_to_runtime_lib = if is_debug_build {
+            "runtime/debug/lib"
+        } else {
+            "runtime/lib"
+        };
         #[cfg(target_os = "linux")]
         {
             // Set RPATH
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib"); // For builtin libraries
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib/py/lib"); // For Python library
-            // println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib/py/{}/PySide6/Qt/lib",
-            //         py_env_to_site_packages.to_str().unwrap()); // For the Qt distribution that comes with PySide6
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/lib"); // For bundled dependency libraries
+            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/{}", path_to_runtime_lib); // For builtin libraries
         }
-
         #[cfg(target_os = "macos")]
         {
             // Set RPATH
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,@loader_path/shoop_lib"); // For builtin libraries
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,@loader_path/shoop_lib/py/lib"); // For Python library
-            // println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,@loader_path/shoop_lib/py/{}/PySide6/Qt/lib",
-            //         py_env_to_site_packages.to_str().unwrap()); // For the Qt distribution that comes with PySide6
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,@loader_path/lib"); // For bundled dependency libraries
+            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$loader_path/{}", path_to_runtime_lib); // For builtin libraries
         }
 
         // Link to dev folders
         println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", env_lib_dir.to_str().unwrap());
-        // println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", shoop_lib_dir.to_str().unwrap());
-
-        // The build env may pass additional RPATHs for the dev executable to work (e.g. for vcpkg dependencies)
-        // let maybe_extra_path = std::env::var("SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH");
-        // if maybe_extra_path.is_ok() {
-        //     println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", maybe_extra_path.unwrap());
-        // }
 
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");
