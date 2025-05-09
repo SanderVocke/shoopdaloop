@@ -6,7 +6,8 @@ use crate::shoopdaloop_main;
 use crate::add_lib_search_path::add_lib_search_path;
 use crate::shoop_app_info;
 
-const SHOOP_BUILD_OUT_DIR : &str = env!("OUT_DIR");
+const SHOOP_ENV_DIR : &str = env!("SHOOP_ENV_DIR");
+const SHOOP_ENV_DYLIB_DIR : &str = env!("SHOOP_ENV_DYLIB_DIR");
 const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
 
 pub fn main() {
@@ -16,9 +17,9 @@ pub fn main() {
     };
 
     // Set up PYTHONPATH. This can deal with:
-    // finding pyenv in Cargo build case, based on the remembered OUT_DIR
-    let shoop_lib_dir = normalize_path(PathBuf::from(SHOOP_BUILD_OUT_DIR).join("shoop_lib"));
-    let bundled_python_home = shoop_lib_dir.join("py");
+    // finding env in Cargo build case, based on the remembered OUT_DIR
+    let shoop_lib_dir = normalize_path(PathBuf::from(SHOOP_ENV_DYLIB_DIR));
+    let shoop_env_dir = normalize_path(PathBuf::from(SHOOP_ENV_DIR));
     let bundled_python_site_packages : PathBuf;
 
     #[cfg(target_os = "windows")]
@@ -27,7 +28,7 @@ pub fn main() {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let pattern = format!("{}/**/site-packages", bundled_python_home.to_str().unwrap());
+        let pattern = format!("{}/**/site-packages", shoop_lib_dir.to_str().unwrap());
         let mut sp_glob = glob(&pattern).unwrap();
         bundled_python_site_packages = std::fs::canonicalize(
                 sp_glob.next()
@@ -54,7 +55,7 @@ pub fn main() {
     // println!("using PYTHONPATH: {}", pythonpath.as_str());
     env::set_var("PYTHONPATH", pythonpath.as_str());
     // println!("using PYTHONHOME: {}", bundled_python_home.to_str().unwrap());
-    env::set_var("PYTHONHOME", bundled_python_home.to_str().unwrap());
+    env::set_var("PYTHONHOME", shoop_env_dir.to_str().unwrap());
     add_lib_search_path(&shoop_lib_dir);
 
     let mut app_info = shoop_app_info::ShoopAppInfo::default();

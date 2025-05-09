@@ -34,6 +34,36 @@ def find_qmake(directory):
     qmake_path = qmake_paths[0]
     return qmake_path
 
+def find_python(vcpkg_installed_directory, is_debug_build):
+    tail = os.path.join("tools", "python3", ("python3.exe" if sys.platform == "win32" else "python3"))
+    pattern = f'{vcpkg_installed_directory}/**/{tail}'
+    python_paths = glob.glob(pattern, recursive=True)
+    exe = (python_paths[0] if python_paths else None)
+
+    if not exe or not os.path.isfile(exe):
+        print(f"Couldn't find vcpkg-built python interpreter @ {pattern}")
+        exit(1)
+
+    # query the python version number by running the executable
+    try:
+        result = subprocess.run([exe, "--version"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        version_output = result.stdout.decode('utf-8')
+        # Extract the major and minor version numbers
+        match = re.search(r'Python (\d+)\.(\d+)', version_output)
+        if not match:
+            raise ValueError("Couldn't extract Python version from output")
+        major_version, minor_version = map(int, match.groups())
+        print(f"-> Found python version: {major_version}.{minor_version}")
+    except Exception as e:
+        print(f"-> Error: {e}")
+        exit(1)
+
+    libname = f'python{major_version}.{minor_version}d' if is_debug_build else f'python{major_version}.{minor_version}'
+    libdir = os.path.join(os.path.dirname(exe), '../../debug/lib' if is_debug_build else '../../lib')
+    version = f'{major_version}.{minor_version}'
+
+    return (exe, libdir, libname, version)
+
 def windows_to_bash_path(windows_path):
     # Match drive letter at the beginning of the path (e.g., C:\ or D:/)
     match = re.match(r'^([A-Za-z]):[\\/](.*)', windows_path)
@@ -95,15 +125,15 @@ def add_build_parser(subparsers):
 
     build_parser = subparsers.add_parser('build', help='Build the project')
 
-    default_python_version = os.environ.get('PYTHON_VERSION', '3.10')
+    # default_python_version = os.environ.get('PYTHON_VERSION', '3.10')
 
-    build_parser.add_argument('--python-version', type=str, required=False, default=default_python_version, help='Python version to embed into ShoopDaLoop. Will be installed with uv if not already present.')
+    # build_parser.add_argument('--python-version', type=str, required=False, default=default_python_version, help='Python version to embed into ShoopDaLoop. Will be installed with uv if not already present.')
     build_parser.add_argument('--vcpkg-root', type=str, required=False, default=os.environ.get('VCPKG_ROOT'), help='Path to the VCPKG root directory. Default is VCPKG_ROOT environment variable.')
     build_mode_group = build_parser.add_mutually_exclusive_group()
     build_mode_group.add_argument('--debug', action='store_true', help='Build in debug mode.')
     build_mode_group.add_argument('--release', action='store_true', help='Build in release mode.')
 
-    build_parser.add_argument("--skip-python", action='store_true', help="Don't install Python and create a virtual environment (it should already be there from a previous build).")
+    # build_parser.add_argument("--skip-python", action='store_true', help="Don't install Python and create a virtual environment (it should already be there from a previous build).")
     build_parser.add_argument("--skip-vcpkg", action='store_true', help="Don't install vcpkg packages (they should already be there from a previous build).")
     build_parser.add_argument('--skip-cargo', action='store_true', help="Don't build anything after the preparation steps.")
     build_parser.add_argument("--incremental", action='store_true', help="Implies --skip-python and --skip-vcpkg.")
@@ -189,44 +219,44 @@ def build(args):
     print(f"Using CMAKE_TOOLCHAIN_FILE: {build_env['CMAKE_TOOLCHAIN_FILE']}")
 
     # Setup Python version
-    python_version = args.python_version
-    uv_python_dir = os.path.join(base_path, "build", 'uv_python')
-    build_env['UV_PYTHON_INSTALL_DIR'] = uv_python_dir
-    print(f"Using Python version: {python_version}")
-    if args.skip_python:
-        print(f"Skipping Python installation: assuming Python {python_version} is already installed and prepared.")
-    else:
-        os.makedirs(os.path.join(base_path, 'build'), exist_ok=True)
-        if os.path.exists(uv_python_dir):
-            print(f"Deleting existing Python at: {uv_python_dir}")
-            shutil.rmtree(uv_python_dir)
-        run_and_print(f"uv python install {python_version}",
-                        env=apply_build_env(build_env),
-                        err="Couldn't find find/install Python version.")
-        run_and_print(f"uv run --managed-python -m pip install -r {os.path.join(base_path, 'build_python_requirements.txt')} --break-system-packages",
-                        env=apply_build_env(build_env),
-                        err="Couldn't install build requirements.")
-        print(f"-> Python {python_version} found.")
+    # python_version = args.python_version
+    # uv_python_dir = os.path.join(base_path, "build", 'uv_python')
+    # build_env['UV_PYTHON_INSTALL_DIR'] = uv_python_dir
+    # print(f"Using Python version: {python_version}")
+    # if args.skip_python:
+    #     print(f"Skipping Python installation: assuming Python {python_version} is already installed and prepared.")
+    # else:
+    #     os.makedirs(os.path.join(base_path, 'build'), exist_ok=True)
+    #     if os.path.exists(uv_python_dir):
+    #         print(f"Deleting existing Python at: {uv_python_dir}")
+    #         shutil.rmtree(uv_python_dir)
+    #     run_and_print(f"uv python install {python_version}",
+    #                     env=apply_build_env(build_env),
+    #                     err="Couldn't find find/install Python version.")
+    #     run_and_print(f"uv run --managed-python -m pip install -r {os.path.join(base_path, 'build_python_requirements.txt')} --break-system-packages",
+    #                     env=apply_build_env(build_env),
+    #                     err="Couldn't install build requirements.")
+    #     print(f"-> Python {python_version} found.")
 
     # Setup venv
-    venv_path = os.path.join(base_path, "build", "venv")
-    python_command = os.path.join(venv_path, "bin", "python") if sys.platform != "win32" else os.path.join(venv_path, "Scripts", "python.exe")
+    # venv_path = os.path.join(base_path, "build", "venv")
+    # python_command = os.path.join(venv_path, "bin", "python") if sys.platform != "win32" else os.path.join(venv_path, "Scripts", "python.exe")
 
-    if args.skip_python:
-        print(f"Skipping venv setup: assuming build/venv is already installed.")
-    else:
-        print(f"Setting up build venv")
-        print(f"-> Venv path: {venv_path}")
-        run_and_print(f"uv venv --python {python_version} {venv_path}",
-                        env=apply_build_env(build_env),
-                        err="Couldn't create/check venv.")
-        run_and_print(f"uv pip install --python {python_command} -r {base_path}/build_python_requirements.txt",
-                        env=apply_build_env(build_env),
-                        err="Couldn't find/install python dependencies.")
-    python_base_prefix = subprocess.check_output([python_command, '-c', 'import sys; print(sys.base_prefix)'], stderr=subprocess.DEVNULL).decode().strip()
-    python_base_interpreter = os.path.join(python_base_prefix, "bin", "python") if sys.platform != "win32" else os.path.join(python_base_prefix, "python.exe")
-    build_env["PYTHON"] = python_command
-    build_env["PYO3_PYTHON"] = python_base_interpreter
+    # if args.skip_python:
+    #     print(f"Skipping venv setup: assuming build/venv is already installed.")
+    # else:
+    #     print(f"Setting up build venv")
+    #     print(f"-> Venv path: {venv_path}")
+    #     run_and_print(f"uv venv --python {python_version} {venv_path}",
+    #                     env=apply_build_env(build_env),
+    #                     err="Couldn't create/check venv.")
+    #     run_and_print(f"uv pip install --python {python_command} -r {base_path}/build_python_requirements.txt",
+    #                     env=apply_build_env(build_env),
+    #                     err="Couldn't find/install python dependencies.")
+    # python_base_prefix = subprocess.check_output([python_command, '-c', 'import sys; print(sys.base_prefix)'], stderr=subprocess.DEVNULL).decode().strip()
+    # python_base_interpreter = os.path.join(python_base_prefix, "bin", "python") if sys.platform != "win32" else os.path.join(python_base_prefix, "python.exe")
+    # build_env["PYTHON"] = python_command
+    # build_env["PYO3_PYTHON"] = python_base_interpreter
 
     # Setup cargo
     try:
@@ -251,6 +281,18 @@ def build(args):
                         err="Failed to fetch/build/install vcpkg packages.")
         print("vcpkg packages installed.")
 
+    # Find python
+    (python_exe, python_libdir, python_libname, python_version) = find_python(vcpkg_installed_dir, build_mode=='debug')
+    print(f"Found python at: {python_exe}")
+    pyo3_config_file=os.path.join(base_path, 'build', 'pyo3_config.toml')
+    with open(pyo3_config_file, 'w') as f:
+        f.write(f"shared=true\n")
+        f.write(f"lib_name={python_libname}\n")
+        f.write(f"lib_dir={python_libdir}\n")
+        f.write(f"executable={python_exe}\n")
+        f.write(f"version={python_version}\n")
+    build_env["PYO3_CONFIG_FILE"] = pyo3_config_file
+
     # Find qmake
     qmake_path = find_qmake(vcpkg_installed_dir)
     if not qmake_path:
@@ -260,15 +302,15 @@ def build(args):
     build_env["QMAKE"] = qmake_path
 
     # Find dynamic library folders and add to path
-    dynlib_path = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir)
-    if sys.platform == 'win32':
-        build_env['PATH'] = f"{build_env['PATH'] if 'PATH' in build_env else os.environ['PATH']}{os.pathsep}{dynlib_path}"
-    elif sys.platform == 'linux':
-        build_env['LD_LIBRARY_PATH'] = dynlib_path
-        build_env['SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH'] = dynlib_path
-    elif sys.platform == 'darwin':
-        build_env['DYLD_LIBRARY_PATH'] = dynlib_path
-        build_env['SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH'] = dynlib_path      
+    # dynlib_path = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir)
+    # if sys.platform == 'win32':
+    #     build_env['PATH'] = f"{build_env['PATH'] if 'PATH' in build_env else os.environ['PATH']}{os.pathsep}{dynlib_path}"
+    # elif sys.platform == 'linux':
+    #     build_env['LD_LIBRARY_PATH'] = dynlib_path
+    #     build_env['SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH'] = dynlib_path
+    # elif sys.platform == 'darwin':
+    #     build_env['DYLD_LIBRARY_PATH'] = dynlib_path
+    #     build_env['SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH'] = dynlib_path      
 
     if args.write_build_env_ps1:
         args.skip_cargo = True

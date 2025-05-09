@@ -109,8 +109,13 @@ if(ENABLE_ASAN)
     set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
     set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
     get_filename_component(ASAN_DSO_REALPATH ${ASAN_DSO} REALPATH)
-    install(FILES ${ASAN_DSO_REALPATH}
-            DESTINATION .)
+    if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+      install(FILES ${ASAN_DSO_REALPATH}
+            DESTINATION debug/lib)
+    else()
+      install(FILES ${ASAN_DSO_REALPATH}
+            DESTINATION lib)
+    endif()
 endif()
 option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling" ON)
 if(ENABLE_PROCESS_PROFILING)
@@ -245,8 +250,14 @@ elseif(UNIX)
   )
 endif()
 
-install(TARGETS shoopdaloop_backend
-        DESTINATION .)
+# Use vcpkg-compatible installation structure
+if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+  install(TARGETS shoopdaloop_backend
+          DESTINATION debug/lib)
+else()
+  install(TARGETS shoopdaloop_backend
+          DESTINATION lib)
+endif()
 
 if (OVERRIDE_COMPILE_LOG_LEVEL STREQUAL "")
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -284,12 +295,12 @@ add_custom_command(
 add_custom_target(description_txt ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/description.txt)
 
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR}/description.txt
-        DESTINATION .)
+        DESTINATION tools/shoopdaloop)
 # Include app test scripts
 install(FILES ${CMAKE_SOURCE_DIR}/../../scripts/repeat_run_app.py
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
-        DESTINATION scripts)
+        DESTINATION tools/shoopdaloop/scripts)
 install(FILES ${CMAKE_SOURCE_DIR}/../../scripts/run_and_generate_coverage.sh
         EXCLUDE_FROM_ALL
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
-        DESTINATION scripts)
+        DESTINATION tools/shoopdaloop/scripts)

@@ -21,6 +21,9 @@ fn shoopdaloop_main_impl<'py>(
             .collect();
         sys.setattr("argv", PyList::new_bound(py, &py_args))?;
 
+        let lib: String = sys.getattr("executable")?.extract()?;
+        println!("Python library loaded: {}", lib);
+
         // Expose Rust functionality to Python modules
         {
             let py_app_info = app_info.create_py_module(py).unwrap();

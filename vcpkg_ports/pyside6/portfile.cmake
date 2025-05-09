@@ -8,11 +8,13 @@ vcpkg_from_git(
         fix_shiboken_module_path.patch
 )
 
-x_vcpkg_get_python_packages(
-    PYTHON_VERSION "3"
-    REQUIREMENTS_FILE "${SOURCE_PATH}/requirements.txt"
-    OUT_PYTHON_VAR PYTHON3_IN_VENV
-)
+vcpkg_get_vcpkg_installed_python (VCPKG_PYTHON3)
+
+# x_vcpkg_get_python_packages(
+#     PYTHON_VERSION "3"
+#     REQUIREMENTS_FILE "${SOURCE_PATH}/requirements.txt"
+#     OUT_PYTHON_VAR PYTHON3_IN_VENV
+# )
 
 if(VCPKG_TARGET_IS_WINDOWS AND VCPKG_TARGET_IS_MINGW)
     if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
@@ -68,13 +70,13 @@ vcpkg_extract_archive(
 set(ENV{LLVM_INSTALL_DIR} "${LIBCLANG_EXTRACTED}/libclang")
 
 execute_process(
-    COMMAND ${PYTHON3_IN_VENV} -c "import sysconfig; print(sysconfig.get_path('include'))"
+    COMMAND ${VCPKG_PYTHON3} -c "import sysconfig; print(sysconfig.get_path('include'))"
     OUTPUT_VARIABLE PYTHON3_INCLUDE
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
 execute_process(
-    COMMAND ${PYTHON3_IN_VENV} -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
+    COMMAND ${VCPKG_PYTHON3} -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
     OUTPUT_VARIABLE PYTHON3_LIBDIR
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
@@ -82,7 +84,7 @@ execute_process(
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
-        -DPython_EXECUTABLE="${PYTHON3_IN_VENV}"
+        -DPython_EXECUTABLE="${VCPKG_PYTHON3}"
         -DPython_INCLUDE_DIRS="${PYTHON3_INCLUDE}"
         -DPython_LIBRARIES="${PYTHON3_LIBDIR}"
         -DFORCE_LIMITED_API=yes

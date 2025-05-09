@@ -10,7 +10,9 @@ edition = "2021"
 glob = "0.3"
 copy_dir = "0.1"
 anyhow = "1.0"
+backend = { path = "../backend" }
+walkdir = "2.4"
 
 [features]
 # Dummy build to build dependencies only
-prebuild = []
+prebuild = ["backend/prebuild"]
