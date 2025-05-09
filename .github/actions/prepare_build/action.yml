@@ -101,8 +101,15 @@ runs:
   #       echo "DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${LIB_PATH}" | tee -a $GITHUB_ENV
   #       echo "$(pwd)/prebuilt_dependencies/bin" | tee -a $GITHUB_PATH
   
-  - name: Install the latest version of uv
-    uses: astral-sh/setup-uv@v6
+  # - name: Install the latest version of uv
+  #   uses: astral-sh/setup-uv@v6
+
+  - name: Install Python build requirements
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+      python3 -m pip install --upgrade pip
+      python3 -m pip install -r build_python_requirements.txt
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'
