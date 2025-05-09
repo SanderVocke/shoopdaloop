@@ -25,8 +25,9 @@ pub fn main() {
     let runtime_env_path = normalize_path(&installed_path.join("runtime"));
     let lib_path = normalize_path(&installed_path.join(SHOOP_ENV_DIR_TO_LIBS));
     let bundled_pythonpath_shoop_lib = &runtime_env_path;
+    println!("{}", SHOOP_ENV_DIR_TO_SITE_PACKAGES);
     let bundled_python_site_packages = normalize_path(&runtime_env_path.join(SHOOP_ENV_DIR_TO_SITE_PACKAGES));
-    
+
     let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
     if bundled_pythonpath_shoop_lib.exists() &&
        bundled_python_site_packages.exists() &&

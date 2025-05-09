@@ -51,7 +51,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
             let mut sp_glob = glob(&pattern).expect("Couldn't glob for site-packages");
             let full_site_packages = sp_glob.next()
                     .expect(format!("No site-packages dir found @ {}", pattern).as_str()).unwrap();
-            path_to_site_packages = full_site_packages.strip_prefix(&env_lib_dir).unwrap().to_path_buf();
+            path_to_site_packages = full_site_packages.strip_prefix(&py_env_dir).unwrap().to_path_buf();
         }
 
         // Make env dir information available
