@@ -47,17 +47,18 @@ fn main_impl() -> Result<(), anyhow::Error> {
         };
         let path_to_site_packages : PathBuf;
         {
-            let pattern = format!("{}/{}/**/site-packages", env_lib_dir.to_str().unwrap(), path_to_runtime_lib);
+            let pattern = format!("{}/**/site-packages", env_lib_dir.to_str().unwrap());
             let mut sp_glob = glob(&pattern).expect("Couldn't glob for site-packages");
             let full_site_packages = sp_glob.next()
                     .expect(format!("No site-packages dir found @ {}", pattern).as_str()).unwrap();
-            path_to_site_packages = full_site_packages.strip_prefix(env_lib_dir).unwrap().to_path_buf();
+            path_to_site_packages = full_site_packages.strip_prefix(&env_lib_dir).unwrap().to_path_buf();
         }
 
         // Make env dir information available
         println!("cargo:rustc-env=SHOOP_RUNTIME_ENV_DIR={}", py_env_dir.to_str().unwrap());
         println!("cargo:rustc-env=SHOOP_ENV_DYLIB_DIR={}", env_lib_dir.to_str().unwrap());
         println!("cargo:rustc-env=SHOOP_ENV_DIR_TO_SITE_PACKAGES={}", path_to_site_packages.to_str().unwrap());
+        println!("cargo:rustc-env=SHOOP_ENV_DIR_TO_RUNTIME_LIB={}", path_to_runtime_lib);
 
         // Link to libshoopdaloop_backend
         println!("cargo:rustc-link-search=native={}", env_lib_dir.to_str().unwrap());

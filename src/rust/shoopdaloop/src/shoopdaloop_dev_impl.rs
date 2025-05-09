@@ -7,7 +7,7 @@ use crate::add_lib_search_path::add_lib_search_path;
 use crate::shoop_app_info;
 
 use common::logging::macros::*;
-shoop_log_unit!("DevelopmentWrapper");
+shoop_log_unit!("Main");
 
 const SHOOP_RUNTIME_ENV_DIR : &str = env!("SHOOP_RUNTIME_ENV_DIR");
 const SHOOP_ENV_DYLIB_DIR : &str = env!("SHOOP_ENV_DYLIB_DIR");
