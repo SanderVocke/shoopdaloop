@@ -1,2 +1,1 @@
-
-powershell -Command uv run scripts/build.py @args
+powershell -Command python3 run scripts/build.py @args

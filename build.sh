@@ -1,3 +1,3 @@
 #!/bin/bash
 
-uv run scripts/build.py "$@"
+python3 scripts/build.py "$@"
