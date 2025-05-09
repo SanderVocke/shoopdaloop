@@ -118,7 +118,7 @@ class Application(ShoopQApplication):
         self.engine.destroyed.connect(lambda: self.logger.debug("QML engine being destroyed."))
         self.engine.objectCreated.connect(lambda obj, _: maybe_install_event_filter(obj))
         self.engine.addImportPath(os.path.join(shoop_qml_dir))
-        self.engine.addImportPath(os.path.join(shoop_qml_dir, 'generated'))
+        #self.engine.addImportPath(os.path.join(shoop_qml_dir, 'generated'))
 
         if quit_on_quit:
             self.engine.quit.connect(self.do_quit)

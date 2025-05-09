@@ -44,6 +44,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
     #[cfg(not(feature = "prebuild"))]
     {
+        let is_debug_build = std::env::var("PROFILE").unwrap() == "debug";
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
         let src_dir = env::current_dir()?;
         let host_python = env::var("PYTHON")
@@ -116,12 +117,13 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("Cloning Python environment from vcpkg build...");
         copy_dir(&vcpkg_installed_dir, &py_env_dir)
               .with_context(|| format!("Failed to copy environment from {:?} to {:?}", &vcpkg_installed_dir, &py_env_dir))?;
-        let env_python = py_env_dir.join("tools/python3/python3");
 
         println!("Merging built backend library into environment...");
         copy_dir_merge(&built_backend_dir, &py_env_dir)
               .with_context(|| format!("Failed to merge built backend from {:?} to {:?}", &built_backend_dir, &py_env_dir))?;
 
+        let prefix_path = if is_debug_build { py_env_dir.join("debug") } else { py_env_dir.clone() };
+        let env_python = if is_debug_build { prefix_path.join("tools/python3/python3d") } else { prefix_path.join("tools/python3/python3") };
 
         // Copy filesets into our output lib dir
         let to_copy = ["lua", "qml", "session_schemas", "../resources"];
@@ -259,6 +261,39 @@ fn main_impl() -> Result<(), anyhow::Error> {
         //     }
         // }
 
+        let delete_dir = |dir : &Path| -> Result<(), anyhow::Error> {
+            if dir.exists() {
+                println!("Deleting: {:?}", dir);
+                std::fs::remove_dir_all(dir)
+                   .with_context(|| format!("Failed to delete {:?}", dir))?;
+            } else {
+                println!("Not removing because nonexistent: {:?}", dir)
+            }
+            Ok(())
+        };
+
+        // Strip unneeded files and directories from the environment
+        if is_debug_build {
+            // Remove release folders
+            for path in ["bin", "doc", "etc", "include", "lib", "libexec", "metatypes", "Qt6", "sbom", "share"]
+            {
+                delete_dir(py_env_dir.join(path).as_path());
+            }
+        } else {
+            // Remove debug folder
+            delete_dir(py_env_dir.join("debug").as_path())?;
+        }
+        for path in [
+            "doc",
+            "etc",
+            "include",
+            "libexec",
+            "share",
+        ] {
+            // Remove subfolders in the correct build type but we don't need
+            delete_dir(prefix_path.join(path).as_path());
+        }
+
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");
         println!("cargo:rerun-if-changed=src");
@@ -268,7 +303,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rerun-if-env-changed=PYO3_PYTHON");
 
         println!("cargo:rustc-env=SHOOP_PY_ENV_DIR={}", py_env_dir.to_str().unwrap());
-        println!("cargo:rustc-env=SHOOP_PY_INTERPRETER={}", env_python.to_str().unwrap());
 
         println!("build.rs finished.");
 

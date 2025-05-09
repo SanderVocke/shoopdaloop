@@ -20,7 +20,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
         let host_python = env::var("PYTHON").unwrap_or(String::from("python3"));
         let profile = std::env::var("PROFILE").unwrap();
         let py_env_dir = py_env::py_env_dir();
-        let py_interpreter = py_env::py_interpreter();
         let is_debug_build = std::env::var("PROFILE").unwrap() == "debug";
         let env_lib_dir = if is_debug_build { py_env_dir.join("debug/lib") } else { py_env_dir.join("lib") };
 
