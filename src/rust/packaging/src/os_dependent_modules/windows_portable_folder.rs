@@ -8,7 +8,7 @@ use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
 fn populate_folder(
-    shoop_built_out_dir : &Path,
+    runtime_env_dir : &Path,
     folder : &Path,
     exe_path : &Path,
     launcher_path : &Path,
@@ -23,30 +23,30 @@ fn populate_folder(
     std::fs::copy(exe_path, &final_exe_path)
         .with_context(|| format!("Failed to copy {exe_path:?} to {folder:?}"))?;
 
-    info!("Bundling shoop_lib...");
-    let lib_dir = folder.join("shoop_lib");
-    std::fs::create_dir(&lib_dir)
-        .with_context(|| format!("Cannot create dir: {:?}", lib_dir))?;
+    info!("Bundling runtime dependencies...");
+    let runtime_dir = folder.join("runtime");
+    std::fs::create_dir(&runtime_dir)
+        .with_context(|| format!("Cannot create dir: {:?}", runtime_dir))?;
     recursive_dir_cpy(
-        &PathBuf::from(shoop_built_out_dir).join("shoop_lib"),
-        &lib_dir
+        &PathBuf::from(runtime_env_dir),
+        &runtime_dir
     )?;
 
-    let dynlib_dir = folder;
-    let excludelist_path = src_path.join("distribution/windows/excludelist");
-    let includelist_path = src_path.join("distribution/windows/includelist");
-    let final_exe_dir = final_exe_path.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
-    info!("Getting dependencies (this may take some time)...");
-    let libs = get_dependency_libs (&final_exe_path, &final_exe_dir, &excludelist_path, &includelist_path, false)?;
+    // let dynlib_dir = folder;
+    // let excludelist_path = src_path.join("distribution/windows/excludelist");
+    // let includelist_path = src_path.join("distribution/windows/includelist");
+    // let final_exe_dir = final_exe_path.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
+    // info!("Getting dependencies (this may take some time)...");
+    // let libs = get_dependency_libs (&final_exe_path, &final_exe_dir, &excludelist_path, &includelist_path, false)?;
 
-    info!("Bundling dependencies...");
-    for lib in libs {
-        info!("  Bundling {}", lib.to_str().unwrap());
-        std::fs::copy(
-            lib.clone(),
-            dynlib_dir.join(lib.file_name().unwrap())
-        )?;
-    }
+    // info!("Bundling dependencies...");
+    // for lib in libs {
+    //     info!("  Bundling {}", lib.to_str().unwrap());
+    //     std::fs::copy(
+    //         lib.clone(),
+    //         dynlib_dir.join(lib.file_name().unwrap())
+    //     )?;
+    // }
 
     info!("Bundling additional assets...");
     for (src,dst) in [
@@ -76,14 +76,14 @@ fn populate_folder(
 }
 
 pub fn build_portable_folder(
-    shoop_built_out_dir : &Path,
+    runtime_env_dir : &Path,
     exe_path : &Path,
     _dev_exe_path : &Path,
     launcher_path : &Path,
     output_dir : &Path,
     _release : bool,
 ) -> Result<(), anyhow::Error> {
-    info!("Assets directory: {:?}", shoop_built_out_dir);
+    info!("Assets directory: {:?}", runtime_env_dir);
 
     if std::fs::exists(output_dir)? {
         return Err(anyhow::anyhow!("Output directory {:?} already exists", output_dir));
@@ -94,7 +94,7 @@ pub fn build_portable_folder(
     info!("Creating portable directory...");
     std::fs::create_dir(output_dir)?;
 
-    populate_folder(shoop_built_out_dir,
+    populate_folder(runtime_env_dir,
                             output_dir,
                             exe_path,
                             launcher_path)?;

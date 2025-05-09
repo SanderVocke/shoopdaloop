@@ -218,46 +218,6 @@ def build(args):
     print(f"Using VCPKG_ROOT: {build_env['VCPKG_ROOT']}")
     print(f"Using CMAKE_TOOLCHAIN_FILE: {build_env['CMAKE_TOOLCHAIN_FILE']}")
 
-    # Setup Python version
-    # python_version = args.python_version
-    # uv_python_dir = os.path.join(base_path, "build", 'uv_python')
-    # build_env['UV_PYTHON_INSTALL_DIR'] = uv_python_dir
-    # print(f"Using Python version: {python_version}")
-    # if args.skip_python:
-    #     print(f"Skipping Python installation: assuming Python {python_version} is already installed and prepared.")
-    # else:
-    #     os.makedirs(os.path.join(base_path, 'build'), exist_ok=True)
-    #     if os.path.exists(uv_python_dir):
-    #         print(f"Deleting existing Python at: {uv_python_dir}")
-    #         shutil.rmtree(uv_python_dir)
-    #     run_and_print(f"uv python install {python_version}",
-    #                     env=apply_build_env(build_env),
-    #                     err="Couldn't find find/install Python version.")
-    #     run_and_print(f"uv run --managed-python -m pip install -r {os.path.join(base_path, 'build_python_requirements.txt')} --break-system-packages",
-    #                     env=apply_build_env(build_env),
-    #                     err="Couldn't install build requirements.")
-    #     print(f"-> Python {python_version} found.")
-
-    # Setup venv
-    # venv_path = os.path.join(base_path, "build", "venv")
-    # python_command = os.path.join(venv_path, "bin", "python") if sys.platform != "win32" else os.path.join(venv_path, "Scripts", "python.exe")
-
-    # if args.skip_python:
-    #     print(f"Skipping venv setup: assuming build/venv is already installed.")
-    # else:
-    #     print(f"Setting up build venv")
-    #     print(f"-> Venv path: {venv_path}")
-    #     run_and_print(f"uv venv --python {python_version} {venv_path}",
-    #                     env=apply_build_env(build_env),
-    #                     err="Couldn't create/check venv.")
-    #     run_and_print(f"uv pip install --python {python_command} -r {base_path}/build_python_requirements.txt",
-    #                     env=apply_build_env(build_env),
-    #                     err="Couldn't find/install python dependencies.")
-    # python_base_prefix = subprocess.check_output([python_command, '-c', 'import sys; print(sys.base_prefix)'], stderr=subprocess.DEVNULL).decode().strip()
-    # python_base_interpreter = os.path.join(python_base_prefix, "bin", "python") if sys.platform != "win32" else os.path.join(python_base_prefix, "python.exe")
-    # build_env["PYTHON"] = python_command
-    # build_env["PYO3_PYTHON"] = python_base_interpreter
-
     # Setup cargo
     try:
         result = subprocess.check_output('cargo -V', shell=True, env=apply_build_env(build_env))
@@ -300,17 +260,6 @@ def build(args):
         sys.exit(1)
     print(f"Found qmake at: {qmake_path}")
     build_env["QMAKE"] = qmake_path
-
-    # Find dynamic library folders and add to path
-    # dynlib_path = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir)
-    # if sys.platform == 'win32':
-    #     build_env['PATH'] = f"{build_env['PATH'] if 'PATH' in build_env else os.environ['PATH']}{os.pathsep}{dynlib_path}"
-    # elif sys.platform == 'linux':
-    #     build_env['LD_LIBRARY_PATH'] = dynlib_path
-    #     build_env['SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH'] = dynlib_path
-    # elif sys.platform == 'darwin':
-    #     build_env['DYLD_LIBRARY_PATH'] = dynlib_path
-    #     build_env['SHOOPDALOOP_DEV_EXTRA_DYLIB_PATH'] = dynlib_path      
 
     if args.write_build_env_ps1:
         args.skip_cargo = True
@@ -393,21 +342,6 @@ def package(args, remainder):
         print('')
         subprocess.run([package_exe, "--help"])
         sys.exit(0)
-
-    # Check for Dependencies.exe, which is needed for basically any packaging step on windows.
-    if sys.platform == 'win32' and not shutil.which('Dependencies.exe'):
-        dependencies_folder = os.path.join(base_path, 'build', 'Dependencies.exe')
-        dependencies_executable = os.path.join(dependencies_folder, 'Dependencies.exe')
-        if not os.path.exists(dependencies_executable):
-            print('Did not find Dependencies.exe - downloading.')
-            os.makedirs(dependencies_folder)
-            zip_file = os.path.join(dependencies_folder, 'dependencies.zip')
-            urllib.request.urlretrieve(
-                'https://github.com/lucasg/Dependencies/releases/download/v1.11.1/Dependencies_x64_Release.zip',
-                zip_file)
-            with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-                zip_ref.extractall(dependencies_folder)
-        package_env['PATH'] = f"{package_env['PATH']};{dependencies_folder}"
     
     # Find QMake
     qmake_path = find_qmake(args.vcpkg_installed_dir)
