@@ -228,76 +228,76 @@ jobs:
   ## MacOS
   ##############################################################
 
-  build_macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        kind:
-          # - name: macos_release
-          #   release_build: true
-          #   package_kind: portable_folder
-          #   #second_package_kind: dmg
-          #   third_package_kind: test_binaries
-          #   os: macos-13
-          #   upload_release_assets: true
-          #   platform: macos-x64
-          - name: macos_debug
-            release_build: false
-            package_kind: portable_folder
-            second_package_kind: test_binaries
-            os: macos-13
-            upload_release_assets: true
-            platform: macos-x64
-          # - name: macos_release_arm
-          #   release_build: true
-          #   package_kind: portable_folder
-          #   #second_package_kind: dmg
-          #   third_package_kind: test_binaries
-          #   os: macos-14
-          #   upload_release_assets: true
-          #   platform: macos-arm
-          - name: macos_debug_arm
-            release_build: false
-            package_kind: portable_folder
-            second_package_kind: test_binaries
-            os: macos-14
-            upload_release_assets: true
-            platform: macos-arm
-    runs-on: ${{ matrix.kind.os }}
-    needs: maybe_create_release
-    #if: false
-    env:
-       PATH_SEPARATOR: ":"
-       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-      #  checkpoints_enabled: true
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    - uses: ./.github/actions/checkpoint_setup
-      with:
-        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
-    - name: Build
-      uses: ./.github/actions/build_toplevel
-      with:
-        name: ${{ matrix.kind.name }}
-        platform: ${{ matrix.kind.platform }}
-        cmake_build_type: ${{ matrix.kind.build_type }}
-        cmake_opts: ${{ matrix.kind.cmake_opts }}
-        prepare_kind: 'macos'
-        python: python3.9
-        appbundle: ${{ matrix.kind.appbundle }}
-        package_kind: ${{ matrix.kind.package_kind }}
-        second_package_kind: ${{ matrix.kind.second_package_kind }}
-        third_package_kind: ${{ matrix.kind.third_package_kind }}
-        release_build: ${{ matrix.kind.release_build }}
-        coverage: ${{ matrix.kind.coverage }}
-        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        macos_target_version: ${{ matrix.kind.macos_target_version }}
-    - uses: ./.github/actions/checkpoint
-      if: always()
+  # build_macos:
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       kind:
+  #         # - name: macos_release
+  #         #   release_build: true
+  #         #   package_kind: portable_folder
+  #         #   #second_package_kind: dmg
+  #         #   third_package_kind: test_binaries
+  #         #   os: macos-13
+  #         #   upload_release_assets: true
+  #         #   platform: macos-x64
+  #         - name: macos_debug
+  #           release_build: false
+  #           package_kind: portable_folder
+  #           second_package_kind: test_binaries
+  #           os: macos-13
+  #           upload_release_assets: true
+  #           platform: macos-x64
+  #         # - name: macos_release_arm
+  #         #   release_build: true
+  #         #   package_kind: portable_folder
+  #         #   #second_package_kind: dmg
+  #         #   third_package_kind: test_binaries
+  #         #   os: macos-14
+  #         #   upload_release_assets: true
+  #         #   platform: macos-arm
+  #         - name: macos_debug_arm
+  #           release_build: false
+  #           package_kind: portable_folder
+  #           second_package_kind: test_binaries
+  #           os: macos-14
+  #           upload_release_assets: true
+  #           platform: macos-arm
+  #   runs-on: ${{ matrix.kind.os }}
+  #   needs: maybe_create_release
+  #   #if: false
+  #   env:
+  #      PATH_SEPARATOR: ":"
+  #      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
+  #     #  checkpoints_enabled: true
+  #   steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v4
+  #     with:
+  #       submodules: recursive
+  #   - uses: ./.github/actions/checkpoint_setup
+  #     with:
+  #       shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
+  #   - name: Build
+  #     uses: ./.github/actions/build_toplevel
+  #     with:
+  #       name: ${{ matrix.kind.name }}
+  #       platform: ${{ matrix.kind.platform }}
+  #       cmake_build_type: ${{ matrix.kind.build_type }}
+  #       cmake_opts: ${{ matrix.kind.cmake_opts }}
+  #       prepare_kind: 'macos'
+  #       python: python3.9
+  #       appbundle: ${{ matrix.kind.appbundle }}
+  #       package_kind: ${{ matrix.kind.package_kind }}
+  #       second_package_kind: ${{ matrix.kind.second_package_kind }}
+  #       third_package_kind: ${{ matrix.kind.third_package_kind }}
+  #       release_build: ${{ matrix.kind.release_build }}
+  #       coverage: ${{ matrix.kind.coverage }}
+  #       upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+  #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       macos_target_version: ${{ matrix.kind.macos_target_version }}
+  #   - uses: ./.github/actions/checkpoint
+  #     if: always()
 
   # test_macos:
   #   strategy:
@@ -376,79 +376,79 @@ jobs:
   # ## Windows
   # ##############################################################
 
-  # build_windows:
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       kind:
-  #         - name: windows_release
-  #           os: windows-2022
-  #           python: python.exe
-  #           pip: python.exe -m pip
-  #           container_image: null
-  #           prepare: 'windows'
-  #           release_build: true
-  #           package_kind: portable_folder
-  #           second_package_kind: innosetup
-  #           third_package_kind: test_binaries
-  #           upload_release_assets: true
-  #           platform: windows-msvc-x64
-  #         - name: windows_debug
-  #           os: windows-2022
-  #           python: python.exe
-  #           pip: python.exe -m pip
-  #           container_image: null
-  #           prepare: 'windows'
-  #           release_build: false
-  #           package_kind: portable_folder
-  #           second_package_kind: test_binaries
-  #           platform: windows-msvc-x64
-  #         # - name: windows_arm_debug
-  #         #   os: windows-11-arm
-  #         #   python: python.exe
-  #         #   pip: python.exe -m pip
-  #         #   container_image: null
-  #         #   prepare: 'windows'
-  #         #   release_build: false
-  #         #   package_kind: portable_folder
-  #         #   second_package_kind: test_binaries
-  #         #   platform: windows-msvc-arm
-  #   runs-on: ${{ matrix.kind.os}}
-  #   needs: maybe_create_release
-  #   env:
-  #     NATIVE_SHELL_CMD: "powershell -Command"
-  #     PATH_SEPARATOR: ";"
-  #     CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
-  #     COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-  #     # checkpoints_enabled: true
-  #   container:
-  #     image: ${{ matrix.kind.container_image }}
-  #     options: --user root --workdir /
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v4
-  #     with:
-  #       submodules: recursive
-  #   - uses: ./.github/actions/checkpoint_setup
-  #     with:
-  #       shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
-  #   - name: Build
-  #     uses: ./.github/actions/build_toplevel
-  #     with:
-  #       name: ${{ matrix.kind.name }}
-  #       platform: ${{ matrix.kind.platform }}
-  #       cmake_build_type: ${{ matrix.kind.build_type }}
-  #       cmake_opts: ${{ matrix.kind.cmake_opts }}
-  #       prepare_kind: ${{ matrix.kind.prepare }}
-  #       python: ${{ matrix.kind.python }}
-  #       package_kind: ${{ matrix.kind.package_kind }}
-  #       second_package_kind: ${{ matrix.kind.second_package_kind }}
-  #       third_package_kind: ${{ matrix.kind.third_package_kind }}
-  #       coverage: ${{ matrix.kind.coverage }}
-  #       release_build: ${{ matrix.kind.release_build }}
-  #       upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-  #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #   - uses: ./.github/actions/checkpoint
+  build_windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind:
+          # - name: windows_release
+          #   os: windows-2022
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container_image: null
+          #   prepare: 'windows'
+          #   release_build: true
+          #   package_kind: portable_folder
+          #   second_package_kind: innosetup
+          #   third_package_kind: test_binaries
+          #   upload_release_assets: true
+          #   platform: windows-msvc-x64
+          - name: windows_debug
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            platform: windows-msvc-x64
+          # - name: windows_arm_debug
+          #   os: windows-11-arm
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container_image: null
+          #   prepare: 'windows'
+          #   release_build: false
+          #   package_kind: portable_folder
+          #   second_package_kind: test_binaries
+          #   platform: windows-msvc-arm
+    runs-on: ${{ matrix.kind.os}}
+    needs: maybe_create_release
+    env:
+      NATIVE_SHELL_CMD: "powershell -Command"
+      PATH_SEPARATOR: ";"
+      CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
+      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
+      # checkpoints_enabled: true
+    container:
+      image: ${{ matrix.kind.container_image }}
+      options: --user root --workdir /
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - uses: ./.github/actions/checkpoint_setup
+      with:
+        shell: bash --noprofile --norc ${{ env.BASH_FLAGS }} -eo pipefail
+    - name: Build
+      uses: ./.github/actions/build_toplevel
+      with:
+        name: ${{ matrix.kind.name }}
+        platform: ${{ matrix.kind.platform }}
+        cmake_build_type: ${{ matrix.kind.build_type }}
+        cmake_opts: ${{ matrix.kind.cmake_opts }}
+        prepare_kind: ${{ matrix.kind.prepare }}
+        python: ${{ matrix.kind.python }}
+        package_kind: ${{ matrix.kind.package_kind }}
+        second_package_kind: ${{ matrix.kind.second_package_kind }}
+        third_package_kind: ${{ matrix.kind.third_package_kind }}
+        coverage: ${{ matrix.kind.coverage }}
+        release_build: ${{ matrix.kind.release_build }}
+        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - uses: ./.github/actions/checkpoint
 
   # test_windows:
   #   strategy:
@@ -526,9 +526,9 @@ jobs:
     needs:
       # - build_linux
       # - test_linux
-      - build_macos
+      # - build_macos
       # - test_macos
-      # - build_windows
+      - build_windows
       # - test_windows
     if: always()
     container:
