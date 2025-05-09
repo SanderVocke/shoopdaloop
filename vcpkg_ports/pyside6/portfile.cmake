@@ -89,27 +89,3 @@ vcpkg_cmake_configure(
 )
 vcpkg_cmake_build()
 vcpkg_cmake_install()
-
-# execute_process(
-#     COMMAND /usr/bin/python setup.py build --standalone --limited-api=yes --qtpaths=${CURRENT_INSTALLED_DIR}/tools/Qt6/bin/qtpaths
-#     WORKING_DIRECTORY ${SOURCE_PATH}
-# )
-
-# message(STATUS "Creating wheels...")
-# set(COMMAND "${PYTHON3_IN_VENV} create_wheels.py --build-dir=${VCPKG_CMAKE_BUILD_DIR}")
-# execute_process(
-#     COMMAND ${COMMAND}
-#     WORKING_DIRECTORY ${VCPKG_CMAKE_BUILD_DIR}
-#     OUTPUT_VARIABLE _out
-#     ERROR_VARIABLE _err
-#     RESULT_VARIABLE _res
-#     OUTPUT_STRIP_TRAILING_WHITESPACE
-#     ERROR_STRIP_TRAILING_WHITESPACE
-# )
-
-# message(STATUS "Command: ${COMMAND}")
-# message(STATUS "Working directory: ${VCPKG_CMAKE_BUILD_DIR}")
-# message(STATUS "Output code: ${_res}")
-# message(STATUS "stdout: ${_out}")
-# message(STATUS "stderr: ${_err}")
-# message(STATUS "Exit code: ${_res}")

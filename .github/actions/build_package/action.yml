@@ -69,6 +69,11 @@ runs:
         echo "Symlink $from -> $to"
         ln -s $to $from
       done
+  # FIXME for testing
+  - if: always() && inputs.package_kind == 'portable_folder'
+    shell: wrap-shell {0}
+    run: |
+      cp -r build/vcpkg_installed ${{ env.PORTABLE_DIR }}/vcpkg_installed
   - if: always() && inputs.package_kind == 'portable_folder'
     shell: wrap-shell {0}
     run: |
@@ -83,7 +88,7 @@ runs:
     with:
       name: ${{ env.BUILT_PACKAGE_NAME }}
       path: ${{ env.BUILT_PACKAGE }}
-  - name: Upload AppDir (release)
+  - name: Upload portable folder (release)
     if: always() && inputs.package_kind == 'portable_folder' && inputs.upload_release_assets == 'true'
     uses: shogo82148/actions-upload-release-asset@v1
     with:
