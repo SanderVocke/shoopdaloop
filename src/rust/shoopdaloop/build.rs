@@ -40,20 +40,24 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // // Copy the base python directory
         // copy_dir(&py_env_dir, shoop_lib_dir.join("py"))?;
 
-        // let py_env_to_site_packages : PathBuf;
-        // {
-        //     let pattern = format!("{}/**/site-packages", py_env_dir.to_str().unwrap());
-        //     let mut sp_glob = glob(&pattern).expect("Couldn't glob for site-packages");
-        //     let full_site_packages = sp_glob.next()
-        //             .expect(format!("No site-packages dir found @ {}", pattern).as_str()).unwrap();
-        //     py_env_to_site_packages = PathBuf::from
-        //                             (format!("lib/{}/site-packages",
-        //                             full_site_packages.parent().unwrap().file_name().unwrap().to_str().unwrap()));
-        // }
+        let path_to_runtime_lib = if is_debug_build {
+            "runtime/debug/lib"
+        } else {
+            "runtime/lib"
+        };
+        let path_to_site_packages : PathBuf;
+        {
+            let pattern = format!("{}/{}/**/site-packages", env_lib_dir.to_str().unwrap(), path_to_runtime_lib);
+            let mut sp_glob = glob(&pattern).expect("Couldn't glob for site-packages");
+            let full_site_packages = sp_glob.next()
+                    .expect(format!("No site-packages dir found @ {}", pattern).as_str()).unwrap();
+            path_to_site_packages = full_site_packages.strip_prefix(env_lib_dir).unwrap().to_path_buf();
+        }
 
-        // Make env dir available
+        // Make env dir information available
         println!("cargo:rustc-env=SHOOP_RUNTIME_ENV_DIR={}", py_env_dir.to_str().unwrap());
         println!("cargo:rustc-env=SHOOP_ENV_DYLIB_DIR={}", env_lib_dir.to_str().unwrap());
+        println!("cargo:rustc-env=SHOOP_ENV_DIR_TO_SITE_PACKAGES={}", path_to_site_packages.to_str().unwrap());
 
         // Link to libshoopdaloop_backend
         println!("cargo:rustc-link-search=native={}", env_lib_dir.to_str().unwrap());
@@ -75,11 +79,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
         }
 
         // Configure RPATHs 
-        let path_to_runtime_lib = if is_debug_build {
-            "runtime/debug/lib"
-        } else {
-            "runtime/lib"
-        };
         #[cfg(target_os = "linux")]
         {
             // Set RPATH
