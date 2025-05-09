@@ -6,7 +6,10 @@ use crate::shoopdaloop_main;
 use crate::add_lib_search_path::add_lib_search_path;
 use crate::shoop_app_info;
 
-const SHOOP_ENV_DIR : &str = env!("SHOOP_ENV_DIR");
+use common::logging::macros::*;
+shoop_log_unit!("DevelopmentWrapper");
+
+const SHOOP_RUNTIME_ENV_DIR : &str = env!("SHOOP_RUNTIME_ENV_DIR");
 const SHOOP_ENV_DYLIB_DIR : &str = env!("SHOOP_ENV_DYLIB_DIR");
 const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
 
@@ -19,7 +22,7 @@ pub fn main() {
     // Set up PYTHONPATH. This can deal with:
     // finding env in Cargo build case, based on the remembered OUT_DIR
     let shoop_lib_dir = normalize_path(PathBuf::from(SHOOP_ENV_DYLIB_DIR));
-    let shoop_env_dir = normalize_path(PathBuf::from(SHOOP_ENV_DIR));
+    let shoop_env_dir = normalize_path(PathBuf::from(SHOOP_RUNTIME_ENV_DIR));
     let bundled_python_site_packages : PathBuf;
 
     #[cfg(target_os = "windows")]
@@ -52,9 +55,9 @@ pub fn main() {
                          bundled_python_site_packages.join("win32").join("lib").to_str().unwrap(),
                          shoop_lib_dir.to_str().unwrap(),
                          );
-    println!("using PYTHONPATH: {}", pythonpath.as_str());
+    debug!("using PYTHONPATH: {}", pythonpath.as_str());
     env::set_var("PYTHONPATH", pythonpath.as_str());
-    println!("using PYTHONHOME: {}", shoop_env_dir.to_str().unwrap());
+    debug!("using PYTHONHOME: {}", shoop_env_dir.to_str().unwrap());
     env::set_var("PYTHONHOME", shoop_env_dir.to_str().unwrap());
     add_lib_search_path(&shoop_lib_dir);
 

@@ -63,26 +63,26 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
     let exe_dir = exe.parent().ok_or(anyhow::anyhow!("Unable to find exe dir"))?;
     let main_exe : PathBuf;
     let dev_exe : PathBuf;
-    let print_out_dir_exe : PathBuf;
+    let print_runtime_env_dir : PathBuf;
     #[cfg(target_os = "windows")]
     {
         main_exe = exe_dir.join("shoopdaloop.exe");
         dev_exe = exe_dir.join("shoopdaloop_dev.exe");
-        print_out_dir_exe = exe_dir.join("print_out_dir.exe");
+        print_runtime_env_dir = exe_dir.join("print_runtime_env_dir.exe");
     }
     #[cfg(not(target_os = "windows"))]
     {
         main_exe = exe_dir.join("shoopdaloop");
         dev_exe = exe_dir.join("shoopdaloop_dev");
-        print_out_dir_exe = exe_dir.join("print_out_dir");
+        print_runtime_env_dir = exe_dir.join("print_runtime_env_dir");
     }
 
-    let out_dir = Command::new(print_out_dir_exe)
+    let runtime_env_dir = Command::new(print_runtime_env_dir)
                               .output()
-                              .with_context(|| "failed to run parse_out_dir")
+                              .with_context(|| "failed to run print_runtime_env_dir")
                               .and_then(|r| match r.status.success() {
                                 true => Ok(std::str::from_utf8(&r.stdout).unwrap().trim().to_string()),
-                                false => Err(anyhow::anyhow!("failed to run and parse print_out_dir result"))
+                                false => Err(anyhow::anyhow!("failed to run and parse print_runtime_env_dir result"))
                               })?;
 
     match &args.command {
@@ -94,7 +94,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                     std::fs::remove_dir_all(output_dir)?;
                 }
                 packaging::linux_appdir::build_appdir
-                           (Path::new(out_dir.as_str()),
+                           (Path::new(runtime_env_dir.as_str()),
                             main_exe.as_path(),
                             dev_exe.as_path(),
                             output_dir.as_path(),
@@ -107,7 +107,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                     std::fs::remove_dir_all(output_dir)?;
                 }
                 packaging::macos_appbundle::build_appbundle(
-                            Path::new(out_dir.as_str()),
+                            Path::new(runtime_env_dir.as_str()),
                             main_exe.as_path(),
                             dev_exe.as_path(),
                             output_dir.as_path(),
@@ -121,7 +121,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                 }
                 let launcher_exe : PathBuf = exe_dir.join("shoopdaloop_windows_launcher.exe");
                 packaging::windows_portable_folder::build_portable_folder(
-                            Path::new(out_dir.as_str()),
+                            Path::new(runtime_env_dir.as_str()),
                             main_exe.as_path(),
                             dev_exe.as_path(),
                             launcher_exe.as_path(),
@@ -135,7 +135,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                 std::fs::remove_dir_all(output_dir)?;
             }
             build_test_binaries_folder
-                        (Path::new(out_dir.as_str()),
+                        (Path::new(runtime_env_dir.as_str()),
                         output_dir.as_path(),
                         *release)
         },

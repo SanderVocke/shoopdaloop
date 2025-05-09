@@ -52,7 +52,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // }
 
         // Make env dir available
-        println!("cargo:rustc-env=SHOOP_ENV_DIR={}", py_env_dir.to_str().unwrap());
+        println!("cargo:rustc-env=SHOOP_RUNTIME_ENV_DIR={}", py_env_dir.to_str().unwrap());
         println!("cargo:rustc-env=SHOOP_ENV_DYLIB_DIR={}", env_lib_dir.to_str().unwrap());
 
         // Link to libshoopdaloop_backend
