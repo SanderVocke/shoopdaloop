@@ -78,12 +78,14 @@ if(VCPKG_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 vcpkg_cmake_configure(
-    SOURCE_PATH "${SOURCE_PATH}"
+    SOURCE_PATH "${SOURCE_PATH}" 
     OPTIONS
         -DPython_EXECUTABLE="${VCPKG_PYTHON3}"
         -DPython_INCLUDE_DIRS="${PYTHON3_INCLUDE}"
         -DPython_LIBRARIES="${PYTHON3_LIBDIR}"
-        -DMODULES="Core Gui Qml Quick QuickControls2"
+        #-DMODULES=Core\;Gui\;Widgets\;Help\;Network\;Concurrent\;DBus\;Designer\;OpenGL\;OpenGLWidgets\;PrintSupport\;Qml\;Quick\;QuickControls2\;QuickTest\;QuickWidgets\;Xml\;Test\;Sql\;Svg\;SvgWidgets\;UiTools
+        #-DMODULES=Core\;Gui\;Qml\;Quick\;QuickControls2\;Network\;OpenGL
+        -DMODULES=Core\;Gui\;Widgets\;Network\;Concurrent\;DBus\;OpenGL\;OpenGLWidgets\;PrintSupport\;Qml\;Quick\;QuickControls2\;QuickTest\;QuickWidgets\;Xml\;Test\;Sql\;Svg\;SvgWidgets
         -DFORCE_LIMITED_API=yes
 )
 vcpkg_cmake_build()

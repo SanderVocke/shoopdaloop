@@ -11,6 +11,7 @@ shoop_log_unit!("Main");
 
 const SHOOP_RUNTIME_ENV_DIR : &str = env!("SHOOP_RUNTIME_ENV_DIR");
 const SHOOP_ENV_DYLIB_DIR : &str = env!("SHOOP_ENV_DYLIB_DIR");
+const SHOOP_ENV_DIR_TO_PYTHON_LIBS : &str = env!("SHOOP_ENV_DIR_TO_PYTHON_LIBS");
 const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
 
 pub fn main() {
@@ -23,6 +24,7 @@ pub fn main() {
     // finding env in Cargo build case, based on the remembered OUT_DIR
     let shoop_lib_dir = normalize_path(PathBuf::from(SHOOP_ENV_DYLIB_DIR));
     let shoop_env_dir = normalize_path(PathBuf::from(SHOOP_RUNTIME_ENV_DIR));
+    let shoop_env_python_lib_dir = normalize_path(shoop_env_dir.join(PathBuf::from(SHOOP_ENV_DIR_TO_PYTHON_LIBS)));
     let bundled_python_site_packages : PathBuf;
 
     #[cfg(target_os = "windows")]
@@ -44,7 +46,7 @@ pub fn main() {
     let pythonpath_to_src = normalize_path(
         shoop_src_root_dir.join("src/python"));
     let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
-    let pythonpath = format!("{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}",
+    let pythonpath = format!("{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}",
                          pythonpath_to_src.to_str().unwrap(),
                          bundled_python_site_packages.to_str().unwrap(),
                          bundled_python_site_packages.parent().unwrap().to_str().unwrap(),
@@ -53,12 +55,13 @@ pub fn main() {
                          bundled_python_site_packages.parent().unwrap().parent().unwrap().join("DLLs").to_str().unwrap(),
                          bundled_python_site_packages.join("win32").to_str().unwrap(),
                          bundled_python_site_packages.join("win32").join("lib").to_str().unwrap(),
+                         shoop_env_python_lib_dir.to_str().unwrap(),
                          shoop_lib_dir.to_str().unwrap(),
                          );
-    debug!("using PYTHONPATH: {}", pythonpath.as_str());
+    println!("using PYTHONPATH: {}", pythonpath.as_str());
     env::set_var("PYTHONPATH", pythonpath.as_str());
-    debug!("using PYTHONHOME: {}", shoop_env_dir.to_str().unwrap());
-    env::set_var("PYTHONHOME", shoop_env_dir.to_str().unwrap());
+    debug!("using PYTHONHOME: {}", shoop_env_python_lib_dir.to_str().unwrap());
+    env::set_var("PYTHONHOME", shoop_env_python_lib_dir.to_str().unwrap());
     add_lib_search_path(&shoop_lib_dir);
 
     let mut app_info = shoop_app_info::ShoopAppInfo::default();
