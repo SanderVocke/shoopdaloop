@@ -34,14 +34,19 @@ pub fn main() {
     if bundled_pythonpath_shoop_lib.exists() &&
        bundled_python_site_packages.exists() &&
        lib_path.exists() {
-        let pythonpath = format!("{}{sep}{}{sep}{}{sep}{}",
-            lib_path.to_str().unwrap(),
-            bundled_python_libs.to_str().unwrap(),
-            bundled_pythonpath_shoop_lib.to_str().unwrap(),
-            bundled_python_site_packages.to_str().unwrap());
+        let pythonpath = format!("{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}",
+                         bundled_python_site_packages.to_str().unwrap(),
+                         bundled_python_libs.to_str().unwrap(),
+                         bundled_python_libs.join("lib-dynload").to_str().unwrap(),
+                         bundled_python_libs.join("importlib").to_str().unwrap(),
+                         bundled_python_libs.parent().unwrap().join("DLLs").to_str().unwrap(),
+                         bundled_python_site_packages.join("win32").to_str().unwrap(),
+                         bundled_python_site_packages.join("win32").join("lib").to_str().unwrap(),
+                         lib_path.to_str().unwrap(),
+            );
         debug!("using PYTHONPATH: {}", pythonpath.as_str());
         env::set_var("PYTHONPATH", pythonpath.as_str());
-        debug!("using PYTHONHOME: {}", bundled_python_libs.to_str().unwrap());
+        println!("using PYTHONHOME: {}", bundled_python_libs.to_str().unwrap());
         env::set_var("PYTHONHOME", bundled_python_libs.to_str().unwrap());
     } else {
         println!("Warning: could not find python paths for ShoopDaLoop. Attempting to run with default Python environment.");
