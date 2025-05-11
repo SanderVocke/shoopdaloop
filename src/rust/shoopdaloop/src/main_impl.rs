@@ -46,7 +46,7 @@ pub fn main() {
             );
         debug!("using PYTHONPATH: {}", pythonpath.as_str());
         env::set_var("PYTHONPATH", pythonpath.as_str());
-        println!("using PYTHONHOME: {}", bundled_python_libs.to_str().unwrap());
+        debug!("using PYTHONHOME: {}", bundled_python_libs.to_str().unwrap());
         env::set_var("PYTHONHOME", bundled_python_libs.to_str().unwrap());
     } else {
         println!("Warning: could not find python paths for ShoopDaLoop. Attempting to run with default Python environment.");

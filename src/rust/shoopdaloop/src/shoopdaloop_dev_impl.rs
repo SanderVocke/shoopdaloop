@@ -58,7 +58,7 @@ pub fn main() {
                          shoop_env_python_lib_dir.to_str().unwrap(),
                          shoop_lib_dir.to_str().unwrap(),
                          );
-    println!("using PYTHONPATH: {}", pythonpath.as_str());
+    debug!("using PYTHONPATH: {}", pythonpath.as_str());
     env::set_var("PYTHONPATH", pythonpath.as_str());
     debug!("using PYTHONHOME: {}", shoop_env_python_lib_dir.to_str().unwrap());
     env::set_var("PYTHONHOME", shoop_env_python_lib_dir.to_str().unwrap());
