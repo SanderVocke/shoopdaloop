@@ -1,1 +1,1 @@
-powershell -Command python3 run scripts/build.py @args
+powershell -Command python scripts/build.py @args
