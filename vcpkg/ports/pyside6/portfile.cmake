@@ -60,15 +60,33 @@ vcpkg_extract_archive(
 )
 set(ENV{LLVM_INSTALL_DIR} "${LIBCLANG_EXTRACTED}/libclang")
 
-vcpkg_get_vcpkg_installed_python (VCPKG_PYTHON3)
+# vcpkg_get_vcpkg_installed_python (VCPKG_PYTHON3)
+# execute_process(
+#     COMMAND ${VCPKG_PYTHON3} -c "import sysconfig; print(sysconfig.get_path('include'))"
+#     OUTPUT_VARIABLE PYTHON3_INCLUDE
+#     OUTPUT_STRIP_TRAILING_WHITESPACE
+# )
+# execute_process(
+#     COMMAND ${VCPKG_PYTHON3} -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
+#     OUTPUT_VARIABLE PYTHON3_LIBDIR
+#     OUTPUT_STRIP_TRAILING_WHITESPACE
+# )
+
+if(VCPKG_TARGET_IS_WINDOWS)
+    set(PYTHON3_INTERPRETER "${CURRENT_INSTALLED_DIR}/tools/python3/python.exe")
+else()
+    set(PYTHON3_INTERPRETER "${CURRENT_INSTALLED_DIR}/tools/python3/python")
+endif()
+
+if(VCPKG_BUILD_TYPE STREQUAL "Debug")
+    set(PYTHON3_LIBDIR "${CURRENT_INSTALLED_DIR}/debug/lib")
+else()
+    set(PYTHON3_LIBDIR "${CURRENT_INSTALLED_DIR}/lib")
+endif()
+
 execute_process(
-    COMMAND ${VCPKG_PYTHON3} -c "import sysconfig; print(sysconfig.get_path('include'))"
+    COMMAND ${PYTHON3_INTERPRETER} -c "import sysconfig; print(sysconfig.get_path('include'))"
     OUTPUT_VARIABLE PYTHON3_INCLUDE
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-execute_process(
-    COMMAND ${VCPKG_PYTHON3} -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
-    OUTPUT_VARIABLE PYTHON3_LIBDIR
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
@@ -80,7 +98,7 @@ endif()
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}" 
     OPTIONS
-        -DPython_EXECUTABLE="${VCPKG_PYTHON3}"
+        -DPython_EXECUTABLE="${PYTHON3_INTERPRETER}"
         -DPython_INCLUDE_DIRS="${PYTHON3_INCLUDE}"
         -DPython_LIBRARIES="${PYTHON3_LIBDIR}"
         #-DMODULES=Core\;Gui\;Widgets\;Help\;Network\;Concurrent\;DBus\;Designer\;OpenGL\;OpenGLWidgets\;PrintSupport\;Qml\;Quick\;QuickControls2\;QuickTest\;QuickWidgets\;Xml\;Test\;Sql\;Svg\;SvgWidgets\;UiTools

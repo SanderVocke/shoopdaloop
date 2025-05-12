@@ -41,7 +41,7 @@ runs:
         echo ""
         echo "Build env file ${BUILD_ENV_FILE}" contents:
         cat ${BUILD_ENV_FILE}
-        rm -rf vcpkg/buildtrees
+        rm -rf ${VCPKG_ROOT}/buildtrees
 
   - name: Build Cargo dependencies
     if: always()
