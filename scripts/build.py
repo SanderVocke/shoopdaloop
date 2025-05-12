@@ -197,8 +197,8 @@ def build(args):
         print(f"Error: VCPKG_ROOT environment variable is not set, nor passed using --vcpkg-root. Please install vcpkg and pass its root accordingly.")
         exit(1)
     build_env['VCPKG_ROOT'] = args.vcpkg_root
-    build_env['VCPKG_OVERLAY_TRIPLETS'] = os.path.join(base_path, "src", "backend", "vcpkg", "triplets")
-    build_env['VCPKG_OVERLAY_PORTS'] = os.path.join(base_path, "vcpkg_ports")
+    build_env['VCPKG_OVERLAY_TRIPLETS'] = os.path.join(base_path, "vcpkg", "triplets")
+    build_env['VCPKG_OVERLAY_PORTS'] = os.path.join(base_path, "vcpkg", "ports")
     vcpkg_toolchain = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
     if sys.platform == 'darwin':
         vcpkg_triplet = detect_vcpkg_triplet()
@@ -237,7 +237,7 @@ def build(args):
         extra_args = args.vcpkg_args if args.vcpkg_args else ''
         run_and_print(f"{vcpkg_exe} install --x-install-root={vcpkg_installed_dir} {extra_args}",
                         env=apply_build_env(build_env),
-                        cwd=os.path.join(base_path, 'src', 'backend'),
+                        cwd=base_path,
                         err="Failed to fetch/build/install vcpkg packages.")
         print("vcpkg packages installed.")
 
