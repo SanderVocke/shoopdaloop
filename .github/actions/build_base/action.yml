@@ -49,7 +49,7 @@ runs:
     run: |
       . ${BUILD_ENV_FILE}
       echo "cargo: $(which cargo)"
-      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild" ${CARGO_BUILD_FLAGS}
+      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild" ${CARGO_BUILD_FLAGS}
 
   - name: Build main packages
     if: always()
