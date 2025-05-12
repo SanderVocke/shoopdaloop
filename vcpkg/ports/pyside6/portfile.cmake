@@ -8,14 +8,6 @@ vcpkg_from_git(
         fix_shiboken_module_path.patch
 )
 
-vcpkg_get_vcpkg_installed_python (VCPKG_PYTHON3)
-
-# x_vcpkg_get_python_packages(
-#     PYTHON_VERSION "3"
-#     REQUIREMENTS_FILE "${SOURCE_PATH}/requirements.txt"
-#     OUT_PYTHON_VAR PYTHON3_IN_VENV
-# )
-
 if(VCPKG_TARGET_IS_WINDOWS AND VCPKG_TARGET_IS_MINGW)
     if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
         set(ARCHIVE_NAME "libclang-release_140-based-windows-mingw_64-regular.7z")
@@ -66,27 +58,34 @@ vcpkg_extract_archive(
     ARCHIVE ${ARCHIVE_PATH}
     DESTINATION ${LIBCLANG_EXTRACTED}
 )
-
 set(ENV{LLVM_INSTALL_DIR} "${LIBCLANG_EXTRACTED}/libclang")
 
+vcpkg_get_vcpkg_installed_python (VCPKG_PYTHON3)
 execute_process(
     COMMAND ${VCPKG_PYTHON3} -c "import sysconfig; print(sysconfig.get_path('include'))"
     OUTPUT_VARIABLE PYTHON3_INCLUDE
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-
 execute_process(
     COMMAND ${VCPKG_PYTHON3} -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
     OUTPUT_VARIABLE PYTHON3_LIBDIR
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
+set(MAYBE_DEBUG_SUBFOLDER "")
+if(VCPKG_BUILD_TYPE STREQUAL "Debug")
+    set(MAYBE_DEBUG_SUBFOLDER "debug/")
+endif()
+
 vcpkg_cmake_configure(
-    SOURCE_PATH "${SOURCE_PATH}"
+    SOURCE_PATH "${SOURCE_PATH}" 
     OPTIONS
         -DPython_EXECUTABLE="${VCPKG_PYTHON3}"
         -DPython_INCLUDE_DIRS="${PYTHON3_INCLUDE}"
         -DPython_LIBRARIES="${PYTHON3_LIBDIR}"
+        #-DMODULES=Core\;Gui\;Widgets\;Help\;Network\;Concurrent\;DBus\;Designer\;OpenGL\;OpenGLWidgets\;PrintSupport\;Qml\;Quick\;QuickControls2\;QuickTest\;QuickWidgets\;Xml\;Test\;Sql\;Svg\;SvgWidgets\;UiTools
+        #-DMODULES=Core\;Gui\;Qml\;Quick\;QuickControls2\;Network\;OpenGL
+        -DMODULES=Core\;Gui\;Widgets\;Network\;Concurrent\;DBus\;OpenGL\;OpenGLWidgets\;PrintSupport\;Qml\;Quick\;QuickControls2\;QuickTest\;QuickWidgets\;Xml\;Test\;Sql\;Svg\;SvgWidgets
         -DFORCE_LIMITED_API=yes
 )
 vcpkg_cmake_build()

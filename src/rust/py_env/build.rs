@@ -272,7 +272,20 @@ fn main_impl() -> Result<(), anyhow::Error> {
             Ok(())
         };
 
-        // Strip unneeded files and directories from the environment
+        // Strip unneeded files and directories from the environment.
+        // That includes the jack client library, which the operating system
+        // should provide at runtime.
+        let jack_dylib_filename = if cfg!(target_os = "macos") {
+            "libjack.dylib"
+        } else if cfg!(target_os = "windows") {
+            "libjack.dll"
+        } else {
+            "libjack.so"
+        };
+        std::fs::remove_file(py_env_dir.join("lib").join(jack_dylib_filename))
+            .with_context(|| format!("Failed to remove jack library from pyenv"))?;
+        std::fs::remove_file(py_env_dir.join("debug/lib").join(jack_dylib_filename))
+            .with_context(|| format!("Failed to remove jack library from pyenv"))?;
         if is_debug_build {
             // Remove release folders
             for path in ["bin", "doc", "etc", "include", "lib", "libexec", "metatypes", "Qt6", "sbom", "share"]
@@ -314,7 +327,7 @@ fn main() {
     match main_impl() {
         Ok(_) => {},
         Err(e) => {
-            eprintln!("Error: {:?}\nBacktrace: {:?}", e, e.backtrace());
+            eprintln!("Error: {}", e);
             std::process::exit(1);
         }
     }

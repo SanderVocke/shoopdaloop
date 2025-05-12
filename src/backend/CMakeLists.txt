@@ -69,7 +69,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
 set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
 
-find_package(Catch2 REQUIRED)
+find_package(Catch2 CONFIG REQUIRED)
 
 include(CompilerCaching)
 

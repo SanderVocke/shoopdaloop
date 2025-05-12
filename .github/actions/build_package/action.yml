@@ -1,4 +1,4 @@
-# Create a package/installer using fpm or InnoSetup
+# Create a distributable package.
 
 inputs:
   package_kind:

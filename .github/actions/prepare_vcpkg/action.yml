@@ -24,7 +24,8 @@ runs:
     if: runner.os == 'Linux' || runner.os == 'macOS'
     shell: wrap-shell {0}
     run: |
-     echo "VCPKG_ROOT=$(pwd)/vcpkg" | tee -a $GITHUB_ENV
+     mkdir -p build/vcpkg
+     echo "VCPKG_ROOT=$(pwd)/build/vcpkg" | tee -a $GITHUB_ENV
 
   # Note: put in a different spot because short paths are needed for qtdeclarative build on Windows
   - name: Set default location

@@ -1,4 +1,4 @@
-# Create a package/installer using fpm or InnoSetup
+# Top-level test script.
 
 inputs:
   package:
