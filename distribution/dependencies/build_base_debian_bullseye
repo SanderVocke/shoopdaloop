@@ -15,7 +15,7 @@ libclang-dev
 desktop-file-utils
 strace
 mono-complete
-autoconf
+# autoconf  <-- built from source, too old on bullseye
 automake
 libtool
 bison
