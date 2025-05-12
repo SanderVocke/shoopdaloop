@@ -199,6 +199,7 @@ def build(args):
     build_env['VCPKG_ROOT'] = args.vcpkg_root
     build_env['VCPKG_OVERLAY_TRIPLETS'] = os.path.join(base_path, "vcpkg", "triplets")
     build_env['VCPKG_OVERLAY_PORTS'] = os.path.join(base_path, "vcpkg", "ports")
+    build_env['VCPKG_MANIFEST_DIR'] = base_path
     vcpkg_toolchain = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
     if sys.platform == 'darwin':
         vcpkg_triplet = detect_vcpkg_triplet()

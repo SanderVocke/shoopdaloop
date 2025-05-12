@@ -49,4 +49,5 @@ py_env = { path = "../py_env" }
 # Dummy build to build dependencies only
 prebuild = ["frontend/prebuild",
             "backend_bindings/prebuild",
-            "py_env/prebuild"]
+            "py_env/prebuild",
+            "common/prebuild"]
