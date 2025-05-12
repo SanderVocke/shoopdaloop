@@ -199,7 +199,6 @@ def build(args):
     build_env['VCPKG_ROOT'] = args.vcpkg_root
     build_env['VCPKG_OVERLAY_TRIPLETS'] = os.path.join(base_path, "vcpkg", "triplets")
     build_env['VCPKG_OVERLAY_PORTS'] = os.path.join(base_path, "vcpkg", "ports")
-    build_env['VCPKG_MANIFEST_DIR'] = base_path
     vcpkg_toolchain = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
     if sys.platform == 'darwin':
         vcpkg_triplet = detect_vcpkg_triplet()
@@ -238,7 +237,7 @@ def build(args):
         extra_args = args.vcpkg_args if args.vcpkg_args else ''
         run_and_print(f"{vcpkg_exe} install --x-install-root={vcpkg_installed_dir} {extra_args}",
                         env=apply_build_env(build_env),
-                        cwd=base_path,
+                        cwd=os.path.join(base_path, 'src', 'backend'),
                         err="Failed to fetch/build/install vcpkg packages.")
         print("vcpkg packages installed.")
 
