@@ -327,7 +327,7 @@ fn main() {
     match main_impl() {
         Ok(_) => {},
         Err(e) => {
-            eprintln!("Error: {:?}\nBacktrace: {:?}", e, e.backtrace());
+            eprintln!("Error: {}", e);
             std::process::exit(1);
         }
     }

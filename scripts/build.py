@@ -138,7 +138,7 @@ def add_build_parser(subparsers):
     build_parser.add_argument('--skip-cargo', action='store_true', help="Don't build anything after the preparation steps.")
     build_parser.add_argument("--incremental", action='store_true', help="Implies --skip-python and --skip-vcpkg.")
     
-    build_parser.add_argument("--vcpkg-installed-dir", type=str, default=default_vcpkgs_installed_path, help="Path where to install/find vcpkg packages. WARNING: if used, this should be passed identically to the 'package' command.")
+    build_parser.add_argument("--vcpkg-installed-dir", type=str, default=default_vcpkgs_installed_path, help="Path where to install/find vcpkg packages.")
     build_parser.add_argument("--vcpkg-args", type=str, help="Additional arguments to pass to vcpkg install.", default=None)
     
     build_parser.add_argument('--cargo-args', '-c', type=str, help='Pass additional arguments to cargo build.', default='')
@@ -305,69 +305,7 @@ def build(args):
             print("\nWith the following in your PATH:")
             print(f"\n   {dynlib_path}")
         print("\nTo explore packaging options, run:")
-        print(f"\n   [build.ps1|build.sh|build.py] package --help\n")
-
-def add_package_parser(subparsers):
-    global default_vcpkgs_installed_path
-
-    package_parser = subparsers.add_parser('package', add_help=False)
-    package_parser.add_argument('--help', '-h', action='store_true')
-
-    package_parser.add_argument("--vcpkg-installed-dir", type=str, default=default_vcpkgs_installed_path, help="Path where to install/find vcpkg packages built in the build stage.")
-
-    build_mode_group = package_parser.add_mutually_exclusive_group()
-    build_mode_group.add_argument('--debug', action='store_true')
-    build_mode_group.add_argument('--release', action='store_true')
-
-def package(args, remainder):
-    package_env = os.environ.copy()
-    build_mode = ('release' if args.release else 'debug')
-    package_exe = os.path.join(".", "target", build_mode, ("package.exe" if sys.platform == 'win32' else "package"))
-    print_help = args.help and len(remainder) == 0
-
-    if print_help:
-        print('Usage: build.py package (--debug|--release) [options]')
-        print('')
-        print('This script is a wrapper around the target/(debug|release)/package(.exe) tool built in the build step.')
-        print('Arguments are passed to package.exe, after doing some env setup and checks first.')
-        print('Passing --debug or --release chooses the package.exe from the debug or release build.')
-        print('')
-
-    if not os.path.exists(package_exe):
-        print(f'Error: {package_exe} does not exist. Please run a build first.')
-        sys.exit(1)
-    
-    if print_help:
-        print(f"Following is the output of {package_exe} --help. You can directly pass these options to this script.")
-        print('')
-        subprocess.run([package_exe, "--help"])
-        sys.exit(0)
-    
-    # Find QMake
-    qmake_path = find_qmake(args.vcpkg_installed_dir)
-    if not qmake_path:
-        print("Error: qmake not found in vcpkg packages.")
-        sys.exit(1)
-    print(f"Found qmake at: {qmake_path}")
-    package_env["QMAKE"] = qmake_path
-
-    # Find dynamic library folders and add to path
-    dynlib_path = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir)
-    if sys.platform == 'win32':
-        package_env['PATH'] = f"{package_env['PATH']}{os.pathsep}{dynlib_path}"
-    elif sys.platform == 'linux':
-        package_env['LD_LIBRARY_PATH'] = dynlib_path
-    elif sys.platform == 'darwin':
-        package_env['DYLD_LIBRARY_PATH'] = dynlib_path   
-
-    tool_args = [a for a in sys.argv[1:] if a not in ['package', '--debug', '--release']]
-    cmd = [package_exe, *tool_args]
-    print(f'Running: {" ".join(cmd)}')
-    print('')
-    print(f'{package_exe} output:')
-    print('')
-    result = subprocess.run(cmd, env=package_env)
-    sys.exit(result.returncode)
+        print(f"\n   ./target/{build_mode}/package --help\n")
     
 def main():
     parser = argparse.ArgumentParser(description='ShoopDaLoop build script')
@@ -375,7 +313,6 @@ def main():
 
     # Add sub-parsers
     add_build_parser(subparsers)
-    add_package_parser(subparsers)
 
     (args, remainder) = parser.parse_known_args(sys.argv[1:])
 
@@ -383,8 +320,6 @@ def main():
         # Strict parsing
         args = parser.parse_args(sys.argv[1:])
         build(args)
-    elif args.command == 'package':
-        package(args, remainder)
 
 if __name__ == '__main__':
     main()

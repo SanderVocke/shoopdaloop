@@ -24,6 +24,8 @@ There are future plans for an AUR package for Arch, which links against the dist
 
 ## From source
 
+### Dependencies
+
 To build from source, ensure the build dependencies for your OS are installed. The dependencies for each supported platform can be found in `distribution/dependencies` (also see the CI workflows in `.github/workflows` for practical examples).
 
 Make sure all the subrepositories are checked out (`git submodule init; git submodule update`).
@@ -32,14 +34,11 @@ Make sure all the subrepositories are checked out (`git submodule init; git subm
 
 ShoopDaLoop's build is governed by Cargo. However, a build wrapper script is provided for convenience: `build.sh` / `build.ps1`.
 
-This script is a wrapper around Cargo's build system that does some careful environment setup and bootstrapping, which is required because of multiple packaging and build systems involved behind the scenes:
+There are two reasons a wrapper script is included:
+1. Some environment setup is required for `vcpkg`, which is convenient to automate. This includes bootstrapping `vcpkg` if it is not found and setting the required env vars.
+2. During the build there are chicken-and-egg problems: some Rust dependencies need environment variables to be set in order to find binaries produced in the `vcpkg` build (specifically: `qmake` and the vcpkg-built `python3`). The build script runs the build in two steps: `vcpkg` dependency building, then setting up the environment, then running the Rust build.
 
-- `vcpkg` for building C++ dependencies, including `Qt`.
-- `Qt` requires special attention, because its `qmake` needs to be findable during the cargo build, creating a chicken-and-egg problem (the build script solves this by first installing the `vcpkg` package dependencies, then invoking `cargo`).
-- A suitable Python version should be installed and found.
-
-The build script has two subcommands: `build` for building and `package` for packaging a completed build. Run these with `--help` for more information.
-An example simple build command could be:
+A example simple build command could be:
 
 ```
 ./build.sh build --debug
@@ -51,7 +50,7 @@ As a reference, you can have a look at `.github/actions/build_base` for how the 
 
 ### Building redistributable binaries
 
-After building ShoopDaLoop in-tree as described above, there are several redistributable options to build. `build.sh package` is the command that builds these packages. See `.github/actions/build_package/action.yml` for example invocations to produce various packages.
+After building ShoopDaLoop in-tree as described above, there are several redistributable options to build. `./target/<release|debug>/package` is the command that builds these packages. See `.github/actions/build_package/action.yml` for example invocations to produce various packages.
 
 ### Editable development build
 
