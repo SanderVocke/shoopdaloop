@@ -57,7 +57,7 @@ runs:
       . ${BUILD_ENV_FILE}
       OUT_PREFIX="prebuild"
       echo "cargo: $(which cargo)"
-      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild" ${CARGO_BUILD_FLAGS} ${ADD_PREFIXING}
+      eval "cargo build --features \"shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild\" ${CARGO_BUILD_FLAGS} ${ADD_PREFIXING}"
 
   - name: Build main packages
     if: always()
@@ -66,7 +66,7 @@ runs:
       set -x
       . ${BUILD_ENV_FILE}
       OUT_PREFIX="build"
-      cargo build -vv ${CARGO_BUILD_FLAGS} ${ADD_PREFIXING}
+      eval "cargo build -vv ${CARGO_BUILD_FLAGS} ${ADD_PREFIXING}"
   
   - name: Build test code
     if: always()
@@ -75,4 +75,4 @@ runs:
       set -x
       . ${BUILD_ENV_FILE}
       OUT_PREFIX="build_test"
-      cargo test -vv --no-run ${CARGO_BUILD_FLAGS} ${ADD_PREFIXING}
+      eval "cargo test -vv --no-run ${CARGO_BUILD_FLAGS} ${ADD_PREFIXING}"
