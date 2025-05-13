@@ -51,23 +51,23 @@ fn main_impl() -> Result<(), anyhow::Error> {
                           .unwrap_or("python3".to_string());
         // let pyo3_python = env::var("PYO3_PYTHON")
         //                         .unwrap_or(host_python);
-        let vcpkg_installed_dir = env::var("VCPKG_INSTALLED_DIR")
-                                 .with_context(|| "VCPKG_INSTALLED_DIR not set, can't build Python environment")?;
+        // let vcpkg_installed_dir = env::var("VCPKG_INSTALLED_DIR")
+        //                          .with_context(|| "VCPKG_INSTALLED_DIR not set, can't build Python environment")?;
         // Find our singular target triplet inside to get the "true" root
-        let candidates : Vec<PathBuf> = glob::glob(format!("{}/*/tools/..", vcpkg_installed_dir).as_str())?
-            .filter_map(|path| path.ok())
-            .collect();
-        if candidates.len() == 0 {
-            return Err(anyhow::anyhow!("No triplet environment found in vcpkg build!"));
-        }
-        if candidates.len() > 1 {
-            return Err(anyhow::anyhow!("Multiple triplet environments found in vcpkg build!"));
-        }
-        let vcpkg_installed_dir = candidates[0].clone();
+        // let candidates : Vec<PathBuf> = glob::glob(format!("{}/*/tools/..", vcpkg_installed_dir).as_str())?
+        //     .filter_map(|path| path.ok())
+        //     .collect();
+        // if candidates.len() == 0 {
+        //     return Err(anyhow::anyhow!("No triplet environment found in vcpkg build!"));
+        // }
+        // if candidates.len() > 1 {
+        //     return Err(anyhow::anyhow!("Multiple triplet environments found in vcpkg build!"));
+        // }
+        // let vcpkg_installed_dir = candidates[0].clone();
         let python_src_dir = format!("{}/../../python", src_dir.to_str().unwrap());
-        let built_backend_dir = backend::backend_build_dir();
+        // let built_backend_dir = backend::backend_build_dir();
 
-        println!("Using Python: {}", host_python);
+        println!("Using host Python: {}", host_python);
 
         // Build ShoopDaLoop wheel
         println!("Building wheel...");
@@ -92,220 +92,276 @@ fn main_impl() -> Result<(), anyhow::Error> {
                     .with_context(|| "Failed to glob for wheel")?;
             println!("Found built wheel: {}", wheel.to_str().unwrap());
         }
-        let py_env_dir = Path::new(&out_dir).join("shoop_pyenv");
-        // let py_root_dir = Path::new(&out_dir).join("portable_python");
 
-        if py_env_dir.exists() {
-            std::fs::remove_dir_all(&py_env_dir)
-                .with_context(|| format!("Failed to remove Py env: {:?}", &py_env_dir))?;
+        // Create a venv using the host python and install our wheel in it.
+        let dev_venv_dir = out_dir.join("dev_venv");
+        if dev_venv_dir.exists() {
+            std::fs::remove_dir_all(&dev_venv_dir)
+                .with_context(|| format!("Failed to remove development venv: {:?}", &dev_venv_dir))?;
         }
-        // if !py_root_dir.exists() {
-        //     std::fs::create_dir(&py_root_dir)?;
+        println!("Creating development venv...");
+        let args = &["-m", "venv", "--clear", &dev_venv_dir.to_str().unwrap()];
+        Command::new(&host_python)
+            .args(args)
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()
+            .with_context(|| format!("Failed to create development venv: {host_python:?} {args:?}"))?;
+
+        let env_python = dev_venv_dir.join("bin").join("python");
+        println!("Using development Python wrapper: {}", env_python.to_str().unwrap());
+        // Install ShoopDaLoop wheel in env
+        println!("Installing shoopdaloop and dependencies into python env...");
+        // if !Command::new(&env_python)
+        //     .args(
+        //         &["-m", "ensurepip", "--upgrade"]
+        //         // &["-m", "pip", "install", "--break-system-packages", "--no-input", "--upgrade", "pip"]
+        //     )
+        //     .stdout(std::process::Stdio::inherit())
+        //     .stderr(std::process::Stdio::inherit())
+        //     .status()?
+        //     .success()
+        // {
+        //     return Err(anyhow::anyhow!("Failed to upgrade pip"));
         // }
-
-        // Create a env in OUT_DIR
-        // println!("Creating portable Python...");
-        // let py_version = Command::new(host_python)
-        //                         .args(&["-c",
-        //                                 "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"])
-        //                         .output()
-        //                         .with_context(|| format!("Failed to print python version: sh ${args:?}"))?;
-        // let py_version = std::str::from_utf8(&py_version.stdout)?;
-        // let py_version = py_version.trim();
-        // let mut py_location : String;
-
-        println!("Cloning Python environment from vcpkg build...");
-        copy_dir(&vcpkg_installed_dir, &py_env_dir)
-              .with_context(|| format!("Failed to copy environment from {:?} to {:?}", &vcpkg_installed_dir, &py_env_dir))?;
-
-        println!("Merging built backend library into environment...");
-        copy_dir_merge(&built_backend_dir, &py_env_dir)
-              .with_context(|| format!("Failed to merge built backend from {:?} to {:?}", &built_backend_dir, &py_env_dir))?;
-
-        let prefix_path = if is_debug_build { py_env_dir.join("debug") } else { py_env_dir.clone() };
-        let env_python = if is_debug_build { prefix_path.join("tools/python3/python3d") } else { prefix_path.join("tools/python3/python3") };
-
-        // Copy filesets into our output lib dir
-        let to_copy = ["lua", "qml", "session_schemas", "../resources"];
-        for directory in to_copy {
-            let src = src_dir.join("../..").join(directory);
-            let dst = py_env_dir.join(PathBuf::from(directory).file_name().unwrap());
-            copy_dir_merge(&src, &dst)
-                .expect(&format!("Failed to merge {} to {}",
-                                src.display(),
-                                dst.display()));
+        if !Command::new(&env_python)
+            .args(
+                &["-m", "pip", "install", "--no-input", "pytest"]
+            )
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()?
+            .success()
+        {
+            return Err(anyhow::anyhow!("Failed to install pytest into development venv"));
         }
-        // println!("Using pyenv to install {} to {}...", py_version, py_root_dir.to_str().unwrap());
-        // let args = &["install", "--skip-existing", py_version];
-        // let pyenv = env::var("PYENV").unwrap_or(String::from("pyenv"));
-        // let mut install_env : HashMap<String, String> = env::vars().collect();
-        // install_env.insert("PYENV_ROOT".to_string(), py_root_dir.to_str().unwrap().to_string());
-        // install_env.insert("PYTHON_CONFIGURE_OPTS".to_string(), "--enable-shared".to_string());
-        // println!("   {pyenv:?} {args:?}");
-        // println!("   with PYENV_ROOT={py_root_dir:?}");
-        // println!("   with PYTHON_CONFIGURE_OPTS=--enable-shared");
-        // Command::new(&pyenv)
-        //         .args(args)
-        //         .envs(install_env)
-        //         .status()
-        //         .with_context(|| format!("Failed to install Python using pyenv: {pyenv:?} {args:?}"))?;
+        if !Command::new(&env_python)
+            .args(
+                &["-m", "pip", "install", "--no-input", "--force-reinstall", wheel.to_str().expect("Could not get wheel path")]
+            )
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()?
+            .success()
+        {
+            return Err(anyhow::anyhow!("Failed to install shoopdaloop wheel into development venv"));
+        }
 
-        // println!("Using uv to install {} to {}...", py_version, py_root_dir.to_str().unwrap());
-        // let args = &["python", "install", py_version];
+
+        // let py_env_dir = Path::new(&out_dir).join("shoop_pyenv");
+        // // let py_root_dir = Path::new(&out_dir).join("portable_python");
+
+        // if py_env_dir.exists() {
+        //     std::fs::remove_dir_all(&py_env_dir)
+        //         .with_context(|| format!("Failed to remove Py env: {:?}", &py_env_dir))?;
+        // }
+        // // if !py_root_dir.exists() {
+        // //     std::fs::create_dir(&py_root_dir)?;
+        // // }
+
+        // // Create a env in OUT_DIR
+        // // println!("Creating portable Python...");
+        // // let py_version = Command::new(host_python)
+        // //                         .args(&["-c",
+        // //                                 "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"])
+        // //                         .output()
+        // //                         .with_context(|| format!("Failed to print python version: sh ${args:?}"))?;
+        // // let py_version = std::str::from_utf8(&py_version.stdout)?;
+        // // let py_version = py_version.trim();
+        // // let mut py_location : String;
+
+        // println!("Cloning Python environment from vcpkg build...");
+        // copy_dir(&vcpkg_installed_dir, &py_env_dir)
+        //       .with_context(|| format!("Failed to copy environment from {:?} to {:?}", &vcpkg_installed_dir, &py_env_dir))?;
+
+        // println!("Merging built backend library into environment...");
+        // copy_dir_merge(&built_backend_dir, &py_env_dir)
+        //       .with_context(|| format!("Failed to merge built backend from {:?} to {:?}", &built_backend_dir, &py_env_dir))?;
+
+        // let prefix_path = if is_debug_build { py_env_dir.join("debug") } else { py_env_dir.clone() };
+        // let env_python = if is_debug_build { prefix_path.join("tools/python3/python3d") } else { prefix_path.join("tools/python3/python3") };
+
+        // // Copy filesets into our output lib dir
+        // let to_copy = ["lua", "qml", "session_schemas", "../resources"];
+        // for directory in to_copy {
+        //     let src = src_dir.join("../..").join(directory);
+        //     let dst = py_env_dir.join(PathBuf::from(directory).file_name().unwrap());
+        //     copy_dir_merge(&src, &dst)
+        //         .expect(&format!("Failed to merge {} to {}",
+        //                         src.display(),
+        //                         dst.display()));
+        // }
+        // // println!("Using pyenv to install {} to {}...", py_version, py_root_dir.to_str().unwrap());
+        // // let args = &["install", "--skip-existing", py_version];
         // // let pyenv = env::var("PYENV").unwrap_or(String::from("pyenv"));
-        // let mut install_env : HashMap<String, String> = env::vars().collect();
-        // install_env.insert("UV_PYTHON_INSTALL_DIR".to_string(), py_root_dir.to_str().unwrap().to_string());
+        // // let mut install_env : HashMap<String, String> = env::vars().collect();
+        // // install_env.insert("PYENV_ROOT".to_string(), py_root_dir.to_str().unwrap().to_string());
         // // install_env.insert("PYTHON_CONFIGURE_OPTS".to_string(), "--enable-shared".to_string());
         // // println!("   {pyenv:?} {args:?}");
-        // println!("   with UV_PYTHON_INSTALL_DIR={py_root_dir:?}");
+        // // println!("   with PYENV_ROOT={py_root_dir:?}");
         // // println!("   with PYTHON_CONFIGURE_OPTS=--enable-shared");
-        // Command::new("uv")
-        //         .args(args)
-        //         .envs(install_env)
-        //         .status()
-        //         .with_context(|| format!("Failed to install Python using uv: uv {args:?}"))?;
+        // // Command::new(&pyenv)
+        // //         .args(args)
+        // //         .envs(install_env)
+        // //         .status()
+        // //         .with_context(|| format!("Failed to install Python using pyenv: {pyenv:?} {args:?}"))?;
 
-        // let py_location_output = Command::new(&pyenv)
-        //                                 .args(&["prefix", &py_version])
-        //                                 .env("PYENV_ROOT", &py_root_dir)
-        //                                 .output()
-        //                                 .with_context(|| "Failed to get python location output using pyenv")?;
+        // // println!("Using uv to install {} to {}...", py_version, py_root_dir.to_str().unwrap());
+        // // let args = &["python", "install", py_version];
+        // // // let pyenv = env::var("PYENV").unwrap_or(String::from("pyenv"));
+        // // let mut install_env : HashMap<String, String> = env::vars().collect();
+        // // install_env.insert("UV_PYTHON_INSTALL_DIR".to_string(), py_root_dir.to_str().unwrap().to_string());
+        // // // install_env.insert("PYTHON_CONFIGURE_OPTS".to_string(), "--enable-shared".to_string());
+        // // // println!("   {pyenv:?} {args:?}");
+        // // println!("   with UV_PYTHON_INSTALL_DIR={py_root_dir:?}");
+        // // // println!("   with PYTHON_CONFIGURE_OPTS=--enable-shared");
+        // // Command::new("uv")
+        // //         .args(args)
+        // //         .envs(install_env)
+        // //         .status()
+        // //         .with_context(|| format!("Failed to install Python using uv: uv {args:?}"))?;
 
-        // let py_location_output = Command::new("uv")
-        //     .args(&["python", "dir"])
-        //     .env("UV_PYTHON_INSTALL_DIR", &py_root_dir)
-        //     .output()
-        //     .with_context(|| "Failed to get python location output using uv")?;
+        // // let py_location_output = Command::new(&pyenv)
+        // //                                 .args(&["prefix", &py_version])
+        // //                                 .env("PYENV_ROOT", &py_root_dir)
+        // //                                 .output()
+        // //                                 .with_context(|| "Failed to get python location output using pyenv")?;
 
-        // py_location = String::from(std::str::from_utf8(&py_location_output.stdout)?);
-        // if !py_location_output.status.success() {
-        //     let maybe_root = env::var("PYENV_ROOT");
-        //     if maybe_root.is_ok() {
-        //         let maybe_root = maybe_root.unwrap();
-        //         let root = Path::new(&maybe_root);
-        //         let maybe_py_location = root.join("versions").join(py_version);
-        //         if maybe_py_location.exists() {
-        //             println!("pyenv prefix command failed. Using guessed prefix {maybe_py_location:?}");
-        //             py_location = String::from(maybe_py_location.to_str().unwrap());
-        //         } else {
-        //             return Err(anyhow::anyhow!("Could not find Python location in pyenv root"));
-        //         }
-        //     } else {
-        //         return Err(anyhow::anyhow!("Could not find Python location in pyenv root"));
-        //     }
-        // }
-        // let py_location = py_location.trim();
+        // // let py_location_output = Command::new("uv")
+        // //     .args(&["python", "dir"])
+        // //     .env("UV_PYTHON_INSTALL_DIR", &py_root_dir)
+        // //     .output()
+        // //     .with_context(|| "Failed to get python location output using uv")?;
 
-        // Install ShoopDaLoop wheel in env
-        println!("Using installed Python interpreter: {}", env_python.to_str().unwrap());
-        println!("Installing shoopdaloop and dependencies into python env...");
-        if !Command::new(&env_python)
-            .args(
-                &["-m", "ensurepip", "--upgrade"]
-                // &["-m", "pip", "install", "--break-system-packages", "--no-input", "--upgrade", "pip"]
-            )
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .status()?
-            .success()
-        {
-            return Err(anyhow::anyhow!("Failed to upgrade pip"));
-        }
-        if !Command::new(&env_python)
-            .args(
-                &["-m", "pip", "install", "--break-system-packages", "--no-input", "pytest"]
-            )
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .status()?
-            .success()
-        {
-            return Err(anyhow::anyhow!("Failed to install pytest"));
-        }
-        if !Command::new(&env_python)
-            .args(
-                &["-m", "pip", "install", "--break-system-packages", "--no-input", "--force-reinstall", wheel.to_str().expect("Could not get wheel path")]
-            )
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .status()?
-            .success()
-        {
-            return Err(anyhow::anyhow!("Failed to install shoopdaloop wheel"));
-        }
+        // // py_location = String::from(std::str::from_utf8(&py_location_output.stdout)?);
+        // // if !py_location_output.status.success() {
+        // //     let maybe_root = env::var("PYENV_ROOT");
+        // //     if maybe_root.is_ok() {
+        // //         let maybe_root = maybe_root.unwrap();
+        // //         let root = Path::new(&maybe_root);
+        // //         let maybe_py_location = root.join("versions").join(py_version);
+        // //         if maybe_py_location.exists() {
+        // //             println!("pyenv prefix command failed. Using guessed prefix {maybe_py_location:?}");
+        // //             py_location = String::from(maybe_py_location.to_str().unwrap());
+        // //         } else {
+        // //             return Err(anyhow::anyhow!("Could not find Python location in pyenv root"));
+        // //         }
+        // //     } else {
+        // //         return Err(anyhow::anyhow!("Could not find Python location in pyenv root"));
+        // //     }
+        // // }
+        // // let py_location = py_location.trim();
 
-        // DLL hack needed on Windows (FIXME: still needed?)
-        // #[cfg(target_os = "windows")]
+        // // Install ShoopDaLoop wheel in env
+        // println!("Using installed Python interpreter: {}", env_python.to_str().unwrap());
+        // println!("Installing shoopdaloop and dependencies into python env...");
+        // if !Command::new(&env_python)
+        //     .args(
+        //         &["-m", "ensurepip", "--upgrade"]
+        //         // &["-m", "pip", "install", "--break-system-packages", "--no-input", "--upgrade", "pip"]
+        //     )
+        //     .stdout(std::process::Stdio::inherit())
+        //     .stderr(std::process::Stdio::inherit())
+        //     .status()?
+        //     .success()
         // {
-        //     // Copy all files in (py_env_dir)/Lib\site-packages\pywin32_system32
-        //     // to (py_env_dir)/Lib\site-packages\win32
-        //     let pywin32_system32 = Path::new(&py_env_dir).join("Lib").join("site-packages").join("pywin32_system32");
-        //     let win32 = Path::new(&py_env_dir).join("Lib").join("site-packages").join("win32");
-        //     if pywin32_system32.exists() {
-        //         for entry in std::fs::read_dir(pywin32_system32)? {
-        //             let entry = entry?;
-        //             let path = entry.path();
-            
-        //             // Check if the entry is a file
-        //             if path.is_file() {
-        //                 // Construct the destination path
-        //                 let file_name = path.file_name().unwrap();
-        //                 let dest_path = win32.join(file_name);
-            
-        //                 // Copy the file
-        //                 std::fs::copy(&path, &dest_path)?;
-        //             }
-        //         }
-        //     } else {
-        //         Err(anyhow::anyhow!("pywin32_system32 not found at {:?}", &pywin32_system32))?;
-        //     }
+        //     return Err(anyhow::anyhow!("Failed to upgrade pip"));
+        // }
+        // if !Command::new(&env_python)
+        //     .args(
+        //         &["-m", "pip", "install", "--break-system-packages", "--no-input", "pytest"]
+        //     )
+        //     .stdout(std::process::Stdio::inherit())
+        //     .stderr(std::process::Stdio::inherit())
+        //     .status()?
+        //     .success()
+        // {
+        //     return Err(anyhow::anyhow!("Failed to install pytest"));
+        // }
+        // if !Command::new(&env_python)
+        //     .args(
+        //         &["-m", "pip", "install", "--break-system-packages", "--no-input", "--force-reinstall", wheel.to_str().expect("Could not get wheel path")]
+        //     )
+        //     .stdout(std::process::Stdio::inherit())
+        //     .stderr(std::process::Stdio::inherit())
+        //     .status()?
+        //     .success()
+        // {
+        //     return Err(anyhow::anyhow!("Failed to install shoopdaloop wheel"));
         // }
 
-        let delete_dir = |dir : &Path| -> Result<(), anyhow::Error> {
-            if dir.exists() {
-                println!("Deleting: {:?}", dir);
-                std::fs::remove_dir_all(dir)
-                   .with_context(|| format!("Failed to delete {:?}", dir))?;
-            } else {
-                println!("Not removing because nonexistent: {:?}", dir)
-            }
-            Ok(())
-        };
+        // // DLL hack needed on Windows (FIXME: still needed?)
+        // // #[cfg(target_os = "windows")]
+        // // {
+        // //     // Copy all files in (py_env_dir)/Lib\site-packages\pywin32_system32
+        // //     // to (py_env_dir)/Lib\site-packages\win32
+        // //     let pywin32_system32 = Path::new(&py_env_dir).join("Lib").join("site-packages").join("pywin32_system32");
+        // //     let win32 = Path::new(&py_env_dir).join("Lib").join("site-packages").join("win32");
+        // //     if pywin32_system32.exists() {
+        // //         for entry in std::fs::read_dir(pywin32_system32)? {
+        // //             let entry = entry?;
+        // //             let path = entry.path();
+            
+        // //             // Check if the entry is a file
+        // //             if path.is_file() {
+        // //                 // Construct the destination path
+        // //                 let file_name = path.file_name().unwrap();
+        // //                 let dest_path = win32.join(file_name);
+            
+        // //                 // Copy the file
+        // //                 std::fs::copy(&path, &dest_path)?;
+        // //             }
+        // //         }
+        // //     } else {
+        // //         Err(anyhow::anyhow!("pywin32_system32 not found at {:?}", &pywin32_system32))?;
+        // //     }
+        // // }
 
-        // Strip unneeded files and directories from the environment.
-        // That includes the jack client library, which the operating system
-        // should provide at runtime.
-        let jack_dylib_filename = if cfg!(target_os = "macos") {
-            "libjack.dylib"
-        } else if cfg!(target_os = "windows") {
-            "libjack.dll"
-        } else {
-            "libjack.so"
-        };
-        std::fs::remove_file(py_env_dir.join("lib").join(jack_dylib_filename))
-            .with_context(|| format!("Failed to remove jack library from pyenv"))?;
-        std::fs::remove_file(py_env_dir.join("debug/lib").join(jack_dylib_filename))
-            .with_context(|| format!("Failed to remove jack library from pyenv"))?;
-        if is_debug_build {
-            // Remove release folders
-            for path in ["bin", "doc", "etc", "include", "lib", "libexec", "metatypes", "Qt6", "sbom", "share"]
-            {
-                delete_dir(py_env_dir.join(path).as_path());
-            }
-        } else {
-            // Remove debug folder
-            delete_dir(py_env_dir.join("debug").as_path())?;
-        }
-        for path in [
-            "doc",
-            "etc",
-            "include",
-            "libexec",
-            "share",
-        ] {
-            // Remove subfolders in the correct build type but we don't need
-            delete_dir(prefix_path.join(path).as_path());
-        }
+        // let delete_dir = |dir : &Path| -> Result<(), anyhow::Error> {
+        //     if dir.exists() {
+        //         println!("Deleting: {:?}", dir);
+        //         std::fs::remove_dir_all(dir)
+        //            .with_context(|| format!("Failed to delete {:?}", dir))?;
+        //     } else {
+        //         println!("Not removing because nonexistent: {:?}", dir)
+        //     }
+        //     Ok(())
+        // };
+
+        // // Strip unneeded files and directories from the environment.
+        // // That includes the jack client library, which the operating system
+        // // should provide at runtime.
+        // let jack_dylib_filename = if cfg!(target_os = "macos") {
+        //     "libjack.dylib"
+        // } else if cfg!(target_os = "windows") {
+        //     "libjack.dll"
+        // } else {
+        //     "libjack.so"
+        // };
+        // std::fs::remove_file(py_env_dir.join("lib").join(jack_dylib_filename))
+        //     .with_context(|| format!("Failed to remove jack library from pyenv"))?;
+        // std::fs::remove_file(py_env_dir.join("debug/lib").join(jack_dylib_filename))
+        //     .with_context(|| format!("Failed to remove jack library from pyenv"))?;
+        // if is_debug_build {
+        //     // Remove release folders
+        //     for path in ["bin", "doc", "etc", "include", "lib", "libexec", "metatypes", "Qt6", "sbom", "share"]
+        //     {
+        //         delete_dir(py_env_dir.join(path).as_path());
+        //     }
+        // } else {
+        //     // Remove debug folder
+        //     delete_dir(py_env_dir.join("debug").as_path())?;
+        // }
+        // for path in [
+        //     "doc",
+        //     "etc",
+        //     "include",
+        //     "libexec",
+        //     "share",
+        // ] {
+        //     // Remove subfolders in the correct build type but we don't need
+        //     delete_dir(prefix_path.join(path).as_path());
+        // }
 
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");
@@ -315,7 +371,8 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rerun-if-env-changed=PYTHON");
         println!("cargo:rerun-if-env-changed=PYO3_PYTHON");
 
-        println!("cargo:rustc-env=SHOOP_PY_ENV_DIR={}", py_env_dir.to_str().unwrap());
+        println!("cargo:rustc-env=SHOOP_DEV_VENV_DIR={}", dev_venv_dir.to_str().unwrap());
+        println!("cargo:rustc-env=SHOOPDALOOP_WHEEL={}", wheel.to_str().unwrap());
 
         println!("build.rs finished.");
 
