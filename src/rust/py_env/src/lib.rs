@@ -53,3 +53,20 @@ pub fn dev_venv_dir() -> PathBuf {
         rval
     }
 }
+
+pub fn host_python() -> String {
+    // If we're pre-building, don't do anything
+    #[cfg(feature = "prebuild")]
+    {
+        return String::new();
+    }
+
+    #[cfg(not(feature = "prebuild"))]
+    {
+        let rval = env!("SHOOP_HOST_PYTHON");
+        if rval.is_empty() {
+            panic!("SHOOP_HOST_PYTHON is empty");
+        }
+        rval.to_string()
+    }
+}

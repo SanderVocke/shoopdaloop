@@ -373,6 +373,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
         println!("cargo:rustc-env=SHOOP_DEV_VENV_DIR={}", dev_venv_dir.to_str().unwrap());
         println!("cargo:rustc-env=SHOOPDALOOP_WHEEL={}", wheel.to_str().unwrap());
+        println!("cargo:rustc-env=SHOOP_HOST_PYTHON={}", host_python);
 
         println!("build.rs finished.");
 

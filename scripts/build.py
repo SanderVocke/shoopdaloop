@@ -125,8 +125,6 @@ def add_build_parser(subparsers):
 
     build_parser = subparsers.add_parser('build', help='Build the project')
 
-    # default_python_version = os.environ.get('PYTHON_VERSION', '3.10')
-
     # build_parser.add_argument('--python-version', type=str, required=False, default=default_python_version, help='Python version to embed into ShoopDaLoop. Will be installed with uv if not already present.')
     build_parser.add_argument('--vcpkg-root', type=str, required=False, default=os.environ.get('VCPKG_ROOT'), help='Path to the VCPKG root directory. Default is VCPKG_ROOT environment variable.')
     build_mode_group = build_parser.add_mutually_exclusive_group()
@@ -190,6 +188,7 @@ def build(args):
         result = subprocess.check_output(f'{vcpkg_exe} --help', shell=True, env=apply_build_env(build_env))
     except subprocess.CalledProcessError:
         print("Error: vcpkg not found in PATH. Please install it and ensure it is in the PATH.")
+        exit(1)
 
     # Setup VCPKG_ROOT and toolchain file and triplets
     # Note that we use our own triplets that ensure dynamic linkage of libraries and MacOS version choosing.
@@ -220,6 +219,7 @@ def build(args):
         result = subprocess.check_output('cargo -V', shell=True, env=apply_build_env(build_env))
     except subprocess.CalledProcessError:
         print("Error: cargo not found in PATH. Please install it and ensure it is in the PATH.")
+        exit(1)
 
 
     print("Tool and environment checks done.")
