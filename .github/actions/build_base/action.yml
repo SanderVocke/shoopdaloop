@@ -16,11 +16,6 @@ runs:
     with:
         prefix-key: v4
         env-vars: "CARGO CC CFLAGS CXX CMAKE RUST PYO3"
-
-  - name: Add output prefixing for clearer build logs
-    shell: wrap-shell {0}
-    run: |
-        echo "ADD_PREFIXING=> >(sed 's/^/[\$OUT_PREFIX] /') 2> >(sed 's/^/[\$OUT_PREFIX] /' >&2)" | tee -a $GITHUB_ENV
   
   - name: Set release flags
     if: always() && inputs.release_build == 'true'
@@ -55,9 +50,8 @@ runs:
     run: |
       set -x
       . ${BUILD_ENV_FILE}
-      OUT_PREFIX="prebuild"
       echo "cargo: $(which cargo)"
-      eval "cargo build --features \"shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild\" ${CARGO_BUILD_FLAGS} ${ADD_PREFIXING}"
+      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild" ${CARGO_BUILD_FLAGS}
 
   - name: Build main packages
     if: always()
@@ -65,8 +59,7 @@ runs:
     run: |
       set -x
       . ${BUILD_ENV_FILE}
-      OUT_PREFIX="build"
-      eval "cargo build -vv ${CARGO_BUILD_FLAGS} ${ADD_PREFIXING}"
+      cargo build -vv ${CARGO_BUILD_FLAGS}
   
   - name: Build test code
     if: always()
@@ -74,5 +67,4 @@ runs:
     run: |
       set -x
       . ${BUILD_ENV_FILE}
-      OUT_PREFIX="build_test"
-      eval "cargo test -vv --no-run ${CARGO_BUILD_FLAGS} ${ADD_PREFIXING}"
+      cargo test -vv --no-run ${CARGO_BUILD_FLAGS}

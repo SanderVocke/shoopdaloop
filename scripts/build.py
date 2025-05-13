@@ -213,10 +213,7 @@ def build(args):
         with open(vcpkg_toolchain_wrapper, 'r') as f:
             print(f"Using toolchain file wrapper with contents:\n--------\n{f.read()}\n--------")
         vcpkg_toolchain = vcpkg_toolchain_wrapper
-        
-    build_env["CMAKE_TOOLCHAIN_FILE"] = vcpkg_toolchain
     print(f"Using VCPKG_ROOT: {build_env['VCPKG_ROOT']}")
-    print(f"Using CMAKE_TOOLCHAIN_FILE: {build_env['CMAKE_TOOLCHAIN_FILE']}")
 
     # Setup cargo
     try:
@@ -237,9 +234,11 @@ def build(args):
         extra_args = args.vcpkg_args if args.vcpkg_args else ''
         run_and_print(f"{vcpkg_exe} install --x-install-root={vcpkg_installed_dir} {extra_args}",
                         env=apply_build_env(build_env),
-                        cwd=os.path.join(base_path, 'src', 'backend'),
+                        cwd=os.path.join(base_path, 'vcpkg'),
                         err="Failed to fetch/build/install vcpkg packages.")
         print("vcpkg packages installed.")
+    vcpkg_installed_prefix = os.path.join(vcpkg_installed_dir, detect_vcpkg_triplet())
+    build_env["CMAKE_PREFIX_PATH"] = vcpkg_installed_prefix
 
     # Find python
     (python_exe, python_libdir, python_libname, python_version) = find_python(vcpkg_installed_dir, build_mode=='debug')
