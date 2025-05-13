@@ -24,6 +24,7 @@ runs:
         echo "CARGO_BUILD_FLAGS=--release" | tee -a $GITHUB_ENV
         echo "BUILD_SCRIPT_FLAGS=--release" | tee -a $GITHUB_ENV
         echo "BUILD_ENV_FILE=./.build-env-release.sh" | tee -a $GITHUB_ENV
+        echo "RUSTFLAGS=-C linker=ld" | tee -a $GITHUB_ENV
 
   - name: Set debug flags
     if: always() && inputs.release_build != 'true'
@@ -32,6 +33,7 @@ runs:
         echo "CARGO_BUILD_FLAGS=" | tee -a $GITHUB_ENV
         echo "BUILD_SCRIPT_FLAGS=--debug" | tee -a $GITHUB_ENV
         echo "BUILD_ENV_FILE=./.build-env-debug.sh" | tee -a $GITHUB_ENV
+        echo "RUSTFLAGS=-C linker=ld" | tee -a $GITHUB_ENV
 
   - name: Setup Python, build env and build vcpkg packages
     if: always()

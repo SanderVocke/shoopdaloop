@@ -1,0 +1,3 @@
+# To prevent issues with ld.gold and certain flags used
+[build]
+rustflags = ["-Zlinker-features=-lld"]
