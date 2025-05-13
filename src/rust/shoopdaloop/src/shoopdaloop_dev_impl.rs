@@ -12,7 +12,7 @@ shoop_log_unit!("Main");
 // const SHOOP_RUNTIME_ENV_DIR : &str = env!("SHOOP_RUNTIME_ENV_DIR");
 // const SHOOP_ENV_DYLIB_DIR : &str = env!("SHOOP_ENV_DYLIB_DIR");
 // const SHOOP_ENV_DIR_TO_PYTHON_LIBS : &str = env!("SHOOP_ENV_DIR_TO_PYTHON_LIBS");
-// const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
+const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
 
 pub fn main() {
     // For normalizing Windows paths
@@ -42,7 +42,7 @@ pub fn main() {
     //         ).unwrap();
     // }
 
-    // let shoop_src_root_dir = normalize_path(PathBuf::from(SRC_DIR).join("../../.."));
+    let shoop_src_root_dir = normalize_path(PathBuf::from(SRC_DIR).join("../../.."));
     // let pythonpath_to_src = normalize_path(
     //     shoop_src_root_dir.join("src/python"));
     // let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
@@ -69,7 +69,7 @@ pub fn main() {
     app_info.description = env!("CARGO_PKG_DESCRIPTION").to_string();
     app_info.install_info = format!("editable dev install in {}",
                     shoop_src_root_dir.to_str().unwrap());
-    app_info.dynlib_dir = shoop_lib_dir.to_str().unwrap().to_string();
+    // app_info.dynlib_dir = shoop_lib_dir.to_str().unwrap().to_string();
     app_info.qml_dir = shoop_src_root_dir.join("src/qml").to_str().unwrap().to_string();
     app_info.py_dir = shoop_src_root_dir.join("src/python/shoopdaloop").to_str().unwrap().to_string();
     app_info.lua_dir = shoop_src_root_dir.join("src/lua").to_str().unwrap().to_string();

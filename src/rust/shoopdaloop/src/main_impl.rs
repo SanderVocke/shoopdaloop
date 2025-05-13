@@ -23,7 +23,7 @@ pub fn main() {
     // - Finding embedded pyenv in installed case (shoop_lib/py)
     let executable_path = env::current_exe().unwrap();
     let installed_path = normalize_path(executable_path.parent().unwrap());
-    // let runtime_env_path = normalize_path(&installed_path.join("runtime"));
+    let runtime_env_path = normalize_path(&installed_path.join("runtime"));
     // let lib_path = normalize_path(&installed_path.join(SHOOP_ENV_DIR_TO_LIBS));
     // let bundled_pythonpath_shoop_lib = &runtime_env_path;
     // let bundled_python_site_packages = normalize_path(&runtime_env_path.join(SHOOP_ENV_DIR_TO_SITE_PACKAGES));

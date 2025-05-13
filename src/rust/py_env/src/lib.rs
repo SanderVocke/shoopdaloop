@@ -30,7 +30,7 @@ pub fn shoopdaloop_wheel() -> PathBuf {
         let dir = env!("SHOOPDALOOP_WHEEL");
         let rval = PathBuf::from(dir);
         if !rval.exists() {
-            panic!("SHOOPDALOOP_WHEEL {} does not exist", rval);
+            panic!("SHOOPDALOOP_WHEEL {:?} does not exist", rval);
         }
         rval
     }
@@ -48,7 +48,7 @@ pub fn dev_venv_dir() -> PathBuf {
         let dir = env!("SHOOP_DEV_VENV_DIR");
         let rval = PathBuf::from(dir);
         if !rval.exists() {
-            panic!("SHOOP_DEV_VENV_DIR {} does not exist", rval);
+            panic!("SHOOP_DEV_VENV_DIR {:?} does not exist", rval);
         }
         rval
     }

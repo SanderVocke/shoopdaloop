@@ -61,9 +61,9 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // Make env dir information available
         println!("cargo:rustc-env=SHOOP_DEV_VENV_DIR={}", dev_venv_dir.to_str().unwrap());
         // println!("cargo:rustc-env=SHOOP_ENV_DYLIB_DIR={}", env_lib_dir.to_str().unwrap());
-        println!("cargo:rustc-env=SHOOP_DEV_VENV_DIR_TO_SITE_PACKAGES={}", path_to_site_packages.to_str().unwrap());
+        // println!("cargo:rustc-env=SHOOP_DEV_VENV_DIR_TO_SITE_PACKAGES={}", path_to_site_packages.to_str().unwrap());
         // println!("cargo:rustc-env=SHOOP_ENV_DIR_TO_RUNTIME_LIB={}", path_to_runtime_lib);
-        println!("cargo:rustc-env=SHOOP_DEV_VENV_DIR_TO_PYTHON_LIBS={}", path_to_python_libs.to_str().unwrap());
+        // println!("cargo:rustc-env=SHOOP_DEV_VENV_DIR_TO_PYTHON_LIBS={}", path_to_python_libs.to_str().unwrap());
 
         // Link to libshoopdaloop_backend
         // println!("cargo:rustc-link-search=native={}", env_lib_dir.to_str().unwrap());
