@@ -38,6 +38,19 @@ fn main_impl() -> Result<(), anyhow::Error> {
                                             .configure_arg(format!("-DCMAKE_BUILD_TYPE={}", if profile == "debug" { "Debug" } else { "Release" }));
             let _ = cmake_config_mut.build();
         }
+        let zita_resampler_dylib_dir_txtfile : PathBuf
+            = cmake_output_dir.join("build/zita_resampler_dir.txt");
+        // Read the contents
+        let zita_resampler_dylib_dir = std::fs::read_to_string(&zita_resampler_dylib_dir_txtfile)
+            .with_context(|| format!("Failed to read {:?}", &zita_resampler_dylib_dir_txtfile))?;
+
+        // {
+        //     let pattern = format!("{}/**/site-packages", env_lib_dir.to_str().unwrap());
+        //     let mut sp_glob = glob(&pattern).expect("Couldn't glob for site-packages");
+        //     let full_site_packages = sp_glob.next()
+        //             .expect(format!("No site-packages dir found @ {}", pattern).as_str()).unwrap();
+        //     path_to_site_packages = full_site_packages.strip_prefix(&dev_venv_dir).unwrap().to_path_buf();
+        // }
 
         println!("cargo:rerun-if-changed={}", cmake_backend_dir);
         println!("cargo:rerun-if-changed=src");
@@ -45,8 +58,10 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rerun-if-env-changed=PYTHON");
 
         println!("cargo:rustc-env=SHOOP_BACKEND_DIR={}", install_dir.to_str().unwrap());
+        println!("cargo:rustc-env=SHOOP_ZITA_LINK_DIR={}", zita_resampler_dylib_dir);
 
         println!("cargo:rustc-link-search=native={}", lib_path.display());
+        println!("cargo:rustc-link-search=native={}", zita_resampler_dylib_dir);
 
         Ok(())
     }

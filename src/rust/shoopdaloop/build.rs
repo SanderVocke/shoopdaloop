@@ -4,7 +4,7 @@ use glob::glob;
 use copy_dir::copy_dir;
 use anyhow;
 use anyhow::Context;
-// use backend;
+use backend;
 use py_env;
 
 fn main_impl() -> Result<(), anyhow::Error> {
@@ -97,7 +97,9 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // }
 
         // Link to dev folders
-        // println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", env_lib_dir.to_str().unwrap());
+        for path in backend::all_link_search_paths() {
+            println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", path.to_str().unwrap());
+        }
 
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");

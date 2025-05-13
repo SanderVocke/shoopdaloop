@@ -40,10 +40,12 @@ glob = "0.3"
 copy_dir = "0.1"
 anyhow = "1.0"
 py_env = { path = "../py_env" }
+backend = { path = "../backend" }
 
 [features]
 # Dummy build to build dependencies only
 prebuild = ["frontend/prebuild",
             "backend_bindings/prebuild",
+            "backend/prebuild",
             "py_env/prebuild",
             "common/prebuild"]

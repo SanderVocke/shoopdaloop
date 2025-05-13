@@ -62,7 +62,6 @@ pub fn main() {
     // env::set_var("PYTHONPATH", pythonpath.as_str());
     // debug!("using PYTHONHOME: {}", shoop_env_python_lib_dir.to_str().unwrap());
     // env::set_var("PYTHONHOME", shoop_env_python_lib_dir.to_str().unwrap());
-    // add_lib_search_path(&shoop_lib_dir);
 
     let mut app_info = shoop_app_info::ShoopAppInfo::default();
     app_info.version = env!("CARGO_PKG_VERSION").to_string();
