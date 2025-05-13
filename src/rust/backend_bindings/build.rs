@@ -15,8 +15,13 @@ fn main_impl() -> Result<(), anyhow::Error> {
     
     #[cfg(not(feature = "prebuild"))]
     {
+        let profile = std::env::var("PROFILE").unwrap();
         let bindings_header_path = "../../backend/libshoopdaloop_backend.h";
-        let lib_path = backend::backend_build_dir();
+        let lib_path = if profile == "debug" {
+            backend::backend_build_dir().join("debug/lib")
+        } else {
+            backend::backend_build_dir().join("lib")
+        };
         let gen_lib_path = "src/codegen/libshoopdaloop_backend.rs";
 
         // Generate Rust bindings
