@@ -18,7 +18,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     {
         let src_dir = env::current_dir()?;
         
-        let host_python = py_env::host_python();
+        let dev_env_python = py_env::dev_env_python();
         let dev_venv_dir = py_env::dev_venv_dir();
 
         let profile = std::env::var("PROFILE").unwrap();
@@ -30,7 +30,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
             return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
         }
 
-        println!("Using host Python: {}", host_python);
+        println!("Using dev env Python: {}", dev_env_python);
 
         // if shoop_lib_dir.exists() {
         //     std::fs::remove_dir_all(&shoop_lib_dir)

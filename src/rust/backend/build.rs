@@ -42,6 +42,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rerun-if-changed={}", cmake_backend_dir);
         println!("cargo:rerun-if-changed=src");
         println!("cargo:rerun-if-changed=build.rs");
+        println!("cargo:rerun-if-env-changed=PYTHON");
 
         println!("cargo:rustc-env=SHOOP_BACKEND_DIR={}", install_dir.to_str().unwrap());
 

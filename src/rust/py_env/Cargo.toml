@@ -4,6 +4,10 @@ edition = "2021"
 
 [lib]
 
+[[bin]]
+name = "print_py_env_out_dir"
+path = "src/bin/print_py_env_out_dir.rs"
+
 [dependencies]
 
 [build-dependencies]

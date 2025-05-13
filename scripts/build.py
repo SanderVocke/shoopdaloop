@@ -35,7 +35,12 @@ def find_qmake(directory):
     return qmake_path
 
 def find_python(vcpkg_installed_directory, is_debug_build):
-    tail = os.path.join("tools", "python3", ("python3.exe" if sys.platform == "win32" else "python3"))
+    executable_release = ("python3.exe" if sys.platform == "win32" else "python3")
+    executable_debug = ("python3_d.exe" if sys.platform == "win32" else "python3d")
+    executable = executable_debug if is_debug_build else executable_release
+    tail = os.path.join("tools", "python3", executable)
+    if is_debug_build:
+        tail = os.path.join("debug", tail)
     pattern = f'{vcpkg_installed_directory}/**/{tail}'
     python_paths = glob.glob(pattern, recursive=True)
     exe = (python_paths[0] if python_paths else None)
@@ -251,6 +256,7 @@ def build(args):
         f.write(f"executable={python_exe}\n")
         f.write(f"version={python_version}\n")
     build_env["PYO3_CONFIG_FILE"] = pyo3_config_file
+    build_env["SHOOP_DEV_ENV_PYTHON"] = python_exe
 
     # Find qmake
     qmake_path = find_qmake(vcpkg_installed_dir)
