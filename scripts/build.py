@@ -64,7 +64,7 @@ def find_python(vcpkg_installed_directory, is_debug_build):
         exit(1)
 
     libname = f'python{major_version}.{minor_version}d' if is_debug_build else f'python{major_version}.{minor_version}'
-    libdir = os.path.join(os.path.dirname(exe), '../../debug/lib' if is_debug_build else '../../lib')
+    libdir = os.path.join(os.path.dirname(exe), '../../../debug/lib' if is_debug_build else '../../lib')
     version = f'{major_version}.{minor_version}'
 
     return (exe, libdir, libname, version)
@@ -108,12 +108,13 @@ def windows_to_bash_paths(windows_paths):
 import platform
 import sys
 
-def find_vcpkg_dynlibs_paths(installed_dir):
+def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
     # TODO: handle MacOS
     tail = os.path.join("bin", "zita-resampler.dll") if sys.platform == "win32" \
            else os.path.join("lib", "libzita-resampler.so") if sys.platform == "linux" \
            else os.path.join("lib", "libzita-resampler.dylib")
-    pattern = f'{installed_dir}/**/{tail}'
+    dbgpart = "debug/" if is_debug_build else ""
+    pattern = f'{installed_dir}/{dbgpart}**/{tail}'
     print(f"Looking for dynamic libraries by searching for zita-resampler at: {pattern}")
     zita_paths = glob.glob(pattern, recursive=True)
     if not zita_paths:
@@ -257,6 +258,15 @@ def build(args):
         f.write(f"version={python_version}\n")
     build_env["PYO3_CONFIG_FILE"] = pyo3_config_file
     build_env["SHOOP_DEV_ENV_PYTHON"] = python_exe
+    
+    # # Setup library load dirs
+    # dynlib_path = find_vcpkg_dynlibs_paths(vcpkg_installed_dir, build_mode=='debug')
+    # if sys.platform == "win32":
+    #     build_env["PATH"] = f"{dynlib_path};{os.environ.get('PATH')}"
+    # elif sys.platform == "linux":
+    #     build_env["LD_LIBRARY_PATH"] = f"{dynlib_path}:{os.environ.get('LD_LIBRARY_PATH')}"
+    # elif sys.platform == "darwin":
+    #     build_env["DYLD_LIBRARY_PATH"] = f"{dynlib_path}:{os.environ.get('DYLD_LIBRARY_PATH')}"
 
     # Find qmake
     qmake_path = find_qmake(vcpkg_installed_dir)
