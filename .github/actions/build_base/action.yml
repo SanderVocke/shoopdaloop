@@ -67,4 +67,6 @@ runs:
     shell: wrap-shell {0}
     run: |
       . ${BUILD_ENV_FILE}
+      # FIXME: For some reason the first attempt fails on Linux on Github Actions only. Debug it.
+      cargo test -vv ${CARGO_BUILD_FLAGS} || true
       cargo test -vv --no-run ${CARGO_BUILD_FLAGS}
