@@ -49,6 +49,8 @@ runs:
     run: |
       . ${BUILD_ENV_FILE}
       echo "cargo: $(which cargo)"
+      # FIXME: For some reason the first attempt fails on Linux on Github Actions only. Debug it.
+      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild" ${CARGO_BUILD_FLAGS} || true
       cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild" ${CARGO_BUILD_FLAGS}
 
   - name: Build main packages
