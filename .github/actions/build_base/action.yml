@@ -16,6 +16,11 @@ runs:
     with:
         prefix-key: v4
         env-vars: "CARGO CC CFLAGS CXX CMAKE RUST PYO3"
+
+  - name: Add output prefixing for clearer build logs
+    shell: wrap-shell {0}
+    run: |
+        echo "ADD_PREFIXING=> >(sed 's/^/[\$OUT_PREFIX] /') 2> >(sed 's/^/[\$OUT_PREFIX] /' >&2)" | tee -a $GITHUB_ENV
   
   - name: Set release flags
     if: always() && inputs.release_build == 'true'
@@ -37,6 +42,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
+        set -x
         ./build.sh build ${BUILD_SCRIPT_FLAGS} --vcpkg-args=--clean-after-build --skip-cargo --write-build-env-sh 2>&1 | tee vcpkg_build_output.txt
         echo ""
         echo "Build env file ${BUILD_ENV_FILE}" contents:
@@ -47,26 +53,26 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
+      set -x
       . ${BUILD_ENV_FILE}
+      OUT_PREFIX="prebuild"
       echo "cargo: $(which cargo)"
-      # FIXME: For some reason the first attempt fails on Linux on Github Actions only. Debug it.
-      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild" ${CARGO_BUILD_FLAGS} || true
-      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild" ${CARGO_BUILD_FLAGS}
+      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild" ${CARGO_BUILD_FLAGS} ${ADD_PREFIXING}
 
   - name: Build main packages
     if: always()
     shell: wrap-shell {0}
     run: |
+      set -x
       . ${BUILD_ENV_FILE}
-      # FIXME: For some reason the first attempt fails on Linux on Github Actions only. Debug it.
-      cargo build -vv ${CARGO_BUILD_FLAGS} || true
-      cargo build -vv ${CARGO_BUILD_FLAGS}
+      OUT_PREFIX="build"
+      cargo build -vv ${CARGO_BUILD_FLAGS} ${ADD_PREFIXING}
   
   - name: Build test code
     if: always()
     shell: wrap-shell {0}
     run: |
+      set -x
       . ${BUILD_ENV_FILE}
-      # FIXME: For some reason the first attempt fails on Linux on Github Actions only. Debug it.
-      cargo test -vv ${CARGO_BUILD_FLAGS} || true
-      cargo test -vv --no-run ${CARGO_BUILD_FLAGS}
+      OUT_PREFIX="build_test"
+      cargo test -vv --no-run ${CARGO_BUILD_FLAGS} ${ADD_PREFIXING}
