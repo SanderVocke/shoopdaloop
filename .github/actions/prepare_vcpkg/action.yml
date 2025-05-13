@@ -28,13 +28,11 @@ runs:
      echo "VCPKG_ROOT=$(pwd)/build/vcpkg" | tee -a $GITHUB_ENV
 
   # Note: put in a different spot because short paths are needed for qtdeclarative build on Windows
-  # Also reduce concurrency to mitigate memory issues on github runner
   - name: Set default location
     if: runner.os == 'Windows'
     shell: wrap-shell {0}
     run: |
      echo "VCPKG_ROOT=/d/a/vcpkg" | tee -a $GITHUB_ENV
-     echo "VCPKG_CONCURRENCY=2" | tee -a $GITHUB_ENV
 
   - name: Checkout
     if: always()
