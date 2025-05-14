@@ -28,7 +28,7 @@ pub fn backend_link_dir() -> PathBuf {
     #[cfg(not(feature = "prebuild"))]
     {
         let build_dir = backend_build_dir();
-        if std::env::var("PROFILE").unwrap() == "debug" {
+        if cfg!(debug_assertions) {
             return build_dir.join("debug").join("lib");
         } else {
             return build_dir.join("lib");

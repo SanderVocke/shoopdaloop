@@ -20,7 +20,8 @@ ctor = "0.2"
 clap = { version = "4.5", features = ["derive"] }
 common = { path = "../common" }
 py_env = { path = "../py_env" }
+backend = { path = "../backend" }
 
 [features]
 # Dummy build to build dependencies only
-prebuild = ["common/prebuild", "py_env/prebuild"]
+prebuild = ["common/prebuild", "py_env/prebuild", "backend/prebuild"]

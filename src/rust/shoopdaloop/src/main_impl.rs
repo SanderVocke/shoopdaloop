@@ -3,7 +3,6 @@ use glob::glob;
 use std::path::{Path, PathBuf};
 
 use shoopdaloop::shoopdaloop_main;
-use shoopdaloop::add_lib_search_path::add_lib_search_path;
 use shoopdaloop::shoop_app_info;
 
 use common::logging::macros::*;

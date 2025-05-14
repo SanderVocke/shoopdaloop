@@ -12,6 +12,7 @@ use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
 fn populate_appdir(
+    vcpkg_installed_dir : &Path,
     appdir : &Path,
     exe_path : &Path,
 ) -> Result<(), anyhow::Error> {
@@ -64,31 +65,26 @@ fn populate_appdir(
                             dst.display()));
     }
 
-    // info!("Bundling runtime dependencies...");
-    // let runtime_dir = appdir.join("runtime");
-    // std::fs::create_dir(&runtime_dir)
-    //     .with_context(|| format!("Cannot create dir: {:?}", runtime_dir))?;
-    // recursive_dir_cpy(
-    //     &PathBuf::from(runtime_env_dir),
-    //     &runtime_dir
-    // )?;
+    info!("Getting dependencies (this may take some time)...");
+    let dynlib_dir = appdir.join("lib");
+    let excludelist_path = src_path.join("distribution/linux/excludelist");
+    let includelist_path = src_path.join("distribution/linux/includelist");
+    // let extra_search_path = vcpkg_installed_dir.join
+    //                          (if cfg!(debug_assertions) { "debug/lib" } else { "lib" });
+    for path in backend::all_link_search_paths() {
+        debug!("--> extra search path: {:?}", path);
+        common::env::add_lib_search_path(&path);
+    }
+    let libs = get_dependency_libs (&final_exe_path, &bin_dir, &excludelist_path, &includelist_path, false)?;
 
-    // info!("Getting dependencies (this may take some time)...");
-    // let dynlib_dir = appdir.join("lib");
-    // let excludelist_path = src_path.join("distribution/linux/excludelist");
-    // let includelist_path = src_path.join("distribution/linux/includelist");
-    // let exe_dir = final_exe_path.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
-    // let libs = get_dependency_libs (&final_exe_path, &exe_dir, &excludelist_path, &includelist_path, false)?;
-
-    // info!("Bundling {} dependencies...", libs.len());
-    // std::fs::create_dir(&dynlib_dir)?;
-    // for lib in libs {
-    //     info!("  Bundling {}", lib.to_str().unwrap());
-    //     std::fs::copy(
-    //         lib.clone(),
-    //         dynlib_dir.clone().join(lib.file_name().unwrap())
-    //     )?;
-    // }
+    info!("Bundling {} dependencies...", libs.len());
+    for lib in libs {
+        debug!("--> {}", lib.to_str().unwrap());
+        std::fs::copy(
+            lib.clone(),
+            lib_dir.clone().join(lib.file_name().unwrap())
+        )?;
+    }
 
     info!("Bundling distribution assets...");
     for file in [
@@ -144,6 +140,7 @@ fn populate_appdir(
 pub fn build_appdir(
     exe_path : &Path,
     _dev_exe_path : &Path,
+    vcpkg_installed_dir : &Path,
     output_dir : &Path,
     _release : bool,
 ) -> Result<(), anyhow::Error> {
@@ -158,7 +155,8 @@ pub fn build_appdir(
     info!("Creating app directory...");
     std::fs::create_dir(output_dir)?;
 
-    populate_appdir(output_dir,
+    populate_appdir(vcpkg_installed_dir,
+                    output_dir,
                     exe_path)?;
 
     info!("AppDir created @ {output_dir:?}");
