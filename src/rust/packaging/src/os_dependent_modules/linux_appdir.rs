@@ -12,7 +12,6 @@ use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
 fn populate_appdir(
-    vcpkg_installed_dir : &Path,
     appdir : &Path,
     exe_path : &Path,
 ) -> Result<(), anyhow::Error> {
@@ -86,6 +85,27 @@ fn populate_appdir(
         )?;
     }
 
+    // FIXME: this is ugly to have to do explicitly. But since these are lazy-loaded,
+    // we cannot autodetect them.
+    info!("Bundling Qt plugins...");
+    let pkg_base_dir = backend::zita_link_dir().parent().unwrap();
+    let dylib_extension = if cfg!(target_os = "windows") { "dll" }
+                          else if cfg!(target_os = "macos") { "dylib" }
+                          else if cfg!(target_os = "linux") { "so" }
+                          else { "" };
+    let pattern = format!("{}/Qt6/plugins/**/*.{}", pkg_base_dir.to_string_lossy(), dylib_extension);
+    for entry in glob(&pattern)? {
+        match entry {
+            Ok(path) => {
+                let src = path;
+                let dst = lib_dir.join(path.file_name().unwrap());
+                debug!("--> {} -> {}", src.to_str().unwrap(), dst.to_str().unwrap());
+                std::fs::copy(&src, &dst)?
+            }
+            Err(e) => (),
+        }
+    }
+
     info!("Bundling distribution assets...");
     for file in [
         "distribution/linux/shoopdaloop.desktop",
@@ -104,34 +124,6 @@ fn populate_appdir(
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
     }
 
-    // info!("Slimming down AppDir...");
-    // for pattern in [
-    //     "shoop_lib/test_runner",
-    //     "shoop_lib/py/lib/python*/test",
-    //     "shoop_lib/py/lib/python*/*/test",
-    //     "shoop_lib/py/lib/python*/site-packages/PySide6/**/*Qt6Sql*",
-    //     "shoop_lib/py/lib/python*/site-packages/PySide6/Qt/plugins/sqldrivers",
-    //     "shoop_lib/py/lib/python*/site-packages/PySide6/Qt/plugins/designer",
-    //     "shoop_lib/py/lib/python*/site-packages/PySide6/Qt/plugins/qmltooling",
-    //     "shoop_lib/py/lib/python*/site-packages/PySide6/Qt/qml/QtQuick/VirtualKeyboard",
-    //     "shoop_lib/py/lib/python*/site-packages/PySide6/Qt/qml/QtQuick/Scene2D",
-    //     "shoop_lib/py/lib/python*/site-packages/PySide6/Qt/qml/Qt5Compat/GraphicalEffects",
-    //     "**/*.a",
-    // ] {
-    //     let pattern = format!("{}/{pattern}", appdir.to_str().unwrap());
-    //     for f in glob(&pattern)? {
-    //         let f = f?;
-    //         info!("  remove {f:?}");
-    //         match std::fs::metadata(&f)?.is_dir() {
-    //             true => { std::fs::remove_dir_all(&f)?; }
-    //             false => { std::fs::remove_file(&f)?; }
-    //         }
-    //     }
-    // }
-
-    // Deduplicate identical libraries as symlinked files
-    // deduplicate_libraries(&appdir)?;
-
     info!("AppDir produced in {}", appdir.to_str().unwrap());
 
     Ok(())
@@ -140,7 +132,6 @@ fn populate_appdir(
 pub fn build_appdir(
     exe_path : &Path,
     _dev_exe_path : &Path,
-    vcpkg_installed_dir : &Path,
     output_dir : &Path,
     _release : bool,
 ) -> Result<(), anyhow::Error> {
@@ -155,8 +146,7 @@ pub fn build_appdir(
     info!("Creating app directory...");
     std::fs::create_dir(output_dir)?;
 
-    populate_appdir(vcpkg_installed_dir,
-                    output_dir,
+    populate_appdir(output_dir,
                     exe_path)?;
 
     info!("AppDir created @ {output_dir:?}");

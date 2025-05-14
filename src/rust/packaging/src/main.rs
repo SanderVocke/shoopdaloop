@@ -23,9 +23,6 @@ enum Commands {
         #[arg(short, long, value_name="/path/to/folder", required = true)]
         output_dir : PathBuf,
 
-        #[arg(short, long, value_name="/path/to/vcpkg_installed/x64-linux", required = true)]
-        vcpkg_installed_dir : PathBuf,
-
         #[arg(short, long, action = clap::ArgAction::SetTrue)]
         release : bool,
 
@@ -78,7 +75,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
     }
 
     match &args.command {
-        Some(Commands::BuildPortableFolder { output_dir, vcpkg_installed_dir, release , replace }) => {
+        Some(Commands::BuildPortableFolder { output_dir, release , replace }) => {
             #[cfg(target_os = "linux")]
             {
                 if *replace && std::fs::exists(output_dir)? {
@@ -88,7 +85,6 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                 packaging::linux_appdir::build_appdir
                            (main_exe.as_path(),
                             dev_exe.as_path(),
-                            vcpkg_installed_dir.as_path(),
                             output_dir.as_path(),
                             *release)
             }
