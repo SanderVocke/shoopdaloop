@@ -10,7 +10,6 @@ use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
 fn populate_appbundle(
-    runtime_env_dir : &Path,
     appdir : &Path,
     exe_path : &Path,
 ) -> Result<(), anyhow::Error> {
@@ -33,14 +32,14 @@ fn populate_appbundle(
     info!("Bundling executable...");
     std::fs::copy(exe_path, &final_exe_path)?;
 
-    info!("Bundling runtime dependencies...");
-    let runtime_dir = appdir.join("runtime");
-    std::fs::create_dir(&runtime_dir)
-        .with_context(|| format!("Cannot create dir: {:?}", runtime_dir))?;
-    recursive_dir_cpy(
-        &PathBuf::from(runtime_env_dir),
-        &runtime_dir
-    )?;
+    // info!("Bundling runtime dependencies...");
+    // let runtime_dir = appdir.join("runtime");
+    // std::fs::create_dir(&runtime_dir)
+    //     .with_context(|| format!("Cannot create dir: {:?}", runtime_dir))?;
+    // recursive_dir_cpy(
+    //     &PathBuf::from(runtime_env_dir),
+    //     &runtime_dir
+    // )?;
 
     // info!("Getting dependencies (this may take some time)...");
     // let dynlib_dir = appdir.join("lib");
@@ -109,14 +108,11 @@ fn populate_appbundle(
 }
 
 pub fn build_appbundle(
-    shoop_built_out_dir : &Path,
     exe_path : &Path,
     _dev_exe_path : &Path,
     output_dir : &Path,
     _release : bool,
 ) -> Result<(), anyhow::Error> {
-    info!("Assets directory: {:?}", shoop_built_out_dir);
-
     if output_dir.exists() {
         return Err(anyhow::anyhow!("Output directory {:?} already exists", output_dir));
     }
@@ -128,9 +124,7 @@ pub fn build_appbundle(
     info!("Creating app bundle directory...");
     std::fs::create_dir(output_dir)?;
 
-    populate_appbundle(shoop_built_out_dir,
-                            output_dir,
-                            exe_path)?;
+    populate_appbundle(output_dir, exe_path)?;
 
     info!("App bundle created @ {output_dir:?}");
     Ok(())

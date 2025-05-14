@@ -4,13 +4,11 @@ use std::path::{PathBuf, Path};
 use glob::glob;
 use crate::dependencies::get_dependency_libs;
 use crate::fs_helpers::recursive_dir_cpy;
-use crate::deduplicate_libraries::deduplicate_libraries;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
 fn populate_appdir(
-    runtime_env_dir : &Path,
     appdir : &Path,
     exe_path : &Path,
 ) -> Result<(), anyhow::Error> {
@@ -20,17 +18,20 @@ fn populate_appdir(
     info!("Using source path {src_path:?}");
 
     info!("Bundling executable...");
-    let final_exe_path = appdir.join("shoopdaloop_bin");
+    let bin_dir = appdir.join("bin");
+    std::fs::create_dir(&bin_dir)
+        .with_context(|| format!("Cannot create dir: {:?}", bin_dir))?;
+    let final_exe_path = bin_dir.join("shoopdaloop");
     std::fs::copy(exe_path, &final_exe_path)?;
 
-    info!("Bundling runtime dependencies...");
-    let runtime_dir = appdir.join("runtime");
-    std::fs::create_dir(&runtime_dir)
-        .with_context(|| format!("Cannot create dir: {:?}", runtime_dir))?;
-    recursive_dir_cpy(
-        &PathBuf::from(runtime_env_dir),
-        &runtime_dir
-    )?;
+    // info!("Bundling runtime dependencies...");
+    // let runtime_dir = appdir.join("runtime");
+    // std::fs::create_dir(&runtime_dir)
+    //     .with_context(|| format!("Cannot create dir: {:?}", runtime_dir))?;
+    // recursive_dir_cpy(
+    //     &PathBuf::from(runtime_env_dir),
+    //     &runtime_dir
+    // )?;
 
     // info!("Getting dependencies (this may take some time)...");
     // let dynlib_dir = appdir.join("lib");
@@ -93,7 +94,7 @@ fn populate_appdir(
     // }
 
     // Deduplicate identical libraries as symlinked files
-    deduplicate_libraries(&appdir)?;
+    // deduplicate_libraries(&appdir)?;
 
     info!("AppDir produced in {}", appdir.to_str().unwrap());
 
@@ -101,14 +102,11 @@ fn populate_appdir(
 }
 
 pub fn build_appdir(
-    runtime_env_dir : &Path,
     exe_path : &Path,
     _dev_exe_path : &Path,
     output_dir : &Path,
     _release : bool,
 ) -> Result<(), anyhow::Error> {
-    info!("Runtime env directory: {:?}", runtime_env_dir);
-
     if output_dir.exists() {
         return Err(anyhow::anyhow!("Output directory {:?} already exists", output_dir));
     }
@@ -120,8 +118,7 @@ pub fn build_appdir(
     info!("Creating app directory...");
     std::fs::create_dir(output_dir)?;
 
-    populate_appdir(runtime_env_dir,
-                    output_dir,
+    populate_appdir(output_dir,
                     exe_path)?;
 
     info!("AppDir created @ {output_dir:?}");
