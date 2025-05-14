@@ -228,8 +228,6 @@ pub fn get_dependency_libs (executable : &Path,
         return Err(anyhow::anyhow!("Dependency errors:\n{}", error_msgs));
     }
     paths.dedup();
-
-    info!("Dependencies: {paths:?}");
     Ok(paths)
 }
 

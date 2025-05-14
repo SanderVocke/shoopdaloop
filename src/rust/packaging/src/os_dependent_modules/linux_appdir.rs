@@ -58,14 +58,22 @@ fn populate_appdir(
         let src = src_path.join(directory);
         let dst = appdir.join(PathBuf::from(directory).file_name().unwrap());
         debug!("--> {:?} -> {:?}", src, dst);
-        copy_dir(&src, &dst)
-            .expect(&format!("Failed to copy {} to {}",
-                            src.display(),
-                            dst.display()));
+        copy_dir(&src, &dst)?;
     }
 
+    // FIXME: this is ugly to have to do explicitly. But since these are lazy-loaded,
+    // we cannot autodetect them.
+    info!("Bundling Qt plugins...");
+    let zita_dir = backend::zita_link_dir();
+    let pkg_base_dir = zita_dir.parent().unwrap();
+    let pattern = format!("{}/Qt6/plugins", pkg_base_dir.to_string_lossy());
+    let plugins_dir = lib_dir.join("qt_plugins");
+    let mut entries = glob(&pattern)?;
+    let entry = entries.next().unwrap();
+    debug!("--> {:?} -> {:?}", entry, plugins_dir);
+    copy_dir(entry?, &plugins_dir)?;
+
     info!("Getting dependencies (this may take some time)...");
-    let dynlib_dir = appdir.join("lib");
     let excludelist_path = src_path.join("distribution/linux/excludelist");
     let includelist_path = src_path.join("distribution/linux/includelist");
     // let extra_search_path = vcpkg_installed_dir.join
@@ -78,32 +86,10 @@ fn populate_appdir(
 
     info!("Bundling {} dependencies...", libs.len());
     for lib in libs {
-        debug!("--> {}", lib.to_str().unwrap());
-        std::fs::copy(
-            lib.clone(),
-            lib_dir.clone().join(lib.file_name().unwrap())
-        )?;
-    }
-
-    // FIXME: this is ugly to have to do explicitly. But since these are lazy-loaded,
-    // we cannot autodetect them.
-    info!("Bundling Qt plugins...");
-    let pkg_base_dir = backend::zita_link_dir().parent().unwrap();
-    let dylib_extension = if cfg!(target_os = "windows") { "dll" }
-                          else if cfg!(target_os = "macos") { "dylib" }
-                          else if cfg!(target_os = "linux") { "so" }
-                          else { "" };
-    let pattern = format!("{}/Qt6/plugins/**/*.{}", pkg_base_dir.to_string_lossy(), dylib_extension);
-    for entry in glob(&pattern)? {
-        match entry {
-            Ok(path) => {
-                let src = path;
-                let dst = lib_dir.join(path.file_name().unwrap());
-                debug!("--> {} -> {}", src.to_str().unwrap(), dst.to_str().unwrap());
-                std::fs::copy(&src, &dst)?
-            }
-            Err(e) => (),
-        }
+        let src = lib.clone();
+        let dst = lib_dir.clone().join(lib.file_name().unwrap());
+        debug!("--> {:?} -> {:?}", &src, &dst);
+        std::fs::copy(&src, &dst)?;
     }
 
     info!("Bundling distribution assets...");
