@@ -1,4 +1,5 @@
 pub mod logging;
+pub mod fs;
 use anyhow;
 use anyhow::Context;
 

@@ -15,8 +15,9 @@ glob = "0.3"
 copy_dir = "0.1"
 anyhow = "1.0"
 backend = { path = "../backend" }
+common = { path = "../common" }
 walkdir = "2.4"
 
 [features]
 # Dummy build to build dependencies only
-prebuild = ["backend/prebuild"]
+prebuild = ["backend/prebuild", "common/prebuild"]

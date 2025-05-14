@@ -21,11 +21,19 @@ pub fn main() {
         PathBuf::from(std::fs::canonicalize(path).unwrap().to_str().unwrap().trim_start_matches(r"\\?\"))
     };
 
-    // Set up PYTHONPATH. This can deal with:
-    // - Finding embedded pyenv in installed case (shoop_lib/py)
     let executable_path = env::current_exe().unwrap();
-    let installed_path = normalize_path(executable_path.parent().unwrap());
-    let runtime_env_path = normalize_path(&installed_path.join("runtime"));
+    // Assumption is that we are in {root}/bin
+    let installed_path = normalize_path(executable_path.parent().unwrap()
+                                                       .parent().unwrap());
+
+    // Set up PYTHONPATH.
+    let python_lib = installed_path.join("lib").join("python");
+    let site_packages = python_lib.join("site-packages");
+    let pathsep = if cfg!(target_os = "windows") { ";" } else { ":" };
+    let pythonpath = format!("{}{}{}", python_lib.to_str().unwrap(), pathsep, site_packages.to_str().unwrap());
+    env::set_var("PYTHONPATH", py_env::dev_env_pythonpath().as_str());
+
+    // let runtime_env_path = normalize_path(&installed_path.join("runtime"));
     // let lib_path = normalize_path(&installed_path.join(SHOOP_ENV_DIR_TO_LIBS));
     // let bundled_pythonpath_shoop_lib = &runtime_env_path;
     // let bundled_python_site_packages = normalize_path(&runtime_env_path.join(SHOOP_ENV_DIR_TO_SITE_PACKAGES));
@@ -60,12 +68,12 @@ pub fn main() {
     app_info.version = env!("CARGO_PKG_VERSION").to_string();
     app_info.description = env!("CARGO_PKG_DESCRIPTION").to_string();
     app_info.install_info = format!("installed in {}", installed_path.to_str().unwrap());
-    app_info.dynlib_dir = runtime_env_path.to_str().unwrap().to_string();
-    app_info.qml_dir = runtime_env_path.join("qml").to_str().unwrap().to_string();
-    app_info.py_dir = runtime_env_path.join("py").to_str().unwrap().to_string();
-    app_info.lua_dir = runtime_env_path.join("lua").to_str().unwrap().to_string();
-    app_info.resource_dir = runtime_env_path.join("resources").to_str().unwrap().to_string();
-    app_info.schemas_dir = runtime_env_path.join("session_schemas").to_str().unwrap().to_string();
+    app_info.dynlib_dir = installed_path.join("lib").to_str().unwrap().to_string();
+    app_info.qml_dir = installed_path.join("qml").to_str().unwrap().to_string();
+    app_info.py_dir = installed_path.join("lib/python").to_str().unwrap().to_string();
+    app_info.lua_dir = installed_path.join("lua").to_str().unwrap().to_string();
+    app_info.resource_dir = installed_path.join("resources").to_str().unwrap().to_string();
+    app_info.schemas_dir = installed_path.join("session_schemas").to_str().unwrap().to_string();
 
     let errcode = shoopdaloop_main(app_info);
     std::process::exit(errcode);

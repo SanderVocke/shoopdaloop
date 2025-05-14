@@ -4,6 +4,9 @@ use std::path::{PathBuf, Path};
 use glob::glob;
 use crate::dependencies::get_dependency_libs;
 use crate::fs_helpers::recursive_dir_cpy;
+use common::fs::copy_dir_merge;
+use regex::Regex;
+use copy_dir::copy_dir;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
@@ -17,12 +20,49 @@ fn populate_appdir(
     let src_path = src_path.ancestors().nth(6).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     info!("Using source path {src_path:?}");
 
-    info!("Bundling executable...");
     let bin_dir = appdir.join("bin");
     std::fs::create_dir(&bin_dir)
         .with_context(|| format!("Cannot create dir: {:?}", bin_dir))?;
+
+    let lib_dir = appdir.join("lib");
+    std::fs::create_dir(&lib_dir)
+        .with_context(|| format!("Cannot create dir: {:?}", lib_dir))?;
+
+    let py_lib_dir = lib_dir.join("python");
+    std::fs::create_dir(&py_lib_dir)
+        .with_context(|| format!("Cannot create dir: {:?}", py_lib_dir))?;
+
+    info!("Bundling executable...");
     let final_exe_path = bin_dir.join("shoopdaloop");
     std::fs::copy(exe_path, &final_exe_path)?;
+
+    info!("Bundling development environment Python packages from PYTHONPATH...");
+    let python_lib_paths = crate::remove_subpaths::remove_subpaths(&py_env::dev_env_pythonpath_entries());
+    let py_folder_regex = Regex::new(r"python[0-9]+\.[0-9]+").unwrap();
+    for path in python_lib_paths {
+        if path.ends_with("site-packages") {
+            debug!("--> {} -> site-packages", path);
+            copy_dir_merge(&path, &py_lib_dir.join("site-packages"))?;
+        } else if PathBuf::from(path.clone()).is_dir() {
+            debug!("--> {} -> python", path);
+            copy_dir_merge(&path, &py_lib_dir)?;
+        } else {
+            debug!("--> {} -> ignored (not a directory)", path);
+        }
+    }
+
+    // Copy filesets into our output lib dir
+    let to_copy = ["src/lua", "src/qml", "src/session_schemas", "resources"];
+    info!("Bundling source assets...");
+    for directory in to_copy {
+        let src = src_path.join(directory);
+        let dst = appdir.join(PathBuf::from(directory).file_name().unwrap());
+        debug!("--> {:?} -> {:?}", src, dst);
+        copy_dir(&src, &dst)
+            .expect(&format!("Failed to copy {} to {}",
+                            src.display(),
+                            dst.display()));
+    }
 
     // info!("Bundling runtime dependencies...");
     // let runtime_dir = appdir.join("runtime");
@@ -50,7 +90,7 @@ fn populate_appdir(
     //     )?;
     // }
 
-    info!("Bundling additional assets...");
+    info!("Bundling distribution assets...");
     for file in [
         "distribution/linux/shoopdaloop.desktop",
         "distribution/linux/shoopdaloop.png",
