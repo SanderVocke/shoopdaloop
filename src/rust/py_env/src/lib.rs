@@ -70,3 +70,20 @@ pub fn dev_env_python() -> String {
         rval.to_string()
     }
 }
+
+pub fn dev_env_pythonpath() -> String {
+    // If we're pre-building, don't do anything
+    #[cfg(feature = "prebuild")]
+    {
+        return String::new();
+    }
+
+    #[cfg(not(feature = "prebuild"))]
+    {
+        let rval = env!("SHOOP_DEV_ENV_PYTHONPATH");
+        if rval.is_empty() {
+            panic!("SHOOP_DEV_ENV_PYTHONPATH is empty");
+        }
+        rval.to_string()
+    }
+}

@@ -14,6 +14,8 @@ shoop_log_unit!("Main");
 // const SHOOP_ENV_DIR_TO_PYTHON_LIBS : &str = env!("SHOOP_ENV_DIR_TO_PYTHON_LIBS");
 
 pub fn main() {
+    common::init().unwrap();
+
     // For normalizing Windows paths
     let normalize_path = |path: &Path| -> PathBuf {
         PathBuf::from(std::fs::canonicalize(path).unwrap().to_str().unwrap().trim_start_matches(r"\\?\"))

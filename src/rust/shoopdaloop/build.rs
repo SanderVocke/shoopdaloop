@@ -101,6 +101,10 @@ fn main_impl() -> Result<(), anyhow::Error> {
             println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", path.to_str().unwrap());
         }
 
+        // Use RPATH instead of RUNPATH, which will enable finding transitive dependencies
+        // (e.g. in the vcpkg installation folder)
+        println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,--disable-new-dtags");
+
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");
         println!("cargo:rerun-if-changed=src");

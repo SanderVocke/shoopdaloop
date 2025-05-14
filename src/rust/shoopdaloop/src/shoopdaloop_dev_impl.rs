@@ -15,6 +15,8 @@ shoop_log_unit!("Main");
 const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
 
 pub fn main() {
+    common::init().unwrap();
+    
     // For normalizing Windows paths
     let normalize_path = |path: PathBuf| -> PathBuf {
         PathBuf::from(std::fs::canonicalize(path).unwrap().to_str().unwrap().trim_start_matches(r"\\?\"))
@@ -43,6 +45,8 @@ pub fn main() {
     // }
 
     let shoop_src_root_dir = normalize_path(PathBuf::from(SRC_DIR).join("../../.."));
+    env::set_var("PYTHONPATH", py_env::dev_env_pythonpath().as_str());
+
     // let pythonpath_to_src = normalize_path(
     //     shoop_src_root_dir.join("src/python"));
     // let sep = if cfg!(target_os = "windows") { ";" } else { ":" };

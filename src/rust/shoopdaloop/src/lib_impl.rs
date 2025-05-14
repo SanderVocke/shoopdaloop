@@ -3,6 +3,8 @@ use pyo3::types::{PyList, PyString};
 use std::env;
 use anyhow;
 use crate::shoop_app_info::ShoopAppInfo;
+use common::logging::macros::*;
+shoop_log_unit!("Main");
 
 fn shoopdaloop_main_impl<'py>(
     app_info : ShoopAppInfo
@@ -16,10 +18,17 @@ fn shoopdaloop_main_impl<'py>(
     Python::with_gil(|py| {
         // Forward command-line arguments
         let sys = py.import_bound("sys")?;
+        let os = py.import_bound("os")?;
         let py_args: Vec<PyObject> = args.into_iter()
             .map(|arg| PyString::new_bound(py, &arg).to_object(py))
             .collect();
         sys.setattr("argv", PyList::new_bound(py, &py_args))?;
+
+        // Print python configuration information
+        let pythonpaths = sys.getattr("path")?;
+        debug!("Python paths: {:?}", pythonpaths);
+        let version_info = sys.getattr("version_info")?;
+        debug!("Python version: {:?}", version_info);
 
         // Expose Rust functionality to Python modules
         {
@@ -62,7 +71,7 @@ pub fn shoopdaloop_main(app_info : ShoopAppInfo) -> i32 {
     match shoopdaloop_main_impl(app_info) {
         Ok(r) => { return r; }
         Err(e) => {
-            println!("Error: {:?}\nBacktrace:\n{:?}", e, e.backtrace());
+            error!("Error: {:?}\nBacktrace:\n{:?}", e, e.backtrace());
             return 1;
         }
     }

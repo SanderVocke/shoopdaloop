@@ -41,11 +41,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
         for path in backend::all_link_search_paths() {
             println!("cargo:rustc-link-search=native={}", path.display());
         }
-        println!("cargo:rustc-link-lib=dylib=shoopdaloop_backend");
 
         // FIXME: Even though this is a transitive dependency it is needed here
         // to prevent linking errors. Why?
         println!("cargo:rustc-link-lib=dylib=zita-resampler");
+        println!("cargo:rustc-link-lib=dylib=shoopdaloop_backend");
 
         Ok(())
     }

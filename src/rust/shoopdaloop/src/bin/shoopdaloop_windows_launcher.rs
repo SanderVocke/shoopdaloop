@@ -3,6 +3,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, exit};
 use std::io;
+use common::logging::macros::*;
+shoop_log_unit!("Main");
 
 const PATHS_FILE: &str = "shoop.dllpaths"; // The paths file
 const EXECUTABLE_FILE: &str = "shoop.executable"; // The executable descriptor
@@ -31,7 +33,7 @@ fn main() -> io::Result<()> {
 
     // Get the existing PATH and append our additional paths.
     let current_path = env::var("PATH").unwrap_or_default();
-    // println!("PATH: {}", env::var("PATH").unwrap_or_default());
+    debug!("environment PATH: {}", env::var("PATH").unwrap_or_default());
     let new_path = format!(
         "{};{}",
         env::join_paths(additional_paths.iter().map(|p| p.as_path()))
@@ -43,7 +45,7 @@ fn main() -> io::Result<()> {
     // Set the modified PATH environment variable.
     env::set_var("PATH", &new_path);
 
-    // println!("PATH: {}", env::var("PATH").unwrap_or_default());
+    debug!("new PATH: {}", env::var("PATH").unwrap_or_default());
 
     // Collect all arguments passed to the launcher and pass them to the executable.
     let args: Vec<String> = env::args().skip(1).collect();

@@ -32,6 +32,7 @@ clap = { version = "4.5", features = ["derive"] }
 frontend = { path = "../frontend" }
 backend_bindings = { path = "../backend_bindings" }
 common = { path = "../common" }
+py_env = { path = "../py_env" }
 log = "0.4"
 ctor = "0.2"
 
@@ -48,4 +49,5 @@ prebuild = ["frontend/prebuild",
             "backend_bindings/prebuild",
             "backend/prebuild",
             "py_env/prebuild",
-            "common/prebuild"]
+            "common/prebuild",
+            "py_env/prebuild"]

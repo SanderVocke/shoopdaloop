@@ -57,9 +57,9 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rerun-if-changed=build.rs");
         println!("cargo:rerun-if-env-changed=PYTHON");
 
-        println!("cargo:rustc-env=SHOOP_BACKEND_DIR={}", install_dir.to_str().unwrap());
         println!("cargo:rustc-env=SHOOP_ZITA_LINK_DIR={}", zita_resampler_dylib_dir);
-
+        println!("cargo:rustc-env=SHOOP_BACKEND_DIR={}", install_dir.to_str().unwrap());
+        
         println!("cargo:rustc-link-search=native={}", lib_path.display());
         println!("cargo:rustc-link-search=native={}", zita_resampler_dylib_dir);
 

@@ -179,6 +179,15 @@ fn main_impl() -> Result<(), anyhow::Error> {
             return Err(anyhow::anyhow!("Failed to install shoopdaloop wheel into development venv"));
         }
 
+        // Determine the default PYTHONPATH for the dev environment
+        // python -c "import sys; import os; print(os.pathsep.join(sys.path))"
+        let dev_env_pythonpath = Command::new(&development_venv_python)
+            .args(
+                &["-c", "import sys; import os; print(os.pathsep.join(sys.path))"]
+            )
+            .stderr(std::process::Stdio::inherit())
+            .output()?;
+        let dev_env_pythonpath = String::from_utf8(dev_env_pythonpath.stdout).expect("Failed to decode output");
 
         // let py_env_dir = Path::new(&out_dir).join("shoop_pyenv");
         // // let py_root_dir = Path::new(&out_dir).join("portable_python");
@@ -405,6 +414,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rustc-env=SHOOP_DEV_VENV_DIR={}", dev_venv_dir.to_str().unwrap());
         println!("cargo:rustc-env=SHOOPDALOOP_WHEEL={}", wheel.to_str().unwrap());
         println!("cargo:rustc-env=SHOOP_DEV_ENV_PYTHON={}", dev_env_python);
+        println!("cargo:rustc-env=SHOOP_DEV_ENV_PYTHONPATH={}", dev_env_pythonpath);
 
         println!("build.rs finished.");
 
