@@ -68,11 +68,11 @@ pub fn main() {
     app_info.description = env!("CARGO_PKG_DESCRIPTION").to_string();
     app_info.install_info = format!("installed in {}", installed_path.to_str().unwrap());
     app_info.dynlib_dir = installed_path.join("lib").to_str().unwrap().to_string();
-    app_info.qml_dir = installed_path.join("qml").to_str().unwrap().to_string();
+    app_info.qml_dir = installed_path.join("lib/qml").to_str().unwrap().to_string();
     app_info.py_dir = installed_path.join("lib/python").to_str().unwrap().to_string();
-    app_info.lua_dir = installed_path.join("lua").to_str().unwrap().to_string();
+    app_info.lua_dir = installed_path.join("lib/lua").to_str().unwrap().to_string();
     app_info.resource_dir = installed_path.join("resources").to_str().unwrap().to_string();
-    app_info.schemas_dir = installed_path.join("session_schemas").to_str().unwrap().to_string();
+    app_info.schemas_dir = installed_path.join("lib/session_schemas").to_str().unwrap().to_string();
 
     let errcode = shoopdaloop_main(app_info);
     std::process::exit(errcode);

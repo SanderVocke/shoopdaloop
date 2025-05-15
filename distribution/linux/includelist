@@ -74,12 +74,15 @@
 */libpixman-*.so*
 */libpng16*.so*
 */libpq.so*
+*/libpyside6*.so*
+*/libpyside6qfeMorphology.so*
 */libpython3.*
 */libQt6*.so*
 */libreadline.so*
 */libresolv.so*
 */libsasl*.so*
 */libselinux.so*
+*/libshiboken6*.so*
 */libshoopdaloop_backend.so*
 */libsqlite3*
 */libssl.so*

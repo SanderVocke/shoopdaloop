@@ -52,11 +52,16 @@ fn populate_appdir(
     }
 
     // Copy filesets into our output lib dir
-    let to_copy = ["src/lua", "src/qml", "src/session_schemas", "resources"];
+    let to_copy = [
+        ("src/lua", "lib/lua"),
+        ("src/qml", "lib/qml"),
+        ("src/session_schemas", "lib/session_schemas"),
+        ("resources", "resources"),
+    ];
     info!("Bundling source assets...");
-    for directory in to_copy {
-        let src = src_path.join(directory);
-        let dst = appdir.join(PathBuf::from(directory).file_name().unwrap());
+    for (from, to) in to_copy {
+        let src = src_path.join(from);
+        let dst = appdir.join(to);
         debug!("--> {:?} -> {:?}", src, dst);
         copy_dir(&src, &dst)?;
     }
@@ -73,16 +78,34 @@ fn populate_appdir(
     debug!("--> {:?} -> {:?}", entry, plugins_dir);
     copy_dir(entry?, &plugins_dir)?;
 
+    // FIXME: this is ugly to have to do explicitly. But since these are lazy-loaded,
+    // we cannot autodetect them.
+    info!("Bundling Qt QML modules...");
+    let zita_dir = backend::zita_link_dir();
+    let pkg_base_dir = zita_dir.parent().unwrap();
+    let pattern = format!("{}/Qt6/qml", pkg_base_dir.to_string_lossy());
+    let qml_dir = appdir.join("lib/qml");
+    let mut entries = glob(&pattern)?;
+    let entry = entries.next().unwrap();
+    debug!("--> {:?} -> {:?}", entry, qml_dir);
+    copy_dir_merge(entry?, &qml_dir)?;
+
     info!("Getting dependencies (this may take some time)...");
     let excludelist_path = src_path.join("distribution/linux/excludelist");
     let includelist_path = src_path.join("distribution/linux/includelist");
-    // let extra_search_path = vcpkg_installed_dir.join
-    //                          (if cfg!(debug_assertions) { "debug/lib" } else { "lib" });
     for path in backend::all_link_search_paths() {
         debug!("--> extra search path: {:?}", path);
         common::env::add_lib_search_path(&path);
     }
-    let libs = get_dependency_libs (&final_exe_path, &bin_dir, &excludelist_path, &includelist_path, false)?;
+    // Also include search paths to all of Qt's plugin directories
+    let plugin_subdirs = std::fs::read_dir(plugins_dir)?;
+    for entry in plugin_subdirs {
+        let entry = entry?;
+        let path = entry.path();
+        debug!("--> extra search path: {:?}", path);
+        common::env::add_lib_search_path(&path);
+    }
+    let libs = get_dependency_libs (&final_exe_path, &lib_dir, &excludelist_path, &includelist_path, false)?;
 
     info!("Bundling {} dependencies...", libs.len());
     for lib in libs {
@@ -121,6 +144,7 @@ pub fn build_appdir(
     output_dir : &Path,
     _release : bool,
 ) -> Result<(), anyhow::Error> {
+    let output_dir = std::path::absolute(output_dir)?;
     if output_dir.exists() {
         return Err(anyhow::anyhow!("Output directory {:?} already exists", output_dir));
     }
@@ -130,9 +154,9 @@ pub fn build_appdir(
         return Err(anyhow::anyhow!("Output directory {:?}: parent doesn't exist", output_dir));
     }
     info!("Creating app directory...");
-    std::fs::create_dir(output_dir)?;
+    std::fs::create_dir(&output_dir)?;
 
-    populate_appdir(output_dir,
+    populate_appdir(&output_dir,
                     exe_path)?;
 
     info!("AppDir created @ {output_dir:?}");
