@@ -10,11 +10,4 @@ runs:
     run: |
       $PIP install --upgrade pip build auditwheel patchelf
       $PIP install -r build_python_requirements.txt
-  
-  - name: Link libgcc
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-      ln -s /usr/lib/x86_64-linux-gnu/libgccpp.so.1 /usr/lib/x86_64-linux-gnu/libgccpp.so
-      ln -s /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 /usr/lib/x86_64-linux-gnu/libgcc_s.so
-      ln -s /usr/lib32/libgcc_s.so.1 /usr/lib32/libgcc_s.so
+      echo "RUSTFLAGS=-C linker=gcc" | tee -a $GITHUB_ENV
