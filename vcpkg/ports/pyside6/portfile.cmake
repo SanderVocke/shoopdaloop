@@ -6,6 +6,7 @@ vcpkg_from_git(
     PATCHES
         fix_example_icons_python_include.patch
         fix_shiboken_module_path.patch
+        fix_python_debug_library_windows.patch
 )
 
 if(VCPKG_TARGET_IS_WINDOWS AND VCPKG_TARGET_IS_MINGW)
@@ -60,51 +61,41 @@ vcpkg_extract_archive(
 )
 set(ENV{LLVM_INSTALL_DIR} "${LIBCLANG_EXTRACTED}/libclang")
 
-# vcpkg_get_vcpkg_installed_python (VCPKG_PYTHON3)
-# execute_process(
-#     COMMAND ${VCPKG_PYTHON3} -c "import sysconfig; print(sysconfig.get_path('include'))"
-#     OUTPUT_VARIABLE PYTHON3_INCLUDE
-#     OUTPUT_STRIP_TRAILING_WHITESPACE
-# )
-# execute_process(
-#     COMMAND ${VCPKG_PYTHON3} -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
-#     OUTPUT_VARIABLE PYTHON3_LIBDIR
-#     OUTPUT_STRIP_TRAILING_WHITESPACE
-# )
-
 if(VCPKG_TARGET_IS_WINDOWS)
-    set(PYTHON3_INTERPRETER "${CURRENT_INSTALLED_DIR}/tools/python3/python.exe")
+        set(PYTHON3_INTERPRETER_DEBUG "${CURRENT_INSTALLED_DIR}/debug/tools/python3/python_d.exe")
+        set(PYTHON3_INTERPRETER_RELEASE "${CURRENT_INSTALLED_DIR}/tools/python3/python.exe")
 else()
-    set(PYTHON3_INTERPRETER "${CURRENT_INSTALLED_DIR}/tools/python3/python")
+        set(PYTHON3_INTERPRETER_DEBUG "${CURRENT_INSTALLED_DIR}/debug/tools/python3/python3d")
+        set(PYTHON3_INTERPRETER_RELEASE "${CURRENT_INSTALLED_DIR}/tools/python3/python")
 endif()
 
-if(VCPKG_BUILD_TYPE STREQUAL "Debug")
-    set(PYTHON3_LIBDIR "${CURRENT_INSTALLED_DIR}/debug/lib")
-else()
-    set(PYTHON3_LIBDIR "${CURRENT_INSTALLED_DIR}/lib")
-endif()
+set(PYTHON3_LIBDIR_DEBUG "${CURRENT_INSTALLED_DIR}/debug/lib")
+set(PYTHON3_LIBDIR_RELEASE "${CURRENT_INSTALLED_DIR}/lib")
 
 execute_process(
-    COMMAND ${PYTHON3_INTERPRETER} -c "import sysconfig; print(sysconfig.get_path('include'))"
-    OUTPUT_VARIABLE PYTHON3_INCLUDE
+    COMMAND ${PYTHON3_INTERPRETER_DEBUG} -c "import sysconfig; print(sysconfig.get_path('include'))"
+    OUTPUT_VARIABLE PYTHON3_INCLUDE_DEBUG
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-
-set(MAYBE_DEBUG_SUBFOLDER "")
-if(VCPKG_BUILD_TYPE STREQUAL "Debug")
-    set(MAYBE_DEBUG_SUBFOLDER "debug/")
-endif()
+execute_process(
+    COMMAND ${PYTHON3_INTERPRETER_RELEASE} -c "import sysconfig; print(sysconfig.get_path('include'))"
+    OUTPUT_VARIABLE PYTHON3_INCLUDE_RELEASE
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}" 
     OPTIONS
-        -DPython_EXECUTABLE="${PYTHON3_INTERPRETER}"
-        -DPython_INCLUDE_DIRS="${PYTHON3_INCLUDE}"
-        -DPython_LIBRARIES="${PYTHON3_LIBDIR}"
-        #-DMODULES=Core\;Gui\;Widgets\;Help\;Network\;Concurrent\;DBus\;Designer\;OpenGL\;OpenGLWidgets\;PrintSupport\;Qml\;Quick\;QuickControls2\;QuickTest\;QuickWidgets\;Xml\;Test\;Sql\;Svg\;SvgWidgets\;UiTools
-        #-DMODULES=Core\;Gui\;Qml\;Quick\;QuickControls2\;Network\;OpenGL
         -DMODULES=Core\;Gui\;Widgets\;Network\;Concurrent\;DBus\;OpenGL\;OpenGLWidgets\;PrintSupport\;Qml\;Quick\;QuickControls2\;QuickTest\;QuickWidgets\;Xml\;Test\;Sql\;Svg\;SvgWidgets
         -DFORCE_LIMITED_API=yes
+    OPTIONS_DEBUG
+        -DPython_EXECUTABLE="${PYTHON3_INTERPRETER_DEBUG}"
+        -DPython_INCLUDE_DIRS="${PYTHON3_INCLUDE_DEBUG}"
+        -DPython_LIBRARIES="${PYTHON3_LIBDIR_DEBUG}"
+    OPTIONS_RELEASE
+        -DPython_EXECUTABLE="${PYTHON3_INTERPRETER_RELEASE}"
+        -DPython_INCLUDE_DIRS="${PYTHON3_INCLUDE_RELEASE}"
+        -DPython_LIBRARIES="${PYTHON3_LIBDIR_RELEASE}"
 )
 vcpkg_cmake_build()
 vcpkg_cmake_install()
