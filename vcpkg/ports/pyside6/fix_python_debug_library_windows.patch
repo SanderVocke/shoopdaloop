@@ -1,10 +1,13 @@
 diff -Naur ori/sources/shiboken6/cmake/ShibokenHelpers.cmake pyside6_src/sources/shiboken6/cmake/ShibokenHelpers.cmake
 --- ori/sources/shiboken6/cmake/ShibokenHelpers.cmake	2025-05-15 07:00:50.345817500 -0700
-+++ pyside6_src/sources/shiboken6/cmake/ShibokenHelpers.cmake	2025-05-15 07:23:01.961716300 -0700
-@@ -262,22 +262,31 @@
-         # On Windows, PYTHON_LIBRARIES can be a list. Example:
-         #    optimized;C:/Python36/libs/python36.lib;debug;C:/Python36/libs/python36_d.lib
-         # On other platforms, this result is not used at all.
++++ pyside6_src/sources/shiboken6/cmake/ShibokenHelpers.cmake	2025-05-16 03:33:21.839596800 -0700
+@@ -259,25 +259,9 @@
+     # needed. Perhaps use host python to walk the libs of the target python installation.
+ 
+     if(NOT SHIBOKEN_IS_CROSS_BUILD AND WIN32)
+-        # On Windows, PYTHON_LIBRARIES can be a list. Example:
+-        #    optimized;C:/Python36/libs/python36.lib;debug;C:/Python36/libs/python36_d.lib
+-        # On other platforms, this result is not used at all.
 -        execute_process(
 -            COMMAND ${Python_EXECUTABLE} -c "if True:
 -                from pathlib import Path
@@ -21,31 +24,22 @@ diff -Naur ori/sources/shiboken6/cmake/ShibokenHelpers.cmake pyside6_src/sources
 -                "
 -            OUTPUT_VARIABLE PYTHON_LIMITED_LIBRARIES
 -            OUTPUT_STRIP_TRAILING_WHITESPACE)
-+
 +        # Instead of the original approach, retrieve the needed lib directly from the list and transform using regexes
-+        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-+            string(REGEX REPLACE ".*debug;(.*)" "\\1" PYTHON_FULL_LIBRARIES "${Python_LIBRARIES}")
-+        else()
-+            string(REGEX REPLACE "optimized;([^;]+);debug.*" "\\1" PYTHON_FULL_LIBRARIES "${Python_LIBRARIES}")
-+        endif()
-+        string(REGEX REPLACE "python3[0-9]+" "python3" PYTHON_LIMITED_LIBRARIES "${PYTHON_FULL_LIBRARIES}")
-+
-+        # execute_process(
-+        #    COMMAND ${Python_EXECUTABLE} -c "if True:
-+        #        from pathlib import Path
-+        #        libs = r'${Python_LIBRARIES}'
-+        #        libs = libs.split(';')
-+        #        for lib in libs:
-+        #            if ('\\\\' in lib or '/' in lib) and Path(lib).is_file():
-+        #                lib = Path(lib)
-+        #                prefix = lib.parent
-+        #                py = lib.name
-+        #                if py.startswith('python3'):
-+        #                    print(prefix / 'python3.lib')
-+        #                    break
-+        #        "
-+        #    OUTPUT_VARIABLE PYTHON_LIMITED_LIBRARIES
-+        #    OUTPUT_STRIP_TRAILING_WHITESPACE)
++        shiboken_get_library_for_current_config("${Python_LIBRARIES}" "${CMAKE_BUILD_TYPE}" "PYTHON_LIMITED_LIBRARIES")
++        string(REGEX REPLACE "python3[0-9]+" "python3" PYTHON_LIMITED_LIBRARIES "${PYTHON_LIMITED_LIBRARIES}")
      endif()
  
      message(STATUS "PYTHON_LIMITED_LIBRARIES: " ${PYTHON_LIMITED_LIBRARIES})
+@@ -748,7 +732,11 @@
+     endif()
+ 
+     if(NOT qt_library_dir_absolute)
+-        set(qt_library_dir_absolute "${QT6_INSTALL_PREFIX}/${qt_library_dir}")
++        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
++            set(qt_library_dir_absolute "${QT6_INSTALL_PREFIX}/debug/${qt_library_dir}")
++        else()
++            set(qt_library_dir_absolute "${QT6_INSTALL_PREFIX}/${qt_library_dir}")
++        endif()
+     endif()
+     list(APPEND path_dirs "${qt_library_dir_absolute}")
+ 

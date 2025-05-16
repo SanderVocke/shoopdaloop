@@ -87,7 +87,7 @@ vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}" 
     OPTIONS
         -DMODULES=Core\;Gui\;Widgets\;Network\;Concurrent\;DBus\;OpenGL\;OpenGLWidgets\;PrintSupport\;Qml\;Quick\;QuickControls2\;QuickTest\;QuickWidgets\;Xml\;Test\;Sql\;Svg\;SvgWidgets
-        -DFORCE_LIMITED_API=yes
+        -DFORCE_LIMITED_API=OFF
     OPTIONS_DEBUG
         -DPython_EXECUTABLE="${PYTHON3_INTERPRETER_DEBUG}"
         -DPython_INCLUDE_DIRS="${PYTHON3_INCLUDE_DEBUG}"

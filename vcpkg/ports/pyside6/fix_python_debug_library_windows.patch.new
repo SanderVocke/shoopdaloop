@@ -1,0 +1,122 @@
+diff -Naur ori/sources/pyside6/libpyside/CMakeLists.txt pyside6_src/sources/pyside6/libpyside/CMakeLists.txt
+--- ori/sources/pyside6/libpyside/CMakeLists.txt	2025-05-15 07:00:44.799276600 -0700
++++ pyside6_src/sources/pyside6/libpyside/CMakeLists.txt	2025-05-16 03:05:33.634270500 -0700
+@@ -105,6 +105,12 @@
+ target_link_libraries(pyside6
+                       PRIVATE Shiboken6::libshiboken ${libpyside_libraries})
+ 
++shiboken_compute_python_libraries()
++get_property(PYTHON_LIB GLOBAL PROPERTY shiboken_python_libraries)
++message(STATUS "libpyside PYTHON_LIB: ${PYTHON_LIB}")
++get_filename_component(PYTHON_LIB_DIR "${PYTHON_LIB}" DIRECTORY)
++target_link_directories(pyside6 PUBLIC "${PYTHON_LIB_DIR}")
++
+ set_target_properties(pyside6 PROPERTIES
+                       VERSION ${BINDING_API_VERSION}
+                       SOVERSION "${PYSIDE_SO_VERSION}"
+diff -Naur ori/sources/pyside6/qtexampleicons/CMakeLists.txt pyside6_src/sources/pyside6/qtexampleicons/CMakeLists.txt
+--- ori/sources/pyside6/qtexampleicons/CMakeLists.txt	2025-05-15 07:00:45.283304700 -0700
++++ pyside6_src/sources/pyside6/qtexampleicons/CMakeLists.txt	2025-05-16 02:53:50.367953100 -0700
+@@ -37,7 +37,8 @@
+ target_include_directories(QtExampleIcons PRIVATE ${SHIBOKEN_PYTHON_INCLUDE_DIRS})
+ 
+ get_property(SHIBOKEN_PYTHON_LIBRARIES GLOBAL PROPERTY shiboken_python_libraries)
+-
++get_filename_component(PYTHON_LIB_DIR "${SHIBOKEN_PYTHON_LIBRARIES}" DIRECTORY)
++target_link_directories(QtExampleIcons PUBLIC "${PYTHON_LIB_DIR}")
+ target_link_libraries(QtExampleIcons PRIVATE
+                       Qt::ExampleIconsPrivate
+                       ${SHIBOKEN_PYTHON_LIBRARIES})
+diff -Naur ori/sources/shiboken6/cmake/ShibokenHelpers.cmake pyside6_src/sources/shiboken6/cmake/ShibokenHelpers.cmake
+--- ori/sources/shiboken6/cmake/ShibokenHelpers.cmake	2025-05-15 07:00:50.345817500 -0700
++++ pyside6_src/sources/shiboken6/cmake/ShibokenHelpers.cmake	2025-05-16 03:18:35.005082400 -0700
+@@ -262,22 +262,27 @@
+         # On Windows, PYTHON_LIBRARIES can be a list. Example:
+         #    optimized;C:/Python36/libs/python36.lib;debug;C:/Python36/libs/python36_d.lib
+         # On other platforms, this result is not used at all.
+-        execute_process(
+-            COMMAND ${Python_EXECUTABLE} -c "if True:
+-                from pathlib import Path
+-                libs = r'${Python_LIBRARIES}'
+-                libs = libs.split(';')
+-                for lib in libs:
+-                    if ('\\\\' in lib or '/' in lib) and Path(lib).is_file():
+-                        lib = Path(lib)
+-                        prefix = lib.parent
+-                        py = lib.name
+-                        if py.startswith('python3'):
+-                            print(prefix / 'python3.lib')
+-                            break
+-                "
+-            OUTPUT_VARIABLE PYTHON_LIMITED_LIBRARIES
+-            OUTPUT_STRIP_TRAILING_WHITESPACE)
++
++        # Instead of the original approach, retrieve the needed lib directly from the list and transform using regexes
++        shiboken_get_library_for_current_config("${Python_LIBRARIES}" "${CMAKE_BUILD_TYPE}" "PYTHON_LIMITED_LIBRARIES")
++        string(REGEX REPLACE "python3[0-9]+" "python3" PYTHON_LIMITED_LIBRARIES "${PYTHON_LIMITED_LIBRARIES}")
++
++        # execute_process(
++        #    COMMAND ${Python_EXECUTABLE} -c "if True:
++        #        from pathlib import Path
++        #        libs = r'${Python_LIBRARIES}'
++        #        libs = libs.split(';')
++        #        for lib in libs:
++        #            if ('\\\\' in lib or '/' in lib) and Path(lib).is_file():
++        #                lib = Path(lib)
++        #                prefix = lib.parent
++        #                py = lib.name
++        #                if py.startswith('python3'):
++        #                    print(prefix / 'python3.lib')
++        #                    break
++        #        "
++        #    OUTPUT_VARIABLE PYTHON_LIMITED_LIBRARIES
++        #    OUTPUT_STRIP_TRAILING_WHITESPACE)
+     endif()
+ 
+     message(STATUS "PYTHON_LIMITED_LIBRARIES: " ${PYTHON_LIMITED_LIBRARIES})
+@@ -425,6 +430,10 @@
+             if(token1 AND token2)
+                 if((is_debug AND lib AND current_config STREQUAL "Debug")
+                    OR (NOT is_debug AND lib AND (NOT current_config STREQUAL "Debug")))
++                    if(FORCE_LIMITED_API OR SHIBOKEN_PYTHON_LIMITED_API)
++                        string(REGEX REPLACE "python3[0-9]+" "python3" lib "${lib}")
++                    endif()
++                    message(STATUS "shiboken_get_library_for_current_config: returning ${lib}")
+                     set(${out_var} ${lib} PARENT_SCOPE)
+                     return()
+                 endif()
+@@ -432,6 +441,7 @@
+         endforeach()
+     else()
+         # No configuration specific libraries found, just set the original value.
++        message(STATUS "shiboken_get_library_for_current_config: returning ${library_list}")
+         set(${out_var} "${library_list}" PARENT_SCOPE)
+     endif()
+ 
+@@ -748,7 +758,11 @@
+     endif()
+ 
+     if(NOT qt_library_dir_absolute)
+-        set(qt_library_dir_absolute "${QT6_INSTALL_PREFIX}/${qt_library_dir}")
++        if(CMAKE_BUILD_TYPE STREQUAL "Debug")
++            set(qt_library_dir_absolute "${QT6_INSTALL_PREFIX}/debug/${qt_library_dir}")
++        else()
++            set(qt_library_dir_absolute "${QT6_INSTALL_PREFIX}/${qt_library_dir}")
++        endif()
+     endif()
+     list(APPEND path_dirs "${qt_library_dir_absolute}")
+ 
+diff -Naur ori/sources/shiboken6/libshiboken/CMakeLists.txt pyside6_src/sources/shiboken6/libshiboken/CMakeLists.txt
+--- ori/sources/shiboken6/libshiboken/CMakeLists.txt	2025-05-15 07:00:50.908393900 -0700
++++ pyside6_src/sources/shiboken6/libshiboken/CMakeLists.txt	2025-05-16 02:53:58.435920800 -0700
+@@ -130,6 +130,10 @@
+ # the dynamic linker will pick up the python symbols at runtime automatically.
+ shiboken_compute_python_libraries()
+ 
++get_property(PYTHON_LIB GLOBAL PROPERTY shiboken_python_libraries)
++get_filename_component(PYTHON_LIB_DIR "${PYTHON_LIB}" DIRECTORY)
++target_link_directories(libshiboken PUBLIC "${PYTHON_LIB_DIR}")
++
+ if(PYTHON_LIMITED_API)
+     target_compile_definitions(libshiboken PUBLIC "-DPy_LIMITED_API=0x03080000")
+ endif()
