@@ -88,6 +88,8 @@ runs:
       rm -f /usr/bin/link.exe
   
   - name: Install required MSVC version
+    if: always()
+    shell: wrap-shell {0}
     run: |
         curl -fSLo vs_BuildTools.exe https://aka.ms/vs/17/release.ltsc.17.10/vs_buildtools.exe
         vs_BuildTools.exe modify \
