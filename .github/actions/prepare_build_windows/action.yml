@@ -67,11 +67,11 @@ runs:
        Set-ExecutionPolicy Unrestricted -Scope CurrentUser
        Get-ExecutionPolicy -List
 
-  - name: Setup MSVC
-    if: always()
-    uses: TheMrMilchmann/setup-msvc-dev@v3
-    with:
-       arch: x64
+  # - name: Setup MSVC
+  #   if: always()
+  #   uses: TheMrMilchmann/setup-msvc-dev@v3
+  #   with:
+  #      arch: x64
 
   # - name: Install PyEnv
   #   shell: wrap-shell {0}
@@ -89,16 +89,27 @@ runs:
   
   - name: Install required MSVC version
     run: |
-            Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
-            $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
-            $components= @(
-              "Microsoft.VisualStudio.Component.VC.Tools.x86.x64.14.40"
-            )
-            [string]$workloadArgs = $components | ForEach-Object {" --add " +  $_}
-            $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"",$workloadArgs, '--quiet', '--norestart', '--nocache')
-            # should be run twice
-            $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
-            $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+        curl -fSLo vs_BuildTools.exe https://aka.ms/vs/17/release.ltsc.17.10/vs_buildtools.exe
+        vs_BuildTools.exe modify \
+        --installPath "%ProgramFiles(x86)%\Microsoft Visual Studio\2022\BuildTools" \
+        --includeRecommended --includeOptional \
+        --add Microsoft.VisualStudio.Workload.VCTools \
+        --add Microsoft.VisualStudio.Component.VC.ATLMFC \
+        --add Microsoft.VisualStudio.Workload.VisualStudioExtensionBuildTools \
+        --quiet --norestart --nocache --wait
+        echo "BUILDTOOLS_PATH=C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools | tee -a $GITHUB_ENV
+
+    # run: |
+    #         Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+    #         $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+    #         $components= @(
+    #           "Microsoft.VisualStudio.Component.VC.Tools.x86.x64.14.40"
+    #         )
+    #         [string]$workloadArgs = $components | ForEach-Object {" --add " +  $_}
+    #         $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"",$workloadArgs, '--quiet', '--norestart', '--nocache')
+    #         # should be run twice
+    #         $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+    #         $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
 
   # - name: Install dependencies
   #   if: always()
