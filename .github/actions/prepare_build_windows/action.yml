@@ -87,19 +87,19 @@ runs:
       rm -f /c/mingw64/bin/link.exe
       rm -f /usr/bin/link.exe
   
-  - name: Install required MSVC version
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-        BUILDTOOLS_INSTALL="C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools"
-        curl -fSLo vs_BuildTools.exe https://aka.ms/vs/17/release.ltsc.17.10/vs_buildtools.exe
-        ./vs_BuildTools.exe modify \
-        --installPath "$BUILDTOOLS_INSTALL" \
-        --includeRecommended --includeOptional \
-        --add Microsoft.VisualStudio.Workload.VCTools \
-        --add Microsoft.VisualStudio.Component.VC.ATLMFC \
-        --add Microsoft.VisualStudio.Workload.VisualStudioExtensionBuildTools \
-        --quiet --norestart --nocache --wait
+  # - name: Install required MSVC version
+  #   if: always()
+  #   shell: wrap-shell {0}
+  #   run: |
+  #       BUILDTOOLS_INSTALL="C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools"
+  #       curl -fSLo vs_BuildTools.exe https://aka.ms/vs/17/release.ltsc.17.10/vs_buildtools.exe
+  #       ./vs_BuildTools.exe modify \
+  #       --installPath "$BUILDTOOLS_INSTALL" \
+  #       --includeRecommended --includeOptional \
+  #       --add Microsoft.VisualStudio.Workload.VCTools \
+  #       --add Microsoft.VisualStudio.Component.VC.ATLMFC \
+  #       --add Microsoft.VisualStudio.Workload.VisualStudioExtensionBuildTools \
+  #       --quiet --norestart --nocache --wait
 
     # run: |
     #         Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
