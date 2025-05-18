@@ -87,15 +87,16 @@ runs:
       rm -f /c/mingw64/bin/link.exe
       rm -f /usr/bin/link.exe
 
-  # - name: Install MSVC using PortableBuildTools
-  #   if: always()
-  #   shell: wrap-shell {0}
-  #   run: |
-  #       BUILDTOOLS_INSTALL="C:\\BuildTools"
-  #       MSVC_VERSION="14.40.17.10"
-  #       curl -fSLo PortableBuildTools.exe https://github.com/Data-Oriented-House/PortableBuildTools/releases/latest/download/PortableBuildTools.exe
-  #       ./PortableBuildTools.exe accept_license msvc=$MSVC_VERSION path="$BUILDTOOLS_INSTALL"
-  #       echo "VCPKG_VISUAL_STUDIO_PATH=$BUILDTOOLS_INSTALL" | tee -a $GITHUB_ENV
+  # Very hacky approach to install PortableBuildTools into the existing VS tree
+  - name: Install MSVC using PortableBuildTools
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+        BUILDTOOLS_INSTALL="C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise"
+        MSVC_VERSION="14.40.17.10"
+        curl -fSLo PortableBuildTools.exe https://github.com/Data-Oriented-House/PortableBuildTools/releases/latest/download/PortableBuildTools.exe
+        ./PortableBuildTools.exe accept_license msvc=$MSVC_VERSION path="$BUILDTOOLS_INSTALL"
+        # echo "VCPKG_VISUAL_STUDIO_PATH=$BUILDTOOLS_INSTALL" | tee -a $GITHUB_ENV
   
   # - name: Install required MSVC version
   #   if: always()
@@ -110,18 +111,18 @@ runs:
 
   #       ls /c/Program\ Files/Microsoft\ Visual\ Studio/2022/Enterprise/VC/Tools/MSVC
 
-    run: |
-            Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
-            $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
-            $components= @(
-              "Microsoft.VisualStudio.Component.VC.14.40.17.10.x86.x64",
-              "Microsoft.VisualStudio.Component.VC.14.40.17.10.CLI.Support"
-            )
-            [string]$workloadArgs = $components | ForEach-Object {" --add " +  $_}
-            $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"",$workloadArgs, '--quiet', '--norestart', '--nocache')
-            # should be run twice
-            $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
-            $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+    # run: |
+    #         Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+    #         $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+    #         $components= @(
+    #           "Microsoft.VisualStudio.Component.VC.14.40.17.10.x86.x64",
+    #           "Microsoft.VisualStudio.Component.VC.14.40.17.10.CLI.Support"
+    #         )
+    #         [string]$workloadArgs = $components | ForEach-Object {" --add " +  $_}
+    #         $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"",$workloadArgs, '--quiet', '--norestart', '--nocache')
+    #         # should be run twice
+    #         $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+    #         $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
 
   # - name: Install dependencies
   #   if: always()
