@@ -86,6 +86,16 @@ runs:
     run: |
       rm -f /c/mingw64/bin/link.exe
       rm -f /usr/bin/link.exe
+
+  - name: Install MSVC using PortableBuildTools
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+        BUILDTOOLS_INSTALL="C:\\BuildTools"
+        MSVC_VERSION="14.40.17.10"
+        curl -fSLo PortableBuildTools.exe https://github.com/Data-Oriented-House/PortableBuildTools/releases/latest/download/PortableBuildTools.exe
+        ./PortableBuildTools.exe accept_license msvc=$MSVC_VERSION path="$BUILDTOOLS_INSTALL"
+        echo "VCPKG_VISUAL_STUDIO_PATH=$BUILDTOOLS_INSTALL" | tee -a $GITHUB_ENV
   
   # - name: Install required MSVC version
   #   if: always()
