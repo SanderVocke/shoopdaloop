@@ -96,9 +96,7 @@ runs:
   #       curl -fSLo PortableBuildTools.exe https://github.com/Data-Oriented-House/PortableBuildTools/releases/latest/download/PortableBuildTools.exe
   #       ./PortableBuildTools.exe accept_license msvc=$MSVC_VERSION path="$BUILDTOOLS_INSTALL"
   #       echo "VCPKG_VISUAL_STUDIO_PATH=$BUILDTOOLS_INSTALL" | tee -a $GITHUB_ENV
-
-modify --installPath "C:\Program Files\Microsoft Visual Studio\2022\Community" --add Microsoft.VisualStudio.Component.VC.14.40.17.10.x86.x64 --add Microsoft.VisualStudio.Component.VC.14.40.17.10.CLI.Support --norestart --wait --quiet
-
+  
   - name: Install required MSVC version
     if: always()
     shell: wrap-shell {0}
