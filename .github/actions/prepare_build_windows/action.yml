@@ -87,29 +87,30 @@ runs:
       rm -f /c/mingw64/bin/link.exe
       rm -f /usr/bin/link.exe
 
-  - name: Install MSVC using PortableBuildTools
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-        BUILDTOOLS_INSTALL="C:\\BuildTools"
-        MSVC_VERSION="14.40.17.10"
-        curl -fSLo PortableBuildTools.exe https://github.com/Data-Oriented-House/PortableBuildTools/releases/latest/download/PortableBuildTools.exe
-        ./PortableBuildTools.exe accept_license msvc=$MSVC_VERSION path="$BUILDTOOLS_INSTALL"
-        echo "VCPKG_VISUAL_STUDIO_PATH=$BUILDTOOLS_INSTALL" | tee -a $GITHUB_ENV
-  
-  # - name: Install required MSVC version
+  # - name: Install MSVC using PortableBuildTools
   #   if: always()
   #   shell: wrap-shell {0}
   #   run: |
-  #       BUILDTOOLS_INSTALL="C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools"
-  #       curl -fSLo vs_BuildTools.exe https://aka.ms/vs/17/release.ltsc.17.10/vs_buildtools.exe
-  #       ./vs_BuildTools.exe modify \
-  #       --installPath "$BUILDTOOLS_INSTALL" \
-  #       --includeRecommended --includeOptional \
-  #       --add Microsoft.VisualStudio.Workload.VCTools \
-  #       --add Microsoft.VisualStudio.Component.VC.ATLMFC \
-  #       --add Microsoft.VisualStudio.Workload.VisualStudioExtensionBuildTools \
-  #       --quiet --norestart --nocache --wait
+  #       BUILDTOOLS_INSTALL="C:\\BuildTools"
+  #       MSVC_VERSION="14.40.17.10"
+  #       curl -fSLo PortableBuildTools.exe https://github.com/Data-Oriented-House/PortableBuildTools/releases/latest/download/PortableBuildTools.exe
+  #       ./PortableBuildTools.exe accept_license msvc=$MSVC_VERSION path="$BUILDTOOLS_INSTALL"
+  #       echo "VCPKG_VISUAL_STUDIO_PATH=$BUILDTOOLS_INSTALL" | tee -a $GITHUB_ENV
+
+modify --installPath "C:\Program Files\Microsoft Visual Studio\2022\Community" --add Microsoft.VisualStudio.Component.VC.14.40.17.10.x86.x64 --add Microsoft.VisualStudio.Component.VC.14.40.17.10.CLI.Support --norestart --wait --quiet
+
+  - name: Install required MSVC version
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+        VS_INSTALL="C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise"
+        /c/Program\ Files\ \(x86\)/Microsoft\ Visual\ Studio/Installer/vs_installer.exe modify \
+        --installPath "$VS_INSTALL" \
+        --add Microsoft.VisualStudio.Component.VC.14.40.17.10.x86.x64 \
+        --add Microsoft.VisualStudio.Component.VC.14.40.17.10.CLI.Support \
+        --quiet --norestart --nocache --wait
+
+        ls /c/Program\ Files/Microsoft\ Visual\ Studio/2022/Community/VC/Tools/MSVC
 
     # run: |
     #         Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
