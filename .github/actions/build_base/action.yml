@@ -37,6 +37,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
+        set -x
         ./build.sh build ${BUILD_SCRIPT_FLAGS} --vcpkg-args=--clean-after-build --skip-cargo --write-build-env-sh 2>&1 | tee vcpkg_build_output.txt
         echo ""
         echo "Build env file ${BUILD_ENV_FILE}" contents:
@@ -47,14 +48,16 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
+      set -x
       . ${BUILD_ENV_FILE}
       echo "cargo: $(which cargo)"
-      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild" ${CARGO_BUILD_FLAGS}
+      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild" ${CARGO_BUILD_FLAGS}
 
   - name: Build main packages
     if: always()
     shell: wrap-shell {0}
     run: |
+      set -x
       . ${BUILD_ENV_FILE}
       cargo build -vv ${CARGO_BUILD_FLAGS}
   
@@ -62,5 +65,6 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
+      set -x
       . ${BUILD_ENV_FILE}
       cargo test -vv --no-run ${CARGO_BUILD_FLAGS}

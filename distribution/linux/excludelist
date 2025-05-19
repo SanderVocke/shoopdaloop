@@ -3,7 +3,6 @@
 */libGL.so*
 */libGLX.so*
 */libOpenGL.so*
-*/libQt6*.so*
 */libX11.so*
 */libXcursor.so*
 */libXext.so*
@@ -13,7 +12,6 @@
 */libc.so*
 */libdl.so*
 */libpthread.so*
-*/libpython3.*
 */librt.so*
 */libsystemd.so*
 */libstdc++.so*

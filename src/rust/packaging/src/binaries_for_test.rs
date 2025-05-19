@@ -6,7 +6,6 @@ use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
 fn populate_folder(
-    shoop_built_out_dir : &Path,
     folder : &Path,
     release : bool,
 ) -> Result<(), anyhow::Error> {
@@ -20,14 +19,14 @@ fn populate_folder(
     let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     info!("Using source path {src_path:?}");
 
-    for f in glob::glob(format!("{}/**/test_runner*", shoop_built_out_dir.join("shoop_lib").to_str().unwrap()).as_str())? {
-        let f = f?.clone();
-        info!("Bundling {f:?}...");
-        std::fs::copy(
-            &f,
-            folder.join(&f.file_name().unwrap())
-        )?;
-    }
+    // for f in glob::glob(format!("{}/**/test_runner*", shoop_built_out_dir.join("shoop_lib").to_str().unwrap()).as_str())? {
+    //     let f = f?.clone();
+    //     info!("Bundling {f:?}...");
+    //     std::fs::copy(
+    //         &f,
+    //         folder.join(&f.file_name().unwrap())
+    //     )?;
+    // }
 
     info!("Downloading prebuilt cargo-nextest into folder...");
 
@@ -82,7 +81,6 @@ fn populate_folder(
 }
 
 pub fn build_test_binaries_folder(
-    shoop_built_out_dir : &Path,
     output_dir : &Path,
     release : bool,
 ) -> Result<(), anyhow::Error> {
@@ -97,9 +95,7 @@ pub fn build_test_binaries_folder(
     info!("Creating test binaries directory...");
     std::fs::create_dir(output_dir)?;
 
-    populate_folder(shoop_built_out_dir,
-                            output_dir,
-                            release)?;
+    populate_folder(output_dir, release)?;
 
     info!("Test binaries folder created @ {output_dir:?}");
     Ok(())

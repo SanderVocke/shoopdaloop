@@ -19,8 +19,6 @@ fn register_metatypes() {
 
 #[no_mangle]
 pub extern "C" fn shoop_rust_init() {
-    common::logging::init_logging().expect("Unable to initialize frontend logging");
-
     register_metatypes();
     register_qml_types_and_singletons();
 }

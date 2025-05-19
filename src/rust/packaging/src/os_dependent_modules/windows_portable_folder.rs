@@ -8,7 +8,6 @@ use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
 fn populate_folder(
-    runtime_env_dir : &Path,
     folder : &Path,
     exe_path : &Path,
     launcher_path : &Path,
@@ -23,14 +22,14 @@ fn populate_folder(
     std::fs::copy(exe_path, &final_exe_path)
         .with_context(|| format!("Failed to copy {exe_path:?} to {folder:?}"))?;
 
-    info!("Bundling runtime dependencies...");
-    let runtime_dir = folder.join("runtime");
-    std::fs::create_dir(&runtime_dir)
-        .with_context(|| format!("Cannot create dir: {:?}", runtime_dir))?;
-    recursive_dir_cpy(
-        &PathBuf::from(runtime_env_dir),
-        &runtime_dir
-    )?;
+    // info!("Bundling runtime dependencies...");
+    // let runtime_dir = folder.join("runtime");
+    // std::fs::create_dir(&runtime_dir)
+    //     .with_context(|| format!("Cannot create dir: {:?}", runtime_dir))?;
+    // recursive_dir_cpy(
+    //     &PathBuf::from(runtime_env_dir),
+    //     &runtime_dir
+    // )?;
 
     // let dynlib_dir = folder;
     // let excludelist_path = src_path.join("distribution/windows/excludelist");
@@ -76,15 +75,12 @@ fn populate_folder(
 }
 
 pub fn build_portable_folder(
-    runtime_env_dir : &Path,
     exe_path : &Path,
     _dev_exe_path : &Path,
     launcher_path : &Path,
     output_dir : &Path,
     _release : bool,
 ) -> Result<(), anyhow::Error> {
-    info!("Assets directory: {:?}", runtime_env_dir);
-
     if std::fs::exists(output_dir)? {
         return Err(anyhow::anyhow!("Output directory {:?} already exists", output_dir));
     }
@@ -94,8 +90,7 @@ pub fn build_portable_folder(
     info!("Creating portable directory...");
     std::fs::create_dir(output_dir)?;
 
-    populate_folder(runtime_env_dir,
-                            output_dir,
+    populate_folder(output_dir,
                             exe_path,
                             launcher_path)?;
 

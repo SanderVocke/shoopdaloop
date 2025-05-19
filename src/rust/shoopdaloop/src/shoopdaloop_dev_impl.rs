@@ -3,18 +3,19 @@ use std::path::PathBuf;
 use glob::glob;
 
 use crate::shoopdaloop_main;
-use crate::add_lib_search_path::add_lib_search_path;
 use crate::shoop_app_info;
 
 use common::logging::macros::*;
 shoop_log_unit!("Main");
 
-const SHOOP_RUNTIME_ENV_DIR : &str = env!("SHOOP_RUNTIME_ENV_DIR");
-const SHOOP_ENV_DYLIB_DIR : &str = env!("SHOOP_ENV_DYLIB_DIR");
-const SHOOP_ENV_DIR_TO_PYTHON_LIBS : &str = env!("SHOOP_ENV_DIR_TO_PYTHON_LIBS");
+// const SHOOP_RUNTIME_ENV_DIR : &str = env!("SHOOP_RUNTIME_ENV_DIR");
+// const SHOOP_ENV_DYLIB_DIR : &str = env!("SHOOP_ENV_DYLIB_DIR");
+// const SHOOP_ENV_DIR_TO_PYTHON_LIBS : &str = env!("SHOOP_ENV_DIR_TO_PYTHON_LIBS");
 const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
 
 pub fn main() {
+    common::init().unwrap();
+    
     // For normalizing Windows paths
     let normalize_path = |path: PathBuf| -> PathBuf {
         PathBuf::from(std::fs::canonicalize(path).unwrap().to_str().unwrap().trim_start_matches(r"\\?\"))
@@ -22,54 +23,55 @@ pub fn main() {
 
     // Set up PYTHONPATH. This can deal with:
     // finding env in Cargo build case, based on the remembered OUT_DIR
-    let shoop_lib_dir = normalize_path(PathBuf::from(SHOOP_ENV_DYLIB_DIR));
-    let shoop_env_dir = normalize_path(PathBuf::from(SHOOP_RUNTIME_ENV_DIR));
-    let shoop_env_python_lib_dir = normalize_path(shoop_env_dir.join(PathBuf::from(SHOOP_ENV_DIR_TO_PYTHON_LIBS)));
-    let bundled_python_site_packages : PathBuf;
+    // let shoop_lib_dir = normalize_path(PathBuf::from(SHOOP_ENV_DYLIB_DIR));
+    // let shoop_env_dir = normalize_path(PathBuf::from(SHOOP_RUNTIME_ENV_DIR));
+    // let shoop_env_python_lib_dir = normalize_path(shoop_env_dir.join(PathBuf::from(SHOOP_ENV_DIR_TO_PYTHON_LIBS)));
+    // let bundled_python_site_packages : PathBuf;
 
-    #[cfg(target_os = "windows")]
-    {
-        bundled_python_site_packages = bundled_python_home.join("Lib/site-packages");
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let pattern = format!("{}/**/site-packages", shoop_lib_dir.to_str().unwrap());
-        let mut sp_glob = glob(&pattern).unwrap();
-        bundled_python_site_packages = std::fs::canonicalize(
-                sp_glob.next()
-                .expect(format!("No site-packages dir found @ {}", pattern).as_str())
-                .unwrap()
-            ).unwrap();
-    }
+    // #[cfg(target_os = "windows")]
+    // {
+    //     bundled_python_site_packages = bundled_python_home.join("Lib/site-packages");
+    // }
+    // #[cfg(not(target_os = "windows"))]
+    // {
+    //     let pattern = format!("{}/**/site-packages", shoop_lib_dir.to_str().unwrap());
+    //     let mut sp_glob = glob(&pattern).unwrap();
+    //     bundled_python_site_packages = std::fs::canonicalize(
+    //             sp_glob.next()
+    //             .expect(format!("No site-packages dir found @ {}", pattern).as_str())
+    //             .unwrap()
+    //         ).unwrap();
+    // }
 
     let shoop_src_root_dir = normalize_path(PathBuf::from(SRC_DIR).join("../../.."));
-    let pythonpath_to_src = normalize_path(
-        shoop_src_root_dir.join("src/python"));
-    let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
-    let pythonpath = format!("{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}",
-                         pythonpath_to_src.to_str().unwrap(),
-                         bundled_python_site_packages.to_str().unwrap(),
-                         bundled_python_site_packages.parent().unwrap().to_str().unwrap(),
-                         bundled_python_site_packages.parent().unwrap().join("lib-dynload").to_str().unwrap(),
-                         bundled_python_site_packages.parent().unwrap().join("importlib").to_str().unwrap(),
-                         bundled_python_site_packages.parent().unwrap().parent().unwrap().join("DLLs").to_str().unwrap(),
-                         bundled_python_site_packages.join("win32").to_str().unwrap(),
-                         bundled_python_site_packages.join("win32").join("lib").to_str().unwrap(),
-                         shoop_env_python_lib_dir.to_str().unwrap(),
-                         shoop_lib_dir.to_str().unwrap(),
-                         );
-    debug!("using PYTHONPATH: {}", pythonpath.as_str());
-    env::set_var("PYTHONPATH", pythonpath.as_str());
-    debug!("using PYTHONHOME: {}", shoop_env_python_lib_dir.to_str().unwrap());
-    env::set_var("PYTHONHOME", shoop_env_python_lib_dir.to_str().unwrap());
-    add_lib_search_path(&shoop_lib_dir);
+    env::set_var("PYTHONPATH", py_env::dev_env_pythonpath().as_str());
+
+    // let pythonpath_to_src = normalize_path(
+    //     shoop_src_root_dir.join("src/python"));
+    // let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
+    // let pythonpath = format!("{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}{sep}{}",
+    //                      pythonpath_to_src.to_str().unwrap(),
+    //                      bundled_python_site_packages.to_str().unwrap(),
+    //                      bundled_python_site_packages.parent().unwrap().to_str().unwrap(),
+    //                      bundled_python_site_packages.parent().unwrap().join("lib-dynload").to_str().unwrap(),
+    //                      bundled_python_site_packages.parent().unwrap().join("importlib").to_str().unwrap(),
+    //                      bundled_python_site_packages.parent().unwrap().parent().unwrap().join("DLLs").to_str().unwrap(),
+    //                      bundled_python_site_packages.join("win32").to_str().unwrap(),
+    //                      bundled_python_site_packages.join("win32").join("lib").to_str().unwrap(),
+    //                      shoop_env_python_lib_dir.to_str().unwrap(),
+    //                      shoop_lib_dir.to_str().unwrap(),
+    //                      );
+    // debug!("using PYTHONPATH: {}", pythonpath.as_str());
+    // env::set_var("PYTHONPATH", pythonpath.as_str());
+    // debug!("using PYTHONHOME: {}", shoop_env_python_lib_dir.to_str().unwrap());
+    // env::set_var("PYTHONHOME", shoop_env_python_lib_dir.to_str().unwrap());
 
     let mut app_info = shoop_app_info::ShoopAppInfo::default();
     app_info.version = env!("CARGO_PKG_VERSION").to_string();
     app_info.description = env!("CARGO_PKG_DESCRIPTION").to_string();
     app_info.install_info = format!("editable dev install in {}",
                     shoop_src_root_dir.to_str().unwrap());
-    app_info.dynlib_dir = shoop_lib_dir.to_str().unwrap().to_string();
+    // app_info.dynlib_dir = shoop_lib_dir.to_str().unwrap().to_string();
     app_info.qml_dir = shoop_src_root_dir.join("src/qml").to_str().unwrap().to_string();
     app_info.py_dir = shoop_src_root_dir.join("src/python/shoopdaloop").to_str().unwrap().to_string();
     app_info.lua_dir = shoop_src_root_dir.join("src/lua").to_str().unwrap().to_string();

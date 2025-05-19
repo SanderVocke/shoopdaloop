@@ -35,12 +35,12 @@ def find_qmake(directory):
     return qmake_path
 
 def find_python(vcpkg_installed_directory, is_debug_build):
-    python_filename = 'python'
+    executable_release = ("python.exe" if sys.platform == "win32" else "python3")
+    executable_debug = ("python_d.exe" if sys.platform == "win32" else "python3d")
+    executable = executable_debug if is_debug_build else executable_release
+    tail = os.path.join("tools", "python3", executable)
     if is_debug_build:
-        python_filename = python_filename + "_d"
-    if sys.platform == "win32":
-        python_filename = python_filename + ".exe"
-    tail = os.path.join("tools", "python3", python_filename)
+        tail = os.path.join("debug", tail)
     pattern = f'{vcpkg_installed_directory}/**/{tail}'
     python_paths = glob.glob(pattern, recursive=True)
     exe = (python_paths[0] if python_paths else None)
@@ -64,7 +64,7 @@ def find_python(vcpkg_installed_directory, is_debug_build):
         exit(1)
 
     libname = f'python{major_version}.{minor_version}d' if is_debug_build else f'python{major_version}.{minor_version}'
-    libdir = os.path.join(os.path.dirname(exe), '../../debug/lib' if is_debug_build else '../../lib')
+    libdir = os.path.join(os.path.dirname(exe), '../../../debug/lib' if is_debug_build else '../../lib')
     version = f'{major_version}.{minor_version}'
 
     return (exe, libdir, libname, version)
@@ -108,12 +108,13 @@ def windows_to_bash_paths(windows_paths):
 import platform
 import sys
 
-def find_vcpkg_dynlibs_paths(installed_dir):
+def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
     # TODO: handle MacOS
     tail = os.path.join("bin", "zita-resampler.dll") if sys.platform == "win32" \
            else os.path.join("lib", "libzita-resampler.so") if sys.platform == "linux" \
            else os.path.join("lib", "libzita-resampler.dylib")
-    pattern = f'{installed_dir}/**/{tail}'
+    dbgpart = "debug/" if is_debug_build else ""
+    pattern = f'{installed_dir}/{dbgpart}**/{tail}'
     print(f"Looking for dynamic libraries by searching for zita-resampler at: {pattern}")
     zita_paths = glob.glob(pattern, recursive=True)
     if not zita_paths:
@@ -129,8 +130,6 @@ def add_build_parser(subparsers):
     global default_vcpkgs_installed_path
 
     build_parser = subparsers.add_parser('build', help='Build the project')
-
-    # default_python_version = os.environ.get('PYTHON_VERSION', '3.10')
 
     # build_parser.add_argument('--python-version', type=str, required=False, default=default_python_version, help='Python version to embed into ShoopDaLoop. Will be installed with uv if not already present.')
     build_parser.add_argument('--vcpkg-root', type=str, required=False, default=os.environ.get('VCPKG_ROOT'), help='Path to the VCPKG root directory. Default is VCPKG_ROOT environment variable.')
@@ -195,6 +194,7 @@ def build(args):
         result = subprocess.check_output(f'{vcpkg_exe} --help', shell=True, env=apply_build_env(build_env))
     except subprocess.CalledProcessError:
         print("Error: vcpkg not found in PATH. Please install it and ensure it is in the PATH.")
+        exit(1)
 
     # Setup VCPKG_ROOT and toolchain file and triplets
     # Note that we use our own triplets that ensure dynamic linkage of libraries and MacOS version choosing.
@@ -218,16 +218,14 @@ def build(args):
         with open(vcpkg_toolchain_wrapper, 'r') as f:
             print(f"Using toolchain file wrapper with contents:\n--------\n{f.read()}\n--------")
         vcpkg_toolchain = vcpkg_toolchain_wrapper
-        
-    build_env["CMAKE_TOOLCHAIN_FILE"] = vcpkg_toolchain
     print(f"Using VCPKG_ROOT: {build_env['VCPKG_ROOT']}")
-    print(f"Using CMAKE_TOOLCHAIN_FILE: {build_env['CMAKE_TOOLCHAIN_FILE']}")
 
     # Setup cargo
     try:
         result = subprocess.check_output('cargo -V', shell=True, env=apply_build_env(build_env))
     except subprocess.CalledProcessError:
         print("Error: cargo not found in PATH. Please install it and ensure it is in the PATH.")
+        exit(1)
 
 
     print("Tool and environment checks done.")
@@ -242,9 +240,11 @@ def build(args):
         extra_args = args.vcpkg_args if args.vcpkg_args else ''
         run_and_print(f"{vcpkg_exe} install --x-install-root={vcpkg_installed_dir} {extra_args}",
                         env=apply_build_env(build_env),
-                        cwd=os.path.join(base_path, 'src', 'backend'),
+                        cwd=os.path.join(base_path, 'vcpkg'),
                         err="Failed to fetch/build/install vcpkg packages.")
         print("vcpkg packages installed.")
+    vcpkg_installed_prefix = os.path.join(vcpkg_installed_dir, detect_vcpkg_triplet())
+    build_env["CMAKE_PREFIX_PATH"] = vcpkg_installed_prefix
 
     # Find python
     (python_exe, python_libdir, python_libname, python_version) = find_python(vcpkg_installed_dir, build_mode=='debug')
@@ -257,6 +257,16 @@ def build(args):
         f.write(f"executable={python_exe}\n")
         f.write(f"version={python_version}\n")
     build_env["PYO3_CONFIG_FILE"] = pyo3_config_file
+    build_env["SHOOP_DEV_ENV_PYTHON"] = python_exe
+    
+    # # Setup library load dirs
+    # dynlib_path = find_vcpkg_dynlibs_paths(vcpkg_installed_dir, build_mode=='debug')
+    # if sys.platform == "win32":
+    #     build_env["PATH"] = f"{dynlib_path};{os.environ.get('PATH')}"
+    # elif sys.platform == "linux":
+    #     build_env["LD_LIBRARY_PATH"] = f"{dynlib_path}:{os.environ.get('LD_LIBRARY_PATH')}"
+    # elif sys.platform == "darwin":
+    #     build_env["DYLD_LIBRARY_PATH"] = f"{dynlib_path}:{os.environ.get('DYLD_LIBRARY_PATH')}"
 
     # Find qmake
     qmake_path = find_qmake(vcpkg_installed_dir)

@@ -188,6 +188,21 @@ endif()
 # Find libzita-resampler
 find_package(zita-resampler REQUIRED)
 
+# Output zita-resampler library dir to a file which downstream
+# builds can re-use for linking
+
+# if debug
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  get_target_property(ZITA_SO zita-resampler::zita-resampler IMPORTED_LOCATION_DEBUG)
+else()
+  get_target_property(ZITA_SO zita-resampler::zita-resampler IMPORTED_LOCATION_RELEASE)
+endif()
+# take the dirname
+get_filename_component(ZITA_DIR ${ZITA_SO} DIRECTORY)
+message(STATUS "zita-resampler directory: ${ZITA_DIR}")
+# write it to a file in the build output directory
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/zita_resampler_dir.txt "${ZITA_DIR}")
+
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
@@ -239,16 +254,16 @@ if (WIN32)
 endif()
 # create_breakpad_symbols_dump(shoopdaloop_backend)
 
-if(APPLE)
-  set_target_properties(shoopdaloop_backend PROPERTIES
-      BUILD_WITH_INSTALL_RPATH TRUE
-      INSTALL_RPATH "@loader_path/"  # Load dylibs from same directory
-  )
-elseif(UNIX)
-  set_target_properties(shoopdaloop_backend PROPERTIES
-    INSTALL_RPATH "$ORIGIN/"  # Load .so's from same directory
-  )
-endif()
+# if(APPLE)
+#   set_target_properties(shoopdaloop_backend PROPERTIES
+#       BUILD_WITH_INSTALL_RPATH TRUE
+#       INSTALL_RPATH "@loader_path/"  # Load dylibs from same directory
+#   )
+# elseif(UNIX)
+#   set_target_properties(shoopdaloop_backend PROPERTIES
+#     INSTALL_RPATH "$ORIGIN/"  # Load .so's from same directory
+#   )
+# endif()
 
 # Use vcpkg-compatible installation structure
 if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")

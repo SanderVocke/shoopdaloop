@@ -35,7 +35,8 @@ pub fn get_dependency_libs (executable : &Path,
     let ori_env_vars : Vec<(String, String)> = std::env::vars().collect();
     let env_map : HashMap<String, String> = ori_env_vars.iter().cloned().collect();
     let (command, args, warning_patterns, skip_n_levels, dylib_filename_part, new_env_map) = get_os_specifics(executable, include_directory, &env_map)?;
-    debug!("Running shell command for determining dependencies: {args:?}");
+    let argstr = args.join(" ");
+    debug!("Running shell command for determining dependencies: {argstr}");
     let mut list_deps : &mut Command = &mut Command::new(&command);
     list_deps = list_deps.args(&args)
                          .envs(new_env_map.iter())
@@ -227,8 +228,6 @@ pub fn get_dependency_libs (executable : &Path,
         return Err(anyhow::anyhow!("Dependency errors:\n{}", error_msgs));
     }
     paths.dedup();
-
-    info!("Dependencies: {paths:?}");
     Ok(paths)
 }
 

@@ -21,13 +21,13 @@ struct Cli {
 enum Commands {
     BuildPortableFolder {
         #[arg(short, long, value_name="/path/to/folder", required = true)]
-        output_dir: PathBuf,
+        output_dir : PathBuf,
 
         #[arg(short, long, action = clap::ArgAction::SetTrue)]
-        release: bool,
+        release : bool,
 
         #[arg(long, action = clap::ArgAction::SetTrue)]
-        replace: bool,
+        replace : bool,
     },
     BuildAppImage {
         #[arg(short='t', long, value_name="/path/to/appimagetool", required = true)]
@@ -63,30 +63,19 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
     let exe_dir = exe.parent().ok_or(anyhow::anyhow!("Unable to find exe dir"))?;
     let main_exe : PathBuf;
     let dev_exe : PathBuf;
-    let print_runtime_env_dir : PathBuf;
     #[cfg(target_os = "windows")]
     {
         main_exe = exe_dir.join("shoopdaloop.exe");
         dev_exe = exe_dir.join("shoopdaloop_dev.exe");
-        print_runtime_env_dir = exe_dir.join("print_runtime_env_dir.exe");
     }
     #[cfg(not(target_os = "windows"))]
     {
         main_exe = exe_dir.join("shoopdaloop");
         dev_exe = exe_dir.join("shoopdaloop_dev");
-        print_runtime_env_dir = exe_dir.join("print_runtime_env_dir");
     }
 
-    let runtime_env_dir = Command::new(print_runtime_env_dir)
-                              .output()
-                              .with_context(|| "failed to run print_runtime_env_dir")
-                              .and_then(|r| match r.status.success() {
-                                true => Ok(std::str::from_utf8(&r.stdout).unwrap().trim().to_string()),
-                                false => Err(anyhow::anyhow!("failed to run and parse print_runtime_env_dir result"))
-                              })?;
-
     match &args.command {
-        Some(Commands::BuildPortableFolder { output_dir, release , replace}) => {
+        Some(Commands::BuildPortableFolder { output_dir, release , replace }) => {
             #[cfg(target_os = "linux")]
             {
                 if *replace && std::fs::exists(output_dir)? {
@@ -94,8 +83,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                     std::fs::remove_dir_all(output_dir)?;
                 }
                 packaging::linux_appdir::build_appdir
-                           (Path::new(runtime_env_dir.as_str()),
-                            main_exe.as_path(),
+                           (main_exe.as_path(),
                             dev_exe.as_path(),
                             output_dir.as_path(),
                             *release)
@@ -107,7 +95,6 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                     std::fs::remove_dir_all(output_dir)?;
                 }
                 packaging::macos_appbundle::build_appbundle(
-                            Path::new(runtime_env_dir.as_str()),
                             main_exe.as_path(),
                             dev_exe.as_path(),
                             output_dir.as_path(),
@@ -121,7 +108,6 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                 }
                 let launcher_exe : PathBuf = exe_dir.join("shoopdaloop_windows_launcher.exe");
                 packaging::windows_portable_folder::build_portable_folder(
-                            Path::new(runtime_env_dir.as_str()),
                             main_exe.as_path(),
                             dev_exe.as_path(),
                             launcher_exe.as_path(),
@@ -134,9 +120,8 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                 info!("Removing existing directory: {}", output_dir.display());
                 std::fs::remove_dir_all(output_dir)?;
             }
-            build_test_binaries_folder
-                        (Path::new(runtime_env_dir.as_str()),
-                        output_dir.as_path(),
+            build_test_binaries_folder(
+                         output_dir.as_path(),
                         *release)
         },
         Some(Commands::BuildAppImage { appimagetool, appdir, output , replace}) => {
