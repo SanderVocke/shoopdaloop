@@ -86,7 +86,7 @@ execute_process(
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}" 
     OPTIONS
-        -DMODULES=Core\;Gui\;Widgets\;Network\;Concurrent\;DBus\;OpenGL\;OpenGLWidgets\;PrintSupport\;Qml\;Quick\;QuickControls2\;QuickTest\;QuickWidgets\;Xml\;Test\;Sql\;Svg\;SvgWidgets
+        -DMODULES=Core\;Gui\;Widgets\;Network\;Concurrent\;DBus\;OpenGL\;OpenGLWidgets\;PrintSupport\;Qml\;Quick\;QuickControls2\;QuickTest\;QuickWidgets\;Xml\;Test\;Svg\;SvgWidgets
         -DFORCE_LIMITED_API=OFF
     OPTIONS_DEBUG
         -DPython_EXECUTABLE="${PYTHON3_INTERPRETER_DEBUG}"
