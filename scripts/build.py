@@ -35,7 +35,12 @@ def find_qmake(directory):
     return qmake_path
 
 def find_python(vcpkg_installed_directory, is_debug_build):
-    tail = os.path.join("tools", "python3", ("python3.exe" if sys.platform == "win32" else "python3"))
+    python_filename = 'python'
+    if is_debug_build:
+        python_filename = python_filename + "_d"
+    if sys.platform == "win32":
+        python_filename = python_filename + ".exe"
+    tail = os.path.join("tools", "python3", python_filename)
     pattern = f'{vcpkg_installed_directory}/**/{tail}'
     python_paths = glob.glob(pattern, recursive=True)
     exe = (python_paths[0] if python_paths else None)
