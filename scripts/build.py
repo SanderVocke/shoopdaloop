@@ -126,6 +126,20 @@ def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
     print(f"Found dynamic library path at: {dynlib_path}")
     return dynlib_path
 
+def find_vcpkg_pkgconf(installed_dir):
+    filename = 'pkgconf'
+    if sys.platform == 'win32':
+        filename = filename + ".exe"
+    tail = os.path.join('tools', 'pkgconf', filename)
+    pattern = f'{installed_dir}/**/{tail}'
+    print(f"Looking for {filename} by searching for at: {pattern}")
+    paths = glob.glob(pattern, recursive=True)
+    if not paths:
+        return None
+    path = paths[0]
+    print(f'found pkgconf at: {path}')
+    return path
+
 def add_build_parser(subparsers):
     global default_vcpkgs_installed_path
 
@@ -158,6 +172,12 @@ def build(args):
         for key, value in env_dict.items():
             env[key] = value
         return env
+    
+    def add_to_env_paths(varname, path):
+        sep = ';' if sys.platform == 'win32' else ':'
+        if not varname in build_env:
+            build_env[varname] = os.environ.get(varname) or ''
+        build_env[varname] = f'{build_env[varname]}{sep}{path}'
 
     build_mode = ('release' if args.release else 'debug')
     print(f"Building in {build_mode} mode.")
@@ -245,6 +265,9 @@ def build(args):
         print("vcpkg packages installed.")
     vcpkg_installed_prefix = os.path.join(vcpkg_installed_dir, detect_vcpkg_triplet())
     build_env["CMAKE_PREFIX_PATH"] = vcpkg_installed_prefix
+    if sys.platform == 'win32':
+        pkgconf_dir = os.path.dirname(find_vcpkg_pkgconf(vcpkg_installed_dir))
+        add_to_env_paths('PATH', pkgconf_dir)
 
     # Find python
     (python_exe, python_libdir, python_libname, python_version) = find_python(vcpkg_installed_dir, build_mode=='debug')

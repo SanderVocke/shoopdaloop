@@ -96,18 +96,24 @@ fn main_impl() -> Result<(), anyhow::Error> {
         //     println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$loader_path/{}", path_to_runtime_lib); // For builtin libraries
         // }
 
-        // Link to dev folders
-        for path in backend::all_link_search_paths() {
-            println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", path.to_str().unwrap());
+        #[cfg(target_os = "linux")] {
+            // Link to dev folders
+            for path in backend::all_link_search_paths() {
+                println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", path.to_str().unwrap());
+            }
+
+            // Link to portable lib folder
+            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/../lib");
+
+            // Use RPATH instead of RUNPATH, which will enable finding transitive dependencies
+            // (e.g. in the vcpkg installation folder)
+            println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,--disable-new-dtags");
+            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--disable-new-dtags");
         }
 
-        // Link to portable lib folder
-        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/../lib");
-
-        // Use RPATH instead of RUNPATH, which will enable finding transitive dependencies
-        // (e.g. in the vcpkg installation folder)
-        println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,--disable-new-dtags");
-        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--disable-new-dtags");
+        // for path in backend::all_link_search_paths() {
+        //     println!("cargo:rustc-link-search=native={:?}", path);
+        // }
 
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");

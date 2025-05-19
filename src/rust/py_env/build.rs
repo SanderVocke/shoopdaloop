@@ -53,6 +53,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
         // Create a runtime venv using the dev env python to install our wheel into.
         let dev_venv_dir = out_dir.join("dev_venv");
+        let python_filename = 
+             if cfg!(debug_assertions) { "python_d" } else { "python" };
+        let python_in_venv =
+             if cfg!(target_os = "windows") { format!("Scripts/{python_filename}.exe") }
+             else { format!("bin/{python_filename}") };
         if dev_venv_dir.exists() {
             std::fs::remove_dir_all(&dev_venv_dir)
                 .with_context(|| format!("Failed to remove development venv: {:?}", &dev_venv_dir))?;
@@ -65,7 +70,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .stderr(std::process::Stdio::inherit())
             .status()
             .with_context(|| format!("Failed to create development venv: {dev_env_python:?} {args:?}"))?;
-        let development_venv_python = dev_venv_dir.join("bin/python");
+        let development_venv_python = dev_venv_dir.join(&python_in_venv);
 
         // Create a build-time venv using the dev env python to build our wheel with.
         let build_venv_dir = out_dir.join("build_venv");
@@ -85,19 +90,20 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("Installing build requirements...");
         let build_requirements_file = base_src_dir.join("build_python_requirements.txt");
         let args = &["-m", "pip", "install", "-r", build_requirements_file.to_str().unwrap(), "setuptools", "wheel"];
-        let build_venv_python = build_venv_dir.join("bin/python");
+        let build_venv_python = build_venv_dir.join(&python_in_venv);
         Command::new(&build_venv_python)
             .args(args)
             .stdout(std::process::Stdio::inherit())
             .stderr(std::process::Stdio::inherit())
             .status()
-            .with_context(|| format!("Failed to install build requirements: {build_venv_dir:?} {args:?}"))?;
+            .with_context(|| format!("Failed to install build requirements: {build_venv_python:?} {args:?}"))?;
 
         // Build ShoopDaLoop wheel
         println!("Building wheel...");
         let args = &["-m", "build",
             "--outdir", out_dir.to_str().expect("Couldn't get out dir"),
             "--wheel",
+            "--no-isolation",
             python_src_dir.to_str().unwrap()];
         Command::new(&build_venv_python)
             .args(args)
