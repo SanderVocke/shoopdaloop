@@ -115,6 +115,7 @@ runs:
 
   - name: Install MSVC 14.40
     if: always()
+    shell: pwsh
     run: |
             Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
             $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
