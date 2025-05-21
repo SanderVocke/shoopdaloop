@@ -24,15 +24,31 @@ def run_and_print(command, env=None, err="Command failed.", cwd=None):
         print(f"-> Error: {err}")
         exit(1)
 
-def find_qmake(directory):
-    tail = os.path.join("Qt6", "bin", "qmake.exe") if sys.platform == "win32" else os.path.join("Qt6", "bin", "qmake")
+def find_qmake(directory, is_debug_build):
+    env_settings = dict()
+
+    win_qmake = 'qmake.debug.bat' if is_debug_build else 'qmake.exe'
+    tail = os.path.join("Qt6", "bin", win_qmake) if sys.platform == "win32" else os.path.join("Qt6", "bin", "qmake")
     pattern = f'{directory}/**/{tail}'
     print(f"Looking for qmake at: {pattern}")
     qmake_paths = glob.glob(pattern, recursive=True)
     if not qmake_paths:
-        return None
-    qmake_path = qmake_paths[0]
-    return qmake_path
+        return (None, None)
+    qmake = qmake_paths[0]
+
+    if sys.platform == 'win32' and is_debug_build:
+        # .bat scripts don't work with cxx-qt. Use a wrapper executable
+        tail = os.path.join('tools', 'run_env_cmd', 'run_env_cmd.exe')
+        pattern = f'{directory}/**/{tail}'
+        print(f"Looking for run_env_cmd.exe at: {pattern}")
+        run_env_cmd_paths = glob.glob(pattern, recursive=True)
+        if not run_env_cmd_paths:
+            return (None, None)
+        run_env_cmd = run_env_cmd_paths[0]
+        env_settings["CMD_TO_RUN"] = qmake
+        return (run_env_cmd, env_settings)
+
+    return (qmake, env_settings)
 
 def find_python(vcpkg_installed_directory, is_debug_build):
     executable_release = ("python.exe" if sys.platform == "win32" else "python3")
@@ -63,7 +79,9 @@ def find_python(vcpkg_installed_directory, is_debug_build):
         print(f"-> Error: {e}")
         exit(1)
 
-    libname = f'python{major_version}.{minor_version}d' if is_debug_build else f'python{major_version}.{minor_version}'
+    dbg_suffix = '_d' if sys.platform == 'win32' else 'd'
+    maybe_dot = '' if sys.platform == 'win32' else '.'
+    libname = f'python{major_version}{maybe_dot}{minor_version}{dbg_suffix}' if is_debug_build else f'python{major_version}{maybe_dot}{minor_version}'
     libdir = os.path.join(os.path.dirname(exe), '../../../debug/lib' if is_debug_build else '../../lib')
     version = f'{major_version}.{minor_version}'
 
@@ -292,12 +310,15 @@ def build(args):
     #     build_env["DYLD_LIBRARY_PATH"] = f"{dynlib_path}:{os.environ.get('DYLD_LIBRARY_PATH')}"
 
     # Find qmake
-    qmake_path = find_qmake(vcpkg_installed_dir)
+    (qmake_path, qmake_env) = find_qmake(vcpkg_installed_dir, build_mode == 'debug')
     if not qmake_path:
         print("Error: qmake not found in vcpkg packages.")
         sys.exit(1)
     print(f"Found qmake at: {qmake_path}")
     build_env["QMAKE"] = qmake_path
+    for key, value in qmake_env.items():
+        print(f"using extra qmake env: {qmake_env}")
+        build_env[key] = value
 
     if args.write_build_env_ps1:
         args.skip_cargo = True

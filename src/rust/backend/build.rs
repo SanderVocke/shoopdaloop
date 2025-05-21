@@ -38,11 +38,15 @@ fn main_impl() -> Result<(), anyhow::Error> {
                                             .configure_arg(format!("-DCMAKE_BUILD_TYPE={}", if profile == "debug" { "Debug" } else { "Release" }));
             let _ = cmake_config_mut.build();
         }
-        let zita_resampler_dylib_dir_txtfile : PathBuf
-            = cmake_output_dir.join("build/zita_resampler_dir.txt");
+        let zita_resampler_dylib_binary_dir_txtfile : PathBuf
+            = cmake_output_dir.join("build/zita_resampler_dylib_binary_dir.txt");
+        let zita_resampler_dylib_implib_dir_txtfile : PathBuf
+            = cmake_output_dir.join("build/zita_resampler_dylib_implib_dir.txt");
         // Read the contents
-        let zita_resampler_dylib_dir = std::fs::read_to_string(&zita_resampler_dylib_dir_txtfile)
-            .with_context(|| format!("Failed to read {:?}", &zita_resampler_dylib_dir_txtfile))?;
+        let zita_resampler_dylib_binary_dir = std::fs::read_to_string(&zita_resampler_dylib_binary_dir_txtfile)
+            .with_context(|| format!("Failed to read {:?}", &zita_resampler_dylib_binary_dir_txtfile))?;
+        let zita_resampler_dylib_implib_dir = std::fs::read_to_string(&zita_resampler_dylib_implib_dir_txtfile)
+            .with_context(|| format!("Failed to read {:?}", &zita_resampler_dylib_implib_dir_txtfile))?;
 
         // {
         //     let pattern = format!("{}/**/site-packages", env_lib_dir.to_str().unwrap());
@@ -57,11 +61,12 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rerun-if-changed=build.rs");
         println!("cargo:rerun-if-env-changed=PYTHON");
 
-        println!("cargo:rustc-env=SHOOP_ZITA_LINK_DIR={}", zita_resampler_dylib_dir);
+        println!("cargo:rustc-env=SHOOP_ZITA_BINARY_DIR={}", zita_resampler_dylib_binary_dir);
+        println!("cargo:rustc-env=SHOOP_ZITA_IMPLIB_DIR={}", zita_resampler_dylib_implib_dir);
         println!("cargo:rustc-env=SHOOP_BACKEND_DIR={}", install_dir.to_str().unwrap());
         
         println!("cargo:rustc-link-search=native={}", lib_path.display());
-        println!("cargo:rustc-link-search=native={}", zita_resampler_dylib_dir);
+        println!("cargo:rustc-link-search=native={}", zita_resampler_dylib_implib_dir);
 
         Ok(())
     }

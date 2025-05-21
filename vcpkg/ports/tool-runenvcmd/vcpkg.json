@@ -1,0 +1,14 @@
+{
+    "name": "tool-runenvcmd",
+    "version": "0.0.1",
+    "port-version": 0,
+    "description": "Command runner for build steps",
+    "dependencies": [
+        {
+            "name": "vcpkg-cmake"
+        },
+        {
+            "name": "vcpkg-cmake-config"
+        }
+    ]
+}

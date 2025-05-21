@@ -36,7 +36,7 @@ pub fn backend_link_dir() -> PathBuf {
     }
 }
 
-pub fn zita_link_dir() -> PathBuf {
+pub fn zita_link_binary_dir() -> PathBuf {
     #[cfg(feature = "prebuild")]
     {
         return PathBuf::new();
@@ -44,10 +44,27 @@ pub fn zita_link_dir() -> PathBuf {
 
     #[cfg(not(feature = "prebuild"))]
     {
-        let build_dir = env!("SHOOP_ZITA_LINK_DIR");
+        let build_dir = env!("SHOOP_ZITA_BINARY_DIR");
         let rval = PathBuf::from(build_dir);
         if !rval.exists() {
-            panic!("SHOOP_ZITA_LINK_DIR does not exist");
+            panic!("SHOOP_ZITA_BINARY_DIR does not exist");
+        }
+        rval
+    }
+}
+
+pub fn zita_link_implib_dir() -> PathBuf {
+    #[cfg(feature = "prebuild")]
+    {
+        return PathBuf::new();
+    }
+
+    #[cfg(not(feature = "prebuild"))]
+    {
+        let build_dir = env!("SHOOP_ZITA_IMPLIB_DIR");
+        let rval = PathBuf::from(build_dir);
+        if !rval.exists() {
+            panic!("SHOOP_ZITA_IMPLIB_DIR does not exist");
         }
         rval
     }
@@ -64,7 +81,8 @@ pub fn all_link_search_paths() -> Vec<PathBuf> {
     {
         let mut rval = vec![];
         rval.push(backend_link_dir());
-        rval.push(zita_link_dir());
+        rval.push(zita_link_binary_dir());
+        rval.push(zita_link_implib_dir());
         rval
     }
 }

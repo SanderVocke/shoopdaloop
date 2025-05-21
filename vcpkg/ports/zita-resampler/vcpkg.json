@@ -1,0 +1,11 @@
+{
+  "name": "zita-resampler",
+  "version": "1.8.0",
+  "description": "A version of Zita Resampler (https://github.com/digital-stage/zita-resampler) modified for building for ShoopDaLoop.",
+  "homepage": "https://github.com/SanderVocke/shoop-zita-resampler.git",
+  "dependencies": [
+    "pthreads",
+    "vcpkg-cmake",
+    "vcpkg-cmake-config"
+  ]
+}

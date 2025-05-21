@@ -1,7 +1,12 @@
-*/Qt6*.dll
 */kernel32.dll
 */ntdll.dll
 */kernelbase.dll
-*/python*.dll
 */ucrtbase.dll
-*
+*/ucrtbased.dll
+*/VERSION.dll
+*/d3d*.dll
+*/AUTHZ.dll
+*/NETAPI32.dll
+*/WINMM.dll
+*/IPHLPAPI.DLL
+*/WINHTTP.dll

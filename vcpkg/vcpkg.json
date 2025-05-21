@@ -60,6 +60,10 @@
     {
       "name": "pyside6",
       "version>=": "6.8.3"
+    },
+    {
+      "name": "tool-runenvcmd",
+      "host": true
     }
   ]
 }

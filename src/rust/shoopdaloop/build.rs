@@ -76,13 +76,13 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // {
         //     println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");
         // }
-        // println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
-        // #[cfg(target_os = "windows")]
-        // {
-        //     // force linkage by manually importing an arbitrary symbol
-        //     println!("cargo:rustc-link-arg-bin=shoopdaloop=/INCLUDE:create_audio_driver");
-        //     println!("cargo:rustc-link-lib=shoopdaloop_backend");
-        // }
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
+        #[cfg(target_os = "windows")]
+        {
+            // force linkage by manually importing an arbitrary symbol
+            println!("cargo:rustc-link-arg-bin=shoopdaloop=/INCLUDE:create_audio_driver");
+            println!("cargo:rustc-link-lib=shoopdaloop_backend");
+        }
 
         // Configure RPATHs 
         // #[cfg(target_os = "linux")]
@@ -111,9 +111,9 @@ fn main_impl() -> Result<(), anyhow::Error> {
             println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--disable-new-dtags");
         }
 
-        // for path in backend::all_link_search_paths() {
-        //     println!("cargo:rustc-link-search=native={:?}", path);
-        // }
+        for path in backend::all_link_search_paths() {
+            println!("cargo:rustc-link-search=native={:?}", path);
+        }
 
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");
