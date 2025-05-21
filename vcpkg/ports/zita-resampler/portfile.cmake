@@ -1,8 +1,8 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO SanderVocke/shoop-zita-resampler
-    REF "v1.8.0-5"
-    SHA512 1e76aaf56f16e489a00c534fba7bfe8000f3cd45f8cf5d527c64351bf4f3556bc0b8753ccfdd93c876e3e97ddf7c2aa96b64a4d7222d12a2bafaa5c8914ea9cb
+    REF "v1.8.0-6"
+    SHA512 c55a8c28919a307dac5d6fe1f68bf1cd321331f68ca7d4c3d0a3f6928caa65822494aa793e617eac98d983d44ff4a332424c0e20b66fad512df70e35d59b0f25
     HEAD_REF main
 )
 
