@@ -16,11 +16,11 @@ anyhow = "1.0"
 ctor = "0.2"
 regex = "1"
 log = "0.4"
-cxx-qt = "0.7.0"
-cxx-qt-lib = { version = "0.7.0", features = ["full"] }
 macros = { path = "../macros" }
 backend_bindings = { path = "../backend_bindings" }
 common = { path = "../common" }
+cxx-qt = "0.7"
+cxx-qt-lib = { version = "0.7", features = ["full"] }
 
 [build-dependencies]
 cxx-qt-build = "0.7.0"
@@ -31,3 +31,16 @@ macros = { path = "../macros" }
 prebuild = ["macros/prebuild",
             "backend_bindings/prebuild",
             "common/prebuild"]
+
+
+            [profile.dev.package."cxx-qt-build"]
+debug = true
+
+[target.'cfg(windows)'.patch.crates-io]
+cxx-qt =  { git = https://github.com/SanderVocke/cxx-qt.git, branch = "win_dbg", package = "cxx-qt" }
+qt-build-utils = { git = https://github.com/SanderVocke/cxx-qt.git, branch = "win_dbg", package = "qt-build-utils" }
+cxx-qt-build = { git = https://github.com/SanderVocke/cxx-qt.git, branch = "win_dbg", package = "cxx-qt-build" }
+cxx-qt-gen = { git = https://github.com/SanderVocke/cxx-qt.git, branch = "win_dbg", package = "cxx-qt-gen" }
+cxx-qt-lib = { git = https://github.com/SanderVocke/cxx-qt.git, branch = "win_dbg", package = "cxx-qt-lib" }
+cxx-qt-lib-extras = { git = https://github.com/SanderVocke/cxx-qt.git, branch = "win_dbg", package = "cxx-qt-lib-extras" }
+cxx-qt-macro = { git = https://github.com/SanderVocke/cxx-qt.git, branch = "win_dbg", package = "cxx-qt-macro" }

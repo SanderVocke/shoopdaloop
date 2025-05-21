@@ -36,18 +36,6 @@ def find_qmake(directory, is_debug_build):
         return (None, None)
     qmake = qmake_paths[0]
 
-    if sys.platform == 'win32' and is_debug_build:
-        # .bat scripts don't work with cxx-qt. Use a wrapper executable
-        tail = os.path.join('tools', 'run_env_cmd', 'run_env_cmd.exe')
-        pattern = f'{directory}/**/{tail}'
-        print(f"Looking for run_env_cmd.exe at: {pattern}")
-        run_env_cmd_paths = glob.glob(pattern, recursive=True)
-        if not run_env_cmd_paths:
-            return (None, None)
-        run_env_cmd = run_env_cmd_paths[0]
-        env_settings["CMD_TO_RUN"] = qmake
-        return (run_env_cmd, env_settings)
-
     return (qmake, env_settings)
 
 def find_python(vcpkg_installed_directory, is_debug_build):

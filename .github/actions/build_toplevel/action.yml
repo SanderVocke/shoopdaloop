@@ -184,6 +184,12 @@ runs:
       echo "Upload artifacts"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
+  - name: Upload vcpkg-generated dependency builds
+    if: always() && inputs.upload_artifacts == 'true'
+    uses: actions/upload-artifact@v4
+    with:
+      name: vcpkg_dependencies_installed_${{ inputs.name }}
+      path: build/vcpkg_installed
   - name: Upload debug info
     if: always() && inputs.upload_artifacts == 'true'
     uses: actions/upload-artifact@v4
