@@ -348,9 +348,6 @@ def build(args):
 
         print("You can now run the project in dev mode by running:")
         print(f"\n   {run_dev}")
-        if sys.platform == 'win32':
-            print("\nWith the following in your PATH:")
-            print(f"\n   {dynlib_path}")
         print("\nTo explore packaging options, run:")
         print(f"\n   ./target/{build_mode}/package --help\n")
     
