@@ -16,6 +16,7 @@
 */libbz2*
 */libcairo-gobject.so*
 */libcairo.so*
+*/libCatch2*.so*
 */libcom_err.so*
 */libcrypt*
 */libcrypto.so*
@@ -30,6 +31,8 @@
 */libfreetype*.so*
 */libfribidi.so*
 */libgcc_s.so*
+*/libgdbm*.so*
+*/libgdbm_compat*.so*
 */libgdk-*.so*
 */libgio-*.so*
 */libglib-*.so*
@@ -44,6 +47,7 @@
 */libgtk-*.so*
 */libharfbuzz.so*
 */libhogweed.so*
+*/libICE*.so*
 */libicu*.so*
 */libidn*.so*
 */libjpeg.so*
@@ -53,6 +57,7 @@
 */libkrb5support.so*
 */liblber-*.so*
 */libldap-*.so*
+*/liblilv*.so*
 */libltd*.so*
 */liblzma*
 */libmd4c.so*
@@ -82,9 +87,13 @@
 */libresolv.so*
 */libsasl*.so*
 */libselinux.so*
+*/libserd*.so*
 */libshiboken6*.so*
 */libshoopdaloop_backend.so*
+*/libSM*.so*
+*/libsord*.so*
 */libsqlite3*
+*/libsratom*.so*
 */libssl.so*
 */libtasn*.so*
 */libtcl8.6*
@@ -104,4 +113,5 @@
 */libxkbcommon.so*
 */libz.so*
 */libzita-resampler.so*
+*/libzix*.so*
 */libzstd.so*
