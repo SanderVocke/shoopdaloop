@@ -52,13 +52,13 @@ runs:
   #     echo "PTHREADS4W_PATH=$PTHREADS_DIR" | tee -a $GITHUB_ENV
   #     echo "$PTHREADS_DIR" | tee -a $GITHUB_PATH
 
-  # - name: Setup dependencies
-  #   if: always()
-  #   shell: wrap-shell {0}
-  #   run: |
-  #      curl -L https://github.com/lucasg/Dependencies/releases/download/v1.11.1/Dependencies_x64_Release.zip --output dependencies.zip
-  #      unzip dependencies.zip -d dependencies
-  #      echo "$(cygpath -w $(pwd)/dependencies)" | tee -a $GITHUB_PATH
+  - name: Setup dependencies
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+       curl -L https://github.com/lucasg/Dependencies/releases/download/v1.11.1/Dependencies_x64_Release.zip --output dependencies.zip
+       unzip dependencies.zip -d dependencies
+       echo "$(cygpath -w $(pwd)/dependencies)" | tee -a $GITHUB_PATH
 
   - name: Allow running powershell scripts
     if: always()
