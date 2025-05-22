@@ -10,3 +10,5 @@
 */WINMM.dll
 */IPHLPAPI.DLL
 */WINHTTP.dll
+*/DWrite.dll
+*/dxgi.dll
