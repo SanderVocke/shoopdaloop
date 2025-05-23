@@ -58,6 +58,12 @@
       "version>=": "6.8.3"
     },
     {
+      "name": "qtwayland",
+      "version>=": "6.8.3",
+      "platform": "linux"
+
+    },
+    {
       "name": "pyside6",
       "version>=": "6.8.3"
     }
