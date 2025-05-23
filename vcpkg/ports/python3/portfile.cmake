@@ -394,6 +394,13 @@ endif()
 
 configure_file("${CMAKE_CURRENT_LIST_DIR}/vcpkg-port-config.cmake" "${CURRENT_PACKAGES_DIR}/share/${PORT}/vcpkg-port-config.cmake" @ONLY)
 
+if(VCPKG_TARGET_IS_WINDOWS)
+    file(COPY_FILE) "${CMAKE_CURRENT_LIST_DIR}/add_vcpkg_paths.py" "${CURRENT_PACKAGES_DIR}/debug/tools/python3/Lib/site-packages/add_vcpkg_paths.py"
+    file(COPY_FILE) "${CMAKE_CURRENT_LIST_DIR}/add_vcpkg_paths.py" "${CURRENT_PACKAGES_DIR}/tools/python3/Lib/site-packages/add_vcpkg_paths.py"
+    file(COPY_FILE) "${CMAKE_CURRENT_LIST_DIR}/vcpkg_pythonpath.pth" "${CURRENT_PACKAGES_DIR}/debug/tools/python3/Lib/site-packages/vcpkg_pythonpath.pth"
+    file(COPY_FILE) "${CMAKE_CURRENT_LIST_DIR}/vcpkg_pythonpath.pth" "${CURRENT_PACKAGES_DIR}/tools/python3/Lib/site-packages/vcpkg_pythonpath.pth"
+endif()
+
 # For testing
 block()
   include("${CURRENT_PACKAGES_DIR}/share/${PORT}/vcpkg-port-config.cmake")
