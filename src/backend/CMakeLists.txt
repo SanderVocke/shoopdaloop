@@ -186,12 +186,44 @@ if (BACKEND_JACK)
 endif()
 
 # Find libzita-resampler
-find_package(zita-resampler REQUIRED)
+# Try to find the package normally (not REQUIRED)
+find_package(zita-resampler QUIET)
+
+if(NOT zita-resampler_FOUND)
+    message(WARNING "zita-resampler not found via find_package. Attempting manual search...")
+
+    # Try to find the library manually
+    find_library(ZITA_RESAMPLER_LIBRARY
+        NAMES zita-resampler zita-resampler.so
+        DOC "zita-resampler library"
+    )
+
+    # Try to find the include directory
+    find_path(ZITA_RESAMPLER_INCLUDE_DIR
+        NAMES zita-resampler/resampler.h
+        DOC "zita-resampler include directory"
+    )
+
+    message(STATUS "Zita: ${ZITA_RESAMPLER_LIBRARY}, ${ZITA_RESAMPLER_INCLUDE_DIR}")
+
+    # Check if both were found
+    if(ZITA_RESAMPLER_LIBRARY AND ZITA_RESAMPLER_INCLUDE_DIR)
+        message(STATUS "Found zita-resampler manually.")
+        
+        # Define an imported target to simulate a proper package
+        add_library(zita-resampler::zita-resampler UNKNOWN IMPORTED)
+        set_target_properties(zita-resampler::zita-resampler PROPERTIES
+            IMPORTED_LOCATION "${ZITA_RESAMPLER_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${ZITA_RESAMPLER_INCLUDE_DIR}"
+        )
+    else()
+        message(FATAL_ERROR "zita-resampler not found. Aborting.")
+    endif()
+endif()
 
 # Output zita-resampler library dir to a file which downstream
 # builds can re-use for linking
 
-# if debug
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   get_target_property(ZITA_DYLIB_BINARY zita-resampler::zita-resampler IMPORTED_LOCATION_DEBUG)
   get_target_property(ZITA_DYLIB_IMPLIB zita-resampler::zita-resampler IMPORTED_IMPLIB_DEBUG)

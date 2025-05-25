@@ -66,7 +66,9 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rustc-env=SHOOP_BACKEND_DIR={}", install_dir.to_str().unwrap());
         
         println!("cargo:rustc-link-search=native={}", lib_path.display());
-        println!("cargo:rustc-link-search=native={}", zita_resampler_dylib_implib_dir);
+        if !zita_resampler_dylib_implib_dir.is_empty() {
+            println!("cargo:rustc-link-search=native={}", zita_resampler_dylib_implib_dir);
+        }
 
         Ok(())
     }
