@@ -1,1 +1,0 @@
-powershell -Command python scripts/build.py @args

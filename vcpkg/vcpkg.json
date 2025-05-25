@@ -1,6 +1,7 @@
 {
   "name": "shoopdaloop",
   "version": "0.0.0",
+  "builtin-baseline": "8f54ef5453e7e76ff01e15988bf243e7247c5eb5",
   "dependencies": [
     {
       "name": "lilv"
@@ -47,7 +48,7 @@
       "name": "fmt"
     },
     {
-      "name": "zita-resampler"
+      "name": "soxr"
     },
     {
       "name": "qtbase",

@@ -32,21 +32,17 @@ Make sure all the subrepositories are checked out (`git submodule init; git subm
 
 ### Building from source
 
-ShoopDaLoop's build is governed by Cargo. However, a build wrapper script is provided for convenience: `build.sh` / `build.ps1`.
+ShoopDaLoop's build is governed by Cargo. In principle, the build command is `cargo build [--release]`.
 
-There are two reasons a wrapper script is included:
-1. Some environment setup is required for `vcpkg`, which is convenient to automate. This includes bootstrapping `vcpkg` if it is not found and setting the required env vars.
-2. During the build there are chicken-and-egg problems: some Rust dependencies need environment variables to be set in order to find binaries produced in the `vcpkg` build (specifically: `qmake` and the vcpkg-built `python3`). The build script runs the build in two steps: `vcpkg` dependency building, then setting up the environment, then running the Rust build.
+However, managing dependencies can get complicated. For a local installation you might want to set up your dependencies and environment directly (e.g. for building a package for your Linux distribution), but for portable redistributable builds, there is a script included to build dependencies from source as well.
 
-A example simple build command could be:
+The dependency build script uses `vcpkg` to build dependencies (including a Python interpreter and Qt). Run it using `python scripts/vcpkg_prebuild.py`. This will install and bootstrap vcpkg and build dependencies. The result of this is a set of env scripts that set the necessary env vars for then building with Cargo.
 
-```
-./build.sh build --debug
-```
+For details, check the help text of `scripts/vcpkg_prebuild.py`.
 
-After which executables can be found in `target/debug`. The first time building, you might get some errors along the way which are usually solved by installing system packages required for the C++ compilation to succeed.
+For building against your own installations of the dependencies, you need to set `QMAKE`, `SHOOP_DEV_ENV_PYTHON` and `PYO3_CONFIG_FILE` or `PYO3_PYTHON`. (the latter should point to a valid PyO3 config file).
 
-As a reference, you can have a look at `.github/actions/build_base` for how the build script is invoked in CI, and at `distribution/dependencies/...` for the dependencies that are installed by default in the CI runner.
+After the Cargo build, executables can be found in `target/debug`.
 
 ### Building redistributable binaries
 
