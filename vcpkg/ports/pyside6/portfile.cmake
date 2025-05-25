@@ -66,7 +66,7 @@ if(VCPKG_TARGET_IS_WINDOWS)
         set(PYTHON3_INTERPRETER_RELEASE "${CURRENT_INSTALLED_DIR}/tools/python3/python.exe")
 else()
         set(PYTHON3_INTERPRETER_DEBUG "${CURRENT_INSTALLED_DIR}/debug/tools/python3/python3d")
-        set(PYTHON3_INTERPRETER_RELEASE "${CURRENT_INSTALLED_DIR}/tools/python3/python")
+        set(PYTHON3_INTERPRETER_RELEASE "${CURRENT_INSTALLED_DIR}/tools/python3/python3")
 endif()
 
 set(PYTHON3_LIBDIR_DEBUG "${CURRENT_INSTALLED_DIR}/debug/lib")
