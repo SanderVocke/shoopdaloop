@@ -68,43 +68,43 @@ fn populate_appdir(
 
     // FIXME: this is ugly to have to do explicitly. But since these are lazy-loaded,
     // we cannot autodetect them.
-    info!("Bundling Qt plugins...");
-    let zita_dir = backend::zita_link_dir();
-    let pkg_base_dir = zita_dir.parent().unwrap();
-    let pattern = format!("{}/Qt6/plugins", pkg_base_dir.to_string_lossy());
-    let plugins_dir = lib_dir.join("qt_plugins");
-    let mut entries = glob(&pattern)?;
-    let entry = entries.next().unwrap();
-    debug!("--> {:?} -> {:?}", entry, plugins_dir);
-    copy_dir(entry?, &plugins_dir)?;
+    // info!("Bundling Qt plugins...");
+    // let zita_dir = backend::zita_link_dir();
+    // let pkg_base_dir = zita_dir.parent().unwrap();
+    // let pattern = format!("{}/Qt6/plugins", pkg_base_dir.to_string_lossy());
+    // let plugins_dir = lib_dir.join("qt_plugins");
+    // let mut entries = glob(&pattern)?;
+    // let entry = entries.next().unwrap();
+    // debug!("--> {:?} -> {:?}", entry, plugins_dir);
+    // copy_dir(entry?, &plugins_dir)?;
 
     // FIXME: this is ugly to have to do explicitly. But since these are lazy-loaded,
     // we cannot autodetect them.
-    info!("Bundling Qt QML modules...");
-    let zita_dir = backend::zita_link_dir();
-    let pkg_base_dir = zita_dir.parent().unwrap();
-    let pattern = format!("{}/Qt6/qml", pkg_base_dir.to_string_lossy());
-    let qml_dir = appdir.join("lib/qml");
-    let mut entries = glob(&pattern)?;
-    let entry = entries.next().unwrap();
-    debug!("--> {:?} -> {:?}", entry, qml_dir);
-    copy_dir_merge(entry?, &qml_dir)?;
+    // info!("Bundling Qt QML modules...");
+    // let zita_dir = backend::zita_link_dir();
+    // let pkg_base_dir = zita_dir.parent().unwrap();
+    // let pattern = format!("{}/Qt6/qml", pkg_base_dir.to_string_lossy());
+    // let qml_dir = appdir.join("lib/qml");
+    // let mut entries = glob(&pattern)?;
+    // let entry = entries.next().unwrap();
+    // debug!("--> {:?} -> {:?}", entry, qml_dir);
+    // copy_dir_merge(entry?, &qml_dir)?;
 
     info!("Getting dependencies (this may take some time)...");
     let excludelist_path = src_path.join("distribution/linux/excludelist");
     let includelist_path = src_path.join("distribution/linux/includelist");
-    for path in backend::all_link_search_paths() {
+    for path in backend::runtime_link_dirs() {
         debug!("--> extra search path: {:?}", path);
         common::env::add_lib_search_path(&path);
     }
     // Also include search paths to all of Qt's plugin directories
-    let plugin_subdirs = std::fs::read_dir(plugins_dir)?;
-    for entry in plugin_subdirs {
-        let entry = entry?;
-        let path = entry.path();
-        debug!("--> extra search path: {:?}", path);
-        common::env::add_lib_search_path(&path);
-    }
+    // let plugin_subdirs = std::fs::read_dir(plugins_dir)?;
+    // for entry in plugin_subdirs {
+    //     let entry = entry?;
+    //     let path = entry.path();
+    //     debug!("--> extra search path: {:?}", path);
+    //     common::env::add_lib_search_path(&path);
+    // }
     let libs = get_dependency_libs (&final_exe_path, &lib_dir, &excludelist_path, &includelist_path, false)?;
 
     info!("Bundling {} dependencies...", libs.len());

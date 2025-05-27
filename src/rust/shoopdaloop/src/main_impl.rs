@@ -63,16 +63,21 @@ pub fn main() {
     // add_lib_search_path(&runtime_env_path);
     // add_lib_search_path(&lib_path);
 
+    let default_qml_dir = installed_path.join("lib/qml").to_str().unwrap().to_string();
+    let default_lua_dir = installed_path.join("lib/lua").to_str().unwrap().to_string();
+    let default_py_dir = installed_path.join("lib/python").to_str().unwrap().to_string();
+    let default_resource_dir = installed_path.join("resources").to_str().unwrap().to_string();
+    let default_schemas_dir = installed_path.join("lib/session_schemas").to_str().unwrap().to_string();
+
     let mut app_info = shoop_app_info::ShoopAppInfo::default();
     app_info.version = env!("CARGO_PKG_VERSION").to_string();
     app_info.description = env!("CARGO_PKG_DESCRIPTION").to_string();
     app_info.install_info = format!("installed in {}", installed_path.to_str().unwrap());
-    app_info.dynlib_dir = installed_path.join("lib").to_str().unwrap().to_string();
-    app_info.qml_dir = installed_path.join("lib/qml").to_str().unwrap().to_string();
-    app_info.py_dir = installed_path.join("lib/python").to_str().unwrap().to_string();
-    app_info.lua_dir = installed_path.join("lib/lua").to_str().unwrap().to_string();
-    app_info.resource_dir = installed_path.join("resources").to_str().unwrap().to_string();
-    app_info.schemas_dir = installed_path.join("lib/session_schemas").to_str().unwrap().to_string();
+    app_info.qml_dir = env::var("SHOOP_OVERRIDE_QML_DIR").unwrap_or(default_qml_dir.clone());
+    app_info.py_dir = env::var("SHOOP_OVERRIDE_PY_DIR").unwrap_or(default_py_dir.clone());
+    app_info.lua_dir = env::var("SHOOP_OVERRIDE_LUA_DIR").unwrap_or(default_lua_dir.clone());
+    app_info.resource_dir = env::var("SHOOP_OVERRIDE_RESOURCE_DIR").unwrap_or(default_resource_dir.clone());
+    app_info.schemas_dir = env::var("SHOOP_OVERRIDE_SCHEMAS_DIR").unwrap_or(default_schemas_dir.clone());
 
     let errcode = shoopdaloop_main(app_info);
     std::process::exit(errcode);

@@ -45,16 +45,14 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // }
         // let vcpkg_installed_dir = candidates[0].clone();
         let python_src_dir = base_src_dir.join("src").join("python");
-        
-         format!("{}/../../python", src_dir.to_str().unwrap());
         // let built_backend_dir = backend::backend_build_dir();
 
         println!("Using dev env Python: {}", dev_env_python);
 
         // Create a runtime venv using the dev env python to install our wheel into.
         let dev_venv_dir = out_dir.join("dev_venv");
-        let python_filename = 
-             if cfg!(debug_assertions) { "python_d" } else { "python" };
+        let dev_env_python_path : PathBuf = (&dev_env_python).into();
+        let python_filename = dev_env_python_path.file_name().unwrap().to_string_lossy();
         let python_in_venv =
              if cfg!(target_os = "windows") { format!("Scripts/{python_filename}.exe") }
              else { format!("bin/{python_filename}") };
@@ -89,7 +87,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // Install build requirements into the build venv
         println!("Installing build requirements...");
         let build_requirements_file = base_src_dir.join("build_python_requirements.txt");
-        let args = &["-m", "pip", "install", "-r", build_requirements_file.to_str().unwrap(), "setuptools", "wheel"];
+        let args = &["-m", "pip", "install", "-r", build_requirements_file.to_str().unwrap()];
         let build_venv_python = build_venv_dir.join(&python_in_venv);
         Command::new(&build_venv_python)
             .args(args)

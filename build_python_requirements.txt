@@ -4,3 +4,4 @@ meson
 toml
 build
 jinja2
+wheel

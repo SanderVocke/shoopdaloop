@@ -11,12 +11,8 @@ license-file = "LICENSE"
 [lib]
 
 [[bin]]
-name = "shoopdaloop_dev"
-path = "src/bin/shoopdaloop_dev.rs"
-
-[[bin]]
-name = "shoopdaloop_windows_launcher"
-path = "src/bin/shoopdaloop_windows_launcher.rs"
+name = "shoopdaloop_dev_launcher"
+path = "src/bin/shoopdaloop_dev_launcher.rs"
 
 [[bin]]
 name = "print_shoopdaloop_out_dir"

@@ -221,25 +221,6 @@ if(NOT zita-resampler_FOUND)
     endif()
 endif()
 
-# Output zita-resampler library dir to a file which downstream
-# builds can re-use for linking
-
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  get_target_property(ZITA_DYLIB_BINARY zita-resampler::zita-resampler IMPORTED_LOCATION_DEBUG)
-  get_target_property(ZITA_DYLIB_IMPLIB zita-resampler::zita-resampler IMPORTED_IMPLIB_DEBUG)
-else()
-  get_target_property(ZITA_DYLIB_BINARY zita-resampler::zita-resampler IMPORTED_LOCATION_RELEASE)
-  get_target_property(ZITA_DYLIB_IMPLIB zita-resampler::zita-resampler IMPORTED_IMPLIB_RELEASE)
-endif()
-# take the dirname
-get_filename_component(ZITA_DYLIB_BINARY_DIR ${ZITA_DYLIB_BINARY} DIRECTORY)
-get_filename_component(ZITA_DYLIB_IMPLIB_DIR ${ZITA_DYLIB_IMPLIB} DIRECTORY)
-message(STATUS "zita-resampler binary directory: ${ZITA_DYLIB_BINARY_DIR}")
-message(STATUS "zita-resampler implib directory: ${ZITA_DYLIB_IMPLIB_DIR}")
-# write it to a file in the build output directory
-file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/zita_resampler_dylib_binary_dir.txt "${ZITA_DYLIB_BINARY_DIR}")
-file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/zita_resampler_dylib_implib_dir.txt "${ZITA_DYLIB_IMPLIB_DIR}")
-
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})

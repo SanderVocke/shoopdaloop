@@ -18,7 +18,7 @@ pub fn backend_build_dir() -> PathBuf {
     }
 }
 
-pub fn backend_link_dir() -> PathBuf {
+pub fn backend_build_time_link_dir() -> PathBuf {
     // If we're pre-building, return an invalid path
     #[cfg(feature = "prebuild")]
     {
@@ -36,7 +36,8 @@ pub fn backend_link_dir() -> PathBuf {
     }
 }
 
-pub fn zita_link_binary_dir() -> PathBuf {
+pub fn backend_runtime_link_dir() -> PathBuf {
+    // If we're pre-building, return an invalid path
     #[cfg(feature = "prebuild")]
     {
         return PathBuf::new();
@@ -44,33 +45,16 @@ pub fn zita_link_binary_dir() -> PathBuf {
 
     #[cfg(not(feature = "prebuild"))]
     {
-        let build_dir = env!("SHOOP_ZITA_BINARY_DIR");
-        let rval = PathBuf::from(build_dir);
-        if !rval.exists() {
-            panic!("SHOOP_ZITA_BINARY_DIR does not exist");
+        let build_dir = backend_build_dir();
+        if cfg!(debug_assertions) {
+            return build_dir.join("debug").join("lib");
+        } else {
+            return build_dir.join("lib");
         }
-        rval
     }
 }
 
-pub fn zita_link_implib_dir() -> PathBuf {
-    #[cfg(feature = "prebuild")]
-    {
-        return PathBuf::new();
-    }
-
-    #[cfg(not(feature = "prebuild"))]
-    {
-        let build_dir = env!("SHOOP_ZITA_IMPLIB_DIR");
-        let rval = PathBuf::from(build_dir);
-        if !rval.exists() {
-            panic!("SHOOP_ZITA_IMPLIB_DIR does not exist");
-        }
-        rval
-    }
-}
-
-pub fn all_link_search_paths() -> Vec<PathBuf> {
+pub fn build_time_link_dirs() -> Vec<PathBuf> {
     // If we're pre-building, return an empty vector
     #[cfg(feature = "prebuild")]
     {
@@ -79,10 +63,36 @@ pub fn all_link_search_paths() -> Vec<PathBuf> {
 
     #[cfg(not(feature = "prebuild"))]
     {
-        let mut rval = vec![];
-        rval.push(backend_link_dir());
-        rval.push(zita_link_binary_dir());
-        rval.push(zita_link_implib_dir());
-        rval
+        let build_time_link_dirs =
+             option_env!("SHOOP_BACKEND_BUILD_TIME_LINK_DIRS")
+            .unwrap_or_default()
+            .split(std::path::MAIN_SEPARATOR)
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect::<Vec<_>>();
+
+        build_time_link_dirs
+    }
+}
+
+pub fn runtime_link_dirs() -> Vec<PathBuf> {
+    // If we're pre-building, return an empty vector
+    #[cfg(feature = "prebuild")]
+    {
+        return vec![];
+    }
+
+    #[cfg(not(feature = "prebuild"))]
+    {
+        let mut runtime_link_dirs =
+             option_env!("SHOOP_BACKEND_RUNTIME_LINK_DIRS")
+            .unwrap_or_default()
+            .split(std::path::MAIN_SEPARATOR)
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect::<Vec<_>>();
+        runtime_link_dirs.push(backend_runtime_link_dir());
+
+        runtime_link_dirs
     }
 }

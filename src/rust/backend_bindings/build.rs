@@ -38,7 +38,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rerun-if-changed=src/lib.rs");
 
         println!("cargo:rustc-link-search=native={}", lib_path.display());
-        for path in backend::all_link_search_paths() {
+        for path in backend::build_time_link_dirs() {
             println!("cargo:rustc-link-search=native={}", path.display());
         }
 

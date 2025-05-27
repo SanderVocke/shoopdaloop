@@ -8,7 +8,6 @@ pub struct ShoopAppInfo {
     pub version: String,
     pub description: String,
     pub install_info: String,
-    pub dynlib_dir: String,
     pub qml_dir: String,
     pub py_dir: String,
     pub lua_dir: String,
@@ -24,7 +23,6 @@ impl ShoopAppInfo {
         m.setattr("shoop_version", self.version.clone())?;
         m.setattr("shoop_description", self.description.clone())?;
         m.setattr("shoop_install_info", self.install_info.clone())?;
-        m.setattr("shoop_dynlib_dir", self.dynlib_dir.clone())?;
         m.setattr("shoop_qml_dir", self.qml_dir.clone())?;
         m.setattr("shoop_py_dir", self.py_dir.clone())?;
         m.setattr("shoop_lua_dir", self.lua_dir.clone())?;

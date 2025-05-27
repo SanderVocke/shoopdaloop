@@ -67,15 +67,10 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
         // Link to libshoopdaloop_backend
         // println!("cargo:rustc-link-search=native={}", env_lib_dir.to_str().unwrap());
-        // #[cfg(target_os = "linux")]
-        // {
-        //     println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,--no-as-needed");
-        // }
-        // println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-lshoopdaloop_backend");
-        // #[cfg(target_os = "linux")]
-        // {
-        //     println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");
-        // }
+        #[cfg(target_os = "linux")]
+        {
+            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");
+        }
         println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
         #[cfg(target_os = "windows")]
         {
@@ -97,23 +92,25 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // }
 
         #[cfg(target_os = "linux")] {
-            // Link to dev folders
-            for path in backend::all_link_search_paths() {
-                println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", path.to_str().unwrap());
-            }
-
             // Link to portable lib folder
             println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/../lib");
 
             // Use RPATH instead of RUNPATH, which will enable finding transitive dependencies
             // (e.g. in the vcpkg installation folder)
-            println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,--disable-new-dtags");
             println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--disable-new-dtags");
         }
 
-        for path in backend::all_link_search_paths() {
+        for path in backend::build_time_link_dirs() {
             println!("cargo:rustc-link-search=native={:?}", path);
         }
+
+        let runtime_link_paths_str = 
+           backend::runtime_link_dirs()
+              .iter()
+              .map(|p| p.to_string_lossy().to_string())
+              .collect::<Vec<String>>()
+              .join(std::path::MAIN_SEPARATOR.to_string().as_str());
+        println!("cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS={}", runtime_link_paths_str);
 
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");
