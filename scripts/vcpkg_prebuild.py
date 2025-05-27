@@ -175,7 +175,6 @@ def build_vcpkg(args, build_env):
             # clone the vcpkg repo into build/vcpkg
             os.makedirs(os.path.join(base_path, "build"), exist_ok=True)
             subprocess.run(f'git clone https://github.com/microsoft/vcpkg.git {os.path.join(base_path, "build", "vcpkg")}', shell=True)
-            subprocess.run(f'git fetch --unshallow', cwd = os.path.join(base_path, "build", "vcpkg"), shell=True)
             # bootstrap vcpkg
             if sys.platform == 'win32':
                 subprocess.run('bootstrap-vcpkg.bat', cwd=os.path.join(base_path, "build", "vcpkg"), shell=True)
