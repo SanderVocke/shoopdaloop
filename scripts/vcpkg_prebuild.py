@@ -138,7 +138,6 @@ def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
            else os.path.join("lib", "libzita-resampler.dylib")
 
     return (find_path_based_on_tail(runtime_tail), find_path_based_on_tail(compiletime_tail))
-)
 
 def find_vcpkg_pkgconf(installed_dir):
     filename = 'pkgconf'
