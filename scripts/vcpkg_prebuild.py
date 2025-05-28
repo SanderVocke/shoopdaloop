@@ -114,22 +114,31 @@ import platform
 import sys
 
 def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
+    
+    def find_path_based_on_tail(tail):
+        dbgpart = "debug/" if is_debug_build else ""
+        pattern = f'{installed_dir}/{dbgpart}**/{tail}'
+        print(f"Looking for dynamic libraries by searching for zita-resampler at: {pattern}")
+        zita_paths = glob.glob(pattern, recursive=True)
+        if not zita_paths:
+            return None
+        zita_path = zita_paths[0]
+        dynlib_path = os.path.dirname(zita_path)
+        if sys.platform == "win32":
+            dynlib_path = dynlib_path.replace('/', '\\')
+        print(f"Found dynamic library path at: {dynlib_path}")
+        return dynlib_path
+
     # TODO: handle MacOS
-    tail = os.path.join("bin", "zita-resampler.dll") if sys.platform == "win32" \
+    runtime_tail = os.path.join("bin", "zita-resampler.dll") if sys.platform == "win32" \
            else os.path.join("lib", "libzita-resampler.so") if sys.platform == "linux" \
            else os.path.join("lib", "libzita-resampler.dylib")
-    dbgpart = "debug/" if is_debug_build else ""
-    pattern = f'{installed_dir}/{dbgpart}**/{tail}'
-    print(f"Looking for dynamic libraries by searching for zita-resampler at: {pattern}")
-    zita_paths = glob.glob(pattern, recursive=True)
-    if not zita_paths:
-        return None
-    zita_path = zita_paths[0]
-    dynlib_path = os.path.dirname(zita_path)
-    if sys.platform == "win32":
-        dynlib_path = dynlib_path.replace('/', '\\')
-    print(f"Found dynamic library path at: {dynlib_path}")
-    return dynlib_path
+    compiletime_tail = os.path.join("lib", "zita-resampler.lib") if sys.platform == "win32" \
+           else os.path.join("lib", "libzita-resampler.so") if sys.platform == "linux" \
+           else os.path.join("lib", "libzita-resampler.dylib")
+
+    return (find_path_based_on_tail(runtime_tail), find_path_based_on_tail(compiletime_tail))
+)
 
 def find_vcpkg_pkgconf(installed_dir):
     filename = 'pkgconf'
@@ -234,6 +243,11 @@ def build_vcpkg(args, build_env):
     if sys.platform == 'win32':
         pkgconf_dir = os.path.dirname(find_vcpkg_pkgconf(vcpkg_installed_dir))
         new_build_env = add_to_env_paths('PATH', pkgconf_dir, new_build_env)
+
+    # Tell the build where to find link-time and runtime dependencies
+    (runtime_dir, compiletime_dir) = find_vcpkg_dynlibs_paths(vcpkg_installed_dir, True)
+    new_build_env['SHOOP_BACKEND_BUILD_TIME_LINK_DIRS'] = compiletime_dir
+    new_build_env['SHOOP_BACKEND_BUILD_TIME_RUNTIME_DIRS'] = runtime_dir
 
     return new_build_env
 
