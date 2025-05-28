@@ -233,7 +233,7 @@ def build_vcpkg(args, build_env):
     new_build_env["CMAKE_PREFIX_PATH"] = vcpkg_installed_prefix
     if sys.platform == 'win32':
         pkgconf_dir = os.path.dirname(find_vcpkg_pkgconf(vcpkg_installed_dir))
-        add_to_env_paths('PATH', pkgconf_dir)
+        new_build_env = add_to_env_paths('PATH', pkgconf_dir, new_build_env)
 
     return new_build_env
 
