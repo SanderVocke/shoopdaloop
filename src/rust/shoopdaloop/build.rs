@@ -11,6 +11,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
     #[cfg(feature = "prebuild")]
     {
+        println!("cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS=");
         return Ok(());
     }
 
