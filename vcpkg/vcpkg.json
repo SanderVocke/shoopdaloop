@@ -48,7 +48,7 @@
       "name": "fmt"
     },
     {
-      "name": "soxr"
+      "name": "zita-resampler"
     },
     {
       "name": "qtbase",
