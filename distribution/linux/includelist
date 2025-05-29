@@ -108,7 +108,9 @@
 */libwayland-cursor.so*
 */libwayland-egl.so*
 */libwayland-server.so*
-*/libxcb-*.so*
+*/libXau*.so*
+*/libXdmcp*.so*
+*/libxcb*.so*
 */libxkbcommon-x11.so*
 */libxkbcommon.so*
 */libz.so*

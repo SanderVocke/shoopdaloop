@@ -7,14 +7,19 @@ use crate::fs_helpers::recursive_dir_cpy;
 use common::fs::copy_dir_merge;
 use regex::Regex;
 use copy_dir::copy_dir;
+use std::process::Command;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
+
+const MAYBE_QMAKE : Option<&'static str> = option_env!("QMAKE");
 
 fn populate_appdir(
     appdir : &Path,
     exe_path : &Path,
 ) -> Result<(), anyhow::Error> {
+    let qmake = MAYBE_QMAKE.ok_or(anyhow::anyhow!("QMAKE not set at compile-time"))?;
+
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
     let src_path = src_path.ancestors().nth(6).ok_or(anyhow::anyhow!("cannot find src dir"))?;
@@ -66,29 +71,27 @@ fn populate_appdir(
         copy_dir(&src, &dst)?;
     }
 
-    // FIXME: this is ugly to have to do explicitly. But since these are lazy-loaded,
-    // we cannot autodetect them.
-    // info!("Bundling Qt plugins...");
-    // let zita_dir = backend::zita_link_dir();
-    // let pkg_base_dir = zita_dir.parent().unwrap();
-    // let pattern = format!("{}/Qt6/plugins", pkg_base_dir.to_string_lossy());
-    // let plugins_dir = lib_dir.join("qt_plugins");
-    // let mut entries = glob(&pattern)?;
-    // let entry = entries.next().unwrap();
-    // debug!("--> {:?} -> {:?}", entry, plugins_dir);
-    // copy_dir(entry?, &plugins_dir)?;
+    info!("Bundling Qt plugins...");
+    let qt_plugins = Command::new(qmake)
+            .args(&["-query", "QT_INSTALL_PLUGINS"])
+            .stderr(std::process::Stdio::inherit())
+            .output()?;
+    let qt_plugins = String::from_utf8(qt_plugins.stdout)?;
+    let qt_plugins = PathBuf::from(qt_plugins.trim());
+    let install_plugins_dir = lib_dir.join("qt_plugins");
+    debug!("--> {:?} -> {:?}", qt_plugins, install_plugins_dir);
+    copy_dir(qt_plugins, &install_plugins_dir)?;
 
-    // FIXME: this is ugly to have to do explicitly. But since these are lazy-loaded,
-    // we cannot autodetect them.
-    // info!("Bundling Qt QML modules...");
-    // let zita_dir = backend::zita_link_dir();
-    // let pkg_base_dir = zita_dir.parent().unwrap();
-    // let pattern = format!("{}/Qt6/qml", pkg_base_dir.to_string_lossy());
-    // let qml_dir = appdir.join("lib/qml");
-    // let mut entries = glob(&pattern)?;
-    // let entry = entries.next().unwrap();
-    // debug!("--> {:?} -> {:?}", entry, qml_dir);
-    // copy_dir_merge(entry?, &qml_dir)?;
+    info!("Bundling Qt QML components...");
+    let qt_qml = Command::new(qmake)
+            .args(&["-query", "QT_INSTALL_QML"])
+            .stderr(std::process::Stdio::inherit())
+            .output()?;
+    let qt_qml = String::from_utf8(qt_qml.stdout)?;
+    let qt_qml = PathBuf::from(qt_qml.trim());
+    let install_qml_dir = appdir.join("lib/qml");
+    debug!("--> {:?} -> {:?}", qt_qml, install_qml_dir);
+    copy_dir_merge(qt_qml, &install_qml_dir)?;
 
     info!("Getting dependencies (this may take some time)...");
     let excludelist_path = src_path.join("distribution/linux/excludelist");
@@ -98,13 +101,13 @@ fn populate_appdir(
         common::env::add_lib_search_path(&path);
     }
     // Also include search paths to all of Qt's plugin directories
-    // let plugin_subdirs = std::fs::read_dir(plugins_dir)?;
-    // for entry in plugin_subdirs {
-    //     let entry = entry?;
-    //     let path = entry.path();
-    //     debug!("--> extra search path: {:?}", path);
-    //     common::env::add_lib_search_path(&path);
-    // }
+    let plugin_subdirs = std::fs::read_dir(install_plugins_dir)?;
+    for entry in plugin_subdirs {
+        let entry = entry?;
+        let path = entry.path();
+        debug!("--> extra search path: {:?}", path);
+        common::env::add_lib_search_path(&path);
+    }
     let libs = get_dependency_libs (&final_exe_path, &lib_dir, &excludelist_path, &includelist_path, false)?;
 
     info!("Bundling {} dependencies...", libs.len());
