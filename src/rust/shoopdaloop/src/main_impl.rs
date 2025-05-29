@@ -28,8 +28,7 @@ pub fn main() {
     // Set up PYTHONPATH.
     let python_lib = installed_path.join("lib").join("python");
     let site_packages = python_lib.join("site-packages");
-    let pathsep = if cfg!(target_os = "windows") { ";" } else { ":" };
-    let pythonpath = format!("{}{}{}", python_lib.to_str().unwrap(), pathsep, site_packages.to_str().unwrap());
+    let pythonpath = format!("{}{}{}", python_lib.to_str().unwrap(), common::fs::PATH_LIST_SEPARATOR, site_packages.to_str().unwrap());
     env::set_var("PYTHONPATH", py_env::dev_env_pythonpath().as_str());
 
     // let runtime_env_path = normalize_path(&installed_path.join("runtime"));

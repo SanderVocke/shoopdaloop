@@ -6,6 +6,7 @@ use anyhow;
 use anyhow::Context;
 use backend;
 use py_env;
+use common;
 
 fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
@@ -105,13 +106,13 @@ fn main_impl() -> Result<(), anyhow::Error> {
             println!("cargo:rustc-link-search=native={:?}", path);
         }
 
-        let runtime_link_paths_str = 
+        let backend_runtime_link_paths_str = 
            backend::runtime_link_dirs()
               .iter()
               .map(|p| p.to_string_lossy().to_string())
               .collect::<Vec<String>>()
-              .join(std::path::MAIN_SEPARATOR.to_string().as_str());
-        println!("cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS={}", runtime_link_paths_str);
+              .join(common::fs::PATH_LIST_SEPARATOR);
+        println!("cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS={}", backend_runtime_link_paths_str);
 
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");
