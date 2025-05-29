@@ -1,4 +1,5 @@
 */ld-linux*
+*/libbsd*.so*
 */libEGL.so*
 */libGL.so*
 */libGLX.so*
