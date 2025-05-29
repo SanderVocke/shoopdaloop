@@ -24,6 +24,7 @@ libc-bin
 autoconf-archive
 python3-jinja2
 lld
+patchelf
 
 # libraries
 libglib2.0-0
