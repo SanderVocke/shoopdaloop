@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use common;
 
 pub fn backend_build_dir() -> PathBuf {
     // If we're pre-building, return an invalid path
@@ -66,7 +67,7 @@ pub fn build_time_link_dirs() -> Vec<PathBuf> {
         let build_time_link_dirs =
              option_env!("SHOOP_BACKEND_BUILD_TIME_LINK_DIRS")
             .unwrap_or_default()
-            .split(std::path::MAIN_SEPARATOR)
+            .split(common::fs::PATH_LIST_SEPARATOR)
             .filter(|s| !s.is_empty())
             .map(PathBuf::from)
             .collect::<Vec<_>>();
@@ -87,7 +88,7 @@ pub fn runtime_link_dirs() -> Vec<PathBuf> {
         let mut runtime_link_dirs =
              option_env!("SHOOP_BACKEND_RUNTIME_LINK_DIRS")
             .unwrap_or_default()
-            .split(std::path::MAIN_SEPARATOR)
+            .split(common::fs::PATH_LIST_SEPARATOR)
             .filter(|s| !s.is_empty())
             .map(PathBuf::from)
             .collect::<Vec<_>>();

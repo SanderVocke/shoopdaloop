@@ -38,6 +38,7 @@ copy_dir = "0.1"
 anyhow = "1.0"
 py_env = { path = "../py_env" }
 backend = { path = "../backend" }
+common = { path = "../common" }
 
 [features]
 # Dummy build to build dependencies only

@@ -117,7 +117,7 @@ def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
     
     def find_path_based_on_tail(tail):
         dbgpart = "debug/" if is_debug_build else ""
-        pattern = f'{installed_dir}/{dbgpart}**/{tail}'
+        pattern = f'{installed_dir}/**/{dbgpart}{tail}'
         print(f"Looking for dynamic libraries by searching for zita-resampler at: {pattern}")
         zita_paths = glob.glob(pattern, recursive=True)
         if not zita_paths:
@@ -243,15 +243,16 @@ def build_vcpkg(args, build_env):
         pkgconf_dir = os.path.dirname(find_vcpkg_pkgconf(vcpkg_installed_dir))
         new_build_env = add_to_env_paths('PATH', pkgconf_dir, new_build_env)
 
-    # Tell the build where to find link-time and runtime dependencies
-    (runtime_dir, compiletime_dir) = find_vcpkg_dynlibs_paths(vcpkg_installed_dir, True)
-    new_build_env['SHOOP_BACKEND_BUILD_TIME_LINK_DIRS'] = compiletime_dir
-    new_build_env['SHOOP_BACKEND_BUILD_TIME_RUNTIME_DIRS'] = runtime_dir
-
     return new_build_env
 
 def generate_env(args, env, is_debug):
     build_env = env.copy()
+
+    # Find link directories
+    # Tell the build where to find link-time and runtime dependencies
+    (runtime_dir, compiletime_dir) = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir, is_debug)
+    build_env['SHOOP_BACKEND_BUILD_TIME_LINK_DIRS'] = compiletime_dir
+    build_env['SHOOP_BACKEND_RUNTIME_LINK_DIRS'] = runtime_dir
 
     # Find python
     (python_exe, python_libdir, python_libname, python_version) = find_python(args.vcpkg_installed_dir, is_debug)

@@ -66,7 +66,7 @@ fn main() -> io::Result<()> {
     let new_runtime_link_paths = format!(
         "{}{}{}",
         RUNTIME_LINK_PATHS_STR,
-        std::path::MAIN_SEPARATOR,
+        common::fs::PATH_LIST_SEPARATOR,
         old_runtime_link_paths
     );
     // Set the modified runtime link paths environment variable.
