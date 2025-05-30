@@ -167,6 +167,18 @@ def add_to_env_paths(varname, path, env):
     new_env[varname] = f'{new_env[varname]}{sep}{path}'
     return new_env
     
+def add_vcpkg_env(args, env):
+    new_env = env.copy()
+    new_env['VCPKG_ROOT'] = args.vcpkg_root
+    new_env['VCPKG_OVERLAY_TRIPLETS'] = os.path.join(base_path, "vcpkg", "triplets")
+    new_env['VCPKG_OVERLAY_PORTS'] = os.path.join(base_path, "vcpkg", "ports")
+    new_env["VCPKG_INSTALLED_DIR"] = args.vcpkg_installed_dir
+    new_env["CMAKE_PREFIX_PATH"] = os.path.join(args.vcpkg_installed_dir, detect_vcpkg_triplet())
+    if sys.platform == 'win32':
+        pkgconf_dir = os.path.dirname(find_vcpkg_pkgconf(args.vcpkg_installed_dir))
+        new_env = add_to_env_paths('PATH', pkgconf_dir, new_env)
+    return new_env
+
 def build_vcpkg(args, build_env):
     new_build_env = build_env.copy()
 
@@ -195,7 +207,7 @@ def build_vcpkg(args, build_env):
 
     # Setup vcpkg
     try:
-        result = subprocess.check_output(f'{vcpkg_exe} --help', shell=True, env=apply_build_env(new_build_env))
+        result = subprocess.check_output(f'{vcpkg_exe} --help', shell=True, env=apply_build_env(build_env))
     except subprocess.CalledProcessError:
         print("Error: vcpkg not found in PATH. Please install it and ensure it is in the PATH.")
         exit(1)
@@ -205,10 +217,7 @@ def build_vcpkg(args, build_env):
     if not args.vcpkg_root:
         print(f"Error: VCPKG_ROOT environment variable is not set, nor passed using --vcpkg-root. Please install vcpkg and pass its root accordingly.")
         exit(1)
-    new_build_env['VCPKG_ROOT'] = args.vcpkg_root
-    new_build_env['VCPKG_OVERLAY_TRIPLETS'] = os.path.join(base_path, "vcpkg", "triplets")
-    new_build_env['VCPKG_OVERLAY_PORTS'] = os.path.join(base_path, "vcpkg", "ports")
-    vcpkg_toolchain = os.path.join(new_build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
+    vcpkg_toolchain = os.path.join(build_env['VCPKG_ROOT'], "scripts", "buildsystems", "vcpkg.cmake")
     if sys.platform == 'darwin':
         vcpkg_triplet = detect_vcpkg_triplet()
         vcpkg_toolchain_wrapper = os.path.join(base_path, "build", "vcpkg-toolchain.cmake")
@@ -222,28 +231,21 @@ def build_vcpkg(args, build_env):
         with open(vcpkg_toolchain_wrapper, 'r') as f:
             print(f"Using toolchain file wrapper with contents:\n--------\n{f.read()}\n--------")
         vcpkg_toolchain = vcpkg_toolchain_wrapper
-    print(f"Using VCPKG_ROOT: {new_build_env['VCPKG_ROOT']}")
+    print(f"Using VCPKG_ROOT: {build_env['VCPKG_ROOT']}")
 
     # Install vcpkg packages first
-    vcpkg_installed_dir = args.vcpkg_installed_dir
-    new_build_env["VCPKG_INSTALLED_DIR"] = vcpkg_installed_dir
     if args.skip_vcpkg:
-        print(f"Skipping vcpkg setup: assuming packages are already in {vcpkg_installed_dir}.")
+        print(f"Skipping vcpkg setup: assuming packages are already in {args.vcpkg_installed_dir}.")
     else:
         print("Installing vcpkg packages...")
         extra_args = args.vcpkg_args if args.vcpkg_args else ''
-        run_and_print(f"{vcpkg_exe} install --x-install-root={vcpkg_installed_dir} {extra_args}",
-                        env=apply_build_env(new_build_env),
+        run_and_print(f"{vcpkg_exe} install --x-install-root={args.vcpkg_installed_dir} {extra_args}",
+                        env=apply_build_env(build_env),
                         cwd=os.path.join(base_path, 'vcpkg'),
                         err="Failed to fetch/build/install vcpkg packages.")
         print("vcpkg packages installed.")
-    vcpkg_installed_prefix = os.path.join(vcpkg_installed_dir, detect_vcpkg_triplet())
-    new_build_env["CMAKE_PREFIX_PATH"] = vcpkg_installed_prefix
-    if sys.platform == 'win32':
-        pkgconf_dir = os.path.dirname(find_vcpkg_pkgconf(vcpkg_installed_dir))
-        new_build_env = add_to_env_paths('PATH', pkgconf_dir, new_build_env)
 
-    return new_build_env
+    return build_env
 
 def generate_env(args, env, is_debug):
     build_env = env.copy()
@@ -290,6 +292,7 @@ def main():
     args = parser.parse_args(sys.argv[1:])
 
     general_env = dict()
+    general_env = add_vcpkg_env(args, general_env)
     
     if not args.skip_vcpkg:
         general_env = build_vcpkg(args, general_env)

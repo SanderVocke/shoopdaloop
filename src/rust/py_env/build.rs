@@ -54,7 +54,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         let dev_env_python_path : PathBuf = (&dev_env_python).into();
         let python_filename = dev_env_python_path.file_name().unwrap().to_string_lossy();
         let python_in_venv =
-             if cfg!(target_os = "windows") { format!("Scripts/{python_filename}.exe") }
+             if cfg!(target_os = "windows") { format!("Scripts/{python_filename}") }
              else { format!("bin/{python_filename}") };
         if dev_venv_dir.exists() {
             std::fs::remove_dir_all(&dev_venv_dir)
