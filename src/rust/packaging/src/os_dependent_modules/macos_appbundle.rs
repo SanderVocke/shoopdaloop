@@ -16,8 +16,11 @@ fn populate_appbundle(
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
     let src_path = src_path.ancestors().nth(6).ok_or(anyhow::anyhow!("cannot find src dir"))?;
-    let final_exe_path = appdir.join("shoopdaloop");
     info!("Using source path {src_path:?}");
+
+    crate::portable_folder_common::populate_portable_folder (appdir,
+                                                             exe_path,
+                                                             src_path)?;
 
     info!("Creating directories...");
     for directory in [
@@ -28,9 +31,6 @@ fn populate_appbundle(
         std::fs::create_dir(appdir.join(directory))
             .with_context(|| format!("Failed to create {directory:?}"))?;
     }
-
-    info!("Bundling executable...");
-    std::fs::copy(exe_path, &final_exe_path)?;
 
     // info!("Bundling runtime dependencies...");
     // let runtime_dir = appdir.join("runtime");
@@ -91,15 +91,6 @@ fn populate_appbundle(
         info!("  {:?} -> {:?}", &from, &to);
         std::fs::copy(&from, &to)
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
-    }
-
-    info!("Slimming down AppDir...");
-    for file in [
-        "shoop_lib/test_runner"
-    ] {
-        let path = appdir.join(file);
-        info!("  remove {:?}", path);
-        std::fs::remove_file(&path)?;
     }
 
     info!("App bundle produced in {}", appdir.to_str().unwrap());
