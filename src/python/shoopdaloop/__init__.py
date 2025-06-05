@@ -7,7 +7,7 @@ import glob
 import ctypes
 import platform
 
-from shoop_app_info import shoop_qml_dir, shoop_install_info, shoop_version
+from shoop_config import shoop_qml_dir, shoop_install_info, shoop_version
 
 def main():
     from shoopdaloop.lib.logging import Logger

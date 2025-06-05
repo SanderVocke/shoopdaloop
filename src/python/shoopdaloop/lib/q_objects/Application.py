@@ -20,7 +20,7 @@ from ..qml_helpers import *
 from shoop_rust import shoop_rust_init
 
 from ..logging import *
-from shoop_app_info import shoop_version, shoop_resource_dir, shoop_qml_dir
+from shoop_config import shoop_version, shoop_resource_dir, shoop_qml_dir
 
 class Application(ShoopQApplication):
     exit_handler_called = ShoopSignal()

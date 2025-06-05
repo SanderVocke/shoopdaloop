@@ -1,9 +1,10 @@
 use std::env;
 use glob::glob;
+use shoopdaloop::config::ShoopConfig;
 use std::path::{Path, PathBuf};
 
 use shoopdaloop::shoopdaloop_main;
-use shoopdaloop::shoop_app_info;
+use shoopdaloop::config;
 
 use common::logging::macros::*;
 shoop_log_unit!("Main");
@@ -25,11 +26,8 @@ pub fn main() {
     let installed_path = normalize_path(executable_path.parent().unwrap()
                                                        .parent().unwrap());
 
-    // Set up PYTHONPATH.
-    let python_lib = installed_path.join("lib").join("python");
-    let site_packages = python_lib.join("site-packages");
-    let pythonpath = format!("{}{}{}", python_lib.to_str().unwrap(), common::fs::PATH_LIST_SEPARATOR, site_packages.to_str().unwrap());
-    env::set_var("PYTHONPATH", py_env::dev_env_pythonpath().as_str());
+    let config : ShoopConfig = ShoopConfig::load()
+                                .expect("Could not load config");
 
     // let runtime_env_path = normalize_path(&installed_path.join("runtime"));
     // let lib_path = normalize_path(&installed_path.join(SHOOP_ENV_DIR_TO_LIBS));
@@ -62,22 +60,6 @@ pub fn main() {
     // add_lib_search_path(&runtime_env_path);
     // add_lib_search_path(&lib_path);
 
-    let default_qml_dir = installed_path.join("lib/qml").to_str().unwrap().to_string();
-    let default_lua_dir = installed_path.join("lib/lua").to_str().unwrap().to_string();
-    let default_py_dir = installed_path.join("lib/python").to_str().unwrap().to_string();
-    let default_resource_dir = installed_path.join("resources").to_str().unwrap().to_string();
-    let default_schemas_dir = installed_path.join("lib/session_schemas").to_str().unwrap().to_string();
-
-    let mut app_info = shoop_app_info::ShoopAppInfo::default();
-    app_info.version = env!("CARGO_PKG_VERSION").to_string();
-    app_info.description = env!("CARGO_PKG_DESCRIPTION").to_string();
-    app_info.install_info = format!("installed in {}", installed_path.to_str().unwrap());
-    app_info.qml_dir = env::var("SHOOP_OVERRIDE_QML_DIR").unwrap_or(default_qml_dir.clone());
-    app_info.py_dir = env::var("SHOOP_OVERRIDE_PY_DIR").unwrap_or(default_py_dir.clone());
-    app_info.lua_dir = env::var("SHOOP_OVERRIDE_LUA_DIR").unwrap_or(default_lua_dir.clone());
-    app_info.resource_dir = env::var("SHOOP_OVERRIDE_RESOURCE_DIR").unwrap_or(default_resource_dir.clone());
-    app_info.schemas_dir = env::var("SHOOP_OVERRIDE_SCHEMAS_DIR").unwrap_or(default_schemas_dir.clone());
-
-    let errcode = shoopdaloop_main(app_info);
+    let errcode = shoopdaloop_main(config);
     std::process::exit(errcode);
 }

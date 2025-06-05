@@ -7,6 +7,7 @@ use anyhow::Context;
 use backend;
 use py_env;
 use common;
+use config;
 
 fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
@@ -33,11 +34,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
         }
 
         println!("Using dev env Python: {}", dev_env_python);
-
-        // if shoop_lib_dir.exists() {
-        //     std::fs::remove_dir_all(&shoop_lib_dir)
-        //         .with_context(|| format!("Failed to remove {:?}", &shoop_lib_dir))?;
-        // }
 
         // // Copy the base built backend
         // copy_dir(&built_backend_dir, &shoop_lib_dir)?;

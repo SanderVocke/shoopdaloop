@@ -1,7 +1,7 @@
 from jsonschema import validate, ValidationError
 import json
 import os
-from shoop_app_info import shoop_schemas_dir
+from shoop_config import shoop_schemas_dir
 
 def validate_subtree(t):
     if type(t) is dict:

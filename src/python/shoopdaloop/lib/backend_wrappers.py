@@ -15,10 +15,6 @@ import ctypes
 import traceback
 import numpy
 
-import shoop_py_backend
-from shoopdaloop.lib.init_dynlibs import init_dynlibs
-init_dynlibs()
-
 def midi_msg_dict_to_backend(msg):
     return shoop_py_backend.MidiEvent(msg['time'], msg['data'])
 

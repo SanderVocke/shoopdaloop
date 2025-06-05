@@ -1,5 +1,5 @@
 #!/usr/bin/python
-from shoop_app_info import shoop_qml_dir
+from shoop_config import shoop_qml_dir
 
 exit_text_printed = False
 coverage_reported = False

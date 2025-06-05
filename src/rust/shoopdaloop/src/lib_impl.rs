@@ -2,13 +2,16 @@ use pyo3::prelude::*;
 use pyo3::types::{PyList, PyString};
 use std::env;
 use anyhow;
-use crate::shoop_app_info::ShoopAppInfo;
+use crate::config::ShoopConfig;
 use common::logging::macros::*;
 shoop_log_unit!("Main");
 
 fn shoopdaloop_main_impl<'py>(
-    app_info : ShoopAppInfo
+    config : ShoopConfig
 ) -> Result<i32, anyhow::Error> {
+    // Set up PYTHONPATH.
+    env::set_var("PYTHONPATH", config.pythonpaths.join(common::fs::PATH_LIST_SEPARATOR));
+
     // Get the command-line arguments
     let args: Vec<String> = env::args().collect();
 
@@ -24,6 +27,13 @@ fn shoopdaloop_main_impl<'py>(
             .collect();
         sys.setattr("argv", PyList::new_bound(py, &py_args))?;
 
+        // Print system path
+        let runtime_link_path_var =
+        if cfg!(target_os = "windows") { "PATH" }
+        else if cfg!(target_os = "macos") { "DYLD_LIBRARY_PATH" }
+        else { "LD_LIBRARY_PATH" };
+        debug!("{runtime_link_path_var}: {:?}", env::var(runtime_link_path_var).unwrap());
+
         // Print python configuration information
         let pythonpaths = sys.getattr("path")?;
         debug!("Python paths: {:?}", pythonpaths);
@@ -32,9 +42,9 @@ fn shoopdaloop_main_impl<'py>(
 
         // Expose Rust functionality to Python modules
         {
-            let py_app_info = app_info.create_py_module(py).unwrap();
-            sys.getattr("modules")?.set_item("shoop_app_info",
-                                            py_app_info)?;
+            let py_config = crate::py_config::create_py_config_module(&config, py).unwrap();
+            sys.getattr("modules")?.set_item("shoop_config",
+                                            py_config)?;
         }
         {
             let shoop_rust_py_module = crate::shoop_rust_py::create_py_module(py).unwrap();
@@ -67,8 +77,8 @@ fn shoopdaloop_main_impl<'py>(
 }
 
 #[cfg(not(feature = "prebuild"))]
-pub fn shoopdaloop_main(app_info : ShoopAppInfo) -> i32 {
-    match shoopdaloop_main_impl(app_info) {
+pub fn shoopdaloop_main(config : ShoopConfig) -> i32 {
+    match shoopdaloop_main_impl(config) {
         Ok(r) => { return r; }
         Err(e) => {
             error!("Error: {:?}\nBacktrace:\n{:?}", e, e.backtrace());

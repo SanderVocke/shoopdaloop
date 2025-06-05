@@ -11,10 +11,6 @@ license-file = "LICENSE"
 [lib]
 
 [[bin]]
-name = "shoopdaloop_dev_launcher"
-path = "src/bin/shoopdaloop_dev_launcher.rs"
-
-[[bin]]
 name = "print_shoopdaloop_out_dir"
 path = "src/bin/print_shoopdaloop_out_dir.rs"
 
@@ -31,6 +27,8 @@ common = { path = "../common" }
 py_env = { path = "../py_env" }
 log = "0.4"
 ctor = "0.2"
+toml = "0.8"
+serde = "1.0"
 
 [build-dependencies]
 glob = "0.3"
@@ -39,6 +37,11 @@ anyhow = "1.0"
 py_env = { path = "../py_env" }
 backend = { path = "../backend" }
 common = { path = "../common" }
+config = { path = "../config" }
+toml = "0.8"
+serde = "1.0"
+log = "0.4"
+ctor = "0.2"
 
 [features]
 # Dummy build to build dependencies only

@@ -12,7 +12,7 @@ import importlib
 import ctypes
 import platform
 
-from shoop_app_info import shoop_version, shoop_qml_dir
+from shoop_config import shoop_version, shoop_qml_dir
 pkg_version = shoop_version
 
 from .q_objects.AudioPort import AudioPort

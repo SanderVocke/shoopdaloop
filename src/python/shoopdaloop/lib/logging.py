@@ -1,6 +1,3 @@
-from shoopdaloop.lib.init_dynlibs import init_dynlibs
-init_dynlibs()
-
 from PySide6.QtQml import QJSValue
 
 import shoop_py_backend
