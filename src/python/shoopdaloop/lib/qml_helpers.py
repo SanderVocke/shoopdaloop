@@ -71,7 +71,9 @@ def qt_msg_handler(mode, context, message):
 def install_qt_message_handler():
     global qt_message_handler_installed
     global qt_logger
-    if not qt_message_handler_installed:
+    # if not qt_message_handler_installed:
+    # FIXME
+    if False:
         QtCore.qInstallMessageHandler(qt_msg_handler)
         qt_message_handler_installed = True
 

@@ -134,9 +134,7 @@ impl ShoopConfig {
         };
 
         let executable_path = env::current_exe().unwrap();
-        // Assumption is that we are in {root}/bin
-        let installed_path = normalize_path(executable_path.parent().unwrap()
-                                                       .parent().unwrap());
+        let installed_path = normalize_path(executable_path.parent().unwrap());
 
         let mut config : ShoopConfig = ShoopConfig::default();
         let config_path = env::var("SHOOP_CONFIG")

@@ -37,12 +37,10 @@ fn populate_appdir(
     for file in [
         "distribution/linux/shoopdaloop.desktop",
         "distribution/linux/shoopdaloop.png",
-        "distribution/linux/shoopdaloop",
         "distribution/linux/AppRun",
         "distribution/linux/backend_tests",
         "distribution/linux/python_tests",
         "distribution/linux/rust_tests",
-        "distribution/linux/env.sh",
     ] {
         let from = src_path.join(file);
         let to = appdir.join(from.file_name().unwrap());

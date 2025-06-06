@@ -188,10 +188,12 @@ Item {
             width: 30
             onClicked: {
                 var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.mode !== ShoopConstants.LoopMode.Stopped)
-                loops[0].transition_loops(
-                    loops,
-                    ShoopConstants.LoopMode.Stopped,
-                    root.sync_active ? 0 : ShoopConstants.DontWaitForSync)
+                if (loops.length > 0) {
+                    loops[0].transition_loops(
+                        loops,
+                        ShoopConstants.LoopMode.Stopped,
+                        root.sync_active ? 0 : ShoopConstants.DontWaitForSync)
+                }
             }
 
             MaterialDesignIcon {

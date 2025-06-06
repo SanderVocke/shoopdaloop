@@ -20,7 +20,7 @@ from ..backend_wrappers import *
 from ..findFirstParent import findFirstParent
 from ..logging import Logger
 
-from shoop_py_backend import ChannelMode
+from shoop_py_backend import ChannelMode, PortConnectabilityKind
 
 import traceback
 
@@ -218,7 +218,7 @@ class LoopChannel(ShoopQQuickItem):
             self.__logger.debug(lambda: 'Connect to port')
             backend_channel = self._backend_obj
             backend_port = port.get_backend_obj()
-            if not (port.input_connectability & int(shoop_py_backend.PortConnectabilityKind.Internal)):
+            if not (port.input_connectability & int(PortConnectabilityKind.Internal)):
                 backend_channel.connect_input(backend_port)
             else:
                 backend_channel.connect_output(backend_port)
