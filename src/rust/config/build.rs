@@ -18,8 +18,12 @@ fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
                                  .iter()
                                  .map(|p| p.to_string_lossy().to_string())
                                  .collect();
+    // For dev config, stack our Python source dir on top of the dev venv.
+    // That way, any changes to Python code will be immediately used as opposed
+    // to loading the most recently built wheel.
+    let shoop_py_src = shoop_src_root_dir.join("src/python");
     let python_paths : Vec<String> =
-        vec![ py_env::dev_env_pythonpath() ].into_iter()
+        vec![ shoop_py_src.to_string_lossy().to_string(), py_env::dev_env_pythonpath() ].into_iter()
         .chain(dynlib_paths.clone().into_iter()).collect();
 
     let mut config = config::ShoopConfig::default();

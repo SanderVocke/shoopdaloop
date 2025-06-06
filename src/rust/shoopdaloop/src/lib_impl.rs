@@ -40,6 +40,14 @@ fn shoopdaloop_main_impl<'py>(
         let version_info = sys.getattr("version_info")?;
         debug!("Python version: {:?}", version_info);
 
+        // Explicitly add DLL search paths for extension modules
+        if cfg!(target_os = "windows") {
+            for path in &config.dynlibpaths {
+                debug!("Add DLL directory: {}", path);
+                os.getattr("add_dll_directory")?.call1((path.as_str(),))?;
+            }
+        }
+
         // Expose Rust functionality to Python modules
         {
             let py_config = crate::py_config::create_py_config_module(&config, py).unwrap();

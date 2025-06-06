@@ -5,10 +5,13 @@ use std::process::{Command, exit};
 use std::io;
 use common::logging::macros::*;
 use config::config::ShoopConfig;
+use std::collections::HashMap;
 
 shoop_log_unit!("Main");
 
 fn main() -> io::Result<()> {
+    let mut subprocess_env : HashMap<String, String> = env::vars().collect();
+
     common::init().unwrap();
 
     let config = ShoopConfig::load().expect("Could not load config");
@@ -33,7 +36,7 @@ fn main() -> io::Result<()> {
             old_runtime_link_paths
         );
         // Set the modified runtime link paths environment variable.
-        env::set_var(runtime_link_path_var, &new_runtime_link_paths);
+        subprocess_env.insert(runtime_link_path_var.to_string(), new_runtime_link_paths);
     } else {
         debug!("launcher: no additional library paths to add.");
     }
@@ -50,10 +53,14 @@ fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().skip(1).collect();
 
     // Prepare to launch the executable in the modified environment with arguments.
-    let status = Command::new(shoopdaloop_executable)
-        .args(&args) // Pass the arguments here
-        .spawn()?
-        .wait()?;
+    let mut command = Command::new(shoopdaloop_executable);
+    command.args(&args);
+    for (key, value) in subprocess_env {
+        debug!("Set env {}: {}", key, value);
+        command.env(key, value);
+    }
+    info!("Launching ShoopDaLoop.");
+    let status = command.spawn()?.wait()?;
 
     // Exit with the same code as the launched executable.
     exit(status.code().unwrap_or_default());

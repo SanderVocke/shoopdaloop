@@ -41,6 +41,7 @@ impl ShoopTomlConfig {
         if self.resource_dir.is_some() { config.resource_dir = self.resource_dir.unwrap() }
         if self.schemas_dir.is_some() { config.schemas_dir = self.schemas_dir.unwrap() }
         if self.pythonpaths.is_some() { config.pythonpaths = self.pythonpaths.unwrap() }
+        if self.dynlibpaths.is_some() { config.dynlibpaths = self.dynlibpaths.unwrap() }
     }
 
     pub fn from_config(config: &ShoopConfig) -> Self {
@@ -144,8 +145,9 @@ impl ShoopConfig {
             debug!("Loading config file: {:?}", config_path);
             let contents = std::fs::read_to_string(config_path)
                                                     .expect("Could not read config file");
-            config = ShoopConfig::parse_toml_values(&mut config, contents.as_str())
+            let new_config = ShoopConfig::parse_toml_values(&config, contents.as_str())
                         .expect("Could not parse config file");
+            config = new_config;
         } else {
             debug!("No config file found, using defaults.");
         }
