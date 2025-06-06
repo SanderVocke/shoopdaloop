@@ -60,5 +60,6 @@ pub fn launcher() -> io::Result<()> {
     let status = command.spawn()?.wait()?;
 
     // Exit with the same code as the launched executable.
+    debug!("launcher: app exited with code {}", status.code().unwrap_or_default());
     exit(status.code().unwrap_or_default());
 }

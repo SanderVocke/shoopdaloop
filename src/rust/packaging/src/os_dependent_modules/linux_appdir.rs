@@ -30,8 +30,8 @@ fn populate_appdir(
     crate::portable_folder_common::populate_portable_folder (appdir,
                                                              exe_path,
                                                              src_path,
-                                                             includelist_path,
-                                                             excludelist_path)?;
+                                                             &includelist_path,
+                                                             &excludelist_path)?;
 
     info!("Bundling distribution assets...");
     for file in [
