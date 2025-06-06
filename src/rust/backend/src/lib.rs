@@ -65,7 +65,7 @@ pub fn build_time_link_dirs() -> Vec<PathBuf> {
     #[cfg(not(feature = "prebuild"))]
     {
         let build_time_link_dirs =
-             option_env!("SHOOP_BACKEND_BUILD_TIME_LINK_DIRS")
+             option_env!("SHOOP_BUILD_TIME_LINK_DIRS")
             .unwrap_or_default()
             .split(common::fs::PATH_LIST_SEPARATOR)
             .filter(|s| !s.is_empty())
@@ -86,7 +86,7 @@ pub fn runtime_link_dirs() -> Vec<PathBuf> {
     #[cfg(not(feature = "prebuild"))]
     {
         let mut runtime_link_dirs =
-             option_env!("SHOOP_BACKEND_RUNTIME_LINK_DIRS")
+             option_env!("SHOOP_RUNTIME_LINK_DIRS")
             .unwrap_or_default()
             .split(common::fs::PATH_LIST_SEPARATOR)
             .filter(|s| !s.is_empty())

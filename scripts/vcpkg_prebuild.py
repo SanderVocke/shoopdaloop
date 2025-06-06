@@ -39,10 +39,13 @@ def find_qmake(directory, is_debug_build):
 
 def find_python(vcpkg_installed_directory, is_debug_build):
     executable_release = ("python.exe" if sys.platform == "win32" else "python3")
-    executable_debug = ("python_d.exe" if sys.platform == "win32" else "python3d")
-    executable = executable_debug if is_debug_build else executable_release
+    executable_debug = (None if sys.platform == "win32" else "python3d")
+    # Note: using a debug interpreter on Windows is a nightmare. There we just
+    # use release version of Python and packages.
+    _is_debug_build = is_debug_build and sys.platform != "win32"
+    executable = executable_debug if _is_debug_build else executable_release
     tail = os.path.join("tools", "python3", executable)
-    if is_debug_build:
+    if _is_debug_build:
         tail = os.path.join("debug", tail)
     pattern = f'{vcpkg_installed_directory}/**/{tail}'
     python_paths = glob.glob(pattern, recursive=True)
@@ -68,8 +71,8 @@ def find_python(vcpkg_installed_directory, is_debug_build):
 
     dbg_suffix = '_d' if sys.platform == 'win32' else 'd'
     maybe_dot = '' if sys.platform == 'win32' else '.'
-    libname = f'python{major_version}{maybe_dot}{minor_version}{dbg_suffix}' if is_debug_build else f'python{major_version}{maybe_dot}{minor_version}'
-    libdir = os.path.join(os.path.dirname(exe), '../../../debug/lib' if is_debug_build else '../../lib')
+    libname = f'python{major_version}{maybe_dot}{minor_version}{dbg_suffix}' if _is_debug_build else f'python{major_version}{maybe_dot}{minor_version}'
+    libdir = os.path.join(os.path.dirname(exe), '../../../debug/lib' if _is_debug_build else '../../lib')
     version = f'{major_version}.{minor_version}'
 
     return (exe, libdir, libname, version)
@@ -115,7 +118,7 @@ import sys
 
 def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
     
-    def find_path_based_on_tail(tail):
+    def find_path_based_on_tail(tail, is_debug_build):
         dbgpart = "debug/" if is_debug_build else ""
         pattern = f'{installed_dir}/**/{dbgpart}{tail}'
         print(f"Looking for dynamic libraries by searching for zita-resampler at: {pattern}")
@@ -136,8 +139,16 @@ def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
     compiletime_tail = os.path.join("lib", "zita-resampler.lib") if sys.platform == "win32" \
            else os.path.join("lib", "libzita-resampler.so") if sys.platform == "linux" \
            else os.path.join("lib", "libzita-resampler.dylib")
+    
+    runtime = find_path_based_on_tail(runtime_tail, is_debug_build)
+    compiletime = find_path_based_on_tail(compiletime_tail, is_debug_build)
 
-    return (find_path_based_on_tail(runtime_tail), find_path_based_on_tail(compiletime_tail))
+    if is_debug_build and sys.platform == 'win32':
+        # We will use release python, so also include the release binary directory as well
+        runtime = f'{runtime};{find_path_based_on_tail(runtime_tail, False)}'
+        compiletime = f'{compiletime};{find_path_based_on_tail(compiletime_tail, False)}'
+
+    return (runtime, compiletime)
 
 def find_vcpkg_pkgconf(installed_dir):
     filename = 'pkgconf'
@@ -252,9 +263,9 @@ def generate_env(args, env, is_debug):
 
     # Find link directories
     # Tell the build where to find link-time and runtime dependencies
-    (runtime_dir, compiletime_dir) = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir, is_debug)
-    build_env['SHOOP_BACKEND_BUILD_TIME_LINK_DIRS'] = compiletime_dir
-    build_env['SHOOP_BACKEND_RUNTIME_LINK_DIRS'] = runtime_dir
+    (runtime_dirs, compiletime_dirs) = find_vcpkg_dynlibs_paths(args.vcpkg_installed_dir, is_debug)
+    build_env['SHOOP_BUILD_TIME_LINK_DIRS'] = compiletime_dirs
+    build_env['SHOOP_RUNTIME_LINK_DIRS'] = runtime_dirs
 
     # Find python
     (python_exe, python_libdir, python_libname, python_version) = find_python(args.vcpkg_installed_dir, is_debug)

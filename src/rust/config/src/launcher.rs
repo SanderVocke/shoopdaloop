@@ -54,7 +54,6 @@ pub fn launcher() -> io::Result<()> {
     let mut command = Command::new(shoopdaloop_executable);
     command.args(&args);
     for (key, value) in subprocess_env {
-        debug!("Set env {}: {}", key, value);
         command.env(key, value);
     }
     info!("Launching ShoopDaLoop.");

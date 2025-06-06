@@ -106,7 +106,7 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                     info!("Removing existing directory: {}", output_dir.display());
                     std::fs::remove_dir_all(output_dir)?;
                 }
-                let launcher_exe : PathBuf = exe_dir.join("shoopdaloop_windows_launcher.exe");
+                let launcher_exe : PathBuf = exe_dir.join("shoopdaloop_launcher.exe");
                 packaging::windows_portable_folder::build_portable_folder(
                             main_exe.as_path(),
                             dev_exe.as_path(),

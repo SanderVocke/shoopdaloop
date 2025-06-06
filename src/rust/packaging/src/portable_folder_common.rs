@@ -14,10 +14,25 @@ shoop_log_unit!("packaging");
 
 const MAYBE_QMAKE : Option<&'static str> = option_env!("QMAKE");
 
+fn qmake_command(qmake_path : &str, argstring : &str) -> Command {
+    let shell_command = format!("{} {}", qmake_path, argstring);
+    return if cfg!(target_os = "windows") {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", &shell_command]);
+        cmd
+    } else {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", &shell_command]);
+        cmd
+    };
+}
+
 pub fn populate_portable_folder(
     folder : &Path,
     exe_path : &Path,
-    src_path : &Path
+    src_path : &Path,
+    includelist_path : &Path,
+    excludelist_path : &Path,
 ) -> Result<(), anyhow::Error> {
     let qmake = MAYBE_QMAKE.ok_or(anyhow::anyhow!("QMAKE not set at compile-time"))?;
 
@@ -66,8 +81,7 @@ pub fn populate_portable_folder(
     }
 
     info!("Bundling Qt plugins...");
-    let qt_plugins = Command::new(qmake)
-            .args(&["-query", "QT_INSTALL_PLUGINS"])
+    let qt_plugins = qmake_command(qmake, "-query QT_INSTALL_PLUGINS")
             .stderr(std::process::Stdio::inherit())
             .output()?;
     let qt_plugins = String::from_utf8(qt_plugins.stdout)?;
@@ -77,8 +91,7 @@ pub fn populate_portable_folder(
     copy_dir(qt_plugins, &install_plugins_dir)?;
 
     info!("Bundling Qt QML components...");
-    let qt_qml = Command::new(qmake)
-            .args(&["-query", "QT_INSTALL_QML"])
+    let qt_qml = qmake_command(qmake, "-query QT_INSTALL_QML")
             .stderr(std::process::Stdio::inherit())
             .output()?;
     let qt_qml = String::from_utf8(qt_qml.stdout)?;
@@ -88,8 +101,6 @@ pub fn populate_portable_folder(
     copy_dir_merge(qt_qml, &install_qml_dir)?;
 
     info!("Getting dependencies (this may take some time)...");
-    let excludelist_path = src_path.join("distribution/linux/excludelist");
-    let includelist_path = src_path.join("distribution/linux/includelist");
     for path in backend::runtime_link_dirs() {
         debug!("--> extra search path: {:?}", path);
         common::env::add_lib_search_path(&path);

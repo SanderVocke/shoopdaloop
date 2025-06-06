@@ -21,13 +21,16 @@ fn populate_folder(
     let src_path = src_path.ancestors().nth(6).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     info!("Using source path {src_path:?}");
 
+    let excludelist_path = src_path.join("distribution/windows/excludelist");
+    let includelist_path = src_path.join("distribution/windows/includelist");
+
     crate::portable_folder_common::populate_portable_folder
-       (folder, exe_path, src_path)?;
+       (folder, exe_path, src_path, &includelist_path, &excludelist_path)?;
 
     info!("Bundling additional assets...");
     for (src,dst) in [
-        ("distribution/windows/shoop.dllpaths", "shoop.dllpaths"),
-        ("distribution/windows/shoop.executable", "shoop.executable"),
+        // ("distribution/windows/shoop.dllpaths", "shoop.dllpaths"),
+        // ("distribution/windows/shoop.executable", "shoop.executable"),
         (launcher_path.to_str().expect("Failed to convert launcher path"), "shoopdaloop_launcher.exe"),
     ] {
         let from = src_path.join(src);

@@ -24,9 +24,14 @@ fn populate_appdir(
     let src_path = src_path.ancestors().nth(6).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     info!("Using source path {src_path:?}");
 
+    let excludelist_path = src_path.join("distribution/linux/excludelist");
+    let includelist_path = src_path.join("distribution/linux/includelist");
+
     crate::portable_folder_common::populate_portable_folder (appdir,
                                                              exe_path,
-                                                             src_path)?;
+                                                             src_path,
+                                                             includelist_path,
+                                                             excludelist_path)?;
 
     info!("Bundling distribution assets...");
     for file in [

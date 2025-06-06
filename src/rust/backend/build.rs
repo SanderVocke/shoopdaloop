@@ -46,8 +46,8 @@ fn main_impl() -> Result<(), anyhow::Error> {
         //     path_to_site_packages = full_site_packages.strip_prefix(&dev_venv_dir).unwrap().to_path_buf();
         // }
 
-        let build_time_link_dirs_raw = option_env!("SHOOP_BACKEND_BUILD_TIME_LINK_DIRS").unwrap_or_default();
-        let runtime_link_dirs_raw = option_env!("SHOOP_BACKEND_RUNTIME_LINK_DIRS").unwrap_or_default();
+        let build_time_link_dirs_raw = option_env!("SHOOP_BUILD_TIME_LINK_DIRS").unwrap_or_default();
+        let runtime_link_dirs_raw = option_env!("SHOOP_RUNTIME_LINK_DIRS").unwrap_or_default();
 
         let build_time_link_dirs = build_time_link_dirs_raw
             .split(common::fs::PATH_LIST_SEPARATOR)
@@ -61,11 +61,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rerun-if-env-changed=PYTHON");
 
         println!(
-            "cargo:rustc-env=SHOOP_BACKEND_BUILD_TIME_LINK_DIRS={}",
+            "cargo:rustc-env=SHOOP_BUILD_TIME_LINK_DIRS={}",
             build_time_link_dirs_raw
         );
         println!(
-            "cargo:rustc-env=SHOOP_BACKEND_RUNTIME_LINK_DIRS={}",
+            "cargo:rustc-env=SHOOP_RUNTIME_LINK_DIRS={}",
             runtime_link_dirs_raw
         );
         println!("cargo:rustc-env=SHOOP_BACKEND_DIR={}", install_dir.to_str().unwrap());

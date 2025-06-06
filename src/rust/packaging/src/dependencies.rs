@@ -262,14 +262,14 @@ fn get_windows_specifics<'a>(
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
     let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
-    let paths_file = src_path.join("distribution/windows/shoop.dllpaths");
-    let paths_str = std::fs::read_to_string(&paths_file)
-        .with_context(|| format!("Cannot read {paths_file:?}"))?;
-    let executable_folder = executable.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
-    for relpath in paths_str.lines() {
-        let path = new_env_map.get("PATH").expect("No PATH env var found");
-        new_env_map.insert(String::from("PATH"), format!("{}/{};{}", executable_folder.to_str().unwrap(), relpath, path));
-    }
+    // let paths_file = src_path.join("distribution/windows/shoop.dllpaths");
+    // let paths_str = std::fs::read_to_string(&paths_file)
+    //     .with_context(|| format!("Cannot read {paths_file:?}"))?;
+    // let executable_folder = executable.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
+    // for relpath in paths_str.lines() {
+    //     let path = new_env_map.get("PATH").expect("No PATH env var found");
+    //     new_env_map.insert(String::from("PATH"), format!("{}/{};{}", executable_folder.to_str().unwrap(), relpath, path));
+    // }
     let command = String::from("powershell.exe");
     let commandstr = include_str!("scripts/windows_deps.ps1").replace("$args[0]", executable.to_str().unwrap());
     let args = vec![String::from("-Command"), commandstr];

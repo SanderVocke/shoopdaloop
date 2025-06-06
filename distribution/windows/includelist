@@ -20,3 +20,4 @@
 */bz2*.dll
 */brotlidec.dll
 */brotlicommon.dll
+*/zlib*.dll
