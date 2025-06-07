@@ -8,6 +8,7 @@ use common::fs::copy_dir_merge;
 use regex::Regex;
 use copy_dir::copy_dir;
 use std::process::Command;
+use std::fs::DirEntry;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
@@ -52,7 +53,6 @@ pub fn populate_portable_folder(
 
     info!("Bundling development environment Python packages from PYTHONPATH...");
     let python_lib_paths = crate::remove_subpaths::remove_subpaths(&py_env::dev_env_pythonpath_entries());
-    let py_folder_regex = Regex::new(r"python[0-9]+\.[0-9]+").unwrap();
     for path in python_lib_paths {
         if path.ends_with("site-packages") {
             debug!("--> {} -> site-packages", path);
@@ -67,9 +67,9 @@ pub fn populate_portable_folder(
 
     // Copy filesets into our output lib dir
     let to_copy = [
-        ("src/lua", "lib/lua"),
-        ("src/qml", "lib/qml"),
-        ("src/session_schemas", "lib/session_schemas"),
+        ("src/lua", "lua"),
+        ("src/qml", "qml"),
+        ("src/session_schemas", "session_schemas"),
         ("resources", "resources"),
     ];
     info!("Bundling source assets...");
@@ -80,13 +80,17 @@ pub fn populate_portable_folder(
         copy_dir(&src, &dst)?;
     }
 
+    let qt_install_dir = folder.join("Qt6");
+    std::fs::create_dir(&qt_install_dir)
+        .with_context(|| format!("Cannot create dir: {:?}", qt_install_dir))?;
+
     info!("Bundling Qt plugins...");
     let qt_plugins = qmake_command(qmake, "-query QT_INSTALL_PLUGINS")
             .stderr(std::process::Stdio::inherit())
             .output()?;
     let qt_plugins = String::from_utf8(qt_plugins.stdout)?;
     let qt_plugins = PathBuf::from(qt_plugins.trim());
-    let install_plugins_dir = lib_dir.join("qt_plugins");
+    let install_plugins_dir = folder.join("Qt6/plugins");
     debug!("--> {:?} -> {:?}", qt_plugins, install_plugins_dir);
     copy_dir(qt_plugins, &install_plugins_dir)?;
 
@@ -96,7 +100,7 @@ pub fn populate_portable_folder(
             .output()?;
     let qt_qml = String::from_utf8(qt_qml.stdout)?;
     let qt_qml = PathBuf::from(qt_qml.trim());
-    let install_qml_dir = folder.join("lib/qml");
+    let install_qml_dir = folder.join("Qt6/qml");
     debug!("--> {:?} -> {:?}", qt_qml, install_qml_dir);
     copy_dir_merge(qt_qml, &install_qml_dir)?;
 
@@ -115,7 +119,7 @@ pub fn populate_portable_folder(
     }
     let dependency_libs = get_dependency_libs
        (&final_exe_path,
-        &lib_dir,
+        folder,
         &excludelist_path,
         &includelist_path,
         false)?;

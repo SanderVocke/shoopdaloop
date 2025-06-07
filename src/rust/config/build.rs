@@ -37,23 +37,6 @@ fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
     Ok(config)
 }
 
-fn generate_portable_config() -> Result<config::ShoopConfig, anyhow::Error> {
-    let shoop_src_root_dir = PathBuf::from(SRC_DIR).join("../../..");
-
-    let dynlib_paths : Vec<String> = vec![];
-    let python_paths : Vec<String> = vec![];
-
-    let mut config = config::ShoopConfig::default();
-    config.qml_dir = String::from("lib/qml");
-    config.lua_dir = String::from("lib/lua");
-    config.resource_dir = String::from("resources");
-    config.schemas_dir = String::from("lib/session_schemas");
-    config.pythonpaths = python_paths;
-    config.dynlibpaths = dynlib_paths;
-
-    Ok(config)
-}
-
 fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
     #[cfg(feature = "prebuild")]
@@ -71,9 +54,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         };
         // Write config files
         let configs_dir = PathBuf::from(env::var("OUT_DIR").unwrap().as_str());
-        // std::fs::create_dir(&configs_dir)?;
         write_config(&configs_dir.join("shoop-dev-config.toml"), &generate_dev_config()?)?;
-        write_config(&configs_dir.join("shoop-portable-config.toml"), &generate_portable_config()?)?;
         Ok(())
     }
 }

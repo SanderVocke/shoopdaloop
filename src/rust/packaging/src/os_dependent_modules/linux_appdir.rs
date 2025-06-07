@@ -41,6 +41,7 @@ fn populate_appdir(
         "distribution/linux/backend_tests",
         "distribution/linux/python_tests",
         "distribution/linux/rust_tests",
+        "distribution/linux/shoop-config.toml"
     ] {
         let from = src_path.join(file);
         let to = appdir.join(from.file_name().unwrap());

@@ -1,0 +1,6 @@
+qml_dir = "./qml"
+lua_dir = "./lua"
+resource_dir = "./resources"
+schemas_dir = "./session_schemas"
+pythonpaths = ["./lib/python", "./lib/python/site-packages", "./lib/python/lib-dynload"]
+dynlibpaths = ["./lib"]
