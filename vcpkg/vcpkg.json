@@ -52,7 +52,21 @@
     },
     {
       "name": "qtbase",
-      "version>=": "6.8.3"
+      "version>=": "6.8.3",
+      "features": [
+        "gui",
+        "jpeg",
+        "opengl",
+        "png",
+        "testlib",
+        "thread",
+        "xcb",
+        "xcb-xlib",
+        "xkb",
+        "xkbcommon-x11",
+        "xrender",
+        "zstd"
+      ]
     },
     {
       "name": "qtdeclarative",
