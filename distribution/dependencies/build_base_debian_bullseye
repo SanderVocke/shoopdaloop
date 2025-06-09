@@ -82,6 +82,7 @@ libx11-xcb-dev
 libarchive-dev
 libcryptsetup-dev
 libwayland-dev
+libpng-dev
 
 # libraries for running / coverage
 libportaudio2
