@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyList, PyString};
 use std::env;
 use anyhow;
-use crate::config::ShoopConfig;
+use config::config::ShoopConfig;
 use common::logging::macros::*;
 shoop_log_unit!("Main");
 

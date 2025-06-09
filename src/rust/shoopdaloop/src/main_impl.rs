@@ -1,10 +1,10 @@
 use std::env;
 use glob::glob;
-use shoopdaloop::config::ShoopConfig;
+use config::config::ShoopConfig;
 use std::path::{Path, PathBuf};
 
 use shoopdaloop::shoopdaloop_main;
-use shoopdaloop::config;
+use config;
 
 use common::logging::macros::*;
 shoop_log_unit!("Main");
@@ -23,10 +23,9 @@ pub fn main() {
 
     let executable_path = env::current_exe().unwrap();
     // Assumption is that we are in {root}/bin
-    let installed_path = normalize_path(executable_path.parent().unwrap()
-                                                       .parent().unwrap());
+    let installed_path = normalize_path(executable_path.parent().unwrap());
 
-    let config : ShoopConfig = ShoopConfig::load()
+    let config : ShoopConfig = ShoopConfig::load(&installed_path)
                                 .expect("Could not load config");
 
     // let runtime_env_path = normalize_path(&installed_path.join("runtime"));

@@ -1,6 +1,6 @@
-qml_dir = "./qml"
-lua_dir = "./lua"
-resource_dir = "./resources"
-schemas_dir = "./session_schemas"
-pythonpaths = ["./lib/python", "./lib/python/site-packages", "./lib/python/lib-dynload"]
-dynlibpaths = ["./lib"]
+qml_dir = "$ROOT/qml"
+lua_dir = "$ROOT/lua"
+resource_dir = "$ROOT/resources"
+schemas_dir = "$ROOT/session_schemas"
+pythonpaths = ["$ROOT/lib/python", "$ROOT/lib/python/site-packages", "$ROOT/lib/python/lib-dynload"]
+dynlibpaths = ["$ROOT/lib"]

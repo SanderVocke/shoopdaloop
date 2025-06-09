@@ -25,6 +25,7 @@ frontend = { path = "../frontend" }
 backend_bindings = { path = "../backend_bindings" }
 common = { path = "../common" }
 py_env = { path = "../py_env" }
+config = { path = "../config" }
 log = "0.4"
 ctor = "0.2"
 toml = "0.8"

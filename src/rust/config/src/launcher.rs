@@ -12,7 +12,13 @@ shoop_log_unit!("Main");
 pub fn launcher() -> io::Result<()> {
     let mut subprocess_env : HashMap<String, String> = env::vars().collect();
 
-    let config = ShoopConfig::load().expect("Could not load config");
+    // Get the launcher's directory.
+    let launcher_path = env::current_exe().expect("Failed to get launcher path");
+    let launcher_dir = launcher_path
+        .parent()
+        .expect("Failed to get launcher directory");
+
+    let config = ShoopConfig::load(&launcher_dir).expect("Could not load config");
 
     if config.dynlibpaths.len() > 0 {
         let dynlibpaths_string = config.dynlibpaths.join(common::fs::PATH_LIST_SEPARATOR);
@@ -38,12 +44,6 @@ pub fn launcher() -> io::Result<()> {
     } else {
         debug!("launcher: no additional library paths to add.");
     }
-    
-    // Get the launcher's directory.
-    let launcher_path = env::current_exe().expect("Failed to get launcher path");
-    let launcher_dir = launcher_path
-        .parent()
-        .expect("Failed to get launcher directory");
 
     let shoopdaloop_executable = launcher_dir.join("shoopdaloop");
 

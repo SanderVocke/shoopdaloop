@@ -65,7 +65,8 @@
         "xkb",
         "xkbcommon-x11",
         "xrender",
-        "zstd"
+        "zstd",
+        "dbus"
       ]
     },
     {

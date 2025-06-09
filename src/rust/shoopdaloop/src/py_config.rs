@@ -1,4 +1,4 @@
-use crate::config::ShoopConfig;
+use config::config::ShoopConfig;
 use pyo3::prelude::*;
 
 pub fn create_py_config_module<'py>(
