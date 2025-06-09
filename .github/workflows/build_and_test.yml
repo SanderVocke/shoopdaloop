@@ -7,6 +7,11 @@ on:
     pull_request:
       branches: [ "master" ]
     workflow_dispatch:
+      inputs:
+        vcpkg_force_rebuild:
+          description: 'Force vcpkg dependencies rebuild'
+          type: boolean
+          default: false
 
 env:
   checkpoints_enabled: false
@@ -145,6 +150,7 @@ jobs:
         third_package_kind: ${{ matrix.kind.third_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: ./.github/actions/checkpoint
       if: always()
@@ -285,6 +291,7 @@ jobs:
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         macos_target_version: ${{ matrix.kind.macos_target_version }}
+        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
     - uses: ./.github/actions/checkpoint
       if: always()
 
@@ -438,6 +445,7 @@ jobs:
         release_build: ${{ matrix.kind.release_build }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
     - uses: ./.github/actions/checkpoint
 
   test_windows:

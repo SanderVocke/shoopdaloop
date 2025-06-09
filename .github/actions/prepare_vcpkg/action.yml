@@ -7,6 +7,8 @@ inputs:
     description: "GitHub token"
   macos_target_version:
     description: "macOS target version"
+  vcpkg_rebuild:
+    description: "whether to rebuild vcpkg packages"
 
 runs:
   using: "composite"
@@ -26,6 +28,16 @@ runs:
     run: |
      mkdir -p build/vcpkg
      echo "VCPKG_ROOT=$(pwd)/build/vcpkg" | tee -a $GITHUB_ENV
+
+  - name: Flags for rebuild
+    if: always() && inputs.vcpkg_rebuild
+    shell: wrap-shell {0}
+    run: echo "VCPKG_NUGET_RWFLAGS=write" | tee -a $GITHUB_ENV
+  
+  - name: Flags for reuse
+    if: always() && !inputs.vcpkg_rebuild
+    shell: wrap-shell {0}
+    run: echo "VCPKG_NUGET_RWFLAGS=readwrite" | tee -a $GITHUB_ENV
 
   # Note: put in a different spot because short paths are needed for qtdeclarative build on Windows
   - name: Set default location
@@ -62,7 +74,7 @@ runs:
      echo "$VCPKG_ROOT" | tee -a $GITHUB_PATH
      LOCAL_FEED_URL="https://nuget.pkg.github.com/SanderVocke/index.json"
      echo "FEED_URL=$LOCAL_FEED_URL" | tee -a $GITHUB_ENV
-     echo "VCPKG_BINARY_SOURCES=clear;nuget,$LOCAL_FEED_URL,readwrite" | tee -a $GITHUB_ENV
+     echo "VCPKG_BINARY_SOURCES=clear;nuget,$LOCAL_FEED_URL,${VCPKG_NUGET_RWFLAGS}" | tee -a $GITHUB_ENV
 
   - name: Setup NuGet sources
     if: always()
