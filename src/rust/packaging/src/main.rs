@@ -82,9 +82,11 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
                     info!("Removing existing directory: {}", output_dir.display());
                     std::fs::remove_dir_all(output_dir)?;
                 }
+                let launcher_exe : PathBuf = exe_dir.join("shoopdaloop_launcher");
                 packaging::linux_appdir::build_appdir
                            (main_exe.as_path(),
                             dev_exe.as_path(),
+                            launcher_exe.as_path(),
                             output_dir.as_path(),
                             *release)
             }
