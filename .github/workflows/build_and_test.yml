@@ -70,19 +70,19 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: linux_release
-          #   release_build: true
-          #   package_kind: portable_folder
-          #   second_package_kind: appimage
-          #   third_package_kind: test_binaries
-          #   upload_release_assets: true
-          #   platform: linux-x64
-          - name: linux_debug
-            release_build: false
+          - name: linux_release
+            release_build: true
             package_kind: portable_folder
-            second_package_kind: test_binaries
+            second_package_kind: appimage
+            third_package_kind: test_binaries
             upload_release_assets: true
             platform: linux-x64
+          # - name: linux_debug
+          #   release_build: false
+          #   package_kind: portable_folder
+          #   second_package_kind: test_binaries
+          #   upload_release_assets: true
+          #   platform: linux-x64
           # - name: linux_asan
           #   # Note: ASAN build does not have a test because it is not trivial to deploy
           #   # an asan-built program on another system. The build is here to ensure the
@@ -113,7 +113,7 @@ jobs:
     env:
       PATH_SEPARATOR: ":"
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-      # checkpoints_enabled: true
+      checkpoints_enabled: true
     needs: maybe_create_release
     if: false
     steps:
@@ -154,16 +154,16 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: release_debian_stable
-          #   python: python3
-          #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-          #   package: shoopdaloop.*.release-linux-x64.portable.tar.gz
-          #   second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
-          - name: debug_debian_stable
+          - name: release_debian_stable
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
-            package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
-            second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
+            package: shoopdaloop.*.release-linux-x64.portable.tar.gz
+            second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
+          # - name: debug_debian_stable
+          #   python: python3
+          #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
+          #   package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
+          #   second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
           # - name: release_debian_appimage
           #   python: python3
           #   container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
@@ -189,8 +189,8 @@ jobs:
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
-    # env:
-      # checkpoints_enabled: true
+    env:
+      checkpoints_enabled: true
     steps:
     - name: Checkout
       uses: actions/checkout@v4

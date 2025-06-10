@@ -69,11 +69,6 @@ runs:
         echo "Symlink $from -> $to"
         ln -s $to $from
       done
-  # FIXME for testing
-  - if: always() && inputs.package_kind == 'portable_folder'
-    shell: wrap-shell {0}
-    run: |
-      cp -r build/vcpkg_installed ${{ env.PORTABLE_DIR }}/vcpkg_installed
   - if: always() && inputs.package_kind == 'portable_folder'
     shell: wrap-shell {0}
     run: |

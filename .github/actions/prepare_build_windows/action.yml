@@ -13,44 +13,6 @@ runs:
     shell: wrap-shell {0}
     run: |
       echo "Default python version is $($PYTHON --version)"
-  # - name: Install boost
-  #   uses: MarkusJx/install-boost@v2.4.5
-  #   id: install-boost
-  #   with:
-  #     boost_version: 1.86.0
-  #     platform_version: 2022
-  #     toolset: msvc
-  # - name: Install pkgconfig lite
-  #   if: always()
-  #   shell: wrap-shell {0}
-  #   run: |
-  #     curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pkg-config-lite-0.28-1_bin-win32.zip --output pkg-config-lite-0.28-1_bin-win32.zip
-  #     unzip pkg-config-lite-0.28-1_bin-win32.zip
-  #     cp pkg-config-lite-0.28-1/bin/* /c/mingw64/bin
-  # - name: Install JACK
-  #   if: always()
-  #   shell: pwsh
-  #   run: |
-  #     curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/jack2-win64-v1.9.22-assets.zip --output jack2-win64-v1.9.22-assets.zip
-  #     unzip jack2-win64-v1.9.22-assets.zip -d jack
-  # - name: Install pthreads4w
-  #   if: always()
-  #   shell: pwsh
-  #   run: |
-  #     curl -L https://github.com/SanderVocke/shoopdaloop/releases/download/build-assets-1/pthreads4w.zip --output pthreads4w.zip
-  #     unzip pthreads4w.zip -d pthreads4w
-
-  # - name: Path conversion
-  #   if: always()
-  #   id: pathconvert
-  #   shell: wrap-shell {0}
-  #   run: |
-  #     JACK_DIR=$(cygpath -w $(pwd)/jack)
-  #     PTHREADS_DIR=$(cygpath -w $(pwd)/pthreads4w/pthreads4w)
-  #     BOOST_DIR=$(cygpath -w $(cygpath -u '${{ steps.install-boost.outputs.BOOST_ROOT }}')/lib/cmake/Boost-1.86.0)
-  #     echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH;$BOOST_DIR;$JACK_DIR;$PTHREADS_DIR" | tee -a $GITHUB_ENV
-  #     echo "PTHREADS4W_PATH=$PTHREADS_DIR" | tee -a $GITHUB_ENV
-  #     echo "$PTHREADS_DIR" | tee -a $GITHUB_PATH
 
   - name: Setup dependencies
     if: always()
@@ -67,51 +29,12 @@ runs:
        Set-ExecutionPolicy Unrestricted -Scope CurrentUser
        Get-ExecutionPolicy -List
 
-  # - name: Setup MSVC
-  #   if: always()
-  #   uses: TheMrMilchmann/setup-msvc-dev@v3
-  #   with:
-  #      arch: x64
-
-  # - name: Install PyEnv
-  #   shell: wrap-shell {0}
-  #   run: |
-  #     powershell -Command "Invoke-WebRequest -UseBasicParsing -Uri \"https://raw.githubusercontent.com/pyenv-win/pyenv-win/master/pyenv-win/install-pyenv-win.ps1\" -OutFile \"./install-pyenv-win.ps1\"; &\"./install-pyenv-win.ps1\""
-  #     echo "PYENV=$(cygpath -w /c/Users/runneradmin/.pyenv/pyenv-win/bin/pyenv.bat)" | tee -a $GITHUB_ENV
-  #     echo "PYENV_ROOT=$(cygpath -w /c/Users/runneradmin/.pyenv/pyenv-win)" | tee -a $GITHUB_ENV
-
   - name: Remove GNU link which aliases with MSVC
     if: always()
     shell: wrap-shell {0}
     run: |
       rm -f /c/mingw64/bin/link.exe
       rm -f /usr/bin/link.exe
-
-  # # Very hacky approach to install PortableBuildTools into the existing VS tree
-  # - name: Install MSVC using PortableBuildTools
-  #   if: always()
-  #   shell: wrap-shell {0}
-  #   run: |
-  #       BUILDTOOLS_PREINSTALL="C:\\BuildTools"
-  #       BUILDTOOLS_INSTALL="C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise"
-  #       MSVC_VERSION="14.40.17.10"
-  #       curl -fSLo PortableBuildTools.exe https://github.com/Data-Oriented-House/PortableBuildTools/releases/latest/download/PortableBuildTools.exe
-  #       ./PortableBuildTools.exe accept_license msvc=$MSVC_VERSION path="$BUILDTOOLS_PREINSTALL"
-  #       cp -r "$BUILDTOOLS_PREINSTALL/*" "$BUILDTOOLS_INSTALL"
-  #       # echo "VCPKG_VISUAL_STUDIO_PATH=$BUILDTOOLS_INSTALL" | tee -a $GITHUB_ENV
-  
-  # - name: Install required MSVC version
-  #   if: always()
-  #   shell: wrap-shell {0}
-  #   run: |
-  #       VS_INSTALL="C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise"
-  #       /c/Program\ Files\ \(x86\)/Microsoft\ Visual\ Studio/Installer/vs_installer.exe modify \
-  #       --installPath "$VS_INSTALL" \
-  #       --add Microsoft.VisualStudio.Component.VC.14.40.17.10.x86.x64 \
-  #       --add Microsoft.VisualStudio.Component.VC.14.40.17.10.CLI.Support \
-  #       --quiet --norestart --nocache --wait
-
-  #       ls /c/Program\ Files/Microsoft\ Visual\ Studio/2022/Enterprise/VC/Tools/MSVC
 
   - name: Install MSVC 14.40
     if: always()
@@ -128,11 +51,3 @@ runs:
             # should be run twice
             $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
             $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden    
-
-  # - name: Install dependencies
-  #   if: always()
-  #   shell: wrap-shell {0}
-  #   run: |
-  #     $PIP install build virtualenv pytest
-  #     $PIP install -r build_python_requirements.txt
-  #     choco install -y ninja

@@ -1,13 +1,6 @@
 use anyhow;
 use anyhow::Context;
 use std::path::{PathBuf, Path};
-use glob::glob;
-use crate::dependencies::get_dependency_libs;
-use crate::fs_helpers::recursive_dir_cpy;
-use common::fs::copy_dir_merge;
-use regex::Regex;
-use copy_dir::copy_dir;
-use std::process::Command;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
@@ -39,9 +32,6 @@ fn populate_appdir(
         "distribution/linux/shoopdaloop.desktop",
         "distribution/linux/shoopdaloop.png",
         "distribution/linux/AppRun",
-        "distribution/linux/backend_tests",
-        "distribution/linux/python_tests",
-        "distribution/linux/rust_tests",
         "distribution/linux/shoop-config.toml",
         launcher_exe_path.to_str().unwrap(),
     ] {

@@ -143,10 +143,18 @@ def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
     runtime = find_path_based_on_tail(runtime_tail, is_debug_build)
     compiletime = find_path_based_on_tail(compiletime_tail, is_debug_build)
 
+    sep = ';' if sys.platform == 'win32' else ':'
+
     if is_debug_build and sys.platform == 'win32':
         # We will use release python, so also include the release binary directory as well
-        runtime = f'{runtime};{find_path_based_on_tail(runtime_tail, False)}'
-        compiletime = f'{compiletime};{find_path_based_on_tail(compiletime_tail, False)}'
+        runtime = f'{runtime}{sep}{find_path_based_on_tail(runtime_tail, False)}'
+        compiletime = f'{compiletime}{sep}{find_path_based_on_tail(compiletime_tail, False)}'
+    
+    # add manually-linked libs (i.e. Catch2)
+    print(f"Looking for manual-link folders")
+    for dir in glob.glob(f"{installed_dir}/**/manual-link", recursive=True):
+        print(f"Found manual-link folder: {dir}")
+        runtime = f'{runtime}{sep}{dir}'
 
     return (runtime, compiletime)
 

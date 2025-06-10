@@ -1,7 +1,5 @@
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
 use anyhow;
-use anyhow::Context;
 use clap::{Parser, Subcommand};
 use common;
 use packaging::binaries_for_test::build_test_binaries_folder;

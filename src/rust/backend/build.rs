@@ -2,8 +2,6 @@ use std::env;
 use std::path::PathBuf;
 use cmake::Config;
 use anyhow;
-use glob::glob;
-use anyhow::Context;
 use common;
 
 // For now, Rust "back-end" is just a set of C bindings to the
@@ -37,14 +35,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
                                             .configure_arg(format!("-DCMAKE_BUILD_TYPE={}", if profile == "debug" { "Debug" } else { "Release" }));
             let _ = cmake_config_mut.build();
         }
-
-        // {
-        //     let pattern = format!("{}/**/site-packages", env_lib_dir.to_str().unwrap());
-        //     let mut sp_glob = glob(&pattern).expect("Couldn't glob for site-packages");
-        //     let full_site_packages = sp_glob.next()
-        //             .expect(format!("No site-packages dir found @ {}", pattern).as_str()).unwrap();
-        //     path_to_site_packages = full_site_packages.strip_prefix(&dev_venv_dir).unwrap().to_path_buf();
-        // }
 
         let build_time_link_dirs_raw = option_env!("SHOOP_BUILD_TIME_LINK_DIRS").unwrap_or_default();
         let runtime_link_dirs_raw = option_env!("SHOOP_RUNTIME_LINK_DIRS").unwrap_or_default();
