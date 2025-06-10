@@ -7,11 +7,6 @@ on:
     pull_request:
       branches: [ "master" ]
     workflow_dispatch:
-      inputs:
-        vcpkg_force_rebuild:
-          description: 'Force vcpkg dependencies rebuild'
-          type: boolean
-          default: false
 
 env:
   checkpoints_enabled: false
@@ -120,7 +115,7 @@ jobs:
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       # checkpoints_enabled: true
     needs: maybe_create_release
-    #if: false
+    if: false
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -150,7 +145,6 @@ jobs:
         third_package_kind: ${{ matrix.kind.third_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: ./.github/actions/checkpoint
       if: always()
@@ -291,7 +285,6 @@ jobs:
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         macos_target_version: ${{ matrix.kind.macos_target_version }}
-        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
     - uses: ./.github/actions/checkpoint
       if: always()
 
@@ -417,7 +410,7 @@ jobs:
       CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       # checkpoints_enabled: true
-    if: false
+    # if: false
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
@@ -445,7 +438,6 @@ jobs:
         release_build: ${{ matrix.kind.release_build }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
     - uses: ./.github/actions/checkpoint
 
   test_windows:
