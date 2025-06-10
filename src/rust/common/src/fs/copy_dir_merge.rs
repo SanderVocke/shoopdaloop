@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::fs;
-use walkdir::{WalkDir, Error};
+use walkdir::WalkDir;
 use anyhow::{Result, Context};
 
 pub fn copy_dir_merge(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<(), anyhow::Error> {

@@ -1,15 +1,9 @@
 use std::process::Command;
 use std::env;
-use std::path::{Path, PathBuf};
-use std::collections::HashMap;
+use std::path::PathBuf;
 use glob::glob;
-use copy_dir::copy_dir;
 use anyhow;
 use anyhow::Context;
-use std::fs;
-use std::io;
-use walkdir::WalkDir;
-use common::fs::copy_dir_merge;
 
 fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything

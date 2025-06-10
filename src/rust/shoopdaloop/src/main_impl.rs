@@ -1,5 +1,4 @@
 use std::env;
-use glob::glob;
 use config::config::ShoopConfig;
 use std::path::{Path, PathBuf};
 

@@ -2,8 +2,6 @@ use std::env;
 use std::path::PathBuf;
 use cmake::Config;
 use anyhow;
-use glob::glob;
-use anyhow::Context;
 use common;
 
 // For now, Rust "back-end" is just a set of C bindings to the

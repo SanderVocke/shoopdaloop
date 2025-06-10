@@ -1,13 +1,8 @@
 use std::env;
-use std::path::PathBuf;
-use glob::glob;
-use copy_dir::copy_dir;
 use anyhow;
-use anyhow::Context;
 use backend;
 use py_env;
 use common;
-use config;
 
 fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
