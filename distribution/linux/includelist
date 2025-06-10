@@ -104,10 +104,6 @@
 */libunistring.so*
 */libutil.so*
 */libuuid.so*
-*/libwayland-client.so*
-*/libwayland-cursor.so*
-*/libwayland-egl.so*
-*/libwayland-server.so*
 */libXau*.so*
 */libXdmcp*.so*
 */libxcb*.so*

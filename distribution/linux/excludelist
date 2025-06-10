@@ -20,3 +20,7 @@
 */libdrm.so*
 */libgdk_pixbuf-*.so*
 */libgbm*.so*
+*/libwayland-client.so*
+*/libwayland-cursor.so*
+*/libwayland-egl.so*
+*/libwayland-server.so*

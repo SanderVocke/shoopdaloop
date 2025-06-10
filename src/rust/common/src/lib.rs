@@ -9,3 +9,11 @@ pub fn init() -> Result<(), anyhow::Error> {
              .with_context(|| "Failed to initialize logging")?;
     Ok(())
 }
+
+pub fn shoop_version() -> &'static str {
+    env!("SHOOP_VERSION")
+}
+
+pub fn shoop_description() -> &'static str {
+    env!("SHOOP_DESCRIPTION")
+}

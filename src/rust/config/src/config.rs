@@ -7,9 +7,6 @@ use std::path::{Path, PathBuf};
 use common::logging::macros::*;
 shoop_log_unit!("Main");
 
-pub const VERSION : &str = env!("CARGO_PKG_VERSION");
-pub const DESCRIPTION : &str = env!("CARGO_PKG_DESCRIPTION");
-
 #[derive(Clone)]
 pub struct ShoopConfig {
     pub version: String,
@@ -19,6 +16,7 @@ pub struct ShoopConfig {
     pub lua_dir: String,
     pub resource_dir: String,
     pub schemas_dir: String,
+    pub pythonhome: String,
     pub pythonpaths: Vec<String>,
     pub dynlibpaths: Vec<String>,
 }
@@ -30,6 +28,7 @@ pub struct ShoopTomlConfig {
     pub lua_dir : Option<String>,
     pub resource_dir : Option<String>,
     pub schemas_dir : Option<String>,
+    pub pythonhome : Option<String>,
     pub pythonpaths : Option<Vec<String>>,
     pub dynlibpaths : Option<Vec<String>>,
 }
@@ -40,6 +39,7 @@ impl ShoopTomlConfig {
         if self.lua_dir.is_some() { config.lua_dir = self.lua_dir.unwrap() }
         if self.resource_dir.is_some() { config.resource_dir = self.resource_dir.unwrap() }
         if self.schemas_dir.is_some() { config.schemas_dir = self.schemas_dir.unwrap() }
+        if self.pythonhome.is_some() { config.pythonhome = self.pythonhome.unwrap() }
         if self.pythonpaths.is_some() { config.pythonpaths = self.pythonpaths.unwrap() }
         if self.dynlibpaths.is_some() { config.dynlibpaths = self.dynlibpaths.unwrap() }
     }
@@ -51,6 +51,7 @@ impl ShoopTomlConfig {
         if config.lua_dir != defaults.lua_dir { result.lua_dir = Some(config.lua_dir.clone()) }
         if config.resource_dir != defaults.resource_dir { result.resource_dir = Some(config.resource_dir.clone()) }
         if config.schemas_dir != defaults.schemas_dir { result.schemas_dir = Some(config.schemas_dir.clone()) }
+        if config.pythonhome != defaults.pythonhome { result.pythonhome = Some(config.pythonhome.clone()) }
         if config.pythonpaths != defaults.pythonpaths { result.pythonpaths = Some(config.pythonpaths.clone()) }
         if config.dynlibpaths != defaults.dynlibpaths { result.dynlibpaths = Some(config.dynlibpaths.clone()) }
 
@@ -67,6 +68,7 @@ impl ShoopTomlConfig {
         substitute(&mut self.lua_dir);
         substitute(&mut self.resource_dir);
         substitute(&mut self.schemas_dir);
+        substitute(&mut self.pythonhome);
         if self.pythonpaths.is_some() {
             self.pythonpaths = Some(self.pythonpaths.as_ref().unwrap().iter()
             .map(|s| s.replace("$ROOT", root.to_str().unwrap())).collect());
@@ -85,50 +87,17 @@ impl Default for ShoopConfig {
         };
         let executable_path = env::current_exe().unwrap();
         let installed_path = normalize_path(executable_path.parent().unwrap());
-
-        let maybe_pythonpaths_env 
-            = env::var("SHOOP_OVERRIDE_PYTHONPATHS").ok();
-        let python_paths : Vec<String> =
-            if maybe_pythonpaths_env.is_some() {
-                maybe_pythonpaths_env
-                    .unwrap()
-                    .split(common::fs::PATH_LIST_SEPARATOR)
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>()
-            } else {
-                vec![installed_path.join("lib/python").to_str().unwrap().to_string()]
-            };
-
-        let maybe_dynlibpaths_env 
-            = env::var("SHOOP_OVERRIDE_DYNLIBPATHS").ok();
-        let dynlib_paths : Vec<String> =
-            if maybe_dynlibpaths_env.is_some() {
-                maybe_dynlibpaths_env
-                    .unwrap()
-                    .split(common::fs::PATH_LIST_SEPARATOR)
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::default()
-            };
-        
-        let default_qml_dir = installed_path.join("lib/qml").to_str().unwrap().to_string();
-        let default_lua_dir = installed_path.join("lib/lua").to_str().unwrap().to_string();
-        let default_resource_dir = installed_path.join("resources").to_str().unwrap().to_string();
-        let default_schemas_dir = installed_path.join("lib/session_schemas").to_str().unwrap().to_string();
-
         ShoopConfig {
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            description: env!("CARGO_PKG_DESCRIPTION").to_string(),
+            version: common::shoop_version().to_string(),
+            description: common::shoop_description().to_string(),
             install_info: format!("installed in {}", installed_path.to_str().unwrap()),
-            qml_dir: env::var("SHOOP_OVERRIDE_QML_DIR").unwrap_or(default_qml_dir.clone()),
-            lua_dir: env::var("SHOOP_OVERRIDE_LUA_DIR").unwrap_or(default_lua_dir.clone()),
-            resource_dir: env::var("SHOOP_OVERRIDE_RESOURCE_DIR").unwrap_or(default_resource_dir.clone()),
-            schemas_dir: env::var("SHOOP_OVERRIDE_SCHEMAS_DIR").unwrap_or(default_schemas_dir.clone()),
-            pythonpaths: python_paths,
-            dynlibpaths: dynlib_paths,
+            qml_dir: String::from(""),
+            lua_dir: String::from(""),
+            resource_dir: String::from(""),
+            schemas_dir: String::from(""),
+            pythonhome : String::from(""),
+            pythonpaths: vec![],
+            dynlibpaths: vec![],
         }
     }
 }

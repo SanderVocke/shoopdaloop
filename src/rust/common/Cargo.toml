@@ -15,7 +15,8 @@ ctor = "0.2"
 walkdir = "2.4"
 
 [build-dependencies]
-bindgen = "0.70.1"
+toml = "0.8"
+
 
 [features]
 # Dummy build to build dependencies only
