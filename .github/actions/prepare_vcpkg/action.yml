@@ -30,12 +30,12 @@ runs:
      echo "VCPKG_ROOT=$(pwd)/build/vcpkg" | tee -a $GITHUB_ENV
 
   - name: Flags for rebuild
-    if: always() && inputs.vcpkg_rebuild
+    if: always() && inputs.vcpkg_rebuild == 'true'
     shell: wrap-shell {0}
     run: echo "VCPKG_NUGET_RWFLAGS=write" | tee -a $GITHUB_ENV
   
   - name: Flags for reuse
-    if: always() && !inputs.vcpkg_rebuild
+    if: always() && inputs.vcpkg_rebuild != 'true'
     shell: wrap-shell {0}
     run: echo "VCPKG_NUGET_RWFLAGS=readwrite" | tee -a $GITHUB_ENV
 
