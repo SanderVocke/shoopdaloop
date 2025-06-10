@@ -1,6 +1,7 @@
 use anyhow;
 use std::path::{PathBuf, Path};
 use std::process::Command;
+use crate::dependencies::get_dependency_libs;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
@@ -19,15 +20,44 @@ fn populate_folder(
     let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     info!("Using source path {src_path:?}");
 
-    // for f in glob::glob(format!("{}/**/test_runner*", shoop_built_out_dir.join("shoop_lib").to_str().unwrap()).as_str())? {
-    //     let f = f?.clone();
-    //     info!("Bundling {f:?}...");
-    //     std::fs::copy(
-    //         &f,
-    //         folder.join(&f.file_name().unwrap())
-    //     )?;
-    // }
+    let testrunner_filename = 
+        if cfg![target_os = "windows"] {
+            "testrunner.exe"
+        } else {
+            "testrunner"
+        };
+    let installed_testrunner = folder.join(testrunner_filename);
+    for f in glob::glob(format!("{}/**/test_runner*", backend::backend_build_dir().to_string_lossy().to_string()).as_str())? {
+        let f = f?.clone();
+        info!("Bundling {f:?}...");
+        std::fs::copy(
+            &f,
+            &installed_testrunner
+        )?;
+    }
 
+    info!("Getting dependencies (this may take some time)...");
+    let excludelist_path = src_path.join("distribution/linux/testrunner_excludelist");
+    let includelist_path = src_path.join("distribution/linux/testrunner_includelist");
+    for path in backend::runtime_link_dirs() {
+        debug!("--> extra search path: {:?}", path);
+        common::env::add_lib_search_path(&path);
+    }
+    let dependency_libs = get_dependency_libs
+       (&installed_testrunner,
+        folder,
+        &excludelist_path,
+        &includelist_path,
+        false)?;
+
+    info!("Bundling {} dependencies...", dependency_libs.len());
+    for lib in dependency_libs {
+        let src = lib.clone();
+        let dst = folder.join(lib.file_name().unwrap());
+        debug!("--> {:?} -> {:?}", &src, &dst);
+        std::fs::copy(&src, &dst)?;
+    }
+    
     info!("Downloading prebuilt cargo-nextest into folder...");
 
     let nextest_path : PathBuf;
