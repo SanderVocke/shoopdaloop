@@ -21,7 +21,7 @@ pub fn main() {
     // Assumption is that we are in {root}/bin
     let installed_path = normalize_path(executable_path.parent().unwrap());
 
-    let config : ShoopConfig = ShoopConfig::load(&installed_path)
+    let config : ShoopConfig = ShoopConfig::load(&installed_path).expect("Failed to load config");
 
     let errcode = shoopdaloop_main(config);
     std::process::exit(errcode);
