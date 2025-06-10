@@ -39,9 +39,6 @@ fn populate_appdir(
         "distribution/linux/shoopdaloop.desktop",
         "distribution/linux/shoopdaloop.png",
         "distribution/linux/AppRun",
-        "distribution/linux/backend_tests",
-        "distribution/linux/python_tests",
-        "distribution/linux/rust_tests",
         "distribution/linux/shoop-config.toml",
         launcher_exe_path.to_str().unwrap(),
     ] {
