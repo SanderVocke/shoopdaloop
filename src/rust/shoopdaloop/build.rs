@@ -35,36 +35,8 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
         println!("Using dev env Python: {}", dev_env_python);
 
-        // // Copy the base built backend
-        // copy_dir(&built_backend_dir, &shoop_lib_dir)?;
-
-        // // Copy the base python directory
-        // copy_dir(&dev_venv_dir, shoop_lib_dir.join("py"))?;
-
-        // let path_to_runtime_lib = if is_debug_build {
-        //     "runtime/debug/lib"
-        // } else {
-        //     "runtime/lib"
-        // };
-        // let path_to_site_packages : PathBuf;
-        // {
-        //     let pattern = format!("{}/**/site-packages", env_lib_dir.to_str().unwrap());
-        //     let mut sp_glob = glob(&pattern).expect("Couldn't glob for site-packages");
-        //     let full_site_packages = sp_glob.next()
-        //             .expect(format!("No site-packages dir found @ {}", pattern).as_str()).unwrap();
-        //     path_to_site_packages = full_site_packages.strip_prefix(&dev_venv_dir).unwrap().to_path_buf();
-        // }
-        // let path_to_python_libs = path_to_site_packages.parent().unwrap();
-
         // Make env dir information available
         println!("cargo:rustc-env=SHOOP_DEV_VENV_DIR={}", dev_venv_dir.to_str().unwrap());
-        // println!("cargo:rustc-env=SHOOP_ENV_DYLIB_DIR={}", env_lib_dir.to_str().unwrap());
-        // println!("cargo:rustc-env=SHOOP_DEV_VENV_DIR_TO_SITE_PACKAGES={}", path_to_site_packages.to_str().unwrap());
-        // println!("cargo:rustc-env=SHOOP_ENV_DIR_TO_RUNTIME_LIB={}", path_to_runtime_lib);
-        // println!("cargo:rustc-env=SHOOP_DEV_VENV_DIR_TO_PYTHON_LIBS={}", path_to_python_libs.to_str().unwrap());
-
-        // Link to libshoopdaloop_backend
-        // println!("cargo:rustc-link-search=native={}", env_lib_dir.to_str().unwrap());
         #[cfg(target_os = "linux")]
         {
             println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");
@@ -76,18 +48,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
             println!("cargo:rustc-link-arg-bin=shoopdaloop=/INCLUDE:create_audio_driver");
             println!("cargo:rustc-link-lib=shoopdaloop_backend");
         }
-
-        // Configure RPATHs 
-        // #[cfg(target_os = "linux")]
-        // {
-        //     // Set RPATH
-        //     println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/{}", path_to_runtime_lib); // For builtin libraries
-        // }
-        // #[cfg(target_os = "macos")]
-        // {
-        //     // Set RPATH
-        //     println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$loader_path/{}", path_to_runtime_lib); // For builtin libraries
-        // }
 
         #[cfg(target_os = "linux")] {
             // Link to portable lib folder
