@@ -469,7 +469,7 @@ jobs:
     needs: build_windows
     # env:
       #  checkpoints_enabled: true
-    if: false
+    # if: false
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
