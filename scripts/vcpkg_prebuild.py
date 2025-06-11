@@ -188,14 +188,10 @@ def add_to_env_paths(varname, path, env):
     
 def add_vcpkg_env(args, env):
     new_env = env.copy()
-    new_env['VCPKG_ROOT'] = args.vcpkg_root
     new_env['VCPKG_OVERLAY_TRIPLETS'] = os.path.join(base_path, "vcpkg", "triplets")
     new_env['VCPKG_OVERLAY_PORTS'] = os.path.join(base_path, "vcpkg", "ports")
     new_env["VCPKG_INSTALLED_DIR"] = args.vcpkg_installed_dir
     new_env["CMAKE_PREFIX_PATH"] = os.path.join(args.vcpkg_installed_dir, detect_vcpkg_triplet())
-    if sys.platform == 'win32':
-        pkgconf_dir = os.path.dirname(find_vcpkg_pkgconf(args.vcpkg_installed_dir))
-        new_env = add_to_env_paths('PATH', pkgconf_dir, new_env)
     return new_env
 
 def build_vcpkg(args, build_env):
@@ -220,15 +216,20 @@ def build_vcpkg(args, build_env):
             else:
                 subprocess.run('./bootstrap-vcpkg.sh', cwd=os.path.join(base_path, "build", "vcpkg"), shell=True)
             args.vcpkg_root = os.path.join(base_path, "build", "vcpkg")
+    else:
+        print(f'VCPKG_ROOT provided from env: {args.vcpkg_root}')
+    build_env['VCPKG_ROOT'] = args.vcpkg_root
+
     vcpkg_exe = os.path.join(args.vcpkg_root, "vcpkg")
     if sys.platform == 'win32':
         vcpkg_exe += ".exe"
 
     # Setup vcpkg
+    print(build_env)
     try:
         result = subprocess.check_output(f'{vcpkg_exe} --help', shell=True, env=apply_build_env(build_env))
     except subprocess.CalledProcessError:
-        print("Error: vcpkg not found in PATH. Please install it and ensure it is in the PATH.")
+        print("Error: vcpkg not found.")
         exit(1)
 
     # Setup VCPKG_ROOT and toolchain file and triplets
@@ -315,6 +316,10 @@ def main():
     
     if not args.skip_vcpkg:
         general_env = build_vcpkg(args, general_env)
+    
+    if sys.platform == 'win32':
+        pkgconf_dir = os.path.dirname(find_vcpkg_pkgconf(args.vcpkg_installed_dir))
+        general_env = add_to_env_paths('PATH', pkgconf_dir, general_env)
     
     debug_env = generate_env(args, general_env, True)
     release_env = generate_env(args, general_env, False)
