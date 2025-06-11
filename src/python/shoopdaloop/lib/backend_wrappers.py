@@ -14,6 +14,7 @@ import inspect
 import ctypes
 import traceback
 import numpy
+import shoop_py_backend
 
 def midi_msg_dict_to_backend(msg):
     return shoop_py_backend.MidiEvent(msg['time'], msg['data'])
