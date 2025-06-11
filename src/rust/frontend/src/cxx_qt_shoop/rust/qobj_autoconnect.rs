@@ -26,10 +26,11 @@ impl AutoConnect {
     pub unsafe fn initialize_impl_with_result(mut self : Pin<&mut AutoConnect>) -> Result<(), anyhow::Error> {
         debug!("Initializing");
         {
-            self.as_mut().on_parentChanged(|o,_| {
-                let mut rust : Pin<&mut AutoConnectRust> = o.rust_mut();
-                rust.find_backend_wrapper.as_mut().unwrap().rescan();
-            }).release();
+            // FIXME
+            // self.as_mut().on_parentChanged(|o,_| {
+            //     let mut rust : Pin<&mut AutoConnectRust> = o.rust_mut();
+            //     rust.find_backend_wrapper.as_mut().unwrap().rescan();
+            // }).release();
             self.as_mut().on_internalPort_changed(|o| {
                 debug!("internalPort -> {:?}", o.internalPort());
                 o.update();

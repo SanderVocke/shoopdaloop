@@ -40,7 +40,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         let runtime_link_dirs_raw = option_env!("SHOOP_RUNTIME_LINK_DIRS").unwrap_or_default();
 
         let build_time_link_dirs = build_time_link_dirs_raw
-            .split(common::fs::PATH_LIST_SEPARATOR)
+            .split(common::util::PATH_LIST_SEPARATOR)
             .filter(|s| !s.is_empty())
             .map(PathBuf::from)
             .collect::<Vec<_>>();

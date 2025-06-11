@@ -15,9 +15,9 @@ class FindParentBackend(ShoopQQuickItem):
         self._backend = None
         self.logger = Logger("Frontend.FindParentBackend")
         
-        self.rescan_parents()
-        if not self._backend:
-            self.parentChanged.connect(lambda: self.rescan_parents())
+        # self.rescan_parents()
+        # if not self._backend:
+        #     self.parentChanged.connect(lambda: self.rescan_parents())
 
     ######################
     # PROPERTIES
@@ -53,7 +53,8 @@ class FindParentBackend(ShoopQQuickItem):
     
     @ShoopSlot()
     def rescan_parents(self):
-        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
-        if maybe_backend:
-            self.backend = maybe_backend
-            self.backend.registerBackendObject(self)
+        pass
+        # maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend') and self._backend == None)
+        # if maybe_backend:
+        #     self.backend = maybe_backend
+        #     self.backend.registerBackendObject(self)

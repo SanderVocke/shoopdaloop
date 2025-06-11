@@ -2,7 +2,7 @@ use anyhow;
 use anyhow::Context;
 use std::path::{PathBuf, Path};
 use crate::dependencies::get_dependency_libs;
-use common::fs::copy_dir_merge;
+use common::util::copy_dir_merge;
 use copy_dir::copy_dir;
 use std::process::Command;
 

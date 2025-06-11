@@ -67,7 +67,7 @@ pub fn build_time_link_dirs() -> Vec<PathBuf> {
         let build_time_link_dirs =
              option_env!("SHOOP_BUILD_TIME_LINK_DIRS")
             .unwrap_or_default()
-            .split(common::fs::PATH_LIST_SEPARATOR)
+            .split(common::util::PATH_LIST_SEPARATOR)
             .filter(|s| !s.is_empty())
             .map(PathBuf::from)
             .collect::<Vec<_>>();
@@ -88,7 +88,7 @@ pub fn runtime_link_dirs() -> Vec<PathBuf> {
         let mut runtime_link_dirs =
              option_env!("SHOOP_RUNTIME_LINK_DIRS")
             .unwrap_or_default()
-            .split(common::fs::PATH_LIST_SEPARATOR)
+            .split(common::util::PATH_LIST_SEPARATOR)
             .filter(|s| !s.is_empty())
             .map(PathBuf::from)
             .collect::<Vec<_>>();

@@ -12,5 +12,5 @@ pub fn add_lib_search_path(path : &Path) {
     }
 
     let value = env::var(name).unwrap_or("".to_string());
-    env::set_var(name, format!("{}{}{}", path.to_str().unwrap(), crate::fs::PATH_LIST_SEPARATOR, value));
+    env::set_var(name, format!("{}{}{}", path.to_str().unwrap(), crate::util::PATH_LIST_SEPARATOR, value));
 }

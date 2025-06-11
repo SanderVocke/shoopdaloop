@@ -58,7 +58,7 @@ ShoopDialog {
         addTrackDescriptor(track_descriptor)
     }
 
-    ColumnLayout {
+    Column {
 
         Label {
             text: "Choose the settings for your track."

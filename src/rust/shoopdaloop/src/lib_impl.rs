@@ -10,7 +10,7 @@ fn shoopdaloop_main_impl<'py>(
     config : ShoopConfig
 ) -> Result<i32, anyhow::Error> {
     // Set up PYTHONPATH.
-    env::set_var("PYTHONPATH", &config.pythonpaths.join(common::fs::PATH_LIST_SEPARATOR));
+    env::set_var("PYTHONPATH", &config.pythonpaths.join(common::util::PATH_LIST_SEPARATOR));
     env::set_var("PYTHONHOME", &config.pythonhome);
 
     // Get the command-line arguments

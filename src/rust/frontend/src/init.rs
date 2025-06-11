@@ -1,3 +1,6 @@
+use common::logging::macros::*;
+shoop_log_unit!("Main");
+
 fn register_qml_types_and_singletons() {
     use crate::cxx_qt_shoop::*;
 
@@ -19,6 +22,7 @@ fn register_metatypes() {
 
 #[no_mangle]
 pub extern "C" fn shoop_rust_init() {
+    debug!("Initializing rust metatypes, types and singletons");
     register_metatypes();
     register_qml_types_and_singletons();
 }

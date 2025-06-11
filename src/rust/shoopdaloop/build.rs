@@ -62,7 +62,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
               .iter()
               .map(|p| p.to_string_lossy().to_string())
               .collect::<Vec<String>>()
-              .join(common::fs::PATH_LIST_SEPARATOR);
+              .join(common::util::PATH_LIST_SEPARATOR);
         println!("cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS={}", backend_runtime_link_paths_str);
 
         // Rebuild if changed

@@ -19,7 +19,7 @@ pub fn launcher() -> io::Result<()> {
     let config = ShoopConfig::load(&launcher_dir).expect("Could not load config");
 
     if config.dynlibpaths.len() > 0 {
-        let dynlibpaths_string = config.dynlibpaths.join(common::fs::PATH_LIST_SEPARATOR);
+        let dynlibpaths_string = config.dynlibpaths.join(common::util::PATH_LIST_SEPARATOR);
 
         let runtime_link_path_var =
         if cfg!(target_os = "windows") { "PATH" }
@@ -34,14 +34,21 @@ pub fn launcher() -> io::Result<()> {
         let new_runtime_link_paths = format!(
             "{}{}{}",
             dynlibpaths_string,
-            common::fs::PATH_LIST_SEPARATOR,
+            common::util::PATH_LIST_SEPARATOR,
             old_runtime_link_paths
         );
         // Set the modified runtime link paths environment variable.
-        subprocess_env.insert(runtime_link_path_var.to_string(), new_runtime_link_paths);
+        subprocess_env.insert(runtime_link_path_var.to_string(), new_runtime_link_paths.clone());
+
+        if cfg!(target_os = "windows") {
+            // Also apply the env change to our own process. This is because trial and error yielded
+            // on Windows that passing it as env to Command causes it to sometimes fail.
+            env::set_var("PATH", &new_runtime_link_paths);
+        }
     } else {
         debug!("launcher: no additional library paths to add.");
     }
+
 
     let shoopdaloop_executable = launcher_dir.join("shoopdaloop");
 

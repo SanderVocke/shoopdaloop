@@ -14,19 +14,19 @@ pub fn create_find_parent_backend_wrapper() -> UniquePtr<FindParentItem> {
 
     rval.as_mut().unwrap()
         .set_itemBoolPropertyToCheck(QString::from("initialized"));
-    rval.as_mut().unwrap()
-        .set_find_predicate (Box::new(|q : *mut QQuickItem| {
-            unsafe {
-                let qobj = qquickitem_to_qobject_mut(q);
-                let obj_name = qobject_object_name(qobj.as_ref().unwrap());
-                let match_obj_name = obj_name.unwrap_or("") == String::from("shoop_backend_wrapper");
-                let class_name_re = Regex::new(r"Backend(?:_QMLTYPE)?.*").unwrap();
-                let match_class_name = class_name_re.is_match(
-                    qobject_class_name(qobj.as_ref().unwrap()).unwrap()
-                );
-                match_obj_name || match_class_name
-            }
-        }));
+    // rval.as_mut().unwrap()
+    //     .set_find_predicate (Box::new(|q : *mut QQuickItem| {
+    //         unsafe {
+    //             let qobj = qquickitem_to_qobject_mut(q);
+    //             let obj_name = qobject_object_name(qobj.as_ref().unwrap());
+    //             let match_obj_name = obj_name.unwrap_or("") == String::from("shoop_backend_wrapper");
+    //             let class_name_re = Regex::new(r"Backend(?:_QMLTYPE)?.*").unwrap();
+    //             let match_class_name = class_name_re.is_match(
+    //                 qobject_class_name(qobj.as_ref().unwrap()).unwrap()
+    //             );
+    //             match_obj_name || match_class_name
+    //         }
+    //     }));
 
     rval
 }
