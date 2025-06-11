@@ -27,10 +27,38 @@ fn populate_folder(
     crate::portable_folder_common::populate_portable_folder
        (folder, exe_path, src_path, &includelist_path, &excludelist_path)?;
 
+    let mut extra_assets : Vec<(String, String)> =
+        vec![
+            (launcher_path.to_string_lossy().to_string(), "shoopdaloop_launcher.exe".to_string()),
+            ("distribution/windows/shoop-config.toml".to_string(), "shoop-config.toml".to_string()),
+        ];
+
+
+    // Explicitly bundle shiboken library
+    for base in &["shiboken6.*dll", "pyside6.*dll"] {
+        let mut extra_lib_path : Option<PathBuf> = None;
+        for path in backend::runtime_link_dirs() {
+            let pattern = &path.join(base);
+            let g = glob(&pattern.to_string_lossy())?.filter_map(Result::ok);
+            for found in g {
+                extra_lib_path = Some(found);
+                break;
+            }
+            if extra_lib_path.is_some() { break; }
+        }
+        if extra_lib_path.is_none() {
+            return Err(anyhow::anyhow!("Could not find extra library {base}"));
+        }
+        let extra_lib_path = extra_lib_path.unwrap();
+        let extra_lib_srcpath : String = extra_lib_path.to_string_lossy().to_string();
+        let extra_lib_filename = &extra_lib_path.file_name().unwrap().to_string_lossy().to_string();
+        let extra_lib_dstpath : String = format!("lib/{}", extra_lib_filename);
+        extra_assets.push((extra_lib_srcpath, extra_lib_dstpath));
+
+    }
+
     info!("Bundling additional assets...");
-    for (src,dst) in [
-        (launcher_path.to_str().expect("Failed to convert launcher path"), "shoopdaloop_launcher.exe"),
-    ] {
+    for (src,dst) in extra_assets {
         let from = src_path.join(src);
         let to = folder.join(dst);
         info!("  {:?} -> {:?}", &from, &to);

@@ -370,28 +370,28 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: windows_release
-          #   os: windows-2022
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container_image: null
-          #   prepare: 'windows'
-          #   release_build: true
-          #   package_kind: portable_folder
-          #   second_package_kind: innosetup
-          #   third_package_kind: test_binaries
-          #   upload_release_assets: true
-          #   platform: windows-msvc-x64
-          - name: windows_debug
+          - name: windows_release
             os: windows-2022
             python: python.exe
             pip: python.exe -m pip
             container_image: null
             prepare: 'windows'
-            release_build: false
+            release_build: true
             package_kind: portable_folder
-            second_package_kind: test_binaries
+            second_package_kind: innosetup
+            third_package_kind: test_binaries
+            upload_release_assets: true
             platform: windows-msvc-x64
+          # - name: windows_debug
+          #   os: windows-2022
+          #   python: python.exe
+          #   pip: python.exe -m pip
+          #   container_image: null
+          #   prepare: 'windows'
+          #   release_build: false
+          #   package_kind: portable_folder
+          #   second_package_kind: test_binaries
+          #   platform: windows-msvc-x64
           # - name: windows_arm_debug
           #   os: windows-11-arm
           #   python: python.exe
@@ -458,13 +458,13 @@ jobs:
             os: windows-2022
             package: package_windows_release
             pathconvert: "| cygpath -u -f -"
-          - name: debug_windows
-            python: python.exe
-            container: null
-            os: windows-2022
-            package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
-            second_package: shoopdaloop.*.debug-windows-msvc-x64.test_binaries.tar.gz
-            pathconvert: "| cygpath -u -f -"
+          # - name: debug_windows
+          #   python: python.exe
+          #   container: null
+          #   os: windows-2022
+          #   package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
+          #   second_package: shoopdaloop.*.debug-windows-msvc-x64.test_binaries.tar.gz
+          #   pathconvert: "| cygpath -u -f -"
     runs-on: ${{ matrix.kind.os }}
     needs: build_windows
     # env:

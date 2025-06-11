@@ -1,0 +1,7 @@
+qml_dir = "$ROOT/qml"
+lua_dir = "$ROOT/lua"
+resource_dir = "$ROOT/resources"
+schemas_dir = "$ROOT/session_schemas"
+pythonhome = "$ROOT/lib/python"
+pythonpaths = ["$ROOT/lib/python", "$ROOT/lib/python/Lib/site-packages", "$ROOT/lib/python/site-packages"]
+dynlibpaths = ["$ROOT/lib"]
