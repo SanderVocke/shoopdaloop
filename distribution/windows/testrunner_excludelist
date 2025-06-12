@@ -1,0 +1,14 @@
+*/kernel32.dll
+*/ntdll.dll
+*/kernelbase.dll
+*/ucrtbase.dll
+*/ucrtbased.dll
+*/VERSION.dll
+*/d3d*.dll
+*/AUTHZ.dll
+*/NETAPI32.dll
+*/WINMM.dll
+*/IPHLPAPI.DLL
+*/WINHTTP.dll
+*/DWrite.dll
+*/dxgi.dll

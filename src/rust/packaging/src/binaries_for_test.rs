@@ -37,8 +37,27 @@ fn populate_folder(
     }
 
     info!("Getting dependencies (this may take some time)...");
-    let excludelist_path = src_path.join("distribution/linux/testrunner_excludelist");
-    let includelist_path = src_path.join("distribution/linux/testrunner_includelist");
+    let excludelist_path = 
+        if cfg!(target_os = "linux") {
+            src_path.join("distribution/linux/testrunner_excludelist")
+        } else if cfg!(target_os = "windows") {
+            src_path.join("distribution/windows/testrunner_excludelist")
+        } else if cfg!(target_os = "macos") {
+            src_path.join("distribution/macos/testrunner_excludelist")
+        } else {
+            panic!()
+        };
+    let includelist_path = 
+        if cfg!(target_os = "linux") {
+            src_path.join("distribution/linux/testrunner_includelist")
+        } else if cfg!(target_os = "windows") {
+            src_path.join("distribution/windows/testrunner_includelist")
+        } else if cfg!(target_os = "macos") {
+            src_path.join("distribution/macos/testrunner_includelist")
+        } else {
+            panic!()
+        };
+
     for path in backend::runtime_link_dirs() {
         debug!("--> extra search path: {:?}", path);
         common::env::add_lib_search_path(&path);
