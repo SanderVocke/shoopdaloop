@@ -115,7 +115,7 @@ jobs:
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       checkpoints_enabled: true
     needs: maybe_create_release
-    if: false
+    #if: false
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -410,7 +410,7 @@ jobs:
       CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       # checkpoints_enabled: true
-    # if: false
+    if: false
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
@@ -469,7 +469,7 @@ jobs:
     needs: build_windows
     # env:
       #  checkpoints_enabled: true
-    # if: false
+    if: false
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
