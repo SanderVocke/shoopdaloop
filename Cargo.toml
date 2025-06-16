@@ -21,3 +21,7 @@ cxx-qt-macro = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "wi
 # cxx-qt-lib = { path = "C:/sdev/cxx-qt/crates/cxx-qt-lib" }
 # cxx-qt-lib-extras = { path = "C:/sdev/cxx-qt/crates/cxx-qt-lib-extras" }
 # cxx-qt-macro = { path = "C:/sdev/cxx-qt/crates/cxx-qt-macro" }
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
