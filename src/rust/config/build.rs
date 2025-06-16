@@ -9,6 +9,10 @@ const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
 #[path = "src/config.rs"]
 mod config;
 
+fn dev_config_path() -> PathBuf {
+    PathBuf::from(SRC_DIR).join("../../..").join("shoop-dev-config.toml")
+}
+
 fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
     let shoop_src_root_dir = PathBuf::from(SRC_DIR).join("../../..");
 
@@ -40,7 +44,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
     #[cfg(feature = "prebuild")]
     {
-        println!("cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS=");
         return Ok(());
     }
 
@@ -52,8 +55,13 @@ fn main_impl() -> Result<(), anyhow::Error> {
             Ok(())
         };
         // Write config files
-        let configs_dir = PathBuf::from(env::var("OUT_DIR").unwrap().as_str());
-        write_config(&configs_dir.join("shoop-dev-config.toml"), &generate_dev_config()?)?;
+        let dev_config = dev_config_path();
+        let dev_config_str = dev_config.to_string_lossy();
+
+        write_config(&dev_config, &generate_dev_config()?)?;
+
+        println!("cargo:rustc-env=SHOOP_DEV_CONFIG_PATH={dev_config_str}");
+
         Ok(())
     }
 }

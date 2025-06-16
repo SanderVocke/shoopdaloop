@@ -105,11 +105,13 @@ impl Default for ShoopConfig {
 impl ShoopConfig {
     pub fn parse_toml_values(base_config : &ShoopConfig,
                              content_str : &str,
-                             root_path : &Path) -> Result<ShoopConfig, anyhow::Error> {
+                             maybe_root_path : Option<&Path>) -> Result<ShoopConfig, anyhow::Error> {
         let mut config : ShoopConfig = base_config.clone();
         let mut toml_config : ShoopTomlConfig = toml::from_str(content_str)
             .context("Failed to parse TOML")?;
-        toml_config.substitute_root(root_path);
+        if maybe_root_path.is_some() {
+            toml_config.substitute_root(maybe_root_path.unwrap());
+        }
         toml_config.apply_overrides(&mut config);
         Ok(config)
     }
@@ -120,7 +122,26 @@ impl ShoopConfig {
             .context("Could not serialize config to TOML")
     }
 
-    pub fn load(root_path : &Path) -> Result<ShoopConfig, anyhow::Error> {
+    pub fn load(config_path : &Path, maybe_substitute_root_path : Option<&Path>) -> Result<ShoopConfig, anyhow::Error> {
+        let normalize_path = |path: &Path| -> PathBuf {
+            PathBuf::from(std::fs::canonicalize(path).unwrap().to_str().unwrap().trim_start_matches(r"\\?\"))
+        };
+        let config_path = normalize_path(config_path);
+
+        let mut config : ShoopConfig = ShoopConfig::default();
+        if std::fs::exists(&config_path).expect("Could not check for config file existence") {
+            debug!("Loading config file: {:?}", config_path);
+            let contents = std::fs::read_to_string(config_path)
+                                                    .expect("Could not read config file");
+            config = ShoopConfig::parse_toml_values(&mut config, contents.as_str(), maybe_substitute_root_path)
+                        .expect("Could not parse config file");
+        } else {
+            return Err(anyhow::Error::msg(format!("Could not find config file: {:?}", config_path)));
+        }
+        Ok(config)
+    }
+
+    pub fn load_default(root_path : &Path) -> Result<ShoopConfig, anyhow::Error> {
         let normalize_path = |path: &Path| -> PathBuf {
             PathBuf::from(std::fs::canonicalize(path).unwrap().to_str().unwrap().trim_start_matches(r"\\?\"))
         };
@@ -128,19 +149,13 @@ impl ShoopConfig {
         let executable_path = env::current_exe().unwrap();
         // Assumption is that we are in {root}/bin
         let installed_path = normalize_path(executable_path.parent().unwrap());
-
-        let mut config : ShoopConfig = ShoopConfig::default();
         let config_path = env::var("SHOOP_CONFIG")
                         .map_or(installed_path.join("shoop-config.toml"), |v| PathBuf::from(v));
         if std::fs::exists(&config_path).expect("Could not check for config file existence") {
-            debug!("Loading config file: {:?}", config_path);
-            let contents = std::fs::read_to_string(config_path)
-                                                    .expect("Could not read config file");
-            config = ShoopConfig::parse_toml_values(&mut config, contents.as_str(), root_path)
-                        .expect("Could not parse config file");
+            return ShoopConfig::load(&config_path, Some(root_path));
         } else {
             debug!("No config file found, using defaults.");
+            return Ok(ShoopConfig::default());
         }
-        Ok(config)
     }
 }

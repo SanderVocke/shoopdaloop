@@ -13,8 +13,7 @@ shoop_log_unit!("packaging");
 
 fn populate_folder(
     folder : &Path,
-    exe_path : &Path,
-    launcher_path : &Path,
+    exe_path : &Path
 ) -> Result<(), anyhow::Error> {
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
@@ -29,8 +28,8 @@ fn populate_folder(
 
     let mut extra_assets : Vec<(String, String)> =
         vec![
-            (launcher_path.to_string_lossy().to_string(), "shoopdaloop_launcher.exe".to_string()),
             ("distribution/windows/shoop-config.toml".to_string(), "shoop-config.toml".to_string()),
+            ("distribution/windows/shoopdaloop.bat".to_string(), "shoopdaloop.bat".to_string()),
         ];
 
 
@@ -66,7 +65,6 @@ fn populate_folder(
 pub fn build_portable_folder(
     exe_path : &Path,
     _dev_exe_path : &Path,
-    launcher_path : &Path,
     output_dir : &Path,
     _release : bool,
 ) -> Result<(), anyhow::Error> {
@@ -80,8 +78,7 @@ pub fn build_portable_folder(
     std::fs::create_dir(output_dir)?;
 
     populate_folder(output_dir,
-                            exe_path,
-                            launcher_path)?;
+                            exe_path)?;
 
     info!("Portable folder created @ {output_dir:?}");
     Ok(())

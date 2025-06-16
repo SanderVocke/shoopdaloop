@@ -43,7 +43,7 @@ pub fn populate_portable_folder(
 
     info!("Bundling executable...");
     let final_exe_filename =
-       if cfg!(target_os = "windows") { "shoopdaloop.exe" } else { "shoopdaloop" };
+       if cfg!(target_os = "windows") { "shoopdaloop_exe.exe" } else { "shoopdaloop_exe" };
     let final_exe_path = folder.join(final_exe_filename);
     std::fs::copy(exe_path, &final_exe_path)?;
 
