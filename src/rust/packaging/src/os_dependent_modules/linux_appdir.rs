@@ -9,8 +9,7 @@ const MAYBE_QMAKE : Option<&'static str> = option_env!("QMAKE");
 
 fn populate_appdir(
     appdir : &Path,
-    exe_path : &Path,
-    launcher_exe_path : &Path
+    exe_path : &Path
 ) -> Result<(), anyhow::Error> {
 
     let file_path = PathBuf::from(file!());
@@ -33,7 +32,7 @@ fn populate_appdir(
         "distribution/linux/shoopdaloop.png",
         "distribution/linux/AppRun",
         "distribution/linux/shoop-config.toml",
-        launcher_exe_path.to_str().unwrap(),
+        "distribution/linux/shoopdaloop"
     ] {
         let from = src_path.join(file);
         let to = appdir.join(from.file_name().unwrap());
@@ -50,7 +49,6 @@ fn populate_appdir(
 pub fn build_appdir(
     exe_path : &Path,
     _dev_exe_path : &Path,
-    launcher_exe_path : &Path,
     output_dir : &Path,
     _release : bool,
 ) -> Result<(), anyhow::Error> {
@@ -67,8 +65,7 @@ pub fn build_appdir(
     std::fs::create_dir(&output_dir)?;
 
     populate_appdir(&output_dir,
-                    exe_path,
-                    launcher_exe_path)?;
+                    exe_path)?;
 
     info!("AppDir created @ {output_dir:?}");
     Ok(())
