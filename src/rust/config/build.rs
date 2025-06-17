@@ -10,7 +10,7 @@ const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
 mod config;
 
 fn dev_config_path() -> PathBuf {
-    PathBuf::from(SRC_DIR).join("../../..").join("shoop-dev-config.toml")
+    PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("shoop-dev-config.toml")
 }
 
 fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {

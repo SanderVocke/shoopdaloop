@@ -13,6 +13,7 @@ fn generate_dev_launcher_script() -> Result<PathBuf, anyhow::Error> {
 
     let dev_config = ShoopConfig::load(&dev_config_path, None).expect("Could not load dev config");
     let (var, paths) = config::config_dynlib_env_var(&dev_config)?;
+
     if cfg!(target_os = "windows") {
         let script_content = format!(r#"
 SET "PATH=%PATH%;{paths}"
@@ -24,6 +25,29 @@ SET "SHOOP_CONFIG={dev_config_path_str}"
         let mut file = std::fs::File::create(&script_path)?;
         file.write_all(script_content.as_bytes())?;
         file.sync_all()?;
+        return Ok(script_path);
+    }
+    else if cfg!(target_os = "linux") {
+        let script_content = format!(r#"
+#!/bin/sh
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:{paths}"
+export SHOOP_CONFIG="{dev_config_path_str}"
+$SCRIPT_DIR//shoopdaloop "$@"
+"#);
+        let script_path = PathBuf::from(std::env::var("OUT_DIR").unwrap())
+                                   .ancestors().nth(3).unwrap().join("shoopdaloop_dev.sh");
+        let mut file = std::fs::File::create(&script_path)?;
+        file.write_all(script_content.as_bytes())?;
+        file.sync_all()?;
+
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&script_path)?.permissions();
+            perms.set_mode(0o755); // rwxr-xr-x
+            std::fs::set_permissions(&script_path, perms)?;
+        }
+
         return Ok(script_path);
     }
     Ok(PathBuf::default())
