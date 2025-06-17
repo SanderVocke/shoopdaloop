@@ -36,8 +36,8 @@ elseif(VCPKG_TARGET_IS_LINUX)
         message(FATAL_ERROR "Unsupported architecture for Linux: ${VCPKG_TARGET_ARCHITECTURE}")
     endif()
 elseif(VCPKG_TARGET_IS_OSX)
-    set(ARCHIVE_NAME "libclang-release_140-based-macos-universal.7z")
-    set(ARCHIVE_SHA512 "59c776759987c15c9719473e5459d246bb5ee92e64881b50de4ee13d9875499909afbf7852e5ba3a5692fda017f3fc0ebcf499204178e53091705d41ea69e406")
+    set(ARCHIVE_NAME "libclang-release_20.1.3-based-macos-universal.7z")
+    set(ARCHIVE_SHA512 "49106f594bb412812d879f2be419b0dcbca24b36197bf6d25bf4fe112f3a9ef9f3e8e836b78c486a6dd96c76d9884022325094ece3cffe92658652c877fc7a3b")
 else()
     message(FATAL_ERROR "Unsupported platform (no Qt-supplied prebuilt libclang available)")
 endif()
@@ -90,6 +90,7 @@ vcpkg_cmake_configure(
         -DFORCE_LIMITED_API=OFF
         -DDISABLE_PYI=YES
         -DBUILD_TESTS=NO
+        -DNO_QT_TOOLS=yes
     OPTIONS_DEBUG
         -DPython_EXECUTABLE="${PYTHON3_INTERPRETER_DEBUG}"
         -DPython_INCLUDE_DIRS="${PYTHON3_INCLUDE_DEBUG}"
