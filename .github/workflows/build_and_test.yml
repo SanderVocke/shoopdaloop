@@ -115,7 +115,7 @@ jobs:
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       checkpoints_enabled: true
     needs: maybe_create_release
-    #if: false
+    if: false
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -222,14 +222,14 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          - name: macos_release
-            release_build: true
-            package_kind: portable_folder
-            #second_package_kind: dmg
-            third_package_kind: test_binaries
-            os: macos-13
-            upload_release_assets: true
-            platform: macos-x64
+          # - name: macos_release
+          #   release_build: true
+          #   package_kind: portable_folder
+          #   #second_package_kind: dmg
+          #   third_package_kind: test_binaries
+          #   os: macos-13
+          #   upload_release_assets: true
+          #   platform: macos-x64
           - name: macos_debug
             release_build: false
             package_kind: portable_folder
@@ -237,24 +237,24 @@ jobs:
             os: macos-13
             upload_release_assets: true
             platform: macos-x64
-          - name: macos_release_arm
-            release_build: true
-            package_kind: portable_folder
-            #second_package_kind: dmg
-            third_package_kind: test_binaries
-            os: macos-14
-            upload_release_assets: true
-            platform: macos-arm
-          - name: macos_debug_arm
-            release_build: false
-            package_kind: portable_folder
-            second_package_kind: test_binaries
-            os: macos-14
-            upload_release_assets: true
-            platform: macos-arm
+          # - name: macos_release_arm
+          #   release_build: true
+          #   package_kind: portable_folder
+          #   #second_package_kind: dmg
+          #   third_package_kind: test_binaries
+          #   os: macos-14
+          #   upload_release_assets: true
+          #   platform: macos-arm
+          # - name: macos_debug_arm
+          #   release_build: false
+          #   package_kind: portable_folder
+          #   second_package_kind: test_binaries
+          #   os: macos-14
+          #   upload_release_assets: true
+          #   platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
-    if: false
+    # if: false
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
@@ -319,7 +319,7 @@ jobs:
             second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
     needs: build_macos
-    if: false
+    # if: false
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -514,10 +514,10 @@ jobs:
   collect_crashes:
     runs-on: ubuntu-latest
     needs:
-      - build_linux
-      - test_linux
-      # - build_macos
-      # - test_macos
+      # - build_linux
+      # - test_linux
+      - build_macos
+      - test_macos
       # - build_windows
       # - test_windows
     if: always()
