@@ -2,6 +2,7 @@ qml_dir = "$ROOT/qml"
 lua_dir = "$ROOT/lua"
 resource_dir = "$ROOT/resources"
 schemas_dir = "$ROOT/session_schemas"
+qt_plugins_dir = "$ROOT/Qt6/plugins"
 pythonhome = "$ROOT/lib/python"
 pythonpaths = ["$ROOT/lib/python", "$ROOT/lib/python/site-packages", "$ROOT/lib/python/lib-dynload"]
 dynlibpaths = ["$ROOT/lib"]

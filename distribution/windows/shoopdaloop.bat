@@ -1,2 +1,3 @@
 SET "PATH=%PATH%;%~dp0/lib"
-"%~dp0bin/shoopdaloop_exe.exe" %*
+SET "QML_IMPORT_PATH=%~dp0/Qt6/qml"
+"%~dp0shoopdaloop_exe.exe" %*

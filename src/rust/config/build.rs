@@ -33,6 +33,7 @@ fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
     config.lua_dir = shoop_src_root_dir.join("src/lua").to_str().unwrap().to_string();
     config.resource_dir = shoop_src_root_dir.join("resources").to_str().unwrap().to_string();
     config.schemas_dir = shoop_src_root_dir.join("src/session_schemas").to_str().unwrap().to_string();
+    config.qt_plugins_dir = "".to_string();
     config.pythonhome = String::from("");
     config.pythonpaths = python_paths;
     config.dynlibpaths = dynlib_paths;

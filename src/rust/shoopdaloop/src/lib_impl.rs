@@ -13,6 +13,21 @@ fn shoopdaloop_main_impl<'py>(
     env::set_var("PYTHONPATH", &config.pythonpaths.join(common::util::PATH_LIST_SEPARATOR));
     env::set_var("PYTHONHOME", &config.pythonhome);
 
+    let qt_plugins_path = &config.qt_plugins_dir;
+    if !qt_plugins_path.is_empty() {
+        env::set_var("QT_PLUGIN_PATH", qt_plugins_path);
+    }
+
+    let mut qml_dirs : Vec<String> = (&config).additional_qml_dirs.clone();
+    qml_dirs.insert(0, (&config).qml_dir.clone());
+    let qml_dirs_string = qml_dirs.join(common::util::PATH_LIST_SEPARATOR);
+    env::set_var("QML_IMPORT_PATH", &qml_dirs_string);
+
+    debug!("PYTHONPATH={}", env::var("PYTHONPATH").unwrap());
+    debug!("PYTHONHOME={}", env::var("PYTHONHOME").unwrap());
+    debug!("QML_IMPORT_PATH={}", env::var("QML_IMPORT_PATH").unwrap());
+    debug!("QT_PLUGIN_PATH={}", env::var("QT_PLUGIN_PATH").unwrap());
+
     // Get the command-line arguments
     let args: Vec<String> = env::args().collect();
 
@@ -37,9 +52,15 @@ fn shoopdaloop_main_impl<'py>(
 
         // Print python configuration information
         let pythonpaths = sys.getattr("path")?;
-        debug!("Python paths: {:?}", pythonpaths);
+        debug!("[python] Python paths: {:?}", pythonpaths);
         let version_info = sys.getattr("version_info")?;
-        debug!("Python version: {:?}", version_info);
+        debug!("[python] Python version: {:?}", version_info);
+
+        // Print env vars once more from within python
+        let qml_import_path = os.getattr("getenv")?.call1(("QML_IMPORT_PATH",))?;
+        debug!("[python] QML paths: {:?}", qml_import_path);
+        let qt_plugins_path = os.getattr("getenv")?.call1(("QT_PLUGIN_PATH",))?;
+        debug!("[python] Qt plugin path: {:?}", qt_plugins_path);
 
         // Explicitly add DLL search paths for extension modules
         if cfg!(target_os = "windows") {

@@ -84,11 +84,13 @@ fn main_impl() -> Result<(), anyhow::Error> {
         // and/or race conditions
         println!("Copying python sources...");
         let python_build_src_dir = out_dir.join("py_src");
+        if std::fs::exists(&python_build_src_dir)? {
+            std::fs::remove_dir_all(&python_build_src_dir)?;
+        }
         copy_dir(&python_src_dir, &python_build_src_dir)?;
 
         // Build ShoopDaLoop wheel
         println!("Building wheel...");
-        let py_build_dir_str = out_dir.join("pybuild").to_string_lossy().to_string();
         let args = &["-m", "build",
             "--outdir", out_dir.to_str().expect("Couldn't get out dir"),
             "--wheel",
