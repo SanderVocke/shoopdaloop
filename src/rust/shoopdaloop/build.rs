@@ -1,7 +1,6 @@
 use std::env;
 use anyhow;
 use backend;
-use py_env;
 use common;
 use config::{self, config::ShoopConfig};
 use std::path::PathBuf;
@@ -68,23 +67,14 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rustc-env=SHOOPDALOOP_DEV_LAUNCHER_SCRIPT={dev_launcher_script:?}");
 
         let src_dir = env::current_dir()?;
-        
-        let dev_env_python = py_env::dev_env_python();
-        let dev_venv_dir = py_env::dev_venv_dir();
 
         let profile = std::env::var("PROFILE").unwrap();
         let is_debug_build = std::env::var("PROFILE").unwrap() == "debug";
         
-        // let env_lib_dir = if is_debug_build { dev_venv_dir.join("debug/lib") } else { dev_venv_dir.join("lib") };
-
         if !["debug", "release"].contains(&profile.as_str()) {
             return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
         }
 
-        println!("Using dev env Python: {}", dev_env_python);
-
-        // Make env dir information available
-        println!("cargo:rustc-env=SHOOP_DEV_VENV_DIR={}", dev_venv_dir.to_str().unwrap());
         #[cfg(target_os = "linux")]
         {
             println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");

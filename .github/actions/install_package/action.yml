@@ -128,5 +128,5 @@ runs:
       else # Linux
         CMD_PREFIX="LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$PORTABLE_FOLDER_INSTALL/lib:$TEST_BINARIES_INSTALL"
       fi
-      echo "COMMAND_TEST_BACKEND=$CMD_PREFIX $PORTABLE_FOLDER_INSTALL/test_runner" | tee -a $GITHUB_ENV
-      echo "COMMAND_TEST_RUST=$CMD_PREFIX $PORTABLE_FOLDER_INSTALL/cargo-nextest nextest run --workspace-remap $(pwd) --archive-file $PORTABLE_FOLDER_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_BACKEND=$CMD_PREFIX $TEST_BINARIES_INSTALL/test_runner" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_RUST=$CMD_PREFIX $TEST_BINARIES_INSTALL/cargo-nextest nextest run --workspace-remap $(pwd) --archive-file $PORTABLE_FOLDER_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV

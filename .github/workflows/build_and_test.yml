@@ -213,6 +213,18 @@ jobs:
     - uses: ./.github/actions/checkpoint
       if: always()
 
+
+
+
+
+
+
+
+
+
+
+  
+
   ##############################################################
   ## MacOS
   ##############################################################
@@ -254,7 +266,7 @@ jobs:
             platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
-    if: false
+    # if: false
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
@@ -319,7 +331,7 @@ jobs:
             second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
     needs: build_macos
-    if: false
+    # if: false
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null

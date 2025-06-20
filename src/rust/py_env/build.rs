@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use glob::glob;
 use anyhow;
 use anyhow::Context;
+use copy_dir::copy_dir;
 
 fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
@@ -26,6 +27,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
         let python_src_dir = base_src_dir.join("src").join("python");
 
         println!("Using dev env Python: {}", dev_env_python);
+
+        // Set up environment variables in order to prevent generating files
+        // into the source tree.
+        let pycache_dir_str = out_dir.join("pycache").to_string_lossy().to_string();
+        std::env::set_var("PYTHONPYCACHEPREFIX", pycache_dir_str.as_str());
 
         // Create a runtime venv using the dev env python to install our wheel into.
         let dev_venv_dir = out_dir.join("dev_venv");
@@ -74,13 +80,20 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .status()
             .with_context(|| format!("Failed to install build requirements: {build_venv_python:?} {args:?}"))?;
 
+        // Copy python source out-of-tree to prevent polluting source files
+        // and/or race conditions
+        println!("Copying python sources...");
+        let python_build_src_dir = out_dir.join("py_src");
+        copy_dir(&python_src_dir, &python_build_src_dir)?;
+
         // Build ShoopDaLoop wheel
         println!("Building wheel...");
+        let py_build_dir_str = out_dir.join("pybuild").to_string_lossy().to_string();
         let args = &["-m", "build",
             "--outdir", out_dir.to_str().expect("Couldn't get out dir"),
             "--wheel",
             "--no-isolation",
-            python_src_dir.to_str().unwrap()];
+            python_build_src_dir.to_str().unwrap()];
         Command::new(&build_venv_python)
             .args(args)
             .stdout(std::process::Stdio::inherit())
