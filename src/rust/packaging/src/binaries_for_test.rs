@@ -22,9 +22,9 @@ fn populate_folder(
 
     let testrunner_filename = 
         if cfg![target_os = "windows"] {
-            "testrunner.exe"
+            "test_runner.exe"
         } else {
-            "testrunner"
+            "test_runner"
         };
     let installed_testrunner = folder.join(testrunner_filename);
     for f in glob::glob(format!("{}/**/test_runner*", backend::backend_build_dir().to_string_lossy().to_string()).as_str())? {
