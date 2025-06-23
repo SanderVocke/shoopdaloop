@@ -20,7 +20,6 @@ runs:
   using: "composite"
   steps:
 
-  # Versions
   - name: Determine version, env settings
     if: always()
     shell: wrap-shell {0}
@@ -31,6 +30,7 @@ runs:
       VERSION=$(cargo pkgid -p shoopdaloop | sed -r 's/.*#//g')
       FULLGITVERSION=${{ github.sha }}
       GITVERSION=$(echo ${FULLGITVERSION:0:8} | tr -d ' ')
+      . ${BUILD_ENV_FILE}
 
       echo "SHOOP_VERSION=$VERSION" | tee -a $GITHUB_ENV
       echo "SHOOP_GIT_REV=$GITVERSION" | tee -a $GITHUB_ENV
