@@ -236,14 +236,12 @@ target_include_directories(shoopdaloop_backend_internals
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
-                        ${Catch2_INCLUDE_DIR}
                         )
 target_link_libraries(shoopdaloop_backend_internals PRIVATE
   Threads::Threads
   fmt::fmt
   zita-resampler::zita-resampler
   Boost::headers
-  Catch2::Catch2
   )
 if (WIN32)
   target_link_libraries(shoopdaloop_backend_internals PRIVATE Boost::system)

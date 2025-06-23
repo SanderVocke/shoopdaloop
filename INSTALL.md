@@ -34,15 +34,21 @@ Make sure all the subrepositories are checked out (`git submodule init; git subm
 
 ShoopDaLoop's build is governed by Cargo. In principle, the build command is `cargo build [--release]`.
 
-However, managing dependencies can get complicated. For a local installation you might want to set up your dependencies and environment directly (e.g. for building a package for your Linux distribution), but for portable redistributable builds, there is a script included to build dependencies from source as well.
+However, managing dependencies can get complicated:
 
-The dependency build script uses `vcpkg` to build dependencies (including a Python interpreter and Qt). Run it using `python scripts/vcpkg_prebuild.py`. This will install and bootstrap vcpkg and build dependencies. The result of this is a set of env scripts that set the necessary env vars for then building with Cargo.
+* Rust dependencies are pulled in and built on-the-fly by Cargo.
+* Python dependencies (except PySide) are pulled from PyPi by the Rust build scripts.
+* C++ dependencies are not pulled in but searched on your system by CMake.
 
-For details, check the help text of `scripts/vcpkg_prebuild.py`.
+For reproducible builds, a script is included which pulls C++ dependencies from `vcpkg` and builds them from source (including Qt and PySide). To run this script:
 
-For building against your own installations of the dependencies, you need to set `QMAKE`, `SHOOP_DEV_ENV_PYTHON` and `PYO3_CONFIG_FILE` or `PYO3_PYTHON`. (the latter should point to a valid PyO3 config file).
+`python scripts/vcpkg_prebuild.py`
 
-After the Cargo build, executables can be found in `target/debug`.
+This will obviously take a long time, but when done, the folder `build/vcpkg_installed` will contain the required dependencies. There will also be a set of `build/build-env-[debug|release].[sh|ps1|elv]` scripts created, which you can source to set the environment to start the cargo build.
+
+Alternatively, you can set up the C++ dependencies however you wish (e.g. distro packages). If things are not auto-detected you can manually set `QMAKE`, `SHOOP_DEV_ENV_PYTHON`, `PYO3_CONFIG_FILE` and/or `PYO3_PYTHON`. (the latter should point to a valid PyO3 config file).
+
+After the Cargo build, executables can be found in `target/[debug|release]`.
 
 ### Building redistributable binaries
 
@@ -54,5 +60,5 @@ Since ShoopDaLoop partly consists of interpreted / JIT-compiled scripts (in Lua,
 
 In order to run ShoopDaLoop in "editable" mode (using the scripts in the repository as opposed to installing them into the system), simply run:
 
-- `target/[debug/release]/shoopdaloop_dev` on Linux and macOS
-- `target/[debug/release]/shoopdaloop_windows_launcher.exe` on Windows
+- `target/[debug/release]/shoopdaloop_dev.sh` on Linux and macOS
+- `target/[debug/release]/shoopdaloop_dev.bat` on Windows
