@@ -345,6 +345,17 @@ def main():
         with open(env_file, "w") as f:
             for key, value in variant[1].items():
                 f.write(f"""export {key}="{windows_to_bash_paths(value) if sys.platform == 'win32' else value}"\n""")
+    
+    for variant in [
+        ("debug", debug_env),
+        ("release", release_env)
+    ]:
+        env_filename = f"build-env-{variant[0]}.elv"
+        env_file = os.path.join(base_path, "build", env_filename)
+        print(f"Writing {env_filename}.")
+        with open(env_file, "w") as f:
+            for key, value in variant[1].items():
+                f.write(f'set E:{key} = "{value.replace('\\', '\\\\')}"\n')
 
     print(f'\nWrote build environment files to build/build-env-[debug|release].[sh|ps1].')
     print('Apply the debug or release environment file by sourcing the relevant script.')

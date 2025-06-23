@@ -20,6 +20,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
         let cmake_backend_dir = "../../backend";
         let profile = std::env::var("PROFILE").unwrap();
         let cmake_output_dir = out_dir.join("cmake_build");
+        let build_python = py_prepare::build_venv_python();
 
         if !["debug", "release"].contains(&profile.as_str()) {
             return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
@@ -32,7 +33,8 @@ fn main_impl() -> Result<(), anyhow::Error> {
             let cmake_config_mut : &mut Config = cmake_config.out_dir(&cmake_output_dir)
                                             .generator("Ninja")
                                             .configure_arg(format!("-DCMAKE_INSTALL_PREFIX={}",install_dir.to_str().unwrap()))
-                                            .configure_arg(format!("-DCMAKE_BUILD_TYPE={}", if profile == "debug" { "Debug" } else { "Release" }));
+                                            .configure_arg(format!("-DCMAKE_BUILD_TYPE={}", if profile == "debug" { "Debug" } else { "Release" }))
+                                            .configure_arg(format!("-DPYTHON_CMD={}", build_python));
             let _ = cmake_config_mut.build();
         }
 

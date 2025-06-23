@@ -15,13 +15,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
     #[cfg(not(feature = "prebuild"))]
     {
-        let is_debug_build = std::env::var("PROFILE").unwrap() == "debug";
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
         let src_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let base_src_dir = src_dir.parent().unwrap()
                                   .parent().unwrap()
                                   .parent().unwrap();
-        let pyo3_python = env::var("PYO3_PYTHON");
         let dev_env_python = env::var("SHOOP_DEV_ENV_PYTHON")
                           .unwrap_or("python3".to_string());
         let python_src_dir = base_src_dir.join("src").join("python");
@@ -54,32 +52,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .with_context(|| format!("Failed to create development venv: {dev_env_python:?} {args:?}"))?;
         let development_venv_python = dev_venv_dir.join(&python_in_venv);
 
-        // Create a build-time venv using the dev env python to build our wheel with.
-        let build_venv_dir = out_dir.join("build_venv");
-        if build_venv_dir.exists() {
-            std::fs::remove_dir_all(&build_venv_dir)
-                .with_context(|| format!("Failed to remove build venv: {:?}", &build_venv_dir))?;
-        }
-        println!("Creating build venv...");
-        let args = &["-m", "venv", "--clear", "--system-site-packages", &build_venv_dir.to_str().unwrap()];
-        Command::new(&dev_env_python)
-            .args(args)
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .status()
-            .with_context(|| format!("Failed to create build venv: {dev_env_python:?} {args:?}"))?;
-        // Install build requirements into the build venv
-        println!("Installing build requirements...");
-        let build_requirements_file = base_src_dir.join("build_python_requirements.txt");
-        let args = &["-m", "pip", "install", "-r", build_requirements_file.to_str().unwrap()];
-        let build_venv_python = build_venv_dir.join(&python_in_venv);
-        Command::new(&build_venv_python)
-            .args(args)
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .status()
-            .with_context(|| format!("Failed to install build requirements: {build_venv_python:?} {args:?}"))?;
-
         // Copy python source out-of-tree to prevent polluting source files
         // and/or race conditions
         println!("Copying python sources...");
@@ -88,6 +60,8 @@ fn main_impl() -> Result<(), anyhow::Error> {
             std::fs::remove_dir_all(&python_build_src_dir)?;
         }
         copy_dir(&python_src_dir, &python_build_src_dir)?;
+
+        let build_venv_python = py_prepare::build_venv_python();
 
         // Build ShoopDaLoop wheel
         println!("Building wheel...");

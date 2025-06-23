@@ -30,7 +30,6 @@ runs:
       VERSION=$(cargo pkgid -p shoopdaloop | sed -r 's/.*#//g')
       FULLGITVERSION=${{ github.sha }}
       GITVERSION=$(echo ${FULLGITVERSION:0:8} | tr -d ' ')
-      . ${BUILD_ENV_FILE}
 
       echo "SHOOP_VERSION=$VERSION" | tee -a $GITHUB_ENV
       echo "SHOOP_GIT_REV=$GITVERSION" | tee -a $GITHUB_ENV
@@ -45,6 +44,7 @@ runs:
     env:
       SHOOP_LOG: "packaging=debug"
     run: |
+      . ${BUILD_ENV_FILE}
       PORTABLE_DIR=$(pwd)/shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.portable
       RELEASE_PORTABLE_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.portable
       echo "PORTABLE_DIR=$PORTABLE_DIR" | tee -a $GITHUB_ENV
@@ -97,6 +97,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       set -x
+      . ${BUILD_ENV_FILE}
       TEST_BINARIES_DIR=$(pwd)/shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.test_binaries
       RELEASE_TEST_BINARIES_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.test_binaries
       echo "TEST_BINARIES_DIR=$TEST_BINARIES_DIR" | tee -a $GITHUB_ENV
