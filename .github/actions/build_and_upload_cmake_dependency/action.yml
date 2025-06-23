@@ -41,13 +41,13 @@ runs:
        rmdir ${{ inputs.name }}/${{ inputs.name }}
        mv ${{ inputs.name }}/build ${{ inputs.name }}/${{ inputs.name }}
   
-  - name: Make relocatable (MacOS)
-    if: runner.os == 'macOS'
-    uses: ./.github/actions/macos_make_relocatable
-    with:
-      path: ${{ github.workspace }}/${{ inputs.name }}/${{ inputs.name }}
-      find_cmd: "find . -name \"*.dylib\""
-      match: ${{ github.workspace }}
+  # - name: Make relocatable (MacOS)
+  #   if: runner.os == 'macOS'
+  #   uses: ./.github/actions/macos_make_relocatable
+  #   with:
+  #     path: ${{ github.workspace }}/${{ inputs.name }}/${{ inputs.name }}
+  #     find_cmd: "find . -name \"*.dylib\""
+  #     match: ${{ github.workspace }}
 
   - name: Notify
     if: ${{ inputs.notify_installed }}
