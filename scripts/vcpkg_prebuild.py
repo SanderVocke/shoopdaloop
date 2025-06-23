@@ -355,7 +355,8 @@ def main():
         print(f"Writing {env_filename}.")
         with open(env_file, "w") as f:
             for key, value in variant[1].items():
-                f.write(f'set E:{key} = "{value.replace('\\', '\\\\')}"\n')
+                value = value.replace('\\', '\\\\')
+                f.write(f'set E:{key} = "{value}"\n')
 
     print(f'\nWrote build environment files to build/build-env-[debug|release].[sh|ps1].')
     print('Apply the debug or release environment file by sourcing the relevant script.')
