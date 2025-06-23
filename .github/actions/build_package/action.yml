@@ -50,13 +50,13 @@ runs:
       echo "PORTABLE_DIR=$PORTABLE_DIR" | tee -a $GITHUB_ENV
       echo "RELEASE_PORTABLE_DIR=$RELEASE_PORTABLE_DIR" | tee -a $GITHUB_ENV
       ${CARGO_ARTIFACTS_DIR}/package build-portable-folder -o $PORTABLE_DIR ${CARGO_BUILD_FLAGS}
-  - name: Make relocatable (MacOS)
-    if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
-    uses: ./.github/actions/macos_make_relocatable
-    with:
-      path: ${{ env.PORTABLE_DIR }}
-      find_cmd: "find ./lib -name \"*.dylib\";echo \"shoopdaloop\""
-      match: "libpython3"
+  # - name: Make relocatable (MacOS)
+  #   if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
+  #   uses: ./.github/actions/macos_make_relocatable
+  #   with:
+  #     path: ${{ env.PORTABLE_DIR }}
+  #     find_cmd: "find ./lib -name \"*.dylib\";echo \"shoopdaloop\""
+  #     match: "libpython3"
   - name: Symlink Qt libs (MacOS)
     if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
     shell: wrap-shell {0}
