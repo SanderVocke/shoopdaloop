@@ -79,7 +79,9 @@ runs:
       tar --strip-components=1 -xzf ${{ inputs.package }}
       cd ..
       PORTABLE=$(pwd)/portable
+      TESTBINARIES=$(pwd)/test_binaries
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
+      echo "TEST_BINARIES_INSTALL=$TESTBINARIES" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop.bat" | tee -a $GITHUB_ENV
 
   # MacOS portable folder
@@ -92,7 +94,9 @@ runs:
       tar --strip-components=1 -xzf ${{ inputs.package }}
       cd ..
       PORTABLE=$(pwd)/portable
+      TESTBINARIES=$(pwd)/test_binaries
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
+      echo "TEST_BINARIES_INSTALL=$TESTBINARIES" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
 
   # Linux AppImage
