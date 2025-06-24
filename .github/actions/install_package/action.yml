@@ -122,6 +122,7 @@ runs:
     if: always() && steps.get_type.outputs.type == 'test-binaries'
     shell: wrap-shell {0}
     run: |
+      WORKSPACE=$(pwd)
       mkdir -p $TEST_BINARIES_INSTALL
       cd $TEST_BINARIES_INSTALL
       tar --strip-components=1 -xzf ${{ inputs.package }}
@@ -133,4 +134,4 @@ runs:
         CMD_PREFIX="LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$PORTABLE_FOLDER_INSTALL/lib:$TEST_BINARIES_INSTALL"
       fi
       echo "COMMAND_TEST_BACKEND=$CMD_PREFIX $TEST_BINARIES_INSTALL/test_runner" | tee -a $GITHUB_ENV
-      echo "COMMAND_TEST_RUST=$CMD_PREFIX $TEST_BINARIES_INSTALL/cargo-nextest nextest run --workspace-remap $GITHUB_WORKSPACE --archive-file $TEST_BINARIES_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_RUST=$CMD_PREFIX $TEST_BINARIES_INSTALL/cargo-nextest nextest run --workspace-remap $WORKSPACE --archive-file $TEST_BINARIES_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV
