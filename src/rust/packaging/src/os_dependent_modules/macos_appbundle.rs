@@ -5,6 +5,8 @@ use crate::dependencies::get_dependency_libs;
 use crate::fs_helpers::recursive_dir_cpy;
 use regex::Regex;
 use std::collections::HashSet;
+use std::process::Command;
+use glob::glob;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
@@ -26,6 +28,14 @@ fn populate_appbundle(
                                                              src_path,
                                                              &includelist_path,
                                                              &excludelist_path)?;
+
+    info!("Adding rpaths...");
+    let installed_exe = appdir.join("shoopdaloop_exe");
+    Command::new("install_name_tool")
+        .args(&["-add_rpath",
+                "@executable_path/lib",
+                installed_exe.to_str().unwrap()])
+        .status()?;
 
     info!("Creating directories...");
     for directory in [
@@ -85,12 +95,30 @@ fn populate_appbundle(
     //     }
     // }
 
+    let mut extra_assets : Vec<(String, String)> =
+        vec![
+            ("distribution/macos/Info.plist".to_string(), "Contents/Info.plist".to_string()),
+            ("distribution/macos/icon.icns".to_string(), "Contents/Resources/icon.icns".to_string()),
+            ("distribution/macos/shoopdaloop".to_string(), "Contents/MacOS/shoopdaloop".to_string()),
+            ("distribution/macos/shoop-config.toml".to_string(), "shoop-config.toml".to_string()),
+        ];
+
+    // Explicitly bundle shiboken library
+    for base in &["*shiboken6*dylib", "*pyside6*dylib", "*pyside6qml*dylib"] {
+        for path in backend::runtime_link_dirs() {
+            let pattern = &path.join(base);
+            let g = glob(&pattern.to_string_lossy())?.filter_map(Result::ok);
+            for extra_lib_path in g {
+                let extra_lib_srcpath : String = extra_lib_path.to_string_lossy().to_string();
+                let extra_lib_filename = &extra_lib_path.file_name().unwrap().to_string_lossy().to_string();
+                let extra_lib_dstpath : String = format!("lib/{}", extra_lib_filename);
+                extra_assets.push((extra_lib_srcpath, extra_lib_dstpath));
+            }
+        }
+    }
+
     info!("Bundling additional assets...");
-    for (src,dst) in [
-        ("distribution/macos/Info.plist", "Contents/Info.plist"),
-        ("distribution/macos/icon.icns", "Contents/Resources/icon.icns"),
-        ("distribution/macos/shoopdaloop", "Contents/MacOS/shoopdaloop"),
-    ] {
+    for (src,dst) in extra_assets {
         let from = src_path.join(src);
         let to = appdir.join(dst);
         info!("  {:?} -> {:?}", &from, &to);
