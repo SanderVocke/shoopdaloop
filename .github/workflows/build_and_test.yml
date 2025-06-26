@@ -148,9 +148,9 @@ jobs:
     env:
       PATH_SEPARATOR: ":"
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-      checkpoints_enabled: ${{ github.event.inputs.checkpoints || false }}
+      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
     needs: maybe_create_release
-    if: ${{ github.event.inputs.build_linux || true }}
+    if: ${{ github.event.inputs.build_linux }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -181,7 +181,7 @@ jobs:
         third_package_kind: ${{ matrix.kind.third_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild || false }}
+        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: ./.github/actions/checkpoint
       if: always()
@@ -222,12 +222,12 @@ jobs:
           #     scripts/run_and_generate_coverage.sh
     runs-on: ubuntu-latest
     needs: build_linux
-    if: ${{ github.event.inputs.test_linux || true }}
+    if: ${{ github.event.inputs.test_linux }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
     env:
-      checkpoints_enabled: ${{ github.event.inputs.checkpoints || false }}
+      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -304,11 +304,11 @@ jobs:
           #   platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
-    if: ${{ github.event.inputs.build_macos || true }}
+    if: ${{ github.event.inputs.build_macos }}
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-       checkpoints_enabled: ${{ github.event.inputs.checkpoints || false }}
+       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -336,7 +336,7 @@ jobs:
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         macos_target_version: ${{ matrix.kind.macos_target_version }}
-        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild || false }}
+        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
     - uses: ./.github/actions/checkpoint
       if: always()
 
@@ -371,13 +371,13 @@ jobs:
           #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
     needs: build_macos
-    if: ${{ github.event.inputs.test_macos || true }}
+    if: ${{ github.event.inputs.test_macos }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
     env:
       PATH_SEPARATOR: ":"
-      checkpoints_enabled: ${{ github.event.inputs.checkpoints || false }}
+      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -462,8 +462,8 @@ jobs:
       PATH_SEPARATOR: ";"
       CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
-      checkpoints_enabled: ${{ github.event.inputs.checkpoints || false }}
-    if: ${{ github.event.inputs.build_windows || true }}
+      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+    if: ${{ github.event.inputs.build_windows }}
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
@@ -491,7 +491,7 @@ jobs:
         coverage: ${{ matrix.kind.coverage }}
         release_build: ${{ matrix.kind.release_build }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
-        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild || false }}
+        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - uses: ./.github/actions/checkpoint
 
@@ -523,8 +523,8 @@ jobs:
     runs-on: ${{ matrix.kind.os }}
     needs: build_windows
     env:
-      checkpoints_enabled: ${{ github.event.inputs.checkpoints || false }}
-    if: ${{ github.event.inputs.test_windows || true }}
+      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
+    if: ${{ github.event.inputs.test_windows }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null

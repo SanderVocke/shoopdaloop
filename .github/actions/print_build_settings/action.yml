@@ -5,8 +5,14 @@ runs:
   using: "composite"
   steps:
   - name: Print build settings
-    shell: wrap-shell {0}
+    shell: bash
     if: always()
     run: |
-      echo "VCPKG_FORCE_REBUILD: ${{ github.event.inputs.vcpkg_force_rebuild || false }}"
-      echo "CHECKPOINTS: ${{ github.event.inputs.checkpoints || false }}"
+      echo "vcpkg_force_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}"
+      echo "checkpoints: ${{ github.event.inputs.checkpoints }}"
+      echo "build_windows: ${{ github.event.inputs.build_windows }}"
+      echo "test_windows: ${{ github.event.inputs.test_windows }}"
+      echo "build_linux: ${{ github.event.inputs.build_linux }}"
+      echo "test_linux: ${{ github.event.inputs.test_linux }}"
+      echo "build_macos: ${{ github.event.inputs.build_macos }}"
+      echo "test_macos: ${{ github.event.inputs.test_macos }}"
