@@ -1,0 +1,12 @@
+name: Print build settings
+description: Print build settings
+
+runs:
+  using: "composite"
+  steps:
+  - name: Print build settings
+    shell: wrap-shell {0}
+    if: always()
+    run: |
+      echo "VCPKG_FORCE_REBUILD: ${{ github.event.inputs.vcpkg_force_rebuild || false }}"
+      echo "CHECKPOINTS: ${{ github.event.inputs.checkpoints || false }}"
