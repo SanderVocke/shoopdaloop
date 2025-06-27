@@ -511,7 +511,7 @@ jobs:
             python: python.exe
             container: null
             os: windows-2022
-            package: package_windows_release
+            package: ShoopDaLoop-Installer-*.exe
             pathconvert: "| cygpath -u -f -"
           # - name: debug_windows
           #   python: python.exe

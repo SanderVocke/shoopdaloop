@@ -47,12 +47,11 @@ runs:
       INSTALL_CMD="$WINDOWS_SETUP_PATH /VERYSILENT /CURRENTUSER /DIR=\"$(cygpath -w $(pwd)/installed)\""
       echo "PowerShell installation command: $INSTALL_CMD"
       powershell -Command "echo \"Run in powershell: $INSTALL_CMD\" ; $INSTALL_CMD"
-      SHOOPDALOOP_EXE=$(pwd)/installed/shoopdaloop.exe
+      SHOOPDALOOP_EXE=$(pwd)/installed/shoopdaloop.bat
       SHOOPDALOOP_DIR=$(dirname "$SHOOPDALOOP_EXE")
       echo "ShoopDaLoop executable installed to: $SHOOPDALOOP_EXE"
       echo "Installed at: $SHOOPDALOOP_DIR"
-      echo "cmd=\\\"$SHOOPDALOOP_EXE\\\"" | tee -a $GITHUB_ENV
-      echo "install_dir=\\\"$SHOOPDALOOP_DIR\\\"" | tee -a $GITHUB_ENV
+      echo "COMMAND_SHOOPDALOOP=$SHOOPDALOOP_EXE" | tee -a $GITHUB_ENV
 
   # Linux portable folder
   - name: Setup Linux AppDir portable folder

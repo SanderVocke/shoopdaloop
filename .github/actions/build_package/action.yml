@@ -161,7 +161,7 @@ runs:
     run: |
       ls distribution/windows
       RELEASE_INSTALLER=$(find distribution/windows -name "ShoopDaLoop-*.exe")
-      GIT_REV_INSTALLER=ShoopDaLoop-$SHOOP_GIT_REV.exe
+      GIT_REV_INSTALLER=ShoopDaLoop-Installer-$SHOOP_GIT_REV.exe
       cp $RELEASE_INSTALLER $GIT_REV_INSTALLER
       echo "BUILT_PACKAGE=$GIT_REV_INSTALLER" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$RELEASE_INSTALLER" | tee -a $GITHUB_ENV

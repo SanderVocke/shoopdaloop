@@ -7,7 +7,7 @@
 #endif
 #define MyAppPublisher "ShoopDaLoop"
 #define MyAppURL "https://www.shoopdaloop.com"
-#define MyAppExeName "shoopdaloop.exe"
+#define MyAppExeName "shoopdaloop.bat"
 #define MyAppInstallerExeName MyAppName + "-" + MyAppVersion
 #define MyAppAssocName MyAppName + " Session"
 #define MyAppAssocExt ".shl"
