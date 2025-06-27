@@ -153,7 +153,7 @@ runs:
     if: always() && inputs.package_kind == 'innosetup'
     shell: wrap-shell {0}
     run: |
-      echo "PORTABLE_DIR_WIN=$(${{ env.CONVERT_PATH_FN }} $PORTABLE_DIR)"
+      echo "PORTABLE_DIR_WIN=$(${{ env.CONVERT_PATH_FN }} $PORTABLE_DIR)" | tee -a $GITHUB_ENV
   - name: Compile .ISS to .EXE Installer
     uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
     if: always() && inputs.package_kind == 'innosetup'
