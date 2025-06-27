@@ -12,7 +12,9 @@
 #define MyAppAssocName MyAppName + " Session"
 #define MyAppAssocExt ".shl"
 #define MyAppAssocKey StringChange(MyAppAssocName, " ", "") + MyAppAssocExt
-#define MyAppPortableFolder "shoopdaloop-portable-notspecified"
+#ifndef MyAppPortableFolder
+    #error No portable folder passed.
+#endif
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.

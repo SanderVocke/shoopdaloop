@@ -154,7 +154,7 @@ runs:
     if: always() && inputs.package_kind == 'innosetup'
     with:
       path: distribution/windows/shoopdaloop.iss
-      options: /O+ /DMyAppVersion="${{ env.SHOOP_VERSION }}"
+      options: /O+ /DMyAppVersion="${{ env.SHOOP_VERSION }}" /DMyAppPortableFolder="${{ env.PORTABLE_DIR }}"
   - name: Move .EXE installer
     if: always() && inputs.package_kind == 'innosetup'
     shell: wrap-shell {0}
