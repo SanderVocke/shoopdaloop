@@ -222,7 +222,7 @@ jobs:
           #     scripts/run_and_generate_coverage.sh
     runs-on: ubuntu-latest
     needs: build_linux
-    if: ${{ github.event.inputs.test_linux == 'true' }}
+    if: ${{ (github.event.inputs.test_linux || 'true') == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -304,7 +304,7 @@ jobs:
           #   platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
-    if: ${{ github.event.inputs.build_macos == 'true' }}
+    if: ${{ (github.event.inputs.build_macos || 'true') == 'true' }}
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
@@ -371,7 +371,7 @@ jobs:
           #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
     needs: build_macos
-    if: ${{ github.event.inputs.test_macos == 'true' }}
+    if: ${{ (github.event.inputs.test_macos || 'true') == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -463,7 +463,7 @@ jobs:
       CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
-    if: ${{ github.event.inputs.build_windows == 'true' }}
+    if: ${{ (github.event.inputs.build_windows || 'true') == 'true' }}
     container:
       image: ${{ matrix.kind.container_image }}
       options: --user root --workdir /
@@ -524,7 +524,7 @@ jobs:
     needs: build_windows
     env:
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
-    if: ${{ github.event.inputs.test_windows == 'true' }}
+    if: ${{ (github.event.inputs.test_windows || 'true') == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
