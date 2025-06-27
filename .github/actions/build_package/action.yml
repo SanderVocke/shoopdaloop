@@ -149,12 +149,17 @@ runs:
       asset_path: ${{ env.BUILT_RELEASE_ARTIFACT }}
 
   # Windows installer (InnoSetup)
+  - name: InnoSetup env
+    if: always() && inputs.package_kind == 'innosetup'
+    shell: wrap-shell {0}
+    run: |
+      echo "PORTABLE_DIR_WIN=$(${{ env.CONVERT_PATH_FN }} $PORTABLE_DIR)"
   - name: Compile .ISS to .EXE Installer
     uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
     if: always() && inputs.package_kind == 'innosetup'
     with:
       path: distribution/windows/shoopdaloop.iss
-      options: /O+ /DMyAppVersion="${{ env.SHOOP_VERSION }}" /DMyAppPortableFolder="${{ env.PORTABLE_DIR }}"
+      options: /O+ /DMyAppVersion="${{ env.SHOOP_VERSION }}" /DMyAppPortableFolder="${{ env.PORTABLE_DIR_WIN }}"
   - name: Move .EXE installer
     if: always() && inputs.package_kind == 'innosetup'
     shell: wrap-shell {0}
