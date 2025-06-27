@@ -26,8 +26,7 @@ runs:
     run: |
       set -x
       # TODO
-      VERSION=0.0.0
-      VERSION=$(cargo pkgid -p shoopdaloop | sed -r 's/.*#//g')
+      VERSION=$(python3 scripts/parse_pyproject_toml.py metadata.toml version)
       FULLGITVERSION=${{ github.sha }}
       GITVERSION=$(echo ${FULLGITVERSION:0:8} | tr -d ' ')
 

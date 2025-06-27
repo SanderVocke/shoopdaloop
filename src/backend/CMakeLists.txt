@@ -314,14 +314,14 @@ endif()
 # Generate and install version.txt and description.txt
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/version.txt
-  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../python/pyproject.toml project::version > version.txt
+  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../../metadata.toml version > version.txt
   COMMENT "Generating version.txt"
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 add_custom_target(version_txt ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/version.txt)
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/description.txt
-  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../python/pyproject.toml project::description > description.txt
+  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../../metadata.toml description > description.txt
   COMMENT "Generating description.txt"
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )

@@ -117,9 +117,9 @@ import platform
 import sys
 
 def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
-    
+    dbgpart = "*-*/debug/" if is_debug_build else "*-*/"
+
     def find_path_based_on_tail(tail, is_debug_build):
-        dbgpart = "debug/" if is_debug_build else ""
         pattern = f'{installed_dir}/**/{dbgpart}{tail}'
         print(f"Looking for dynamic libraries by searching for zita-resampler at: {pattern}")
         zita_paths = glob.glob(pattern, recursive=True)
@@ -152,7 +152,7 @@ def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
     
     # add manually-linked libs (i.e. Catch2)
     print(f"Looking for manual-link folders")
-    for dir in glob.glob(f"{installed_dir}/**/manual-link", recursive=True):
+    for dir in glob.glob(f"{installed_dir}/**/{dbgpart}/*/manual-link", recursive=True):
         print(f"Found manual-link folder: {dir}")
         runtime = f'{runtime}{sep}{dir}'
 

@@ -37,7 +37,8 @@ fn populate_folder(
     for base in &["shiboken6.*dll", "pyside6.*dll", "pyside6qml.*dll",
                          "Qt6*.dll"] {
         for path in backend::runtime_link_dirs() {
-            let pattern = &path.join(base);
+            let pattern = (&path).join(base);
+            println!("{pattern:?}");
             let g = glob(&pattern.to_string_lossy())?.filter_map(Result::ok);
             for extra_lib_path in g {
                 let extra_lib_srcpath : String = extra_lib_path.to_string_lossy().to_string();
