@@ -58,156 +58,154 @@ ShoopDialog {
         addTrackDescriptor(track_descriptor)
     }
 
-    Grid {
-        id: grid
-        columns: 2
-        verticalItemAlignment: Grid.AlignVCenter
-        columnSpacing: 10
+    Column {
 
         Label {
             text: "Choose the settings for your track."
         }
-        Rectangle {
-            width: 10
-            height: 10
-            color: 'transparent'
-        }
 
-        Label {
-            text: "Name:"
-        }
-        ShoopTextField {
-            id: name_field
-        }
+        Grid {
+            id: grid
+            columns: 2
+            verticalItemAlignment: Grid.AlignVCenter
+            columnSpacing: 10
 
-        Label {
-            text: "Type:"
-        }
-        ShoopComboBox {
-            id: select_type
-            textRole: "text"
-            valueRole: "value"
-            model: [
-                { value: 'direct', text: "Regular" },
-                { value: 'drywet', text: "Dry + Wet" },
-                { value: 'composite', text: "Trigger-only" }
-            ]
-            property bool is_drywet : currentValue == 'drywet'
-            property bool is_composite : currentValue == 'composite'
-        }
+            Label {
+                text: "Name:"
+            }
+            ShoopTextField {
+                id: name_field
+            }
 
-        // START CONTROLS FOR DIRECT LOOP TYPE
+            Label {
+                text: "Type:"
+            }
+            ShoopComboBox {
+                id: select_type
+                textRole: "text"
+                valueRole: "value"
+                model: [
+                    { value: 'direct', text: "Regular" },
+                    { value: 'drywet', text: "Dry + Wet" },
+                    { value: 'composite', text: "Trigger-only" }
+                ]
+                property bool is_drywet : currentValue == 'drywet'
+                property bool is_composite : currentValue == 'composite'
+            }
 
-        Label {
-            text: "Audio:"
-            visible: !is_drywet && !is_composite
-        }
-        AudioTypeSelect {
-            id: select_direct_audio_type
-            visible: !is_drywet && !is_composite
-            onChangeNChannels: (n) => custom_direct_audio_channels.value = n
-        }
+            // START CONTROLS FOR DIRECT LOOP TYPE
 
-        Label {
-            text: "Audio channels:"
-            visible: !is_drywet && !is_composite && select_direct_audio_type.show_custom
-        }
-        SpinBox {
-            id: custom_direct_audio_channels
-            visible: !is_drywet && !is_composite && select_direct_audio_type.show_custom
-            value: 2
-            from: 0
-            to: 10
-            width: 120
-        }
+            Label {
+                text: "Audio:"
+                visible: !is_drywet && !is_composite
+            }
+            AudioTypeSelect {
+                id: select_direct_audio_type
+                visible: !is_drywet && !is_composite
+                onChangeNChannels: (n) => custom_direct_audio_channels.value = n
+            }
 
-        Label {
-            text: "MIDI:"
-            visible: !is_drywet && !is_composite
-        }
-        CheckBox {
-            id: direct_midi_checkbox
-            tristate: false
-            visible: !is_drywet && !is_composite
-        }
+            Label {
+                text: "Audio channels:"
+                visible: !is_drywet && !is_composite && select_direct_audio_type.show_custom
+            }
+            SpinBox {
+                id: custom_direct_audio_channels
+                visible: !is_drywet && !is_composite && select_direct_audio_type.show_custom
+                value: 2
+                from: 0
+                to: 10
+                width: 120
+            }
 
-        // START CONTROLS FOR DRY/WET LOOP TYPE
+            Label {
+                text: "MIDI:"
+                visible: !is_drywet && !is_composite
+            }
+            CheckBox {
+                id: direct_midi_checkbox
+                tristate: false
+                visible: !is_drywet && !is_composite
+            }
 
-        Label {
-            text: "Processing Kind:"
-            visible: is_drywet && !is_composite
-        }
-        ShoopComboBox {
-            id: select_processing_kind
-            visible: is_drywet && !is_composite
-            textRole: "text"
-            valueRole: "value"
-            model: [
-                { value: 'jack', text: "External (JACK)" },
-                { value: 'carla_rack', text: "Carla (Rack)" },
-                { value: 'carla_patchbay', text: "Carla (Patchbay)" },
-                { value: 'carla_patchbay_16', text: "Carla (Patchbay 16x)" },
-                { value: 'test2x2x1', text: "Dummy (2x2x1 passthrough)" }
-            ]
-            property bool is_carla : ['carla_rack', 'carla_patchbay', 'carla_patchbay_16', 'test2x2x1'].includes(currentValue)
-            property bool is_jack : currentValue == 'jack'
-            property var carla_type : is_carla ? currentValue : undefined
-        }
+            // START CONTROLS FOR DRY/WET LOOP TYPE
 
-        Label {
-            text: "Dry audio:"
-            visible: is_drywet && !is_composite
-        }
-        AudioTypeSelect {
-            id: select_dry_audio_type
-            visible: is_drywet && !is_composite
-            onChangeNChannels: (n) => custom_dry_audio_channels.value = n
-        }
+            Label {
+                text: "Processing Kind:"
+                visible: is_drywet && !is_composite
+            }
+            ShoopComboBox {
+                id: select_processing_kind
+                visible: is_drywet && !is_composite
+                textRole: "text"
+                valueRole: "value"
+                model: [
+                    { value: 'jack', text: "External (JACK)" },
+                    { value: 'carla_rack', text: "Carla (Rack)" },
+                    { value: 'carla_patchbay', text: "Carla (Patchbay)" },
+                    { value: 'carla_patchbay_16', text: "Carla (Patchbay 16x)" },
+                    { value: 'test2x2x1', text: "Dummy (2x2x1 passthrough)" }
+                ]
+                property bool is_carla : ['carla_rack', 'carla_patchbay', 'carla_patchbay_16', 'test2x2x1'].includes(currentValue)
+                property bool is_jack : currentValue == 'jack'
+                property var carla_type : is_carla ? currentValue : undefined
+            }
 
-        Label {
-            text: "Dry audio channels:"
-            visible: is_drywet && !is_composite && select_dry_audio_type.show_custom
-        }
-        SpinBox {
-            id: custom_dry_audio_channels
-            visible: is_drywet && !is_composite && select_dry_audio_type.show_custom
-            value: 2
-            from: 0
-            to: 10
-            width: 120
-        }
+            Label {
+                text: "Dry audio:"
+                visible: is_drywet && !is_composite
+            }
+            AudioTypeSelect {
+                id: select_dry_audio_type
+                visible: is_drywet && !is_composite
+                onChangeNChannels: (n) => custom_dry_audio_channels.value = n
+            }
 
-        Label {
-            text: "Dry MIDI:"
-            visible: is_drywet && !is_composite
-        }
-        CheckBox {
-            id: dry_midi_checkbox
-            tristate: false
-            visible: is_drywet && !is_composite
-        }
+            Label {
+                text: "Dry audio channels:"
+                visible: is_drywet && !is_composite && select_dry_audio_type.show_custom
+            }
+            SpinBox {
+                id: custom_dry_audio_channels
+                visible: is_drywet && !is_composite && select_dry_audio_type.show_custom
+                value: 2
+                from: 0
+                to: 10
+                width: 120
+            }
 
-        Label {
-            text: "Wet audio:"
-            visible: is_drywet && !is_composite
-        }
-        AudioTypeSelect {
-            id: select_wet_audio_type
-            visible: is_drywet && !is_composite
-            onChangeNChannels: (n) => custom_wet_audio_channels.value = n
-        }
+            Label {
+                text: "Dry MIDI:"
+                visible: is_drywet && !is_composite
+            }
+            CheckBox {
+                id: dry_midi_checkbox
+                tristate: false
+                visible: is_drywet && !is_composite
+            }
 
-        Label {
-            text: "Wet audio channels:"
-            visible: is_drywet && !is_composite && select_wet_audio_type.show_custom
-        }
-        SpinBox {
-            id: custom_wet_audio_channels
-            visible: is_drywet && !is_composite && select_wet_audio_type.show_custom
-            value: 2
-            from: 0
-            to: 10
-            width: 120
+            Label {
+                text: "Wet audio:"
+                visible: is_drywet && !is_composite
+            }
+            AudioTypeSelect {
+                id: select_wet_audio_type
+                visible: is_drywet && !is_composite
+                onChangeNChannels: (n) => custom_wet_audio_channels.value = n
+            }
+
+            Label {
+                text: "Wet audio channels:"
+                visible: is_drywet && !is_composite && select_wet_audio_type.show_custom
+            }
+            SpinBox {
+                id: custom_wet_audio_channels
+                visible: is_drywet && !is_composite && select_wet_audio_type.show_custom
+                value: 2
+                from: 0
+                to: 10
+                width: 120
+            }
         }
     }
 

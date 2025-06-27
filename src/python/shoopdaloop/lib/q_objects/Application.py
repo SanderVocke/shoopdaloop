@@ -20,7 +20,7 @@ from ..qml_helpers import *
 from shoop_rust import shoop_rust_init
 
 from ..logging import *
-from shoop_app_info import shoop_version, shoop_resource_dir, shoop_qml_dir
+from shoop_config import shoop_version, shoop_resource_dir
 
 class Application(ShoopQApplication):
     exit_handler_called = ShoopSignal()
@@ -117,8 +117,6 @@ class Application(ShoopQApplication):
         self.engine = QQmlApplicationEngine(parent=self)
         self.engine.destroyed.connect(lambda: self.logger.debug("QML engine being destroyed."))
         self.engine.objectCreated.connect(lambda obj, _: maybe_install_event_filter(obj))
-        self.engine.addImportPath(os.path.join(shoop_qml_dir))
-        self.engine.addImportPath(os.path.join(shoop_qml_dir, 'generated'))
 
         if quit_on_quit:
             self.engine.quit.connect(self.do_quit)

@@ -9,11 +9,13 @@ set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
-if(DEFINED ENV{PYTHON})
-  set(PYTHON_CMD $ENV{PYTHON})
-else()
-  find_package(Python3 COMPONENTS Interpreter REQUIRED)
-  set(PYTHON_CMD ${Python3_EXECUTABLE})
+if(NOT DEFINED PYTHON_CMD)
+  if(DEFINED ENV{PYTHON})
+    set(PYTHON_CMD $ENV{PYTHON})
+  else()
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(PYTHON_CMD ${Python3_EXECUTABLE})
+  endif()
 endif()
 set(GLOB_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../../scripts/do_glob.py")
 set(RUN_WITH_ENV_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../../scripts/run_with_env_from_files.py")
@@ -29,11 +31,11 @@ if (WIN32)
     add_compile_options("/Z7")
     add_compile_options("/FS")
     add_compile_options("/EHsc")
-    add_compile_options("-D_ITERATOR_DEBUG_LEVEL=0")
+#    add_compile_options("-D_ITERATOR_DEBUG_LEVEL=0")
     add_link_options("/DEBUG")
     add_link_options("/OPT:REF")
     add_link_options("/OPT:ICF")
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+#    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-g -gcodeview)
     add_link_options(-fuse-ld=lld -g -Wl,--pdb=)
@@ -60,11 +62,6 @@ if(HAVE_LV2)
   add_compile_definitions(SHOOP_HAVE_LV2)
 endif()
 
-set(PTHREADS4W_PATH $ENV{PTHREADS4W_PATH} CACHE PATH "Path to PThreads4W, needed on Windows")
-if(DEFINED PTHREADS4W_PATH)
-  message(STATUS "PThreads4W path (Windows): ${PTHREADS4W_PATH}")
-endif()
-
 if (APPLE)
   message(STATUS "MacOS architectures included: ${CMAKE_OSX_ARCHITECTURES}")
 endif()
@@ -74,7 +71,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
 set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
 
-find_package(Catch2 REQUIRED)
+find_package(Catch2 CONFIG REQUIRED)
 
 include(CompilerCaching)
 
@@ -114,8 +111,13 @@ if(ENABLE_ASAN)
     set(RUN_CMD_PREFIX LD_PRELOAD=${ASAN_DSO} ${RUN_CMD_PREFIX})
     set(RUN_CMD_PREFIX ${RUN_CMD_PREFIX} PARENT_SCOPE)
     get_filename_component(ASAN_DSO_REALPATH ${ASAN_DSO} REALPATH)
-    install(FILES ${ASAN_DSO_REALPATH}
-            DESTINATION .)
+    if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+      install(FILES ${ASAN_DSO_REALPATH}
+            DESTINATION debug/lib)
+    else()
+      install(FILES ${ASAN_DSO_REALPATH}
+            DESTINATION lib)
+    endif()
 endif()
 option(ENABLE_PROCESS_PROFILING "Enable internal audio processing profiling" ON)
 if(ENABLE_PROCESS_PROFILING)
@@ -175,8 +177,6 @@ if (HAVE_LV2)
        ${CMAKE_SOURCE_DIR}/third_party/lv2_evbuf/lv2_evbuf.c)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/lv2
                       ${CMAKE_SOURCE_DIR/third_party/lv2_evbuf})
-  set(PKG_CONFIG_USE_CMAKE_PREFIX_PATH TRUE)
-  find_package(PkgConfig REQUIRED)
   pkg_search_module(lilv REQUIRED IMPORTED_TARGET GLOBAL lilv-0)
   pkg_search_module(lv2 REQUIRED IMPORTED_TARGET GLOBAL lv2)
 endif()
@@ -184,10 +184,44 @@ if (BACKEND_JACK)
   file(GLOB JACK_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/internal/jack/*.cpp)
   list(APPEND INTERNAL_SOURCES ${JACK_SOURCES})
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal/jack)
+  pkg_search_module(jack REQUIRED IMPORTED_TARGET GLOBAL jack)
 endif()
 
 # Find libzita-resampler
-find_package(zita-resampler REQUIRED)
+# Try to find the package normally (not REQUIRED)
+find_package(zita-resampler QUIET)
+
+if(NOT zita-resampler_FOUND)
+    message(WARNING "zita-resampler not found via find_package. Attempting manual search...")
+
+    # Try to find the library manually
+    find_library(ZITA_RESAMPLER_LIBRARY
+        NAMES zita-resampler zita-resampler.so
+        DOC "zita-resampler library"
+    )
+
+    # Try to find the include directory
+    find_path(ZITA_RESAMPLER_INCLUDE_DIR
+        NAMES zita-resampler/resampler.h
+        DOC "zita-resampler include directory"
+    )
+
+    message(STATUS "Zita: ${ZITA_RESAMPLER_LIBRARY}, ${ZITA_RESAMPLER_INCLUDE_DIR}")
+
+    # Check if both were found
+    if(ZITA_RESAMPLER_LIBRARY AND ZITA_RESAMPLER_INCLUDE_DIR)
+        message(STATUS "Found zita-resampler manually.")
+        
+        # Define an imported target to simulate a proper package
+        add_library(zita-resampler::zita-resampler UNKNOWN IMPORTED)
+        set_target_properties(zita-resampler::zita-resampler PROPERTIES
+            IMPORTED_LOCATION "${ZITA_RESAMPLER_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${ZITA_RESAMPLER_INCLUDE_DIR}"
+        )
+    else()
+        message(FATAL_ERROR "zita-resampler not found. Aborting.")
+    endif()
+endif()
 
 # Includes
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
@@ -202,20 +236,15 @@ target_include_directories(shoopdaloop_backend_internals
                         PRIVATE
                         ${CMAKE_SOURCE_DIR}/third_party/base64/include
                         ${CMAKE_CURRENT_BINARY_DIR}
-                        ${Catch2_INCLUDE_DIR}
                         )
 target_link_libraries(shoopdaloop_backend_internals PRIVATE
   Threads::Threads
   fmt::fmt
   zita-resampler::zita-resampler
   Boost::headers
-  Catch2::Catch2
   )
 if (WIN32)
   target_link_libraries(shoopdaloop_backend_internals PRIVATE Boost::system)
-endif()
-if (DEFINED PTHREADS4W_PATH)
-  target_include_directories(shoopdaloop_backend_internals PRIVATE ${PTHREADS4W_PATH})
 endif()
 if (UNIX)
     target_link_libraries(shoopdaloop_backend_internals PUBLIC dl)
@@ -243,19 +272,25 @@ if (WIN32)
 endif()
 # create_breakpad_symbols_dump(shoopdaloop_backend)
 
-if(APPLE)
-  set_target_properties(shoopdaloop_backend PROPERTIES
-      BUILD_WITH_INSTALL_RPATH TRUE
-      INSTALL_RPATH "@loader_path/"  # Load dylibs from same directory
-  )
-elseif(UNIX)
-  set_target_properties(shoopdaloop_backend PROPERTIES
-    INSTALL_RPATH "$ORIGIN/"  # Load .so's from same directory
-  )
-endif()
+# if(APPLE)
+#   set_target_properties(shoopdaloop_backend PROPERTIES
+#       BUILD_WITH_INSTALL_RPATH TRUE
+#       INSTALL_RPATH "@loader_path/"  # Load dylibs from same directory
+#   )
+# elseif(UNIX)
+#   set_target_properties(shoopdaloop_backend PROPERTIES
+#     INSTALL_RPATH "$ORIGIN/"  # Load .so's from same directory
+#   )
+# endif()
 
-install(TARGETS shoopdaloop_backend
-        DESTINATION .)
+# Use vcpkg-compatible installation structure
+if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
+  install(TARGETS shoopdaloop_backend
+          DESTINATION debug/lib)
+else()
+  install(TARGETS shoopdaloop_backend
+          DESTINATION lib)
+endif()
 
 if (OVERRIDE_COMPILE_LOG_LEVEL STREQUAL "")
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -279,26 +314,26 @@ endif()
 # Generate and install version.txt and description.txt
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/version.txt
-  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../python/pyproject.toml project::version > version.txt
+  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../../metadata.toml version > version.txt
   COMMENT "Generating version.txt"
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 add_custom_target(version_txt ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/version.txt)
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/description.txt
-  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../python/pyproject.toml project::description > description.txt
+  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../../metadata.toml description > description.txt
   COMMENT "Generating description.txt"
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 add_custom_target(description_txt ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/description.txt)
 
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR}/description.txt
-        DESTINATION .)
+        DESTINATION tools/shoopdaloop)
 # Include app test scripts
 install(FILES ${CMAKE_SOURCE_DIR}/../../scripts/repeat_run_app.py
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
-        DESTINATION scripts)
+        DESTINATION tools/shoopdaloop/scripts)
 install(FILES ${CMAKE_SOURCE_DIR}/../../scripts/run_and_generate_coverage.sh
         EXCLUDE_FROM_ALL
         PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
-        DESTINATION scripts)
+        DESTINATION tools/shoopdaloop/scripts)

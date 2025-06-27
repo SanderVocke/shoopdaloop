@@ -1,4 +1,4 @@
-# Create a package/installer using fpm or InnoSetup
+# Top-level build script.
 
 inputs:
   name:
@@ -30,6 +30,14 @@ inputs:
   upload_release_assets:
     default: 'false'
     description: "Whether to attempt uploading assets to a tag release."
+  GITHUB_TOKEN:
+    required: true
+    description: "GitHub token"
+  macos_target_version:
+    required: false
+    description: "macOS target version"
+  vcpkg_rebuild:
+    description: "whether to rebuild vcpkg packages"
 
 runs:
   using: "composite"
@@ -58,18 +66,16 @@ runs:
     if: always() && inputs.upload_release_assets == 'true'
     shell: bash
     run: echo "release_upload_assets_url=$(cat release_upload_assets_url/release_upload_assets_url.txt)" | tee -a $GITHUB_ENV
-  - name: Set Cargo build flags (release)
+  - name: set Cargo build flags (release)
     if: always() && inputs.release_build == 'true'
     shell: wrap-shell {0}
     run: |
-      echo "CARGO_BUILD_FLAGS=--release" | tee -a $GITHUB_ENV
       echo "ARTIFACT_VARIANT=release-${{ inputs.platform }}" | tee -a $GITHUB_ENV
       echo "CARGO_ARTIFACTS_DIR=$(${{ env.CONVERT_PATH_FN }} $(pwd)/target/release)" | tee -a $GITHUB_ENV
-  - name: Set Cargo build flags (debug)
+  - name: set Cargo build flags (debug)
     if: always() && inputs.release_build != 'true'
     shell: wrap-shell {0}
     run: |
-      echo "CARGO_BUILD_FLAGS=" | tee -a $GITHUB_ENV
       echo "ARTIFACT_VARIANT=debug-${{ inputs.platform }}" | tee -a $GITHUB_ENV
       echo "CARGO_ARTIFACTS_DIR=$(${{ env.CONVERT_PATH_FN }} $(pwd)/target/debug)" | tee -a $GITHUB_ENV
   - name: More env settings
@@ -91,22 +97,11 @@ runs:
     uses: ./.github/actions/prepare_build
     with:
       variant: ${{ inputs.prepare_kind }}
+      GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
+      macos_target_version: ${{ inputs.macos_target_version }}
+      vcpkg_rebuild: ${{ inputs.vcpkg_rebuild }}
   - uses: ./.github/actions/checkpoint
     if: always()
-  - name: More env settings (non-Mac)
-    shell: wrap-shell {0}
-    if: always() && runner.os != 'macOS'
-    run: |
-      echo "PYO3_PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
-  - name: Use pyenv python (Mac)
-    shell: wrap-shell {0}
-    if: always() && runner.os == 'macOS'
-    run: |
-      pyenv install --skip-existing 3.10
-      pyenv_py=$(pyenv prefix 3.10)/bin/python
-      $pyenv_py -m pip install --upgrade pip
-      $pyenv_py -m pip install build
-      echo "PYO3_PYTHON=$pyenv_py" | tee -a $GITHUB_ENV
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
@@ -117,10 +112,12 @@ runs:
       echo "Building"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
-  - name: Build with Cargo
+  - name: Build
     if: always()
     id: build_base
     uses: ./.github/actions/build_base
+    with:
+        release_build: ${{ inputs.release_build }}
   - name: Qoverage - Instrument QML files
     if: always() && inputs.coverage
     uses: ./.github/actions/qoverage_instrument
@@ -190,6 +187,12 @@ runs:
       echo "Upload artifacts"
       echo "=========================================="
       printf "\n\n\n\n\n\n"
+  - name: Upload vcpkg-generated dependency builds
+    if: always() && inputs.upload_artifacts == 'true'
+    uses: actions/upload-artifact@v4
+    with:
+      name: vcpkg_dependencies_installed_${{ inputs.name }}
+      path: build/vcpkg_installed
   - name: Upload debug info
     if: always() && inputs.upload_artifacts == 'true'
     uses: actions/upload-artifact@v4
@@ -245,7 +248,7 @@ runs:
     id: compress_pdb
     shell: bash
     run: |
-      find . -name "*.pdb" -o -name "*.PDB" | tar -czf ${{ inputs.name }}_pdb_files.tar.gz -T -
+      find target -name "*.pdb" -o -name "*.PDB" | tar -czf ${{ inputs.name }}_pdb_files.tar.gz -T -
       echo "path=${{ inputs.name }}_pdb_files.tar.gz" | tee -a $GITHUB_OUTPUT
   - name: Upload PDB files
     if: always() && env.release_upload_assets_url && inputs.prepare_kind == 'windows'

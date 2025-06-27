@@ -14,7 +14,7 @@ from ..lua_qobject_interface import create_lua_qobject_interface
 
 import os
 import inspect
-from shoop_app_info import shoop_lua_dir
+from shoop_config import shoop_lua_dir
 
 class ScriptExecutionError(Exception):
     pass

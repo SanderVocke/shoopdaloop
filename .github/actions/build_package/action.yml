@@ -1,4 +1,4 @@
-# Create a package/installer using fpm or InnoSetup
+# Create a distributable package.
 
 inputs:
   package_kind:
@@ -20,15 +20,13 @@ runs:
   using: "composite"
   steps:
 
-  # Versions
   - name: Determine version, env settings
     if: always()
     shell: wrap-shell {0}
     run: |
       set -x
       # TODO
-      VERSION=0.0.0
-      VERSION=$(cargo pkgid -p shoopdaloop | sed -r 's/.*#//g')
+      VERSION=$(python3 scripts/parse_pyproject_toml.py metadata.toml version)
       FULLGITVERSION=${{ github.sha }}
       GITVERSION=$(echo ${FULLGITVERSION:0:8} | tr -d ' ')
 
@@ -45,18 +43,19 @@ runs:
     env:
       SHOOP_LOG: "packaging=debug"
     run: |
+      . ${BUILD_ENV_FILE}
       PORTABLE_DIR=$(pwd)/shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.portable
       RELEASE_PORTABLE_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.portable
       echo "PORTABLE_DIR=$PORTABLE_DIR" | tee -a $GITHUB_ENV
       echo "RELEASE_PORTABLE_DIR=$RELEASE_PORTABLE_DIR" | tee -a $GITHUB_ENV
       ${CARGO_ARTIFACTS_DIR}/package build-portable-folder -o $PORTABLE_DIR ${CARGO_BUILD_FLAGS}
-  - name: Make relocatable (MacOS)
-    if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
-    uses: ./.github/actions/macos_make_relocatable
-    with:
-      path: ${{ env.PORTABLE_DIR }}
-      find_cmd: "find ./lib -name \"*.dylib\";echo \"shoopdaloop\""
-      match: "libpython3"
+  # - name: Make relocatable (MacOS)
+  #   if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
+  #   uses: ./.github/actions/macos_make_relocatable
+  #   with:
+  #     path: ${{ env.PORTABLE_DIR }}
+  #     find_cmd: "find ./lib -name \"*.dylib\";echo \"shoopdaloop\""
+  #     match: "libpython3"
   - name: Symlink Qt libs (MacOS)
     if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
     shell: wrap-shell {0}
@@ -83,7 +82,7 @@ runs:
     with:
       name: ${{ env.BUILT_PACKAGE_NAME }}
       path: ${{ env.BUILT_PACKAGE }}
-  - name: Upload AppDir (release)
+  - name: Upload portable folder (release)
     if: always() && inputs.package_kind == 'portable_folder' && inputs.upload_release_assets == 'true'
     uses: shogo82148/actions-upload-release-asset@v1
     with:
@@ -97,6 +96,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       set -x
+      . ${BUILD_ENV_FILE}
       TEST_BINARIES_DIR=$(pwd)/shoopdaloop.${{ env.SHOOP_GIT_REV }}.${{ env.ARTIFACT_VARIANT }}.test_binaries
       RELEASE_TEST_BINARIES_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.test_binaries
       echo "TEST_BINARIES_DIR=$TEST_BINARIES_DIR" | tee -a $GITHUB_ENV
@@ -110,9 +110,9 @@ runs:
       echo "BUILT_PACKAGE_NAME=$(basename $COMPRESSED_TEST_BINARIES_DIR)" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$(${{ env.CONVERT_PATH_FN }} $COMPRESSED_RELEASE_TEST_BINARIES_DIR)" | tee -a $GITHUB_ENV
       # on MacOS, we need the original Qt that we built against.
-      if [[ "$RUNNER_OS" == "macOS" ]]; then
-        cp -r $QT_ROOT_DIR/lib/*.framework $RELEASE_TEST_BINARIES_DIR
-      fi
+      # if [[ "$RUNNER_OS" == "macOS" ]]; then
+      #   cp -r $QT_ROOT_DIR/lib/*.framework $RELEASE_TEST_BINARIES_DIR
+      # fi
   - uses: actions/upload-artifact@v4
     if: always() && inputs.package_kind == 'test_binaries'
     with:
@@ -148,19 +148,20 @@ runs:
       asset_path: ${{ env.BUILT_RELEASE_ARTIFACT }}
 
   # Windows installer (InnoSetup)
-  - name: Compile .ISS to .EXE Installer
-    uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+  - name: InnoSetup
     if: always() && inputs.package_kind == 'innosetup'
-    with:
-      path: distribution/windows/shoopdaloop.iss
-      options: /O+ /DMyAppVersion="${{ env.SHOOP_VERSION }}"
+    shell: wrap-shell {0}
+    run: |
+      PORTABLE_DIR_WIN=$(${{ env.CONVERT_PATH_FN }} $PORTABLE_DIR)
+      echo "Windows portable dir: $PORTABLE_DIR_WIN"
+      ./distribution/windows/build_innosetup.bat "$PORTABLE_DIR_WIN" ${{ env.SHOOP_VERSION }}
   - name: Move .EXE installer
     if: always() && inputs.package_kind == 'innosetup'
     shell: wrap-shell {0}
     run: |
       ls distribution/windows
       RELEASE_INSTALLER=$(find distribution/windows -name "ShoopDaLoop-*.exe")
-      GIT_REV_INSTALLER=ShoopDaLoop-$SHOOP_GIT_REV.exe
+      GIT_REV_INSTALLER=ShoopDaLoop-Installer-$SHOOP_GIT_REV.exe
       cp $RELEASE_INSTALLER $GIT_REV_INSTALLER
       echo "BUILT_PACKAGE=$GIT_REV_INSTALLER" | tee -a $GITHUB_ENV
       echo "BUILT_RELEASE_ARTIFACT=$RELEASE_INSTALLER" | tee -a $GITHUB_ENV

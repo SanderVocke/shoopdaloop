@@ -1,5 +1,10 @@
 name: Build Base
-description: Do a basic Cargo build in the checked out repository
+description: Do a build in the checked out repository
+
+inputs:
+  release_build:
+    description: "if true, does a release build. Otherwise, a debug build."
+    default: 'false'
 
 runs:
   using: "composite"
@@ -11,21 +16,53 @@ runs:
     with:
         prefix-key: v4
         env-vars: "CARGO CC CFLAGS CXX CMAKE RUST PYO3"
+  
+  - name: Set release flags
+    if: always() && inputs.release_build == 'true'
+    shell: wrap-shell {0}
+    run: |
+        echo "CARGO_BUILD_FLAGS=--release" | tee -a $GITHUB_ENV
+        echo "BUILD_ENV_FILE=./build/build-env-release.sh" | tee -a $GITHUB_ENV
 
-  - name: Build dependencies
+  - name: Set debug flags
+    if: always() && inputs.release_build != 'true'
+    shell: wrap-shell {0}
+    run: |
+        echo "CARGO_BUILD_FLAGS=" | tee -a $GITHUB_ENV
+        echo "BUILD_ENV_FILE=./build/build-env-debug.sh" | tee -a $GITHUB_ENV
+
+  - name: Setup build env and build vcpkg packages
     if: always()
     shell: wrap-shell {0}
     run: |
-      cargo build --features "shoopdaloop/prebuild packaging/prebuild" ${CARGO_BUILD_FLAGS}
+      set -x
+      ${PYTHON} scripts/vcpkg_prebuild.py --vcpkg-args=--clean-after-build 2>&1 | tee vcpkg_build_output.txt
+      echo ""
+      echo "Build env file ${BUILD_ENV_FILE}" contents:
+      cat ${BUILD_ENV_FILE}
+      rm -rf ${VCPKG_ROOT}/buildtrees
+
+  - name: Build Cargo dependencies
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+      set -x
+      . ${BUILD_ENV_FILE}
+      echo "cargo: $(which cargo)"
+      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild" ${CARGO_BUILD_FLAGS}
 
   - name: Build main packages
     if: always()
     shell: wrap-shell {0}
     run: |
+      set -x
+      . ${BUILD_ENV_FILE}
       cargo build -vv ${CARGO_BUILD_FLAGS}
   
   - name: Build test code
     if: always()
     shell: wrap-shell {0}
     run: |
+      set -x
+      . ${BUILD_ENV_FILE}
       cargo test -vv --no-run ${CARGO_BUILD_FLAGS}

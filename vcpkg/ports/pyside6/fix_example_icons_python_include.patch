@@ -1,0 +1,36 @@
+diff -urN a2d46031d4-78929cf818.clean/.vscode/settings.json a2d46031d4-78929cf818/.vscode/settings.json
+--- a2d46031d4-78929cf818.clean/.vscode/settings.json	2025-03-24 23:19:07.000000000 +0100
++++ a2d46031d4-78929cf818/.vscode/settings.json	1970-01-01 01:00:00.000000000 +0100
+@@ -1,20 +0,0 @@
+-{
+-    "editor.rulers": [
+-        72, // comments and docstrings
+-        79, // desirable code length
+-        100 // maximum code length
+-    ],
+-    "python.testing.unittestArgs": [
+-        "-v",
+-        "-s",
+-        "./sources/pyside6/tests",
+-        "-p",
+-        "*_test.py"
+-    ],
+-    "python.testing.pytestEnabled": false,
+-    "python.testing.unittestEnabled": true,
+-    "flake8.args": [
+-        "--config=.flake8"
+-    ],
+-    "grammarly.files.include": ["**/*.rst", "**/*.md"],
+-}
+diff -urN a2d46031d4-78929cf818.clean/sources/pyside6/qtexampleicons/CMakeLists.txt a2d46031d4-78929cf818/sources/pyside6/qtexampleicons/CMakeLists.txt
+--- a2d46031d4-78929cf818.clean/sources/pyside6/qtexampleicons/CMakeLists.txt	2025-03-24 23:19:07.000000000 +0100
++++ a2d46031d4-78929cf818/sources/pyside6/qtexampleicons/CMakeLists.txt	2025-05-08 16:03:52.467952460 +0200
+@@ -32,6 +32,8 @@
+     target_compile_definitions(QtExampleIcons PRIVATE "-DNDEBUG")
+ endif()
+ 
++get_property(SHIBOKEN_PYTHON_INCLUDE_DIRS GLOBAL PROPERTY shiboken_python_include_dirs)
++
+ target_include_directories(QtExampleIcons PRIVATE ${SHIBOKEN_PYTHON_INCLUDE_DIRS})
+ 
+ get_property(SHIBOKEN_PYTHON_LIBRARIES GLOBAL PROPERTY shiboken_python_libraries)

@@ -97,6 +97,7 @@ jobs:
         prepare_kind: 'ubuntu_latest'
         python: python
         upload_artifacts: 'false'
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3

@@ -7,12 +7,14 @@
 #endif
 #define MyAppPublisher "ShoopDaLoop"
 #define MyAppURL "https://www.shoopdaloop.com"
-#define MyAppExeName "shoopdaloop.exe"
+#define MyAppExeName "shoopdaloop.bat"
 #define MyAppInstallerExeName MyAppName + "-" + MyAppVersion
 #define MyAppAssocName MyAppName + " Session"
 #define MyAppAssocExt ".shl"
 #define MyAppAssocKey StringChange(MyAppAssocName, " ", "") + MyAppAssocExt
-#define MyAppPortableFolder "shoopdaloop-portable-notspecified"
+#ifndef MyAppPortableFolder
+    #error No portable folder passed.
+#endif
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
@@ -43,7 +45,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "{#MyAppPortableFolder}"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyAppPortableFolder}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Registry]
 Root: HKA; Subkey: "Software\Classes\{#MyAppAssocExt}\OpenWithProgids"; ValueType: string; ValueName: "{#MyAppAssocKey}"; ValueData: ""; Flags: uninsdeletevalue

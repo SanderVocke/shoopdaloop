@@ -17,6 +17,8 @@ from ..logging import Logger
 from ..backend_wrappers import *
 from ..mode_helpers import *
 
+import shoop_py_backend
+
 # Encapsulate the data in a class. We don't want to convert it to Javascript data,
 # rather just pass the Python handle around.
 class FetchedData():

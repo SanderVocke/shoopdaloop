@@ -1,10 +1,4 @@
-#!/bin/bash
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-. ${SCRIPT_DIR}/env.sh
-
-if [ -n "$SHOOPDALOOP_APPIMAGE_EXECUTE" ]; then
-    ${SCRIPT_DIR}/${SHOOPDALOOP_APPIMAGE_EXECUTE} $@
-else
-    ${SCRIPT_DIR}/shoopdaloop_bin $@
-fi
+#!/bin/sh
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$SCRIPT_DIR/lib"
+$SCRIPT_DIR/shoopdaloop_exe "$@"

@@ -1,0 +1,84 @@
+name: prepare_vcpkg
+description: Prepare vcpkg
+
+inputs:
+  GITHUB_TOKEN:
+    required: true
+    description: "GitHub token"
+  macos_target_version:
+    description: "macOS target version"
+  vcpkg_rebuild:
+    description: "whether to rebuild vcpkg packages"
+
+runs:
+  using: "composite"
+  steps:
+
+  - name: Export GitHub Actions cache environment variables
+    if: always()
+    uses: actions/github-script@v7
+    with:
+      script: |
+        core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+        core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+  - name: Set default location
+    if: runner.os == 'Linux' || runner.os == 'macOS'
+    shell: wrap-shell {0}
+    run: |
+     mkdir -p build/vcpkg
+     echo "VCPKG_ROOT=$(pwd)/build/vcpkg" | tee -a $GITHUB_ENV
+
+  - name: Flags for rebuild
+    if: always() && inputs.vcpkg_rebuild == 'true'
+    shell: wrap-shell {0}
+    run: echo "VCPKG_NUGET_RWFLAGS=write" | tee -a $GITHUB_ENV
+  
+  - name: Flags for reuse
+    if: always() && inputs.vcpkg_rebuild != 'true'
+    shell: wrap-shell {0}
+    run: echo "VCPKG_NUGET_RWFLAGS=readwrite" | tee -a $GITHUB_ENV
+
+  # Note: put in a different spot because short paths are needed for qtdeclarative build on Windows
+  - name: Set default location
+    if: runner.os == 'Windows'
+    shell: wrap-shell {0}
+    run: |
+     echo "VCPKG_ROOT=/d/a/vcpkg" | tee -a $GITHUB_ENV
+
+  - name: Checkout
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+       git clone https://github.com/microsoft/vcpkg.git $VCPKG_ROOT
+  
+  - name: Bootstrap
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+      cd $VCPKG_ROOT
+      ./bootstrap-vcpkg.sh
+      ./vcpkg fetch nuget
+      echo "NUGET_EXE=$(./vcpkg fetch nuget)" | tee -a $GITHUB_ENV
+
+  - name: Add mono to NUGET command
+    if: runner.os == 'Linux' || runner.os == 'macOS'
+    shell: wrap-shell {0}
+    run: |
+     echo "NUGET_EXE=mono ${NUGET_EXE}" | tee -a $GITHUB_ENV
+  
+  - name: Set env vars
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+     echo "$VCPKG_ROOT" | tee -a $GITHUB_PATH
+     LOCAL_FEED_URL="https://nuget.pkg.github.com/SanderVocke/index.json"
+     echo "FEED_URL=$LOCAL_FEED_URL" | tee -a $GITHUB_ENV
+     echo "VCPKG_BINARY_SOURCES=clear;nuget,$LOCAL_FEED_URL,${VCPKG_NUGET_RWFLAGS}" | tee -a $GITHUB_ENV
+
+  - name: Setup NuGet sources
+    if: always()
+    shell: wrap-shell {0}
+    run: |
+      ${NUGET_EXE} sources add -Username SanderVocke -Password ${{ inputs.GITHUB_TOKEN }} -StorePasswordInClearText -Name GitHub -Source "${{ env.FEED_URL }}"
+      ${NUGET_EXE} setapikey ${{ inputs.GITHUB_TOKEN }} -Source "${{ env.FEED_URL }}"

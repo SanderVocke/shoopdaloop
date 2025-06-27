@@ -35,7 +35,8 @@ pub fn get_dependency_libs (executable : &Path,
     let ori_env_vars : Vec<(String, String)> = std::env::vars().collect();
     let env_map : HashMap<String, String> = ori_env_vars.iter().cloned().collect();
     let (command, args, warning_patterns, skip_n_levels, dylib_filename_part, new_env_map) = get_os_specifics(executable, include_directory, &env_map)?;
-    debug!("Running shell command for determining dependencies: {args:?}");
+    let argstr = args.join(" ");
+    debug!("Running shell command for determining dependencies: {argstr}");
     let mut list_deps : &mut Command = &mut Command::new(&command);
     list_deps = list_deps.args(&args)
                          .envs(new_env_map.iter())
@@ -47,6 +48,8 @@ pub fn get_dependency_libs (executable : &Path,
     debug!("Command stderr:\n{}", command_output);
     debug!("Command stdout:\n{}", deps_output);
     if !list_deps_output.status.success() {
+        error!("Command stderr:\n{}", command_output);
+        error!("Command stdout:\n{}", deps_output);
         return Err(anyhow::anyhow!("list_dependencies returned nonzero exit code"));
     }
     for line in command_output.lines() {
@@ -225,8 +228,6 @@ pub fn get_dependency_libs (executable : &Path,
         return Err(anyhow::anyhow!("Dependency errors:\n{}", error_msgs));
     }
     paths.dedup();
-
-    info!("Dependencies: {paths:?}");
     Ok(paths)
 }
 
@@ -261,14 +262,6 @@ fn get_windows_specifics<'a>(
     let file_path = PathBuf::from(file!());
     let src_path = std::fs::canonicalize(file_path)?;
     let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
-    let paths_file = src_path.join("distribution/windows/shoop.dllpaths");
-    let paths_str = std::fs::read_to_string(&paths_file)
-        .with_context(|| format!("Cannot read {paths_file:?}"))?;
-    let executable_folder = executable.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
-    for relpath in paths_str.lines() {
-        let path = new_env_map.get("PATH").expect("No PATH env var found");
-        new_env_map.insert(String::from("PATH"), format!("{}/{};{}", executable_folder.to_str().unwrap(), relpath, path));
-    }
     let command = String::from("powershell.exe");
     let commandstr = include_str!("scripts/windows_deps.ps1").replace("$args[0]", executable.to_str().unwrap());
     let args = vec![String::from("-Command"), commandstr];

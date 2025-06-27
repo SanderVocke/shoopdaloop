@@ -1,5 +1,8 @@
 $executable = "$args[0]"
 $handled = @()
+if (-not (Get-Command -Name Dependencies.exe -ErrorAction SilentlyContinue)) {
+    echo "Error: Dependencies.exe not found in PATH."; exit 1
+}
 $output = & Dependencies.exe -chain -depth 4 $executable.Trim();
 $output | Where-Object { -not ($_ -match "NotFound") } |
     Get-Unique |

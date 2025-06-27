@@ -1,0 +1,29 @@
+{
+    "name": "pyside6",
+    "version": "6.8.3",
+    "port-version": 0,
+    "description": "Qt for Python",
+    "homepage": "https://github.com/qtproject/pyside-pyside-setup",
+    "dependencies": [
+        {
+            "name": "vcpkg-cmake"
+        },
+        {
+            "name": "vcpkg-cmake-config"
+        },
+        {
+            "name": "vcpkg-get-python"
+        },
+        {
+            "name": "qtbase",
+            "version>=": "6.8.3"
+        },
+        {
+            "name": "qtdeclarative",
+            "version>=": "6.8.3"
+        },
+        {
+            "name": "python3"
+        }
+    ]
+}
