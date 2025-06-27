@@ -127,7 +127,7 @@ runs:
       cd $TEST_BINARIES_INSTALL
       tar --strip-components=1 -xzf ${{ inputs.package }}
       if [[ "$RUNNER_OS" == "Windows" ]]; then
-        CMD_PREFIX="PATH=\"\$PATH;$PORTABLE_FOLDER_INSTALL/lib\""
+        CMD_PREFIX="PATH=\"\$PATH:$PORTABLE_FOLDER_INSTALL/lib\""
       elif [[ "$RUNNER_OS" == "macOS" ]]; then
         CMD_PREFIX="DYLD_LIBRARY_PATH=\$DYLD_LIBRARY_PATH:$TEST_BINARIES_INSTALL:$PORTABLE_FOLDER_INSTALL/lib"
       else # Linux
