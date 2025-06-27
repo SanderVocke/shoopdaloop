@@ -150,7 +150,7 @@ jobs:
       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
     needs: maybe_create_release
-    if: ${{ (github.event.inputs.build_linux || true) }}
+    if: ${{ (github.event.inputs.build_linux || 'true') == 'true' }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
