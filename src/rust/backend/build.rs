@@ -33,7 +33,10 @@ fn main_impl() -> Result<(), anyhow::Error> {
             let cmake_config_mut : &mut Config = cmake_config.out_dir(&cmake_output_dir)
                                             .generator("Ninja")
                                             .configure_arg(format!("-DCMAKE_INSTALL_PREFIX={}",install_dir.to_str().unwrap()))
-                                            .configure_arg(format!("-DCMAKE_BUILD_TYPE={}", if profile == "debug" { "Debug" } else { "Release" }))
+                                            .configure_arg(format!("-DCMAKE_BUILD_TYPE={}",
+                                                if profile == "debug" { "Debug" }
+                                                else if profile == "release-with-debug" { "RelWithDebInfo" }
+                                                else { "Release" }))
                                             .configure_arg(format!("-DPYTHON_CMD={}", build_python));
             let _ = cmake_config_mut.build();
         }
