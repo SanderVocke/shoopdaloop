@@ -66,18 +66,30 @@ impl LoopBackend {
                 rust_mut.backend_loop = Some(Arc::new(Mutex::new(backend_loop)));
 
                 // Connect signals
-                cxx_qt_lib_shoop::connect::connect
+                match cxx_qt_lib_shoop::connect::connect
                     (backend_ptr.as_mut().unwrap(),
                     "updated_on_backend_thread()".to_string(),
                     self.as_mut().get_unchecked_mut(),
                     "update_on_non_gui_thread()".to_string(),
-                    cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION).unwrap();
-                cxx_qt_lib_shoop::connect::connect
+                    cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION)
+                {
+                    Ok(_) => (),
+                    Err(err) => {
+                        error!(self, "Failed to connect signals: {:?}", err);
+                    }
+                }
+                match cxx_qt_lib_shoop::connect::connect
                     (backend_ptr.as_mut().unwrap(),
                         "updated_on_gui_thread()".to_string(),
                         self.as_mut().get_unchecked_mut(),
                         "update_on_gui_thread()".to_string(),
-                        cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION).unwrap();
+                        cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION)
+                {
+                    Ok(_) => (),
+                    Err(err) => {
+                        error!(self, "Failed to connect signals: {:?}", err);
+                    }
+                }
 
                 // self.set_initialized(true);
             }

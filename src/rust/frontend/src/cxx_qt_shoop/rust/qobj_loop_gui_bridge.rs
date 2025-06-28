@@ -112,7 +112,7 @@ pub mod ffi {
         #[qsignal]
         fn cycled(self: Pin<&mut LoopGui>, cycle_nr: i32);
 
-        // Custom getter/setting for sync source property
+        // Custom setter for sync source property
         pub unsafe fn set_sync_source(self: Pin<&mut LoopGui>, sync_source: *mut QObject);
     }
 

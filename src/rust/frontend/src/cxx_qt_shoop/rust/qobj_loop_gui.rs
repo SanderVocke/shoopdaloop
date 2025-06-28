@@ -544,10 +544,15 @@ impl LoopGui {
         } else {
             debug!(self, "Defer updating back-end sync source: loop not initialized");
             let loop_ref = self.as_ref().get_ref();
-            connect(loop_ref,
+            match connect(loop_ref,
                     "initializedChanged()".to_string(), loop_ref,
                     "update_backend_sync_source()".to_string(), connection_types::QUEUED_CONNECTION | connection_types::SINGLE_SHOT_CONNECTION)
-               .unwrap();
+            {
+                Ok(_) => (),
+                Err(err) => {
+                    error!(self, "Failed to connect to initializedChanged(): {:?}", err);
+                }
+            }
         }
 
         let changed = self.as_mut().rust_mut().sync_source != sync_source;

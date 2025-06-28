@@ -23,10 +23,10 @@ fn shoopdaloop_main_impl<'py>(
     let qml_dirs_string = qml_dirs.join(common::util::PATH_LIST_SEPARATOR);
     env::set_var("QML_IMPORT_PATH", &qml_dirs_string);
 
-    debug!("PYTHONPATH={}", env::var("PYTHONPATH").unwrap());
-    debug!("PYTHONHOME={}", env::var("PYTHONHOME").unwrap());
-    debug!("QML_IMPORT_PATH={}", env::var("QML_IMPORT_PATH").unwrap());
-    debug!("QT_PLUGIN_PATH={}", env::var("QT_PLUGIN_PATH").unwrap());
+    debug!("PYTHONPATH={:?}", env::var("PYTHONPATH"));
+    debug!("PYTHONHOME={:?}", env::var("PYTHONHOME"));
+    debug!("QML_IMPORT_PATH={:?}", env::var("QML_IMPORT_PATH"));
+    debug!("QT_PLUGIN_PATH={:?}", env::var("QT_PLUGIN_PATH"));
 
     // Get the command-line arguments
     let args: Vec<String> = env::args().collect();
