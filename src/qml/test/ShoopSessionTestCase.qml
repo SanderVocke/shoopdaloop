@@ -19,7 +19,7 @@ ShoopTestCase {
     when: timer.done
 
     function check_backend() {
-        verify(backend && backend.initialized, "backend not initialized")
+        verify(backend && backend.ready, "backend not initialized")
         wait_updated(backend)
     }
 

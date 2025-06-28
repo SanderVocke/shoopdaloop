@@ -19,7 +19,7 @@ Loop {
     readonly property var midi_channel_descriptors: (initial_descriptor && initial_descriptor.channels) ? initial_descriptor.channels.filter(c => c.type == 'midi') : []
 
     function initialize() {
-        set_length(initial_descriptor.length)
+        queue_set_length(initial_descriptor.length)
     }
 
     Component.onCompleted: {
@@ -43,6 +43,7 @@ Loop {
             property int index
             loop: root.loop
             descriptor: mapped_item
+            backend : root.backend
         }
     }
     Mapper {
@@ -54,6 +55,7 @@ Loop {
             property int index
             loop: root.loop
             descriptor: mapped_item
+            backend : root.backend
         }
     }
 

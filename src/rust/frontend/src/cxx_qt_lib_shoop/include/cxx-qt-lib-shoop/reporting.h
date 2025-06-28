@@ -1,6 +1,6 @@
 #pragma once
 
-inline void report_signal_not_found(QObject * obj, std::string name) {
+inline void report_signal_not_found(QObject const* obj, std::string name) {
     std::string err = "Could not find signal ";
     err += name;
     err += std::string(". Available signals:\n");
@@ -15,7 +15,7 @@ inline void report_signal_not_found(QObject * obj, std::string name) {
     throw std::runtime_error(err);
 }
 
-inline void report_method_not_found(QObject * obj, std::string method_name) {
+inline void report_method_not_found(QObject const* obj, std::string method_name) {
     std::string err = "Could not find method ";
     err += method_name;
     err += std::string(". Available methods:\n");

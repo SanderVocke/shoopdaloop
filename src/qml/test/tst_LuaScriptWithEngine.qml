@@ -1,6 +1,5 @@
 import QtQuick 6.6
 import QtTest 1.0
-import ShoopDaLoop.PythonBackend
 
 import ShoopConstants
 import '../js/generate_session.js' as GenerateSession
@@ -49,7 +48,7 @@ ShoopTestFile {
             name: 'Lua_autoconnect'
             session: session
             filename : TestFilename.test_filename()
-            when: backend.initialized || backend.backend_type == null
+            when: backend.ready || backend.backend_type == null
 
             testcase_deinit_fn: () => { backend.close() }
 

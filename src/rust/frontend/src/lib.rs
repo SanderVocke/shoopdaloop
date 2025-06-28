@@ -22,3 +22,6 @@ pub mod cxx_qt_lib_shoop;
 
 #[cfg(not(feature = "prebuild"))]
 mod tests;
+
+#[cfg(not(feature = "prebuild"))]
+mod loop_mode_helpers;

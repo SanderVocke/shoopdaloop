@@ -13,6 +13,11 @@
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 using namespace std::chrono;
 using namespace logging;
 
