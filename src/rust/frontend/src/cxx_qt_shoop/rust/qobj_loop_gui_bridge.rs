@@ -179,7 +179,7 @@ pub struct LoopGuiRust {
     pub display_midi_events_triggered: i32,
     pub instance_identifier: QString,
     pub cycle_nr : i32,
-    pub backend_loop_wrapper : *mut LoopBackend,
+    pub backend_loop_wrapper : *mut QObject,
 }
 
 impl Default for LoopGuiRust {
