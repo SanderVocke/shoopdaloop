@@ -63,6 +63,11 @@ impl BackendSession {
         let wrapped = FXChain { obj };
         Ok(wrapped)
     }
+
+    fn get_profiling_report(&self) -> PyResult<ProfilingReport> {
+        let backend_obj = self.obj.get_profiling_report();
+        Ok(ProfilingReport::from_backend(&backend_obj))
+    }
 }
 
 #[pyclass]

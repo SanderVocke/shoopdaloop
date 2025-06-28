@@ -10,6 +10,7 @@ from .Logger import Logger as BaseLogger
 from ..backend_wrappers import *
 from ..midi_helpers import *
 from shoop_rust import shoop_rust_create_autoconnect
+import shoop_py_backend
 
 from shiboken6 import Shiboken
 

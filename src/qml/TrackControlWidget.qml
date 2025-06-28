@@ -871,7 +871,7 @@ Item {
                         ToolTip {
                             delay: 1000
                             visible: pt_ma.containsMouse
-                            text: 'Enable/disable onitoring.'
+                            text: 'Enable/disable monitoring.'
                         }
                         MouseArea {
                             id: pt_ma

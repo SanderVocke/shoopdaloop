@@ -18,7 +18,7 @@ from PySide6.QtQml import QJSValue
 from .Task import Task
 from .Tasks import Tasks
 from .ShoopPyObject import *
-from shoop_app_info import shoop_qml_dir, shoop_lua_dir, shoop_py_dir, shoop_resource_dir, shoop_schemas_dir
+from shoop_config import shoop_qml_dir, shoop_lua_dir, shoop_resource_dir, shoop_schemas_dir
 from ..recursive_jsvalue_convert import recursively_convert_jsvalue
 
 from shoopdaloop.lib.logging import Logger
@@ -50,10 +50,6 @@ class FileIO(ShoopQObject):
     @ShoopSlot(result=str)
     def get_lua_directory(self):
         return shoop_lua_dir
-    
-    @ShoopSlot(result=str)
-    def get_python_directory(self):
-        return shoop_py_dir
     
     @ShoopSlot(result=str)
     def get_resource_directory(self):

@@ -47,12 +47,11 @@ runs:
       INSTALL_CMD="$WINDOWS_SETUP_PATH /VERYSILENT /CURRENTUSER /DIR=\"$(cygpath -w $(pwd)/installed)\""
       echo "PowerShell installation command: $INSTALL_CMD"
       powershell -Command "echo \"Run in powershell: $INSTALL_CMD\" ; $INSTALL_CMD"
-      SHOOPDALOOP_EXE=$(pwd)/installed/shoopdaloop.exe
+      SHOOPDALOOP_EXE=$(pwd)/installed/shoopdaloop.bat
       SHOOPDALOOP_DIR=$(dirname "$SHOOPDALOOP_EXE")
       echo "ShoopDaLoop executable installed to: $SHOOPDALOOP_EXE"
       echo "Installed at: $SHOOPDALOOP_DIR"
-      echo "cmd=\\\"$SHOOPDALOOP_EXE\\\"" | tee -a $GITHUB_ENV
-      echo "install_dir=\\\"$SHOOPDALOOP_DIR\\\"" | tee -a $GITHUB_ENV
+      echo "COMMAND_SHOOPDALOOP=$SHOOPDALOOP_EXE" | tee -a $GITHUB_ENV
 
   # Linux portable folder
   - name: Setup Linux AppDir portable folder
@@ -64,7 +63,9 @@ runs:
       tar --strip-components=1 -xzf ${{ inputs.package }}
       cd ..
       PORTABLE=$(pwd)/portable
+      TESTBINARIES=$(pwd)/test_binaries
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
+      echo "TEST_BINARIES_INSTALL=$TESTBINARIES" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop" | tee -a $GITHUB_ENV
 
   # Windows portable folder
@@ -77,8 +78,10 @@ runs:
       tar --strip-components=1 -xzf ${{ inputs.package }}
       cd ..
       PORTABLE=$(pwd)/portable
+      TESTBINARIES=$(pwd)/test_binaries
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
-      echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop_launcher.exe" | tee -a $GITHUB_ENV
+      echo "TEST_BINARIES_INSTALL=$TESTBINARIES" | tee -a $GITHUB_ENV
+      echo "COMMAND_SHOOPDALOOP=$PORTABLE/shoopdaloop.bat" | tee -a $GITHUB_ENV
 
   # MacOS portable folder
   - name: Setup MacOS app bundle folder
@@ -90,7 +93,9 @@ runs:
       tar --strip-components=1 -xzf ${{ inputs.package }}
       cd ..
       PORTABLE=$(pwd)/portable
+      TESTBINARIES=$(pwd)/test_binaries
       echo "PORTABLE_FOLDER_INSTALL=$PORTABLE" | tee -a $GITHUB_ENV
+      echo "TEST_BINARIES_INSTALL=$TESTBINARIES" | tee -a $GITHUB_ENV
       echo "COMMAND_SHOOPDALOOP=$PORTABLE/Contents/MacOS/shoopdaloop" | tee -a $GITHUB_ENV
 
   # Linux AppImage
@@ -116,24 +121,16 @@ runs:
     if: always() && steps.get_type.outputs.type == 'test-binaries'
     shell: wrap-shell {0}
     run: |
-      if [ -z $PORTABLE_FOLDER_INSTALL ]; then
-        echo "There is no portable installation to install test binaries into."
-        exit 1
-      fi
-      cd $PORTABLE_FOLDER_INSTALL
+      WORKSPACE=$(pwd)
+      mkdir -p $TEST_BINARIES_INSTALL
+      cd $TEST_BINARIES_INSTALL
       tar --strip-components=1 -xzf ${{ inputs.package }}
       if [[ "$RUNNER_OS" == "Windows" ]]; then
-        QT_LIB_DIR=$(find $PORTABLE_FOLDER_INSTALL -wholename "*/PySide6")
-        ADD_LIB_PATH="$PORTABLE_FOLDER_INSTALL:$QT_LIB_DIR"
-        CMD_PREFIX="PATH=\$PATH:$ADD_LIB_PATH"
+        CMD_PREFIX="PATH=\"\$PATH:$PORTABLE_FOLDER_INSTALL/lib\""
       elif [[ "$RUNNER_OS" == "macOS" ]]; then
-        QT_LIB_DIR=$(find $PORTABLE_FOLDER_INSTALL -wholename "*/PySide6/Qt/lib")
-        ADD_LIB_PATH="$PORTABLE_FOLDER_INSTALL/lib:$QT_LIB_DIR"
-        CMD_PREFIX="DYLD_LIBRARY_PATH=\$DYLD_LIBRARY_PATH:$ADD_LIB_PATH:$PORTABLE_FOLDER_INSTALL DYLD_FRAMEWORK_PATH=\$DYLD_FRAMEWORK_PATH:$QT_LIB_DIR"
+        CMD_PREFIX="DYLD_LIBRARY_PATH=\$DYLD_LIBRARY_PATH:$TEST_BINARIES_INSTALL:$PORTABLE_FOLDER_INSTALL/lib"
       else # Linux
-        QT_LIB_DIR=$(find $PORTABLE_FOLDER_INSTALL -wholename "*/PySide6/Qt/lib")
-        ADD_LIB_PATH="$PORTABLE_FOLDER_INSTALL/lib:$QT_LIB_DIR"
-        CMD_PREFIX="LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$ADD_LIB_PATH"
+        CMD_PREFIX="LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$PORTABLE_FOLDER_INSTALL/lib:$TEST_BINARIES_INSTALL"
       fi
-      echo "COMMAND_TEST_BACKEND=$CMD_PREFIX $PORTABLE_FOLDER_INSTALL/test_runner" | tee -a $GITHUB_ENV
-      echo "COMMAND_TEST_RUST=$CMD_PREFIX $PORTABLE_FOLDER_INSTALL/cargo-nextest nextest run --archive-file $PORTABLE_FOLDER_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_BACKEND=$CMD_PREFIX $TEST_BINARIES_INSTALL/test_runner" | tee -a $GITHUB_ENV
+      echo "COMMAND_TEST_RUST=$CMD_PREFIX $TEST_BINARIES_INSTALL/cargo-nextest nextest run --workspace-remap $WORKSPACE --archive-file $TEST_BINARIES_INSTALL/nextest-archive.tar.zst" | tee -a $GITHUB_ENV

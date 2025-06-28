@@ -19,3 +19,8 @@ Cargo.lock
 target
 .aider*
 .env
+.python-version
+.build-env-debug.ps1
+.build-env-release.ps1
+.build-env-debug.sh
+.build-env-release.sh

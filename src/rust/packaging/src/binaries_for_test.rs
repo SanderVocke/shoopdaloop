@@ -1,12 +1,12 @@
 use anyhow;
 use std::path::{PathBuf, Path};
 use std::process::Command;
+use crate::dependencies::get_dependency_libs;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
 fn populate_folder(
-    shoop_built_out_dir : &Path,
     folder : &Path,
     release : bool,
 ) -> Result<(), anyhow::Error> {
@@ -20,15 +20,63 @@ fn populate_folder(
     let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     info!("Using source path {src_path:?}");
 
-    for f in glob::glob(format!("{}/**/test_runner*", shoop_built_out_dir.join("shoop_lib").to_str().unwrap()).as_str())? {
+    let testrunner_filename = 
+        if cfg![target_os = "windows"] {
+            "test_runner.exe"
+        } else {
+            "test_runner"
+        };
+    let installed_testrunner = folder.join(testrunner_filename);
+    for f in glob::glob(format!("{}/**/test_runner*", backend::backend_build_dir().to_string_lossy().to_string()).as_str())? {
         let f = f?.clone();
         info!("Bundling {f:?}...");
         std::fs::copy(
             &f,
-            folder.join(&f.file_name().unwrap())
+            &installed_testrunner
         )?;
     }
 
+    info!("Getting dependencies (this may take some time)...");
+    let excludelist_path = 
+        if cfg!(target_os = "linux") {
+            src_path.join("distribution/linux/testrunner_excludelist")
+        } else if cfg!(target_os = "windows") {
+            src_path.join("distribution/windows/testrunner_excludelist")
+        } else if cfg!(target_os = "macos") {
+            src_path.join("distribution/macos/testrunner_excludelist")
+        } else {
+            panic!()
+        };
+    let includelist_path = 
+        if cfg!(target_os = "linux") {
+            src_path.join("distribution/linux/testrunner_includelist")
+        } else if cfg!(target_os = "windows") {
+            src_path.join("distribution/windows/testrunner_includelist")
+        } else if cfg!(target_os = "macos") {
+            src_path.join("distribution/macos/testrunner_includelist")
+        } else {
+            panic!()
+        };
+
+    for path in backend::runtime_link_dirs() {
+        debug!("--> extra search path: {:?}", path);
+        common::env::add_lib_search_path(&path);
+    }
+    let dependency_libs = get_dependency_libs
+       (&installed_testrunner,
+        folder,
+        &excludelist_path,
+        &includelist_path,
+        false)?;
+
+    info!("Bundling {} dependencies...", dependency_libs.len());
+    for lib in dependency_libs {
+        let src = lib.clone();
+        let dst = folder.join(lib.file_name().unwrap());
+        debug!("--> {:?} -> {:?}", &src, &dst);
+        std::fs::copy(&src, &dst)?;
+    }
+    
     info!("Downloading prebuilt cargo-nextest into folder...");
 
     let nextest_path : PathBuf;
@@ -82,7 +130,6 @@ fn populate_folder(
 }
 
 pub fn build_test_binaries_folder(
-    shoop_built_out_dir : &Path,
     output_dir : &Path,
     release : bool,
 ) -> Result<(), anyhow::Error> {
@@ -97,9 +144,7 @@ pub fn build_test_binaries_folder(
     info!("Creating test binaries directory...");
     std::fs::create_dir(output_dir)?;
 
-    populate_folder(shoop_built_out_dir,
-                            output_dir,
-                            release)?;
+    populate_folder(output_dir, release)?;
 
     info!("Test binaries folder created @ {output_dir:?}");
     Ok(())

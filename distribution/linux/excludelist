@@ -1,9 +1,9 @@
 */ld-linux*
+*/libbsd*.so*
 */libEGL.so*
 */libGL.so*
 */libGLX.so*
 */libOpenGL.so*
-*/libQt6*.so*
 */libX11.so*
 */libXcursor.so*
 */libXext.so*
@@ -13,7 +13,6 @@
 */libc.so*
 */libdl.so*
 */libpthread.so*
-*/libpython3.*
 */librt.so*
 */libsystemd.so*
 */libstdc++.so*
@@ -21,3 +20,7 @@
 */libdrm.so*
 */libgdk_pixbuf-*.so*
 */libgbm*.so*
+*/libwayland-client.so*
+*/libwayland-cursor.so*
+*/libwayland-egl.so*
+*/libwayland-server.so*

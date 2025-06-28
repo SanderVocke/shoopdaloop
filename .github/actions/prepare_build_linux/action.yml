@@ -10,3 +10,4 @@ runs:
     run: |
       $PIP install --upgrade pip build auditwheel patchelf
       $PIP install -r build_python_requirements.txt
+      echo "RUSTFLAGS=-C linker=gcc" | tee -a $GITHUB_ENV

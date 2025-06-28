@@ -1,0 +1,72 @@
+{
+  "name": "shoopdaloop",
+  "version": "0.0.0",
+  "builtin-baseline": "ce613c41372b23b1f51333815feb3edd87ef8a8b",
+  "dependencies": [
+    {
+      "name": "lilv"
+    },
+    {
+      "name": "lv2"
+    },
+    {
+      "name": "jack2"
+    },
+    {
+      "name": "pthreads"
+    },
+    {
+      "name": "boost-headers"
+    },
+    {
+      "name": "boost-system"
+    },
+    {
+      "name": "boost-lockfree"
+    },
+    {
+      "name": "boost-container"
+    },
+    {
+      "name": "boost-stacktrace"
+    },
+    {
+      "name": "catch2"
+    },
+    {
+      "name": "pkgconf",
+      "host": true
+    },
+    {
+      "name": "vcpkg-tool-ninja",
+      "host": true
+    },
+    {
+      "name": "nlohmann-json"
+    },
+    {
+      "name": "fmt"
+    },
+    {
+      "name": "zita-resampler"
+    },
+    {
+      "name": "qtbase",
+      "version>=": "6.8.3"
+    },
+    {
+      "name": "qtdeclarative",
+      "version>=": "6.8.3"
+    },
+    {
+      "name": "qtwayland",
+      "version>=": "6.8.3",
+      "platform": "linux"
+
+    },
+    {
+      "name": "pyside6",
+      "version>=": "6.8.3"
+    }
+  ]
+}

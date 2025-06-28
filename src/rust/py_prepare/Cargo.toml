@@ -1,0 +1,18 @@
+[package]
+name = "py_prepare"
+edition = "2021"
+
+[lib]
+
+[[bin]]
+name = "print_py_prepare_out_dir"
+path = "src/bin/print_py_prepare_out_dir.rs"
+
+[dependencies]
+
+[build-dependencies]
+anyhow = "1.0"
+
+[features]
+# Dummy build to build dependencies only
+prebuild = []

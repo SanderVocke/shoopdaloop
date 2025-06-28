@@ -8,7 +8,7 @@ from PySide6.QtCore import QObject, Slot
 from .ShoopPyObject import *
 
 from ..gen_click_track import gen_click_track_audio, gen_click_track_midi_smf
-from shoop_app_info import shoop_resource_dir
+from shoop_config import shoop_resource_dir
 
 def play_wav(filename):
     data, fs = sf.read(filename, dtype='float32')

@@ -11,8 +11,10 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get -y install $(dependencies/get_dependencies.sh build_base_debian_bullseye)
 
-RUN gem install fpm
-
-RUN curl https://pyenv.run | bash
-
-ENV PATH="$PATH:/root/.pyenv/bin"
+# Build recent autoconf from source
+RUN wget http://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz && \
+    tar xvfz autoconf-2.71.tar.gz && \
+    cd autoconf-2.71 && \
+    ./configure --prefix=/usr/local && \
+    make -j$(nproc) && \
+    make install

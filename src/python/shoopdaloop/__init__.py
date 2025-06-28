@@ -7,7 +7,7 @@ import glob
 import ctypes
 import platform
 
-from shoop_app_info import shoop_qml_dir, shoop_install_info, shoop_version
+from shoop_config import shoop_qml_dir, shoop_install_info, shoop_version
 
 def main():
     from shoopdaloop.lib.logging import Logger
@@ -32,6 +32,7 @@ def main():
         )
         parser.add_argument('session_filename', type=str, default=None, nargs='?', help='(optional) Load a session from a file upon startup.')
         parser.add_argument('-i', '--info', action='store_true', help='Show information about the ShoopDaLoop installation.')
+        parser.add_argument('-v', '--version', action='store_true', help='Show version information and exit.')
         parser.add_argument('-b', '--backend', type=str, default='jack', help='Choose an audio backend to use. Available backends (default = jack): {}'.format(', '.join([name.lower() for name, val in shoop_py_backend.AudioDriverType.enum_items().items()])))
 
         dev_group = parser.add_argument_group('Developer options')
@@ -63,6 +64,10 @@ def main():
         if args.info:
             print('ShoopDaLoop {}'.format(shoop_version))
             print('Installation: {}'.format(shoop_install_info))
+            sys.exit(0)
+
+        if args.version:
+            print(shoop_version)
             sys.exit(0)
 
         global_args = {

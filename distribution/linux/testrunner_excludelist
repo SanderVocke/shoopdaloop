@@ -1,0 +1,7 @@
+*/libzita-resampler.so*
+*/libpthread.so*
+*/libdl.so*
+*/libstdc++.so*
+*/libgcc_s.so*
+*/libc.so*
+*/ld-linux-*.so

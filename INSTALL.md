@@ -24,38 +24,41 @@ There are future plans for an AUR package for Arch, which links against the dist
 
 ## From source
 
+### Dependencies
+
 To build from source, ensure the build dependencies for your OS are installed. The dependencies for each supported platform can be found in `distribution/dependencies` (also see the CI workflows in `.github/workflows` for practical examples).
 
 Make sure all the subrepositories are checked out (`git submodule init; git submodule update`).
 
 ### Building from source
 
-ShoopDaLoop's build is governed by Cargo. To build, simply run `cargo build` in the root directory. This generates `target/.../shoopdaloop(.exe)` and `target/.../shoopdaloop_dev(.exe)`. `shoopdaloop_dev` can be directly used to run within the source tree. For installation options, see below.
+ShoopDaLoop's build is governed by Cargo. In principle, the build command is `cargo build [--release]`.
 
-Be aware that a complex combination of build systems is hidden behind this cargo build front-end. It involves C/C++ compilers, `cmake`, `meson`, Python `setuptools`, code generation and more. I am working on reducing the dependencies and tools involved, but YMMV in having to install additional tools to run the build successfully.
+However, managing dependencies can get complicated:
 
-Until this is all more stable and simple, the golden reference for how to build ShoopDaLoop is in the GitHub Actions build scripts included in the repo (`.github/workflows/...`).
+* Rust dependencies are pulled in and built on-the-fly by Cargo.
+* Python dependencies (except PySide) are pulled from PyPi by the Rust build scripts.
+* C++ dependencies are not pulled in but searched on your system by CMake.
+
+For reproducible builds, a script is included which pulls C++ dependencies from `vcpkg` and builds them from source (including Qt and PySide). To run this script:
+
+`python scripts/vcpkg_prebuild.py`
+
+This will obviously take a long time, but when done, the folder `build/vcpkg_installed` will contain the required dependencies. There will also be a set of `build/build-env-[debug|release].[sh|ps1|elv]` scripts created, which you can source to set the environment to start the cargo build.
+
+Alternatively, you can set up the C++ dependencies however you wish (e.g. distro packages). If things are not auto-detected you can manually set `QMAKE`, `SHOOP_DEV_ENV_PYTHON`, `PYO3_CONFIG_FILE` and/or `PYO3_PYTHON`. (the latter should point to a valid PyO3 config file).
+
+After the Cargo build, executables can be found in `target/[debug|release]`.
 
 ### Building redistributable binaries
 
-After building ShoopDaLoop in-tree as described above, there are several redistributable options to build. The in-tree build produces an executable called `package` which can help build these packages as follows:
-
-#### AppDir / AppImage (Linux)
-
-```
-package
-  build-appimage
-  --executable=target/debug/shoopdaloop
-  --dev-executable=target/debug/shoopdaloop_dev
-  --appimagetool=/path/to/appimagetool
-  [--include-tests]
-  --output=ShoopDaLoop.AppImage
-```
+After building ShoopDaLoop in-tree as described above, there are several redistributable options to build. `./target/<release|debug>/package` is the command that builds these packages. See `.github/actions/build_package/action.yml` for example invocations to produce various packages.
 
 ### Editable development build
 
 Since ShoopDaLoop partly consists of interpreted / JIT-compiled scripts (in Lua, Python and QML), for a large part developers can make changes without having to rebuild.
 
-In order to run ShoopDaLoop in "editable" mode (using the scripts in the repository as opposed to installing them into the system), simply run the `shoopdaloop_dev` executable compiled by Cargo instead of the regular `shoopdaloop` one.
+In order to run ShoopDaLoop in "editable" mode (using the scripts in the repository as opposed to installing them into the system), simply run:
 
-`shoopdaloop_dev` is also the only executable that works (i.e. is able to find all of its files) without installing the software.
+- `target/[debug/release]/shoopdaloop_dev.sh` on Linux and macOS
+- `target/[debug/release]/shoopdaloop_dev.bat` on Windows

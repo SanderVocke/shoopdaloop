@@ -109,7 +109,7 @@ void BasicLoop::PROC_handle_poi() {
         changed = true;
     }
 
-    if (mp_next_poi->type_flags == 0) {
+    if (mp_next_poi && mp_next_poi->type_flags == 0) {
         mp_next_poi = std::nullopt;
         changed = true;
     }

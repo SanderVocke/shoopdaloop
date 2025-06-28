@@ -1,7 +1,7 @@
 ShoopDaLoop
 =======================================
 
-.. image:: ../../src/shoopdaloop/resources/logo.png
+.. image:: resources/logo.png
    :width: 300px
    :alt: ShoopDaLoop logo.
 

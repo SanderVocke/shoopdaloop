@@ -12,6 +12,16 @@ ruby
 rpm
 libarchive-tools
 desktop-file-utils
+mono-complete
+autoconf
+automake
+libtool
+bison
+flex
+libc-bin
+autoconf-archive
+python3-jinja2
+patchelf
 
 # libraries
 libglib2.0-0
@@ -20,6 +30,47 @@ jackd2
 libxkbcommon-dev
 libboost-dev
 libjack-jackd2-dev
+libarchive-dev
+libcryptsetup-dev
+
+libxcb-composite0-dev
+libxcb-cursor-dev
+libxcb-damage0-dev
+libxcb-dpms0-dev
+libxcb-dri2-0-dev
+libxcb-dri3-dev
+libxcb-ewmh-dev
+libxcb-glx0-dev
+libxcb-icccm4-dev
+libxcb-image0-dev
+libxcb-imdkit-dev
+libxcb-keysyms1-dev
+libxcb-present-dev 
+libxcb-randr0-dev
+libxcb-record0-dev
+libxcb-render-util0-dev
+libxcb-render0-dev
+libxcb-res0-dev
+libxcb-sync-dev
+libxcb-util-dev
+libxcb-util0-dev
+libxcb-xfixes0-dev
+libxcb-xf86dri0-dev
+libxcb-xinerama0-dev
+libxcb-xinput-dev
+libxcb-xkb-dev
+libxcb-xtest0-dev
+libxcb-xv0-dev
+libglu1-mesa-dev
+libxrender-dev
+libxi-dev
+libxkbcommon-x11-dev
+libx11-dev
+libx11-xcb-dev
+libarchive-dev
+libcryptsetup-dev
+libwayland-dev
+libpng-dev
 
 # libraries for running / coverage
 libportaudio2

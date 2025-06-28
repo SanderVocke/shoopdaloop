@@ -13,7 +13,7 @@ fi
 
 echo "GHA wrapper: running command: $BASE_WRAP_SHELL $@"
 
-$BASE_WRAP_SHELL $@ | tee -a log_all.txt
+$BASE_WRAP_SHELL "$@" | tee -a log_all.txt
 CMD_RESULT=${PIPESTATUS[0]}
 
 # Process the result code

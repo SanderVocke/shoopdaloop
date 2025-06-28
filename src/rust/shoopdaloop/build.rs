@@ -1,81 +1,80 @@
 use std::env;
-use std::path::PathBuf;
-use glob::glob;
-use copy_dir::copy_dir;
 use anyhow;
-use anyhow::Context;
 use backend;
-use py_env;
+use common;
+use config::{self, config::ShoopConfig};
+use std::path::PathBuf;
+use std::io::Write;
+
+fn generate_dev_launcher_script() -> Result<PathBuf, anyhow::Error> {
+    let dev_config_path = config::dev_config_path();
+    let dev_config_path_str = dev_config_path.to_string_lossy().replace("\"", "");
+
+    let dev_config = ShoopConfig::load(&dev_config_path, None).expect("Could not load dev config");
+    let (var, paths) = config::config_dynlib_env_var(&dev_config)?;
+
+    if cfg!(target_os = "windows") {
+        let script_content = format!(r#"
+SET "PATH=%PATH%;{paths}"
+SET "SHOOP_CONFIG={dev_config_path_str}"
+"%~dp0shoopdaloop.exe" %*
+"#);
+        let script_path = PathBuf::from(std::env::var("OUT_DIR").unwrap())
+                                   .ancestors().nth(3).unwrap().join("shoopdaloop_dev.bat");
+        let mut file = std::fs::File::create(&script_path)?;
+        file.write_all(script_content.as_bytes())?;
+        file.sync_all()?;
+        return Ok(script_path);
+    }
+    else if cfg!(target_os = "linux") {
+        let script_content = format!(r#"
+#!/bin/sh
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:{paths}"
+export SHOOP_CONFIG="{dev_config_path_str}"
+$SCRIPT_DIR//shoopdaloop "$@"
+"#);
+        let script_path = PathBuf::from(std::env::var("OUT_DIR").unwrap())
+                                   .ancestors().nth(3).unwrap().join("shoopdaloop_dev.sh");
+        let mut file = std::fs::File::create(&script_path)?;
+        file.write_all(script_content.as_bytes())?;
+        file.sync_all()?;
+
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&script_path)?.permissions();
+            perms.set_mode(0o755); // rwxr-xr-x
+            std::fs::set_permissions(&script_path, perms)?;
+        }
+
+        return Ok(script_path);
+    }
+    Ok(PathBuf::default())
+}
 
 fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
     #[cfg(feature = "prebuild")]
     {
+        println!("cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS=");
         return Ok(());
     }
 
     #[cfg(not(feature = "prebuild"))]
     {
-        let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-        let src_dir = env::current_dir()?;
-        let host_python = env::var("PYTHON").unwrap_or(String::from("python3"));
-        let shoop_lib_dir = out_dir.join("shoop_lib");
-        let profile = std::env::var("PROFILE").unwrap();
-        let built_backend_dir = backend::backend_build_dir();
-        let py_env_dir = py_env::py_env_dir();
-        let py_interpreter = py_env::py_interpreter();
+        println!("Creating dev launcher script");
+        let dev_launcher_script = generate_dev_launcher_script()?;
+        println!("cargo:rustc-env=SHOOPDALOOP_DEV_LAUNCHER_SCRIPT={dev_launcher_script:?}");
 
+        let src_dir = env::current_dir()?;
+
+        let profile = std::env::var("PROFILE").unwrap();
+        let is_debug_build = std::env::var("PROFILE").unwrap() == "debug";
+        
         if !["debug", "release"].contains(&profile.as_str()) {
             return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
         }
 
-        println!("Using Python: {}", host_python);
-
-        if shoop_lib_dir.exists() {
-            std::fs::remove_dir_all(&shoop_lib_dir)
-                .with_context(|| format!("Failed to remove {:?}", &shoop_lib_dir))?;
-        }
-
-        // Copy the base built backend
-        copy_dir(&built_backend_dir, &shoop_lib_dir)?;
-
-        // Copy the base python directory
-        copy_dir(&py_env_dir, shoop_lib_dir.join("py"))?;
-
-        // Copy filesets into our output lib dir
-        let to_copy = ["lua", "qml", "session_schemas", "../resources"];
-        for directory in to_copy {
-            let src = src_dir.join("../..").join(directory);
-            let dst = shoop_lib_dir.join(PathBuf::from(directory).file_name().unwrap());
-            copy_dir(&src, &dst)
-                .expect(&format!("Failed to copy {} to {}",
-                                src.display(),
-                                dst.display()));
-        }
-
-        let py_env_to_site_packages : PathBuf;
-        {
-            let pattern = format!("{}/**/site-packages", py_env_dir.to_str().unwrap());
-            let mut sp_glob = glob(&pattern).expect("Couldn't glob for site-packages");
-            let full_site_packages = sp_glob.next()
-                    .expect(format!("No site-packages dir found @ {}", pattern).as_str()).unwrap();
-            py_env_to_site_packages = PathBuf::from
-                                    (format!("lib/{}/site-packages",
-                                    full_site_packages.parent().unwrap().file_name().unwrap().to_str().unwrap()));
-        }
-
-        // Tell PyO3 where to find our venv Python
-        println!("Setting PYO3_PYTHON to {}", py_interpreter.to_str().unwrap());
-        env::set_var("PYO3_PYTHON", py_interpreter.to_str().unwrap());
-        println!("cargo:rustc-env=PYO3_PYTHON={}", py_interpreter.to_str().unwrap());
-
-        // Link to libshoopdaloop_backend
-        println!("cargo:rustc-link-search=native={}", shoop_lib_dir.to_str().unwrap());
-        #[cfg(target_os = "linux")]
-        {
-            println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,--no-as-needed");
-        }
-        println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-lshoopdaloop_backend");
         #[cfg(target_os = "linux")]
         {
             println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");
@@ -83,38 +82,31 @@ fn main_impl() -> Result<(), anyhow::Error> {
         println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
         #[cfg(target_os = "windows")]
         {
-            // force linkage by manually importing a symbol
+            // force linkage by manually importing an arbitrary symbol
             println!("cargo:rustc-link-arg-bin=shoopdaloop=/INCLUDE:create_audio_driver");
             println!("cargo:rustc-link-lib=shoopdaloop_backend");
         }
 
-        #[cfg(target_os = "linux")]
-        {
-            // Set RPATH
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib"); // For builtin libraries
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib/py/lib"); // For Python library
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/shoop_lib/py/{}/PySide6/Qt/lib",
-                    py_env_to_site_packages.to_str().unwrap()); // For the Qt distribution that comes with PySide6
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/lib"); // For bundled dependency libraries
+        #[cfg(target_os = "linux")] {
+            // Link to portable lib folder
+            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/../lib");
+
+            // Use RPATH instead of RUNPATH, which will enable finding transitive dependencies
+            // (e.g. in the vcpkg installation folder)
+            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--disable-new-dtags");
         }
 
-        #[cfg(target_os = "macos")]
-        {
-            // Set RPATH
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,@loader_path/shoop_lib"); // For builtin libraries
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,@loader_path/shoop_lib/py/lib"); // For Python library
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,@loader_path/shoop_lib/py/{}/PySide6/Qt/lib",
-                    py_env_to_site_packages.to_str().unwrap()); // For the Qt distribution that comes with PySide6
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,@loader_path/lib"); // For bundled dependency libraries
+        for path in backend::build_time_link_dirs() {
+            println!("cargo:rustc-link-search=native={:?}", path);
         }
 
-        // Link to dev folders
-        println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}/..", py_env_dir.to_str().unwrap());
-        println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}/lib", py_env_dir.to_str().unwrap());
-        println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}/{}/PySide6/Qt/lib",
-            py_env_dir.to_str().unwrap(),
-            py_env_to_site_packages.to_str().unwrap()); // For the Qt distribution that comes with PySide6
-        println!("cargo:rustc-link-arg-bin=shoopdaloop_dev=-Wl,-rpath,{}", shoop_lib_dir.to_str().unwrap());
+        let backend_runtime_link_paths_str = 
+           backend::runtime_link_dirs()
+              .iter()
+              .map(|p| p.to_string_lossy().to_string())
+              .collect::<Vec<String>>()
+              .join(common::util::PATH_LIST_SEPARATOR);
+        println!("cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS={}", backend_runtime_link_paths_str);
 
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");
