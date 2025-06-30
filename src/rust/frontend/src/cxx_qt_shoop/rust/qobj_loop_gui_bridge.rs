@@ -150,6 +150,13 @@ pub mod ffi {
                              module_name: &mut String,
                              version_major: i64, version_minor: i64,
                              type_name: &mut String);
+
+        include!("cxx-qt-lib-shoop/qobject.h");
+        #[rust_name = "loop_gui_qobject_from_ptr"]
+        unsafe fn qobjectFromPtr(obj : *mut LoopGui) -> *mut QObject;
+
+        #[rust_name = "loop_gui_qobject_from_ref"]
+        fn qobjectFromRef(obj : &LoopGui) -> &QObject;
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=(*mut QQuickItem,)> for LoopGui {}
@@ -159,7 +166,7 @@ pub mod ffi {
 pub use ffi::LoopGui;
 use ffi::*;
 use cxx::UniquePtr;
-use crate::cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
+use crate::cxx_qt_lib_shoop::{qobject::AsQObject, qquickitem::IsQQuickItem};
 use std::sync::{Arc, Mutex};
 
 use super::qobj_loop_backend_bridge::LoopBackend;

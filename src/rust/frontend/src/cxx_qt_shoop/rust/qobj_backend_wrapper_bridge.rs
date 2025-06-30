@@ -69,6 +69,12 @@ pub mod ffi {
         pub fn get_buffer_size(self: Pin<&mut BackendWrapper>) -> i32;
 
         #[qinvokable]
+        pub fn get_gui_thread(self: &BackendWrapper) -> *mut QThread;
+
+        #[qinvokable]
+        pub fn get_backend_thread(self : &BackendWrapper) -> *mut QThread;
+
+        #[qinvokable]
         pub fn close(self: Pin<&mut BackendWrapper>);
 
         #[qinvokable]
@@ -109,6 +115,7 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn backend_type_is_supported(self: Pin<&mut BackendWrapper>, _type: i32) -> bool;
+
         #[qinvokable]
         pub fn segfault_on_process_thread(self: Pin<&mut BackendWrapper>);
 

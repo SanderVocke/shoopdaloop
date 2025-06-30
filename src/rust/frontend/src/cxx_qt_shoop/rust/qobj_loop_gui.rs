@@ -11,11 +11,15 @@ use crate::cxx_qt_lib_shoop::connect::QObjectOrConvertible;
 use crate::cxx_qt_lib_shoop::connection_types;
 use crate::cxx_qt_lib_shoop::connection_types::QUEUED_CONNECTION;
 use crate::cxx_qt_lib_shoop::invokable::invoke;
+use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
 use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
+use crate::cxx_qt_lib_shoop::qobject::qobject_set_parent;
+use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 use crate::cxx_qt_lib_shoop::qobject::{qobject_property_bool, qobject_property_float, qobject_property_int};
 use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
+use crate::cxx_qt_shoop::qobj_backend_wrapper::BackendWrapper;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::loop_backend_qobject_from_ptr;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::make_raw_loop_backend;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
@@ -224,27 +228,32 @@ impl LoopGui {
 
         if initialize_condition {
             debug!(self, "Found backend, initializing");
-            let mut rust_mut = self.as_mut().rust_mut();
-            let backend_qobj = rust_mut.backend;
             unsafe {
+                    
+                let self_qobject = self.as_mut().pin_mut_qobject_ptr();
+                let mut rust_mut = self.as_mut().rust_mut();
+                let backend_qobj = rust_mut.backend;
+                let backend_ptr : *mut BackendWrapper = BackendWrapper::from_qobject_ptr(backend_qobj);
+                let backend_thread = (*backend_ptr).get_backend_thread();
+            
                 if backend_qobj.is_null() {
                     raw_error!("Failed to convert backend QObject to backend pointer");
                 } else {
-                    rust_mut.backend_loop_wrapper = loop_backend_qobject_from_ptr(make_raw_loop_backend(backend_qobj));
+                    // make_raw_loop_backend takes care of the initialization of the backend loop.
+                    let backend_loop = make_raw_loop_backend(backend_qobj);
+                    rust_mut.backend_loop_wrapper = loop_backend_qobject_from_ptr(backend_loop);
 
-                    // Connect signals
-                    // cxx_qt_lib_shoop::connect::connect
-                    //    (backend_ptr.as_mut().unwrap(),
-                    //     "updated_on_backend_thread()".to_string(),
-                    //     self.as_mut().get_unchecked_mut(),
-                    //     "update_on_non_gui_thread()".to_string(),
-                    //     cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
-                    // cxx_qt_lib_shoop::connect::connect
-                    //     (backend_ptr.as_mut().unwrap(),
-                    //      "updated_on_gui_thread()".to_string(),
-                    //      self.as_mut().get_unchecked_mut(),
-                    //      "update_on_gui_thread()".to_string(),
-                    //      cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
+                    // Becoming parent of the object will automatically delete it when we
+                    // are deleted
+                    qobject_set_parent(rust_mut.backend_loop_wrapper, self_qobject).unwrap();
+                    qobject_move_to_thread(rust_mut.backend_loop_wrapper, backend_thread).unwrap();
+
+                    {
+                        let backend_loop_pin
+                            = std::pin::Pin::new_unchecked(&mut *backend_loop);
+                        backend_loop_pin.on_position_changed(|_,pos,_| ());
+                        // backend_loop.on_position_changed();
+                    }
 
                     rust_mut.initialized = true;
                 }

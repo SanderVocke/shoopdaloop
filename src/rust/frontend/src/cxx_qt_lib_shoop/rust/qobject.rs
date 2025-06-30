@@ -16,6 +16,9 @@ pub mod ffi {
         #[rust_name = "qobject_parent"]
         unsafe fn qobjectParent(item : &QObject) -> Result<*mut QObject>;
 
+        #[rust_name = "qobject_thread"]
+        unsafe fn qobjectThread(item : &QObject) -> Result<*mut QThread>;
+
         #[rust_name = "qobject_class_name"]
         unsafe fn qobjectClassName(obj : &QObject) -> Result<&str>;
 
@@ -73,6 +76,7 @@ pub trait AsQObject {
 
 pub unsafe fn qobject_parent(obj : &QObject) -> Result<*mut QObject, cxx::Exception> { ffi::qobject_parent(obj) }
 pub unsafe fn qobject_set_parent(obj: *mut QObject, parent: *mut QObject) -> Result<(), cxx::Exception> { ffi::qobject_set_parent(obj, parent) }
+pub unsafe fn qobject_thread(obj : &QObject) -> Result<*mut QThread, cxx::Exception> { ffi::qobject_thread(obj) }
 pub unsafe fn qobject_class_name(obj: &QObject) -> Result<&str, cxx::Exception> { ffi::qobject_class_name(obj) }
 pub unsafe fn qobject_property_bool(obj: &QObject, name: String) -> Result<bool, cxx::Exception> { ffi::qobject_property_bool(obj, name) }
 pub unsafe fn qobject_property_int(obj: &QObject, name: String) -> Result<i32, cxx::Exception> { ffi::qobject_property_int(obj, name) }
@@ -80,6 +84,8 @@ pub unsafe fn qobject_property_float(obj: &QObject, name: String) -> Result<f32,
 pub unsafe fn qobject_property_string(obj: &QObject, name: String) -> Result<QString, cxx::Exception> { ffi::qobject_property_string(obj, name) }
 pub unsafe fn qobject_object_name(obj: &QObject) -> Result<String, cxx::Exception> { ffi::qobject_object_name(obj) }
 pub unsafe fn qobject_set_object_name(obj: *mut QObject, name : String) -> Result<(), cxx::Exception> { ffi::qobject_set_object_name(obj, name) }
+pub unsafe fn qobject_move_to_thread(obj : *mut QObject, thread : *mut QThread) -> Result<(), cxx::Exception> { ffi::qobject_move_to_thread(obj, thread)?; Ok(()) }
+
 pub trait IsQObject : AsQObject {
     unsafe fn set_parent(self : Pin<&mut Self>, parent : *mut QObject) -> Result<(), cxx::Exception> {
         let self_item = self.pin_mut_qobject_ptr();

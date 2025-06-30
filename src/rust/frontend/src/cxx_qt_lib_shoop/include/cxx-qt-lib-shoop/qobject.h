@@ -19,6 +19,10 @@ inline QObject * qobjectParent(QObject const& obj) {
     return obj.parent();
 }
 
+inline QThread * qobjectThread(QObject const& obj) {
+    return obj.thread();
+}
+
 inline void qobjectSetParent(QObject *obj, QObject *parent) {
     obj->setParent(parent);
 }
