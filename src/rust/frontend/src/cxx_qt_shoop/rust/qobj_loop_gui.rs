@@ -1,12 +1,13 @@
 use backend_bindings::AudioChannel;
 use backend_bindings::MidiChannel;
-use common::logging::macros::{shoop_log_unit, debug as raw_debug, trace as raw_trace, error as raw_error};
+use common::logging::macros::{shoop_log_unit, debug as raw_debug, trace as raw_trace, error as raw_error, warn as raw_warn};
 use cxx_qt::ConnectionType;
 use cxx_qt::Constructor;
 use cxx_qt::CxxQtType;
 use crate::cxx_qt_lib_shoop;
 use crate::cxx_qt_lib_shoop::connect;
 use crate::cxx_qt_lib_shoop::connect::connect;
+use crate::cxx_qt_lib_shoop::connect::connect_or_report;
 use crate::cxx_qt_lib_shoop::connect::QObjectOrConvertible;
 use crate::cxx_qt_lib_shoop::connection_types;
 use crate::cxx_qt_lib_shoop::connection_types::QUEUED_CONNECTION;
@@ -62,6 +63,15 @@ impl LoopGui {
             self.as_mut().connect_backend_changed(|o| { o.maybe_initialize_backend(); }, ConnectionType::QueuedConnection).release();
         }
     }
+
+    pub fn on_backend_state_changed(
+        self: Pin<&mut LoopGui>,
+        mode: i32,
+        length: i32,
+        position: i32,
+        next_mode: i32,
+        next_transition_delay: i32,
+        cycle_nr: i32) { raw_warn!("Hello!"); }
 
     pub fn queue_set_length(mut self: Pin<&mut LoopGui>, length: i32) {
         if !self.initialized() || self.backend_loop_wrapper().is_null() {
@@ -231,8 +241,11 @@ impl LoopGui {
             unsafe {
                     
                 let self_qobject = self.as_mut().pin_mut_qobject_ptr();
-                let mut rust_mut = self.as_mut().rust_mut();
-                let backend_qobj = rust_mut.backend;
+                let backend_qobj : *mut QObject;
+                {
+                    let rust_mut = self.as_mut().rust_mut();
+                    backend_qobj = rust_mut.backend;
+                }
                 let backend_ptr : *mut BackendWrapper = BackendWrapper::from_qobject_ptr(backend_qobj);
                 let backend_thread = (*backend_ptr).get_backend_thread();
             
@@ -241,21 +254,31 @@ impl LoopGui {
                 } else {
                     // make_raw_loop_backend takes care of the initialization of the backend loop.
                     let backend_loop = make_raw_loop_backend(backend_qobj);
-                    rust_mut.backend_loop_wrapper = loop_backend_qobject_from_ptr(backend_loop);
+                    {
+                        let mut rust_mut = self.as_mut().rust_mut();
+                        rust_mut.backend_loop_wrapper = loop_backend_qobject_from_ptr(backend_loop);
 
-                    // Becoming parent of the object will automatically delete it when we
-                    // are deleted
-                    qobject_set_parent(rust_mut.backend_loop_wrapper, self_qobject).unwrap();
-                    qobject_move_to_thread(rust_mut.backend_loop_wrapper, backend_thread).unwrap();
+                        // Becoming parent of the object will automatically delete it when we
+                        // are deleted
+                        qobject_move_to_thread(rust_mut.backend_loop_wrapper, backend_thread).unwrap();
+                        // FIXME: destruction
+                        // qobject_set_parent(rust_mut.backend_loop_wrapper, self_qobject).unwrap();
+                    }
 
                     {
                         let backend_loop_pin
                             = std::pin::Pin::new_unchecked(&mut *backend_loop);
-                        backend_loop_pin.on_position_changed(|_,pos,_| ());
-                        // backend_loop.on_position_changed();
+                        connect_or_report(backend_loop_pin.as_ref().get_ref(),
+                                "state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                                self.as_ref().get_ref(),
+                                "on_backend_state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                                connection_types::QUEUED_CONNECTION);
                     }
 
-                    rust_mut.initialized = true;
+                    {
+                        let mut rust_mut = self.as_mut().rust_mut();
+                        rust_mut.initialized = true;
+                    }
                 }
             }
         } else {
@@ -553,15 +576,9 @@ impl LoopGui {
         } else {
             debug!(self, "Defer updating back-end sync source: loop not initialized");
             let loop_ref = self.as_ref().get_ref();
-            match connect(loop_ref,
+            connect_or_report(loop_ref,
                     "initializedChanged()".to_string(), loop_ref,
-                    "update_backend_sync_source()".to_string(), connection_types::QUEUED_CONNECTION | connection_types::SINGLE_SHOT_CONNECTION)
-            {
-                Ok(_) => (),
-                Err(err) => {
-                    error!(self, "Failed to connect to initializedChanged(): {:?}", err);
-                }
-            }
+                    "update_backend_sync_source()".to_string(), connection_types::QUEUED_CONNECTION | connection_types::SINGLE_SHOT_CONNECTION);
         }
 
         let changed = self.as_mut().rust_mut().sync_source != sync_source;

@@ -1,5 +1,6 @@
 use common::logging::macros::*;
 use backend_bindings::{Loop as BackendLoop, LoopState};
+
 shoop_log_unit!("Frontend.Loop");
 
 pub mod constants {
@@ -8,10 +9,8 @@ pub mod constants {
     pub const INVOKABLE_UPDATE: &str = "update()";
     pub const INVOKABLE_TRANSITION: &str = "transition(::std::int32_t,::std::int32_t,::std::int32_t)";
 }
-
 #[cxx_qt::bridge]
 pub mod ffi {
-
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
@@ -130,6 +129,15 @@ pub mod ffi {
 
         #[qsignal]
         fn sync_source_changed(self: Pin<&mut LoopBackend>);
+
+        #[qsignal]
+        fn state_changed(self: Pin<&mut LoopBackend>,
+                         mode: i32,
+                         length: i32,
+                         position: i32,
+                         next_mode: i32,
+                         next_transition_delay: i32,
+                         cycle_nr : i32);
     }
 
     unsafe extern "C++" {
@@ -151,6 +159,7 @@ pub mod ffi {
         include!("cxx-qt-shoop/make_raw.h");
         #[rust_name = "make_raw_loop_backend"]
         unsafe fn make_raw_with_one_arg(backend_qobject : *mut QObject) -> *mut LoopBackend;
+
     }
 
     impl cxx_qt::Constructor<(*mut QObject,), // (Backend object)
@@ -181,7 +190,7 @@ pub struct LoopBackendRust {
     // Rust members
     pub backend: *mut QObject,
     pub instance_identifier: String,
-    pub backend_loop : Option<Arc<Mutex<BackendLoop>>>,
+    pub backend_loop : Option<BackendLoop>,
     pub prev_state : LoopState,
     pub prev_cycle_nr : i32,
     pub sync_source : *mut QObject,

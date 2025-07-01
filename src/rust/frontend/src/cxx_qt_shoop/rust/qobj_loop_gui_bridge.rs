@@ -90,6 +90,15 @@ pub mod ffi {
                                    maybe_cycles_delay: i32,
                                    maybe_to_sync_at_cycle: i32);
         
+        // This signal is used internally to communicate a multiple transition
+        // to the resp. individual back-end objects. Single-shot connections
+        // are used for this.
+        #[qsignal]
+        fn transition_multiple_temporary_internal(self: Pin<&mut LoopGui>,
+                                                  to_mode: i32,
+                                                  maybe_cycles_delay: i32,
+                                                  maybe_to_sync_at_cycle: i32);
+        
         #[qinvokable]
         pub fn transition(self: Pin<&mut LoopGui>,
                           to_mode: i32,
@@ -108,6 +117,16 @@ pub mod ffi {
                                  maybe_cycles_length : QVariant,
                                  maybe_go_to_cycle : QVariant,
                                  go_to_mode : i32);
+        
+        #[qinvokable]
+        pub fn on_backend_state_changed(
+            self: Pin<&mut LoopGui>,
+            mode: i32,
+            length: i32,
+            position: i32,
+            next_mode: i32,
+            next_transition_delay: i32,
+            cycle_nr : i32);
 
         #[qsignal]
         fn cycled(self: Pin<&mut LoopGui>, cycle_nr: i32);

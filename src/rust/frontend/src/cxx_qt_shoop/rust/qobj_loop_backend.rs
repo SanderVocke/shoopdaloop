@@ -24,19 +24,19 @@ shoop_log_unit!("Frontend.Loop");
 
 macro_rules! trace {
     ($self:ident, $($arg:tt)*) => {
-        raw_trace!("[{}] {}", $self.rust().instance_identifier, format!($($arg)*));
+        raw_trace!("[{}-backend] {}", $self.rust().instance_identifier, format!($($arg)*));
     };
 }
 
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
-        raw_debug!("[{}] {}", $self.rust().instance_identifier, format!($($arg)*));
+        raw_debug!("[{}-backend] {}", $self.rust().instance_identifier, format!($($arg)*));
     };
 }
 
 macro_rules! error {
     ($self:ident, $($arg:tt)*) => {
-        raw_error!("[{}] {}", $self.rust().instance_identifier, format!($($arg)*));
+        raw_error!("[{}-backend] {}", $self.rust().instance_identifier, format!($($arg)*));
     };
 }
 
@@ -63,33 +63,21 @@ impl LoopBackend {
                                                 .unwrap();
                 let backend_loop = backend_session.create_loop().unwrap();
                 let mut rust_mut = self.as_mut().rust_mut();
-                rust_mut.backend_loop = Some(Arc::new(Mutex::new(backend_loop)));
+                rust_mut.backend_loop = Some(backend_loop);
 
                 // Connect signals
-                match cxx_qt_lib_shoop::connect::connect
+                cxx_qt_lib_shoop::connect::connect_or_report
                     (backend_ptr.as_mut().unwrap(),
                     "updated_on_backend_thread()".to_string(),
                     self.as_mut().get_unchecked_mut(),
-                    "update_on_non_gui_thread()".to_string(),
-                    cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION)
-                {
-                    Ok(_) => (),
-                    Err(err) => {
-                        error!(self, "Failed to connect signals: {:?}", err);
-                    }
-                }
-                match cxx_qt_lib_shoop::connect::connect
-                    (backend_ptr.as_mut().unwrap(),
-                        "updated_on_gui_thread()".to_string(),
-                        self.as_mut().get_unchecked_mut(),
-                        "update_on_gui_thread()".to_string(),
-                        cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION)
-                {
-                    Ok(_) => (),
-                    Err(err) => {
-                        error!(self, "Failed to connect signals: {:?}", err);
-                    }
-                }
+                    "update()".to_string(),
+                    cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
+                // cxx_qt_lib_shoop::connect::connect_or_report
+                //     (backend_ptr.as_mut().unwrap(),
+                //         "updated_on_gui_thread()".to_string(),
+                //         self.as_mut().get_unchecked_mut(),
+                //         "update_on_gui_thread()".to_string(),
+                //         cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
 
                 // self.set_initialized(true);
             }
@@ -103,9 +91,7 @@ impl LoopBackend {
         }
         debug!(self, "set length -> {}", length);
         let mut rust = self.as_mut().rust_mut();
-        let loop_arc = rust.backend_loop.as_mut().unwrap().clone();
-        let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
-        loop_obj.set_length(length as u32).unwrap();
+        rust.backend_loop.as_mut().unwrap().set_length(length as u32).unwrap();
     }
 
     pub fn set_position(mut self: Pin<&mut LoopBackend>, position: i32) {
@@ -115,9 +101,7 @@ impl LoopBackend {
         }
         debug!(self, "set position -> {}", position);
         let mut rust = self.as_mut().rust_mut();
-        let loop_arc = rust.backend_loop.as_mut().unwrap().clone();
-        let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
-        loop_obj.set_position(position as u32).unwrap();
+        rust.backend_loop.as_mut().unwrap().set_position(position as u32).unwrap();
     }
 
     pub fn update(mut self: Pin<&mut LoopBackend>) {
@@ -126,10 +110,8 @@ impl LoopBackend {
         }
 
         self.as_mut().starting_update();
-
-        let loop_arc = self.as_mut().backend_loop.as_ref().expect("Backend loop not set").clone();
-        let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
-        let new_state = loop_obj.get_state().unwrap();
+        let mut rust = self.as_mut().rust_mut();
+        let new_state = rust.backend_loop.as_mut().unwrap().get_state().unwrap();
 
         // let audio_chans : Vec<*mut QObject> = self.as_mut().get_audio_channels()
         //                                .iter()
@@ -271,11 +253,7 @@ impl LoopBackend {
         raw_debug!("Transitioning {} loops to {} with delay {}, sync at cycle {}",
            loops.len(), to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            let mut backend_loop_arcs : Vec<Arc<Mutex<backend_bindings::Loop>>> = Vec::new();
-            let mut backend_loop_guards : Vec<MutexGuard<backend_bindings::Loop>> = Vec::new();
             let mut backend_loop_refs : Vec<&backend_bindings::Loop> = Vec::new();
-            backend_loop_arcs.reserve(loops.len() as usize);
-            backend_loop_guards.reserve(loops.len() as usize);
             backend_loop_refs.reserve(loops.len() as usize);
 
             // Increment the reference count for all loops involved
@@ -286,34 +264,22 @@ impl LoopBackend {
                         .ok_or(anyhow::anyhow!("Failed to convert QVariant to QObject pointer"))?;
                     let loop_ptr : *mut LoopBackend =
                         qobject_to_loop_backend_ptr(loop_qobj);
-                    let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
+                    let backend_loop_ref : &backend_bindings::Loop =
                         loop_ptr.as_ref()
                                 .unwrap()
                                 .backend_loop
                                 .as_ref()
-                                .ok_or(anyhow::anyhow!("Backend loop not set"))?
-                                .clone();
-                    backend_loop_arcs.push(backend_loop_arc);
+                                .ok_or(anyhow::anyhow!("Backend loop not set"))?;
+                    backend_loop_refs.push(backend_loop_ref);
                     Ok(())
                 }
             }).for_each(|result| {
                 match result {
                     Ok(_) => (),
                     Err(err) => {
-                        raw_error!("Failed to increment reference count for loop: {:?}", err);
+                        raw_error!("Failed to get backend loop loop: {:?}", err);
                     }
                 }
-            });
-
-            // Lock all backend loops
-            backend_loop_arcs.iter().for_each(|backend_loop_arc| {
-                let backend_loop_guard = backend_loop_arc.lock().unwrap();
-                backend_loop_guards.push(backend_loop_guard);
-            });
-
-            // Get references to all backend loops
-            backend_loop_guards.iter().for_each(|backend_loop_guard| {
-                backend_loop_refs.push(backend_loop_guard.deref());
             });
 
             backend_bindings::transition_multiple_loops(

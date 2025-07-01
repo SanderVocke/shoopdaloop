@@ -1,5 +1,7 @@
 use cxx::Exception;
 use crate::cxx_qt_lib_shoop::qobject::AsQObject;
+use common::logging::macros::*;
+shoop_log_unit!("Frontend.Qt");
 
 #[cxx_qt::bridge]
 mod ffi {
@@ -65,5 +67,25 @@ where
         let sender_qobj = sender.qobject_ref();
         let receiver_qobj = receiver.qobject_ref();
         ffi::connect(sender_qobj, signal, receiver_qobj, slot, connection_type)
+    }
+}
+
+// Connect, or if failed, report error via ShoopDaLoop logging
+pub fn connect_or_report<Sender, Receiver>(
+    sender : &Sender,
+    signal : String,
+    receiver : &Receiver,
+    slot : String,
+    connection_type : u32,
+)
+where
+    Sender : QObjectOrConvertible,
+    Receiver : QObjectOrConvertible,
+{
+    match connect(sender, signal, receiver, slot, connection_type) {
+        Ok(_) => (),
+        Err(err) => {
+            error!("Failed to connect: {:?}", err);
+        }
     }
 }
