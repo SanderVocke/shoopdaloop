@@ -181,6 +181,13 @@ impl LoopBackend {
             rust.prev_cycle_nr = new_cycle_nr;
         }
 
+        self.as_mut().state_changed(new_state.mode as i32,
+                           new_state.length as i32,
+                           new_state.position as i32,
+                           convert_maybe_mode_i32(new_state.maybe_next_mode),
+                           new_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32,
+                           new_cycle_nr);
+
         if prev_state.mode != new_state.mode {
             debug!(self, "mode: {:?} -> {:?}", prev_state.mode, new_state.mode);
             self.as_mut().mode_changed(prev_state.mode as i32, new_state.mode as i32);
@@ -221,10 +228,6 @@ impl LoopBackend {
             debug!(self, "cycle nr: {} -> {}", prev_cycle_nr, new_cycle_nr);
             self.as_mut().cycle_nr_changed(new_cycle_nr, prev_cycle_nr);
         }
-    }
-
-    pub fn update_on_gui_thread(self: Pin<&mut LoopBackend>) {
-        // Stub implementation
     }
 
     // pub fn get_audio_channels(self: Pin<&mut LoopBackend>) -> QList<QVariant> {
