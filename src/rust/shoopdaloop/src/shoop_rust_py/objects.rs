@@ -3,9 +3,9 @@ use std::pin::Pin;
 
 use frontend::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper as CxxQtBackendWrapper;
 use frontend::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
-use frontend::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::{QObject, QVariant, QList_QVariant};
+use frontend::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::{qobject_to_loop_ptr, QList_QVariant, QObject, QVariant};
 
-use frontend::cxx_qt_lib_shoop::qvariant_helpers::qobject_ptr_to_qvariant;
+use frontend::cxx_qt_lib_shoop::qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr};
 
 use crate::shoop_py_backend::shoop_loop::Loop;
 use crate::shoop_py_backend::fx_chain::FXChain;
@@ -132,7 +132,18 @@ pub fn shoop_rust_transition_loops(loop_addrs : Vec<usize>,
                     .map(|addr| qobject_ptr_to_qvariant(*addr as *mut QObject))
                     .collect();
     let loops_list : QList_QVariant = QList_QVariant::from(loop_variants);
-    LoopGui::transition_multiple_impl(loops_list, mode, maybe_delay, maybe_align_to_sync_at);
+    if loops_list.is_empty() { return Ok(()); }
+    else {
+        let first_loop = loops_list.get(0).unwrap();
+        unsafe {
+            let loop_gui_qobj : *mut QObject =
+                    qvariant_to_qobject_ptr(first_loop).unwrap();
+            let loop_gui_ptr : *mut LoopGui =
+                qobject_to_loop_ptr(loop_gui_qobj);
+            let loop_gui_pin : Pin<&mut LoopGui> = std::pin::Pin::new_unchecked(&mut *loop_gui_ptr);
+            loop_gui_pin.transition_multiple(loops_list, mode, maybe_delay, maybe_align_to_sync_at);
+        }
+    }
     Ok(())
 }
 

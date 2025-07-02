@@ -11,7 +11,7 @@ shoop_log_unit!("Frontend.DummyProcessHelper");
 
 use crate::cxx_qt_lib_shoop::invokable;
 use crate::cxx_qt_lib_shoop::qobject::AsQObject;
-use crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
+use crate::cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_dummy_process_helper_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_signature_backend_wrapper;
 

@@ -1,5 +1,7 @@
 use common::logging::macros::*;
-use backend_bindings::Loop as BackendLoop;
+use crate::cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
+use cxx::UniquePtr;
+
 shoop_log_unit!("Frontend.Loop");
 
 pub mod constants {
@@ -44,6 +46,9 @@ pub mod ffi {
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
+        include!("cxx-qt-lib-shoop/qsharedpointer_qobject.h");
+        type QSharedPointer_QObject = crate::cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
+
         include!("cxx-qt-lib-shoop/metatype.h");
         #[rust_name = "loop_gui_metatype_name"]
         unsafe fn meta_type_name(obj: &LoopGui) -> Result<&str>;
@@ -66,7 +71,7 @@ pub mod ffi {
         #[qproperty(i32, display_midi_events_triggered, READ, NOTIFY)]
         #[qproperty(QString, instance_identifier)]
         #[qproperty(i32, cycle_nr, READ, NOTIFY)]
-        #[qproperty(*mut QObject, backend_loop_wrapper, READ, NOTIFY)]
+        //#[qproperty(*mut QObject, backend_loop_wrapper, READ, NOTIFY)]
         type LoopGui = super::LoopGuiRust;
 
         pub fn initialize_impl(self: Pin<&mut LoopGui>);
@@ -89,15 +94,6 @@ pub mod ffi {
                                    to_mode: i32,
                                    maybe_cycles_delay: i32,
                                    maybe_to_sync_at_cycle: i32);
-        
-        // This signal is used internally to communicate a multiple transition
-        // to the resp. individual back-end objects. Single-shot connections
-        // are used for this.
-        #[qsignal]
-        fn transition_multiple_temporary_internal(self: Pin<&mut LoopGui>,
-                                                  to_mode: i32,
-                                                  maybe_cycles_delay: i32,
-                                                  maybe_to_sync_at_cycle: i32);
         
         #[qinvokable]
         pub fn transition(self: Pin<&mut LoopGui>,
@@ -133,6 +129,33 @@ pub mod ffi {
 
         // Custom setter for sync source property
         pub unsafe fn set_sync_source(self: Pin<&mut LoopGui>, sync_source: *mut QObject);
+
+        // The following signals are to internally connect to the back-end object
+        // which lives on another thread.
+        #[qsignal]
+        fn backend_set_position(self: Pin<&mut LoopGui>, position: i32);
+        #[qsignal]
+        fn backend_set_length(self: Pin<&mut LoopGui>, length: i32);
+        #[qsignal]
+        fn backend_clear(self: Pin<&mut LoopGui>, length: i32);
+        #[qsignal]
+        fn backend_transition(self: Pin<&mut LoopGui>,
+                              to_mode: i32,
+                              maybe_cycles_delay: i32,
+                              maybe_to_sync_at_cycle: i32);
+        #[qsignal]
+        fn backend_adopt_ringbuffers(self: Pin<&mut LoopGui>,
+                                     maybe_reverse_start_cycle : QVariant,
+                                     maybe_cycles_length : QVariant,
+                                     maybe_go_to_cycle : QVariant,
+                                     go_to_mode : i32);
+        #[qsignal]
+        pub fn backend_transition_multiple(self: Pin<&mut LoopGui>,
+                                   loops: QList_QVariant,
+                                   to_mode: i32,
+                                   maybe_cycles_delay: i32,
+                                   maybe_to_sync_at_cycle: i32);
+        
     }
 
     unsafe extern "C++" {
@@ -184,7 +207,6 @@ pub mod ffi {
 
 pub use ffi::LoopGui;
 use ffi::*;
-use cxx::UniquePtr;
 use crate::cxx_qt_lib_shoop::{qobject::AsQObject, qquickitem::IsQQuickItem};
 use std::sync::{Arc, Mutex};
 
@@ -205,7 +227,7 @@ pub struct LoopGuiRust {
     pub display_midi_events_triggered: i32,
     pub instance_identifier: QString,
     pub cycle_nr : i32,
-    pub backend_loop_wrapper : *mut QObject,
+    pub backend_loop_wrapper : cxx::UniquePtr<QSharedPointer_QObject>,
 }
 
 impl Default for LoopGuiRust {
@@ -224,7 +246,7 @@ impl Default for LoopGuiRust {
             display_midi_events_triggered: 0,
             instance_identifier: QString::from("unknown"),
             cycle_nr : 0,
-            backend_loop_wrapper : std::ptr::null_mut(),
+            backend_loop_wrapper : cxx::UniquePtr::null(),
         }
     }
 }

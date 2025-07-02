@@ -21,10 +21,13 @@ fn main() {
             .file("src/cxx_qt_lib_shoop/rust/qobject.rs")
             .file("src/cxx_qt_lib_shoop/rust/qquickitem.rs")
             .file("src/cxx_qt_lib_shoop/rust/qsignalspy.rs")
+            .file("src/cxx_qt_lib_shoop/rust/qsharedpointer_qobject.rs")
             .file("src/cxx_qt_lib_shoop/rust/qthread.rs")
             .file("src/cxx_qt_lib_shoop/rust/qtimer.rs")
             .file("src/cxx_qt_lib_shoop/rust/qvariant_helpers.rs")
+            .file("src/cxx_qt_lib_shoop/rust/qvariant_qobject.rs")
             .file("src/cxx_qt_lib_shoop/rust/qvariant_qvariantmap.rs")
+            .file("src/cxx_qt_lib_shoop/rust/qvariant_qsharedpointer_qobject.rs")
             .file("src/cxx_qt_shoop/rust/qobj_autoconnect_bridge.rs")
             .file("src/cxx_qt_shoop/rust/qobj_backend_wrapper_bridge.rs")
             .file("src/cxx_qt_shoop/rust/qobj_compositeloop_bridge.rs")
@@ -44,7 +47,6 @@ fn main() {
                 cc.include("src/cxx_qt_shoop/include");
                 cc.file("src/cxx_qt_shoop/cxx/ShoopQObject.cpp");
                 cc.file("src/cxx_qt_shoop/cxx/shoop_rust_callable.cpp");
-
                 cc.include("src/cxx_qt_lib_shoop/include");
             })
             .qobject_header("src/cxx_qt_shoop/include/cxx-qt-shoop/ShoopQObject.h")

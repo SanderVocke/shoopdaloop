@@ -13,38 +13,8 @@ mod ffi {
 
         #[rust_name = "qvariant_type_name"]
         fn qvariantTypeName(obj: &QVariant) -> Result<&str>;
-
-        #[rust_name = "qvariant_to_qobject_ptr"]
-        fn qvariantToQObjectPtr(variant: &QVariant) -> Result<*mut QObject>;
-
-        #[rust_name = "qobject_ptr_to_qvariant"]
-        unsafe fn qobjectPtrToQVariant(obj : *mut QObject) -> Result<QVariant>;
     }
 }
 
 pub use ffi::QVariant;
 pub use ffi::qvariant_type_name;
-
-pub fn qvariant_to_qobject_ptr(variant: &QVariant) -> Option<*mut ffi::QObject> {
-    let result = ffi::qvariant_to_qobject_ptr(variant);
-
-    match result {
-        Ok(ptr) => {
-            if ptr.is_null() {
-                None
-            } else {
-                Some(ptr)
-            }
-        },
-        Err(err) => {
-            println!("Failed to convert QVariant to QObject pointer: {:?}", err);
-            None
-        },
-    }
-}
-
-pub fn qobject_ptr_to_qvariant(obj : *mut ffi::QObject) -> QVariant {
-    unsafe {
-        ffi::qobject_ptr_to_qvariant(obj).unwrap()
-    }
-}

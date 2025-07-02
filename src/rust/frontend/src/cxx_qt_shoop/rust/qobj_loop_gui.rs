@@ -18,7 +18,9 @@ use crate::cxx_qt_lib_shoop::qobject::qobject_set_parent;
 use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 use crate::cxx_qt_lib_shoop::qobject::{qobject_property_bool, qobject_property_float, qobject_property_int};
 use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
-use crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
+use crate::cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
+use crate::cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
+use crate::cxx_qt_lib_shoop::qvariant_qsharedpointer_qobject::qsharedpointer_qobject_to_qvariant;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::BackendWrapper;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::loop_backend_qobject_from_ptr;
@@ -74,31 +76,21 @@ impl LoopGui {
         cycle_nr: i32) { raw_warn!("Hello!"); }
 
     pub fn queue_set_length(mut self: Pin<&mut LoopGui>, length: i32) {
-        if !self.initialized() || self.backend_loop_wrapper().is_null() {
+        if !self.initialized() || self.as_ref().backend_loop_wrapper.is_null() {
             error!(self, "queue_set_position: not initialized");
             return;
         }
         debug!(self, "queue set length -> {}", length);
-        unsafe {
-            invoke(self.backend_loop_wrapper().as_mut().unwrap().qobject_mut().as_mut().unwrap(),
-                "set_length(::std::int32_t)".to_string(),
-                QUEUED_CONNECTION,
-                &length).unwrap();
-        }
+        self.backend_set_length(length);
     }
 
     pub fn queue_set_position(mut self: Pin<&mut LoopGui>, position: i32) {
-        if !self.initialized() || self.backend_loop_wrapper().is_null(){
+        if !self.initialized() || self.as_ref().backend_loop_wrapper.is_null(){
             error!(self, "queue_set_position: not initialized");
             return;
         }
         debug!(self, "queue set position -> {}", position);
-        unsafe {
-            invoke(self.backend_loop_wrapper().as_mut().unwrap().qobject_mut().as_mut().unwrap(),
-                "set_position(::std::int32_t)".to_string(),
-                QUEUED_CONNECTION,
-                &position).unwrap();
-        }
+        self.backend_set_position(position);
     }
 
     // pub fn update_on_non_gui_thread(mut self: Pin<&mut LoopGui>) {
@@ -221,9 +213,7 @@ impl LoopGui {
     //     }
     // }
 
-    pub fn update_on_gui_thread(self: Pin<&mut LoopGui>) {
-        // Stub implementation
-    }
+    pub fn update_on_gui_thread(self: Pin<&mut LoopGui>) {}
 
     pub fn maybe_initialize_backend(mut self: Pin<&mut LoopGui>) {
         let initialize_condition : bool;
@@ -233,7 +223,7 @@ impl LoopGui {
                !self.initialized() &&
                 self.backend != std::ptr::null_mut() &&
                 qobject_property_bool(self.backend.as_ref().unwrap(), "ready".to_string()).unwrap_or(false) &&
-                self.backend_loop_wrapper().is_null();
+                self.as_ref().backend_loop_wrapper.is_null();
         }
 
         if initialize_condition {
@@ -253,30 +243,61 @@ impl LoopGui {
                     raw_error!("Failed to convert backend QObject to backend pointer");
                 } else {
                     // make_raw_loop_backend takes care of the initialization of the backend loop.
-                    let backend_loop = make_raw_loop_backend(backend_qobj);
                     {
-                        let mut rust_mut = self.as_mut().rust_mut();
-                        rust_mut.backend_loop_wrapper = loop_backend_qobject_from_ptr(backend_loop);
+                        let backend_loop = make_raw_loop_backend(backend_qobj);
+                        let backend_loop_qobj = loop_backend_qobject_from_ptr(backend_loop);
+                        qobject_move_to_thread(backend_loop_qobj, backend_thread);
+                        let self_ref = self.as_ref().get_ref();
+                        let backend_ref = &*backend_loop_qobj;
 
-                        // Becoming parent of the object will automatically delete it when we
-                        // are deleted
-                        qobject_move_to_thread(rust_mut.backend_loop_wrapper, backend_thread).unwrap();
-                        // FIXME: destruction
-                        // qobject_set_parent(rust_mut.backend_loop_wrapper, self_qobject).unwrap();
-                    }
-
-                    {
-                        let backend_loop_pin
-                            = std::pin::Pin::new_unchecked(&mut *backend_loop);
-                        connect_or_report(backend_loop_pin.as_ref().get_ref(),
+                        // Connections : backend object -> GUI
+                        connect_or_report(
+                                backend_ref,
                                 "state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                                self.as_ref().get_ref(),
+                                self_ref,
                                 "on_backend_state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
                                 connection_types::QUEUED_CONNECTION);
-                    }
 
-                    {
+                        // Connections : GUI -> backend object
+                        connect_or_report(
+                            self_ref,
+                            "backend_set_position(::std::int32_t)".to_string(),
+                            backend_ref,
+                            "set_position(::std::int32_t)".to_string(),
+                            connection_types::QUEUED_CONNECTION);
+                        connect_or_report(
+                            self_ref,
+                            "backend_set_length(::std::int32_t)".to_string(),
+                            backend_ref,
+                            "set_length(::std::int32_t)".to_string(),
+                            connection_types::QUEUED_CONNECTION);
+                        connect_or_report(
+                            self_ref,
+                            "backend_clear(::std::int32_t)".to_string(),
+                            backend_ref,
+                            "clear(::std::int32_t)".to_string(),
+                            connection_types::QUEUED_CONNECTION);
+                        connect_or_report(
+                            self_ref,
+                            "backend_transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                            backend_ref,
+                            "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                            connection_types::QUEUED_CONNECTION);
+                        connect_or_report(
+                            self_ref,
+                            "backend_adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)".to_string(),
+                            backend_ref,
+                            "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)".to_string(),
+                            connection_types::QUEUED_CONNECTION);
+                        connect_or_report(
+                            self_ref,
+                            "backend_transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                            backend_ref,
+                            "transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                            connection_types::QUEUED_CONNECTION);
+
                         let mut rust_mut = self.as_mut().rust_mut();
+                        rust_mut.backend_loop_wrapper = QSharedPointer_QObject::from_ptr_delete_later(backend_loop_qobj).unwrap();
                         rust_mut.initialized = true;
                     }
                 }
@@ -319,77 +340,42 @@ impl LoopGui {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32)
     {
-        LoopGui::transition_multiple_impl(loops, to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
+        raw_debug!("Transitioning {} loops to {} with delay {}, sync at cycle {}",
+           loops.len(), to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
+
+        let backend_loop_handles = LoopGui::get_backend_loop_handles_variant_list(&loops).unwrap();
+        self.backend_transition_multiple(backend_loop_handles, to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
     }
 
-    pub fn transition_multiple_impl(
-        loops: QList_QVariant,
-        to_mode: i32,
-        maybe_cycles_delay: i32,
-        maybe_to_sync_at_cycle: i32)
-    {
-        raw_error!("transition_multiple_impl: unimplemented");
-        // raw_debug!("Transitioning {} loops to {} with delay {}, sync at cycle {}",
-        //    loops.len(), to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
-        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-        //     let mut backend_loop_arcs : Vec<Arc<Mutex<backend_bindings::Loop>>> = Vec::new();
-        //     let mut backend_loop_guards : Vec<MutexGuard<backend_bindings::Loop>> = Vec::new();
-        //     let mut backend_loop_refs : Vec<&backend_bindings::Loop> = Vec::new();
-        //     backend_loop_arcs.reserve(loops.len() as usize);
-        //     backend_loop_guards.reserve(loops.len() as usize);
-        //     backend_loop_refs.reserve(loops.len() as usize);
+    pub fn get_backend_loop_handles_variant_list(loop_guis : &QList_QVariant) -> Result<QList_QVariant, anyhow::Error> {
+        let mut backend_loop_handles : QList_QVariant = QList_QVariant::default();
 
-        //     // Increment the reference count for all loops involved
-        //     loops.iter().map(|loop_variant| -> Result<(), anyhow::Error> {
-        //         unsafe {
-        //             let loop_qobj : *mut QObject =
-        //                 qvariant_to_qobject_ptr(loop_variant)
-        //                 .ok_or(anyhow::anyhow!("Failed to convert QVariant to QObject pointer"))?;
-        //             let loop_ptr : *mut LoopGui =
-        //                 qobject_to_loop_ptr(loop_qobj);
-        //             let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-        //                 loop_ptr.as_ref()
-        //                         .unwrap()
-        //                         .backend_loop
-        //                         .as_ref()
-        //                         .ok_or(anyhow::anyhow!("Backend loop not set"))?
-        //                         .clone();
-        //             backend_loop_arcs.push(backend_loop_arc);
-        //             Ok(())
-        //         }
-        //     }).for_each(|result| {
-        //         match result {
-        //             Ok(_) => (),
-        //             Err(err) => {
-        //                 raw_error!("Failed to increment reference count for loop: {:?}", err);
-        //             }
-        //         }
-        //     });
-
-        //     // Lock all backend loops
-        //     backend_loop_arcs.iter().for_each(|backend_loop_arc| {
-        //         let backend_loop_guard = backend_loop_arc.lock().unwrap();
-        //         backend_loop_guards.push(backend_loop_guard);
-        //     });
-
-        //     // Get references to all backend loops
-        //     backend_loop_guards.iter().for_each(|backend_loop_guard| {
-        //         backend_loop_refs.push(backend_loop_guard.deref());
-        //     });
-
-        //     backend_bindings::transition_multiple_loops(
-        //         &backend_loop_refs,
-        //         to_mode.try_into()?,
-        //         maybe_cycles_delay,
-        //         maybe_to_sync_at_cycle)
-            Ok(())
-        })();
-        match result {
-            Ok(_) => (),
-            Err(err) => {
-                raw_error!("Failed to transition multiple loops: {:?}", err);
+        // Increment the reference count for all loops involved by storing shared pointers
+        // into QVariants.
+        loop_guis.iter().map(|loop_variant| -> Result<(), anyhow::Error> {
+            unsafe {
+                let loop_gui_qobj : *mut QObject =
+                    qvariant_to_qobject_ptr(loop_variant)
+                    .ok_or(anyhow::anyhow!("Failed to convert QVariant to QObject pointer"))?;
+                let loop_gui_ptr : *mut LoopGui =
+                    qobject_to_loop_ptr(loop_gui_qobj);
+                let backend_loop_ptr : &cxx::UniquePtr<QSharedPointer_QObject>
+                    = &loop_gui_ptr.as_ref().unwrap().backend_loop_wrapper;
+                let backend_loop_handle : QVariant =
+                    qsharedpointer_qobject_to_qvariant(&backend_loop_ptr.as_ref().unwrap());
+                backend_loop_handles.append(backend_loop_handle);
+                Ok(())
             }
-        }
+        }).for_each(|result| {
+            match result {
+                Ok(_) => (),
+                Err(err) => {
+                    raw_error!("Failed to increment reference count for loop: {:?}", err)
+                }
+            }
+        });
+
+        Ok(backend_loop_handles)
     }
 
     pub fn transition(self: Pin<&mut LoopGui>,
@@ -399,25 +385,7 @@ impl LoopGui {
     {
         debug!(self, "Transitioning to {} with delay {}, sync at cycle {}",
            to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
-        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-            //     self.as_ref()
-            //         .backend_loop
-            //         .as_ref()
-            //         .ok_or(anyhow::anyhow!("Backend loop not set"))?
-            //         .clone();
-            // backend_loop_arc.lock().unwrap().transition
-            //    (to_mode.try_into()?,
-            //     maybe_cycles_delay,
-            //     maybe_to_sync_at_cycle)?;
-            Ok(())
-        })();
-        match result {
-            Ok(_) => (),
-            Err(err) => {
-                error!(self, "Failed to transition loop: {:?}", err);
-            }
-        }
+        self.backend_transition(to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
     }
 
     pub fn add_audio_channel(self: Pin<&mut LoopGui>, mode: i32) -> Result<AudioChannel, anyhow::Error> {
@@ -448,34 +416,9 @@ impl LoopGui {
         Err(anyhow::anyhow!("Unimplemented"))
     }
 
-    pub fn clear(mut self: Pin<&mut LoopGui>, length : i32) {
-        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-            //     self.as_ref()
-            //         .backend_loop
-            //         .as_ref()
-            //         .ok_or(anyhow::anyhow!("Backend loop not set"))?
-            //         .clone();
-            // backend_loop_arc.lock().unwrap().clear(length as u32)?;
-
-            let audio_chans = self.as_mut().get_audio_channels();
-            let midi_chans = self.as_mut().get_midi_channels();
-            let all_channels_iter = audio_chans.iter().chain(midi_chans.iter());
-            for child in all_channels_iter {
-                unsafe {
-                    let channel_ptr = qvariant_to_qobject_ptr(child).unwrap();
-                    invoke::<_,(),_>(channel_ptr.as_mut().unwrap(), "clear()".to_string(), connection_types::DIRECT_CONNECTION, &())?;
-                }
-            }
-
-            Ok(())
-        })();
-        match result {
-            Ok(_) => (),
-            Err(err) => {
-                error!(self, "Failed to clear loop: {:?}", err);
-            }
-        }
+    pub fn clear(self: Pin<&mut LoopGui>, length : i32) {
+        debug!(self, "Clearing to length {length}");
+        self.backend_clear(length);
     }
 
     pub fn adopt_ringbuffers(mut self: Pin<&mut LoopGui>,
@@ -485,26 +428,7 @@ impl LoopGui {
         go_to_mode : i32)
     {
         debug!(self, "Adopting ringbuffers");
-        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-            //     self.as_ref()
-            //         .backend_loop
-            //         .as_ref()
-            //         .ok_or(anyhow::anyhow!("Backend loop not set"))?
-            //         .clone();
-            // backend_loop_arc.lock().unwrap().adopt_ringbuffer_contents
-            //    (maybe_reverse_start_cycle.value::<i32>(),
-            //     maybe_cycles_length.value::<i32>(),
-            //     maybe_go_to_cycle.value::<i32>(),
-            //     go_to_mode.try_into()?)?;
-            Ok(())
-        })();
-        match result {
-            Ok(_) => (),
-            Err(err) => {
-                error!(self, "Failed to adopt ringbuffers: {:?}", err);
-            }
-        }
+        self.backend_adopt_ringbuffers(maybe_reverse_start_cycle, maybe_cycles_length, maybe_go_to_cycle, go_to_mode);
     }
 
     pub fn update_backend_sync_source(self: Pin<&mut LoopGui>) {
