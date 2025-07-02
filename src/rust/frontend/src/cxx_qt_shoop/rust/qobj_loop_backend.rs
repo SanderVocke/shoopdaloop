@@ -48,45 +48,26 @@ fn convert_maybe_mode_i32(value: Option<backend_bindings::LoopMode>) -> i32 {
 }
 
 impl LoopBackend {
-    pub unsafe fn initialize_impl(mut self: Pin<&mut LoopBackend>, backend_obj : *mut QObject) {
-        debug!(self, "Initializing back-end");
-        unsafe {
-            let backend_ptr = qobject_ptr_to_backend_ptr(backend_obj);
-            if backend_ptr.is_null() {
-                error!(self, "Failed to convert backend QObject to backend pointer");
-            } else {
-                // FIXME: unwraps
-                let backend_session = backend_ptr.as_mut()
-                                                .unwrap()
-                                                .session
-                                                .as_ref()
-                                                .unwrap();
-                let backend_loop = backend_session.create_loop().unwrap();
-                let mut rust_mut = self.as_mut().rust_mut();
-                rust_mut.backend_loop = Some(backend_loop);
-
-                // Connect signals
-                cxx_qt_lib_shoop::connect::connect_or_report
-                    (backend_ptr.as_mut().unwrap(),
-                    "updated_on_backend_thread()".to_string(),
-                    self.as_mut().get_unchecked_mut(),
-                    "update()".to_string(),
-                    cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
-                // cxx_qt_lib_shoop::connect::connect_or_report
-                //     (backend_ptr.as_mut().unwrap(),
-                //         "updated_on_gui_thread()".to_string(),
-                //         self.as_mut().get_unchecked_mut(),
-                //         "update_on_gui_thread()".to_string(),
-                //         cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
-
-                // self.set_initialized(true);
-            }
-        }
-    }
+    // pub unsafe fn initialize_impl(mut self: Pin<&mut LoopBackend>) {
+    //     unsafe {
+    //         let backend_ptr = qobject_ptr_to_backend_ptr(backend_obj);
+    //         if backend_ptr.is_null() {
+    //             error!(self, "Failed to convert backend QObject to backend pointer");
+    //         } else {
+    //             // Connect signals
+    //             cxx_qt_lib_shoop::connect::connect_or_report
+    //                 (backend_ptr.as_mut().unwrap(),
+    //                 "updated_on_backend_thread()".to_string(),
+    //                 self.as_mut().get_unchecked_mut(),
+    //                 "update()".to_string(),
+    //                 cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
+    //         }
+    //     }
+    // }
 
     pub fn set_length(mut self: Pin<&mut LoopBackend>, length: i32) {
-        if self.rust().backend_loop.is_none() {
-            error!(self, "set_length: no back-end loop");
+        if ! self.as_mut().maybe_initialize_backend() {
+            error!(self, "set_length: not initialized");
             return;
         }
         debug!(self, "set length -> {}", length);
@@ -95,13 +76,58 @@ impl LoopBackend {
     }
 
     pub fn set_position(mut self: Pin<&mut LoopBackend>, position: i32) {
-        if self.rust().backend_loop.is_none() {
-            error!(self, "set_position: no back-end loop");
+        if ! self.as_mut().maybe_initialize_backend() {
+            error!(self, "set_position: not initialized");
             return;
         }
         debug!(self, "set position -> {}", position);
         let mut rust = self.as_mut().rust_mut();
         rust.backend_loop.as_mut().unwrap().set_position(position as u32).unwrap();
+    }
+
+    pub fn set_backend_indirect(mut self: Pin<&mut LoopBackend>, backend: *mut QObject) {
+        self.set_backend(backend);
+    }
+
+    pub fn maybe_initialize_backend(mut self: Pin<&mut LoopBackend>) -> bool {
+        let initialize_condition : bool;
+
+        if self.get_initialized() { return true; }
+
+        unsafe {
+            initialize_condition =
+               !self.get_initialized() &&
+                self.backend != std::ptr::null_mut() &&
+                qobject_property_bool(self.backend.as_ref().unwrap(), "ready".to_string()).unwrap_or(false) &&
+                self.as_ref().backend_loop.is_none();
+        }
+
+        if initialize_condition {
+            debug!(self, "Initializing");
+            unsafe {
+                let backend_ptr = qobject_ptr_to_backend_ptr(self.rust().backend);
+                if backend_ptr.is_null() {
+                    error!(self, "Failed to convert backend QObject to backend pointer");
+                } else {
+                    // FIXME: unwraps
+                    let backend_session = backend_ptr.as_mut()
+                                                    .unwrap()
+                                                    .session
+                                                    .as_ref()
+                                                    .unwrap();
+                    let backend_loop = backend_session.create_loop().unwrap();
+                    let mut rust_mut = self.as_mut().rust_mut();
+                    rust_mut.backend_loop = Some(backend_loop);
+
+                    let initialized = self.get_initialized();
+                    self.initialized_changed(initialized);
+                    return initialized
+                }
+            }
+        } else {
+            debug!(self, "Not initializing as not all conditions are met");
+        }
+        return false;
     }
 
     pub fn update(mut self: Pin<&mut LoopBackend>) {
@@ -267,6 +293,10 @@ impl LoopBackend {
                         .ok_or(anyhow::anyhow!("Failed to convert QVariant to QObject pointer"))?;
                     let loop_ptr : *mut LoopBackend =
                         qobject_to_loop_backend_ptr(loop_qobj);
+                    {
+                        let loop_pin = std::pin::Pin::new_unchecked(&mut *loop_ptr);
+                        loop_pin.maybe_initialize_backend();
+                    }
                     let backend_loop_ref : &backend_bindings::Loop =
                         loop_ptr.as_ref()
                                 .unwrap()
@@ -299,11 +329,15 @@ impl LoopBackend {
         }
     }
 
-    pub fn transition(self: Pin<&mut LoopBackend>,
+    pub fn transition(mut self: Pin<&mut LoopBackend>,
         to_mode: i32,
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32)
     {
+        if ! self.as_mut().maybe_initialize_backend() {
+            error!(self, "transition: not initialized");
+            return;
+        }
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             if self.as_ref().backend_loop.is_some() {
                 self.as_ref().backend_loop.as_ref().unwrap().transition
@@ -354,6 +388,10 @@ impl LoopBackend {
     }
 
     pub fn clear(mut self: Pin<&mut LoopBackend>, length : i32) {
+        if ! self.as_mut().maybe_initialize_backend() {
+            error!(self, "clear: not initialized");
+            return;
+        }
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
             //     self.as_ref()
@@ -389,6 +427,10 @@ impl LoopBackend {
         maybe_go_to_cycle : QVariant,
         go_to_mode : i32)
     {
+        if ! self.as_mut().maybe_initialize_backend() {
+            error!(self, "adopt_ringbuffers: not initialized");
+            return;
+        }
         debug!(self, "Adopting ringbuffers");
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
@@ -413,6 +455,11 @@ impl LoopBackend {
     }
 
     pub unsafe fn set_sync_source(mut self: Pin<&mut LoopBackend>, sync_source: *mut QObject) {
+        if ! self.as_mut().maybe_initialize_backend() {
+            error!(self, "set_sync_source: not initialized");
+            return;
+        }
+
         debug!(self, "sync source -> {:?}", sync_source);
 
         if !sync_source.is_null() {
@@ -496,5 +543,9 @@ impl LoopBackend {
 
     pub fn get_cycle_nr(self: &LoopBackend) -> i32 {
         self.rust().prev_cycle_nr
+    }
+
+    pub fn get_initialized(self: &LoopBackend) -> bool {
+        self.rust().backend_loop.is_some()
     }
 }

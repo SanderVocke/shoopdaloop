@@ -46,9 +46,9 @@ pub mod ffi {
         // #[qproperty(i32, display_midi_events_triggered)]
         // #[qproperty(QString, instance_identifier)]
         #[qproperty(i32, cycle_nr, READ=get_cycle_nr, NOTIFY=cycle_nr_changed)]
+        #[qproperty(bool, initialized, READ=get_initialized, NOTIFY=initialized_changed)]
+        #[qproperty(*mut QObject, backend)]
         type LoopBackend = super::LoopBackendRust;
-
-        pub unsafe fn initialize_impl(self: Pin<&mut LoopBackend>, backend_obj: *mut QObject);
 
         #[qinvokable]
         pub fn update(self: Pin<&mut LoopBackend>);
@@ -58,6 +58,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn set_position(self: Pin<&mut LoopBackend>, position: i32);
+
+        #[qinvokable]
+        pub fn set_backend_indirect(self: Pin<&mut LoopBackend>, backend: *mut QObject);
 
         #[qinvokable]
         pub fn transition_multiple(self: Pin<&mut LoopBackend>,
@@ -103,6 +106,12 @@ pub mod ffi {
         #[qinvokable]
         pub fn get_cycle_nr(self: &LoopBackend) -> i32;
 
+        #[qinvokable]
+        pub fn get_initialized(self: &LoopBackend) -> bool;
+
+        #[qinvokable]
+        pub fn maybe_initialize_backend(self: Pin<&mut LoopBackend>) -> bool;
+
         #[qsignal]
         fn cycled(self: Pin<&mut LoopBackend>, cycle_nr: i32);
 
@@ -129,6 +138,9 @@ pub mod ffi {
 
         #[qsignal]
         fn sync_source_changed(self: Pin<&mut LoopBackend>);
+
+        #[qsignal]
+        fn initialized_changed(self: Pin<&mut LoopBackend>, initialized : bool);
 
         #[qsignal]
         fn state_changed(self: Pin<&mut LoopBackend>,
@@ -158,14 +170,9 @@ pub mod ffi {
 
         include!("cxx-qt-shoop/make_raw.h");
         #[rust_name = "make_raw_loop_backend"]
-        unsafe fn make_raw_with_one_arg(backend_qobject : *mut QObject) -> *mut LoopBackend;
+        unsafe fn make_raw() -> *mut LoopBackend;
 
     }
-
-    impl cxx_qt::Constructor<(*mut QObject,), // (Backend object)
-                             NewArguments=(), // ()
-                             InitializeArguments=(*mut QObject,) // (Backend object)
-                             > for LoopBackend {}
 }
 
 pub use ffi::LoopBackend;
@@ -185,7 +192,6 @@ impl AsQObject for LoopBackend {
 
 pub struct LoopBackendRust {
     // Properties
-    // (none)
 
     // Rust members
     pub backend: *mut QObject,
@@ -205,34 +211,6 @@ impl Default for LoopBackendRust {
             prev_state: LoopState::default(),
             prev_cycle_nr: 0,
             sync_source: std::ptr::null_mut(),
-        }
-    }
-}
-
-impl cxx_qt::Constructor<(
-       *mut QObject, // backend object
-    )> for LoopBackend
-{
-    type BaseArguments = (*mut QObject,); // (parent = null): Will be passed to the base class constructor
-    type InitializeArguments = (*mut QObject,); // (backend object): Will be passed to the "initialize" function
-    type NewArguments = (); // Will be passed to the "new" function
-
-    fn route_arguments(args: (*mut QObject,)) -> (
-        Self::NewArguments,
-        Self::BaseArguments,
-        Self::InitializeArguments
-    ) {
-        ((), (std::ptr::null_mut(),), (args.0,))
-    }
-
-    fn new(_args: Self::NewArguments) -> LoopBackendRust {
-        LoopBackendRust::default()
-    }
-
-    fn initialize(self: core::pin::Pin<&mut Self>, args: Self::InitializeArguments) {
-        let backend_obj : *mut QObject = args.0;
-        unsafe {
-            LoopBackend::initialize_impl(self, backend_obj);
         }
     }
 }

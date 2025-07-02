@@ -57,23 +57,149 @@ impl LoopGui {
     pub fn initialize_impl(mut self: Pin<&mut LoopGui>) {
         debug!(self, "Initializing");
 
-        {
-            // FIXME: Now this will only initialize the loop
-            // if the backend was already initialized. Check the "ready"
-            // property and if not ready, connect a one-time signal to initialize
-            // when ready.
-            self.as_mut().connect_backend_changed(|o| { o.maybe_initialize_backend(); }, ConnectionType::QueuedConnection).release();
+        unsafe {   
+            let self_qobject = self.as_mut().pin_mut_qobject_ptr();
+            // let backend_qobj : *mut QObject;
+            // {
+            //     let rust_mut = self.as_mut().rust_mut();
+            //     backend_qobj = rust_mut.backend;
+            // }
+            // let backend_ptr : *mut BackendWrapper = BackendWrapper::from_qobject_ptr(backend_qobj);
+            // let backend_thread = (*backend_ptr).get_backend_thread();
+        
+            // if backend_qobj.is_null() {
+            //     raw_error!("Failed to convert backend QObject to backend pointer");
+            // } else {
+            let backend_loop = make_raw_loop_backend();
+            let backend_loop_qobj = loop_backend_qobject_from_ptr(backend_loop);
+            // qobject_move_to_thread(backend_loop_qobj, backend_thread);
+            let self_ref = self.as_ref().get_ref();
+
+            {
+                let backend_ref = &*backend_loop_qobj;
+
+                // Connections : GUI -> GUI
+                connect_or_report(
+                    self_ref,
+                    "backendChanged()".to_string(),
+                    self_ref,
+                    "update_backend_backend()".to_string(),
+                    connection_types::DIRECT_CONNECTION);
+
+                // Connections : backend object -> GUI
+                connect_or_report(
+                        backend_ref,
+                        "state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        self_ref,
+                        "on_backend_state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION);
+
+                // Connections : GUI -> backend object
+                connect_or_report(
+                    self_ref,
+                    "backend_set_position(::std::int32_t)".to_string(),
+                    backend_ref,
+                    "set_position(::std::int32_t)".to_string(),
+                    connection_types::QUEUED_CONNECTION);
+                connect_or_report(
+                    self_ref,
+                    "backend_set_length(::std::int32_t)".to_string(),
+                    backend_ref,
+                    "set_length(::std::int32_t)".to_string(),
+                    connection_types::QUEUED_CONNECTION);
+                connect_or_report(
+                    self_ref,
+                    "backend_clear(::std::int32_t)".to_string(),
+                    backend_ref,
+                    "clear(::std::int32_t)".to_string(),
+                    connection_types::QUEUED_CONNECTION);
+                connect_or_report(
+                    self_ref,
+                    "backend_transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                    backend_ref,
+                    "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                    connection_types::QUEUED_CONNECTION);
+                connect_or_report(
+                    self_ref,
+                    "backend_adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)".to_string(),
+                    backend_ref,
+                    "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)".to_string(),
+                    connection_types::QUEUED_CONNECTION);
+                connect_or_report(
+                    self_ref,
+                    "backend_transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                    backend_ref,
+                    "transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                    connection_types::QUEUED_CONNECTION);
+                connect_or_report(
+                    self_ref,
+                    "backend_changed_with_value(QObject*)".to_string(),
+                    backend_ref,
+                    "set_backend_indirect(QObject*)".to_string(),
+                    connection_types::QUEUED_CONNECTION);
+            }
+
+            {
+                let backend_pin = std::pin::Pin::new_unchecked(&mut *backend_loop);
+                backend_pin.set_backend(*self.backend());
+            }
+
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.backend_loop_wrapper = QSharedPointer_QObject::from_ptr_delete_later(backend_loop_qobj).unwrap();
+        }
+    }
+
+    pub fn update_backend_backend(self: Pin<&mut LoopGui>) {
+        unsafe {
+            let backend = self.as_ref().backend;
+            self.backend_changed_with_value(backend);
         }
     }
 
     pub fn on_backend_state_changed(
-        self: Pin<&mut LoopGui>,
+        mut self: Pin<&mut LoopGui>,
         mode: i32,
         length: i32,
         position: i32,
         next_mode: i32,
         next_transition_delay: i32,
-        cycle_nr: i32) { raw_warn!("Hello!"); }
+        cycle_nr: i32)
+    {
+        trace!(self, "on_backend_state_changed");
+        let mut rust_mut = self.as_mut().rust_mut();
+        let prev_mode = rust_mut.mode;
+        let prev_length = rust_mut.length;
+        let prev_position = rust_mut.position;
+        let prev_next_mode = rust_mut.next_mode;
+        let prev_next_transition_delay = rust_mut.next_transition_delay;
+        let prev_cycle_nr = rust_mut.cycle_nr;
+
+        rust_mut.mode = mode;
+        rust_mut.length = length;
+        rust_mut.position = position;
+        rust_mut.next_mode = next_mode;
+        rust_mut.next_transition_delay = next_transition_delay;
+        rust_mut.cycle_nr = cycle_nr;
+
+        if mode != prev_mode {
+            self.as_mut().mode_changed();
+        }
+        if length != prev_length {
+            self.as_mut().length_changed();
+        }
+        if position != prev_position {
+            self.as_mut().position_changed();
+        }
+        if next_mode != prev_next_mode {
+            self.as_mut().next_mode_changed();
+        }
+        if next_transition_delay != prev_next_transition_delay {
+            self.as_mut().next_transition_delay_changed();
+        }
+        if cycle_nr != prev_cycle_nr {
+            self.as_mut().cycle_nr_changed();
+        }
+    }
 
     pub fn queue_set_length(mut self: Pin<&mut LoopGui>, length: i32) {
         if !self.initialized() || self.as_ref().backend_loop_wrapper.is_null() {
@@ -91,220 +217,6 @@ impl LoopGui {
         }
         debug!(self, "queue set position -> {}", position);
         self.backend_set_position(position);
-    }
-
-    // pub fn update_on_non_gui_thread(mut self: Pin<&mut LoopGui>) {
-    //     if !self.initialized() {
-    //         return;
-    //     }
-
-    //     self.as_mut().starting_update_on_non_gui_thread();
-
-    //     let loop_arc = self.as_mut().backend_loop.as_ref().expect("Backend loop not set").clone();
-    //     let loop_obj = loop_arc.lock().expect("Backend loop mutex lock failed");
-    //     let state = loop_obj.get_state().unwrap();
-
-    //     let audio_chans : Vec<*mut QObject> = self.as_mut().get_audio_channels()
-    //                                    .iter()
-    //                                    .map(|v| qvariant_to_qobject_ptr(v).unwrap())
-    //                                    .collect();
-    //     let midi_chans : Vec<*mut QObject> = self.as_mut().get_midi_channels()
-    //                                   .iter()
-    //                                   .map(|v| qvariant_to_qobject_ptr(v).unwrap())
-    //                                   .collect();
-
-    //     let mut rust = self.as_mut().rust_mut();
-        
-    //     let prev_position = rust.position;
-    //     let prev_mode = rust.mode;
-    //     let prev_length = rust.length;
-    //     let prev_next_mode = rust.next_mode;
-    //     let prev_next_delay = rust.next_transition_delay;
-    //     let prev_display_peaks : Vec<f32> = rust.display_peaks.iter().map(|f| f.clone()).collect();
-    //     let prev_display_midi_notes_active = rust.display_midi_notes_active.clone();
-    //     let prev_display_midi_events_triggered = rust.display_midi_events_triggered.clone();
-    //     let prev_cycle_nr : i32 = rust.cycle_nr;
-
-    //     let new_mode = state.mode as i32;
-    //     let new_next_mode = state.maybe_next_mode.unwrap_or(state.mode) as i32;
-    //     let new_length = state.length as i32;
-    //     let new_position = state.position as i32;
-    //     let new_next_transition_delay = state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32;
-    //     let new_display_peaks : Vec<f32> =
-    //        audio_chans.iter()
-    //        .filter(|qobj| {
-    //             unsafe {
-    //                 let mode = qobject_property_int(qobj.as_ref().unwrap(), "mode".to_string()).unwrap();
-    //                 mode == backend_bindings::ChannelMode::Direct as i32 ||
-    //                    mode == backend_bindings::ChannelMode::Wet as i32
-    //             }
-    //          })
-    //           .map(|qobj| {
-    //              unsafe {
-    //                   let peak = qobject_property_float(qobj.as_ref().unwrap(), "output_peak".to_string()).unwrap();
-    //                   peak as f32
-    //              }
-    //             }).collect();
-    //     let display_peaks_changed = prev_display_peaks != new_display_peaks;
-    //     let new_display_midi_notes_active : i32 = midi_chans.iter().map(|qobj| -> i32 {
-    //         unsafe {
-    //             let n_notes_active = qobject_property_int(qobj.as_ref().unwrap(), "n_notes_active".to_string()).unwrap();
-    //             n_notes_active
-    //         }
-    //     }).sum();
-    //     let new_display_midi_events_triggered : i32 = midi_chans.iter().map(|qobj| -> i32 {
-    //         unsafe {
-    //             let n_events_triggered = qobject_property_int(qobj.as_ref().unwrap(), "n_events_triggered".to_string()).unwrap();
-    //             n_events_triggered
-    //         }
-    //     }).sum();
-    //     let new_cycle_nr : i32 = 
-    //         if (new_position < prev_position &&
-    //             is_playing_mode(prev_mode.try_into().unwrap()) &&
-    //             is_playing_mode(new_mode.try_into().unwrap())) 
-    //         { prev_cycle_nr + 1 } else { prev_cycle_nr };
-
-    //     rust.mode = new_mode;
-    //     rust.length = new_length;
-    //     rust.position = new_position;
-    //     rust.next_mode = new_next_mode;
-    //     rust.next_transition_delay = new_next_transition_delay;
-    //     rust.display_peaks = QList::from(new_display_peaks);
-    //     rust.display_midi_notes_active = new_display_midi_notes_active;
-    //     rust.display_midi_events_triggered = new_display_midi_events_triggered;
-    //     rust.cycle_nr = new_cycle_nr;
-
-    //     if prev_mode != new_mode {
-    //         debug!(self, "mode: {} -> {}", prev_mode, new_mode);
-    //         self.as_mut().mode_changed();
-    //     }
-    //     if prev_length != new_length {
-    //         debug!(self, "length: {} -> {}", prev_length, new_length);
-    //         self.as_mut().length_changed();
-    //     }
-    //     if prev_position != new_position {
-    //         debug!(self, "position: {} -> {}", prev_position, new_position);
-    //         self.as_mut().position_changed();
-    //     }
-    //     if prev_next_mode != new_next_mode {
-    //         debug!(self, "next mode: {} -> {}", prev_next_mode, new_next_mode);
-    //         self.as_mut().next_mode_changed();
-    //     }
-    //     if prev_next_delay != new_next_transition_delay {
-    //         debug!(self, "next delay: {} -> {}", prev_next_delay, new_next_transition_delay);
-    //         self.as_mut().next_transition_delay_changed();
-    //     }
-    //     if display_peaks_changed {
-    //         trace!(self, "display peaks changed");
-    //         self.as_mut().display_peaks_changed();
-    //     }
-    //     if prev_display_midi_notes_active != new_display_midi_notes_active {
-    //         trace!(self, "midi notes active: {} -> {}", prev_display_midi_notes_active, new_display_midi_notes_active);
-    //         self.as_mut().display_midi_notes_active_changed();
-    //     }
-    //     if prev_display_midi_events_triggered != new_display_midi_events_triggered {
-    //         trace!(self, "midi events triggered: {} -> {}", prev_display_midi_events_triggered, new_display_midi_events_triggered);
-    //         self.as_mut().display_midi_events_triggered_changed();
-    //     }
-    //     if prev_cycle_nr != new_cycle_nr {
-    //         debug!(self, "cycle nr: {} -> {}", prev_cycle_nr, new_cycle_nr);
-    //         self.as_mut().cycle_nr_changed();
-    //         self.as_mut().cycled(new_cycle_nr);
-    //     }
-    // }
-
-    pub fn update_on_gui_thread(self: Pin<&mut LoopGui>) {}
-
-    pub fn maybe_initialize_backend(mut self: Pin<&mut LoopGui>) {
-        let initialize_condition : bool;
-
-        unsafe {
-            initialize_condition =
-               !self.initialized() &&
-                self.backend != std::ptr::null_mut() &&
-                qobject_property_bool(self.backend.as_ref().unwrap(), "ready".to_string()).unwrap_or(false) &&
-                self.as_ref().backend_loop_wrapper.is_null();
-        }
-
-        if initialize_condition {
-            debug!(self, "Found backend, initializing");
-            unsafe {
-                    
-                let self_qobject = self.as_mut().pin_mut_qobject_ptr();
-                let backend_qobj : *mut QObject;
-                {
-                    let rust_mut = self.as_mut().rust_mut();
-                    backend_qobj = rust_mut.backend;
-                }
-                let backend_ptr : *mut BackendWrapper = BackendWrapper::from_qobject_ptr(backend_qobj);
-                let backend_thread = (*backend_ptr).get_backend_thread();
-            
-                if backend_qobj.is_null() {
-                    raw_error!("Failed to convert backend QObject to backend pointer");
-                } else {
-                    // make_raw_loop_backend takes care of the initialization of the backend loop.
-                    {
-                        let backend_loop = make_raw_loop_backend(backend_qobj);
-                        let backend_loop_qobj = loop_backend_qobject_from_ptr(backend_loop);
-                        qobject_move_to_thread(backend_loop_qobj, backend_thread);
-                        let self_ref = self.as_ref().get_ref();
-                        let backend_ref = &*backend_loop_qobj;
-
-                        // Connections : backend object -> GUI
-                        connect_or_report(
-                                backend_ref,
-                                "state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                                self_ref,
-                                "on_backend_state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                                connection_types::QUEUED_CONNECTION);
-
-                        // Connections : GUI -> backend object
-                        connect_or_report(
-                            self_ref,
-                            "backend_set_position(::std::int32_t)".to_string(),
-                            backend_ref,
-                            "set_position(::std::int32_t)".to_string(),
-                            connection_types::QUEUED_CONNECTION);
-                        connect_or_report(
-                            self_ref,
-                            "backend_set_length(::std::int32_t)".to_string(),
-                            backend_ref,
-                            "set_length(::std::int32_t)".to_string(),
-                            connection_types::QUEUED_CONNECTION);
-                        connect_or_report(
-                            self_ref,
-                            "backend_clear(::std::int32_t)".to_string(),
-                            backend_ref,
-                            "clear(::std::int32_t)".to_string(),
-                            connection_types::QUEUED_CONNECTION);
-                        connect_or_report(
-                            self_ref,
-                            "backend_transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                            backend_ref,
-                            "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                            connection_types::QUEUED_CONNECTION);
-                        connect_or_report(
-                            self_ref,
-                            "backend_adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)".to_string(),
-                            backend_ref,
-                            "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)".to_string(),
-                            connection_types::QUEUED_CONNECTION);
-                        connect_or_report(
-                            self_ref,
-                            "backend_transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                            backend_ref,
-                            "transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                            connection_types::QUEUED_CONNECTION);
-
-                        let mut rust_mut = self.as_mut().rust_mut();
-                        rust_mut.backend_loop_wrapper = QSharedPointer_QObject::from_ptr_delete_later(backend_loop_qobj).unwrap();
-                        rust_mut.initialized = true;
-                    }
-                }
-            }
-        } else {
-            debug!(self, "Not initializing as not all conditions are met");
-        }
     }
 
     pub fn get_children_with_object_name(self: Pin<&mut LoopGui>, find_object_name: &str) -> QList<QVariant> {
@@ -495,15 +407,15 @@ impl LoopGui {
             }
         }
 
-        if *self.initialized() {
-            self.as_mut().update_backend_sync_source();
-        } else {
-            debug!(self, "Defer updating back-end sync source: loop not initialized");
-            let loop_ref = self.as_ref().get_ref();
-            connect_or_report(loop_ref,
-                    "initializedChanged()".to_string(), loop_ref,
-                    "update_backend_sync_source()".to_string(), connection_types::QUEUED_CONNECTION | connection_types::SINGLE_SHOT_CONNECTION);
-        }
+        // if *self.initialized() {
+        //     self.as_mut().update_backend_sync_source();
+        // } else {
+        //     debug!(self, "Defer updating back-end sync source: loop not initialized");
+        //     let loop_ref = self.as_ref().get_ref();
+        //     connect_or_report(loop_ref,
+        //             "initializedChanged()".to_string(), loop_ref,
+        //             "update_backend_sync_source()".to_string(), connection_types::QUEUED_CONNECTION | connection_types::SINGLE_SHOT_CONNECTION);
+        // }
 
         let changed = self.as_mut().rust_mut().sync_source != sync_source;
         self.as_mut().rust_mut().sync_source = sync_source;

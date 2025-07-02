@@ -100,9 +100,6 @@ pub mod ffi {
                           to_mode: i32,
                           maybe_cycles_delay: i32,
                           maybe_to_sync_at_cycle: i32);
-        
-        #[qinvokable]
-        pub fn maybe_initialize_backend(self: Pin<&mut LoopGui>);
 
         #[qinvokable]
         pub fn clear(self: Pin<&mut LoopGui>, length: i32);
@@ -113,6 +110,9 @@ pub mod ffi {
                                  maybe_cycles_length : QVariant,
                                  maybe_go_to_cycle : QVariant,
                                  go_to_mode : i32);
+
+        #[qinvokable]
+        pub fn update_backend_backend(self: Pin<&mut LoopGui>);
         
         #[qinvokable]
         pub fn on_backend_state_changed(
@@ -123,6 +123,10 @@ pub mod ffi {
             next_mode: i32,
             next_transition_delay: i32,
             cycle_nr : i32);
+
+        #[qsignal]
+        pub unsafe fn backend_changed_with_value(self: Pin<&mut LoopGui>,
+                                                 backend: *mut QObject);
 
         #[qsignal]
         fn cycled(self: Pin<&mut LoopGui>, cycle_nr: i32);
@@ -154,8 +158,7 @@ pub mod ffi {
                                    loops: QList_QVariant,
                                    to_mode: i32,
                                    maybe_cycles_delay: i32,
-                                   maybe_to_sync_at_cycle: i32);
-        
+                                   maybe_to_sync_at_cycle: i32);        
     }
 
     unsafe extern "C++" {
