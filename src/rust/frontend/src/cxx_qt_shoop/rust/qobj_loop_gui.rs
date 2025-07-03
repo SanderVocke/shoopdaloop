@@ -203,6 +203,9 @@ impl LoopGui {
         }
         if cycle_nr != prev_cycle_nr {
             self.as_mut().cycle_nr_changed();
+            if (cycle_nr - prev_cycle_nr) == 1 {
+                self.as_mut().cycled(cycle_nr);
+            }
         }
     }
 

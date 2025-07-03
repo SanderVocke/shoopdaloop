@@ -287,6 +287,9 @@ impl LoopBackend {
         if prev_cycle_nr != new_cycle_nr {
             debug!(self, "cycle nr: {} -> {}", prev_cycle_nr, new_cycle_nr);
             self.as_mut().cycle_nr_changed(new_cycle_nr, prev_cycle_nr);
+            if (new_cycle_nr - prev_cycle_nr) == 1 {
+                self.as_mut().cycled(new_cycle_nr);
+            }
         }
     }
 
