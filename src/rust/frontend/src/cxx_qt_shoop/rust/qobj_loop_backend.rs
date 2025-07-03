@@ -6,9 +6,12 @@ use cxx_qt::CxxQtType;
 use crate::cxx_qt_lib_shoop;
 use crate::cxx_qt_lib_shoop::connect;
 use crate::cxx_qt_lib_shoop::connect::connect;
+use crate::cxx_qt_lib_shoop::connect::connect_or_report;
 use crate::cxx_qt_lib_shoop::connection_types;
 use crate::cxx_qt_lib_shoop::invokable::invoke;
 use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
+use crate::cxx_qt_lib_shoop::qobject::qobject_move_to_thread;
+use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 use crate::cxx_qt_lib_shoop::qobject::{qobject_property_bool, qobject_property_float, qobject_property_int};
 use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use crate::cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
@@ -48,22 +51,7 @@ fn convert_maybe_mode_i32(value: Option<backend_bindings::LoopMode>) -> i32 {
 }
 
 impl LoopBackend {
-    // pub unsafe fn initialize_impl(mut self: Pin<&mut LoopBackend>) {
-    //     unsafe {
-    //         let backend_ptr = qobject_ptr_to_backend_ptr(backend_obj);
-    //         if backend_ptr.is_null() {
-    //             error!(self, "Failed to convert backend QObject to backend pointer");
-    //         } else {
-    //             // Connect signals
-    //             cxx_qt_lib_shoop::connect::connect_or_report
-    //                 (backend_ptr.as_mut().unwrap(),
-    //                 "updated_on_backend_thread()".to_string(),
-    //                 self.as_mut().get_unchecked_mut(),
-    //                 "update()".to_string(),
-    //                 cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
-    //         }
-    //     }
-    // }
+    pub fn initialize_impl(self: Pin<&mut LoopBackend>) {}
 
     pub fn set_length(mut self: Pin<&mut LoopBackend>, length: i32) {
         if ! self.as_mut().maybe_initialize_backend() {
@@ -89,6 +77,18 @@ impl LoopBackend {
         debug!(self, "set backend -> {:?}", backend);
         let mut rust_mut = self.as_mut().rust_mut();
         rust_mut.backend = backend;
+
+        self.as_mut().maybe_initialize_backend();
+        if ! self.get_initialized() && !backend.is_null() {
+            unsafe {
+                connect_or_report(
+                    & *backend,
+                    "readyChanged()".to_string(),
+                    self.as_ref().get_ref(),
+                    "maybe_initialize_backend()".to_string(),
+                    connection_types::QUEUED_CONNECTION);
+            }
+        }
     }
 
     pub fn maybe_initialize_backend(mut self: Pin<&mut LoopBackend>) -> bool {
@@ -120,6 +120,20 @@ impl LoopBackend {
                     let backend_loop = backend_session.create_loop().unwrap();
                     let mut rust_mut = self.as_mut().rust_mut();
                     rust_mut.backend_loop = Some(backend_loop);
+                }
+
+                {
+                    let self_qobj = self.as_mut().pin_mut_qobject_ptr();
+                    let backend_thread = backend_ptr.as_mut().unwrap().get_backend_thread();
+                    qobject_move_to_thread(self_qobj, backend_thread).unwrap();
+
+                    // Connect signals
+                    cxx_qt_lib_shoop::connect::connect_or_report
+                        (backend_ptr.as_mut().unwrap(),
+                        "updated_on_backend_thread()".to_string(),
+                        & *self_qobj,
+                        "update()".to_string(),
+                        cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
 
                     let initialized = self.get_initialized();
                     self.initialized_changed(initialized);
@@ -221,11 +235,11 @@ impl LoopBackend {
             self.as_mut().mode_changed(prev_state.mode as i32, new_state.mode as i32);
         }
         if prev_state.length != new_state.length {
-            debug!(self, "length: {} -> {}", prev_state.length, new_state.length);
+            trace!(self, "length: {} -> {}", prev_state.length, new_state.length);
             self.as_mut().length_changed(prev_state.length as i32, new_state.length as i32);
         }
         if prev_state.position != new_state.position {
-            debug!(self, "position: {} -> {}", prev_state.position, new_state.position);
+            trace!(self, "position: {} -> {}", prev_state.position, new_state.position);
             self.as_mut().position_changed(prev_state.position as i32, new_state.position as i32);
         }
         if prev_state.maybe_next_mode != new_state.maybe_next_mode {

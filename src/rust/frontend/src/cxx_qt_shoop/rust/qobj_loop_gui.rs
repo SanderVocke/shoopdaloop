@@ -58,7 +58,7 @@ impl LoopGui {
         debug!(self, "Initializing");
 
         unsafe {   
-            let self_qobject = self.as_mut().pin_mut_qobject_ptr();
+            // let self_qobject = self.as_mut().pin_mut_qobject_ptr();
             // let backend_qobj : *mut QObject;
             // {
             //     let rust_mut = self.as_mut().rust_mut();
@@ -88,11 +88,11 @@ impl LoopGui {
 
                 // Connections : backend object -> GUI
                 connect_or_report(
-                        backend_ref,
-                        "state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                        self_ref,
-                        "on_backend_state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                        connection_types::QUEUED_CONNECTION);
+                    backend_ref,
+                    "state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                    self_ref,
+                    "on_backend_state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                    connection_types::QUEUED_CONNECTION);
 
                 // Connections : GUI -> backend object
                 connect_or_report(
@@ -253,7 +253,7 @@ impl LoopGui {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32)
     {
-        raw_debug!("Transitioning {} loops to {} with delay {}, sync at cycle {}",
+        raw_trace!("GUI thread: transitioning {} loops to {} with delay {}, sync at cycle {}",
            loops.len(), to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
 
         let backend_loop_handles = LoopGui::get_backend_loop_handles_variant_list(&loops).unwrap();

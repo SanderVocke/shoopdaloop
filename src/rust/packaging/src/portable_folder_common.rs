@@ -15,11 +15,11 @@ fn qmake_command(qmake_path : &str, argstring : &str) -> Command {
     let shell_command = format!("{} {}", qmake_path, argstring);
     return if cfg!(target_os = "windows") {
         let mut cmd = Command::new("cmd");
-        cmd.args(["/C", &shell_command]);
+        cmd.args(["/C", format!("{shell_command}").as_str()]);
         cmd
     } else {
         let mut cmd = Command::new("sh");
-        cmd.args(["-c", &shell_command]);
+        cmd.args(["-c", format!("{shell_command}").as_str()]);
         cmd
     };
 }

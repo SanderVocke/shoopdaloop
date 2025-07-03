@@ -71,7 +71,6 @@ pub mod ffi {
         #[qproperty(i32, display_midi_events_triggered, READ, NOTIFY)]
         #[qproperty(QString, instance_identifier)]
         #[qproperty(i32, cycle_nr, READ, NOTIFY)]
-        //#[qproperty(*mut QObject, backend_loop_wrapper, READ, NOTIFY)]
         type LoopGui = super::LoopGuiRust;
 
         pub fn initialize_impl(self: Pin<&mut LoopGui>);

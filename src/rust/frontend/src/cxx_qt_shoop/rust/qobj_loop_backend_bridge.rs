@@ -173,6 +173,8 @@ pub mod ffi {
         unsafe fn make_raw() -> *mut LoopBackend;
 
     }
+
+    impl cxx_qt::Constructor<()> for LoopBackend {}
 }
 
 pub use ffi::LoopBackend;
@@ -212,5 +214,27 @@ impl Default for LoopBackendRust {
             prev_cycle_nr: 0,
             sync_source: std::ptr::null_mut(),
         }
+    }
+}
+
+impl cxx_qt::Constructor<()> for LoopBackend {
+    type BaseArguments = (); // Will be passed to the base class constructor
+    type InitializeArguments = (); // Will be passed to the "initialize" function
+    type NewArguments = (); // Will be passed to the "new" function
+
+    fn route_arguments(_args: ()) -> (
+        Self::NewArguments,
+        Self::BaseArguments,
+        Self::InitializeArguments
+    ) {
+        ((), (), ())
+    }
+
+    fn new(_args: ()) -> LoopBackendRust {
+        LoopBackendRust::default()
+    }
+
+    fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
+        LoopBackend::initialize_impl(self);
     }
 }
