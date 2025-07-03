@@ -25,6 +25,7 @@ use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::BackendWrapper;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::loop_backend_qobject_from_ptr;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::make_raw_loop_backend;
+use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::qobject_to_loop_backend_ptr;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;                                   
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::*;  
@@ -150,6 +151,15 @@ impl LoopGui {
                     backend_ref,
                     "set_sync_source(QVariant)".to_string(),
                     connection_types::QUEUED_CONNECTION);
+
+
+                // Connections : backend object -> GUI
+                connect_or_report(
+                    backend_ref,
+                    "initialized_changed(bool)".to_string(),
+                    self_ref,
+                    "set_initialized(bool)".to_string(),
+                    connection_types::QUEUED_CONNECTION);
             }
 
             {
@@ -209,19 +219,11 @@ impl LoopGui {
     }
 
     pub fn queue_set_length(mut self: Pin<&mut LoopGui>, length: i32) {
-        if !self.initialized() || self.as_ref().backend_loop_wrapper.is_null() {
-            error!(self, "queue_set_position: not initialized");
-            return;
-        }
         debug!(self, "queue set length -> {}", length);
         self.backend_set_length(length);
     }
 
     pub fn queue_set_position(mut self: Pin<&mut LoopGui>, position: i32) {
-        if !self.initialized() || self.as_ref().backend_loop_wrapper.is_null(){
-            error!(self, "queue_set_position: not initialized");
-            return;
-        }
         debug!(self, "queue set position -> {}", position);
         self.backend_set_position(position);
     }
@@ -308,31 +310,33 @@ impl LoopGui {
     }
 
     pub fn add_audio_channel(self: Pin<&mut LoopGui>, mode: i32) -> Result<AudioChannel, anyhow::Error> {
-        // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-        //         self.as_ref()
-        //             .backend_loop
-        //             .as_ref()
-        //             .ok_or(anyhow::anyhow!("Backend loop not set"))?
-        //             .clone();
-        // let channel = backend_loop_arc.lock()
-        //                 .unwrap()
-        //                 .add_audio_channel(mode.try_into()?)?;
-        // Ok(channel)
-        Err(anyhow::anyhow!("Unimplemented"))
+        // TODO: this is not thread-safe. Once audio channels have been rustified,
+        // make a better solution for this.
+        let backend_wrapper_qobj = self.as_ref().backend_loop_wrapper.data().unwrap();
+        unsafe {
+            let backend_wrapper_obj = &mut *qobject_to_loop_backend_ptr(backend_wrapper_qobj);
+            let maybe_backend_loop = backend_wrapper_obj.backend_loop.as_ref();
+            if maybe_backend_loop.is_some() {
+                return maybe_backend_loop.unwrap().add_audio_channel(mode.try_into()?);
+            } else {
+                return Err(anyhow::anyhow!("Backend loop not set"));
+            }
+        }
     }
 
     pub fn add_midi_channel(self: Pin<&mut LoopGui>, mode: i32) -> Result<MidiChannel, anyhow::Error> {
-        // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-        //         self.as_ref()
-        //             .backend_loop
-        //             .as_ref()
-        //             .ok_or(anyhow::anyhow!("Backend loop not set"))?
-        //             .clone();
-        // let channel = backend_loop_arc.lock()
-        //                 .unwrap()
-        //                 .add_midi_channel(mode.try_into()?)?;
-        // Ok(channel)
-        Err(anyhow::anyhow!("Unimplemented"))
+        // TODO: this is not thread-safe. Once audio channels have been rustified,
+        // make a better solution for this.
+        let backend_wrapper_qobj = self.as_ref().backend_loop_wrapper.data().unwrap();
+        unsafe {
+            let backend_wrapper_obj = &mut *qobject_to_loop_backend_ptr(backend_wrapper_qobj);
+            let maybe_backend_loop = backend_wrapper_obj.backend_loop.as_ref();
+            if maybe_backend_loop.is_some() {
+                return maybe_backend_loop.unwrap().add_midi_channel(mode.try_into()?);
+            } else {
+                return Err(anyhow::anyhow!("Backend loop not set"));
+            }
+        }
     }
 
     pub fn clear(self: Pin<&mut LoopGui>, length : i32) {
@@ -377,6 +381,16 @@ impl LoopGui {
 
         if changed {
             self.as_mut().instance_identifier_changed(instance_identifier);
+        }
+    }
+
+    pub fn set_initialized(mut self: Pin<&mut LoopGui>, initialized : bool) {
+        debug!(self, "initialized -> {:?}", initialized);
+        let changed = self.as_mut().rust_mut().initialized != initialized;
+        self.as_mut().rust_mut().initialized = initialized;
+
+        if changed {
+            unsafe { self.as_mut().initialized_changed(initialized); }
         }
     }
 

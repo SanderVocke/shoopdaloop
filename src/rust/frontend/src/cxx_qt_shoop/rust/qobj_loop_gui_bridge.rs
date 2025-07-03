@@ -59,7 +59,7 @@ pub mod ffi {
         #[qml_element]
         #[base = QQuickItem]
         #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
-        #[qproperty(bool, initialized, READ, NOTIFY)]
+        #[qproperty(bool, initialized, READ, NOTIFY=initialized_changed)]
         #[qproperty(i32, mode, READ, NOTIFY)]
         #[qproperty(i32, length, READ, NOTIFY)]
         #[qproperty(i32, position, READ, NOTIFY)]
@@ -131,6 +131,9 @@ pub mod ffi {
         pub unsafe fn set_backend(self: Pin<&mut LoopGui>, backend: *mut QObject);
 
         #[qinvokable]
+        pub unsafe fn set_initialized(self: Pin<&mut LoopGui>, initialized : bool);
+
+        #[qinvokable]
         pub fn set_instance_identifier(self: Pin<&mut LoopGui>, instance_identifier: QString);
 
         #[qsignal]
@@ -141,6 +144,9 @@ pub mod ffi {
 
         #[qsignal]
         pub unsafe fn instance_identifier_changed(self: Pin<&mut LoopGui>, instance_identifier: QString);
+
+        #[qsignal]
+        pub unsafe fn initialized_changed(self: Pin<&mut LoopGui>, initialized: bool);
 
         #[qsignal]
         fn cycled(self: Pin<&mut LoopGui>, cycle_nr: i32);
