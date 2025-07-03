@@ -27,19 +27,19 @@ shoop_log_unit!("Frontend.Loop");
 
 macro_rules! trace {
     ($self:ident, $($arg:tt)*) => {
-        raw_trace!("[{}-backend] {}", $self.rust().instance_identifier, format!($($arg)*));
+        raw_trace!("[{}-backend] {}", $self.instance_identifier().to_string(), format!($($arg)*));
     };
 }
 
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
-        raw_debug!("[{}-backend] {}", $self.rust().instance_identifier, format!($($arg)*));
+        raw_debug!("[{}-backend] {}", $self.instance_identifier().to_string(), format!($($arg)*));
     };
 }
 
 macro_rules! error {
     ($self:ident, $($arg:tt)*) => {
-        raw_error!("[{}-backend] {}", $self.rust().instance_identifier, format!($($arg)*));
+        raw_error!("[{}-backend] {}", $self.instance_identifier().to_string(), format!($($arg)*));
     };
 }
 
@@ -73,7 +73,7 @@ impl LoopBackend {
         rust.backend_loop.as_mut().unwrap().set_position(position as u32).unwrap();
     }
 
-    pub fn set_backend_ptr(mut self: Pin<&mut LoopBackend>, backend: *mut QObject) {
+    pub fn set_backend(mut self: Pin<&mut LoopBackend>, backend: *mut QObject) {
         debug!(self, "set backend -> {:?}", backend);
         let mut rust_mut = self.as_mut().rust_mut();
         rust_mut.backend = backend;
@@ -89,6 +89,15 @@ impl LoopBackend {
                     connection_types::QUEUED_CONNECTION);
             }
         }
+
+        unsafe { self.as_mut().backend_changed(backend); }
+    }
+
+    pub fn set_instance_identifier(mut self: Pin<&mut LoopBackend>, instance_identifier: QString) {
+        debug!(self, "set instance identifier -> {:?}", &instance_identifier);
+        let mut rust_mut = self.as_mut().rust_mut();
+        rust_mut.instance_identifier = instance_identifier.clone();
+        self.as_mut().instance_identifier_changed(instance_identifier);
     }
 
     pub fn maybe_initialize_backend(mut self: Pin<&mut LoopBackend>) -> bool {
@@ -120,6 +129,11 @@ impl LoopBackend {
                     let backend_loop = backend_session.create_loop().unwrap();
                     let mut rust_mut = self.as_mut().rust_mut();
                     rust_mut.backend_loop = Some(backend_loop);
+                }
+
+                {
+                    let sync_source = *self.sync_source();
+                    self.as_mut().set_backend_sync_source(sync_source);
                 }
 
                 {
@@ -171,12 +185,6 @@ impl LoopBackend {
             let mut rust = self.as_mut().rust_mut();
             
             prev_state = rust.prev_state.clone();
-            // let prev_length = rust.length;
-            // let prev_next_mode = rust.next_mode;
-            // let prev_next_delay = rust.next_transition_delay;
-            // let prev_display_peaks : Vec<f32> = rust.display_peaks.iter().map(|f| f.clone()).collect();
-            // let prev_display_midi_notes_active = rust.display_midi_notes_active.clone();
-            // let prev_display_midi_events_triggered = rust.display_midi_events_triggered.clone();
             prev_cycle_nr = rust.prev_cycle_nr;
 
             // let new_display_peaks : Vec<f32> =
@@ -214,9 +222,6 @@ impl LoopBackend {
                 { rust.prev_cycle_nr + 1 } else { rust.prev_cycle_nr };
 
             rust.prev_state = new_state.clone();
-            // rust.length = new_length;
-            // rust.next_mode = new_next_mode;
-            // rust.next_transition_delay = new_next_transition_delay;
             // rust.display_peaks = QList::from(new_display_peaks);
             // rust.display_midi_notes_active = new_display_midi_notes_active;
             // rust.display_midi_events_triggered = new_display_midi_events_triggered;
@@ -355,16 +360,12 @@ impl LoopBackend {
             return;
         }
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            if self.as_ref().backend_loop.is_some() {
-                self.as_ref().backend_loop.as_ref().unwrap().transition
-                    (to_mode.try_into()?,
-                        maybe_cycles_delay,
-                        maybe_to_sync_at_cycle)?;
-                debug!(self, "Transitioning to {} with delay {}, sync at cycle {}",
-                            to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
-            } else {
-                error!(self, "Not transitioning: back-end loop not initialized");
-            }
+            self.as_ref().backend_loop.as_ref().unwrap().transition
+                (to_mode.try_into()?,
+                    maybe_cycles_delay,
+                    maybe_to_sync_at_cycle)?;
+            debug!(self, "Transitioning to {} with delay {}, sync at cycle {}",
+                        to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
             Ok(())
         })();
         match result {
@@ -409,24 +410,8 @@ impl LoopBackend {
             return;
         }
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-            //     self.as_ref()
-            //         .backend_loop
-            //         .as_ref()
-            //         .ok_or(anyhow::anyhow!("Backend loop not set"))?
-            //         .clone();
-            // backend_loop_arc.lock().unwrap().clear(length as u32)?;
-
-            // let audio_chans = self.as_mut().get_audio_channels();
-            // let midi_chans = self.as_mut().get_midi_channels();
-            // let all_channels_iter = audio_chans.iter().chain(midi_chans.iter());
-            // for child in all_channels_iter {
-            //     unsafe {
-            //         let channel_ptr = qvariant_to_qobject_ptr(child).unwrap();
-            //         invoke::<_,(),_>(channel_ptr.as_mut().unwrap(), "clear()".to_string(), connection_types::DIRECT_CONNECTION, &())?;
-            //     }
-            // }
-
+            debug!(self, "clearing to length {length}");
+            self.as_ref().backend_loop.as_ref().unwrap().clear(length as u32)?;
             Ok(())
         })();
         match result {
@@ -449,17 +434,11 @@ impl LoopBackend {
         }
         debug!(self, "Adopting ringbuffers");
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-            //     self.as_ref()
-            //         .backend_loop
-            //         .as_ref()
-            //         .ok_or(anyhow::anyhow!("Backend loop not set"))?
-            //         .clone();
-            // backend_loop_arc.lock().unwrap().adopt_ringbuffer_contents
-            //    (maybe_reverse_start_cycle.value::<i32>(),
-            //     maybe_cycles_length.value::<i32>(),
-            //     maybe_go_to_cycle.value::<i32>(),
-            //     go_to_mode.try_into()?)?;
+            self.as_ref().backend_loop.as_ref().unwrap().adopt_ringbuffer_contents
+               (maybe_reverse_start_cycle.value::<i32>(),
+                maybe_cycles_length.value::<i32>(),
+                maybe_go_to_cycle.value::<i32>(),
+                go_to_mode.try_into()?)?;
             Ok(())
         })();
         match result {
@@ -470,56 +449,19 @@ impl LoopBackend {
         }
     }
 
-    pub unsafe fn set_sync_source(mut self: Pin<&mut LoopBackend>, sync_source: *mut QObject) {
-        if ! self.as_mut().maybe_initialize_backend() {
-            error!(self, "set_sync_source: not initialized");
-            return;
-        }
-
-        debug!(self, "sync source -> {:?}", sync_source);
-
-        if !sync_source.is_null() {
-            let loop_ptr = qobject_to_loop_backend_ptr(sync_source);
-            if loop_ptr.is_null() {
-                error!(self, "Failed to cast sync source QObject to Loop");
-                return;
-            }
-        }
-
+    unsafe fn set_backend_sync_source(self: Pin<&mut LoopBackend>, sync_source: *mut QObject) {
+        debug!(self, "set sync source -> {:?}", sync_source);
         let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-            //     self.as_ref()
-            //         .backend_loop
-            //         .as_ref()
-            //         .ok_or(anyhow::anyhow!("Backend loop not set"))?
-            //         .clone();
-            // let sync_source_backend_loop;
-            // unsafe {
-            //     let sync_source_as_loop = qobject_to_loop_backend_ptr(self.sync_source);
-            //     if sync_source_as_loop.is_null() {
-            //         return Err(anyhow::anyhow!("Failed to cast sync source QObject to Loop"));
-            //     }
-            //     let maybe_sync_source_backend_loop = sync_source_as_loop
-            //                                   .as_ref()
-            //                                   .unwrap()
-            //                                   .backend_loop
-            //                                   .as_ref();
-            //     if maybe_sync_source_backend_loop.is_none() {
-            //         debug!(self, "update_backend_sync_source: sync source back-end loop not set, deferring");
-            //         let sync_source_loop_ref = sync_source_as_loop.as_ref().unwrap();
-            //         connect(sync_source_loop_ref,
-            //                 "initializedChanged()".to_string(), self.as_ref().get_ref(),
-            //                 "update_backend_sync_source()".to_string(), connection_types::QUEUED_CONNECTION | connection_types::SINGLE_SHOT_CONNECTION)?;
-            //         return Ok(());
-            //     }
-            //     sync_source_backend_loop = maybe_sync_source_backend_loop
-            //                                   .unwrap()
-            //                                   .clone();
-            // }
-            // let locked = sync_source_backend_loop.lock().unwrap();
-            // debug!(self, "Setting back-end sync source");
-            // backend_loop_arc.lock().unwrap().set_sync_source
-            //    (Some(locked.deref()))?;
+            if !sync_source.is_null() {
+                let loop_ptr = qobject_to_loop_backend_ptr(sync_source);
+                if loop_ptr.is_null() {
+                    return Err(anyhow::anyhow!("Failed to cast sync source QObject to LoopBackend"));
+                }
+                self.as_ref().backend_loop.as_ref().unwrap().set_sync_source(loop_ptr.as_ref().unwrap().backend_loop.as_ref())?;
+            } else {
+                self.as_ref().backend_loop.as_ref().unwrap().set_sync_source(None)?;
+            }
+
             Ok(())
         })();
         match result {
@@ -528,12 +470,26 @@ impl LoopBackend {
                 error!(self, "Failed to update backend sync source: {:?}", err);
             }
         }
+    }
 
-        let changed = self.as_mut().rust_mut().sync_source != sync_source;
-        self.as_mut().rust_mut().sync_source = sync_source;
+    pub unsafe fn set_sync_source(mut self: Pin<&mut LoopBackend>, sync_source: QVariant) {
+        let maybe_sync_source_ptr = qvariant_to_qobject_ptr(&sync_source);
+        let sync_source_ptr : *mut QObject =
+           if maybe_sync_source_ptr.is_some() { maybe_sync_source_ptr.unwrap() }
+           else { std::ptr::null_mut() };
+
+        if ! self.as_mut().maybe_initialize_backend() {
+            debug!(self, "set_sync_source -> {:?} (deferred)", sync_source_ptr);
+        } else {
+            self.as_mut().set_backend_sync_source(sync_source_ptr);
+        }
+
+        let old_source = self.as_mut().rust_mut().sync_source;
+        let changed = old_source != sync_source_ptr;
+        self.as_mut().rust_mut().sync_source = sync_source_ptr;
 
         if changed {
-            self.as_mut().sync_source_changed();
+            self.as_mut().sync_source_changed(sync_source_ptr);
         }
     }
 

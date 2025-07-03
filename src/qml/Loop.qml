@@ -6,15 +6,16 @@ import ShoopConstants
 import 'js/mode_helpers.js' as ModeHelpers
 
 LoopGui {
+    id: root
     property bool loaded : initialized
 
     RequireBackend {}
 
     readonly property PythonLogger logger: PythonLogger {
         name: "Frontend.Qml.Loop"
-        instanceIdentifier: obj_id
+        instanceIdentifier: root.instance_identifier
     }
-    onObj_idChanged: instance_identifier = obj_id
+    instance_identifier: obj_id
 
     property var maybe_fx_chain: null
     property var loop_widget : null

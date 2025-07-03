@@ -47,7 +47,9 @@ pub mod ffi {
         // #[qproperty(QString, instance_identifier)]
         #[qproperty(i32, cycle_nr, READ=get_cycle_nr, NOTIFY=cycle_nr_changed)]
         #[qproperty(bool, initialized, READ=get_initialized, NOTIFY=initialized_changed)]
-        #[qproperty(*mut QObject, backend)]
+        #[qproperty(*mut QObject, backend, READ, NOTIFY=backend_changed)]
+        #[qproperty(*mut QObject, sync_source, READ, NOTIFY=sync_source_changed)]
+        #[qproperty(QString, instance_identifier, READ, NOTIFY=instance_identifier_changed)]
         type LoopBackend = super::LoopBackendRust;
 
         #[qinvokable]
@@ -60,7 +62,13 @@ pub mod ffi {
         pub fn set_position(self: Pin<&mut LoopBackend>, position: i32);
 
         #[qinvokable]
-        pub fn set_backend_ptr(self: Pin<&mut LoopBackend>, backend: *mut QObject);
+        pub fn set_backend(self: Pin<&mut LoopBackend>, backend: *mut QObject);
+
+        #[qinvokable]
+        pub unsafe fn set_sync_source(self: Pin<&mut LoopBackend>, sync_source: QVariant);
+
+        #[qinvokable]
+        pub fn set_instance_identifier(self: Pin<&mut LoopBackend>, instance_identifier: QString);
 
         #[qinvokable]
         pub fn transition_multiple(self: Pin<&mut LoopBackend>,
@@ -84,9 +92,6 @@ pub mod ffi {
                                  maybe_cycles_length : QVariant,
                                  maybe_go_to_cycle : QVariant,
                                  go_to_mode : i32);
-
-        #[qinvokable]
-        pub unsafe fn set_sync_source(self: Pin<&mut LoopBackend>, sync_source: *mut QObject);
 
         #[qinvokable]
         pub fn get_mode(self: &LoopBackend) -> i32;
@@ -137,10 +142,16 @@ pub mod ffi {
         fn cycle_nr_changed(self: Pin<&mut LoopBackend>, new_cycle_nr : i32, old_cycle_nr : i32);
 
         #[qsignal]
-        fn sync_source_changed(self: Pin<&mut LoopBackend>);
+        unsafe fn sync_source_changed(self: Pin<&mut LoopBackend>, sync_source : *mut QObject);
+
+        #[qsignal]
+        fn instance_identifier_changed(self: Pin<&mut LoopBackend>, instance_identifier : QString);
 
         #[qsignal]
         fn initialized_changed(self: Pin<&mut LoopBackend>, initialized : bool);
+
+        #[qsignal]
+        unsafe fn backend_changed(self: Pin<&mut LoopBackend>, backend: *mut QObject);
 
         #[qsignal]
         fn state_changed(self: Pin<&mut LoopBackend>,
@@ -194,21 +205,21 @@ impl AsQObject for LoopBackend {
 
 pub struct LoopBackendRust {
     // Properties
+    pub sync_source : *mut QObject,
+    pub backend: *mut QObject,
+    pub instance_identifier: QString,
 
     // Rust members
-    pub backend: *mut QObject,
-    pub instance_identifier: String,
     pub backend_loop : Option<BackendLoop>,
     pub prev_state : LoopState,
     pub prev_cycle_nr : i32,
-    pub sync_source : *mut QObject,
 }
 
 impl Default for LoopBackendRust {
     fn default() -> LoopBackendRust {
         LoopBackendRust {
             backend: std::ptr::null_mut(),
-            instance_identifier: String::from("unknown"),
+            instance_identifier: QString::from("unknown"),
             backend_loop: None,
             prev_state: LoopState::default(),
             prev_cycle_nr: 0,

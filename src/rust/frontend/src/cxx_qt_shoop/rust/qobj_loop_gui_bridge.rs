@@ -58,18 +58,18 @@ pub mod ffi {
         #[qobject]
         #[qml_element]
         #[base = QQuickItem]
-        #[qproperty(*mut QObject, backend)]
+        #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
         #[qproperty(bool, initialized, READ, NOTIFY)]
         #[qproperty(i32, mode, READ, NOTIFY)]
         #[qproperty(i32, length, READ, NOTIFY)]
         #[qproperty(i32, position, READ, NOTIFY)]
         #[qproperty(i32, next_mode, READ, NOTIFY)]
         #[qproperty(i32, next_transition_delay, READ, NOTIFY)]
-        #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY)]
+        #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
         #[qproperty(QList_f32, display_peaks, READ, NOTIFY)]
         #[qproperty(i32, display_midi_notes_active, READ, NOTIFY)]
         #[qproperty(i32, display_midi_events_triggered, READ, NOTIFY)]
-        #[qproperty(QString, instance_identifier)]
+        #[qproperty(QString, instance_identifier, READ, WRITE=set_instance_identifier, NOTIFY=instance_identifier_changed)]
         #[qproperty(i32, cycle_nr, READ, NOTIFY)]
         type LoopGui = super::LoopGuiRust;
 
@@ -111,7 +111,8 @@ pub mod ffi {
                                  go_to_mode : i32);
 
         #[qinvokable]
-        pub fn handle_backend_changed(self: Pin<&mut LoopGui>);
+        pub fn update_backend_sync_source(self: Pin<&mut LoopGui>);
+
         
         #[qinvokable]
         pub fn on_backend_state_changed(
@@ -123,15 +124,26 @@ pub mod ffi {
             next_transition_delay: i32,
             cycle_nr : i32);
 
+        #[qinvokable]
+        pub unsafe fn set_sync_source(self: Pin<&mut LoopGui>, sync_source: *mut QObject);
+
+        #[qinvokable]
+        pub unsafe fn set_backend(self: Pin<&mut LoopGui>, backend: *mut QObject);
+
+        #[qinvokable]
+        pub fn set_instance_identifier(self: Pin<&mut LoopGui>, instance_identifier: QString);
+
         #[qsignal]
-        pub unsafe fn backend_changed_with_value(self: Pin<&mut LoopGui>,
-                                                 backend: *mut QObject);
+        pub unsafe fn backend_changed(self: Pin<&mut LoopGui>, backend: *mut QObject);
+
+        #[qsignal]
+        pub unsafe fn sync_source_changed(self: Pin<&mut LoopGui>, sync_source: *mut QObject);
+
+        #[qsignal]
+        pub unsafe fn instance_identifier_changed(self: Pin<&mut LoopGui>, instance_identifier: QString);
 
         #[qsignal]
         fn cycled(self: Pin<&mut LoopGui>, cycle_nr: i32);
-
-        // Custom setter for sync source property
-        pub unsafe fn set_sync_source(self: Pin<&mut LoopGui>, sync_source: *mut QObject);
 
         // The following signals are to internally connect to the back-end object
         // which lives on another thread.
@@ -139,6 +151,8 @@ pub mod ffi {
         fn backend_set_position(self: Pin<&mut LoopGui>, position: i32);
         #[qsignal]
         fn backend_set_length(self: Pin<&mut LoopGui>, length: i32);
+        #[qsignal]
+        fn backend_set_instance_identifier(self: Pin<&mut LoopGui>, instance_identifier: QString);
         #[qsignal]
         fn backend_clear(self: Pin<&mut LoopGui>, length: i32);
         #[qsignal]
@@ -157,7 +171,10 @@ pub mod ffi {
                                    loops: QList_QVariant,
                                    to_mode: i32,
                                    maybe_cycles_delay: i32,
-                                   maybe_to_sync_at_cycle: i32);        
+                                   maybe_to_sync_at_cycle: i32);   
+        #[qsignal]
+        pub fn backend_set_sync_source(self: Pin<&mut LoopGui>,
+                                       sync_source : QVariant);     
     }
 
     unsafe extern "C++" {

@@ -30,6 +30,7 @@ use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::*;  
 use crate::loop_mode_helpers::*;   
 use cxx_qt_lib::{QList, QVariant, QString};                                    
+use core::sync;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -81,10 +82,10 @@ impl LoopGui {
                 // Connections : GUI -> GUI
                 connect_or_report(
                     self_ref,
-                    "backendChanged()".to_string(),
+                    "sync_source_changed(QObject*)".to_string(),
                     self_ref,
-                    "handle_backend_changed()".to_string(),
-                    connection_types::DIRECT_CONNECTION);
+                    "update_backend_sync_source()".to_string(),
+                    connection_types::QUEUED_CONNECTION);
 
                 // Connections : backend object -> GUI
                 connect_or_report(
@@ -133,27 +134,32 @@ impl LoopGui {
                     connection_types::QUEUED_CONNECTION);
                 connect_or_report(
                     self_ref,
-                    "backend_changed_with_value(QObject*)".to_string(),
+                    "backend_changed(QObject*)".to_string(),
                     backend_ref,
-                    "set_backend_ptr(QObject*)".to_string(),
+                    "set_backend(QObject*)".to_string(),
+                    connection_types::QUEUED_CONNECTION);
+                connect_or_report(
+                    self_ref,
+                    "instance_identifier_changed(QString)".to_string(),
+                    backend_ref,
+                    "set_instance_identifier(QString)".to_string(),
+                    connection_types::QUEUED_CONNECTION);
+                connect_or_report(
+                    self_ref,
+                    "backend_set_sync_source(QVariant)".to_string(),
+                    backend_ref,
+                    "set_sync_source(QVariant)".to_string(),
                     connection_types::QUEUED_CONNECTION);
             }
 
             {
-                let backend_pin = std::pin::Pin::new_unchecked(&mut *backend_loop);
-                backend_pin.set_backend_ptr(*self.backend());
+                let mut backend_pin = std::pin::Pin::new_unchecked(&mut *backend_loop);
+                backend_pin.as_mut().set_backend(*self.backend());
+                self.as_mut().update_backend_sync_source();
             }
 
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.backend_loop_wrapper = QSharedPointer_QObject::from_ptr_delete_later(backend_loop_qobj).unwrap();
-        }
-    }
-
-    pub fn handle_backend_changed(self: Pin<&mut LoopGui>) {
-        debug!(self, "backend -> {:?}", self.as_ref().backend);
-        unsafe {
-            let backend = self.as_ref().backend;
-            self.backend_changed_with_value(backend);
         }
     }
 
@@ -344,86 +350,52 @@ impl LoopGui {
         self.backend_adopt_ringbuffers(maybe_reverse_start_cycle, maybe_cycles_length, maybe_go_to_cycle, go_to_mode);
     }
 
-    pub fn update_backend_sync_source(self: Pin<&mut LoopGui>) {
-        if !self.initialized() {
-            debug!(self, "update_backend_sync_source: not initialized");
-            return;
-        }
-        if self.rust().sync_source.is_null() {
-            debug!(self, "update_backend_sync_source: sync source is null");
-            return;
-        }
-        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            // let sync_source_backend_loop;
-            // unsafe {
-            //     let sync_source_as_loop = qobject_to_loop_ptr(self.sync_source);
-            //     if sync_source_as_loop.is_null() {
-            //         return Err(anyhow::anyhow!("Failed to cast sync source QObject to Loop"));
-            //     }
-            //     let maybe_sync_source_backend_loop = sync_source_as_loop
-            //                                   .as_ref()
-            //                                   .unwrap()
-            //                                   .backend_loop
-            //                                   .as_ref();
-            //     if maybe_sync_source_backend_loop.is_none() {
-            //         debug!(self, "update_backend_sync_source: sync source back-end loop not set, deferring");
-            //         let sync_source_loop_ref = sync_source_as_loop.as_ref().unwrap();
-            //         connect(sync_source_loop_ref,
-            //                 "initializedChanged()".to_string(), self.as_ref().get_ref(),
-            //                 "update_backend_sync_source()".to_string(), connection_types::QUEUED_CONNECTION | connection_types::SINGLE_SHOT_CONNECTION)?;
-            //         return Ok(());
-            //     }
-            //     sync_source_backend_loop = maybe_sync_source_backend_loop
-            //                                   .unwrap()
-            //                                   .clone();
-            // }
-            // let locked = sync_source_backend_loop.lock().unwrap();
-            // debug!(self, "Setting back-end sync source");
-            // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-            //     self.as_ref()
-            //         .backend_loop
-            //         .as_ref()
-            //         .ok_or(anyhow::anyhow!("Backend loop not set"))?
-            //         .clone();
-            // backend_loop_arc.lock().unwrap().set_sync_source
-            //    (Some(locked.deref()))?;
-            Ok(())
-        })();
-        match result {
-            Ok(_) => (),
-            Err(err) => {
-                error!(self, "Failed to update backend sync source: {:?}", err);
-            }
-        }
-    }
-
     pub unsafe fn set_sync_source(mut self: Pin<&mut LoopGui>, sync_source: *mut QObject) {
         debug!(self, "sync source -> {:?}", sync_source);
-
-        if !sync_source.is_null() {
-            let loop_ptr = qobject_to_loop_ptr(sync_source);
-            if loop_ptr.is_null() {
-                error!(self, "Failed to cast sync source QObject to Loop");
-                return;
-            }
-        }
-
-        // if *self.initialized() {
-        //     self.as_mut().update_backend_sync_source();
-        // } else {
-        //     debug!(self, "Defer updating back-end sync source: loop not initialized");
-        //     let loop_ref = self.as_ref().get_ref();
-        //     connect_or_report(loop_ref,
-        //             "initializedChanged()".to_string(), loop_ref,
-        //             "update_backend_sync_source()".to_string(), connection_types::QUEUED_CONNECTION | connection_types::SINGLE_SHOT_CONNECTION);
-        // }
-
         let changed = self.as_mut().rust_mut().sync_source != sync_source;
         self.as_mut().rust_mut().sync_source = sync_source;
 
         if changed {
-            self.as_mut().sync_source_changed();
+            self.as_mut().sync_source_changed(sync_source);
         }
+    }
+
+    pub unsafe fn set_backend(mut self: Pin<&mut LoopGui>, backend: *mut QObject) {
+        debug!(self, "backend -> {:?}", backend);
+        let changed = self.as_mut().rust_mut().backend != backend;
+        self.as_mut().rust_mut().backend = backend;
+
+        if changed {
+            self.as_mut().backend_changed(backend);
+        }
+    }
+
+    pub unsafe fn set_instance_identifier(mut self: Pin<&mut LoopGui>, instance_identifier: QString) {
+        debug!(self, "instance identifier -> {:?}", instance_identifier);
+        let changed = self.as_mut().rust_mut().instance_identifier != instance_identifier;
+        self.as_mut().rust_mut().instance_identifier = instance_identifier.clone();
+
+        if changed {
+            self.as_mut().instance_identifier_changed(instance_identifier);
+        }
+    }
+
+    pub fn update_backend_sync_source(mut self: Pin<&mut LoopGui>) {
+        let sync_source_in : *mut QObject = *self.sync_source();
+        let mut sync_source_out : QVariant = QVariant::default();
+
+        if !sync_source_in.is_null() {
+            unsafe {
+                let loop_gui_ptr : *mut LoopGui =
+                        qobject_to_loop_ptr(sync_source_in);
+                let backend_loop_ptr : &cxx::UniquePtr<QSharedPointer_QObject>
+                    = &loop_gui_ptr.as_ref().unwrap().backend_loop_wrapper;
+                sync_source_out =
+                    qsharedpointer_qobject_to_qvariant(&backend_loop_ptr.as_ref().unwrap());
+            }
+        }
+
+        self.as_mut().backend_set_sync_source(sync_source_out);
     }
 }
 
