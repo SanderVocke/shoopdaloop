@@ -81,6 +81,7 @@ ShoopTestFile {
 
                     session.load_session(filename)
                     testcase.wait_session_loaded(session)
+                    testcase.wait_updated(session.backend)
 
                     verify_true(loop())
                     verify_eq(loop().actual_session_descriptor().channels.length, 2)

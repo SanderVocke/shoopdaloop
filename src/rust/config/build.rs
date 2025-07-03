@@ -30,7 +30,9 @@ fn dev_config_path() -> PathBuf {
 
 fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
     let shoop_src_root_dir = PathBuf::from(SRC_DIR).join("../../..");
-    let qmake = MAYBE_QMAKE.ok_or(anyhow::anyhow!("QMAKE not set at compile-time"))?;
+    let qmake = 
+        if MAYBE_QMAKE.is_some() { MAYBE_QMAKE.unwrap() }
+        else { "qmake" };
     let qt_plugins = qmake_command(qmake, "-query QT_INSTALL_PLUGINS")
             .stderr(std::process::Stdio::inherit())
             .output()?;

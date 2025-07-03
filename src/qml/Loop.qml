@@ -1,4 +1,3 @@
-import ShoopDaLoop.PythonLoop
 import ShoopDaLoop.PythonLogger
 import QtQuick 6.6
 

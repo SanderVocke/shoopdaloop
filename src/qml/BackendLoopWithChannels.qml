@@ -1,7 +1,6 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import ShoopDaLoop.PythonLogger
-import ShoopDaLoop.PythonLoop
 
 import ShoopConstants
 
@@ -18,13 +17,8 @@ Loop {
     readonly property var audio_channel_descriptors: (initial_descriptor && initial_descriptor.channels) ? initial_descriptor.channels.filter(c => c.type == 'audio') : []
     readonly property var midi_channel_descriptors: (initial_descriptor && initial_descriptor.channels) ? initial_descriptor.channels.filter(c => c.type == 'midi') : []
 
-    function initialize() {
-        queue_set_length(initial_descriptor.length)
-    }
-
     Component.onCompleted: {
-        if (initialized) { initialize() }
-        else { initializedChanged.connect(initialize) }
+        queue_set_length(initial_descriptor.length)
     }
     Component.onDestruction: {
         qml_close()

@@ -55,22 +55,28 @@ impl LoopBackend {
 
     pub fn set_length(mut self: Pin<&mut LoopBackend>, length: i32) {
         if ! self.as_mut().maybe_initialize_backend() {
-            error!(self, "set_length: not initialized");
+            debug!(self, "set length -> {length} (deferred)");
+            let mut rust = self.as_mut().rust_mut();
+            rust.prev_state.length = length as u32;
             return;
+        } else {
+            debug!(self, "set length -> {}", length);
+            let mut rust = self.as_mut().rust_mut();
+            rust.backend_loop.as_mut().unwrap().set_length(length as u32).unwrap();
         }
-        debug!(self, "set length -> {}", length);
-        let mut rust = self.as_mut().rust_mut();
-        rust.backend_loop.as_mut().unwrap().set_length(length as u32).unwrap();
     }
 
     pub fn set_position(mut self: Pin<&mut LoopBackend>, position: i32) {
         if ! self.as_mut().maybe_initialize_backend() {
-            error!(self, "set_position: not initialized");
+            debug!(self, "set position -> {position} (deferred)");
+            let mut rust = self.as_mut().rust_mut();
+            rust.prev_state.position = position as u32;
             return;
+        } else {
+            debug!(self, "set position -> {}", position);
+            let mut rust = self.as_mut().rust_mut();
+            rust.backend_loop.as_mut().unwrap().set_position(position as u32).unwrap();
         }
-        debug!(self, "set position -> {}", position);
-        let mut rust = self.as_mut().rust_mut();
-        rust.backend_loop.as_mut().unwrap().set_position(position as u32).unwrap();
     }
 
     pub fn set_backend(mut self: Pin<&mut LoopBackend>, backend: *mut QObject) {
@@ -133,7 +139,11 @@ impl LoopBackend {
 
                 {
                     let sync_source = *self.sync_source();
+                    let length = self.as_ref().prev_state.length;
+                    let position = self.as_ref().prev_state.position;
                     self.as_mut().set_backend_sync_source(sync_source);
+                    self.as_mut().set_length(length as i32);
+                    self.as_mut().set_position(position as i32);
                 }
 
                 {
@@ -148,6 +158,9 @@ impl LoopBackend {
                         & *self_qobj,
                         "update()".to_string(),
                         cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
+
+                    // Force getting of the initial state
+                    self.as_mut().update();
 
                     let initialized = self.get_initialized();
                     self.initialized_changed(initialized);

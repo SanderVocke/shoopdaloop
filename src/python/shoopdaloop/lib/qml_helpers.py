@@ -17,7 +17,6 @@ pkg_version = shoop_version
 
 from .q_objects.AudioPort import AudioPort
 from .q_objects.MidiPort import MidiPort
-from .q_objects.Loop import Loop
 from .q_objects.LoopAudioChannel import LoopAudioChannel
 from .q_objects.LoopMidiChannel import LoopMidiChannel
 from .q_objects.Backend import Backend
@@ -86,7 +85,6 @@ def register_shoopdaloop_qml_classes():
     # Register Python classes
     register_qml_class(AudioPort, 'AudioPort')
     register_qml_class(MidiPort, 'MidiPort')
-    register_qml_class(Loop, 'Loop')
     register_qml_class(FXChain, 'FXChain')
     register_qml_class(LoopAudioChannel, 'LoopAudioChannel')
     register_qml_class(LoopMidiChannel, 'LoopMidiChannel')

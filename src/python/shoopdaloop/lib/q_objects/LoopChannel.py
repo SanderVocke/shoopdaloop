@@ -14,7 +14,6 @@ from PySide6.QtQuick import QQuickItem
 from .ShoopPyObject import *
 
 from .AudioPort import AudioPort
-from .Loop import Loop
 
 from ..backend_wrappers import *
 from ..logging import Logger

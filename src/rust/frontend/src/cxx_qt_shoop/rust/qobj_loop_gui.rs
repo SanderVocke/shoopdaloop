@@ -81,12 +81,6 @@ impl LoopGui {
                 let backend_ref = &*backend_loop_qobj;
 
                 // Connections : GUI -> GUI
-                connect_or_report(
-                    self_ref,
-                    "sync_source_changed(QObject*)".to_string(),
-                    self_ref,
-                    "update_backend_sync_source()".to_string(),
-                    connection_types::QUEUED_CONNECTION);
 
                 // Connections : backend object -> GUI
                 connect_or_report(
@@ -160,12 +154,6 @@ impl LoopGui {
                     self_ref,
                     "set_initialized(bool)".to_string(),
                     connection_types::QUEUED_CONNECTION);
-            }
-
-            {
-                let mut backend_pin = std::pin::Pin::new_unchecked(&mut *backend_loop);
-                backend_pin.as_mut().set_backend(*self.backend());
-                self.as_mut().update_backend_sync_source();
             }
 
             let mut rust_mut = self.as_mut().rust_mut();
@@ -317,6 +305,7 @@ impl LoopGui {
             let backend_wrapper_obj = &mut *qobject_to_loop_backend_ptr(backend_wrapper_qobj);
             let maybe_backend_loop = backend_wrapper_obj.backend_loop.as_ref();
             if maybe_backend_loop.is_some() {
+                debug!(self, "Created back-end audio channel");
                 return maybe_backend_loop.unwrap().add_audio_channel(mode.try_into()?);
             } else {
                 return Err(anyhow::anyhow!("Backend loop not set"));
@@ -332,6 +321,7 @@ impl LoopGui {
             let backend_wrapper_obj = &mut *qobject_to_loop_backend_ptr(backend_wrapper_qobj);
             let maybe_backend_loop = backend_wrapper_obj.backend_loop.as_ref();
             if maybe_backend_loop.is_some() {
+                debug!(self, "Created back-end MIDI channel");
                 return maybe_backend_loop.unwrap().add_midi_channel(mode.try_into()?);
             } else {
                 return Err(anyhow::anyhow!("Backend loop not set"));
@@ -362,6 +352,8 @@ impl LoopGui {
         if changed {
             self.as_mut().sync_source_changed(sync_source);
         }
+
+        self.update_backend_sync_source();
     }
 
     pub unsafe fn set_backend(mut self: Pin<&mut LoopGui>, backend: *mut QObject) {
@@ -395,6 +387,7 @@ impl LoopGui {
     }
 
     pub fn update_backend_sync_source(mut self: Pin<&mut LoopGui>) {
+        debug!(self, "Updating backend sync source");
         let sync_source_in : *mut QObject = *self.sync_source();
         let mut sync_source_out : QVariant = QVariant::default();
 
