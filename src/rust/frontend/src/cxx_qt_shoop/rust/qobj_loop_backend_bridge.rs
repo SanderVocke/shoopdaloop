@@ -60,7 +60,7 @@ pub mod ffi {
         pub fn set_position(self: Pin<&mut LoopBackend>, position: i32);
 
         #[qinvokable]
-        pub fn set_backend_indirect(self: Pin<&mut LoopBackend>, backend: *mut QObject);
+        pub fn set_backend_ptr(self: Pin<&mut LoopBackend>, backend: *mut QObject);
 
         #[qinvokable]
         pub fn transition_multiple(self: Pin<&mut LoopBackend>,

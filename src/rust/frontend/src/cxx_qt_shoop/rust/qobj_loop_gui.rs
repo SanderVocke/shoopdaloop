@@ -83,7 +83,7 @@ impl LoopGui {
                     self_ref,
                     "backendChanged()".to_string(),
                     self_ref,
-                    "update_backend_backend()".to_string(),
+                    "handle_backend_changed()".to_string(),
                     connection_types::DIRECT_CONNECTION);
 
                 // Connections : backend object -> GUI
@@ -135,13 +135,13 @@ impl LoopGui {
                     self_ref,
                     "backend_changed_with_value(QObject*)".to_string(),
                     backend_ref,
-                    "set_backend_indirect(QObject*)".to_string(),
+                    "set_backend_ptr(QObject*)".to_string(),
                     connection_types::QUEUED_CONNECTION);
             }
 
             {
                 let backend_pin = std::pin::Pin::new_unchecked(&mut *backend_loop);
-                backend_pin.set_backend(*self.backend());
+                backend_pin.set_backend_ptr(*self.backend());
             }
 
             let mut rust_mut = self.as_mut().rust_mut();
@@ -149,7 +149,8 @@ impl LoopGui {
         }
     }
 
-    pub fn update_backend_backend(self: Pin<&mut LoopGui>) {
+    pub fn handle_backend_changed(self: Pin<&mut LoopGui>) {
+        debug!(self, "backend -> {:?}", self.as_ref().backend);
         unsafe {
             let backend = self.as_ref().backend;
             self.backend_changed_with_value(backend);

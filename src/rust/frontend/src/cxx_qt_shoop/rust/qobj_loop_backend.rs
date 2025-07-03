@@ -85,8 +85,10 @@ impl LoopBackend {
         rust.backend_loop.as_mut().unwrap().set_position(position as u32).unwrap();
     }
 
-    pub fn set_backend_indirect(mut self: Pin<&mut LoopBackend>, backend: *mut QObject) {
-        self.set_backend(backend);
+    pub fn set_backend_ptr(mut self: Pin<&mut LoopBackend>, backend: *mut QObject) {
+        debug!(self, "set backend -> {:?}", backend);
+        let mut rust_mut = self.as_mut().rust_mut();
+        rust_mut.backend = backend;
     }
 
     pub fn maybe_initialize_backend(mut self: Pin<&mut LoopBackend>) -> bool {

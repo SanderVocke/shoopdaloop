@@ -112,7 +112,7 @@ pub mod ffi {
                                  go_to_mode : i32);
 
         #[qinvokable]
-        pub fn update_backend_backend(self: Pin<&mut LoopGui>);
+        pub fn handle_backend_changed(self: Pin<&mut LoopGui>);
         
         #[qinvokable]
         pub fn on_backend_state_changed(
