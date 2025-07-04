@@ -149,14 +149,6 @@ impl LoopBackend {
                 {
                     let self_qobj = self.as_mut().pin_mut_qobject_ptr();
 
-                    // Connect signals
-                    cxx_qt_lib_shoop::connect::connect_or_report
-                        (backend_ptr.as_mut().unwrap(),
-                        "updated_on_backend_thread()".to_string(),
-                        & *self_qobj,
-                        "update()".to_string(),
-                        cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION);
-
                     // Force getting of the initial state
                     self.as_mut().update();
 

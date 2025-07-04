@@ -5,7 +5,6 @@ mod test_init {
     #[ctor]
     fn global_setup() {
         common::logging::init_logging().expect("Unable to initialize frontend logging for tests");
-        crate::engine_update_thread::init();
     }
 }
 

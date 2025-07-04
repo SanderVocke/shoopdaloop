@@ -86,6 +86,16 @@ impl LoopGui {
 
             {
                 let backend_ref = &*backend_loop_qobj;
+                let backend_thread_wrapper = &*engine_update_thread::get_engine_update_thread().ref_qobject_ptr();
+
+                // Connections : update thread -> backend object
+                connect_or_report(
+                    backend_thread_wrapper,
+                    "update()".to_string(),
+                    backend_ref,
+                    "update()".to_string(),
+                    connection_types::DIRECT_CONNECTION
+                );
 
                 // Connections : GUI -> GUI
 
@@ -152,7 +162,6 @@ impl LoopGui {
                     backend_ref,
                     "set_sync_source(QVariant)".to_string(),
                     connection_types::QUEUED_CONNECTION);
-
 
                 // Connections : backend object -> GUI
                 connect_or_report(

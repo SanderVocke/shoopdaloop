@@ -16,6 +16,11 @@ use crate::shoop_py_backend::audio_channel::AudioChannel;
 use crate::shoop_py_backend::midi_channel::MidiChannel;
 
 #[pyfunction]
+pub fn shoop_rust_get_engine_update_thread_addr() -> u64 {
+    unsafe { frontend::engine_update_thread::get_engine_update_thread().thread as usize as u64 }
+}
+
+#[pyfunction]
 pub fn shoop_rust_create_autoconnect() -> u64 { unsafe { frontend::init::shoop_rust_create_autoconnect() as usize as u64 } }
 
 #[pyfunction]

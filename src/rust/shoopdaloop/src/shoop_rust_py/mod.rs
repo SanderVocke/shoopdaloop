@@ -7,6 +7,7 @@ pub fn create_py_module<'py>(
 ) -> Result<Bound<'py, PyModule>, PyErr> {
     let m = PyModule::new_bound(py, "shoop_rust")?;
     m.add_function(wrap_pyfunction!(init::shoop_rust_init, &m)?)?;
+    m.add_function(wrap_pyfunction!(init::shoop_rust_init_engine_update_thread, &m)?)?;
     m.add_function(wrap_pyfunction!(objects::shoop_rust_add_loop_audio_channel, &m)?)?;
     m.add_function(wrap_pyfunction!(objects::shoop_rust_add_loop_midi_channel, &m)?)?;
     m.add_function(wrap_pyfunction!(objects::shoop_rust_create_autoconnect, &m)?)?;
@@ -18,5 +19,6 @@ pub fn create_py_module<'py>(
     m.add_function(wrap_pyfunction!(objects::shoop_rust_transition_loop, &m)?)?;
     m.add_function(wrap_pyfunction!(objects::shoop_rust_transition_loops, &m)?)?;
     m.add_function(wrap_pyfunction!(objects::shoop_rust_loop_adopt_ringbuffers, &m)?)?;
+    m.add_function(wrap_pyfunction!(objects::shoop_rust_get_engine_update_thread_addr, &m)?)?;
     Ok(m)
 }

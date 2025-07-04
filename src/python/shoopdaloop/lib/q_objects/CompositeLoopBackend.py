@@ -99,8 +99,6 @@ class CompositeLoopBackend(ShoopQObject):
     
     @ShoopSlot(str)
     def set_instance_identifier(self, v):
-        print("WHAAAAAAA")
-        self.logger.warning('INSTANCE IDENTIFIER')
         self.instanceIdentifier = v + '-backend'
 
     ######################
@@ -646,7 +644,7 @@ class CompositeLoopBackend(ShoopQObject):
                 self.logger.debug(lambda: 'cycle: recording end')
                 # Recording ends next cycle, transition to playing or stopped
                 trigger_callback(self, self, (int(shoop_py_backend.LoopMode.Playing) if self._play_after_record else int(shoop_py_backend.LoopMode.Stopped)))
-            else:
+        else:
                 self.logger.debug(lambda: 'cycling')
                 # Will cycle around - trigger the actions for next cycle
                 self.do_triggers(0, self.mode, trigger_callback, True)
@@ -658,8 +656,8 @@ class CompositeLoopBackend(ShoopQObject):
     def maybe_initialize(self):
         if self._backend and self._backend.property('ready') and not self._initialized:
             self.logger.debug(lambda: 'Found backend, initializing')
-            if not self.moveToThread(self._backend.get_backend_thread()):
-                self.logger.error("Unable to move to back-end thread")
+            # if not self.moveToThread(self._backend.get_backend_thread()):
+            #     self.logger.error("Unable to move to back-end thread")
             self.connect_backend_updates()
             self._initialized = True
             self.initializedChanged.emit(True)

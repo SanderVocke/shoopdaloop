@@ -7,7 +7,7 @@ from PySide6.QtQml import QJSValue
 from .ShoopPyObject import *
 
 from ..backend_wrappers import DontWaitForSync, DontAlignToSyncImmediately
-
+from ..engine_update_thread import get_engine_update_thread
 from ..mode_helpers import is_playing_mode, is_running_mode, is_recording_mode
 from ..recursive_jsvalue_convert import recursively_convert_jsvalue
 from ..q_objects.Logger import Logger
@@ -90,6 +90,9 @@ class CompositeLoop(ShoopQQuickItem):
         self._last_handled_source_cycle_nr = -1
 
         self._backend_obj = CompositeLoopBackend()
+        update_thread = get_engine_update_thread()
+        if not self._backend_obj.moveToThread(update_thread):
+            self.logger.error(f"Unable to move backend composite loop to update thread")
 
         # Updates backend -> frontend
         self._backend_obj.nCyclesChanged.connect(self.on_backend_n_cycles_changed, Qt.QueuedConnection)
