@@ -6,7 +6,6 @@ from PySide6.QtQuick import QQuickItem
 from .ShoopPyObject import *
 
 from ..backend_wrappers import *
-from ..q_objects.Backend import Backend
 from ..logging import Logger
 
 # Wraps a back-end FX chain.

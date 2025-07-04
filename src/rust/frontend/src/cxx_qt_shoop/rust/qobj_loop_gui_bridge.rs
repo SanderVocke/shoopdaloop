@@ -131,6 +131,9 @@ pub mod ffi {
         pub unsafe fn set_backend(self: Pin<&mut LoopGui>, backend: *mut QObject);
 
         #[qinvokable]
+        pub unsafe fn get_backend_loop(self: Pin<&mut LoopGui>) -> *mut QObject;
+
+        #[qinvokable]
         pub unsafe fn set_initialized(self: Pin<&mut LoopGui>, initialized : bool);
 
         #[qinvokable]

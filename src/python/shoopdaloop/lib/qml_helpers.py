@@ -19,7 +19,6 @@ from .q_objects.AudioPort import AudioPort
 from .q_objects.MidiPort import MidiPort
 from .q_objects.LoopAudioChannel import LoopAudioChannel
 from .q_objects.LoopMidiChannel import LoopMidiChannel
-from .q_objects.Backend import Backend
 from .q_objects.ClickTrackGenerator import ClickTrackGenerator
 from .q_objects.Task import Task
 from .q_objects.Tasks import Tasks
@@ -89,7 +88,6 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(LoopAudioChannel, 'LoopAudioChannel')
     register_qml_class(LoopMidiChannel, 'LoopMidiChannel')
     register_qml_class(ClickTrackGenerator, 'ClickTrackGenerator')
-    register_qml_class(Backend, 'Backend')
     register_qml_class(Task, 'Task')
     register_qml_class(Tasks, 'Tasks')
     register_qml_class(FetchChannelData, 'FetchChannelData')

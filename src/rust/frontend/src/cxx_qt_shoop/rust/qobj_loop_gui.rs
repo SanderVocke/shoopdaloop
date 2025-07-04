@@ -29,6 +29,7 @@ use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::qobject_to_loop_backend_
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;                                   
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::*;  
+use crate::engine_update_thread;
 use crate::loop_mode_helpers::*;   
 use cxx_qt_lib::{QList, QVariant, QString};                                    
 use core::sync;
@@ -59,8 +60,7 @@ impl LoopGui {
     pub fn initialize_impl(mut self: Pin<&mut LoopGui>) {
         debug!(self, "Initializing");
 
-        unsafe {   
-            // let self_qobject = self.as_mut().pin_mut_qobject_ptr();
+        unsafe {
             // let backend_qobj : *mut QObject;
             // {
             //     let rust_mut = self.as_mut().rust_mut();
@@ -74,7 +74,14 @@ impl LoopGui {
             // } else {
             let backend_loop = make_raw_loop_backend();
             let backend_loop_qobj = loop_backend_qobject_from_ptr(backend_loop);
-            // qobject_move_to_thread(backend_loop_qobj, backend_thread);
+            qobject_move_to_thread(backend_loop_qobj, engine_update_thread::get_engine_update_thread().thread).unwrap();
+
+            {
+                let backend_loop_pin = std::pin::Pin::new_unchecked(&mut *backend_loop);
+                let self_qobject = self.as_mut().pin_mut_qobject_ptr();
+                backend_loop_pin.set_frontend_loop(self_qobject);
+            }
+
             let self_ref = self.as_ref().get_ref();
 
             {
@@ -407,6 +414,11 @@ impl LoopGui {
 
         self.as_mut().backend_set_sync_source(sync_source_out);
     }
+
+    pub fn get_backend_loop(mut self: Pin<&mut LoopGui>) -> *mut QObject {
+        self.as_mut().backend_loop_wrapper.data().unwrap()
+    }
+
 }
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {

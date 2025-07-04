@@ -655,7 +655,9 @@ ShoopTestFile {
                     // We started the process helper to process. Now, freeze the GUI
                     // while the loops continue in the background.
                     let d = 1000 * process_helper.total_duration * 2 // * 2 for overrun
+                    logger.debug(`Starting freeze of ${d} ms`)
                     Delay.blocking_delay(d)
+                    logger.debug(`Freeze end`)
                     process_helper.wait()
 
                     testcase.wait_updated(session.backend)
@@ -702,7 +704,9 @@ ShoopTestFile {
                     // We started the process helper to process. Now, freeze the GUI
                     // while the loops continue in the background.
                     let d = 1000 * process_helper.total_duration * 2 // * 2 for overrun
+                    logger.debug(`Starting freeze of ${d} ms`)
                     ShoopFileIO.wait_blocking(d)
+                    logger.debug('Freeze done')
                     process_helper.wait()
 
                     testcase.wait_updated(session.backend)

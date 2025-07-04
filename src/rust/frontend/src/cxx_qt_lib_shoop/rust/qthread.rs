@@ -1,3 +1,4 @@
+use cxx::UniquePtr;
 use cxx::{type_id, ExternType};
 use cxx_qt;
 use std::pin::Pin;
@@ -23,6 +24,12 @@ mod ffi {
         include!("cxx-qt-shoop/make_raw.h");
         #[rust_name = "make_raw_qthread_with_parent"]
         unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut QThread;
+
+        #[rust_name = "make_raw_qthread"]
+        unsafe fn make_raw() -> *mut QThread;
+
+        #[rust_name = "delete_raw_qthread"]
+        unsafe fn delete_raw(thread : *mut QThread);
 
         #[rust_name = "qobject_from_ptr_qthread"]
         unsafe fn qobjectFromPtr(thread: *mut QThread) -> *mut QObject;
@@ -59,6 +66,14 @@ impl QThread {
 
     pub fn make_raw_with_parent(parent: *mut QObject) -> *mut QThread {
         unsafe { ffi::make_raw_qthread_with_parent(parent) }
+    }
+
+    pub fn make_raw() -> *mut QThread {
+        unsafe { ffi::make_raw_qthread() }
+    }
+
+    pub fn delete_raw(thread : *mut QThread) {
+        unsafe { ffi::delete_raw_qthread(thread) }
     }
 
     pub fn connect_started(self : Pin<&mut Self>, receiver : *mut QObject, slot : String) -> Result<(), cxx::Exception> {

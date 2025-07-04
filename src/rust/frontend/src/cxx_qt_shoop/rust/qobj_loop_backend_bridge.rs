@@ -49,6 +49,7 @@ pub mod ffi {
         #[qproperty(bool, initialized, READ=get_initialized, NOTIFY=initialized_changed)]
         #[qproperty(*mut QObject, backend, READ, NOTIFY=backend_changed)]
         #[qproperty(*mut QObject, sync_source, READ, NOTIFY=sync_source_changed)]
+        #[qproperty(*mut QObject, frontend_loop, READ, WRITE)]
         #[qproperty(QString, instance_identifier, READ, NOTIFY=instance_identifier_changed)]
         type LoopBackend = super::LoopBackendRust;
 
@@ -116,6 +117,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn maybe_initialize_backend(self: Pin<&mut LoopBackend>) -> bool;
+
+        #[qinvokable]
+        pub unsafe fn get_frontend_loop(self: Pin<&mut LoopBackend>) -> *mut QObject;
 
         #[qsignal]
         fn cycled(self: Pin<&mut LoopBackend>, cycle_nr: i32);
@@ -208,6 +212,7 @@ pub struct LoopBackendRust {
     pub sync_source : *mut QObject,
     pub backend: *mut QObject,
     pub instance_identifier: QString,
+    pub frontend_loop: *mut QObject,
 
     // Rust members
     pub backend_loop : Option<BackendLoop>,
@@ -219,6 +224,7 @@ impl Default for LoopBackendRust {
     fn default() -> LoopBackendRust {
         LoopBackendRust {
             backend: std::ptr::null_mut(),
+            frontend_loop: std::ptr::null_mut(),
             instance_identifier: QString::from("unknown"),
             backend_loop: None,
             prev_state: LoopState::default(),

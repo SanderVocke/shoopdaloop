@@ -1,12 +1,14 @@
 use std::pin::Pin;
 use backend_bindings::*;
 use common::logging::macros::*;
+use crate::cxx_qt_lib_shoop::{connect, connection_types};
 use crate::cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, qquickitem_to_qobject_mut};
 use crate::cxx_qt_lib_shoop::qobject::{AsQObject, QObject, qobject_thread};
 use crate::cxx_qt_lib_shoop::qthread::QThread;
 use crate::cxx_qt_lib_shoop::qtimer::QTimer;
 use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants;
+use crate::engine_update_thread;
 use std::slice;
 use std::time::Duration;
 shoop_log_unit!("Frontend.BackendWrapper");
@@ -122,23 +124,15 @@ impl BackendWrapper {
             rust.driver.as_mut().unwrap().wait_process();
             rust.driver.as_mut().unwrap().get_state(); // Has implicit side-effect necessary for initialization
 
-            rust.update_thread = QThread::make_raw_with_parent(obj_qobject);
-            let thread_mut_ref = &mut *rust.update_thread;
-            let thread_slice = slice::from_raw_parts_mut(thread_mut_ref, 1);
-            let mut thread : Pin<&mut QThread> = Pin::new_unchecked(&mut thread_slice[0]);
+            let engine_update_thread = crate::engine_update_thread::get_engine_update_thread();
+            let engine_update_thread_obj = engine_update_thread.ref_qobject_ptr();
 
-            rust.update_timer = QTimer::make_raw();
-            let timer_mut_ref = &mut *rust.update_timer;
-            let timer_slice = slice::from_raw_parts_mut(timer_mut_ref, 1);
-            let mut timer : Pin<&mut QTimer> = Pin::new_unchecked(&mut timer_slice[0]);
-            if !timer.as_mut().move_to_thread(thread.as_mut().get_unchecked_mut())? {
-                return Err(anyhow::anyhow!("Failed to move timer to thread"));
-            }
-            timer.as_mut().set_interval(50);
-            timer.as_mut().set_single_shot(false);
-            timer.as_mut().connect_timeout(obj_qobject, String::from(constants::INVOKABLE_UPDATE_ON_OTHER_THREAD))?;
-            thread.as_mut().connect_started(timer.as_mut().qobject_from_ptr(), "start()".to_string())?;
-            thread.as_mut().start();
+            connect::connect_or_report(
+                & *engine_update_thread_obj,
+                "update()".to_string(),
+                & *obj_qobject,
+                String::from(constants::INVOKABLE_UPDATE_ON_OTHER_THREAD),
+                connection_types::DIRECT_CONNECTION);
         }
 
         {
@@ -211,25 +205,25 @@ impl BackendWrapper {
 
         debug!("Closing");
 
-        unsafe {
-            let mut rust = self.as_mut().rust_mut();
-            if !rust.update_timer.is_null() {
-                let timer_mut_ref = &mut *rust.update_timer;
-                let timer_slice = slice::from_raw_parts_mut(timer_mut_ref, 1);
-                let mut timer : Pin<&mut QTimer> = Pin::new_unchecked(&mut timer_slice[0]);
-                timer.as_mut().stop_queued();
-                while timer.as_mut().is_active() {
-                    std::thread::sleep(Duration::from_millis(1));
-                }
-            }
-            if !rust.update_thread.is_null() {
-                let thread_mut_ref = &mut *rust.update_thread;
-                let thread_slice = slice::from_raw_parts_mut(thread_mut_ref, 1);
-                let thread : Pin<&mut QThread> = Pin::new_unchecked(&mut thread_slice[0]);
-                thread.exit();
-            }
-            rust.closed = true;
-        }
+        // unsafe {
+        //     let mut rust = self.as_mut().rust_mut();
+        //     if !rust.update_timer.is_null() {
+        //         let timer_mut_ref = &mut *rust.update_timer;
+        //         let timer_slice = slice::from_raw_parts_mut(timer_mut_ref, 1);
+        //         let mut timer : Pin<&mut QTimer> = Pin::new_unchecked(&mut timer_slice[0]);
+        //         timer.as_mut().stop_queued();
+        //         while timer.as_mut().is_active() {
+        //             std::thread::sleep(Duration::from_millis(1));
+        //         }
+        //     }
+        //     if !rust.update_thread.is_null() {
+        //         let thread_mut_ref = &mut *rust.update_thread;
+        //         let thread_slice = slice::from_raw_parts_mut(thread_mut_ref, 1);
+        //         let thread : Pin<&mut QThread> = Pin::new_unchecked(&mut thread_slice[0]);
+        //         thread.exit();
+        //     }
+        //     rust.closed = true;
+        // }
 
         {
             self.as_mut().set_ready(false);
@@ -341,8 +335,7 @@ impl BackendWrapper {
     }
 
     pub fn get_backend_thread(self : &BackendWrapper) -> *mut QThread {
-        let rust = self.rust();
-        rust.update_thread
+        engine_update_thread::get_engine_update_thread().thread
     }
     
     pub fn dummy_enter_controlled_mode(mut self: Pin<&mut BackendWrapper>) {

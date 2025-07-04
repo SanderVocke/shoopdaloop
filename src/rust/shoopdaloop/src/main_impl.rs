@@ -10,6 +10,7 @@ shoop_log_unit!("Main");
 
 pub fn main() {
     common::init().unwrap();
+    frontend::engine_update_thread::init();
 
     // For normalizing Windows paths
     let normalize_path = |path: &Path| -> PathBuf {

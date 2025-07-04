@@ -5,6 +5,7 @@ mod test_init {
     #[ctor]
     fn global_setup() {
         common::logging::init_logging().expect("Unable to initialize frontend logging for tests");
+        crate::engine_update_thread::init();
     }
 }
 
@@ -25,3 +26,6 @@ mod tests;
 
 #[cfg(not(feature = "prebuild"))]
 mod loop_mode_helpers;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod engine_update_thread;

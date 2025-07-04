@@ -185,9 +185,7 @@ pub struct BackendWrapperRust {
     pub driver : Option<AudioDriver>,
     pub session : Option<BackendSession>,
     pub update_data : Option<BackendWrapperUpdateData>,
-    pub closed : bool,
-    pub update_timer : *mut QTimer,
-    pub update_thread : *mut QThread,
+    pub closed : bool
 }
 
 impl Default for BackendWrapperRust {
@@ -208,9 +206,7 @@ impl Default for BackendWrapperRust {
             driver : None,
             session : None,
             update_data : None,
-            closed : false,
-            update_timer : std::ptr::null_mut(),
-            update_thread : std::ptr::null_mut(),
+            closed : false
         }
     }
 }

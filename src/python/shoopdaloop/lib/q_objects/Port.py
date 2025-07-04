@@ -12,7 +12,6 @@ from .ShoopPyObject import *
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, Qt, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
-from .Backend import Backend
 from ..logging import Logger
 
 # Wraps a back-end port.

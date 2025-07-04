@@ -148,8 +148,6 @@ impl LoopBackend {
 
                 {
                     let self_qobj = self.as_mut().pin_mut_qobject_ptr();
-                    let backend_thread = backend_ptr.as_mut().unwrap().get_backend_thread();
-                    qobject_move_to_thread(self_qobj, backend_thread).unwrap();
 
                     // Connect signals
                     cxx_qt_lib_shoop::connect::connect_or_report
@@ -535,5 +533,9 @@ impl LoopBackend {
 
     pub fn get_initialized(self: &LoopBackend) -> bool {
         self.rust().backend_loop.is_some()
+    }
+
+    pub unsafe fn get_frontend_loop(self: Pin<&mut LoopBackend>) -> *mut QObject {
+        *self.frontend_loop()
     }
 }
