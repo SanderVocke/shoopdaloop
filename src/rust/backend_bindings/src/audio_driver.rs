@@ -2,8 +2,8 @@ use anyhow;
 use crate::integer_enum;
 use crate::ffi;
 use std::sync::Mutex;
-
 use crate::port::ExternalPortDescriptor;
+use std::fmt;
 
 integer_enum! {
     pub enum AudioDriverType {
@@ -38,6 +38,12 @@ impl JackAudioDriverSettings {
     }
 }
 
+impl fmt::Debug for JackAudioDriverSettings {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "JackAudioDriverSettings {{ client_name_hint: {}, maybe_server_name: {:?} }}", self.client_name_hint, self.maybe_server_name)
+    }
+}
+
 pub struct DummyAudioDriverSettings {
     pub client_name: String,
     pub sample_rate: u32,
@@ -58,6 +64,26 @@ impl DummyAudioDriverSettings {
             client_name: std::ffi::CString::new(self.client_name.clone()).unwrap().into_raw(),
             sample_rate: self.sample_rate,
             buffer_size: self.buffer_size,
+        }
+    }
+}
+
+impl fmt::Debug for DummyAudioDriverSettings {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "DummyAudioDriverSettings {{ client_name: {}, sample_rate: {}, buffer_size: {} }}", self.client_name, self.sample_rate, self.buffer_size)
+    }
+}
+
+pub enum AudioDriverSettings {
+    Jack(JackAudioDriverSettings),
+    Dummy(DummyAudioDriverSettings),
+}
+
+impl fmt::Debug for AudioDriverSettings {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            AudioDriverSettings::Jack(settings) => write!(f, "AudioDriverSettings::Jack({:?})", settings),
+            AudioDriverSettings::Dummy(settings) => write!(f, "AudioDriverSettings::Dummy({:?})", settings),
         }
     }
 }
@@ -116,6 +142,13 @@ impl AudioDriver {
         unsafe { ffi::get_buffer_size(*obj) }
     }
 
+    pub fn start(&self, settings : &AudioDriverSettings) -> Result<(), anyhow::Error> {
+        match settings {
+            AudioDriverSettings::Jack(settings) => self.start_jack(settings),
+            AudioDriverSettings::Dummy(settings) => self.start_dummy(settings),
+        }
+    }
+
     pub fn start_dummy(&self, settings: &DummyAudioDriverSettings) -> Result<(), anyhow::Error> {
         let obj = self.lock();
         unsafe { ffi::start_dummy_driver(*obj, settings.to_ffi()) };
@@ -168,7 +201,7 @@ impl AudioDriver {
 
     pub fn dummy_add_external_mock_port(&self, name: &str, direction: u32, data_type: u32) {
         let obj = self.lock();
-        let c_name = std::ffi::CString::new(name).unwrap();
+        let c_name = std::ffi::CString::new(name).expect("Failed to create CString");
         unsafe {
             ffi::dummy_driver_add_external_mock_port(
                 *obj,
@@ -201,8 +234,22 @@ impl AudioDriver {
 
     pub fn find_external_ports(&self, maybe_name_regex: Option<&str>, port_direction: u32, data_type: u32) -> Vec<ExternalPortDescriptor> {
         let obj = self.lock();
-        let regex_ptr = maybe_name_regex.map_or(std::ptr::null(), |s| s.as_ptr() as *const i8);
+        let maybe_name_regex_updated = match maybe_name_regex {
+            Some(s) => match s {
+                "" => None,
+                _ => Some(std::ffi::CString::new(s).expect("Failed to create CString")),
+            },
+            None => None,
+        };
+        let regex_ptr = maybe_name_regex_updated
+        .as_ref()
+        .map_or(std::ptr::null(), |s| {
+            s.as_ptr() as *const i8
+        });
         let result = unsafe { ffi::find_external_ports(*obj, regex_ptr, port_direction as ffi::shoop_port_direction_t, data_type as ffi::shoop_port_data_type_t) };
+        if result.is_null() {
+            return Vec::new();
+        }
         let ports = unsafe { std::slice::from_raw_parts((*result).ports, (*result).n_ports as usize) };
         let mut port_descriptors = Vec::new();
         unsafe {

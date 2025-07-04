@@ -9,6 +9,11 @@
 #include <stdexcept>
 #include "BufferQueue.h"
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 template<typename SampleT>
 AudioPort<SampleT>::AudioPort(shoop_shared_ptr<BufferPool> buffer_pool)
     : PortInterface(),

@@ -10,7 +10,6 @@ from PySide6.QtQml import QQmlDebuggingEnabler
 from PySide6.QtQuick import QQuickWindow
 
 from .ShoopPyObject import *
-from .Backend import close_all_backends
 
 have_nsm = os.name == 'posix'
 if have_nsm:
@@ -115,6 +114,14 @@ class Application(ShoopQApplication):
                 self.logger.debug("Window created, installing event filter")
                 obj.installEventFilter(self)
         self.engine = QQmlApplicationEngine(parent=self)
+
+        qml_paths = os.getenv("SHOOP_QML_PATHS")
+        qml_paths = qml_paths.split(';' if os.name == "nt" else ":") if qml_paths else []
+        for path in qml_paths:
+            self.engine.addImportPath(path)
+
+        self.logger.debug(f"QML engine path list: {self.engine.importPathList()}")
+
         self.engine.destroyed.connect(lambda: self.logger.debug("QML engine being destroyed."))
         self.engine.objectCreated.connect(lambda obj, _: maybe_install_event_filter(obj))
 
@@ -265,8 +272,7 @@ class Application(ShoopQApplication):
             if self.engine:
                 self.unload_qml()
             else:
-                self.logger.debug("Terminating back-ends")
-                close_all_backends()
+                self.logger.debug("Quitting")
                 QTimer.singleShot(1, lambda: self.quit())
                 self.exec()
 

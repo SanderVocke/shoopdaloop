@@ -18,7 +18,8 @@ impl DecoupledMidiPort {
                            name_hint : &str,
                            direction : &PortDirection) -> Result<Self, anyhow::Error>
     {
-        let name_hint_ptr = name_hint.as_ptr() as *const i8;
+        let name_hint_cstr = std::ffi::CString::new(name_hint)?;
+        let name_hint_ptr = name_hint_cstr.as_ptr();
         let obj = unsafe { ffi::open_decoupled_midi_port
                                 (audio_driver.unsafe_backend_ptr(),
                                  name_hint_ptr,
@@ -80,13 +81,13 @@ impl DecoupledMidiPort {
 
     pub fn connect_external_port(&self, name: &str) {
         let obj = unsafe { self.unsafe_backend_ptr() };
-        let c_name = std::ffi::CString::new(name).unwrap();
+        let c_name = std::ffi::CString::new(name).expect("CString::new failed");
         unsafe { ffi::connect_external_decoupled_midi_port(obj, c_name.as_ptr()) };
     }
 
     pub fn disconnect_external_port(&self, name: &str) {
         let obj = unsafe { self.unsafe_backend_ptr() };
-        let c_name = std::ffi::CString::new(name).unwrap();
+        let c_name = std::ffi::CString::new(name).expect("CString::new failed");
         unsafe { ffi::disconnect_external_decoupled_midi_port(obj, c_name.as_ptr()) };
     }
 }

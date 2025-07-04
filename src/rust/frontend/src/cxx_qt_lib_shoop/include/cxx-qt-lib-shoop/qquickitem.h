@@ -1,6 +1,7 @@
 #pragma once
 #include <QQuickItem>
 #include <QObject>
+#include <QVariant>
 
 template<typename T>
 inline QQuickItem* qquickitemFromPtr(T *item) {
@@ -26,4 +27,13 @@ inline QQuickItem * qquickitemParentItem(QQuickItem const& item) {
 
 inline void qquickitemSetParentItem(QQuickItem *item, QQuickItem *parent) {
     item->setParentItem(parent);
+}
+
+inline QList<QVariant> qquickitemChildItems(QQuickItem const& item) {
+    auto const items = item.childItems();
+    QList<QVariant> result;
+    for (auto const& i : items) {
+        result.append(QVariant::fromValue(i));
+    }
+    return result;
 }

@@ -27,6 +27,40 @@ pub struct LoopState {
     pub maybe_next_mode_delay : Option<u32>,
 }
 
+impl Clone for LoopState {
+    fn clone(&self) -> Self {
+        LoopState {
+            mode : self.mode,
+            length : self.length,
+            position : self.position,
+            maybe_next_mode : self.maybe_next_mode,
+            maybe_next_mode_delay : self.maybe_next_mode_delay,
+        }
+    }
+}
+
+impl Default for LoopState {
+    fn default() -> Self {
+        LoopState {
+            mode : LoopMode::Unknown,
+            length : 0,
+            position : 0,
+            maybe_next_mode : None,
+            maybe_next_mode_delay : None,
+        }
+    }
+}
+
+impl PartialEq for LoopState {
+    fn eq(&self, other: &Self) -> bool {
+        self.mode == other.mode
+            && self.length == other.length
+            && self.position == other.position
+            && self.maybe_next_mode == other.maybe_next_mode
+            && self.maybe_next_mode_delay == other.maybe_next_mode_delay
+    }
+}
+
 impl LoopState {
     pub fn new(obj : &ffi::shoop_loop_state_info_t) -> Self {
         let has_next_mode = obj.maybe_next_mode != ffi::shoop_loop_mode_t_LoopMode_Unknown;

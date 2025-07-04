@@ -7,9 +7,11 @@ import ShoopConstants
 
 PythonLoopAudioChannel {
     id: root
+    objectName: "LoopAudioChannel"
+
+    RequireBackend {}
 
     property var descriptor : null
-
     readonly property string obj_id : descriptor.id
 
     readonly property string object_schema : 'channel.1'
@@ -38,7 +40,7 @@ PythonLoopAudioChannel {
         if (do_save_data_files && data_length > 0) {
             var filename = obj_id + '.flac'
             var full_filename = data_files_dir + '/' + filename;
-            var task = file_io.save_channels_to_soundfile_async(full_filename, get_backend().get_sample_rate(), [root])
+            var task = file_io.save_channels_to_soundfile_async(full_filename, root.backend.get_sample_rate(), [root])
             add_tasks_to.add_task(task)
             rval['data_file'] = filename
         }

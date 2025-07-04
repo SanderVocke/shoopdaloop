@@ -155,7 +155,7 @@ impl FXChain {
 
     pub fn restore_state(&self, state_str: &str) {
         if self.available() {
-            let c_state_str = std::ffi::CString::new(state_str).unwrap();
+            let c_state_str = std::ffi::CString::new(state_str).expect("Failed to create CString");
             unsafe {
                 ffi::restore_fx_chain_internal_state(*self.obj.lock().unwrap(), c_state_str.as_ptr());
             }

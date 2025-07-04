@@ -13,6 +13,11 @@
 #include <base64.hpp>
 #include "LoadDynamicLibrary.h"
 #include "types.h"
+
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
 namespace carla_constants {
     constexpr uint32_t max_buffer_size = 8192;
     constexpr uint32_t min_buffer_size = 1;

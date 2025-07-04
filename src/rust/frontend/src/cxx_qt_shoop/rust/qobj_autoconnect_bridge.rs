@@ -38,19 +38,6 @@ pub mod ffi {
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
 
-        include!("cxx-qt-lib-shoop/invoke.h");
-        #[rust_name = "invoke_with_return_variantmap"]
-        unsafe fn invoke_with_return(obj : *mut QObject, method : String) -> Result<QMap_QString_QVariant>;
-
-        #[rust_name = "invoke_find_external_ports"]
-        unsafe fn invoke_three_args_with_return(
-            obj: *mut QObject, method: String, arg1: QString, arg2: i32, arg3: i32)
-            -> Result<QList_QVariant>;
-
-        #[rust_name = "invoke_connect_external_port"]
-        unsafe fn invoke_one_arg_with_return(
-            obj: *mut QObject, method: String, arg1: QString) -> Result<bool>;
-
         include!("cxx-qt-lib-shoop/metatype.h");
         #[rust_name = "autoconnect_metatype_name"]
         unsafe fn meta_type_name(obj: &AutoConnect) -> Result<&str>;
@@ -104,15 +91,7 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qjsonobject.h");
         type QJsonObject = crate::cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 
-        include!("cxx-qt-lib-shoop/connect.h");
-        #[rust_name = "connect_to_autoconnect"]
-        unsafe fn connect(sender : *mut QQuickItem,
-                   signal : String,
-                   receiver : *mut AutoConnect,
-                   slot : String) -> Result<()>;
-
         include!("cxx-qt-shoop/register_qml_type.h");
-
         #[rust_name = "register_qml_type_autoconnect"]
         fn register_qml_type(inference_example: &AutoConnect,
                              module_name : &mut String,

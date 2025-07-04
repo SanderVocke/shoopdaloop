@@ -4,10 +4,8 @@ from PySide6.QtQuick import QQuickItem
 import json
 
 from .ShoopPyObject import *
-from .FindParentBackend import FindParentBackend
 
 from .Logger import Logger as BaseLogger
-from ..findFirstParent import findFirstParent
 
 from ..backend_wrappers import *
 from ..midi_helpers import *
@@ -17,7 +15,7 @@ import shoop_py_backend
 from shiboken6 import Shiboken
 
 from ..lua_qobject_interface import create_lua_qobject_interface, lua_int
-class MidiControlPort(FindParentBackend):
+class MidiControlPort(ShoopQQuickItem):
 
     # MIDI control port has several Lua interfaces to query its state
     # from the Lua side.
@@ -59,8 +57,11 @@ class MidiControlPort(FindParentBackend):
 
         self._lua_obj = None
 
-        self.backendChanged.connect(lambda: self.maybe_init())
-        self.backendInitializedChanged.connect(lambda: self.maybe_init())
+        def on_backend_changed(backend):
+            self.logger.debug(lambda: 'Backend changed')
+            QObject.connect(backend, SIGNAL("readyChanged()"), self, SLOT("maybe_init()"))
+            self.maybe_init()
+        self.backendChanged.connect(lambda b: on_backend_changed(b))
 
         self.msgReceived.connect(lambda msg: self.logger.debug(lambda: "Received: {}".format(msg)))
         self.connected.connect(lambda: self.logger.debug(lambda: "{}: connected".format(self._name_hint)))
@@ -75,6 +76,21 @@ class MidiControlPort(FindParentBackend):
     ######################
     # PROPERTIES
     ######################
+    
+    # backend
+    backendChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=backendChanged)
+    def backend(self):
+        return self._backend
+    @backend.setter
+    def backend(self, l):
+        if l and l != self._backend:
+            if self._backend or self._backend_obj:
+                self.logger.throw_error('May not change backend of existing loop')
+            self._backend = l
+            self.logger.trace(lambda: 'Set backend -> {}'.format(l))
+            self.backendChanged.emit(l)
+            self.maybe_init()
 
     # initialized
     initializedChanged = ShoopSignal(bool)
@@ -332,14 +348,16 @@ class MidiControlPort(FindParentBackend):
     def maybe_init(self):
         if self._backend_obj:
             return
-        self.logger.trace(lambda: f'Attempting to initialize. Backend: {self._backend}. Backend init: {self._backend.initialized if self._backend else None}')
-        if self._backend and not self._backend.initialized:
-            self._backend.initializedChanged.connect(self.maybe_init)
+        self.logger.trace(lambda: f'Attempting to initialize. Backend: {self._backend}. Backend init: {self._backend.property("ready") if self._backend else "None"}')
+        if self._backend and not self._backend.property('ready'):
+            QObject.connect(self._backend, SIGNAL("readyChanged()"), self, SLOT("maybe_init()"))
             return
         if self._name_hint and self._backend and self._direction != None and self._may_open:
             self.logger.debug(lambda: "Opening decoupled MIDI port {}".format(self._name_hint))
-            self._backend_obj = shoop_py_backend.open_driver_decoupled_midi_port(
-                    self._backend.get_backend_driver_obj(),
+            from shoop_rust import shoop_rust_open_driver_decoupled_midi_port
+            from shiboken6 import getCppPointer
+            self._backend_obj = shoop_rust_open_driver_decoupled_midi_port(
+                    getCppPointer(self._backend)[0],
                     self._name_hint,
                     self._direction
                 )

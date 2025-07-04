@@ -8,6 +8,7 @@ import ctypes
 import platform
 
 from shoop_config import shoop_qml_dir, shoop_install_info, shoop_version
+from shoop_rust import shoop_rust_init_engine_update_thread
 
 def main():
     from shoopdaloop.lib.logging import Logger
@@ -88,6 +89,7 @@ def main():
             args.debug_wait,
             True
             )
+        shoop_rust_init_engine_update_thread()
         app.exec()
 
         return 0

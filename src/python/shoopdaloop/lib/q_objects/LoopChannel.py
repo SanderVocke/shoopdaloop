@@ -8,16 +8,14 @@ import json
 from typing import *
 import sys
 
-from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import Qt, QObject, Signal, Property, Slot, QTimer, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
 from .ShoopPyObject import *
 
 from .AudioPort import AudioPort
-from .Loop import Loop
 
 from ..backend_wrappers import *
-from ..findFirstParent import findFirstParent
 from ..logging import Logger
 
 from shoop_py_backend import ChannelMode, PortConnectabilityKind
@@ -29,6 +27,7 @@ class LoopChannel(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(LoopChannel, self).__init__(parent)
         self._backend_obj = None
+        self._backend = None
         self._loop = None
         self._mode = ChannelMode.Disabled
         self._connected_ports = []
@@ -44,16 +43,39 @@ class LoopChannel(ShoopQQuickItem):
 
         self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
+        
+        def on_backend_changed(backend):
+            self.logger.debug(lambda: 'Backend changed')
+            QObject.connect(backend, SIGNAL("readyChanged()"), self, SLOT("maybe_initialize_slot()"))
+            self.maybe_initialize()
+        self.backendChanged.connect(lambda b: on_backend_changed(b))
     
     requestBackendInit = ShoopSignal() # This signal requests the loop to be instantiated in the backend
     update = ShoopSignal()
 
+    @ShoopSlot()
+    def maybe_initialize_slot(self):
+        self.maybe_initialize()
+    
     def maybe_initialize(self):
         self.__logger.throw_error("Unimplemented for base class")
 
     ######################
     # PROPERTIES
     ######################
+    
+    # backend
+    backendChanged = ShoopSignal("QVariant")
+    @ShoopProperty("QVariant", notify=backendChanged)
+    def backend(self):
+        return self._backend
+    @backend.setter
+    def backend(self, l):
+        if l and l != self._backend:
+            if self._backend or self._backend_obj:
+                raise Exception('May not change backend of existing channel')
+            self._backend = l
+            self.maybe_initialize()
 
     # initialized
     initializedChanged = ShoopSignal(bool)
@@ -73,8 +95,8 @@ class LoopChannel(ShoopQQuickItem):
                 raise Exception('May not change loop of existing channel')
             self._loop = l
             self.loopChanged.emit(self._loop)
-            self._loop.modeChanged.connect(self.loopModeChanged)
-            self.loopModeChanged.emit(self._loop.mode)
+            QObject.connect(self._loop, SIGNAL("modeChanged()"), lambda: self.loopModeChanged.emit(self._loop.property('mode')), Qt.DirectConnection)
+            self.loopModeChanged.emit(self._loop.property('mode'))
             self.maybe_initialize()
     
     # loop_mode
@@ -96,7 +118,7 @@ class LoopChannel(ShoopQQuickItem):
 
     # mode
     modeChanged = ShoopSignal(int)
-    @ShoopProperty(int, notify=modeChanged)
+    @ShoopProperty(int, notify=modeChanged, thread_protection=ThreadProtectionType.AnyThread)
     def mode(self):
         return int(self._mode)
     # indirect setter via back-end
@@ -224,13 +246,6 @@ class LoopChannel(ShoopQQuickItem):
                 backend_channel.connect_output(backend_port)
             self._connected_ports.append(port)
             self.connectedPortsChanged.emit(self._connected_ports)
-    
-    @ShoopSlot(result='QVariant')
-    def get_backend(self):
-        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend'))
-        if maybe_backend:
-            return maybe_backend
-        self.__logger.throw_error("Could not find backend")
     
     @ShoopSlot('QVariant')
     def disconnect(self, port):
