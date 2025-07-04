@@ -45,7 +45,6 @@ pub mod ffi {
     }
 }
 
-use cxx_qt::CxxQtType;
 pub use ffi::QObject;
 use ffi::*;
 

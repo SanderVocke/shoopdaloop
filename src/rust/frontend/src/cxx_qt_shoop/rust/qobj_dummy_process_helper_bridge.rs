@@ -1,4 +1,3 @@
-use cxx_qt_lib;
 
 #[cxx_qt::bridge]
 pub mod ffi {

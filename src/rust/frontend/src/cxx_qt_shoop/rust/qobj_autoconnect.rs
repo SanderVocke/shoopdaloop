@@ -11,7 +11,6 @@ pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::make_unique_autoconne
 use crate::cxx_qt_shoop::qobj_autoconnect_bridge::*;
 use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::*;
 
-use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper;
 use crate::cxx_qt_shoop::type_external_port_descriptor::ExternalPortDescriptor;
 use backend_bindings::{PortDataType, PortDirection};
 use std::pin::Pin;

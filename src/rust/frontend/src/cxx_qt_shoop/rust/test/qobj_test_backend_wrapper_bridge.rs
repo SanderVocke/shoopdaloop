@@ -54,7 +54,6 @@ pub use ffi::make_unique_test_backend_wrapper as make_unique;
 use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
 use ffi::*;
 use crate::cxx_qt_shoop::type_external_port_descriptor::ExternalPortDescriptor;
-use crate::cxx_qt_shoop::qobj_signature_backend_wrapper;
 
 #[derive(Default)]
 pub struct TestBackendWrapperRust {

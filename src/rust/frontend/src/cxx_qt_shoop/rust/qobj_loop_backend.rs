@@ -1,28 +1,18 @@
 use backend_bindings::AudioChannel;
 use backend_bindings::MidiChannel;
 use common::logging::macros::{shoop_log_unit, debug as raw_debug, trace as raw_trace, error as raw_error};
-use cxx_qt::ConnectionType;
 use cxx_qt::CxxQtType;
-use crate::cxx_qt_lib_shoop;
-use crate::cxx_qt_lib_shoop::connect;
-use crate::cxx_qt_lib_shoop::connect::connect;
 use crate::cxx_qt_lib_shoop::connect::connect_or_report;
 use crate::cxx_qt_lib_shoop::connection_types;
-use crate::cxx_qt_lib_shoop::invokable::invoke;
-use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
-use crate::cxx_qt_lib_shoop::qobject::qobject_move_to_thread;
 use crate::cxx_qt_lib_shoop::qobject::AsQObject;
-use crate::cxx_qt_lib_shoop::qobject::{qobject_property_bool, qobject_property_float, qobject_property_int};
-use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
+use crate::cxx_qt_lib_shoop::qobject::qobject_property_bool;
 use crate::cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;                                   
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::*;  
 use crate::loop_mode_helpers::*;   
-use cxx_qt_lib::{QList, QVariant, QString};                      
-use std::ops::Deref;
+use cxx_qt_lib::{QVariant, QString};                      
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, MutexGuard};
 shoop_log_unit!("Frontend.Loop");
 
 macro_rules! trace {
@@ -219,9 +209,9 @@ impl LoopBackend {
             //     }
             // }).sum();
             new_cycle_nr = 
-                if (new_state.position < prev_state.position &&
+                if new_state.position < prev_state.position &&
                     is_playing_mode(prev_state.mode.try_into().unwrap()) &&
-                    is_playing_mode(new_state.mode.try_into().unwrap())) 
+                    is_playing_mode(new_state.mode.try_into().unwrap()) 
                 { rust.prev_cycle_nr + 1 } else { rust.prev_cycle_nr };
 
             rust.prev_state = new_state.clone();

@@ -1,10 +1,7 @@
-use std::cell::UnsafeCell;
 use std::thread;
 use std::time::Duration;
-use std::sync::{Arc, Mutex};
-use cxx_qt_lib;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.DummyProcessHelper");

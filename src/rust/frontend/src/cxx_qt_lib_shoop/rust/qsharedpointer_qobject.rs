@@ -1,5 +1,4 @@
 use cxx::UniquePtr;
-use cxx_qt;
 
 #[cxx::bridge]
 mod ffi {

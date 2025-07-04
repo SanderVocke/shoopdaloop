@@ -23,7 +23,7 @@ pub fn invoke_connect_external_port<T>(obj: &mut T, connection_type : u32, port_
 where 
     T : invokable::QObjectOrConvertible,
 {
-    let args = (port_name);
+    let args = port_name;
     invokable::invoke(obj, constants::INVOKABLE_BOOL_CONNECT_EXTERNAL_PORT.to_string(), connection_type, &args)
 }
 

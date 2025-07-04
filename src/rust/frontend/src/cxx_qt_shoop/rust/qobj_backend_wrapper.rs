@@ -6,11 +6,8 @@ use crate::cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, qquickitem_to_qobject_mut};
 use crate::cxx_qt_lib_shoop::qobject::{AsQObject, QObject, qobject_thread};
 use crate::cxx_qt_lib_shoop::qthread::QThread;
-use crate::cxx_qt_lib_shoop::qtimer::QTimer;
 use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants;
 use crate::engine_update_thread;
-use std::slice;
-use std::time::Duration;
 shoop_log_unit!("Frontend.BackendWrapper");
 
 pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::*;

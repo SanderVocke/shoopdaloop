@@ -105,7 +105,7 @@ impl Invokable<(), i32> for ffi::QObject {
     fn invoke_fn_qobj(&mut self,
                       method : String,
                       connection_type : u32,
-                      args : &(i32)) -> Result<(), Exception> {
+                      args : &i32) -> Result<(), Exception> {
         unsafe { ffi::invoke_noreturn_i32(self as *mut ffi::QObject, method, connection_type, *args) }
     }
 }

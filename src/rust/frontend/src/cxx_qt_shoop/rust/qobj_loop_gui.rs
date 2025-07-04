@@ -1,41 +1,25 @@
 use backend_bindings::AudioChannel;
 use backend_bindings::MidiChannel;
-use common::logging::macros::{shoop_log_unit, debug as raw_debug, trace as raw_trace, error as raw_error, warn as raw_warn};
-use cxx_qt::ConnectionType;
-use cxx_qt::Constructor;
+use common::logging::macros::{shoop_log_unit, debug as raw_debug, trace as raw_trace, error as raw_error};
 use cxx_qt::CxxQtType;
-use crate::cxx_qt_lib_shoop;
-use crate::cxx_qt_lib_shoop::connect;
-use crate::cxx_qt_lib_shoop::connect::connect;
 use crate::cxx_qt_lib_shoop::connect::connect_or_report;
-use crate::cxx_qt_lib_shoop::connect::QObjectOrConvertible;
 use crate::cxx_qt_lib_shoop::connection_types;
-use crate::cxx_qt_lib_shoop::connection_types::QUEUED_CONNECTION;
-use crate::cxx_qt_lib_shoop::invokable::invoke;
 use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
 use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
-use crate::cxx_qt_lib_shoop::qobject::qobject_set_parent;
 use crate::cxx_qt_lib_shoop::qobject::AsQObject;
-use crate::cxx_qt_lib_shoop::qobject::{qobject_property_bool, qobject_property_float, qobject_property_int};
 use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use crate::cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use crate::cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
 use crate::cxx_qt_lib_shoop::qvariant_qsharedpointer_qobject::qsharedpointer_qobject_to_qvariant;
-use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
-use crate::cxx_qt_shoop::qobj_backend_wrapper::BackendWrapper;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::loop_backend_qobject_from_ptr;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::make_raw_loop_backend;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::qobject_to_loop_backend_ptr;
-use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;                                   
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::*;  
 use crate::engine_update_thread;
-use crate::loop_mode_helpers::*;   
+   
 use cxx_qt_lib::{QList, QVariant, QString};                                    
-use core::sync;
-use std::ops::Deref;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, MutexGuard};
 shoop_log_unit!("Frontend.Loop");
 
 macro_rules! trace {
@@ -225,12 +209,12 @@ impl LoopGui {
         }
     }
 
-    pub fn queue_set_length(mut self: Pin<&mut LoopGui>, length: i32) {
+    pub fn queue_set_length(self: Pin<&mut LoopGui>, length: i32) {
         debug!(self, "queue set length -> {}", length);
         self.backend_set_length(length);
     }
 
-    pub fn queue_set_position(mut self: Pin<&mut LoopGui>, position: i32) {
+    pub fn queue_set_position(self: Pin<&mut LoopGui>, position: i32) {
         debug!(self, "queue set position -> {}", position);
         self.backend_set_position(position);
     }
@@ -353,7 +337,7 @@ impl LoopGui {
         self.backend_clear(length);
     }
 
-    pub fn adopt_ringbuffers(mut self: Pin<&mut LoopGui>,
+    pub fn adopt_ringbuffers(self: Pin<&mut LoopGui>,
         maybe_reverse_start_cycle : QVariant,
         maybe_cycles_length : QVariant,
         maybe_go_to_cycle : QVariant,

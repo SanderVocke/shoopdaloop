@@ -1,6 +1,5 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.AutoConnect");
-use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper;
 
 pub mod constants {
     pub const PROP_INTERNAL_PORT : &str = "internalPort";

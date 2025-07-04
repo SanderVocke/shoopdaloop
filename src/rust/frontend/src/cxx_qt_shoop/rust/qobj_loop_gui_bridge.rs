@@ -1,6 +1,5 @@
 use common::logging::macros::*;
 use crate::cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
-use cxx::UniquePtr;
 
 shoop_log_unit!("Frontend.Loop");
 
@@ -235,10 +234,8 @@ pub mod ffi {
 
 pub use ffi::LoopGui;
 use ffi::*;
-use crate::cxx_qt_lib_shoop::{qobject::AsQObject, qquickitem::IsQQuickItem};
-use std::sync::{Arc, Mutex};
+use crate::cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
 
-use super::qobj_loop_backend_bridge::LoopBackend;
 
 pub struct LoopGuiRust {
     // Properties

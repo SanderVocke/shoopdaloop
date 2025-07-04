@@ -1,4 +1,3 @@
-use cxx::UniquePtr;
 use cxx::{type_id, ExternType};
 use cxx_qt;
 use std::pin::Pin;

@@ -194,8 +194,7 @@ pub mod ffi {
 
 pub use ffi::LoopBackend;
 use ffi::*;
-use crate::cxx_qt_lib_shoop::{qobject::AsQObject, qquickitem::IsQQuickItem};
-use std::sync::{Arc, Mutex};
+use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 
 impl AsQObject for LoopBackend {
     unsafe fn mut_qobject_ptr(&mut self) -> *mut QObject {

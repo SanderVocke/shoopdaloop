@@ -1,9 +1,7 @@
-use std::pin::Pin;
 use cxx::Exception;
 use cxx_qt_lib::{QList, QVariant, QString};
 
 use crate::cxx_qt_lib_shoop::invokable;
-use crate::cxx_qt_lib_shoop::qobject::{QObject, AsQObject};
 
 pub mod constants {
     pub const PROP_READY: &str = "ready";
