@@ -128,7 +128,9 @@ class CompositeLoopBackend(ShoopQObject):
         return self._schedule
     @schedule.setter
     def schedule(self, val):
-        def stringify_schedule (schedule):            
+        def stringify_schedule (schedule):
+            if not schedule:
+                return "(none)"     
             rval = ''
             for iteration,elem in schedule.items():
                 rval += f'{iteration}:'
@@ -141,7 +143,8 @@ class CompositeLoopBackend(ShoopQObject):
                 rval += "\n"
             return rval
 
-        self.logger.trace(lambda: f'schedule updated:\n{stringify_schedule(val)}')
+        self.logger.debug(lambda: f'schedule updated')
+        self.logger.trace(lambda: f'updated schedule:\n{stringify_schedule(val)}')
         self._schedule = val
         self.scheduleChanged.emit(self._schedule)
         n = (max([int(k) for k in self._schedule.keys()]) if self._schedule else 0)
