@@ -14,13 +14,27 @@ from ..q_objects.Logger import Logger
 
 from collections.abc import Mapping, Sequence
 
-from ..loop_helpers import transition_loop, transition_loops, loop_adopt_ringbuffers
-
 import traceback
 import math
 
 import shoop_py_backend
 from .CompositeLoopBackend import CompositeLoopBackend
+
+def stringify_schedule (schedule):
+    converted = recursively_convert_jsvalue(schedule)
+    if not converted:
+        return "(none)"     
+    rval = ''
+    for iteration,elem in converted.items():
+        rval += f'{iteration}:'
+        for to_stop in elem['loops_end']:
+            rval += f'\n- {iid(to_stop)} -> Stopped'
+        for to_start in elem['loops_start']:
+            rval += f'\n- {iid(to_start[0])} -> {to_start[1] if to_start[1] != None else "Autostart"}'
+        for to_ignore in elem['loops_ignored']:
+            rval += f'\n- {iid(to_ignore)} ignored'
+        rval += "\n"
+    return rval
 
 def iid(obj):
     if hasattr(obj, "instanceIdentifier"):
@@ -37,7 +51,9 @@ def substitute_schedule_backend_loops(schedule):
                 if isinstance(i, list):
                     o.append(transform_list(i))
                 elif i:
-                    o.append(i.get_backend_loop())
+                    backend_loop = i.property("backend_loop_wrapper")
+                    print(f'{i} -> {backend_loop}')
+                    o.append(backend_loop)
                 else:
                     o.append(i)
             return o
@@ -53,8 +69,9 @@ def substitute_schedule_backend_loops(schedule):
         if 'loop_modes' in iteration_data.keys():
             loop_modes_out = dict()
             for (key, value) in iteration_data['loop_modes'].items():
-                loop_modes_out[key.get_backend_loop()] = value
+                loop_modes_out[key.get_backend_loop_wrapper()] = value
             schedule_out[iteration]['loop_modes'] = loop_modes_out
+    return schedule_out
 
 # Manage a back-end composite loop (GUI thread)
 class CompositeLoop(ShoopQQuickItem):
@@ -129,6 +146,11 @@ class CompositeLoop(ShoopQQuickItem):
     backend_set_instance_identifier = ShoopSignal(str)
     backend_transition = ShoopSignal(int, int, int)
     backend_adopt_ringbuffers = ShoopSignal('QVariant', 'QVariant', 'QVariant', int)
+
+    # access backend loop wrapper
+    @ShoopProperty('QObject*')
+    def backend_loop_wrapper(self):
+        return self._backend_obj
     
     # backend (frontend -> backend)
     backendChanged = ShoopSignal('QVariant')
@@ -155,6 +177,7 @@ class CompositeLoop(ShoopQQuickItem):
     def schedule(self, val):
         self.logger.debug(lambda: f'set schedule')
         self._schedule = val
+        self.logger.trace(lambda: f'schedule:\n{stringify_schedule(val)}')
         self.update_backend_schedule()
         self.scheduleChanged.emit(val)
     def update_backend_schedule(self):
@@ -199,7 +222,7 @@ class CompositeLoop(ShoopQQuickItem):
             self.update_backend_sync_loop()
             self.syncLoopChanged.emit(val)
     def update_backend_sync_loop(self):
-        backend_sync_loop = self._sync_loop.get_backend_loop() if self._sync_loop else None
+        backend_sync_loop = self._sync_loop.get_backend_loop_wrapper() if self._sync_loop else None
         self.backend_set_sync_loop.emit(backend_sync_loop)
     
     # running_loops (backend -> frontend)
@@ -375,7 +398,7 @@ class CompositeLoop(ShoopQQuickItem):
     
     @ShoopSlot(int, int, int)
     def transition(self, mode, maybe_delay, maybe_to_sync_at_cycle):
-        self.logger.trace(lambda: f'queue transition -> {mode} : wait {maybe_delay}, align @ {maybe_to_sync_at_cycle}')
+        self.logger.debug(lambda: f'queue transition -> {mode} : wait {maybe_delay}, align @ {maybe_to_sync_at_cycle}')
         self.backend_transition.emit(mode, maybe_delay, maybe_to_sync_at_cycle)
 
     @ShoopSlot('QVariant', 'QVariant', 'QVariant', int)

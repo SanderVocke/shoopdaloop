@@ -17,19 +17,19 @@ shoop_log_unit!("Frontend.Loop");
 
 macro_rules! trace {
     ($self:ident, $($arg:tt)*) => {
-        raw_trace!("[{}-backend] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_trace!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
     };
 }
 
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
-        raw_debug!("[{}-backend] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_debug!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
     };
 }
 
 macro_rules! error {
     ($self:ident, $($arg:tt)*) => {
-        raw_error!("[{}-backend] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_error!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
     };
 }
 
@@ -90,10 +90,12 @@ impl LoopBackend {
     }
 
     pub fn set_instance_identifier(mut self: Pin<&mut LoopBackend>, instance_identifier: QString) {
-        debug!(self, "set instance identifier -> {:?}", &instance_identifier);
+        let mut extended : QString = instance_identifier.clone();
+        extended.append(&QString::from("-backend"));
+        debug!(self, "set instance identifier -> {:?}", &extended);
         let mut rust_mut = self.as_mut().rust_mut();
-        rust_mut.instance_identifier = instance_identifier.clone();
-        self.as_mut().instance_identifier_changed(instance_identifier);
+        rust_mut.instance_identifier = extended.clone();
+        self.as_mut().instance_identifier_changed(extended);
     }
 
     pub fn maybe_initialize_backend(mut self: Pin<&mut LoopBackend>) -> bool {

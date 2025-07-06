@@ -14,18 +14,35 @@ from ..q_objects.Logger import Logger
 
 from collections.abc import Mapping, Sequence
 
-from ..loop_helpers import transition_loop, transition_loops, loop_adopt_ringbuffers
+from ..loop_helpers import transition_backend_loop, transition_backend_loops, backend_loop_adopt_ringbuffers
 
 import traceback
 import math
 
 import shoop_py_backend
 
+def stringify_schedule (schedule):
+    if not schedule:
+        return "(none)"     
+    rval = ''
+    for iteration,elem in schedule.items():
+        rval += f'{iteration}:'
+        for to_stop in elem['loops_end']:
+            rval += f'\n- {iid(to_stop)} -> Stopped'
+        for to_start in elem['loops_start']:
+            rval += f'\n- {iid(to_start[0])} -> {to_start[1] if to_start[1] != None else "Autostart"}'
+        for to_ignore in elem['loops_ignored']:
+            rval += f'\n- {iid(to_ignore)} ignored'
+        rval += "\n"
+    return rval
+
 def iid(obj):
     if hasattr(obj, "instanceIdentifier"):
         return obj.instanceIdentifier
-    else:
+    elif obj:
         return obj.property("instance_identifier")
+    else:
+        return "(none)"
     
 class CompositeLoopBackend(ShoopQObject):
     # FIXME marker
@@ -128,21 +145,6 @@ class CompositeLoopBackend(ShoopQObject):
         return self._schedule
     @schedule.setter
     def schedule(self, val):
-        def stringify_schedule (schedule):
-            if not schedule:
-                return "(none)"     
-            rval = ''
-            for iteration,elem in schedule.items():
-                rval += f'{iteration}:'
-                for to_stop in elem['loops_end']:
-                    rval += f'\n- {iid(to_stop)} -> Stopped'
-                for to_start in elem['loops_start']:
-                    rval += f'\n- {iid(to_start[0])} -> {to_start[1] if to_start[1] != None else "Autostart"}'
-                for to_ignore in elem['loops_ignored']:
-                    rval += f'\n- {iid(to_ignore)} ignored'
-                rval += "\n"
-            return rval
-
         self.logger.debug(lambda: f'schedule updated')
         self.logger.trace(lambda: f'updated schedule:\n{stringify_schedule(val)}')
         self._schedule = val
@@ -363,8 +365,9 @@ class CompositeLoopBackend(ShoopQObject):
     
     @ShoopSlot(int, int, int)
     def transition(self, mode, maybe_delay, maybe_to_sync_at_cycle):
-        self.logger.trace(lambda: f'queue transition -> {mode} : wait {maybe_delay}, align @ {maybe_to_sync_at_cycle}')
-        self._pending_transitions.append([mode, maybe_delay, maybe_to_sync_at_cycle])
+        self.transition_impl(mode, maybe_delay, maybe_to_sync_at_cycle)
+        # self.logger.debug(lambda: f'queue transition -> {mode} : wait {maybe_delay}, align @ {maybe_to_sync_at_cycle}')
+        # self._pending_transitions.append([mode, maybe_delay, maybe_to_sync_at_cycle])
 
     def transition_impl(self, mode, maybe_delay, maybe_to_sync_at_cycle):
         self.logger.debug(lambda: f'transition -> {mode} : wait {maybe_delay}, align @ {maybe_to_sync_at_cycle}')
@@ -436,7 +439,7 @@ class CompositeLoopBackend(ShoopQObject):
                 current_cycle = n_cycles_ago
             
             self.logger.trace(lambda: f'loop {iid(loop)} -> {mode}, goto cycle {current_cycle} ({elem["mode"]} triggered {n_cycles_ago} cycles ago, loop length {n_cycles} cycles)')
-            transition_loop(loop,
+            transition_backend_loop(loop,
                             mode,
                             DontWaitForSync,
                             (current_cycle if mode != int(shoop_py_backend.LoopMode.Stopped) else DontAlignToSyncImmediately))
@@ -505,7 +508,7 @@ class CompositeLoopBackend(ShoopQObject):
             self.logger.trace(f"to grab: {iid(loop)} @ reverse start {reverse_start_offset}, n = {grab_n}")
 
         for item in to_grab:
-            loop_adopt_ringbuffers(item['loop'], item['reverse_start'], item['n'], 0, int(shoop_py_backend.LoopMode.Unknown))
+            backend_loop_adopt_ringbuffers(item['loop'], item['reverse_start'], item['n'], 0, int(shoop_py_backend.LoopMode.Unknown))
         
         if go_to_mode != int(shoop_py_backend.LoopMode.Unknown):
             self.transition(go_to_mode, DontWaitForSync, go_to_cycle)
@@ -559,7 +562,7 @@ class CompositeLoopBackend(ShoopQObject):
     
     def cancel_all(self):
         self.logger.trace(lambda: 'cancel_all')
-        transition_loops(self._running_loops,
+        transition_backend_loops(self._running_loops,
                          int(shoop_py_backend.LoopMode.Stopped),
                          0,
                          DontAlignToSyncImmediately)
@@ -576,18 +579,24 @@ class CompositeLoopBackend(ShoopQObject):
     def default_trigger_handler(self, loop, mode):
         if loop == self:
             # Don't queue the transition, apply it immediately
+            self.logger.trace(lambda: f'Transitioning self to {mode}')
             self.transition_impl (mode, 0, DontAlignToSyncImmediately)
         else:
             # Queue the transition for next cycle. That ensures with nested composites that
             # composites always trigger themselves first, then get triggered by others.
             # This is desired (e.g. if a script wants to stop, but a composite wants it to
             # continue playing next cycle)
-            QTimer.singleShot(0, lambda loop=loop, mode=mode: transition_loop(loop, mode, 0, DontAlignToSyncImmediately))
+            self.logger.trace(lambda: f'Queue transition {loop} to {mode}')
+            QTimer.singleShot(0, lambda loop=loop, mode=mode: transition_backend_loop(loop, mode, 0, DontAlignToSyncImmediately))
 
     # In preparation for the given upcoming iteration, create the triggers for our child loops.
     # Instead of executing them directly, each trigger will call the callback with (loop, mode).
     # (the default callback is to execute the transition)
-    def do_triggers(self, iteration, mode, trigger_callback = lambda self,loop,mode: CompositeLoop.default_trigger_handler(self, loop, mode), nested=False):
+    def do_triggers(self,
+                    iteration,
+                    mode,
+                    trigger_callback = lambda self,loop,mode: CompositeLoopBackend.default_trigger_handler(self, loop, mode),
+                    nested=False):
         schedule = self._schedule
         sched_keys = [int(k) for k in schedule.keys()]
         self.logger.debug(lambda: f'{self.kind} composite loop - do_triggers({iteration}, {mode})')
@@ -647,7 +656,7 @@ class CompositeLoopBackend(ShoopQObject):
                 self.logger.debug(lambda: 'cycle: recording end')
                 # Recording ends next cycle, transition to playing or stopped
                 trigger_callback(self, self, (int(shoop_py_backend.LoopMode.Playing) if self._play_after_record else int(shoop_py_backend.LoopMode.Stopped)))
-        else:
+        elif not nested:
                 self.logger.debug(lambda: 'cycling')
                 # Will cycle around - trigger the actions for next cycle
                 self.do_triggers(0, self.mode, trigger_callback, True)

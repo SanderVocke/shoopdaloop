@@ -408,7 +408,7 @@ impl LoopGui {
         self.as_mut().backend_set_sync_source(sync_source_out);
     }
 
-    pub fn get_backend_loop(mut self: Pin<&mut LoopGui>) -> *mut QObject {
+    pub fn get_backend_loop_wrapper(mut self: Pin<&mut LoopGui>) -> *mut QObject {
         self.as_mut().backend_loop_wrapper.data().unwrap()
     }
 

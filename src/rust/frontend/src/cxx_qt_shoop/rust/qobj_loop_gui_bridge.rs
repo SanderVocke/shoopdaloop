@@ -65,6 +65,7 @@ pub mod ffi {
         #[qproperty(i32, next_mode, READ, NOTIFY)]
         #[qproperty(i32, next_transition_delay, READ, NOTIFY)]
         #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
+        #[qproperty(*mut QObject, backend_loop_wrapper, READ=get_backend_loop_wrapper)]
         #[qproperty(QList_f32, display_peaks, READ, NOTIFY)]
         #[qproperty(i32, display_midi_notes_active, READ, NOTIFY)]
         #[qproperty(i32, display_midi_events_triggered, READ, NOTIFY)]
@@ -130,13 +131,13 @@ pub mod ffi {
         pub unsafe fn set_backend(self: Pin<&mut LoopGui>, backend: *mut QObject);
 
         #[qinvokable]
-        pub unsafe fn get_backend_loop(self: Pin<&mut LoopGui>) -> *mut QObject;
-
-        #[qinvokable]
         pub unsafe fn set_initialized(self: Pin<&mut LoopGui>, initialized : bool);
 
         #[qinvokable]
         pub fn set_instance_identifier(self: Pin<&mut LoopGui>, instance_identifier: QString);
+
+        #[qinvokable]
+        pub fn get_backend_loop_wrapper(self: Pin<&mut LoopGui>) -> *mut QObject;
 
         #[qsignal]
         pub unsafe fn backend_changed(self: Pin<&mut LoopGui>, backend: *mut QObject);

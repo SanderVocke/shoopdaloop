@@ -157,7 +157,7 @@ class ControlHandler(ShoopQQuickItem):
         [ 'loop_toggle_targeted', lua_loop_selector ],
         [ 'loop_clear', lua_loop_selector ],
         [ 'loop_clear_all' ],
-        [ 'loop_adopt_ringbuffers', lua_loop_selector, lua_int, lua_int, lua_int, lua_int ],
+        [ 'gui_loop_adopt_ringbuffers', lua_loop_selector, lua_int, lua_int, lua_int, lua_int ],
         [ 'loop_trigger_grab', lua_loop_selector ],
         [ 'loop_compose_add_to_end', lua_loop_selector, lua_loop_selector, lua_bool ],
         [ 'track_get_gain', lua_track_selector ],
