@@ -160,117 +160,129 @@ impl LoopBackend {
             return;
         }
 
-        self.as_mut().starting_update();
-        let mut rust = self.as_mut().rust_mut();
-        let new_state = rust.backend_loop.as_mut().unwrap().get_state().unwrap();
-
-        // let audio_chans : Vec<*mut QObject> = self.as_mut().get_audio_channels()
-        //                                .iter()
-        //                                .map(|v| qvariant_to_qobject_ptr(v).unwrap())
-        //                                .collect();
-        // let midi_chans : Vec<*mut QObject> = self.as_mut().get_midi_channels()
-        //                               .iter()
-        //                               .map(|v| qvariant_to_qobject_ptr(v).unwrap())
-        //                               .collect();
-
-        let prev_state;
-        let prev_cycle_nr : i32;
-        let new_cycle_nr : i32;
-        {
+        let result = || -> Result<(), anyhow::Error> {
+            self.as_mut().starting_update();
             let mut rust = self.as_mut().rust_mut();
-            
-            prev_state = rust.prev_state.clone();
-            prev_cycle_nr = rust.prev_cycle_nr;
+            let new_state = rust.backend_loop.as_mut()
+                .ok_or(anyhow::anyhow!("backend loop object doesn't exist"))?
+                .get_state()?;
 
-            // let new_display_peaks : Vec<f32> =
-            //    audio_chans.iter()
-            //    .filter(|qobj| {
-            //         unsafe {
-            //             let mode = qobject_property_int(qobj.as_ref().unwrap(), "mode".to_string()).unwrap();
-            //             mode == backend_bindings::ChannelMode::Direct as i32 ||
-            //                mode == backend_bindings::ChannelMode::Wet as i32
-            //         }
-            //      })
-            //       .map(|qobj| {
-            //          unsafe {
-            //               let peak = qobject_property_float(qobj.as_ref().unwrap(), "output_peak".to_string()).unwrap();
-            //               peak as f32
-            //          }
-            //         }).collect();
-            // let display_peaks_changed = prev_display_peaks != new_display_peaks;
-            // let new_display_midi_notes_active : i32 = midi_chans.iter().map(|qobj| -> i32 {
-            //     unsafe {
-            //         let n_notes_active = qobject_property_int(qobj.as_ref().unwrap(), "n_notes_active".to_string()).unwrap();
-            //         n_notes_active
-            //     }
-            // }).sum();
-            // let new_display_midi_events_triggered : i32 = midi_chans.iter().map(|qobj| -> i32 {
-            //     unsafe {
-            //         let n_events_triggered = qobject_property_int(qobj.as_ref().unwrap(), "n_events_triggered".to_string()).unwrap();
-            //         n_events_triggered
-            //     }
-            // }).sum();
-            new_cycle_nr = 
-                if new_state.position < prev_state.position &&
-                    is_playing_mode(prev_state.mode.try_into().unwrap()) &&
-                    is_playing_mode(new_state.mode.try_into().unwrap()) 
-                { rust.prev_cycle_nr + 1 } else { rust.prev_cycle_nr };
+            // let audio_chans : Vec<*mut QObject> = self.as_mut().get_audio_channels()
+            //                                .iter()
+            //                                .map(|v| qvariant_to_qobject_ptr(v).unwrap())
+            //                                .collect();
+            // let midi_chans : Vec<*mut QObject> = self.as_mut().get_midi_channels()
+            //                               .iter()
+            //                               .map(|v| qvariant_to_qobject_ptr(v).unwrap())
+            //                               .collect();
 
-            rust.prev_state = new_state.clone();
-            // rust.display_peaks = QList::from(new_display_peaks);
-            // rust.display_midi_notes_active = new_display_midi_notes_active;
-            // rust.display_midi_events_triggered = new_display_midi_events_triggered;
-            rust.prev_cycle_nr = new_cycle_nr;
-        }
+            let prev_state;
+            let prev_cycle_nr : i32;
+            let new_cycle_nr : i32;
+            {
+                let mut rust = self.as_mut().rust_mut();
+                
+                prev_state = rust.prev_state.clone();
+                prev_cycle_nr = rust.prev_cycle_nr;
 
-        self.as_mut().state_changed(new_state.mode as i32,
-                           new_state.length as i32,
-                           new_state.position as i32,
-                           convert_maybe_mode_i32(new_state.maybe_next_mode),
-                           new_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32,
-                           new_cycle_nr);
+                // let new_display_peaks : Vec<f32> =
+                //    audio_chans.iter()
+                //    .filter(|qobj| {
+                //         unsafe {
+                //             let mode = qobject_property_int(qobj.as_ref().unwrap(), "mode".to_string()).unwrap();
+                //             mode == backend_bindings::ChannelMode::Direct as i32 ||
+                //                mode == backend_bindings::ChannelMode::Wet as i32
+                //         }
+                //      })
+                //       .map(|qobj| {
+                //          unsafe {
+                //               let peak = qobject_property_float(qobj.as_ref().unwrap(), "output_peak".to_string()).unwrap();
+                //               peak as f32
+                //          }
+                //         }).collect();
+                // let display_peaks_changed = prev_display_peaks != new_display_peaks;
+                // let new_display_midi_notes_active : i32 = midi_chans.iter().map(|qobj| -> i32 {
+                //     unsafe {
+                //         let n_notes_active = qobject_property_int(qobj.as_ref().unwrap(), "n_notes_active".to_string()).unwrap();
+                //         n_notes_active
+                //     }
+                // }).sum();
+                // let new_display_midi_events_triggered : i32 = midi_chans.iter().map(|qobj| -> i32 {
+                //     unsafe {
+                //         let n_events_triggered = qobject_property_int(qobj.as_ref().unwrap(), "n_events_triggered".to_string()).unwrap();
+                //         n_events_triggered
+                //     }
+                // }).sum();
+                new_cycle_nr = 
+                    if new_state.position < prev_state.position &&
+                        is_playing_mode(prev_state.mode.try_into().unwrap()) &&
+                        is_playing_mode(new_state.mode.try_into().unwrap()) 
+                    { rust.prev_cycle_nr + 1 } else { rust.prev_cycle_nr };
 
-        if prev_state.mode != new_state.mode {
-            debug!(self, "mode: {:?} -> {:?}", prev_state.mode, new_state.mode);
-            self.as_mut().mode_changed(prev_state.mode as i32, new_state.mode as i32);
-        }
-        if prev_state.length != new_state.length {
-            trace!(self, "length: {} -> {}", prev_state.length, new_state.length);
-            self.as_mut().length_changed(prev_state.length as i32, new_state.length as i32);
-        }
-        if prev_state.position != new_state.position {
-            trace!(self, "position: {} -> {}", prev_state.position, new_state.position);
-            self.as_mut().position_changed(prev_state.position as i32, new_state.position as i32);
-        }
-        if prev_state.maybe_next_mode != new_state.maybe_next_mode {
-            debug!(self, "next mode: {:?} -> {:?}", prev_state.maybe_next_mode, new_state.maybe_next_mode);
-            let prev_mode = convert_maybe_mode_i32(prev_state.maybe_next_mode);
-            let new_mode = convert_maybe_mode_i32(new_state.maybe_next_mode);
-            self.as_mut().next_mode_changed(prev_mode, new_mode);
-        }
-        if prev_state.maybe_next_mode_delay != new_state.maybe_next_mode_delay {
-            debug!(self, "next delay: {:?} -> {:?}", prev_state.maybe_next_mode_delay, new_state.maybe_next_mode_delay);
-            let prev_delay : i32 = prev_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32;
-            let new_delay : i32 = new_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32;
-            self.as_mut().next_transition_delay_changed(prev_delay, new_delay);
-        }
-        // if display_peaks_changed {
-        //     trace!(self, "display peaks changed");
-        //     self.as_mut().display_peaks_changed();
-        // }
-        // if prev_display_midi_notes_active != new_display_midi_notes_active {
-        //     trace!(self, "midi notes active: {} -> {}", prev_display_midi_notes_active, new_display_midi_notes_active);
-        //     self.as_mut().display_midi_notes_active_changed();
-        // }
-        // if prev_display_midi_events_triggered != new_display_midi_events_triggered {
-        //     trace!(self, "midi events triggered: {} -> {}", prev_display_midi_events_triggered, new_display_midi_events_triggered);
-        //     self.as_mut().display_midi_events_triggered_changed();
-        // }
-        if prev_cycle_nr != new_cycle_nr {
-            debug!(self, "cycle nr: {} -> {}", prev_cycle_nr, new_cycle_nr);
-            self.as_mut().cycle_nr_changed(new_cycle_nr, prev_cycle_nr);
-            if (new_cycle_nr - prev_cycle_nr) == 1 {
-                self.as_mut().cycled(new_cycle_nr);
+                rust.prev_state = new_state.clone();
+                // rust.display_peaks = QList::from(new_display_peaks);
+                // rust.display_midi_notes_active = new_display_midi_notes_active;
+                // rust.display_midi_events_triggered = new_display_midi_events_triggered;
+                rust.prev_cycle_nr = new_cycle_nr;
+            }
+
+            self.as_mut().state_changed(new_state.mode as i32,
+                            new_state.length as i32,
+                            new_state.position as i32,
+                            convert_maybe_mode_i32(new_state.maybe_next_mode),
+                            new_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32,
+                            new_cycle_nr);
+
+            if prev_state.mode != new_state.mode {
+                debug!(self, "mode: {:?} -> {:?}", prev_state.mode, new_state.mode);
+                self.as_mut().mode_changed(prev_state.mode as i32, new_state.mode as i32);
+            }
+            if prev_state.length != new_state.length {
+                trace!(self, "length: {} -> {}", prev_state.length, new_state.length);
+                self.as_mut().length_changed(prev_state.length as i32, new_state.length as i32);
+            }
+            if prev_state.position != new_state.position {
+                trace!(self, "position: {} -> {}", prev_state.position, new_state.position);
+                self.as_mut().position_changed(prev_state.position as i32, new_state.position as i32);
+            }
+            if prev_state.maybe_next_mode != new_state.maybe_next_mode {
+                debug!(self, "next mode: {:?} -> {:?}", prev_state.maybe_next_mode, new_state.maybe_next_mode);
+                let prev_mode = convert_maybe_mode_i32(prev_state.maybe_next_mode);
+                let new_mode = convert_maybe_mode_i32(new_state.maybe_next_mode);
+                self.as_mut().next_mode_changed(prev_mode, new_mode);
+            }
+            if prev_state.maybe_next_mode_delay != new_state.maybe_next_mode_delay {
+                debug!(self, "next delay: {:?} -> {:?}", prev_state.maybe_next_mode_delay, new_state.maybe_next_mode_delay);
+                let prev_delay : i32 = prev_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32;
+                let new_delay : i32 = new_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32;
+                self.as_mut().next_transition_delay_changed(prev_delay, new_delay);
+            }
+            // if display_peaks_changed {
+            //     trace!(self, "display peaks changed");
+            //     self.as_mut().display_peaks_changed();
+            // }
+            // if prev_display_midi_notes_active != new_display_midi_notes_active {
+            //     trace!(self, "midi notes active: {} -> {}", prev_display_midi_notes_active, new_display_midi_notes_active);
+            //     self.as_mut().display_midi_notes_active_changed();
+            // }
+            // if prev_display_midi_events_triggered != new_display_midi_events_triggered {
+            //     trace!(self, "midi events triggered: {} -> {}", prev_display_midi_events_triggered, new_display_midi_events_triggered);
+            //     self.as_mut().display_midi_events_triggered_changed();
+            // }
+            if prev_cycle_nr != new_cycle_nr {
+                debug!(self, "cycle nr: {} -> {}", prev_cycle_nr, new_cycle_nr);
+                self.as_mut().cycle_nr_changed(new_cycle_nr, prev_cycle_nr);
+                if (new_cycle_nr - prev_cycle_nr) == 1 {
+                    self.as_mut().cycled(new_cycle_nr);
+                }
+            }
+
+            Ok(())
+        }();
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                error!(self, "Error while updating backend loop: {}", e);
             }
         }
     }

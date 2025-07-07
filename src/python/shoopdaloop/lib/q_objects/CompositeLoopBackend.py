@@ -69,8 +69,6 @@ class CompositeLoopBackend(ShoopQObject):
         self._sync_length = 0
         self._n_cycles = 0
         self._kind = 'regular'
-        self._pending_transitions = []
-        self._pending_cycles = []
         self._backend = None
         self._initialized = False
         self._play_after_record = False
@@ -384,8 +382,6 @@ class CompositeLoopBackend(ShoopQObject):
     @ShoopSlot(int, int, int)
     def transition(self, mode, maybe_delay, maybe_to_sync_at_cycle):
         self.transition_impl(mode, maybe_delay, maybe_to_sync_at_cycle)
-        # self.logger.debug(lambda: f'queue transition -> {mode} : wait {maybe_delay}, align @ {maybe_to_sync_at_cycle}')
-        # self._pending_transitions.append([mode, maybe_delay, maybe_to_sync_at_cycle])
 
     def transition_impl(self, mode, maybe_delay, maybe_to_sync_at_cycle):
         self.logger.debug(lambda: f'transition -> {mode} : wait {maybe_delay}, align @ {maybe_to_sync_at_cycle}')
@@ -678,29 +674,16 @@ class CompositeLoopBackend(ShoopQObject):
                 # Will cycle around - trigger the actions for next cycle
                 self.do_triggers(0, self.mode, trigger_callback, True)
     
-    def connect_backend_updates(self):
-        pass
-        #QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("update()"), Qt.DirectConnection)
-    
     def maybe_initialize(self):
         if self._backend and self._backend.property('ready') and not self._initialized:
-            self.logger.debug(lambda: 'Found backend, initializing')
-            # if not self.moveToThread(self._backend.get_backend_thread()):
-            #     self.logger.error("Unable to move to back-end thread")
-            self.connect_backend_updates()
+            self.logger.debug(lambda: 'Found backend, initialized')
             self._initialized = True
             self.initializedChanged.emit(True)
     
     # Update from the back-end.
     @ShoopSlot()
     def update(self):
-        if self._backend:
-            for cycle_nr in self._pending_cycles:
-                self.handle_sync_loop_trigger_impl(cycle_nr)
-            for transition in self._pending_transitions:
-                self.transition_impl(*transition)
-            self._pending_transitions = []
-            self._pending_cycles = []
+        pass
 
     # Another loop which references this loop (composite) can notify this loop that it is
     # about to handle a sync loop cycle in advance, to ensure a deterministic ordering.

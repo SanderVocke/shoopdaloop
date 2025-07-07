@@ -67,6 +67,10 @@ ShoopTestFile {
     Item {
         FakeSyncLoop {
             id: sequential_sched_sync_loop
+
+            property var backend_loop_wrapper: QtObject {
+                property int length: 100
+            }
         }
         FakeLoop {
             id: sequential_sched_1
