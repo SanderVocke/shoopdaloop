@@ -50,9 +50,8 @@ def substitute_schedule_backend_loops(schedule):
             for i in l:
                 if isinstance(i, list):
                     o.append(transform_list(i))
-                elif i:
+                elif i and isinstance(i, QObject):
                     backend_loop = i.property("backend_loop_wrapper")
-                    print(f'{i} -> {backend_loop}')
                     o.append(backend_loop)
                 else:
                     o.append(i)
@@ -106,7 +105,7 @@ class CompositeLoop(ShoopQQuickItem):
         self._cycle_nr = 0
         self._last_handled_source_cycle_nr = -1
 
-        self._backend_obj = CompositeLoopBackend()
+        self._backend_obj = CompositeLoopBackend(self)
         update_thread = get_engine_update_thread()
         if not self._backend_obj.moveToThread(update_thread):
             self.logger.error(f"Unable to move backend composite loop to update thread")
@@ -119,7 +118,7 @@ class CompositeLoop(ShoopQQuickItem):
         self._backend_obj.syncPositionChanged.connect(self.on_backend_sync_position_changed, Qt.QueuedConnection)
         self._backend_obj.nextModeChanged.connect(self.on_backend_next_mode_changed, Qt.QueuedConnection)
         self._backend_obj.nextTransitionDelayChanged.connect(self.on_backend_next_transition_delay_changed, Qt.QueuedConnection)
-        self._backend_obj.runningLoopsChanged.connect(self.on_backend_running_loops_changed, Qt.QueuedConnection)
+        self._backend_obj.runningFrontendLoopsChanged.connect(self.on_backend_running_loops_changed, Qt.QueuedConnection)
         self._backend_obj.lengthChanged.connect(self.on_backend_length_changed, Qt.QueuedConnection)
         self._backend_obj.positionChanged.connect(self.on_backend_position_changed, Qt.QueuedConnection)
         self._backend_obj.initializedChanged.connect(self.on_backend_initialized_changed, Qt.QueuedConnection)
@@ -222,7 +221,8 @@ class CompositeLoop(ShoopQQuickItem):
             self.update_backend_sync_loop()
             self.syncLoopChanged.emit(val)
     def update_backend_sync_loop(self):
-        backend_sync_loop = self._sync_loop.get_backend_loop_wrapper() if self._sync_loop else None
+        backend_sync_loop = self._sync_loop.property('backend_loop_wrapper') if self._sync_loop else None
+        self.logger.debug(lambda: f'set backend sync loop -> {backend_sync_loop}')
         self.backend_set_sync_loop.emit(backend_sync_loop)
     
     # running_loops (backend -> frontend)
@@ -232,7 +232,7 @@ class CompositeLoop(ShoopQQuickItem):
         return self._running_loops
     @ShoopSlot('QVariant')
     def on_backend_running_loops_changed(self, v):
-        self._running_loops = [l.get_frontend_loop() for l in v]
+        self._running_loops = [l.property('frontend_loop') for l in v]
         self.logger.debug(lambda: f'running loops -> {self._running_loops}')
         self.runningLoopsChanged.emit(v)
 

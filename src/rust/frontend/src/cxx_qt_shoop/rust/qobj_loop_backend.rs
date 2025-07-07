@@ -518,8 +518,4 @@ impl LoopBackend {
     pub fn get_initialized(self: &LoopBackend) -> bool {
         self.rust().backend_loop.is_some()
     }
-
-    pub unsafe fn get_frontend_loop(self: Pin<&mut LoopBackend>) -> *mut QObject {
-        *self.frontend_loop()
-    }
 }

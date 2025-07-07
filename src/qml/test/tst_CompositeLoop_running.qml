@@ -128,6 +128,7 @@ ShoopTestFile {
                 // For now, we work around this by processing in multiple steps.
                 // This is also realistic in terms of how the application is normally used:
                 // small process amounts with larger loops.
+                testcase.logger.debug(`process ${amount} frames in ${steps} steps`)
                 for (var i = 0; i < steps; i++) {
                     session.backend.dummy_request_controlled_frames(Math.round(amount / steps))
                     testcase.wait_updated(session.backend)

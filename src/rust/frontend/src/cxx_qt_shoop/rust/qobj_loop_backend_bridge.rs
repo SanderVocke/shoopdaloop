@@ -118,9 +118,6 @@ pub mod ffi {
         #[qinvokable]
         pub fn maybe_initialize_backend(self: Pin<&mut LoopBackend>) -> bool;
 
-        #[qinvokable]
-        pub unsafe fn get_frontend_loop(self: Pin<&mut LoopBackend>) -> *mut QObject;
-
         #[qsignal]
         fn cycled(self: Pin<&mut LoopBackend>, cycle_nr: i32);
 

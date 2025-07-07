@@ -49,13 +49,15 @@ class CompositeLoopBackend(ShoopQObject):
     def is_composite_loop(self):
         pass
     
-    def __init__(self, parent=None):
+    def __init__(self, frontend_loop, parent=None):
         super(CompositeLoopBackend, self).__init__(parent)
         self._schedule = {}
         self.logger = Logger(self)
         self.logger.name = 'Frontend.CompositeLoop'
         self._sync_loop = None
+        self._frontend_loop = frontend_loop
         self._running_loops = set()
+        self._running_frontend_loops = set()
         self._iteration = 0
         self._backend = None
         self._mode = int(shoop_py_backend.LoopMode.Stopped)
@@ -121,6 +123,11 @@ class CompositeLoopBackend(ShoopQObject):
     ######################
     ## PROPERTIES
     ######################
+
+    # frontend_loop
+    @ShoopProperty('QVariant')
+    def frontend_loop(self):
+        return self._frontend_loop
     
     # backend
     backendChanged = ShoopSignal('QVariant')
@@ -177,8 +184,8 @@ class CompositeLoopBackend(ShoopQObject):
             self._sync_loop = val
             if val:
                 self.logger.debug(lambda: 'connecting to sync loop')
-                QObject.connect(val, SIGNAL("positionChanged()"), self, SLOT("update_sync_position()"), Qt.DirectConnection)
-                QObject.connect(val, SIGNAL("lengthChanged()"), self, SLOT("update_sync_length()"), Qt.DirectConnection)
+                QObject.connect(val, SIGNAL("position_changed(::std::int32_t,::std::int32_t)"), self, SLOT("update_sync_position()"), Qt.DirectConnection)
+                QObject.connect(val, SIGNAL("length_changed(::std::int32_t,::std::int32_t)"), self, SLOT("update_sync_length()"), Qt.DirectConnection)
                 QObject.connect(val, SIGNAL("cycled(int)"), self, SLOT("handle_sync_loop_trigger(int)"), Qt.DirectConnection)
                 self.update_sync_position()
                 self.update_sync_length()
@@ -193,6 +200,17 @@ class CompositeLoopBackend(ShoopQObject):
     def running_loops(self, val):
         self._running_loops = set(val)
         self.runningLoopsChanged.emit(self._running_loops)
+        self.running_frontend_loops = [l.property('frontend_loop') for l in self._running_loops]
+    
+    # running_frontend_loops
+    runningFrontendLoopsChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=runningFrontendLoopsChanged)
+    def running_frontend_loops(self):
+        return list(self._running_frontend_loops)
+    @running_frontend_loops.setter
+    def running_frontend_loops(self, val):
+        self._running_frontend_loops = set(val)
+        self.runningFrontendLoopsChanged.emit(self._running_frontend_loops)
 
     # iteration
     iterationChanged = ShoopSignal(int)
@@ -456,8 +474,7 @@ class CompositeLoopBackend(ShoopQObject):
     
     @ShoopSlot(int)
     def handle_sync_loop_trigger(self, cycle_nr):
-        self.logger.trace(lambda: f'queue sync loop trigger')
-        self._pending_cycles.append(cycle_nr)
+        self.handle_sync_loop_trigger_impl(cycle_nr)
 
     @ShoopSlot('QVariant', 'QVariant', 'QVariant', int)
     def adopt_ringbuffers(self, reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode):
@@ -555,7 +572,7 @@ class CompositeLoopBackend(ShoopQObject):
 
             if cycled:
                 self._cycle_nr += 1
-                self.cycledUnsafe.emit(self._cycle_nr)
+                self.cycled.emit(self._cycle_nr)
                 
         self._last_handled_source_cycle_nr = cycle_nr
         self.logger.trace(lambda: 'handle sync cycle done')
@@ -656,7 +673,7 @@ class CompositeLoopBackend(ShoopQObject):
                 self.logger.debug(lambda: 'cycle: recording end')
                 # Recording ends next cycle, transition to playing or stopped
                 trigger_callback(self, self, (int(shoop_py_backend.LoopMode.Playing) if self._play_after_record else int(shoop_py_backend.LoopMode.Stopped)))
-        elif not nested:
+            else:
                 self.logger.debug(lambda: 'cycling')
                 # Will cycle around - trigger the actions for next cycle
                 self.do_triggers(0, self.mode, trigger_callback, True)

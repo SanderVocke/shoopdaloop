@@ -15,9 +15,10 @@ fn generate_dev_launcher_script() -> Result<PathBuf, anyhow::Error> {
 
     if cfg!(target_os = "windows") {
         let script_content = format!(r#"
+@echo off
 SET "PATH=%PATH%;{paths}"
 SET "SHOOP_CONFIG={dev_config_path_str}"
-"%~dp0shoopdaloop.exe" %*
+%SHOOP_CMD_PREFIX% "%~dp0shoopdaloop.exe" %*
 "#);
         let script_path = PathBuf::from(std::env::var("OUT_DIR").unwrap())
                                    .ancestors().nth(3).unwrap().join("shoopdaloop_dev.bat");
