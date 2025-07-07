@@ -478,6 +478,7 @@ shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, s
         loop_info->mp_audio_channels.push_back(r);
         logging::log<"Backend.API", log_level_debug>(std::nullopt, std::nullopt, "add_audio_channel: executed on process thread");
     });
+    backend.set_graph_node_changes_pending();
     return external_audio_channel(r);
   }, nullptr);
 }
@@ -498,6 +499,7 @@ shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, sho
         loop_info->mp_midi_channels.push_back(r);
         logging::log<"Backend.API", log_level_debug>(std::nullopt, std::nullopt, "add_midi_channel: executed on process thread");
     });
+    backend.set_graph_node_changes_pending();
     return external_midi_channel(r);
   }, nullptr);
 }
@@ -1027,6 +1029,7 @@ shoopdaloop_audio_port_t *open_driver_audio_port (shoop_backend_session_t *backe
       port->set_ringbuffer_n_samples(min_always_on_ringbuffer_samples);
     }
     auto pi = _backend->add_audio_port(port);
+    _backend->set_graph_node_changes_pending();
     return external_audio_port(shoop_static_pointer_cast<GraphPort>(pi));
   }, (shoopdaloop_audio_port_t*) nullptr);
 }
@@ -1044,6 +1047,7 @@ shoopdaloop_audio_port_t *open_internal_audio_port (shoop_backend_session_t *bac
       port->set_ringbuffer_n_samples(min_always_on_ringbuffer_samples);
     }
     auto pi = _backend->add_audio_port(shoop_static_pointer_cast<_AudioPort>(port));
+    _backend->set_graph_node_changes_pending();
     return external_audio_port(shoop_static_pointer_cast<GraphPort>(pi));
   }, (shoopdaloop_audio_port_t*) nullptr);
 }
@@ -1237,6 +1241,7 @@ shoopdaloop_midi_port_t *open_driver_midi_port (shoop_backend_session_t *backend
       port->set_ringbuffer_n_samples(min_always_on_ringbuffer_samples);
     }
     auto pi = _backend->add_midi_port(port);
+    _backend->set_graph_node_changes_pending();
     return external_midi_port(shoop_static_pointer_cast<GraphPort>(pi));
   }, nullptr);
 }
@@ -1258,6 +1263,7 @@ void close_midi_port (shoopdaloop_midi_port_t *port) {
     if (!_port) { return; }
     _port->get_backend().queue_process_thread_command([=]() {
         auto &backend = _port->get_backend();
+        backend.set_graph_node_changes_pending();
         backend.ports.erase(
             std::remove_if(backend.ports.begin(), backend.ports.end(),
                 [_port](auto const& e) { return e == _port; }),
