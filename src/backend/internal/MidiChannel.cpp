@@ -132,7 +132,16 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
     auto process_params = get_channel_process_params(
         mode, maybe_next_mode, maybe_next_mode_delay_cycles,
         maybe_next_mode_eta, pos_before, ma_start_offset, ma_mode);
-    auto const &process_flags = process_params.process_flags;
+    auto &process_flags = process_params.process_flags;
+
+    // Corner case: a just-created channel may immediately
+    // go into pre-record mode before being properly added to the
+    // processing graph (TODO: better fix).
+    // Here, we solve it by only going ahead when buffers have been
+    // assigned.
+    if (!mp_recording_source_buffer.has_value()) {
+        process_flags &= (~ChannelPreRecord);
+    }    
 
     // We always need to process input messages to keep our input port
     // state up-to-date. This is done inside the recording process
