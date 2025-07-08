@@ -139,7 +139,8 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
     // processing graph (TODO: better fix).
     // Here, we solve it by only going ahead when buffers have been
     // assigned.
-    if (!mp_recording_source_buffer.has_value()) {
+    if ((!mp_recording_source_buffer.has_value()) ||
+        (mp_recording_source_buffer.value().second == nullptr)) {
         process_flags &= (~ChannelPreRecord);
     }    
 
