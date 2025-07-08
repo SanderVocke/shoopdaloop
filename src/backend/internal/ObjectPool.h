@@ -27,6 +27,7 @@ class ObjectPool : public ModuleLoggingEnabled<"Backend.ObjectPool"> {
     std::thread m_replenish_thread;
     std::atomic<bool> m_replenish = false;
     std::atomic<bool> m_none_available = false;
+    std::atomic<unsigned> m_n_created_since_last_checked = 0;
     std::mutex m_mutex;
     std::condition_variable m_cv;
     std::string m_name;
@@ -101,6 +102,13 @@ public:
 
     size_t object_size() const { return m_objects_size; }
 
+    size_t n_available() const { return m_actual_n_objects; }
+
+    size_t n_created_since_last_checked() {
+        auto rval = m_n_created_since_last_checked.exchange(0);
+        return rval;
+    }
+
 protected:
     void push() {
         m_queue.push(allocate());
@@ -131,6 +139,7 @@ protected:
     }
 
     Object *allocate() {
+        m_n_created_since_last_checked++;
         return new Object(m_objects_size);
     }
 };

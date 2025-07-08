@@ -16,6 +16,9 @@ ApplicationWindow {
     function add_dsp_load_point(load) {
         dsp_load.add_point(load)
     }
+    function add_audio_buffer_pool_point(buffers_created, buffers_available) {
+        audio_buffer_pool.add_point(buffers_created, buffers_available)
+    }
 
     ShoopComboBox {
         id: combo
@@ -23,7 +26,7 @@ ApplicationWindow {
         anchors.left: parent.left
         width: 200
 
-        model: ["DSP load"]
+        model: ["DSP load", "Audio buffer pool"]
     }
 
     StackLayout {
@@ -37,6 +40,9 @@ ApplicationWindow {
 
         MonitorDspLoadGraph {
             id: dsp_load
+        }
+        MonitorAudioBufferPool {
+            id: audio_buffer_pool
         }
     }
 }

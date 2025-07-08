@@ -137,6 +137,8 @@ typedef struct {
 
 typedef struct {
     shoop_audio_driver_t * audio_driver;
+    unsigned n_audio_buffers_created;
+    unsigned n_audio_buffers_available;
 } shoop_backend_session_state_info_t;
 
 typedef struct {
