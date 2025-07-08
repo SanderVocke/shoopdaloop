@@ -428,6 +428,10 @@ Rectangle {
         id: session_backend
         driver_setting_overrides: ({})
 
+        onDsp_loadChanged: {
+            app_controls.add_dsp_load_point(dsp_load)
+        }
+
         SessionControlInterface {
             backend: session_backend
             id: control_interface
