@@ -275,19 +275,23 @@ class LoopChannel(ShoopQQuickItem):
     def updateOnOtherThread(self):
         if not self._backend_obj:
             return
-        state = self._backend_obj.get_state()
-
-        self._new_data_length = state.length
-        self._new_start_offset = state.start_offset
-        self._new_mode = int(state.mode)
-        self._new_data_dirty = state.data_dirty
-        self._new_n_preplay_samples = state.n_preplay_samples
-        self._new_played_back_sample = state.played_back_sample
-        self._n_pending_updates += 1
         
-        self.updateOnOtherThreadSubclassImpl(state)
-        
-        self._signal_sender.do_emit()
+        state = None
+        try:
+            state = self._backend_obj.get_state()
+            self._new_data_length = state.length
+            self._new_start_offset = state.start_offset
+            self._new_mode = int(state.mode)
+            self._new_data_dirty = state.data_dirty
+            self._new_n_preplay_samples = state.n_preplay_samples
+            self._new_played_back_sample = state.played_back_sample
+            self._n_pending_updates += 1
+            
+            self.updateOnOtherThreadSubclassImpl(state)
+            
+            self._signal_sender.do_emit()
+        except Exception as e:
+            self.__logger.error(lambda: f"Failed to update: {e}")
     
     @ShoopSlot()
     def updateOnGuiThread(self):

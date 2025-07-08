@@ -9,9 +9,8 @@ Item {
 
     property int max_points: 1000
     function add_point(load) {
-        let cpy = root.points.slice(Math.max(0,root.points.length - max_points - 1))
-        cpy.push(load)
-        root.points = cpy
+        root.points.push(load)
+        root.points.splice(0, Math.max(0,root.points.length - max_points))
     }
 
     property var points : []
@@ -43,9 +42,8 @@ Item {
             max: root.max_points
         }
         axisY: ValueAxis {
-            max: root.points.length > 0 ?
-                    Math.ceil((Math.max(...root.points) * 1.1) / 5.0) * 5.0 :
-                    100.0
+            id: y_axis
+            max: 1
             min: 0
         } 
         LineSeries {
@@ -58,6 +56,9 @@ Item {
         for (var i = 0; i < root.points.length; i++) {
             line_series.append(i, root.points[i])
         }
+        y_axis.max = root.points.length > 0 ?
+                    Math.ceil((Math.max(...root.points) * 1.1) / 5.0) * 5.0 :
+                    100.0
         root.points_changed = false
     }
 }

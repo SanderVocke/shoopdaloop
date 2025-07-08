@@ -140,10 +140,8 @@ class Application(ShoopQApplication):
         self.engine.load(filename)
         for obj in self.engine.rootObjects():
             if(isinstance(obj, QQuickWindow)):
-                print("BLAH")
                 # This connection ensure back-end state updates happen in lock-step with
                 # GUI refreshes.
-                obj.dumpObjectInfo()
                 QObject.connect(obj, SIGNAL("frameSwapped()"),
                                 get_engine_update_thread_wrapper(), SLOT("trigger_update()"),
                                 Qt.QueuedConnection)
@@ -173,6 +171,7 @@ class Application(ShoopQApplication):
 
     def exit_handler(self):
         if self.engine:
+            self.logger.debug(lambda: "Quit via exit handler")
             QMetaObject.invokeMethod(self.engine, 'quit')
             self.exit_handler_called.emit()
 

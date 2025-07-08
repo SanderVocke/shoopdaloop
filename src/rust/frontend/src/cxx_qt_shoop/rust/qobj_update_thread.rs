@@ -1,5 +1,6 @@
 use cxx_qt::CxxQtType;
 
+use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
 use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 use crate::cxx_qt_shoop::qobj_update_thread_bridge::UpdateThread;
 use crate::cxx_qt_shoop::qobj_update_thread_bridge::ffi::*;  
@@ -40,6 +41,8 @@ impl UpdateThread {
             timer.as_mut().connect_timeout(self_qobject, "timer_tick()".to_string()).unwrap();
             thread.as_mut().connect_started(timer.as_mut().qobject_from_ptr(), "start()".to_string()).unwrap();
             thread.as_mut().start();
+
+            qobject_move_to_thread(self_qobject, rust.thread).unwrap();
         }
     }
 

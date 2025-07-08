@@ -18,9 +18,9 @@ pub struct MidiChannelState {
 }
 
 impl MidiChannelState {
-    pub fn new(obj: &ffi::shoop_midi_channel_state_info_t) -> Self {
-        MidiChannelState {
-            mode: ChannelMode::try_from(obj.mode).unwrap(),
+    pub fn new(obj: &ffi::shoop_midi_channel_state_info_t) -> Result<Self, anyhow::Error> {
+        Ok(MidiChannelState {
+            mode: ChannelMode::try_from(obj.mode)?,
             n_events_triggered: obj.n_events_triggered,
             n_notes_active: obj.n_notes_active,
             length: obj.length,
@@ -31,7 +31,7 @@ impl MidiChannelState {
             },
             n_preplay_samples: obj.n_preplay_samples,
             data_dirty: obj.data_dirty != 0,
-        }
+        })
     }
 }
 
@@ -114,7 +114,7 @@ impl MidiChannel {
             if state_ptr.is_null() {
                 return Err(anyhow::anyhow!("Failed to retrieve MIDI channel state"));
             }
-            let state = MidiChannelState::new(&(*state_ptr));
+            let state = MidiChannelState::new(&(*state_ptr))?;
             ffi::destroy_midi_channel_state_info(state_ptr);
             Ok(state)
         }
