@@ -11,6 +11,7 @@ Item {
     function add_point(interval) {
         root.points.push(1.0/interval)
         root.points.splice(0, Math.max(0,root.points.length - max_points))
+        root.points_changed = true
     }
 
     property var points : []

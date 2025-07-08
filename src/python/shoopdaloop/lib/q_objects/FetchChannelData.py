@@ -200,8 +200,8 @@ class FetchChannelData(ShoopQQuickItem):
     @ShoopSlot()
     def tick(self):
         if not self.channel or not self.channel.isValid() or not self.dirty or not self.active or \
-           not self.channel.initialized or not self.channel.loop or not self.channel.loop.isValid() or \
-           not self.channel.loop.initialized or is_recording_mode(self.channel.loop_mode) or \
+           not self.channel.initialized or not self.channel.loop or \
+           not self.channel.loop.property('initialized') or is_recording_mode(self.channel.loop_mode) or \
            self._retrieved_sequence_nr >= self._requested_sequence_nr:
             self._fetch_timer.start() # Try again soon
             return

@@ -103,7 +103,7 @@ class LoopChannel(ShoopQQuickItem):
     loopModeChanged = ShoopSignal(int)
     @ShoopProperty(int, notify=loopModeChanged)
     def loop_mode(self):
-        return (self._loop.mode if self._loop else 0)
+        return (self._loop.property('mode') if self._loop else 0)
 
     # recording_started_at
     recordingStartedAtChanged = ShoopSignal('QVariant')

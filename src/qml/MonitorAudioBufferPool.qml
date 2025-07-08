@@ -11,6 +11,7 @@ Item {
     function add_point(buffers_created, buffers_available) {
         root.points.push(buffers_available)
         root.points.splice(0, Math.max(0,root.points.length - max_points))
+        root.points_changed = true
     }
 
     property var points : []
