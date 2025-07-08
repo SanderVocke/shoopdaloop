@@ -105,7 +105,7 @@ public:
     bool get_active() const;
     uint32_t get_last_processed() const;
 
-    void wait_process();
+    virtual void wait_process();
 
     virtual std::vector<ExternalPortDescriptor> find_external_ports(
         const char* maybe_name_regex,

@@ -8,13 +8,14 @@
 #include <cxx-qt-lib-shoop/reporting.h>
 
 template<typename A, typename B>
-void connect(A * sender,
+void connect(A const* sender,
              ::rust::String signal,
-             B * receiver,
-             ::rust::String slot)
+             B const* receiver,
+             ::rust::String slot,
+             unsigned connection_type)
 {
-    auto qobj_sender = static_cast<QObject*>(sender);
-    auto qobj_receiver = static_cast<QObject*>(receiver);
+    auto qobj_sender = static_cast<QObject const*>(sender);
+    auto qobj_receiver = static_cast<QObject const*>(receiver);
     auto snd_meta = sender->metaObject();
     auto rcv_meta = receiver->metaObject();
 
@@ -31,7 +32,7 @@ void connect(A * sender,
     QMetaMethod signalMethod = snd_meta->method(signalIndex);
     QMetaMethod slotMethod = rcv_meta->method(slotIndex);
 
-    if (!QObject::connect(qobj_sender, signalMethod, qobj_receiver, slotMethod)) {
+    if (!QObject::connect(qobj_sender, signalMethod, qobj_receiver, slotMethod, (Qt::ConnectionType) connection_type)) {
         throw std::runtime_error("Failed to connect");
     }
 }

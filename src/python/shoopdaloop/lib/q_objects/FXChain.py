@@ -1,32 +1,33 @@
 from typing import *
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
-from .FindParentBackend import FindParentBackend
 from .ShoopPyObject import *
 
 from ..backend_wrappers import *
-from ..q_objects.Backend import Backend
-from ..findFirstParent import findFirstParent
 from ..logging import Logger
 
 # Wraps a back-end FX chain.
-class FXChain(FindParentBackend):
+class FXChain(ShoopQQuickItem):
     def __init__(self, parent=None):
         super(FXChain, self).__init__(parent)
         self._active = self._new_active = True
         self._ready = self._new_ready = False
         self._ui_visible = self._new_ui_visible = False
         self._initialized = False
+        self._backend = None
         self._backend_object = None
         self._chain_type = self._new_chain_type = None
         self._title = self._new_title = ""
         self._n_pending_updates = 0
         self.logger = Logger('Frontend.FXChain')
 
-        self.backendChanged.connect(lambda: self.maybe_initialize())
-        self.backendInitializedChanged.connect(lambda: self.maybe_initialize())
+        def on_backend_changed(backend):
+            self.logger.debug(lambda: 'Backend changed')
+            QObject.connect(backend, SIGNAL("readyChanged()"), self, SLOT("maybe_initialize()"))
+            self.maybe_initialize()
+        self.backendChanged.connect(lambda b: on_backend_changed(b))
         
         self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
@@ -34,6 +35,21 @@ class FXChain(FindParentBackend):
     ######################
     # PROPERTIES
     ######################
+    
+    # backend
+    backendChanged = ShoopSignal('QVariant')
+    @ShoopProperty('QVariant', notify=backendChanged)
+    def backend(self):
+        return self._backend
+    @backend.setter
+    def backend(self, l):
+        if l and l != self._backend:
+            if self._backend or self._backend_object:
+                self.logger.throw_error('May not change backend of existing loop')
+            self._backend = l
+            self.logger.trace(lambda: 'Set backend -> {}'.format(l))
+            self.backendChanged.emit(l)
+            self.maybe_initialize()
     
     # initialized
     initializedChanged = ShoopSignal(bool)
@@ -95,9 +111,7 @@ class FXChain(FindParentBackend):
             if self._chain_type:
                 self.logger.throw_error('May not change chain type of existing FX chain')
             self._chain_type = l
-            if not self._backend:
-                self.rescan_parents()
-            else:
+            if self._backend:
                 self.maybe_initialize()
     
     ###########
@@ -147,13 +161,6 @@ class FXChain(FindParentBackend):
             self.activeChanged.emit(self._active)
     
     @ShoopSlot(result='QVariant')
-    def get_backend(self):
-        maybe_backend = findFirstParent(self, lambda p: p and isinstance(p, QQuickItem) and p.inherits('Backend'))
-        if maybe_backend:
-            return maybe_backend
-        self.logger.throw_error("Could not find backend!")
-    
-    @ShoopSlot(result='QVariant')
     def get_backend_obj(self):
         return self._backend_object
     
@@ -170,13 +177,22 @@ class FXChain(FindParentBackend):
             self._backend_object.restore_state(state_str)
         else:
             self.logger.throw_error("Restoring internal state of uninitialized FX chain")
+            
+    def connect_backend_updates(self):
+        QObject.connect(self._backend, SIGNAL("updated_on_gui_thread()"), self, SLOT("updateOnGuiThread()"), Qt.DirectConnection)
+        QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
     
+    @ShoopSlot()
     def maybe_initialize(self):
-        if self._backend and self._backend.initialized and self._chain_type != None and not self._backend_object:
-            self._backend_object = self._backend.get_backend_session_obj().create_fx_chain(self._chain_type, self._title)
+        if self._backend and self._backend.property('ready') and self._chain_type != None and not self._backend_object:
+            from shoop_rust import shoop_rust_create_fx_chain
+            from shiboken6 import getCppPointer
+            self.logger.debug(lambda: 'Initializing')
+            self._backend_object = shoop_rust_create_fx_chain(getCppPointer(self._backend)[0], self._chain_type, self._title)
             if self._backend_object:
                 self._initialized = True
                 self.set_active(self._active)
                 self.set_ui_visible(self._ui_visible)
                 self.update()
+                self.connect_backend_updates()
                 self.initializedChanged.emit(True)

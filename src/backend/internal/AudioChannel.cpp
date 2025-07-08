@@ -13,6 +13,11 @@
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 using namespace std::chrono;
 using namespace logging;
 
@@ -221,7 +226,19 @@ void AudioChannel<SampleT>::PROC_process(
     auto process_params = get_channel_process_params(
         mode, maybe_next_mode, maybe_next_mode_delay_cycles,
         maybe_next_mode_eta, pos_before, ma_start_offset, ma_mode);
-    auto const &process_flags = process_params.process_flags;
+    auto &process_flags = process_params.process_flags;
+
+    // Corner case: a just-created audio channel may immediately
+    // go into pre-record mode before being properly added to the
+    // processing graph (TODO: better fix).
+    // Here, we solve it by only going ahead when buffers have been
+    // assigned.
+    if (!mp_recording_source_buffer) {
+        process_flags &= (~ChannelPreRecord & ~ChannelRecord & ~ChannelReplace);
+    }
+    if (!mp_playback_target_buffer) {
+        process_flags &= (~ChannelPlayback);
+    }
 
     if (!(process_flags & ChannelPreRecord) &&
         (mp_prev_process_flags & ChannelPreRecord)) {

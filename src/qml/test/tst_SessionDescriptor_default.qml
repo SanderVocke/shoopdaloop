@@ -1,6 +1,5 @@
 import QtQuick 6.6
 import QtTest 1.0
-import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -47,6 +46,7 @@ ShoopTestFile {
 
                     testcase.wait_session_io_done()
                     testcase.wait_session_loaded(session)
+                    testcase.wait_updated(session.backend)
 
                     actual = session.actual_session_descriptor(false, '', null)
 

@@ -13,6 +13,8 @@ Item {
     id: root
     objectName: "Qml.TrackWidget"
 
+    property var backend : null
+
     width: width_adjuster.x + width_adjuster.width
     function setWidth(width) {
         width_adjuster.x = width - width_adjuster.width
@@ -287,7 +289,8 @@ Item {
                 initial_descriptor: desc,
                 track_idx: Qt.binding( () => root.track_idx ),
                 all_loops_in_track: Qt.binding( () => root.loops ),
-                maybe_fx_chain: Qt.binding( () => root.maybe_fx_chain )
+                maybe_fx_chain: Qt.binding( () => root.maybe_fx_chain ),
+                backend: Qt.binding( () => root.backend )
             });
         })
     }
@@ -320,7 +323,8 @@ Item {
         var loop_descriptor = GenerateSession.generate_loop(id, name, 0, false, channel_descriptors)
 
         root.add_loop({
-            initial_descriptor: loop_descriptor
+            initial_descriptor: loop_descriptor,
+            backend : Qt.binding( () => root.backend )
         });
     }
 
@@ -340,6 +344,7 @@ Item {
             property int index
             descriptor: mapped_item
             is_internal: false
+            backend: root.backend
         }
     }
     MapperWithLoadedDetection {
@@ -353,6 +358,7 @@ Item {
             property int index
             descriptor: mapped_item
             is_internal: false
+            backend: root.backend
         }
     }
 
@@ -410,6 +416,7 @@ Item {
         FXChain {
             id: chain
             descriptor: root.fx_chain_descriptor
+            backend: root.backend
 
             Component.onCompleted: {
                 root.fx_ready = Qt.binding(() => this.ready)

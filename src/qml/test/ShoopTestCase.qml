@@ -28,7 +28,10 @@ PythonTestCase {
     function update_trigger() {
         if (when && !_internal_triggered) {
             _internal_triggered = true
+            logger.debug("Ready to start")
             shoop_test_runner.testcase_ready_to_start(root)
+        } else {
+            logger.debug(`Not ready to start yet: ${when}, ${_internal_triggered}`)
         }
     }
 
@@ -237,7 +240,7 @@ PythonTestCase {
             function updated() {
                 done = true
             }
-            connectOnce(backend.updated, updated)
+            connectOnce(backend.updated_on_gui_thread, updated)
             wait_condition(() => done == true, 500, "Backend not updated in time")
         }
         wait_once()

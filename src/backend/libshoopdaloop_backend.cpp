@@ -292,7 +292,7 @@ void initialize_logging() {
 }
 
 shoop_backend_session_t *create_backend_session() {
-  return api_impl<shoop_backend_session_t*>("shoop_backend_session_t", [&]() {
+  return api_impl<shoop_backend_session_t*>("create_backend_session", [&]() {
     auto rval = shoop_make_shared<BackendSession>();
     g_active_backends.insert(rval);
     return external_backend_session(rval);
@@ -369,7 +369,9 @@ shoop_external_port_descriptors_t *find_external_ports(
   shoop_port_direction_t maybe_port_direction_filter,
   shoop_port_data_type_t maybe_data_type_filter)
 {
-  return api_impl<shoop_external_port_descriptors_t*>("find_external_ports", [&]() -> shoop_external_port_descriptors_t* {
+  std::string name_regex = maybe_name_regex ? maybe_name_regex : "";
+  std::string fn_name = "find_external_ports (regex \"" + name_regex + "\")";
+  return api_impl<shoop_external_port_descriptors_t*>(fn_name.c_str(), [&]() -> shoop_external_port_descriptors_t* {
     auto _driver = internal_audio_driver(driver);
     if (!_driver) { return nullptr; }
     auto ports = _driver->find_external_ports(
@@ -476,6 +478,7 @@ shoopdaloop_loop_audio_channel_t *add_audio_channel (shoopdaloop_loop_t *loop, s
         loop_info->mp_audio_channels.push_back(r);
         logging::log<"Backend.API", log_level_debug>(std::nullopt, std::nullopt, "add_audio_channel: executed on process thread");
     });
+    backend.set_graph_node_changes_pending();
     return external_audio_channel(r);
   }, nullptr);
 }
@@ -496,6 +499,7 @@ shoopdaloop_loop_midi_channel_t *add_midi_channel (shoopdaloop_loop_t *loop, sho
         loop_info->mp_midi_channels.push_back(r);
         logging::log<"Backend.API", log_level_debug>(std::nullopt, std::nullopt, "add_midi_channel: executed on process thread");
     });
+    backend.set_graph_node_changes_pending();
     return external_midi_channel(r);
   }, nullptr);
 }
@@ -1025,6 +1029,7 @@ shoopdaloop_audio_port_t *open_driver_audio_port (shoop_backend_session_t *backe
       port->set_ringbuffer_n_samples(min_always_on_ringbuffer_samples);
     }
     auto pi = _backend->add_audio_port(port);
+    _backend->set_graph_node_changes_pending();
     return external_audio_port(shoop_static_pointer_cast<GraphPort>(pi));
   }, (shoopdaloop_audio_port_t*) nullptr);
 }
@@ -1042,6 +1047,7 @@ shoopdaloop_audio_port_t *open_internal_audio_port (shoop_backend_session_t *bac
       port->set_ringbuffer_n_samples(min_always_on_ringbuffer_samples);
     }
     auto pi = _backend->add_audio_port(shoop_static_pointer_cast<_AudioPort>(port));
+    _backend->set_graph_node_changes_pending();
     return external_audio_port(shoop_static_pointer_cast<GraphPort>(pi));
   }, (shoopdaloop_audio_port_t*) nullptr);
 }
@@ -1235,6 +1241,7 @@ shoopdaloop_midi_port_t *open_driver_midi_port (shoop_backend_session_t *backend
       port->set_ringbuffer_n_samples(min_always_on_ringbuffer_samples);
     }
     auto pi = _backend->add_midi_port(port);
+    _backend->set_graph_node_changes_pending();
     return external_midi_port(shoop_static_pointer_cast<GraphPort>(pi));
   }, nullptr);
 }
@@ -1256,6 +1263,7 @@ void close_midi_port (shoopdaloop_midi_port_t *port) {
     if (!_port) { return; }
     _port->get_backend().queue_process_thread_command([=]() {
         auto &backend = _port->get_backend();
+        backend.set_graph_node_changes_pending();
         backend.ports.erase(
             std::remove_if(backend.ports.begin(), backend.ports.end(),
                 [_port](auto const& e) { return e == _port; }),
@@ -2348,7 +2356,9 @@ void start_jack_driver(shoop_audio_driver_t *driver, shoop_jack_audio_driver_set
       }
       JackAudioMidiDriverSettings s;
       s.client_name_hint = settings.client_name_hint;
-      s.maybe_server_name_hint = settings.maybe_server_name;
+      if(settings.maybe_server_name) {
+          s.maybe_server_name_hint = settings.maybe_server_name;
+      }
       jack->start(s);
     };
 

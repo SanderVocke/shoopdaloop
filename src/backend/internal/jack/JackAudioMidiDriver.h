@@ -46,6 +46,8 @@ private:
     void maybe_update_buffer_size() override;
     void maybe_update_dsp_load() override;
 
+    void wait_process() override;
+
 public:
     GenericJackAudioMidiDriver();
     ~GenericJackAudioMidiDriver() override;

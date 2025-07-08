@@ -1,6 +1,5 @@
 import QtQuick 6.6
 import QtTest 1.0
-import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -71,7 +70,7 @@ ShoopTestFile {
                 'test_two_loops_sync_playback': () => {
                     check_backend()
 
-                    sync_loop().set_length(48000)
+                    sync_loop().queue_set_length(48000)
                     sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
@@ -88,10 +87,10 @@ ShoopTestFile {
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
 
-                    sync_loop().set_length(100)
+                    sync_loop().queue_set_length(100)
 
                     other_loop().create_backend_loop()
-                    other_loop().set_length(100)
+                    other_loop().queue_set_length(100)
 
                     other_loop().transition(ShoopConstants.LoopMode.Playing, 2, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)

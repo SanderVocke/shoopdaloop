@@ -7,7 +7,7 @@ pub mod constants {
     pub const PROP_FOUNDITEMWITHTRUECHECKEDPROPERTY : &str = "foundItemWithTrueCheckedProperty";
     pub const PROP_FOUNDITEMHASTRUECHECKEDPROPERTY : &str = "foundItemHasTrueCheckedProperty";
 
-    pub const SIGNAL_PARENT_CHANGED : &str = "onParentChanged()";
+    pub const SIGNAL_PARENT_CHANGED : &str = "parentChanged()";
     pub const SIGNAL_FOUND_ITEM_CHANGED : &str = "foundItemChanged()";
     pub const SIGNAL_ITEMBOOLPROPERTYTOCHECK_CHANGED : &str = "itemBoolPropertyToCheckChanged()";
     pub const SIGNAL_FOUNDITEMWITHTRUECHECKEDPROPERTY_CHANGED : &str = "foundItemWithTrueCheckedPropertyChanged()";
@@ -61,13 +61,6 @@ pub mod ffi {
         include!("cxx-qt-shoop/make_unique.h");
         #[rust_name = "make_unique_find_parent_item"]
         fn make_unique() -> UniquePtr<FindParentItem>;
-
-        include!("cxx-qt-lib-shoop/connect.h");
-        #[rust_name = "connect_to_find_parent_item"]
-        unsafe fn connect(sender : *mut QQuickItem,
-                   signal : String,
-                   receiver : *mut FindParentItem,
-                   slot : String) -> Result<()>;
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=()> for FindParentItem {}

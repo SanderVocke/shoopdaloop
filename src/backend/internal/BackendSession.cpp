@@ -22,6 +22,11 @@
 #include <condition_variable>
 #include "CustomProcessingChain.h"
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 #ifdef SHOOP_HAVE_BACKEND_JACK
 #include <jack_wrappers.h>
 #endif

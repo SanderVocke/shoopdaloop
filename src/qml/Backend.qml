@@ -1,8 +1,7 @@
-import ShoopDaLoop.PythonBackend
 import QtQuick 6.6
 import ShoopConstants
 
-PythonBackend {
+ShoopBackendWrapper {
     objectName: "shoop_backend_wrapper"
     Component.onCompleted: {
         maybe_init()

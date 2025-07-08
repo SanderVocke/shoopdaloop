@@ -9,6 +9,10 @@ mod ffi {
         type QQuickItem;
         type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
 
+        include!("cxx-qt-lib/qlist.h");
+        include!("cxx-qt-lib/qvariant.h");
+        type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
+
         #[rust_name = "qquickitem_set_parent_item"]
         unsafe fn qquickitemSetParentItem(item : *mut QQuickItem, parent : *mut QQuickItem);
 
@@ -20,6 +24,9 @@ mod ffi {
 
         #[rust_name = "qquickitem_to_qobject_ref"]
         fn qquickitemToQobjectRef(item : &QQuickItem) -> &QObject;
+
+        #[rust_name = "qquickitem_child_items"]
+        fn qquickitemChildItems(item : &QQuickItem) -> QList_QVariant;
     }
 }
 
@@ -59,6 +66,12 @@ pub unsafe fn qquickitem_to_qobject_ref(item : &QQuickItem) -> &QObject
 
 pub unsafe fn qquickitem_to_qobject_mut(item : *mut QQuickItem) -> *mut QObject
     { ffi::qquickitem_to_qobject_ptr(item) }
+
+impl QQuickItem {
+    pub unsafe fn child_items(&self) -> ffi::QList_QVariant {
+        ffi::qquickitem_child_items(self)
+    }
+}
 
 impl<T> AsQObject for T
 where

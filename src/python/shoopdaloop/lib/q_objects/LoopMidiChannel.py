@@ -7,7 +7,7 @@ import json
 from typing import *
 import sys
 
-from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
 from .MidiPort import MidiPort
@@ -24,10 +24,22 @@ class LoopMidiChannel(LoopChannel):
         super(LoopMidiChannel, self).__init__(parent)
         self._n_events_triggered = self._new_n_events_triggered = 0
         self._n_notes_active = self._new_n_notes_active = 0
+        self.logger = Logger("Frontend.MidiChannel")
+        
+    def connect_backend_updates(self):
+        QObject.connect(self._backend, SIGNAL("updated_on_gui_thread()"), self, SLOT("updateOnGuiThread()"), Qt.DirectConnection)
+        QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
     
     def maybe_initialize(self):
-        if self._loop and self._loop.initialized and not self._backend_obj:
-            self._backend_obj = self._loop.add_midi_channel(self.mode)
+        if self._backend and self._backend.property('ready') and self._loop and self._loop.property("initialized") and not self._backend_obj:
+            from shoop_rust import shoop_rust_add_loop_midi_channel
+            from shiboken6 import getCppPointer
+            self._backend_obj = shoop_rust_add_loop_midi_channel(
+                getCppPointer(self._loop)[0],
+                int(self.mode)
+            )
+            self.connect_backend_updates()
+            self.logger.debug(lambda: "Initialized back-end channel")
             self.initializedChanged.emit(True)
 
     ######################
@@ -36,13 +48,13 @@ class LoopMidiChannel(LoopChannel):
 
     # # of events triggered since last update
     nEventsTriggeredChanged = ShoopSignal(int)
-    @ShoopProperty(int, notify=nEventsTriggeredChanged)
+    @ShoopProperty(int, notify=nEventsTriggeredChanged, thread_protection=ThreadProtectionType.AnyThread)
     def n_events_triggered(self):
         return self._n_events_triggered
     
     # # number of notes currently being played
     nNotesActiveChanged = ShoopSignal(int)
-    @ShoopProperty(int, notify=nNotesActiveChanged)
+    @ShoopProperty(int, notify=nNotesActiveChanged, thread_protection=ThreadProtectionType.AnyThread)
     def n_notes_active(self):
         return self._n_notes_active
     

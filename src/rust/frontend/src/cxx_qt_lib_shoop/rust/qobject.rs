@@ -1,19 +1,23 @@
 use std::pin::Pin;
 
 #[cxx_qt::bridge]
-mod ffi {
-
+pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib/qstring.h");
+        include!("cxx-qt-lib-shoop/qthread.h");
         type QObject;
         type QString = cxx_qt_lib::QString;
+        type QThread = crate::cxx_qt_lib_shoop::qthread::QThread;
 
         #[rust_name = "qobject_set_parent"]
         unsafe fn qobjectSetParent(item : *mut QObject, parent : *mut QObject) -> Result<()>;
 
         #[rust_name = "qobject_parent"]
         unsafe fn qobjectParent(item : &QObject) -> Result<*mut QObject>;
+
+        #[rust_name = "qobject_thread"]
+        unsafe fn qobjectThread(item : &QObject) -> Result<*mut QThread>;
 
         #[rust_name = "qobject_class_name"]
         unsafe fn qobjectClassName(obj : &QObject) -> Result<&str>;
@@ -24,14 +28,20 @@ mod ffi {
         #[rust_name = "qobject_property_int"]
         unsafe fn qobjectPropertyInt(obj: &QObject, name : String) -> Result<i32>;
 
+        #[rust_name = "qobject_property_float"]
+        unsafe fn qobjectPropertyFloat(obj: &QObject, name : String) -> Result<f32>;
+
         #[rust_name = "qobject_property_string"]
         unsafe fn qobjectPropertyString(obj: &QObject, name : String) -> Result<QString>;
 
         #[rust_name = "qobject_object_name"]
-        unsafe fn qobjectObjectName(obj: &QObject) -> Result<&str>;
+        unsafe fn qobjectObjectName(obj: &QObject) -> Result<String>;
 
         #[rust_name = "qobject_set_object_name"]
         unsafe fn qobjectSetObjectName(obj: *mut QObject, name: String) -> Result<()>;
+
+        #[rust_name = "qobject_move_to_thread"]
+        unsafe fn qobjectMoveToThread(obj: *mut QObject, thread : *mut QThread) -> Result<bool>;
     }
 }
 
@@ -56,18 +66,25 @@ pub trait AsQObject {
 
     unsafe fn qobject_mut (self: &mut Self) -> &mut QObject {
         let obj = self.mut_qobject_ptr();
+        if obj.is_null() {
+            panic!("qobject_mut: null pointer");
+        }
         &mut *obj
     }
 }
 
 pub unsafe fn qobject_parent(obj : &QObject) -> Result<*mut QObject, cxx::Exception> { ffi::qobject_parent(obj) }
 pub unsafe fn qobject_set_parent(obj: *mut QObject, parent: *mut QObject) -> Result<(), cxx::Exception> { ffi::qobject_set_parent(obj, parent) }
+pub unsafe fn qobject_thread(obj : &QObject) -> Result<*mut QThread, cxx::Exception> { ffi::qobject_thread(obj) }
 pub unsafe fn qobject_class_name(obj: &QObject) -> Result<&str, cxx::Exception> { ffi::qobject_class_name(obj) }
 pub unsafe fn qobject_property_bool(obj: &QObject, name: String) -> Result<bool, cxx::Exception> { ffi::qobject_property_bool(obj, name) }
 pub unsafe fn qobject_property_int(obj: &QObject, name: String) -> Result<i32, cxx::Exception> { ffi::qobject_property_int(obj, name) }
+pub unsafe fn qobject_property_float(obj: &QObject, name: String) -> Result<f32, cxx::Exception> { ffi::qobject_property_float(obj, name) }
 pub unsafe fn qobject_property_string(obj: &QObject, name: String) -> Result<QString, cxx::Exception> { ffi::qobject_property_string(obj, name) }
-pub unsafe fn qobject_object_name(obj: &QObject) -> Result<&str, cxx::Exception> { ffi::qobject_object_name(obj) }
+pub unsafe fn qobject_object_name(obj: &QObject) -> Result<String, cxx::Exception> { ffi::qobject_object_name(obj) }
 pub unsafe fn qobject_set_object_name(obj: *mut QObject, name : String) -> Result<(), cxx::Exception> { ffi::qobject_set_object_name(obj, name) }
+pub unsafe fn qobject_move_to_thread(obj : *mut QObject, thread : *mut QThread) -> Result<(), cxx::Exception> { ffi::qobject_move_to_thread(obj, thread)?; Ok(()) }
+
 pub trait IsQObject : AsQObject {
     unsafe fn set_parent(self : Pin<&mut Self>, parent : *mut QObject) -> Result<(), cxx::Exception> {
         let self_item = self.pin_mut_qobject_ptr();
@@ -99,7 +116,7 @@ pub trait IsQObject : AsQObject {
         qobject_property_string(obj, name)
     }
 
-    unsafe fn object_name(self: &Self) -> Result<&str, cxx::Exception> {
+    unsafe fn object_name(self: &Self) -> Result<String, cxx::Exception> {
         let obj = self.qobject_ref();
         qobject_object_name(obj)
     }

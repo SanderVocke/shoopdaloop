@@ -1,0 +1,6 @@
+pub const AUTO_CONNECTION : u32 = 0;
+pub const DIRECT_CONNECTION : u32 = 1;
+pub const QUEUED_CONNECTION : u32 = 2;
+pub const BLOCKING_QUEUED_CONNECTION : u32 = 3;
+pub const UNIQUE_CONNECTION : u32 = 0x80;
+pub const SINGLE_SHOT_CONNECTION : u32 = 0x100;

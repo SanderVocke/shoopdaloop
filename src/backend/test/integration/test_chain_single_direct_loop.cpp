@@ -20,6 +20,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include "catch2/catch_approx.hpp"
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirectLoopTestChain"> {
 
     shoop_backend_session_t *api_backend_session;

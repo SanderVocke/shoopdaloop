@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <QThread>
 #include <QVariant>
 #include <rust/cxx.h>
 #include <iostream>
@@ -16,6 +17,10 @@ inline QObject const& qobjectFromRef(T const& obj)  {
 
 inline QObject * qobjectParent(QObject const& obj) {
     return obj.parent();
+}
+
+inline QThread * qobjectThread(QObject const& obj) {
+    return obj.thread();
 }
 
 inline void qobjectSetParent(QObject *obj, QObject *parent) {
@@ -54,6 +59,20 @@ inline int qobjectPropertyInt(QObject const& obj, ::rust::String name) {
     return result.toInt();
 }
 
+inline float qobjectPropertyFloat(QObject const& obj, ::rust::String name) {
+    auto result = obj.property(name.c_str());
+    if (!result.isValid()) {
+        std::string err = "getting property ";
+        err += name.operator std::string();
+        err += " yielded invalid result";
+        throw std::runtime_error(err);
+    }
+    if (!result.canConvert<float>()) {
+        throw std::runtime_error("not convertible to int");
+    }
+    return result.toFloat();
+}
+
 inline QString qobjectPropertyString(QObject const& obj, ::rust::String name) {
     auto result = obj.property(name.c_str());
     if (!result.isValid()) {
@@ -86,10 +105,14 @@ inline bool qobjectHasProperty(QObject const& obj, ::rust::String name) {
     return idx >= 0;
 }
 
-inline rust::Str qobjectObjectName(QObject const& obj) {
+inline ::rust::String qobjectObjectName(QObject const& obj) {
     return rust::String(obj.objectName().toStdString());
 }
 
 inline void qobjectSetObjectName(QObject *obj, ::rust::String name) {
     obj->setObjectName(name.c_str());
+}
+
+inline bool qobjectMoveToThread(QObject *obj, QThread *targetThread) {
+    return obj->moveToThread(targetThread);
 }

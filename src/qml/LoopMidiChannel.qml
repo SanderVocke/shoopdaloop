@@ -6,6 +6,9 @@ import 'js/schema_conversions.js' as Conversions
 
 PythonLoopMidiChannel {
     id: root
+    objectName: "LoopMidiChannel"
+
+    RequireBackend {}
 
     property var descriptor : null
 
@@ -36,7 +39,7 @@ PythonLoopMidiChannel {
         if (do_save_data_files && !root.empty) {
             var filename = obj_id + '.smf'
             var full_filename = data_files_dir + '/' + filename;
-            var task = file_io.save_channel_to_midi_async(full_filename, get_backend().get_sample_rate(), root)
+            var task = file_io.save_channel_to_midi_async(full_filename, root.backend.get_sample_rate(), root)
             add_tasks_to.add_task(task)
             rval['data_file'] = filename
         }

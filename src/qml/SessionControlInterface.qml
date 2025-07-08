@@ -9,6 +9,7 @@ LuaControlInterface {
     qml_instance: root
 
     property var session: null
+    property var backend: null
 
     property PythonLogger logger : PythonLogger { name: "Frontend.Qml.SessionControlInterface" }
 
@@ -350,7 +351,8 @@ LuaControlInterface {
                         "autoconnect_regexes": [ rule.regex ],
                         "direction": ShoopConstants.PortDirection.Input,
                         "parent": root,
-                        'lua_engine': rule.engine
+                        'lua_engine': rule.engine,
+                        'backend': Qt.binding( () => root.backend )
                     });
                     port.detectedExternalAutoconnectPartnerWhileClosed.connect((p=port) => {
                         if (!p.may_open) {
@@ -403,7 +405,8 @@ LuaControlInterface {
                         "direction": ShoopConstants.PortDirection.Output,
                         "parent": root,
                         "lua_engine": rule.engine,
-                        'send_rate_limit_hz': rule.rate_limit_hz
+                        'send_rate_limit_hz': rule.rate_limit_hz,
+                        'backend': Qt.binding( () => root.backend )
                     });
 
                     let onInit = (cb=rule.opened_cb, p=port) => {

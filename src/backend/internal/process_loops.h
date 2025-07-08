@@ -8,6 +8,11 @@
 #include <iostream>
 #include <set>
 
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
+
 constexpr uint32_t g_max_0_procs = 10;
 
 template<typename LoopIterator, typename SharedLoopsBegin, typename SharedLoopsEnd>

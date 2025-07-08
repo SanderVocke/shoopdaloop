@@ -1,4 +1,5 @@
 #include "BasicLoop.h"
+#include "LoggingBackend.h"
 #include "types.h"
 #include <cstring>
 #include <memory>
@@ -7,6 +8,11 @@
 #include <vector>
 #include <optional>
 #include <iostream>
+
+#ifdef _WIN32
+#undef min
+#undef max
+#endif
 
 BasicLoop::BasicLoop() :
         WithCommandQueue(100),

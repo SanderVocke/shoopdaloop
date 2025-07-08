@@ -1,19 +1,19 @@
 use pyo3::prelude::*;
 
-mod audio_channel;
-mod audio_driver;
-mod audio_port;
-mod backend_session;
-mod channel;
-mod decoupled_midi_port;
-mod fx_chain;
-mod logging;
-mod midi;
-mod midi_channel;
-mod midi_port;
-mod port;
-mod resample;
-mod shoop_loop;
+pub mod audio_channel;
+pub mod audio_driver;
+pub mod audio_port;
+pub mod backend_session;
+pub mod channel;
+pub mod decoupled_midi_port;
+pub mod fx_chain;
+pub mod logging;
+pub mod midi;
+pub mod midi_channel;
+pub mod midi_port;
+pub mod port;
+pub mod resample;
+pub mod shoop_loop;
 
 pub fn create_py_module<'py>(
     py : Python<'py>

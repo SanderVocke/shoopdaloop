@@ -12,8 +12,11 @@ fn register_qml_types_and_singletons() {
     qobj_release_focus_notifier::register_qml_singleton (&mdl, "ShoopReleaseFocusNotifier");
 
     // Types
+    qobj_dummy_process_helper::register_qml_type(&mdl, "ShoopDummyProcessHelper");
     qobj_render_audio_waveform::register_qml_type(&mdl, "ShoopRenderAudioWaveform");
     qobj_autoconnect::register_qml_type(&mdl, "ShoopAutoConnect");
+    qobj_loop_gui::register_qml_type(&mdl, "LoopGui");
+    qobj_backend_wrapper::register_qml_type(&mdl, "ShoopBackendWrapper");
 }
 
 fn register_metatypes() {

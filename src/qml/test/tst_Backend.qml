@@ -1,12 +1,12 @@
 import QtQuick 6.6
 import QtTest 1.0
-import ShoopDaLoop.PythonBackend
 
+import '..'
 import ShoopConstants
 import './testfilename.js' as TestFilename
 
 ShoopTestFile {
-    PythonBackend {
+    Backend {
         id: backend
         update_interval_ms: 30
         client_name_hint: 'ShoopDaLoop'
@@ -19,7 +19,7 @@ ShoopTestFile {
 
             test_fns: ({
                 'test_backend': () => {
-                    verify(backend.initialized)
+                    verify(backend.ready)
                     backend.close()
                 }
             })

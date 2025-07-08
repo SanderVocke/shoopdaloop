@@ -1,6 +1,5 @@
 import QtQuick 6.6
 import QtTest 1.0
-import ShoopDaLoop.PythonBackend
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -213,7 +212,7 @@ ShoopTestFile {
 
                     verify_eq_lua('shoop_control.loop_get_length({0,0})', '{0}')
 
-                    loop_at(1,1).set_length(100)
+                    loop_at(1,1).queue_set_length(100)
                     testcase.wait_updated(session.backend)
 
                     verify_eq_lua('shoop_control.loop_get_length({1,1})', '{100}')
@@ -395,8 +394,8 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    loop_at(0,0).set_length(100)
-                    loop_at(0,1).set_length(100)
+                    loop_at(0,0).queue_set_length(100)
+                    loop_at(0,1).queue_set_length(100)
                     testcase.wait_updated(session.backend)
 
                     do_execute('shoop_control.loop_clear({0,0})')
@@ -411,10 +410,10 @@ ShoopTestFile {
                     verify_loop_cleared(loop_at(0,0))
                     verify_loop_cleared(loop_at(0,1))
 
-                    loop_at(0,0).set_length(100)
-                    loop_at(0,1).set_length(100)
-                    loop_at(1,0).set_length(100)
-                    loop_at(1,1).set_length(100)
+                    loop_at(0,0).queue_set_length(100)
+                    loop_at(0,1).queue_set_length(100)
+                    loop_at(1,0).queue_set_length(100)
+                    loop_at(1,1).queue_set_length(100)
                     testcase.wait_updated(session.backend)
 
                     do_execute('shoop_control.loop_clear({{0,0}, {0,1}, {1,0}, {1,1}})')
@@ -430,9 +429,9 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    loop_at(0,0).set_length(100)
-                    loop_at(0,1).set_length(100)
-                    loop_at(-1,0).set_length(100)
+                    loop_at(0,0).queue_set_length(100)
+                    loop_at(0,1).queue_set_length(100)
+                    loop_at(-1,0).queue_set_length(100)
                     testcase.wait_updated(session.backend)
 
                     do_execute('shoop_control.loop_clear_all()')
@@ -447,7 +446,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    loop_at(-1, 0).set_length(100) // Sync
+                    loop_at(-1, 0).queue_set_length(100) // Sync
                     testcase.wait_updated(session.backend)
 
                     do_execute('shoop_control.loop_adopt_ringbuffers({0, 0}, 2, 2, 0, 0)')
@@ -461,7 +460,7 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    loop_at(-1,0).set_length(100)
+                    loop_at(-1,0).queue_set_length(100)
                     testcase.wait_updated(session.backend)
                     do_execute('shoop_control.loop_trigger_grab({0,0})')
                     testcase.wait_updated(session.backend)
@@ -628,7 +627,7 @@ ShoopTestFile {
                     verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Stopped')
                     verify_eq_lua('most_recent_loop', '{0,0}')
 
-                    loop_at(-1,0).set_length(100)
+                    loop_at(-1,0).queue_set_length(100)
                     testcase.wait_updated(session.backend)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('most_recent_event.length', '100')

@@ -2,8 +2,6 @@
 
 use pyo3::prelude::*;
 // use pyo3::exceptions::*;
-use backend_bindings;
-
 use crate::shoop_py_backend::backend_session::BackendSession;
 use backend_bindings::AudioPortState as BackendAudioPortState;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
