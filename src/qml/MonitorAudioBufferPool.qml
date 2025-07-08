@@ -10,7 +10,7 @@ Item {
     property int max_points: 1000
     function add_point(buffers_created, buffers_available) {
         let cpy = root.points.slice(Math.max(0,root.points.length - max_points - 1))
-        cpy.push(buffers_created)
+        cpy.push(buffers_available)
         root.points = cpy
     }
 
@@ -29,7 +29,7 @@ Item {
         running: true
         repeat: true
         onTriggered: {
-            if (root.points_changed) {
+            if (root.points_changed && root.visible) {
                 root.updateChart()
             }
         }

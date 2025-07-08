@@ -19,6 +19,9 @@ ApplicationWindow {
     function add_audio_buffer_pool_point(buffers_created, buffers_available) {
         audio_buffer_pool.add_point(buffers_created, buffers_available)
     }
+    function add_backend_refresh_interval_point(interval) {
+        backend_refresh_rate.add_point(interval)
+    }
 
     ShoopComboBox {
         id: combo
@@ -26,7 +29,7 @@ ApplicationWindow {
         anchors.left: parent.left
         width: 200
 
-        model: ["DSP load", "Audio buffer pool"]
+        model: ["DSP load", "Audio buffer pool", "Backend state refresh rate"]
     }
 
     StackLayout {
@@ -43,6 +46,9 @@ ApplicationWindow {
         }
         MonitorAudioBufferPool {
             id: audio_buffer_pool
+        }
+        MonitorBackendRefreshRate {
+            id: backend_refresh_rate
         }
     }
 }

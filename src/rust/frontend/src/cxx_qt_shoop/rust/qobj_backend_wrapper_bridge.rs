@@ -1,6 +1,7 @@
 use common::logging::macros::*;
 use backend_bindings::BackendSession;
 use backend_bindings::AudioDriver;
+use std::time;
 shoop_log_unit!("Frontend.BackendWrapper");
 
 #[cxx_qt::bridge]
@@ -45,6 +46,7 @@ pub mod ffi {
         #[qproperty(f32, dsp_load)]
         #[qproperty(i32, n_audio_buffers_created)]
         #[qproperty(i32, n_audio_buffers_available)]
+        #[qproperty(f32, last_update_interval)]
         #[qproperty(QMap_QString_QVariant, driver_setting_overrides)]
         type BackendWrapper = super::BackendWrapperRust;
 
@@ -182,12 +184,14 @@ pub struct BackendWrapperRust {
     driver_setting_overrides: QMap_QString_QVariant,
     n_audio_buffers_created: i32,
     n_audio_buffers_available: i32,
+    last_update_interval : f32,
 
     // Rust-side only
     pub driver : Option<AudioDriver>,
     pub session : Option<BackendSession>,
     pub update_data : Option<BackendWrapperUpdateData>,
-    pub closed : bool
+    pub closed : bool,
+    pub last_updated : Option<time::Instant>,
 }
 
 impl Default for BackendWrapperRust {
@@ -205,12 +209,14 @@ impl Default for BackendWrapperRust {
             driver_setting_overrides: QMap_QString_QVariant::default(),
             n_audio_buffers_available: 0,
             n_audio_buffers_created: 0,
+            last_update_interval: 1.0,
             
             // Rust-side only
             driver : None,
             session : None,
             update_data : None,
-            closed : false
+            closed : false,
+            last_updated : None,
         }
     }
 }

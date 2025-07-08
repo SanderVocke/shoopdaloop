@@ -46,6 +46,9 @@ Item {
     function add_audio_buffer_pool_point(buffers_created, buffers_available) {
         monitorwindow.add_audio_buffer_pool_point(buffers_created, buffers_available)
     }
+    function add_backend_refresh_interval_point(interval) {
+        monitorwindow.add_backend_refresh_interval_point(interval)
+    }
 
     Row {
         spacing: 6

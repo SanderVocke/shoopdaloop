@@ -8,6 +8,7 @@ use crate::cxx_qt_lib_shoop::qobject::{AsQObject, QObject, qobject_thread};
 use crate::cxx_qt_lib_shoop::qthread::QThread;
 use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants;
 use crate::engine_update_thread;
+use std::time;
 shoop_log_unit!("Frontend.BackendWrapper");
 
 pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::*;
@@ -269,6 +270,24 @@ impl BackendWrapper {
     
     pub fn update_on_other_thread(mut self: Pin<&mut BackendWrapper>) {
         trace!("Begin update on back-end thread");
+
+        {
+            let maybe_new_interval : Option<time::Duration>;
+            {
+                let mut rust_mut = self.as_mut().rust_mut();
+                let now = time::Instant::now();
+                if rust_mut.last_updated.is_some() {
+                    maybe_new_interval = Some(now.duration_since(*rust_mut.last_updated.as_ref().unwrap()));
+                    
+                } else {
+                    maybe_new_interval = None;
+                }
+                rust_mut.last_updated = Some(now);
+            }
+            if maybe_new_interval.is_some() {
+                self.as_mut().set_last_update_interval(maybe_new_interval.unwrap().as_secs_f32());
+            }
+        }
 
         let current_xruns;
         {
