@@ -51,6 +51,10 @@
       "name": "zita-resampler"
     },
     {
+      "name": "qtgraphs",
+      "version>=": "6.8.3"
+    },
+    {
       "name": "qtbase",
       "version>=": "6.8.3"
     },
