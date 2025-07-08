@@ -6,7 +6,9 @@
 #include <functional>
 #include <stdexcept>
 #include <iostream>
+#include <ostream>
 #include <set>
+#include <boost/stacktrace.hpp>
 
 #ifdef _WIN32
 #undef min
@@ -22,7 +24,9 @@ void process_loops(SharedLoopsBegin loops_begin,
                    std::function<LoopInterface*(LoopIterator &)> loop_getter = [](LoopIterator &l) -> LoopInterface* { return shoop_static_pointer_cast<LoopInterface>(*l).get(); },
                    uint32_t n_recursive_0_procs=0) {
     if (n_recursive_0_procs > g_max_0_procs) {
-        throw std::runtime_error("Stuck in recursive 0-processing loop");
+        std::ostringstream oss;
+        oss << boost::stacktrace::stacktrace() << "\n";
+        throw std::runtime_error("Stuck in recursive 0-processing loop: " + oss.str());
     }
 
     uint32_t process_until = n_samples;
