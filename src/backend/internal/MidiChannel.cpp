@@ -141,8 +141,12 @@ MidiChannel::PROC_process(shoop_loop_mode_t mode, std::optional<shoop_loop_mode_
     // assigned.
     if ((!mp_recording_source_buffer.has_value()) ||
         (mp_recording_source_buffer.value().second == nullptr)) {
-        process_flags &= (~ChannelPreRecord);
-    }    
+        process_flags &= (~ChannelPreRecord & ~ChannelRecord & ~ChannelReplace);
+    }
+    if (!mp_playback_target_buffer.has_value() ||
+        (mp_playback_target_buffer.value().second == nullptr)) {
+        process_flags &= (~ChannelPlayback);
+    }
 
     // We always need to process input messages to keep our input port
     // state up-to-date. This is done inside the recording process

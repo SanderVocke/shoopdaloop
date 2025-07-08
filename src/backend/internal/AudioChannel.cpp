@@ -234,8 +234,11 @@ void AudioChannel<SampleT>::PROC_process(
     // Here, we solve it by only going ahead when buffers have been
     // assigned.
     if (!mp_recording_source_buffer) {
-        process_flags &= (~ChannelPreRecord);
-    }    
+        process_flags &= (~ChannelPreRecord & ~ChannelRecord & ~ChannelReplace);
+    }
+    if (!mp_playback_target_buffer) {
+        process_flags &= (~ChannelPlayback);
+    }
 
     if (!(process_flags & ChannelPreRecord) &&
         (mp_prev_process_flags & ChannelPreRecord)) {
