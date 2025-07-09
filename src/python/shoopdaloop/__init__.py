@@ -45,6 +45,9 @@ def main():
         dev_group.add_argument('--quit-after', type=float, default=-1.0, help='For debugging: quit X seconds after app is fully loaded.')
         dev_group.add_argument('--monkey-tester', action='store_true', help='Start the monkey tester, which will randomly, rapidly perform actions on the session.')
         dev_group.add_argument('--qml-self-test', action='store_true', help='Run QML tests and exit. Pass additional args to the tester after "--".')
+        dev_group.add_argument('--dont-refresh-with-gui', action='store_true', help='Don\'t couple the poll rate of back-end engine state to screen refresh')
+        dev_group.add_argument('--max-backend-refresh-interval-ms', type=int, default=25, help='Ensures a minimum (back-up) refresh rate of the back-end engine state.')
+
 
         from shoopdaloop.lib.q_objects.Application import Application
 
@@ -87,7 +90,9 @@ def main():
             dict(),
             args.qml_debug,
             args.debug_wait,
-            True
+            True,
+            not args.dont_refresh_with_gui,
+            args.max_backend_refresh_interval_ms
             )
         shoop_rust_init_engine_update_thread()
         app.exec()
