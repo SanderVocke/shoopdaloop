@@ -5,6 +5,12 @@ inputs:
   release_build:
     description: "if true, does a release build. Otherwise, a debug build."
     default: 'false'
+  allow_warnings:
+    description: "if false, warnings become errors"
+    default: true
+  check_format:
+    description: "if true, fails on rustformat changes"
+    default: false
 
 runs:
   using: "composite"
@@ -49,7 +55,13 @@ runs:
       set -x
       . ${BUILD_ENV_FILE}
       echo "cargo: $(which cargo)"
-      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild frontend/prebuild" ${CARGO_BUILD_FLAGS}
+      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild config/prebuild frontend/prebuild py_env/prebuild py_prepare/prebuild" ${CARGO_BUILD_FLAGS}
+
+  - name: Extra flags for main build
+    if: always() && inputs.allow_warnings != 'true'
+    shell: wrap-shell {0}
+    run: |
+      echo "RUSTFLAGS=-Dwarnings" | tee -a $GITHUB_ENV
 
   - name: Build main packages
     if: always()

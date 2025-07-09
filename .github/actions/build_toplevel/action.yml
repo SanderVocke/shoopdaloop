@@ -38,6 +38,12 @@ inputs:
     description: "macOS target version"
   vcpkg_rebuild:
     description: "whether to rebuild vcpkg packages"
+  allow_warnings:
+    description: "if false, warnings become errors"
+    default: true
+  check_format:
+    description: "if true, fails on rustformat changes"
+    default: false
 
 runs:
   using: "composite"
@@ -118,6 +124,8 @@ runs:
     uses: ./.github/actions/build_base
     with:
         release_build: ${{ inputs.release_build }}
+        allow_warnings: ${{ inputs.allow_warnings }}
+        check_format: ${{ inputs.check_format }}
   - name: Qoverage - Instrument QML files
     if: always() && inputs.coverage
     uses: ./.github/actions/qoverage_instrument
