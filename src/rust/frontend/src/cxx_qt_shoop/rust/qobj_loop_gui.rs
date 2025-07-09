@@ -90,7 +90,7 @@ impl LoopGui {
                 // Connections : backend object -> GUI
                 connect_or_report(
                     backend_ref,
-                    "state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                    "stateChanged(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
                     self_ref,
                     "on_backend_state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
                     connection_types::QUEUED_CONNECTION);
@@ -134,13 +134,13 @@ impl LoopGui {
                     connection_types::QUEUED_CONNECTION);
                 connect_or_report(
                     self_ref,
-                    "backend_changed(QObject*)".to_string(),
+                    "backendChanged(QObject*)".to_string(),
                     backend_ref,
                     "set_backend(QObject*)".to_string(),
                     connection_types::QUEUED_CONNECTION);
                 connect_or_report(
                     self_ref,
-                    "instance_identifier_changed(QString)".to_string(),
+                    "instanceIdentifierChanged(QString)".to_string(),
                     backend_ref,
                     "set_instance_identifier(QString)".to_string(),
                     connection_types::QUEUED_CONNECTION);
@@ -154,7 +154,7 @@ impl LoopGui {
                 // Connections : backend object -> GUI
                 connect_or_report(
                     backend_ref,
-                    "initialized_changed(bool)".to_string(),
+                    "initializedChanged(bool)".to_string(),
                     self_ref,
                     "set_initialized(bool)".to_string(),
                     connection_types::QUEUED_CONNECTION);
@@ -190,25 +190,27 @@ impl LoopGui {
         rust_mut.next_transition_delay = next_transition_delay;
         rust_mut.cycle_nr = cycle_nr;
 
-        if mode != prev_mode {
-            self.as_mut().mode_changed();
-        }
-        if length != prev_length {
-            self.as_mut().length_changed();
-        }
-        if position != prev_position {
-            self.as_mut().position_changed();
-        }
-        if next_mode != prev_next_mode {
-            self.as_mut().next_mode_changed();
-        }
-        if next_transition_delay != prev_next_transition_delay {
-            self.as_mut().next_transition_delay_changed();
-        }
-        if cycle_nr != prev_cycle_nr {
-            self.as_mut().cycle_nr_changed();
-            if (cycle_nr - prev_cycle_nr) == 1 {
-                self.as_mut().cycled(cycle_nr);
+        unsafe {
+            if mode != prev_mode {
+                self.as_mut().mode_changed();
+            }
+            if length != prev_length {
+                self.as_mut().length_changed();
+            }
+            if position != prev_position {
+                self.as_mut().position_changed();
+            }
+            if next_mode != prev_next_mode {
+                self.as_mut().next_mode_changed();
+            }
+            if next_transition_delay != prev_next_transition_delay {
+                self.as_mut().next_transition_delay_changed();
+            }
+            if cycle_nr != prev_cycle_nr {
+                self.as_mut().cycle_nr_changed();
+                if (cycle_nr - prev_cycle_nr) == 1 {
+                    self.as_mut().cycled(cycle_nr);
+                }
             }
         }
     }

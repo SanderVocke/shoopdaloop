@@ -125,36 +125,47 @@ pub mod ffi {
         fn starting_update(self: Pin<&mut LoopBackend>);
 
         #[qsignal]
+        #[cxx_name = "modeChanged"]
         fn mode_changed(self: Pin<&mut LoopBackend>, new_mode : i32, old_mode : i32);
 
         #[qsignal]
+        #[cxx_name = "lengthChanged"]
         fn length_changed(self: Pin<&mut LoopBackend>, new_length : i32, old_length : i32);
 
         #[qsignal]
+        #[cxx_name = "positionChanged"]
         fn position_changed(self: Pin<&mut LoopBackend>, new_position : i32, old_position : i32);
 
         #[qsignal]
+        #[cxx_name = "nextModeChanged"]
         fn next_mode_changed(self: Pin<&mut LoopBackend>, new_next_mode : i32, old_next_mode : i32);
 
         #[qsignal]
+        #[cxx_name = "nextTransitionDelayChanged"]
         fn next_transition_delay_changed(self: Pin<&mut LoopBackend>, new_next_transition_delay : i32, old_next_transition_delay : i32);
 
         #[qsignal]
+        #[cxx_name = "cycleNrChanged"]
         fn cycle_nr_changed(self: Pin<&mut LoopBackend>, new_cycle_nr : i32, old_cycle_nr : i32);
 
         #[qsignal]
+        #[cxx_name = "syncSourceChanged"]
         unsafe fn sync_source_changed(self: Pin<&mut LoopBackend>, sync_source : *mut QObject);
 
         #[qsignal]
+        #[cxx_name = "instanceIdentifierChanged"]
         fn instance_identifier_changed(self: Pin<&mut LoopBackend>, instance_identifier : QString);
 
         #[qsignal]
+        #[cxx_name = "initializedChanged"]
         fn initialized_changed(self: Pin<&mut LoopBackend>, initialized : bool);
 
         #[qsignal]
+        #[cxx_name = "backendChanged"]
         unsafe fn backend_changed(self: Pin<&mut LoopBackend>, backend: *mut QObject);
 
         #[qsignal]
+        #[cxx_name = "stateChanged"]
         fn state_changed(self: Pin<&mut LoopBackend>,
                          mode: i32,
                          length: i32,

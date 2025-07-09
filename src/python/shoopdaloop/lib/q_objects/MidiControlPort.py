@@ -150,7 +150,7 @@ class MidiControlPort(ShoopQQuickItem):
 
     # dataType
     @ShoopProperty(int)
-    def dataType(self):
+    def data_type(self):
         return int(shoop_py_backend.PortDataType.Midi)
 
     # may_open
@@ -313,7 +313,7 @@ class MidiControlPort(ShoopQQuickItem):
                 set_property("connect_to_port_regex", regex)
                 set_property("internal_port", self)
 
-                inst.connect(SIGNAL("onlyExternalFound()"), lambda s=self: s.detectedExternalAutoconnectPartnerWhileClosed.emit())
+                inst.connect(SIGNAL("only_external_found()"), lambda s=self: s.detectedExternalAutoconnectPartnerWhileClosed.emit())
                 inst.connect(SIGNAL("connected()"), lambda s=self: s.connected.emit())
 
                 self._autoconnecters.append(inst)

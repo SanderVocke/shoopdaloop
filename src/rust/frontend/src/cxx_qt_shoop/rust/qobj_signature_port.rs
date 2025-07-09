@@ -7,7 +7,7 @@ pub mod constants {
     pub const INVOKABLE_BOOL_CONNECT_EXTERNAL_PORT: &str = "connect_external_port(QString)";
 
     pub const PROP_DATA_TYPE: &str = "data_type";
-    pub const SIGNAL_DATA_TYPE_CHANGED: &str = "dataTypeChanged()";
+    pub const SIGNAL_DATA_TYPE_CHANGED: &str = "data_typeChanged()";
 
     pub const PROP_DIRECTION: &str = "direction";
     pub const SIGNAL_DIRECTION_CHANGED: &str = "directionChanged()";

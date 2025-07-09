@@ -59,11 +59,11 @@ pub mod ffi {
         #[base = QQuickItem]
         #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
         #[qproperty(bool, initialized, READ, NOTIFY=initialized_changed)]
-        #[qproperty(i32, mode, READ, NOTIFY)]
-        #[qproperty(i32, length, READ, NOTIFY)]
-        #[qproperty(i32, position, READ, NOTIFY)]
-        #[qproperty(i32, next_mode, READ, NOTIFY)]
-        #[qproperty(i32, next_transition_delay, READ, NOTIFY)]
+        #[qproperty(i32, mode, READ, NOTIFY=mode_changed)]
+        #[qproperty(i32, length, READ, NOTIFY=length_changed)]
+        #[qproperty(i32, position, READ, NOTIFY=position_changed)]
+        #[qproperty(i32, next_mode, READ, NOTIFY=next_mode_changed)]
+        #[qproperty(i32, next_transition_delay, READ, NOTIFY=next_transition_delay_changed)]
         #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
         #[qproperty(*mut QObject, backend_loop_wrapper, READ=get_backend_loop_wrapper)]
         #[qproperty(QList_f32, display_peaks, READ, NOTIFY)]
@@ -140,16 +140,40 @@ pub mod ffi {
         pub fn get_backend_loop_wrapper(self: Pin<&mut LoopGui>) -> *mut QObject;
 
         #[qsignal]
+        #[cxx_name = "backendChanged"]
         pub unsafe fn backend_changed(self: Pin<&mut LoopGui>, backend: *mut QObject);
 
         #[qsignal]
+        #[cxx_name = "syncSourceChanged"]
         pub unsafe fn sync_source_changed(self: Pin<&mut LoopGui>, sync_source: *mut QObject);
 
         #[qsignal]
+        #[cxx_name = "instanceIdentifierChanged"]
         pub unsafe fn instance_identifier_changed(self: Pin<&mut LoopGui>, instance_identifier: QString);
 
         #[qsignal]
+        #[cxx_name = "initializedChanged"]
         pub unsafe fn initialized_changed(self: Pin<&mut LoopGui>, initialized: bool);
+
+        #[qsignal]
+        #[cxx_name = "nextModeChanged"]
+        pub unsafe fn next_mode_changed(self: Pin<&mut LoopGui>);
+
+        #[qsignal]
+        #[cxx_name = "modeChanged"]
+        pub unsafe fn mode_changed(self: Pin<&mut LoopGui>);
+
+        #[qsignal]
+        #[cxx_name = "lengthChanged"]
+        pub unsafe fn length_changed(self: Pin<&mut LoopGui>);
+
+        #[qsignal]
+        #[cxx_name = "positionChanged"]
+        pub unsafe fn position_changed(self: Pin<&mut LoopGui>);
+
+        #[qsignal]
+        #[cxx_name = "nextTransitionDelayChanged"]
+        pub unsafe fn next_transition_delay_changed(self: Pin<&mut LoopGui>);
 
         #[qsignal]
         fn cycled(self: Pin<&mut LoopGui>, cycle_nr: i32);
