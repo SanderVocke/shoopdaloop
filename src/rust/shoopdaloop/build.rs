@@ -2,8 +2,8 @@ use anyhow;
 use backend;
 use common;
 use config::{self, config::ShoopConfig};
-use std::path::PathBuf;
 use std::io::Write;
+use std::path::PathBuf;
 
 fn generate_dev_launcher_script() -> Result<PathBuf, anyhow::Error> {
     let dev_config_path = config::dev_config_path();
@@ -13,34 +13,44 @@ fn generate_dev_launcher_script() -> Result<PathBuf, anyhow::Error> {
     let (_var, paths) = config::config_dynlib_env_var(&dev_config)?;
 
     if cfg!(target_os = "windows") {
-        let script_content = format!(r#"
+        let script_content = format!(
+            r#"
 @echo off
 SET "PATH=%PATH%;{paths}"
 SET "SHOOP_CONFIG={dev_config_path_str}"
 %SHOOP_CMD_PREFIX% "%~dp0shoopdaloop.exe" %*
-"#);
+"#
+        );
         let script_path = PathBuf::from(std::env::var("OUT_DIR").unwrap())
-                                   .ancestors().nth(3).unwrap().join("shoopdaloop_dev.bat");
+            .ancestors()
+            .nth(3)
+            .unwrap()
+            .join("shoopdaloop_dev.bat");
         let mut file = std::fs::File::create(&script_path)?;
         file.write_all(script_content.as_bytes())?;
         file.sync_all()?;
         return Ok(script_path);
-    }
-    else if cfg!(target_os = "linux") {
-        let script_content = format!(r#"
+    } else if cfg!(target_os = "linux") {
+        let script_content = format!(
+            r#"
 #!/bin/sh
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:{paths}"
 export SHOOP_CONFIG="{dev_config_path_str}"
 $SCRIPT_DIR//shoopdaloop "$@"
-"#);
+"#
+        );
         let script_path = PathBuf::from(std::env::var("OUT_DIR").unwrap())
-                                   .ancestors().nth(3).unwrap().join("shoopdaloop_dev.sh");
+            .ancestors()
+            .nth(3)
+            .unwrap()
+            .join("shoopdaloop_dev.sh");
         let mut file = std::fs::File::create(&script_path)?;
         file.write_all(script_content.as_bytes())?;
         file.sync_all()?;
 
-        #[cfg(unix)] {
+        #[cfg(unix)]
+        {
             use std::os::unix::fs::PermissionsExt;
             let mut perms = std::fs::metadata(&script_path)?.permissions();
             perms.set_mode(0o755); // rwxr-xr-x
@@ -83,7 +93,8 @@ fn main_impl() -> Result<(), anyhow::Error> {
             println!("cargo:rustc-link-lib=shoopdaloop_backend");
         }
 
-        #[cfg(target_os = "linux")] {
+        #[cfg(target_os = "linux")]
+        {
             // Link to portable lib folder
             println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/../lib");
 
@@ -96,13 +107,15 @@ fn main_impl() -> Result<(), anyhow::Error> {
             println!("cargo:rustc-link-search=native={:?}", path);
         }
 
-        let backend_runtime_link_paths_str = 
-           backend::runtime_link_dirs()
-              .iter()
-              .map(|p| p.to_string_lossy().to_string())
-              .collect::<Vec<String>>()
-              .join(common::util::PATH_LIST_SEPARATOR);
-        println!("cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS={}", backend_runtime_link_paths_str);
+        let backend_runtime_link_paths_str = backend::runtime_link_dirs()
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect::<Vec<String>>()
+            .join(common::util::PATH_LIST_SEPARATOR);
+        println!(
+            "cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS={}",
+            backend_runtime_link_paths_str
+        );
 
         // Rebuild if changed
         println!("cargo:rerun-if-changed=build.rs");
@@ -115,7 +128,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
 fn main() {
     match main_impl() {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             eprintln!("Error: {:?}\nBacktrace: {:?}", e, e.backtrace());
             std::process::exit(1);

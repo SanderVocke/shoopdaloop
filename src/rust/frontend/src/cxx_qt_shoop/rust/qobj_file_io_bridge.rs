@@ -18,52 +18,52 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qinvokable]
-        fn wait_blocking(self : &FileIO, delay_ms : u64);
+        fn wait_blocking(self: &FileIO, delay_ms: u64);
 
         #[qinvokable]
-        fn get_current_directory(self : &FileIO) -> QString;
+        fn get_current_directory(self: &FileIO) -> QString;
 
         #[qinvokable]
-        fn write_file(self : &FileIO, file_name : QString, data : QString) -> bool;
+        fn write_file(self: &FileIO, file_name: QString, data: QString) -> bool;
 
         #[qinvokable]
-        fn read_file(self : &FileIO, file_name : QString) -> QString;
+        fn read_file(self: &FileIO, file_name: QString) -> QString;
 
         #[qinvokable]
-        fn create_temporary_file(self : &FileIO) -> QString;
+        fn create_temporary_file(self: &FileIO) -> QString;
 
         #[qinvokable]
-        fn generate_temporary_filename(self : &FileIO) -> QString;
+        fn generate_temporary_filename(self: &FileIO) -> QString;
 
         #[qinvokable]
-        fn create_temporary_folder(self : &FileIO) -> QString;
+        fn create_temporary_folder(self: &FileIO) -> QString;
 
         #[qinvokable]
-        fn delete_recursive(self : &FileIO, path : QString) -> bool;
+        fn delete_recursive(self: &FileIO, path: QString) -> bool;
 
         #[qinvokable]
-        fn delete_file(self : &FileIO, file_name : QString) -> bool;
+        fn delete_file(self: &FileIO, file_name: QString) -> bool;
 
         #[qinvokable]
-        fn extract_tarfile(self : &FileIO, tarfile : QString, destination : QString) -> bool;
+        fn extract_tarfile(self: &FileIO, tarfile: QString, destination: QString) -> bool;
 
         #[qinvokable]
-        fn make_tarfile(self : &FileIO, tarfile : QString, source : QString) -> bool;
+        fn make_tarfile(self: &FileIO, tarfile: QString, source: QString) -> bool;
 
         #[qinvokable]
-        fn basename(self : &FileIO, path : QString) -> QString;
+        fn basename(self: &FileIO, path: QString) -> QString;
 
         #[qinvokable]
-        fn is_absolute(self : &FileIO, path : QString) -> bool;
+        fn is_absolute(self: &FileIO, path: QString) -> bool;
 
         #[qinvokable]
-        fn realpath(self : &FileIO, path : QString) -> QString;
+        fn realpath(self: &FileIO, path: QString) -> QString;
 
         #[qinvokable]
-        fn exists(self : &FileIO, path : QString) -> bool;
+        fn exists(self: &FileIO, path: QString) -> bool;
 
         #[qinvokable]
-        fn glob(self : &FileIO, pattern : QString) -> QList_QString;
+        fn glob(self: &FileIO, pattern: QString) -> QList_QString;
     }
 
     unsafe extern "C++" {
@@ -77,10 +77,13 @@ pub mod ffi {
         include!("cxx-qt-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_singleton_file_io"]
-        fn register_qml_singleton(inference_example: &FileIO,
-                                  module_name : &mut String,
-                                  version_major : i64, version_minor : i64,
-                                  type_name : &mut String);
+        fn register_qml_singleton(
+            inference_example: &FileIO,
+            module_name: &mut String,
+            version_major: i64,
+            version_minor: i64,
+            type_name: &mut String,
+        );
     }
 }
 

@@ -2,9 +2,8 @@ use anyhow;
 use anyhow::Context;
 use std::path::Path;
 
-pub fn recursive_dir_cpy (src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
-    for entry in std::fs::read_dir(src)
-                    .with_context(|| format!("Cannot read dir {src:?}"))? {
+pub fn recursive_dir_cpy(src: &Path, dst: &Path) -> Result<(), anyhow::Error> {
+    for entry in std::fs::read_dir(src).with_context(|| format!("Cannot read dir {src:?}"))? {
         let entry = entry.with_context(|| format!("Invalid entry"))?;
         let path = entry.path();
         let file_name = path.file_name().unwrap();

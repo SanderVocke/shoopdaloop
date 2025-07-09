@@ -1,13 +1,13 @@
-use fern;
-use colored::Colorize;
-use std::sync::Mutex;
-use lazy_static::lazy_static;
-use std::collections::HashSet;
 use anyhow;
+use colored::Colorize;
+use fern;
+use lazy_static::lazy_static;
 use log;
+use std::collections::HashSet;
+use std::sync::Mutex;
 
 lazy_static! {
-    static ref LOG_MODULES : Mutex<HashSet<&'static str>> = Mutex::new(HashSet::new());
+    static ref LOG_MODULES: Mutex<HashSet<&'static str>> = Mutex::new(HashSet::new());
 }
 
 pub fn register_log_module(name: &'static str) {
@@ -15,7 +15,7 @@ pub fn register_log_module(name: &'static str) {
     modules.insert(name);
 }
 
-fn parse_level(level : &str) -> log::LevelFilter {
+fn parse_level(level: &str) -> log::LevelFilter {
     match level {
         "trace" => log::LevelFilter::Trace,
         "debug" => log::LevelFilter::Debug,
@@ -27,10 +27,15 @@ fn parse_level(level : &str) -> log::LevelFilter {
 }
 
 fn apply_env(dispatch: fern::Dispatch) -> Result<fern::Dispatch, anyhow::Error> {
-    let modules = LOG_MODULES.lock()
-                             .map_err(|e| anyhow::anyhow!("Could not lock global modules list: {e:?}"))?;
-    let find_module = |module : &str| modules.iter().find(|m| **m == module)
-                                             .and_then(|m| Some(*m));
+    let modules = LOG_MODULES
+        .lock()
+        .map_err(|e| anyhow::anyhow!("Could not lock global modules list: {e:?}"))?;
+    let find_module = |module: &str| {
+        modules
+            .iter()
+            .find(|m| **m == module)
+            .and_then(|m| Some(*m))
+    };
 
     let mut rval = dispatch;
     if let Ok(value) = std::env::var("SHOOP_LOG") {
@@ -75,7 +80,8 @@ pub fn init_logging() -> Result<(), anyhow::Error> {
         })
         .level(log::LevelFilter::Info);
     dispatch = apply_env(dispatch)?;
-    dispatch.chain(fern::Output::call(|record| println!("{}", record.args())))
-            .apply()?;
+    dispatch
+        .chain(fern::Output::call(|record| println!("{}", record.args())))
+        .apply()?;
     Ok(())
 }

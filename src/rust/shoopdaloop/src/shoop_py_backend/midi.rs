@@ -1,5 +1,5 @@
-use pyo3::prelude::*;
 use backend_bindings::MidiEvent as BackendMidiEvent;
+use pyo3::prelude::*;
 
 #[pyclass]
 #[derive(Clone)]

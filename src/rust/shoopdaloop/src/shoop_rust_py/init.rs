@@ -1,5 +1,5 @@
-use pyo3::prelude::*;
 use frontend;
+use pyo3::prelude::*;
 
 #[pyfunction]
 pub fn shoop_rust_init() {

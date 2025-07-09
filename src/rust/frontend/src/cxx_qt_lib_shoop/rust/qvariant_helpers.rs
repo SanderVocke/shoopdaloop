@@ -13,5 +13,5 @@ mod ffi {
     }
 }
 
-pub use ffi::QVariant;
 pub use ffi::qvariant_type_name;
+pub use ffi::QVariant;

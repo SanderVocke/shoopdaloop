@@ -1,7 +1,7 @@
-use anyhow;
 use crate::ffi;
-use std::sync::Mutex;
 use crate::integer_enum;
+use anyhow;
+use std::sync::Mutex;
 
 use crate::audio_port::AudioPort;
 use crate::midi_port::MidiPort;
@@ -33,7 +33,7 @@ impl FXChainState {
 }
 
 pub struct FXChain {
-    obj : Mutex<*mut ffi::shoopdaloop_fx_chain_t>,
+    obj: Mutex<*mut ffi::shoopdaloop_fx_chain_t>,
 }
 
 unsafe impl Send for FXChain {}
@@ -96,7 +96,9 @@ impl FXChain {
             unsafe {
                 let state_ptr = ffi::get_fx_chain_internal_state(*self.obj.lock().unwrap());
                 if !state_ptr.is_null() {
-                    let state_str = std::ffi::CStr::from_ptr(state_ptr).to_string_lossy().into_owned();
+                    let state_str = std::ffi::CStr::from_ptr(state_ptr)
+                        .to_string_lossy()
+                        .into_owned();
                     ffi::destroy_string(state_ptr);
                     Some(state_str)
                 } else {
@@ -157,7 +159,10 @@ impl FXChain {
         if self.available() {
             let c_state_str = std::ffi::CString::new(state_str).expect("Failed to create CString");
             unsafe {
-                ffi::restore_fx_chain_internal_state(*self.obj.lock().unwrap(), c_state_str.as_ptr());
+                ffi::restore_fx_chain_internal_state(
+                    *self.obj.lock().unwrap(),
+                    c_state_str.as_ptr(),
+                );
             }
         }
     }

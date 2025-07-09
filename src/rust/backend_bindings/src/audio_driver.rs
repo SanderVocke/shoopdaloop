@@ -1,9 +1,9 @@
-use anyhow;
-use crate::integer_enum;
 use crate::ffi;
-use std::sync::Mutex;
+use crate::integer_enum;
 use crate::port::ExternalPortDescriptor;
+use anyhow;
 use std::fmt;
+use std::sync::Mutex;
 
 integer_enum! {
     pub enum AudioDriverType {
@@ -19,28 +19,49 @@ pub struct JackAudioDriverSettings {
 }
 
 impl JackAudioDriverSettings {
-    pub fn new(obj : &ffi::shoop_jack_audio_driver_settings_t) -> Self {
+    pub fn new(obj: &ffi::shoop_jack_audio_driver_settings_t) -> Self {
         JackAudioDriverSettings {
-            client_name_hint : unsafe { std::ffi::CStr::from_ptr(obj.client_name_hint).to_str().unwrap().to_string() },
-            maybe_server_name : if obj.maybe_server_name.is_null() {
+            client_name_hint: unsafe {
+                std::ffi::CStr::from_ptr(obj.client_name_hint)
+                    .to_str()
+                    .unwrap()
+                    .to_string()
+            },
+            maybe_server_name: if obj.maybe_server_name.is_null() {
                 None
             } else {
-                Some(unsafe { std::ffi::CStr::from_ptr(obj.maybe_server_name).to_str().unwrap().to_string() })
+                Some(unsafe {
+                    std::ffi::CStr::from_ptr(obj.maybe_server_name)
+                        .to_str()
+                        .unwrap()
+                        .to_string()
+                })
             },
         }
     }
 
     pub fn to_ffi(&self) -> ffi::shoop_jack_audio_driver_settings_t {
         ffi::shoop_jack_audio_driver_settings_t {
-            client_name_hint: std::ffi::CString::new(self.client_name_hint.clone()).unwrap().into_raw(),
-            maybe_server_name: self.maybe_server_name.as_ref().map_or(std::ptr::null(), |s| std::ffi::CString::new(s.clone()).unwrap().into_raw()),
+            client_name_hint: std::ffi::CString::new(self.client_name_hint.clone())
+                .unwrap()
+                .into_raw(),
+            maybe_server_name: self
+                .maybe_server_name
+                .as_ref()
+                .map_or(std::ptr::null(), |s| {
+                    std::ffi::CString::new(s.clone()).unwrap().into_raw()
+                }),
         }
     }
 }
 
 impl fmt::Debug for JackAudioDriverSettings {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "JackAudioDriverSettings {{ client_name_hint: {}, maybe_server_name: {:?} }}", self.client_name_hint, self.maybe_server_name)
+        write!(
+            f,
+            "JackAudioDriverSettings {{ client_name_hint: {}, maybe_server_name: {:?} }}",
+            self.client_name_hint, self.maybe_server_name
+        )
     }
 }
 
@@ -51,17 +72,24 @@ pub struct DummyAudioDriverSettings {
 }
 
 impl DummyAudioDriverSettings {
-    pub fn new(obj : &ffi::shoop_dummy_audio_driver_settings_t) -> Self {
+    pub fn new(obj: &ffi::shoop_dummy_audio_driver_settings_t) -> Self {
         DummyAudioDriverSettings {
-            client_name : unsafe { std::ffi::CStr::from_ptr(obj.client_name).to_str().unwrap().to_string() },
-            sample_rate : obj.sample_rate,
-            buffer_size : obj.buffer_size,
+            client_name: unsafe {
+                std::ffi::CStr::from_ptr(obj.client_name)
+                    .to_str()
+                    .unwrap()
+                    .to_string()
+            },
+            sample_rate: obj.sample_rate,
+            buffer_size: obj.buffer_size,
         }
     }
 
     pub fn to_ffi(&self) -> ffi::shoop_dummy_audio_driver_settings_t {
         ffi::shoop_dummy_audio_driver_settings_t {
-            client_name: std::ffi::CString::new(self.client_name.clone()).unwrap().into_raw(),
+            client_name: std::ffi::CString::new(self.client_name.clone())
+                .unwrap()
+                .into_raw(),
             sample_rate: self.sample_rate,
             buffer_size: self.buffer_size,
         }
@@ -70,7 +98,11 @@ impl DummyAudioDriverSettings {
 
 impl fmt::Debug for DummyAudioDriverSettings {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "DummyAudioDriverSettings {{ client_name: {}, sample_rate: {}, buffer_size: {} }}", self.client_name, self.sample_rate, self.buffer_size)
+        write!(
+            f,
+            "DummyAudioDriverSettings {{ client_name: {}, sample_rate: {}, buffer_size: {} }}",
+            self.client_name, self.sample_rate, self.buffer_size
+        )
     }
 }
 
@@ -82,8 +114,12 @@ pub enum AudioDriverSettings {
 impl fmt::Debug for AudioDriverSettings {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            AudioDriverSettings::Jack(settings) => write!(f, "AudioDriverSettings::Jack({:?})", settings),
-            AudioDriverSettings::Dummy(settings) => write!(f, "AudioDriverSettings::Dummy({:?})", settings),
+            AudioDriverSettings::Jack(settings) => {
+                write!(f, "AudioDriverSettings::Jack({:?})", settings)
+            }
+            AudioDriverSettings::Dummy(settings) => {
+                write!(f, "AudioDriverSettings::Dummy({:?})", settings)
+            }
         }
     }
 }
@@ -99,31 +135,35 @@ pub struct AudioDriverState {
 }
 
 impl AudioDriverState {
-    pub fn new(obj : &ffi::shoop_audio_driver_state_t) -> Self {
+    pub fn new(obj: &ffi::shoop_audio_driver_state_t) -> Self {
         let c_str = unsafe { std::ffi::CStr::from_ptr(obj.maybe_instance_name) };
-        let rust_string = c_str.to_str().expect("Failed to convert to str").to_string();
+        let rust_string = c_str
+            .to_str()
+            .expect("Failed to convert to str")
+            .to_string();
         AudioDriverState {
-            dsp_load_percent : obj.dsp_load_percent,
-            xruns_since_last : obj.xruns_since_last,
-            maybe_instance_name : rust_string,
-            sample_rate : obj.sample_rate,
-            buffer_size : obj.buffer_size,
-            active : obj.active,
-            last_processed : obj.last_processed,
+            dsp_load_percent: obj.dsp_load_percent,
+            xruns_since_last: obj.xruns_since_last,
+            maybe_instance_name: rust_string,
+            sample_rate: obj.sample_rate,
+            buffer_size: obj.buffer_size,
+            active: obj.active,
+            last_processed: obj.last_processed,
         }
     }
 }
 
 pub struct AudioDriver {
-    obj : Mutex<*mut ffi::shoop_audio_driver_t>,
+    obj: Mutex<*mut ffi::shoop_audio_driver_t>,
 }
 
 unsafe impl Send for AudioDriver {}
 unsafe impl Sync for AudioDriver {}
 
 impl AudioDriver {
-    pub fn new(driver_type : AudioDriverType) -> Result<Self, anyhow::Error> {
-        let obj = unsafe { ffi::create_audio_driver(driver_type as ffi::shoop_audio_driver_type_t) };
+    pub fn new(driver_type: AudioDriverType) -> Result<Self, anyhow::Error> {
+        let obj =
+            unsafe { ffi::create_audio_driver(driver_type as ffi::shoop_audio_driver_type_t) };
         if obj.is_null() {
             Err(anyhow::anyhow!("create_audio_driver() failed"))
         } else {
@@ -142,7 +182,7 @@ impl AudioDriver {
         unsafe { ffi::get_buffer_size(*obj) }
     }
 
-    pub fn start(&self, settings : &AudioDriverSettings) -> Result<(), anyhow::Error> {
+    pub fn start(&self, settings: &AudioDriverSettings) -> Result<(), anyhow::Error> {
         match settings {
             AudioDriverSettings::Jack(settings) => self.start_jack(settings),
             AudioDriverSettings::Dummy(settings) => self.start_dummy(settings),
@@ -216,10 +256,7 @@ impl AudioDriver {
         let obj = self.lock();
         unsafe {
             let c_name = std::ffi::CString::new(name).unwrap();
-            ffi::dummy_driver_remove_external_mock_port(
-                *obj,
-                c_name.as_ptr(),
-            )
+            ffi::dummy_driver_remove_external_mock_port(*obj, c_name.as_ptr())
         };
     }
 
@@ -232,7 +269,12 @@ impl AudioDriver {
         unsafe { ffi::dummy_audio_run_requested_frames(*obj) };
     }
 
-    pub fn find_external_ports(&self, maybe_name_regex: Option<&str>, port_direction: u32, data_type: u32) -> Vec<ExternalPortDescriptor> {
+    pub fn find_external_ports(
+        &self,
+        maybe_name_regex: Option<&str>,
+        port_direction: u32,
+        data_type: u32,
+    ) -> Vec<ExternalPortDescriptor> {
         let obj = self.lock();
         let maybe_name_regex_updated = match maybe_name_regex {
             Some(s) => match s {
@@ -242,15 +284,21 @@ impl AudioDriver {
             None => None,
         };
         let regex_ptr = maybe_name_regex_updated
-        .as_ref()
-        .map_or(std::ptr::null(), |s| {
-            s.as_ptr() as *const i8
-        });
-        let result = unsafe { ffi::find_external_ports(*obj, regex_ptr, port_direction as ffi::shoop_port_direction_t, data_type as ffi::shoop_port_data_type_t) };
+            .as_ref()
+            .map_or(std::ptr::null(), |s| s.as_ptr() as *const i8);
+        let result = unsafe {
+            ffi::find_external_ports(
+                *obj,
+                regex_ptr,
+                port_direction as ffi::shoop_port_direction_t,
+                data_type as ffi::shoop_port_data_type_t,
+            )
+        };
         if result.is_null() {
             return Vec::new();
         }
-        let ports = unsafe { std::slice::from_raw_parts((*result).ports, (*result).n_ports as usize) };
+        let ports =
+            unsafe { std::slice::from_raw_parts((*result).ports, (*result).n_ports as usize) };
         let mut port_descriptors = Vec::new();
         unsafe {
             for i in 0..(*result).n_ports {
@@ -273,7 +321,7 @@ impl AudioDriver {
         unsafe { ffi::destroy_audio_driver_state(state) };
         r_state
     }
-    
+
     pub fn lock(&self) -> std::sync::MutexGuard<*mut ffi::shoop_audio_driver_t> {
         self.obj.lock().unwrap()
     }
@@ -290,6 +338,6 @@ impl Drop for AudioDriver {
     }
 }
 
-pub fn driver_type_supported(driver_type : AudioDriverType) -> bool {
+pub fn driver_type_supported(driver_type: AudioDriverType) -> bool {
     unsafe { ffi::driver_type_supported(driver_type as ffi::shoop_audio_driver_type_t) != 0 }
 }

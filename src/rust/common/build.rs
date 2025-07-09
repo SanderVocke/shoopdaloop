@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use toml;
 
-const SRC_DIR : &str = env!("CARGO_MANIFEST_DIR");
+const SRC_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
 fn main() {
     let src = PathBuf::from(SRC_DIR);

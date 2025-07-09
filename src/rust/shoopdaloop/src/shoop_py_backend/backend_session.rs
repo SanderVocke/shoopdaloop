@@ -2,10 +2,10 @@
 
 use pyo3::prelude::*;
 // use pyo3::exceptions::*;
-use backend_bindings;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
-use crate::shoop_py_backend::shoop_loop::Loop;
 use crate::shoop_py_backend::fx_chain::FXChain;
+use crate::shoop_py_backend::shoop_loop::Loop;
+use backend_bindings;
 
 #[pyclass]
 pub struct BackendSessionState {
@@ -23,41 +23,51 @@ impl BackendSessionState {
 
 #[pyclass]
 pub struct BackendSession {
-    pub obj : backend_bindings::BackendSession,
+    pub obj: backend_bindings::BackendSession,
 }
 
 #[pymethods]
 impl BackendSession {
     #[new]
     fn py_new() -> PyResult<Self> {
-        Ok(BackendSession { obj: backend_bindings::BackendSession::new().unwrap() })
+        Ok(BackendSession {
+            obj: backend_bindings::BackendSession::new().unwrap(),
+        })
     }
 
-    fn unsafe_backend_ptr (&self) -> usize {
+    fn unsafe_backend_ptr(&self) -> usize {
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }
 
-    fn set_audio_driver(&self, driver : &AudioDriver) -> PyResult<()> {
+    fn set_audio_driver(&self, driver: &AudioDriver) -> PyResult<()> {
         if self.obj.set_audio_driver(&driver.obj).is_ok() {
             Ok(())
         } else {
-            Err(PyErr::new::<pyo3::exceptions::PyException, _>("set_audio_driver() failed"))
+            Err(PyErr::new::<pyo3::exceptions::PyException, _>(
+                "set_audio_driver() failed",
+            ))
         }
     }
 
     fn create_loop(&self) -> PyResult<Loop> {
         let obj = self.obj.create_loop();
         if obj.is_err() {
-            return Err(PyErr::new::<pyo3::exceptions::PyException, _>("Failed to create loop"));
+            return Err(PyErr::new::<pyo3::exceptions::PyException, _>(
+                "Failed to create loop",
+            ));
         }
         let obj = Loop::new(obj.unwrap());
         Ok(obj)
     }
 
     fn create_fx_chain(&self, chain_type: u32, title: &str) -> PyResult<FXChain> {
-        let obj = self.obj.create_fx_chain(chain_type.try_into().unwrap(), title);
+        let obj = self
+            .obj
+            .create_fx_chain(chain_type.try_into().unwrap(), title);
         if obj.is_err() {
-            return Err(PyErr::new::<pyo3::exceptions::PyException, _>("Failed to create fx chain"));
+            return Err(PyErr::new::<pyo3::exceptions::PyException, _>(
+                "Failed to create fx chain",
+            ));
         }
         let obj = obj.unwrap();
         let wrapped = FXChain { obj };
@@ -105,7 +115,11 @@ pub struct ProfilingReport {
 impl ProfilingReport {
     pub fn from_backend(report: &backend_bindings::ProfilingReport) -> Self {
         ProfilingReport {
-            items: report.items.iter().map(ProfilingReportItem::from_backend).collect(),
+            items: report
+                .items
+                .iter()
+                .map(ProfilingReportItem::from_backend)
+                .collect(),
         }
     }
 }

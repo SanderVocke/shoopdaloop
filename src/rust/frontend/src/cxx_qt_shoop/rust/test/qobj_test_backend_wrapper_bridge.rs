@@ -23,37 +23,39 @@ pub mod ffi {
         #[qproperty(bool, ready)]
         type TestBackendWrapper = super::TestBackendWrapperRust;
 
-        pub fn initialize_impl(self : Pin<&mut TestBackendWrapper>);
+        pub fn initialize_impl(self: Pin<&mut TestBackendWrapper>);
 
         #[qinvokable]
-        fn find_external_ports(self : Pin<&mut TestBackendWrapper>,
-                               maybe_regex : QString,
-                               port_direction : i32,
-                               data_type : i32) -> QList_QVariant;
+        fn find_external_ports(
+            self: Pin<&mut TestBackendWrapper>,
+            maybe_regex: QString,
+            port_direction: i32,
+            data_type: i32,
+        ) -> QList_QVariant;
     }
 
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
 
-        #[rust_name="qquickitem_from_ref_test_backend_wrapper"]
-        unsafe fn qquickitemFromRef(obj : &TestBackendWrapper) -> &QQuickItem;
-        #[rust_name="qquickitem_from_ptr_test_backend_wrapper"]
-        unsafe fn qquickitemFromPtr(obj : *mut TestBackendWrapper) -> *mut QQuickItem;
+        #[rust_name = "qquickitem_from_ref_test_backend_wrapper"]
+        unsafe fn qquickitemFromRef(obj: &TestBackendWrapper) -> &QQuickItem;
+        #[rust_name = "qquickitem_from_ptr_test_backend_wrapper"]
+        unsafe fn qquickitemFromPtr(obj: *mut TestBackendWrapper) -> *mut QQuickItem;
 
         include!("cxx-qt-shoop/make_unique.h");
         #[rust_name = "make_unique_test_backend_wrapper"]
         fn make_unique() -> UniquePtr<TestBackendWrapper>;
     }
 
-    impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=()> for TestBackendWrapper {}
-    impl cxx_qt::Constructor<(), NewArguments=()> for TestBackendWrapper {}
+    impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = ()> for TestBackendWrapper {}
+    impl cxx_qt::Constructor<(), NewArguments = ()> for TestBackendWrapper {}
 }
 
-pub use ffi::TestBackendWrapper;
-pub use ffi::make_unique_test_backend_wrapper as make_unique;
 use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
-use ffi::*;
 use crate::cxx_qt_shoop::type_external_port_descriptor::ExternalPortDescriptor;
+pub use ffi::make_unique_test_backend_wrapper as make_unique;
+pub use ffi::TestBackendWrapper;
+use ffi::*;
 
 #[derive(Default)]
 pub struct TestBackendWrapperRust {
@@ -66,14 +68,22 @@ impl cxx_qt::Constructor<(*mut QQuickItem,)> for TestBackendWrapper {
     type InitializeArguments = (); // Will be passed to the "initialize" function
     type NewArguments = (); // Will be passed to the "new" function
 
-    fn route_arguments(args: (*mut QQuickItem,)) -> (
+    fn route_arguments(
+        args: (*mut QQuickItem,),
+    ) -> (
         Self::NewArguments,
         Self::BaseArguments,
-        Self::InitializeArguments
-    ) { ((), args, ()) }
+        Self::InitializeArguments,
+    ) {
+        ((), args, ())
+    }
 
-    fn new(_args : ()) -> TestBackendWrapperRust { TestBackendWrapperRust::default() }
-    fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) { TestBackendWrapper::initialize_impl(self); }
+    fn new(_args: ()) -> TestBackendWrapperRust {
+        TestBackendWrapperRust::default()
+    }
+    fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
+        TestBackendWrapper::initialize_impl(self);
+    }
 }
 
 impl cxx_qt::Constructor<()> for TestBackendWrapper {
@@ -81,19 +91,31 @@ impl cxx_qt::Constructor<()> for TestBackendWrapper {
     type InitializeArguments = (); // Will be passed to the "initialize" function
     type NewArguments = (); // Will be passed to the "new" function
 
-    fn route_arguments(_args: ()) -> (
+    fn route_arguments(
+        _args: (),
+    ) -> (
         Self::NewArguments,
         Self::BaseArguments,
-        Self::InitializeArguments
-    ) { ((), (), ()) }
+        Self::InitializeArguments,
+    ) {
+        ((), (), ())
+    }
 
-    fn new(_args : ()) -> TestBackendWrapperRust { TestBackendWrapperRust::default() }
-    fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) { TestBackendWrapper::initialize_impl(self); }
+    fn new(_args: ()) -> TestBackendWrapperRust {
+        TestBackendWrapperRust::default()
+    }
+    fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
+        TestBackendWrapper::initialize_impl(self);
+    }
 }
 
 impl AsQQuickItem for TestBackendWrapper {
-    unsafe fn mut_qquickitem_ptr (&mut self) -> *mut QQuickItem { ffi::qquickitem_from_ptr_test_backend_wrapper(self as *mut Self) }
-    unsafe fn ref_qquickitem_ptr (& self) -> *const QQuickItem { ffi::qquickitem_from_ref_test_backend_wrapper(self) as *const QQuickItem }
+    unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {
+        ffi::qquickitem_from_ptr_test_backend_wrapper(self as *mut Self)
+    }
+    unsafe fn ref_qquickitem_ptr(&self) -> *const QQuickItem {
+        ffi::qquickitem_from_ref_test_backend_wrapper(self) as *const QQuickItem
+    }
 }
 
 impl IsQQuickItem for TestBackendWrapper {}

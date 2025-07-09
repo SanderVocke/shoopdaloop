@@ -1,4 +1,3 @@
-
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
@@ -33,11 +32,11 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        #[rust_name="qquickitem_from_ref_dummy_process_helper"]
-        unsafe fn qquickitemFromRef(obj : &DummyProcessHelper) -> &QQuickItem;
+        #[rust_name = "qquickitem_from_ref_dummy_process_helper"]
+        unsafe fn qquickitemFromRef(obj: &DummyProcessHelper) -> &QQuickItem;
 
-        #[rust_name="qquickitem_from_ptr_dummy_process_helper"]
-        unsafe fn qquickitemFromPtr(obj : *mut DummyProcessHelper) -> *mut QQuickItem;
+        #[rust_name = "qquickitem_from_ptr_dummy_process_helper"]
+        unsafe fn qquickitemFromPtr(obj: *mut DummyProcessHelper) -> *mut QQuickItem;
 
         include!("cxx-qt-lib-shoop/invoke.h");
 
@@ -47,18 +46,24 @@ pub mod ffi {
 
         include!("cxx-qt-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_dummy_process_helper"]
-        fn register_qml_type(inference_example: &DummyProcessHelper,
-                             module_name: &mut String,
-                             version_major: i64, version_minor: i64,
-                             type_name: &mut String);
+        fn register_qml_type(
+            inference_example: &DummyProcessHelper,
+            module_name: &mut String,
+            version_major: i64,
+            version_minor: i64,
+            type_name: &mut String,
+        );
     }
 
-    impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=(*mut QQuickItem,)> for DummyProcessHelper {}
-    impl cxx_qt::Constructor<(), NewArguments=()> for DummyProcessHelper {}
+    impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)>
+        for DummyProcessHelper
+    {
+    }
+    impl cxx_qt::Constructor<(), NewArguments = ()> for DummyProcessHelper {}
 }
 
-use ffi::*;
 pub use ffi::DummyProcessHelper;
+use ffi::*;
 
 pub struct DummyProcessHelperRust {
     wait_start: f32,
@@ -98,10 +103,12 @@ impl cxx_qt::Constructor<(*mut QQuickItem,)> for DummyProcessHelper {
     type InitializeArguments = ();
     type NewArguments = (*mut QQuickItem,);
 
-    fn route_arguments(args: (*mut QQuickItem,)) -> (
+    fn route_arguments(
+        args: (*mut QQuickItem,),
+    ) -> (
         Self::NewArguments,
         Self::BaseArguments,
-        Self::InitializeArguments
+        Self::InitializeArguments,
     ) {
         (args, args, ())
     }
@@ -116,10 +123,12 @@ impl cxx_qt::Constructor<()> for DummyProcessHelper {
     type InitializeArguments = ();
     type NewArguments = ();
 
-    fn route_arguments(_args: ()) -> (
+    fn route_arguments(
+        _args: (),
+    ) -> (
         Self::NewArguments,
         Self::BaseArguments,
-        Self::InitializeArguments
+        Self::InitializeArguments,
     ) {
         ((), (), ())
     }

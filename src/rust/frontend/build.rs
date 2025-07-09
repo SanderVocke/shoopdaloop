@@ -9,8 +9,7 @@ fn main() {
 
     #[cfg(not(feature = "prebuild"))]
     {
-        CxxQtBuilder
-            ::new()
+        CxxQtBuilder::new()
             .qt_module("Quick")
             .qt_module("Gui")
             .qt_module("Network")

@@ -27,10 +27,13 @@ pub mod ffi {
         include!("cxx-qt-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_singleton_releasefocusnotifier"]
-        fn register_qml_singleton(inference_example: &ReleaseFocusNotifier,
-                                  module_name : &mut String,
-                                  version_major : i64, version_minor : i64,
-                                  type_name : &mut String);
+        fn register_qml_singleton(
+            inference_example: &ReleaseFocusNotifier,
+            module_name: &mut String,
+            version_major: i64,
+            version_minor: i64,
+            type_name: &mut String,
+        );
     }
 }
 

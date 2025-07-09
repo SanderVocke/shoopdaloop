@@ -1,16 +1,18 @@
-use backend_bindings::AudioChannel;
-use backend_bindings::MidiChannel;
-use common::logging::macros::{shoop_log_unit, debug as raw_debug, trace as raw_trace, error as raw_error};
-use cxx_qt::CxxQtType;
 use crate::cxx_qt_lib_shoop::connect::connect_or_report;
 use crate::cxx_qt_lib_shoop::connection_types;
 use crate::cxx_qt_lib_shoop::qobject::qobject_property_bool;
 use crate::cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
-use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;                                   
-use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::*;  
-use crate::loop_mode_helpers::*;   
-use cxx_qt_lib::{QVariant, QString};                      
+use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::*;
+use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
+use crate::loop_mode_helpers::*;
+use backend_bindings::AudioChannel;
+use backend_bindings::MidiChannel;
+use common::logging::macros::{
+    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
+};
+use cxx_qt::CxxQtType;
+use cxx_qt_lib::{QString, QVariant};
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Loop");
 
@@ -43,7 +45,7 @@ impl LoopBackend {
     pub fn initialize_impl(self: Pin<&mut LoopBackend>) {}
 
     pub fn set_length(mut self: Pin<&mut LoopBackend>, length: i32) {
-        if ! self.as_mut().maybe_initialize_backend() {
+        if !self.as_mut().maybe_initialize_backend() {
             debug!(self, "set length -> {length} (deferred)");
             let mut rust = self.as_mut().rust_mut();
             rust.prev_state.length = length as u32;
@@ -51,12 +53,16 @@ impl LoopBackend {
         } else {
             debug!(self, "set length -> {}", length);
             let mut rust = self.as_mut().rust_mut();
-            rust.backend_loop.as_mut().unwrap().set_length(length as u32).unwrap();
+            rust.backend_loop
+                .as_mut()
+                .unwrap()
+                .set_length(length as u32)
+                .unwrap();
         }
     }
 
     pub fn set_position(mut self: Pin<&mut LoopBackend>, position: i32) {
-        if ! self.as_mut().maybe_initialize_backend() {
+        if !self.as_mut().maybe_initialize_backend() {
             debug!(self, "set position -> {position} (deferred)");
             let mut rust = self.as_mut().rust_mut();
             rust.prev_state.position = position as u32;
@@ -64,7 +70,11 @@ impl LoopBackend {
         } else {
             debug!(self, "set position -> {}", position);
             let mut rust = self.as_mut().rust_mut();
-            rust.backend_loop.as_mut().unwrap().set_position(position as u32).unwrap();
+            rust.backend_loop
+                .as_mut()
+                .unwrap()
+                .set_position(position as u32)
+                .unwrap();
         }
     }
 
@@ -74,22 +84,25 @@ impl LoopBackend {
         rust_mut.backend = backend;
 
         self.as_mut().maybe_initialize_backend();
-        if ! self.get_initialized() && !backend.is_null() {
+        if !self.get_initialized() && !backend.is_null() {
             unsafe {
                 connect_or_report(
-                    & *backend,
+                    &*backend,
                     "readyChanged()".to_string(),
                     self.as_ref().get_ref(),
                     "maybe_initialize_backend()".to_string(),
-                    connection_types::QUEUED_CONNECTION);
+                    connection_types::QUEUED_CONNECTION,
+                );
             }
         }
 
-        unsafe { self.as_mut().backend_changed(backend); }
+        unsafe {
+            self.as_mut().backend_changed(backend);
+        }
     }
 
     pub fn set_instance_identifier(mut self: Pin<&mut LoopBackend>, instance_identifier: QString) {
-        let mut extended : QString = instance_identifier.clone();
+        let mut extended: QString = instance_identifier.clone();
         extended.append(&QString::from("-backend"));
         debug!(self, "set instance identifier -> {:?}", &extended);
         let mut rust_mut = self.as_mut().rust_mut();
@@ -98,16 +111,18 @@ impl LoopBackend {
     }
 
     pub fn maybe_initialize_backend(mut self: Pin<&mut LoopBackend>) -> bool {
-        let initialize_condition : bool;
+        let initialize_condition: bool;
 
-        if self.get_initialized() { return true; }
+        if self.get_initialized() {
+            return true;
+        }
 
         unsafe {
-            initialize_condition =
-               !self.get_initialized() &&
-                self.backend != std::ptr::null_mut() &&
-                qobject_property_bool(self.backend.as_ref().unwrap(), "ready".to_string()).unwrap_or(false) &&
-                self.as_ref().backend_loop.is_none();
+            initialize_condition = !self.get_initialized()
+                && self.backend != std::ptr::null_mut()
+                && qobject_property_bool(self.backend.as_ref().unwrap(), "ready".to_string())
+                    .unwrap_or(false)
+                && self.as_ref().backend_loop.is_none();
         }
 
         if initialize_condition {
@@ -118,11 +133,7 @@ impl LoopBackend {
                     error!(self, "Failed to convert backend QObject to backend pointer");
                 } else {
                     // FIXME: unwraps
-                    let backend_session = backend_ptr.as_mut()
-                                                    .unwrap()
-                                                    .session
-                                                    .as_ref()
-                                                    .unwrap();
+                    let backend_session = backend_ptr.as_mut().unwrap().session.as_ref().unwrap();
                     let backend_loop = backend_session.create_loop().unwrap();
                     let mut rust_mut = self.as_mut().rust_mut();
                     rust_mut.backend_loop = Some(backend_loop);
@@ -143,7 +154,7 @@ impl LoopBackend {
 
                     let initialized = self.get_initialized();
                     self.initialized_changed(initialized);
-                    return initialized
+                    return initialized;
                 }
             }
         } else {
@@ -160,7 +171,9 @@ impl LoopBackend {
         let result = || -> Result<(), anyhow::Error> {
             self.as_mut().starting_update();
             let mut rust = self.as_mut().rust_mut();
-            let new_state = rust.backend_loop.as_mut()
+            let new_state = rust
+                .backend_loop
+                .as_mut()
                 .ok_or(anyhow::anyhow!("backend loop object doesn't exist"))?
                 .get_state()?;
 
@@ -174,11 +187,11 @@ impl LoopBackend {
             //                               .collect();
 
             let prev_state;
-            let prev_cycle_nr : i32;
-            let new_cycle_nr : i32;
+            let prev_cycle_nr: i32;
+            let new_cycle_nr: i32;
             {
                 let mut rust = self.as_mut().rust_mut();
-                
+
                 prev_state = rust.prev_state.clone();
                 prev_cycle_nr = rust.prev_cycle_nr;
 
@@ -210,11 +223,14 @@ impl LoopBackend {
                 //         n_events_triggered
                 //     }
                 // }).sum();
-                new_cycle_nr = 
-                    if new_state.position < prev_state.position &&
-                        is_playing_mode(prev_state.mode.try_into().unwrap()) &&
-                        is_playing_mode(new_state.mode.try_into().unwrap()) 
-                    { rust.prev_cycle_nr + 1 } else { rust.prev_cycle_nr };
+                new_cycle_nr = if new_state.position < prev_state.position
+                    && is_playing_mode(prev_state.mode.try_into().unwrap())
+                    && is_playing_mode(new_state.mode.try_into().unwrap())
+                {
+                    rust.prev_cycle_nr + 1
+                } else {
+                    rust.prev_cycle_nr
+                };
 
                 rust.prev_state = new_state.clone();
                 // rust.display_peaks = QList::from(new_display_peaks);
@@ -223,36 +239,62 @@ impl LoopBackend {
                 rust.prev_cycle_nr = new_cycle_nr;
             }
 
-            self.as_mut().state_changed(new_state.mode as i32,
-                            new_state.length as i32,
-                            new_state.position as i32,
-                            convert_maybe_mode_i32(new_state.maybe_next_mode),
-                            new_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32,
-                            new_cycle_nr);
+            self.as_mut().state_changed(
+                new_state.mode as i32,
+                new_state.length as i32,
+                new_state.position as i32,
+                convert_maybe_mode_i32(new_state.maybe_next_mode),
+                new_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32,
+                new_cycle_nr,
+            );
 
             if prev_state.mode != new_state.mode {
                 debug!(self, "mode: {:?} -> {:?}", prev_state.mode, new_state.mode);
-                self.as_mut().mode_changed(prev_state.mode as i32, new_state.mode as i32);
+                self.as_mut()
+                    .mode_changed(prev_state.mode as i32, new_state.mode as i32);
             }
             if prev_state.length != new_state.length {
-                trace!(self, "length: {} -> {}", prev_state.length, new_state.length);
-                self.as_mut().length_changed(prev_state.length as i32, new_state.length as i32);
+                trace!(
+                    self,
+                    "length: {} -> {}",
+                    prev_state.length,
+                    new_state.length
+                );
+                self.as_mut()
+                    .length_changed(prev_state.length as i32, new_state.length as i32);
             }
             if prev_state.position != new_state.position {
-                trace!(self, "position: {} -> {}", prev_state.position, new_state.position);
-                self.as_mut().position_changed(prev_state.position as i32, new_state.position as i32);
+                trace!(
+                    self,
+                    "position: {} -> {}",
+                    prev_state.position,
+                    new_state.position
+                );
+                self.as_mut()
+                    .position_changed(prev_state.position as i32, new_state.position as i32);
             }
             if prev_state.maybe_next_mode != new_state.maybe_next_mode {
-                debug!(self, "next mode: {:?} -> {:?}", prev_state.maybe_next_mode, new_state.maybe_next_mode);
+                debug!(
+                    self,
+                    "next mode: {:?} -> {:?}",
+                    prev_state.maybe_next_mode,
+                    new_state.maybe_next_mode
+                );
                 let prev_mode = convert_maybe_mode_i32(prev_state.maybe_next_mode);
                 let new_mode = convert_maybe_mode_i32(new_state.maybe_next_mode);
                 self.as_mut().next_mode_changed(prev_mode, new_mode);
             }
             if prev_state.maybe_next_mode_delay != new_state.maybe_next_mode_delay {
-                debug!(self, "next delay: {:?} -> {:?}", prev_state.maybe_next_mode_delay, new_state.maybe_next_mode_delay);
-                let prev_delay : i32 = prev_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32;
-                let new_delay : i32 = new_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32;
-                self.as_mut().next_transition_delay_changed(prev_delay, new_delay);
+                debug!(
+                    self,
+                    "next delay: {:?} -> {:?}",
+                    prev_state.maybe_next_mode_delay,
+                    new_state.maybe_next_mode_delay
+                );
+                let prev_delay: i32 = prev_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32;
+                let new_delay: i32 = new_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32;
+                self.as_mut()
+                    .next_transition_delay_changed(prev_delay, new_delay);
             }
             // if display_peaks_changed {
             //     trace!(self, "display peaks changed");
@@ -292,62 +334,74 @@ impl LoopBackend {
     //     self.get_children_with_object_name("LoopMidiChannel")
     // }
 
-    pub fn transition_multiple(self: Pin<&mut LoopBackend>,
+    pub fn transition_multiple(
+        self: Pin<&mut LoopBackend>,
         loops: QList_QVariant,
         to_mode: i32,
         maybe_cycles_delay: i32,
-        maybe_to_sync_at_cycle: i32)
-    {
-        LoopBackend::transition_multiple_impl(loops, to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
+        maybe_to_sync_at_cycle: i32,
+    ) {
+        LoopBackend::transition_multiple_impl(
+            loops,
+            to_mode,
+            maybe_cycles_delay,
+            maybe_to_sync_at_cycle,
+        );
     }
 
     pub fn transition_multiple_impl(
         loops: QList_QVariant,
         to_mode: i32,
         maybe_cycles_delay: i32,
-        maybe_to_sync_at_cycle: i32)
-    {
-        raw_debug!("Transitioning {} loops to {} with delay {}, sync at cycle {}",
-           loops.len(), to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
-        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            let mut backend_loop_refs : Vec<&backend_bindings::Loop> = Vec::new();
+        maybe_to_sync_at_cycle: i32,
+    ) {
+        raw_debug!(
+            "Transitioning {} loops to {} with delay {}, sync at cycle {}",
+            loops.len(),
+            to_mode,
+            maybe_cycles_delay,
+            maybe_to_sync_at_cycle
+        );
+        let result: Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
+            let mut backend_loop_refs: Vec<&backend_bindings::Loop> = Vec::new();
             backend_loop_refs.reserve(loops.len() as usize);
 
             // Increment the reference count for all loops involved
-            loops.iter().map(|loop_variant| -> Result<(), anyhow::Error> {
-                unsafe {
-                    let loop_qobj : *mut QObject =
-                        qvariant_to_qobject_ptr(loop_variant)
-                        .ok_or(anyhow::anyhow!("Failed to convert QVariant to QObject pointer"))?;
-                    let loop_ptr : *mut LoopBackend =
-                        qobject_to_loop_backend_ptr(loop_qobj);
-                    {
-                        let loop_pin = std::pin::Pin::new_unchecked(&mut *loop_ptr);
-                        loop_pin.maybe_initialize_backend();
+            loops
+                .iter()
+                .map(|loop_variant| -> Result<(), anyhow::Error> {
+                    unsafe {
+                        let loop_qobj: *mut QObject = qvariant_to_qobject_ptr(loop_variant).ok_or(
+                            anyhow::anyhow!("Failed to convert QVariant to QObject pointer"),
+                        )?;
+                        let loop_ptr: *mut LoopBackend = qobject_to_loop_backend_ptr(loop_qobj);
+                        {
+                            let loop_pin = std::pin::Pin::new_unchecked(&mut *loop_ptr);
+                            loop_pin.maybe_initialize_backend();
+                        }
+                        let backend_loop_ref: &backend_bindings::Loop = loop_ptr
+                            .as_ref()
+                            .unwrap()
+                            .backend_loop
+                            .as_ref()
+                            .ok_or(anyhow::anyhow!("Backend loop not set"))?;
+                        backend_loop_refs.push(backend_loop_ref);
+                        Ok(())
                     }
-                    let backend_loop_ref : &backend_bindings::Loop =
-                        loop_ptr.as_ref()
-                                .unwrap()
-                                .backend_loop
-                                .as_ref()
-                                .ok_or(anyhow::anyhow!("Backend loop not set"))?;
-                    backend_loop_refs.push(backend_loop_ref);
-                    Ok(())
-                }
-            }).for_each(|result| {
-                match result {
+                })
+                .for_each(|result| match result {
                     Ok(_) => (),
                     Err(err) => {
                         raw_error!("Failed to get backend loop loop: {:?}", err);
                     }
-                }
-            });
+                });
 
             backend_bindings::transition_multiple_loops(
                 &backend_loop_refs,
                 to_mode.try_into()?,
                 maybe_cycles_delay,
-                maybe_to_sync_at_cycle)
+                maybe_to_sync_at_cycle,
+            )
         })();
         match result {
             Ok(_) => (),
@@ -357,22 +411,29 @@ impl LoopBackend {
         }
     }
 
-    pub fn transition(mut self: Pin<&mut LoopBackend>,
+    pub fn transition(
+        mut self: Pin<&mut LoopBackend>,
         to_mode: i32,
         maybe_cycles_delay: i32,
-        maybe_to_sync_at_cycle: i32)
-    {
-        if ! self.as_mut().maybe_initialize_backend() {
+        maybe_to_sync_at_cycle: i32,
+    ) {
+        if !self.as_mut().maybe_initialize_backend() {
             error!(self, "transition: not initialized");
             return;
         }
-        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            self.as_ref().backend_loop.as_ref().unwrap().transition
-                (to_mode.try_into()?,
-                    maybe_cycles_delay,
-                    maybe_to_sync_at_cycle)?;
-            debug!(self, "Transitioning to {} with delay {}, sync at cycle {}",
-                        to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
+        let result: Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
+            self.as_ref().backend_loop.as_ref().unwrap().transition(
+                to_mode.try_into()?,
+                maybe_cycles_delay,
+                maybe_to_sync_at_cycle,
+            )?;
+            debug!(
+                self,
+                "Transitioning to {} with delay {}, sync at cycle {}",
+                to_mode,
+                maybe_cycles_delay,
+                maybe_to_sync_at_cycle
+            );
             Ok(())
         })();
         match result {
@@ -383,7 +444,10 @@ impl LoopBackend {
         }
     }
 
-    pub fn add_audio_channel(self: Pin<&mut LoopBackend>, _mode: i32) -> Result<AudioChannel, anyhow::Error> {
+    pub fn add_audio_channel(
+        self: Pin<&mut LoopBackend>,
+        _mode: i32,
+    ) -> Result<AudioChannel, anyhow::Error> {
         // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
         //         self.as_ref()
         //             .backend_loop
@@ -397,7 +461,10 @@ impl LoopBackend {
         Err(anyhow::anyhow!("Not implemented"))
     }
 
-    pub fn add_midi_channel(self: Pin<&mut LoopBackend>, _mode: i32) -> Result<MidiChannel, anyhow::Error> {
+    pub fn add_midi_channel(
+        self: Pin<&mut LoopBackend>,
+        _mode: i32,
+    ) -> Result<MidiChannel, anyhow::Error> {
         // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
         //         self.as_ref()
         //             .backend_loop
@@ -411,14 +478,18 @@ impl LoopBackend {
         Err(anyhow::anyhow!("Not implemented"))
     }
 
-    pub fn clear(mut self: Pin<&mut LoopBackend>, length : i32) {
-        if ! self.as_mut().maybe_initialize_backend() {
+    pub fn clear(mut self: Pin<&mut LoopBackend>, length: i32) {
+        if !self.as_mut().maybe_initialize_backend() {
             error!(self, "clear: not initialized");
             return;
         }
-        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
+        let result: Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             debug!(self, "clearing to length {length}");
-            self.as_ref().backend_loop.as_ref().unwrap().clear(length as u32)?;
+            self.as_ref()
+                .backend_loop
+                .as_ref()
+                .unwrap()
+                .clear(length as u32)?;
             Ok(())
         })();
         match result {
@@ -429,23 +500,29 @@ impl LoopBackend {
         }
     }
 
-    pub fn adopt_ringbuffers(mut self: Pin<&mut LoopBackend>,
-        maybe_reverse_start_cycle : QVariant,
-        maybe_cycles_length : QVariant,
-        maybe_go_to_cycle : QVariant,
-        go_to_mode : i32)
-    {
-        if ! self.as_mut().maybe_initialize_backend() {
+    pub fn adopt_ringbuffers(
+        mut self: Pin<&mut LoopBackend>,
+        maybe_reverse_start_cycle: QVariant,
+        maybe_cycles_length: QVariant,
+        maybe_go_to_cycle: QVariant,
+        go_to_mode: i32,
+    ) {
+        if !self.as_mut().maybe_initialize_backend() {
             error!(self, "adopt_ringbuffers: not initialized");
             return;
         }
         debug!(self, "Adopting ringbuffers");
-        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
-            self.as_ref().backend_loop.as_ref().unwrap().adopt_ringbuffer_contents
-               (maybe_reverse_start_cycle.value::<i32>(),
-                maybe_cycles_length.value::<i32>(),
-                maybe_go_to_cycle.value::<i32>(),
-                go_to_mode.try_into()?)?;
+        let result: Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
+            self.as_ref()
+                .backend_loop
+                .as_ref()
+                .unwrap()
+                .adopt_ringbuffer_contents(
+                    maybe_reverse_start_cycle.value::<i32>(),
+                    maybe_cycles_length.value::<i32>(),
+                    maybe_go_to_cycle.value::<i32>(),
+                    go_to_mode.try_into()?,
+                )?;
             Ok(())
         })();
         match result {
@@ -458,15 +535,25 @@ impl LoopBackend {
 
     unsafe fn set_backend_sync_source(self: Pin<&mut LoopBackend>, sync_source: *mut QObject) {
         debug!(self, "set sync source -> {:?}", sync_source);
-        let result : Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
+        let result: Result<(), anyhow::Error> = (|| -> Result<(), anyhow::Error> {
             if !sync_source.is_null() {
                 let loop_ptr = qobject_to_loop_backend_ptr(sync_source);
                 if loop_ptr.is_null() {
-                    return Err(anyhow::anyhow!("Failed to cast sync source QObject to LoopBackend"));
+                    return Err(anyhow::anyhow!(
+                        "Failed to cast sync source QObject to LoopBackend"
+                    ));
                 }
-                self.as_ref().backend_loop.as_ref().unwrap().set_sync_source(loop_ptr.as_ref().unwrap().backend_loop.as_ref())?;
+                self.as_ref()
+                    .backend_loop
+                    .as_ref()
+                    .unwrap()
+                    .set_sync_source(loop_ptr.as_ref().unwrap().backend_loop.as_ref())?;
             } else {
-                self.as_ref().backend_loop.as_ref().unwrap().set_sync_source(None)?;
+                self.as_ref()
+                    .backend_loop
+                    .as_ref()
+                    .unwrap()
+                    .set_sync_source(None)?;
             }
 
             Ok(())
@@ -481,11 +568,13 @@ impl LoopBackend {
 
     pub unsafe fn set_sync_source(mut self: Pin<&mut LoopBackend>, sync_source: QVariant) {
         let maybe_sync_source_ptr = qvariant_to_qobject_ptr(&sync_source);
-        let sync_source_ptr : *mut QObject =
-           if maybe_sync_source_ptr.is_some() { maybe_sync_source_ptr.unwrap() }
-           else { std::ptr::null_mut() };
+        let sync_source_ptr: *mut QObject = if maybe_sync_source_ptr.is_some() {
+            maybe_sync_source_ptr.unwrap()
+        } else {
+            std::ptr::null_mut()
+        };
 
-        if ! self.as_mut().maybe_initialize_backend() {
+        if !self.as_mut().maybe_initialize_backend() {
             debug!(self, "set_sync_source -> {:?} (deferred)", sync_source_ptr);
         } else {
             self.as_mut().set_backend_sync_source(sync_source_ptr);
@@ -517,7 +606,10 @@ impl LoopBackend {
     }
 
     pub fn get_next_transition_delay(self: &LoopBackend) -> i32 {
-        self.rust().prev_state.maybe_next_mode_delay.unwrap_or(u32::MAX) as i32
+        self.rust()
+            .prev_state
+            .maybe_next_mode_delay
+            .unwrap_or(u32::MAX) as i32
     }
 
     pub fn get_cycle_nr(self: &LoopBackend) -> i32 {

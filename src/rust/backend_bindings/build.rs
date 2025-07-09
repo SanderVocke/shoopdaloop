@@ -9,7 +9,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
     {
         return Ok(());
     }
-    
+
     #[cfg(not(feature = "prebuild"))]
     {
         let profile = std::env::var("PROFILE").unwrap();
@@ -50,7 +50,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
 
 fn main() {
     match main_impl() {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             eprintln!("Error: {:?}\nBacktrace: {:?}", e, e.backtrace());
             std::process::exit(1);

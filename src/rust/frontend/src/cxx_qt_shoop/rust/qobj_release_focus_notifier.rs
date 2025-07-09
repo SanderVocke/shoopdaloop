@@ -5,7 +5,7 @@ pub use crate::cxx_qt_shoop::qobj_release_focus_notifier_bridge::ffi::ReleaseFoc
 use crate::cxx_qt_shoop::qobj_release_focus_notifier_bridge::ffi::*;
 use std::pin::Pin;
 
-pub fn register_qml_singleton(module_name : &str, type_name : &str) {
+pub fn register_qml_singleton(module_name: &str, type_name: &str) {
     let obj = make_unique_releasefocusnotifier();
     let mut mdl = String::from(module_name);
     let mut tp = String::from(type_name);

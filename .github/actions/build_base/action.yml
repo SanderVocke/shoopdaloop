@@ -48,6 +48,12 @@ runs:
       cat ${BUILD_ENV_FILE}
       rm -rf ${VCPKG_ROOT}/buildtrees
 
+  - name: Check rustfmt
+    if: always() && inputs.check_format == 'true'
+    shell: wrap-shell {0}
+    run: |
+      cargo fmt --all --check
+
   - name: Build Cargo dependencies
     if: always()
     shell: wrap-shell {0}

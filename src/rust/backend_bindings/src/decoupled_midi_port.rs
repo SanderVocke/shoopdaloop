@@ -1,34 +1,38 @@
-use anyhow;
 use crate::ffi;
+use anyhow;
 use std::sync::Mutex;
 
 use crate::audio_driver::AudioDriver;
-use crate::port::PortDirection;
 use crate::midi::MidiEvent;
+use crate::port::PortDirection;
 
 pub struct DecoupledMidiPort {
-    obj : Mutex<*mut ffi::shoopdaloop_decoupled_midi_port_t>,
+    obj: Mutex<*mut ffi::shoopdaloop_decoupled_midi_port_t>,
 }
 
 unsafe impl Send for DecoupledMidiPort {}
 unsafe impl Sync for DecoupledMidiPort {}
 
 impl DecoupledMidiPort {
-    pub fn new_driver_port(audio_driver : &AudioDriver,
-                           name_hint : &str,
-                           direction : &PortDirection) -> Result<Self, anyhow::Error>
-    {
+    pub fn new_driver_port(
+        audio_driver: &AudioDriver,
+        name_hint: &str,
+        direction: &PortDirection,
+    ) -> Result<Self, anyhow::Error> {
         let name_hint_cstr = std::ffi::CString::new(name_hint)?;
         let name_hint_ptr = name_hint_cstr.as_ptr();
-        let obj = unsafe { ffi::open_decoupled_midi_port
-                                (audio_driver.unsafe_backend_ptr(),
-                                 name_hint_ptr,
-                                 *direction as ffi::shoop_port_direction_t) };
+        let obj = unsafe {
+            ffi::open_decoupled_midi_port(
+                audio_driver.unsafe_backend_ptr(),
+                name_hint_ptr,
+                *direction as ffi::shoop_port_direction_t,
+            )
+        };
         if obj.is_null() {
             return Err(anyhow::anyhow!("Failed to create audio port"));
         }
         Ok(DecoupledMidiPort {
-            obj : Mutex::new(obj),
+            obj: Mutex::new(obj),
         })
     }
 

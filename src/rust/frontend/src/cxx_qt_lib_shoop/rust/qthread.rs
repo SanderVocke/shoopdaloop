@@ -1,7 +1,7 @@
+use crate::cxx_qt_lib_shoop::qobject::QObject;
 use cxx::{type_id, ExternType};
 use cxx_qt;
 use std::pin::Pin;
-use crate::cxx_qt_lib_shoop::qobject::QObject;
 
 #[cxx_qt::bridge]
 mod ffi {
@@ -28,22 +28,25 @@ mod ffi {
         unsafe fn make_raw() -> *mut QThread;
 
         #[rust_name = "delete_raw_qthread"]
-        unsafe fn delete_raw(thread : *mut QThread);
+        unsafe fn delete_raw(thread: *mut QThread);
 
         #[rust_name = "_qobject_from_ptr_qthread"]
         unsafe fn qobjectFromPtr(thread: *mut QThread) -> *mut QObject;
 
         #[rust_name = "qthread_connect_started"]
-        unsafe fn qthreadConnectStarted(thread : Pin<&mut QThread>, receiver : *mut QObject, slot : String) -> Result<()>;
+        unsafe fn qthreadConnectStarted(
+            thread: Pin<&mut QThread>,
+            receiver: *mut QObject,
+            slot: String,
+        ) -> Result<()>;
     }
 }
 
-pub use ffi::QThread;
 pub use ffi::make_raw_qthread_with_parent as make_raw_with_parent;
+pub use ffi::QThread;
 
 #[repr(C)]
-pub struct QThreadRust {
-}
+pub struct QThreadRust {}
 
 unsafe impl ExternType for QThread {
     type Id = type_id!("QThread");
@@ -71,11 +74,15 @@ impl QThread {
         unsafe { ffi::make_raw_qthread() }
     }
 
-    pub fn delete_raw(thread : *mut QThread) {
+    pub fn delete_raw(thread: *mut QThread) {
         unsafe { ffi::delete_raw_qthread(thread) }
     }
 
-    pub fn connect_started(self : Pin<&mut Self>, receiver : *mut QObject, slot : String) -> Result<(), cxx::Exception> {
+    pub fn connect_started(
+        self: Pin<&mut Self>,
+        receiver: *mut QObject,
+        slot: String,
+    ) -> Result<(), cxx::Exception> {
         unsafe { ffi::qthread_connect_started(self, receiver, slot) }
     }
 }

@@ -1,8 +1,8 @@
 use common::logging::macros::*;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 shoop_log_unit!("Frontend.UpdateThread");
 
-pub const DEFAULT_BACKUP_UPDATE_INTERVAL_MS : i32 = 25;
+pub const DEFAULT_BACKUP_UPDATE_INTERVAL_MS: i32 = 25;
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
@@ -35,7 +35,7 @@ pub mod ffi {
         pub fn get_thread(self: Pin<&mut UpdateThread>) -> *mut QThread;
 
         #[qinvokable]
-        pub fn set_backup_timer_interval_ms(self: Pin<&mut UpdateThread>, interval_ms : i32);
+        pub fn set_backup_timer_interval_ms(self: Pin<&mut UpdateThread>, interval_ms: i32);
 
         #[qinvokable]
         pub fn frontend_frame_swapped(self: Pin<&mut UpdateThread>);
@@ -49,17 +49,17 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "update_thread_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj : *mut UpdateThread) -> *mut QObject;
+        unsafe fn qobjectFromPtr(obj: *mut UpdateThread) -> *mut QObject;
 
         #[rust_name = "update_thread_qobject_from_ref"]
-        fn qobjectFromRef(obj : &UpdateThread) -> &QObject;
+        fn qobjectFromRef(obj: &UpdateThread) -> &QObject;
     }
 
     impl cxx_qt::Constructor<()> for UpdateThread {}
 }
 
-pub use ffi::UpdateThread;
 use crate::cxx_qt_lib_shoop::qobject::AsQObject;
+pub use ffi::UpdateThread;
 
 impl AsQObject for UpdateThread {
     unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
@@ -72,23 +72,23 @@ impl AsQObject for UpdateThread {
 }
 
 pub struct UpdateThreadRust {
-    pub thread : *mut ffi::QThread,
-    pub backup_timer : *mut ffi::QTimer,
-    pub last_updated : Option<Instant>,
-    pub backup_timer_elapsed_threshold : Duration,
-    pub trigger_update_on_frame_swapped : bool,
-    pub backup_timer_interval_ms : i32,
+    pub thread: *mut ffi::QThread,
+    pub backup_timer: *mut ffi::QTimer,
+    pub last_updated: Option<Instant>,
+    pub backup_timer_elapsed_threshold: Duration,
+    pub trigger_update_on_frame_swapped: bool,
+    pub backup_timer_interval_ms: i32,
 }
 
 impl Default for UpdateThreadRust {
     fn default() -> UpdateThreadRust {
         UpdateThreadRust {
-            thread : ffi::QThread::make_raw(),
-            backup_timer : ffi::QTimer::make_raw(),
-            last_updated : None,
-            backup_timer_elapsed_threshold : Duration::default(),
-            trigger_update_on_frame_swapped : true,
-            backup_timer_interval_ms : 25,
+            thread: ffi::QThread::make_raw(),
+            backup_timer: ffi::QTimer::make_raw(),
+            last_updated: None,
+            backup_timer_elapsed_threshold: Duration::default(),
+            trigger_update_on_frame_swapped: true,
+            backup_timer_interval_ms: 25,
         }
     }
 }
@@ -107,10 +107,12 @@ impl cxx_qt::Constructor<()> for UpdateThread {
     type InitializeArguments = (); // Will be passed to the "initialize" function
     type NewArguments = (); // Will be passed to the "new" function
 
-    fn route_arguments(_args: ()) -> (
+    fn route_arguments(
+        _args: (),
+    ) -> (
         Self::NewArguments,
         Self::BaseArguments,
-        Self::InitializeArguments
+        Self::InitializeArguments,
     ) {
         ((), (), ())
     }

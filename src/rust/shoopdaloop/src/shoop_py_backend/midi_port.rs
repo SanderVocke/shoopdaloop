@@ -4,8 +4,8 @@ use pyo3::prelude::*;
 // use pyo3::exceptions::*;
 use backend_bindings;
 
-use crate::shoop_py_backend::backend_session::BackendSession;
 use crate::shoop_py_backend::audio_driver::AudioDriver;
+use crate::shoop_py_backend::backend_session::BackendSession;
 use crate::shoop_py_backend::midi::MidiEvent;
 
 use std::collections::HashMap;
@@ -47,7 +47,7 @@ impl MidiPortState {
 
 #[pyclass]
 pub struct MidiPort {
-    pub obj : backend_bindings::MidiPort,
+    pub obj: backend_bindings::MidiPort,
 }
 
 #[pymethods]
@@ -66,7 +66,7 @@ impl MidiPort {
     fn direction(&self) -> PyResult<i32> {
         Ok(self.obj.direction() as i32)
     }
-    
+
     fn get_state(&self) -> PyResult<MidiPortState> {
         let state = self.obj.get_state();
         Ok(MidiPortState::new(state))
@@ -138,20 +138,24 @@ impl MidiPort {
 }
 
 #[pyfunction]
-pub fn open_driver_midi_port<'py>
-    (backend_session : &BackendSession,
-     audio_driver : &AudioDriver,
-     name_hint : &str,
-     direction : i32,
-     min_n_ringbuffer_samples : u32) -> PyResult<MidiPort> {
+pub fn open_driver_midi_port<'py>(
+    backend_session: &BackendSession,
+    audio_driver: &AudioDriver,
+    name_hint: &str,
+    direction: i32,
+    min_n_ringbuffer_samples: u32,
+) -> PyResult<MidiPort> {
     let dir = backend_bindings::PortDirection::try_from(direction).unwrap();
-    Ok(MidiPort { obj: backend_bindings::MidiPort::new_driver_port
-                           (&backend_session.obj,
-                            &audio_driver.obj,
-                            name_hint,
-                            &dir,
-                            min_n_ringbuffer_samples)
-                                .unwrap() })
+    Ok(MidiPort {
+        obj: backend_bindings::MidiPort::new_driver_port(
+            &backend_session.obj,
+            &audio_driver.obj,
+            name_hint,
+            &dir,
+            min_n_ringbuffer_samples,
+        )
+        .unwrap(),
+    })
 }
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {
