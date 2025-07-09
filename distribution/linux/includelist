@@ -60,6 +60,7 @@
 */liblilv*.so*
 */libltd*.so*
 */liblzma*
+*/libmeshoptimizer*.so*
 */libmd4c.so*
 */libmount.so*
 */libmvec.so*
