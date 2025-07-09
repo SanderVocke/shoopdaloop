@@ -1,6 +1,8 @@
 use anyhow;
 use anyhow::Context;
 use std::path::{PathBuf, Path};
+use glob::glob;
+
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
