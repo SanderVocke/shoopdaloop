@@ -22,11 +22,15 @@ static mut ENGINE_UPDATE_THREAD : Lazy<UpdateThreadWrapper> = Lazy::new(|| {
 
 pub fn get_engine_update_thread() -> &'static mut UpdateThread {
     unsafe {
-        let ptr : *mut UpdateThread = Lazy::force_mut(&mut ENGINE_UPDATE_THREAD).thread.as_mut_ptr();
+        let ptr : *mut once_cell::sync::Lazy<UpdateThreadWrapper> = &raw mut ENGINE_UPDATE_THREAD;
+        let ptr : *mut UpdateThread = Lazy::force_mut(ptr.as_mut().unwrap()).thread.as_mut_ptr();
         &mut *ptr
     }
 }
 
 pub fn init() {
-    unsafe { let _ = Lazy::force(&ENGINE_UPDATE_THREAD); }
+    unsafe {
+        let ptr : *const once_cell::sync::Lazy<UpdateThreadWrapper> = &raw const ENGINE_UPDATE_THREAD;
+        let _ = Lazy::force(ptr.as_ref().unwrap());
+    }
 }

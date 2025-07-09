@@ -238,6 +238,7 @@ fn get_os_specifics<'a>(
 ) -> Result<(String, Vec<String>, Vec<String>, usize, &'a str, HashMap<String, String>), anyhow::Error> {
     #[cfg(target_os = "windows")]
     {
+        let _dummy = &include_directory;
         get_windows_specifics(executable, env_map)
     }
     #[cfg(target_os = "linux")]
@@ -246,6 +247,7 @@ fn get_os_specifics<'a>(
     }
     #[cfg(target_os = "macos")]
     {
+        let _dummy = &include_directory;
         get_macos_specifics(executable, env_map)
     }
 }
@@ -260,9 +262,6 @@ fn get_windows_specifics<'a>(
         new_env_map.insert(k.to_uppercase(), v.clone());
     }
 
-    let file_path = PathBuf::from(file!());
-    let src_path = std::fs::canonicalize(file_path)?;
-    let src_path = src_path.ancestors().nth(5).ok_or(anyhow::anyhow!("cannot find src dir"))?;
     let command = String::from("powershell.exe");
     let commandstr = include_str!("scripts/windows_deps.ps1").replace("$args[0]", executable.to_str().unwrap());
     let args = vec![String::from("-Command"), commandstr];

@@ -4,8 +4,7 @@ use common::logging::macros::*;
 use crate::cxx_qt_lib_shoop::{connect, connection_types};
 use crate::cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, qquickitem_to_qobject_mut};
-use crate::cxx_qt_lib_shoop::qobject::{AsQObject, QObject, qobject_thread};
-use crate::cxx_qt_lib_shoop::qthread::QThread;
+use crate::cxx_qt_lib_shoop::qobject::{AsQObject, qobject_thread};
 use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants;
 use crate::engine_update_thread;
 use std::time;
@@ -19,8 +18,7 @@ use cxx_qt::{ConnectionType, CxxQtType};
 fn audio_driver_settings_from_qvariantmap(map: &QMap_QString_QVariant,
                                           driver_type : &AudioDriverType) -> AudioDriverSettings
 {
-    let mut settings : Option<AudioDriverSettings> = None;
-
+    let settings : Option<AudioDriverSettings>;
     match driver_type {
         AudioDriverType::Jack | AudioDriverType::JackTest => {
             let client_name_hint = map.get(&QString::from("client_name_hint"))
@@ -58,9 +56,6 @@ fn audio_driver_settings_from_qvariantmap(map: &QMap_QString_QVariant,
                 sample_rate,
                 buffer_size,
             }));
-        },
-        _ => {
-            error!("Unsupported driver type {:?}", driver_type);
         },
     }
 

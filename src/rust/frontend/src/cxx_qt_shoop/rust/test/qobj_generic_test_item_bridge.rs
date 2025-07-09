@@ -2,7 +2,7 @@ use common::logging::macros::*;
 shoop_log_unit!("Frontend.GenericTestItem");
 
 pub mod constants {
-    pub const PROP_BOOL_PROP : &str = "boolProp";
+    pub const PROP_BOOL_PROP : &str = "bool_prop";
 
     pub const SIGNAL_BOOL_PROP_CHANGED: &str = "boolPropChanged()";
 }
@@ -18,7 +18,7 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[base = QQuickItem]
-        #[qproperty(bool, boolProp)]
+        #[qproperty(bool, bool_prop)]
         type GenericTestItem = super::GenericTestItemRust;
     }
 
@@ -46,7 +46,7 @@ use ffi::QQuickItem;
 
 #[derive(Default)]
 pub struct GenericTestItemRust {
-    boolProp : bool,
+    bool_prop : bool,
 }
 
 impl cxx_qt::Constructor<(*mut QQuickItem,)> for GenericTestItem {

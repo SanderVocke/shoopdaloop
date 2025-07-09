@@ -4,7 +4,6 @@ use common::logging::macros::{shoop_log_unit, debug as raw_debug, trace as raw_t
 use cxx_qt::CxxQtType;
 use crate::cxx_qt_lib_shoop::connect::connect_or_report;
 use crate::cxx_qt_lib_shoop::connection_types;
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 use crate::cxx_qt_lib_shoop::qobject::qobject_property_bool;
 use crate::cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
@@ -139,8 +138,6 @@ impl LoopBackend {
                 }
 
                 {
-                    let self_qobj = self.as_mut().pin_mut_qobject_ptr();
-
                     // Force getting of the initial state
                     self.as_mut().update();
 
@@ -386,7 +383,7 @@ impl LoopBackend {
         }
     }
 
-    pub fn add_audio_channel(self: Pin<&mut LoopBackend>, mode: i32) -> Result<AudioChannel, anyhow::Error> {
+    pub fn add_audio_channel(self: Pin<&mut LoopBackend>, _mode: i32) -> Result<AudioChannel, anyhow::Error> {
         // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
         //         self.as_ref()
         //             .backend_loop
@@ -400,7 +397,7 @@ impl LoopBackend {
         Err(anyhow::anyhow!("Not implemented"))
     }
 
-    pub fn add_midi_channel(self: Pin<&mut LoopBackend>, mode: i32) -> Result<MidiChannel, anyhow::Error> {
+    pub fn add_midi_channel(self: Pin<&mut LoopBackend>, _mode: i32) -> Result<MidiChannel, anyhow::Error> {
         // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
         //         self.as_ref()
         //             .backend_loop

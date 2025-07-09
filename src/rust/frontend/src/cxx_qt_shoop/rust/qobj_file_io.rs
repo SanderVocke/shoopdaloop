@@ -111,7 +111,7 @@ impl FileIO {
         let temp_dir = tempdir();
         match temp_dir {
             Ok(d) => {
-                let path = dunce::canonicalize(d.into_path().to_owned()).unwrap();
+                let path = dunce::canonicalize(d.keep().to_owned()).unwrap();
                 let ppath = path.to_str().unwrap();
                 debug!("created temporary folder: {}", ppath);
                 return QString::from(ppath);

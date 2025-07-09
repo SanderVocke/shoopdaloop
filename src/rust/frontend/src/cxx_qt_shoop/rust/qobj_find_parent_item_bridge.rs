@@ -2,16 +2,16 @@ use common::logging::macros::*;
 shoop_log_unit!("Frontend.FindParentItem");
 
 pub mod constants {
-    pub const PROP_FOUND_ITEM : &str = "foundItem";
-    pub const PROP_ITEMBOOLPROPERTYTOCHECK : &str = "itemBoolPropertyToCheck";
-    pub const PROP_FOUNDITEMWITHTRUECHECKEDPROPERTY : &str = "foundItemWithTrueCheckedProperty";
-    pub const PROP_FOUNDITEMHASTRUECHECKEDPROPERTY : &str = "foundItemHasTrueCheckedProperty";
+    pub const PROP_FOUND_ITEM : &str = "found_item";
+    pub const PROP_ITEMBOOLPROPERTYTOCHECK : &str = "item_bool_property_to_check";
+    pub const PROP_FOUNDITEMWITHTRUECHECKEDPROPERTY : &str = "found_item_with_true_checked_property";
+    pub const PROP_FOUNDITEMHASTRUECHECKEDPROPERTY : &str = "found_item_has_true_checked_property";
 
     pub const SIGNAL_PARENT_CHANGED : &str = "parentChanged()";
-    pub const SIGNAL_FOUND_ITEM_CHANGED : &str = "foundItemChanged()";
-    pub const SIGNAL_ITEMBOOLPROPERTYTOCHECK_CHANGED : &str = "itemBoolPropertyToCheckChanged()";
-    pub const SIGNAL_FOUNDITEMWITHTRUECHECKEDPROPERTY_CHANGED : &str = "foundItemWithTrueCheckedPropertyChanged()";
-    pub const SIGNAL_FOUNDITEMHASTRUECHECKEDPROPERTY_CHANGED : &str = "foundItemHasTrueCheckedPropertyChanged()";
+    pub const SIGNAL_FOUND_ITEM_CHANGED : &str = "found_itemChanged()";
+    pub const SIGNAL_ITEMBOOLPROPERTYTOCHECK_CHANGED : &str = "item_bool_property_to_checkChanged()";
+    pub const SIGNAL_FOUNDITEMWITHTRUECHECKEDPROPERTY_CHANGED : &str = "found_item_with_true_checked_propertyChanged()";
+    pub const SIGNAL_FOUNDITEMHASTRUECHECKEDPROPERTY_CHANGED : &str = "found_item_has_true_checked_propertyChanged()";
 
     pub const INVOKABLE_RESCAN : &str = "rescan()";
     pub const INVOKABLE_UPDATE_FOUND_ITEM_BOOL_PROPERTY : &str = "update_found_item_bool_property()";
@@ -31,17 +31,18 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[base = QQuickItem]
-        #[qproperty(*mut QQuickItem, foundItem)]
-        #[qproperty(QString, itemBoolPropertyToCheck)]
-        #[qproperty(*mut QQuickItem, foundItemWithTrueCheckedProperty)]
-        #[qproperty(bool, foundItemHasTrueCheckedProperty)]
+        #[qproperty(*mut QQuickItem, found_item)]
+        #[qproperty(QString, item_bool_property_to_check)]
+        #[qproperty(*mut QQuickItem, found_item_with_true_checked_property)]
+        #[qproperty(bool, found_item_has_true_checked_property)]
         type FindParentItem = super::FindParentItemRust;
 
         pub fn initialize_impl(self : Pin<&mut FindParentItem>);
 
         #[inherit]
         #[qsignal]
-        unsafe fn parentChanged(self : Pin<&mut FindParentItem>, parent : *mut QQuickItem);
+        #[cxx_name = "parentChanged"]
+        unsafe fn parent_changed(self : Pin<&mut FindParentItem>, parent : *mut QQuickItem);
 
         #[qinvokable]
         unsafe fn rescan(self : Pin<&mut FindParentItem>);
@@ -78,20 +79,20 @@ type Predicate = dyn Fn(*mut QQuickItem) -> bool;
 type BoxedPredicate = Box<Predicate>;
 
 pub struct FindParentItemRust {
-    pub foundItem : *mut QQuickItem,
-    pub itemBoolPropertyToCheck : QString,
-    pub foundItemWithTrueCheckedProperty : *mut QQuickItem,
-    pub foundItemHasTrueCheckedProperty : bool,
+    pub found_item : *mut QQuickItem,
+    pub item_bool_property_to_check : QString,
+    pub found_item_with_true_checked_property : *mut QQuickItem,
+    pub found_item_has_true_checked_property : bool,
     pub find_predicate : Option<BoxedPredicate>,
 }
 
 impl Default for FindParentItemRust {
     fn default() -> FindParentItemRust {
         FindParentItemRust {
-            foundItem : null_mut(),
-            itemBoolPropertyToCheck : QString::from(""),
-            foundItemWithTrueCheckedProperty : null_mut(),
-            foundItemHasTrueCheckedProperty : false,
+            found_item : null_mut(),
+            item_bool_property_to_check : QString::from(""),
+            found_item_with_true_checked_property : null_mut(),
+            found_item_has_true_checked_property : false,
             find_predicate : None,
         }
     }

@@ -30,7 +30,7 @@ mod ffi {
         #[rust_name = "delete_raw_qthread"]
         unsafe fn delete_raw(thread : *mut QThread);
 
-        #[rust_name = "qobject_from_ptr_qthread"]
+        #[rust_name = "_qobject_from_ptr_qthread"]
         unsafe fn qobjectFromPtr(thread: *mut QThread) -> *mut QObject;
 
         #[rust_name = "qthread_connect_started"]

@@ -29,7 +29,7 @@ pub mod ffi {
         fn find_external_ports(self : Pin<&mut TestBackendWrapper>,
                                maybe_regex : QString,
                                port_direction : i32,
-                               dataType : i32) -> QList_QVariant;
+                               data_type : i32) -> QList_QVariant;
     }
 
     unsafe extern "C++" {

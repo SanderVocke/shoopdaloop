@@ -39,9 +39,9 @@ pub mod ffi {
         #[qobject]
         #[qml_element]
         #[base = QQuickPaintedItem]
-        #[qproperty(i64, samplesOffset)]
-        #[qproperty(f64, samplesPerBin)]
-        #[qproperty(QList_f64, inputData)]
+        #[qproperty(i64, samples_offset)]
+        #[qproperty(f64, samples_per_bin)]
+        #[qproperty(QList_f64, input_data)]
         type RenderAudioWaveform = super::RenderAudioWaveformRust;
 
         #[qinvokable]
@@ -59,7 +59,8 @@ pub mod ffi {
 
         #[inherit]
         #[qsignal]
-        fn widthChanged(self: Pin<&mut RenderAudioWaveform>);
+        #[cxx_name = "widthChanged"]
+        fn width_changed(self: Pin<&mut RenderAudioWaveform>);
     }
 
     impl cxx_qt::Constructor<()> for RenderAudioWaveform {}
@@ -88,18 +89,18 @@ use ffi::*;
 
 pub struct RenderAudioWaveformRust {
     pub pyramid : Mutex<audio_power_pyramid::AudioPowerPyramidData>,
-    pub samplesOffset : i64,
-    pub samplesPerBin : f64,
-    pub inputData : QList_f64,
+    pub samples_offset : i64,
+    pub samples_per_bin : f64,
+    pub input_data : QList_f64,
 }
 
 impl Default for RenderAudioWaveformRust {
     fn default() -> RenderAudioWaveformRust {
         RenderAudioWaveformRust {
             pyramid : audio_power_pyramid::AudioPowerPyramidData::default().into(),
-            samplesOffset : 0,
-            samplesPerBin : 1_f64,
-            inputData : QList_f64::default(),
+            samples_offset : 0,
+            samples_per_bin : 1_f64,
+            input_data : QList_f64::default(),
         }
     }
 }

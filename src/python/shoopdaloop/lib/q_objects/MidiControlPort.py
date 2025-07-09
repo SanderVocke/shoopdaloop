@@ -310,8 +310,8 @@ class MidiControlPort(ShoopQQuickItem):
                     auto_prop.write(inst, value)
 
                 set_property("parent", self)
-                set_property("connectToPortRegex", regex)
-                set_property("internalPort", self)
+                set_property("connect_to_port_regex", regex)
+                set_property("internal_port", self)
 
                 inst.connect(SIGNAL("onlyExternalFound()"), lambda s=self: s.detectedExternalAutoconnectPartnerWhileClosed.emit())
                 inst.connect(SIGNAL("connected()"), lambda s=self: s.connected.emit())

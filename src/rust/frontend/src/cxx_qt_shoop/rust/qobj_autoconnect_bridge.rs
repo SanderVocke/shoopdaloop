@@ -2,16 +2,16 @@ use common::logging::macros::*;
 shoop_log_unit!("Frontend.AutoConnect");
 
 pub mod constants {
-    pub const PROP_INTERNAL_PORT : &str = "internalPort";
-    pub const PROP_CONNECTTOPORTREGEX : &str = "connectToPortRegex";
+    pub const PROP_INTERNAL_PORT : &str = "internal_port";
+    pub const PROP_CONNECTTOPORTREGEX : &str = "connect_to_port_regex";
     pub const PROP_CLOSED : &str = "closed";
 
-    pub const SIGNAL_INTERNAL_PORT_CHANGED : &str = "internalPortChanged()";
-    pub const SIGNAL_CONNECTTOPORTREGEX_CHANGED : &str = "connectToPortRegexChanged()";
+    pub const SIGNAL_INTERNAL_PORT_CHANGED : &str = "internal_portChanged()";
+    pub const SIGNAL_CONNECTTOPORTREGEX_CHANGED : &str = "connect_to_port_regexChanged()";
     pub const SIGNAL_CLOSED_CHANGED : &str = "closedChanged()";
 
     pub const SIGNAL_CONNECTED : &str = "connected()";
-    pub const SIGNAL_ONLY_EXTERNAL_FOUND : &str = "onlyExternalFound()";
+    pub const SIGNAL_ONLY_EXTERNAL_FOUND : &str = "only_external_found()";
 
     pub const INVOKABLE_UPDATE : &str = "update()";
 }
@@ -46,9 +46,9 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[base = QQuickItem]
-        #[qproperty(*mut QObject, internalPort)]
-        #[qproperty(QString, connectToPortRegex)]
-        #[qproperty(bool, isClosed)]
+        #[qproperty(*mut QObject, internal_port)]
+        #[qproperty(QString, connect_to_port_regex)]
+        #[qproperty(bool, is_closed)]
         type AutoConnect = super::AutoConnectRust;
 
         pub fn initialize_impl(self : Pin<&mut AutoConnect>);
@@ -58,13 +58,14 @@ pub mod ffi {
 
         #[inherit]
         #[qsignal]
-        unsafe fn parentChanged(self : Pin<&mut AutoConnect>, parent : *mut QQuickItem);
+        #[cxx_name = "parentChanged"]
+        unsafe fn parent_changed(self : Pin<&mut AutoConnect>, parent : *mut QQuickItem);
 
         #[qsignal]
         fn connected(self : Pin<&mut AutoConnect>);
 
         #[qsignal]
-        fn onlyExternalFound(self: Pin<&mut AutoConnect>);
+        fn only_external_found(self: Pin<&mut AutoConnect>);
     }
 
     unsafe extern "C++" {
@@ -111,9 +112,9 @@ use crate::cxx_qt_shoop::fn_find_backend_wrapper;
 use crate::cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
 pub struct AutoConnectRust {
     // Properties
-    pub internalPort : *mut QObject,
-    pub connectToPortRegex : QString,
-    pub isClosed : bool,
+    pub internal_port : *mut QObject,
+    pub connect_to_port_regex : QString,
+    pub is_closed : bool,
     // Private
     pub find_backend_wrapper : UniquePtr<FindParentItem>,
     pub timer : *mut QTimer,
@@ -122,9 +123,9 @@ pub struct AutoConnectRust {
 impl Default for AutoConnectRust {
     fn default() -> AutoConnectRust {
         AutoConnectRust {
-            internalPort : std::ptr::null_mut(),
-            connectToPortRegex : QString::default(),
-            isClosed : false,
+            internal_port : std::ptr::null_mut(),
+            connect_to_port_regex : QString::default(),
+            is_closed : false,
             find_backend_wrapper : fn_find_backend_wrapper::create_find_parent_backend_wrapper(),
             timer : std::ptr::null_mut(),
         }

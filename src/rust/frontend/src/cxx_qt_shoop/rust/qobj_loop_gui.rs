@@ -22,18 +22,22 @@ use cxx_qt_lib::{QList, QVariant, QString};
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Loop");
 
+
+#[allow(unused_macros)]
 macro_rules! trace {
     ($self:ident, $($arg:tt)*) => {
         raw_trace!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
     };
 }
 
+#[allow(unused_macros)]
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
         raw_debug!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
     };
 }
 
+#[allow(unused_macros)]
 macro_rules! error {
     ($self:ident, $($arg:tt)*) => {
         raw_error!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));

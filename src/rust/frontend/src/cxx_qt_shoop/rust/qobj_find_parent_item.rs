@@ -57,8 +57,8 @@ impl FindParentItem {
             obj.as_mut().rescan();
         }
 
-        self.as_mut().on_parentChanged(|o,_| { rescan(o); }).release();
-        self.as_mut().on_itemBoolPropertyToCheck_changed(rescan).release();
+        self.as_mut().on_parent_changed(|o,_| { rescan(o); }).release();
+        self.as_mut().on_item_bool_property_to_check_changed(rescan).release();
 
         Ok(())
     }
@@ -81,18 +81,18 @@ impl FindParentItem {
         let find_predicate = maybe_find_predicate.unwrap();
         let quick_parent_ptr = crate::cxx_qt_lib_shoop::qquickitem::qquickitem_parent_item(quick.as_ref().unwrap());
         let item = find_parent_item(quick_parent_ptr, find_predicate, true);
-        self.as_mut().set_foundItem(item);
+        self.as_mut().set_found_item(item);
         self.as_mut().update_found_item_bool_property();
-        if !item.is_null() && !self.itemBoolPropertyToCheck().is_empty() {
+        if !item.is_null() && !self.item_bool_property_to_check().is_empty() {
             cxx_qt_lib_shoop::connect::connect(
                 item.as_mut().unwrap(),
-                String::from(format!("{}Changed()", self.itemBoolPropertyToCheck())),
+                String::from(format!("{}Changed()", self.item_bool_property_to_check())),
                 self.as_mut().pin_mut_qobject_ptr().as_mut().unwrap(),
                 String::from(constants::INVOKABLE_UPDATE_FOUND_ITEM_BOOL_PROPERTY),
                 cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION)?;
         }
         debug!("Rescanning done. Non-null parent item found: {}. Bool property: {}",
-              !item.is_null(), self.as_mut().foundItemHasTrueCheckedProperty());
+              !item.is_null(), self.as_mut().found_item_has_true_checked_property());
 
         Ok(())
     }
@@ -107,20 +107,20 @@ impl FindParentItem {
     }
 
     pub unsafe fn update_found_item_bool_property(mut self: Pin<&mut Self>) {
-        let item = *self.foundItem();
+        let item = *self.found_item();
         let value : bool =
-           if !item.is_null() && !self.itemBoolPropertyToCheck().is_empty() {
+           if !item.is_null() && !self.item_bool_property_to_check().is_empty() {
               match qobject_property_bool(
                 qquickitem_to_qobject_ref(item.as_ref().unwrap()),
-                    self.itemBoolPropertyToCheck().to_string())
+                    self.item_bool_property_to_check().to_string())
               {
                 Ok(v) => v,
                 Err(e) => { error!("Failed to get bool property {}: {:?}",
-                    self.itemBoolPropertyToCheck().to_string(), e); false },
+                    self.item_bool_property_to_check().to_string(), e); false },
               }
            } else { false };
-        self.as_mut().set_foundItemHasTrueCheckedProperty(value);
-        self.as_mut().set_foundItemWithTrueCheckedProperty(if value { item } else { null_mut() });
+        self.as_mut().set_found_item_has_true_checked_property(value);
+        self.as_mut().set_found_item_with_true_checked_property(if value { item } else { null_mut() });
     }
 
     pub fn set_find_predicate(mut self: Pin<&mut Self>, predicate : BoxedPredicate) {
@@ -140,18 +140,18 @@ mod tests {
     #[test]
     fn test_init() {
         let obj = make_unique();
-        assert!(obj.foundItem().is_null());
-        assert!(obj.foundItemWithTrueCheckedProperty().is_null());
-        assert_eq!(*obj.foundItemHasTrueCheckedProperty(), false);
+        assert!(obj.found_item().is_null());
+        assert!(obj.found_item_with_true_checked_property().is_null());
+        assert_eq!(*obj.found_item_has_true_checked_property(), false);
     }
 
     #[test]
     fn test_no_parent() {
         let mut obj = make_unique();
         obj.as_mut().unwrap().rescan();
-        assert!(obj.foundItem().is_null());
-        assert!(obj.foundItemWithTrueCheckedProperty().is_null());
-        assert_eq!(*obj.foundItemHasTrueCheckedProperty(), false);
+        assert!(obj.found_item().is_null());
+        assert!(obj.found_item_with_true_checked_property().is_null());
+        assert_eq!(*obj.found_item_has_true_checked_property(), false);
     }
 
     #[test]
@@ -165,9 +165,9 @@ mod tests {
 
             obj.as_mut().unwrap().rescan();
 
-            assert!(obj.foundItem().is_null());
-            assert!(obj.foundItemWithTrueCheckedProperty().is_null());
-            assert_eq!(*obj.foundItemHasTrueCheckedProperty(), false);
+            assert!(obj.found_item().is_null());
+            assert!(obj.found_item_with_true_checked_property().is_null());
+            assert_eq!(*obj.found_item_has_true_checked_property(), false);
         }
     }
 
@@ -183,9 +183,9 @@ mod tests {
 
             obj.as_mut().unwrap().rescan();
 
-            assert_eq!(*obj.foundItem(), parent_ptr);
-            assert!(obj.foundItemWithTrueCheckedProperty().is_null());
-            assert_eq!(*obj.foundItemHasTrueCheckedProperty(), false);
+            assert_eq!(*obj.found_item(), parent_ptr);
+            assert!(obj.found_item_with_true_checked_property().is_null());
+            assert_eq!(*obj.found_item_has_true_checked_property(), false);
         }
     }
 
@@ -204,9 +204,9 @@ mod tests {
 
             obj.as_mut().unwrap().rescan();
 
-            assert_eq!(*obj.foundItem(), parent_parent_ptr);
-            assert!(obj.foundItemWithTrueCheckedProperty().is_null());
-            assert_eq!(*obj.foundItemHasTrueCheckedProperty(), false);
+            assert_eq!(*obj.found_item(), parent_parent_ptr);
+            assert!(obj.found_item_with_true_checked_property().is_null());
+            assert_eq!(*obj.found_item_has_true_checked_property(), false);
         }
     }
 
@@ -219,14 +219,14 @@ mod tests {
             let mut parent = qobj_generic_test_item::make_unique();
             let parent_ptr = parent.as_mut().unwrap().pin_mut_qquickitem_ptr();
 
-            obj.as_mut().unwrap().set_itemBoolPropertyToCheck(QString::from("boolProp"));
+            obj.as_mut().unwrap().set_item_bool_property_to_check(QString::from("bool_prop"));
             obj.as_mut().unwrap().set_parent_item(parent_ptr);
 
             obj.as_mut().unwrap().rescan();
 
-            assert_eq!(*obj.foundItem(), parent_ptr);
-            assert!(obj.foundItemWithTrueCheckedProperty().is_null());
-            assert_eq!(*obj.foundItemHasTrueCheckedProperty(), false);
+            assert_eq!(*obj.found_item(), parent_ptr);
+            assert!(obj.found_item_with_true_checked_property().is_null());
+            assert_eq!(*obj.found_item_has_true_checked_property(), false);
         }
     }
 
@@ -238,16 +238,16 @@ mod tests {
         unsafe {
             let mut parent = qobj_generic_test_item::make_unique();
             let parent_ptr = parent.as_mut().unwrap().pin_mut_qquickitem_ptr();
-            parent.as_mut().unwrap().set_boolProp(true);
+            parent.as_mut().unwrap().set_bool_prop(true);
 
-            obj.as_mut().unwrap().set_itemBoolPropertyToCheck(QString::from("boolProp"));
+            obj.as_mut().unwrap().set_item_bool_property_to_check(QString::from("bool_prop"));
             obj.as_mut().unwrap().set_parent_item(parent_ptr);
 
             obj.as_mut().unwrap().rescan();
 
-            assert_eq!(*obj.foundItem(), parent_ptr);
-            assert_eq!(*obj.foundItemWithTrueCheckedProperty(), parent_ptr);
-            assert_eq!(*obj.foundItemHasTrueCheckedProperty(), true);
+            assert_eq!(*obj.found_item(), parent_ptr);
+            assert_eq!(*obj.found_item_with_true_checked_property(), parent_ptr);
+            assert_eq!(*obj.found_item_has_true_checked_property(), true);
         }
     }
 
@@ -260,25 +260,25 @@ mod tests {
             let mut parent = qobj_generic_test_item::make_unique();
             let parent_ptr = parent.as_mut().unwrap().pin_mut_qquickitem_ptr();
 
-            obj.as_mut().unwrap().set_itemBoolPropertyToCheck(QString::from("boolProp"));
+            obj.as_mut().unwrap().set_item_bool_property_to_check(QString::from("bool_prop"));
             obj.as_mut().unwrap().set_parent_item(parent_ptr);
             obj.as_mut().unwrap().rescan();
 
-            assert_eq!(*obj.foundItem(), parent_ptr);
-            assert!(obj.foundItemWithTrueCheckedProperty().is_null());
-            assert_eq!(*obj.foundItemHasTrueCheckedProperty(), false);
+            assert_eq!(*obj.found_item(), parent_ptr);
+            assert!(obj.found_item_with_true_checked_property().is_null());
+            assert_eq!(*obj.found_item_has_true_checked_property(), false);
 
-            parent.as_mut().unwrap().set_boolProp(true);
+            parent.as_mut().unwrap().set_bool_prop(true);
 
-            assert_eq!(*obj.foundItem(), parent_ptr);
-            assert_eq!(*obj.foundItemWithTrueCheckedProperty(), parent_ptr);
-            assert_eq!(*obj.foundItemHasTrueCheckedProperty(), true);
+            assert_eq!(*obj.found_item(), parent_ptr);
+            assert_eq!(*obj.found_item_with_true_checked_property(), parent_ptr);
+            assert_eq!(*obj.found_item_has_true_checked_property(), true);
 
-            parent.as_mut().unwrap().set_boolProp(false);
+            parent.as_mut().unwrap().set_bool_prop(false);
 
-            assert_eq!(*obj.foundItem(), parent_ptr);
-            assert!(obj.foundItemWithTrueCheckedProperty().is_null());
-            assert_eq!(*obj.foundItemHasTrueCheckedProperty(), false);
+            assert_eq!(*obj.found_item(), parent_ptr);
+            assert!(obj.found_item_with_true_checked_property().is_null());
+            assert_eq!(*obj.found_item_has_true_checked_property(), false);
         }
     }
 }

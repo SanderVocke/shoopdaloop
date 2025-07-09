@@ -50,11 +50,11 @@ impl DummyProcessHelper {
                     debug!("requesting {} frames", samples_per_iter);
                     qobj_signature_backend_wrapper::invoke_wait_process
                         (backend_thread_ptr.as_mut().unwrap(),
-                         invokable::DIRECT_CONNECTION);
+                         invokable::DIRECT_CONNECTION).unwrap();
                     qobj_signature_backend_wrapper::invoke_dummy_request_controlled_frames
                         (backend_thread_ptr.as_mut().unwrap(),
                          invokable::DIRECT_CONNECTION,
-                         samples_per_iter);
+                         samples_per_iter).unwrap();
                 }
                 // Simulate backend processing
                 thread::sleep(Duration::from_secs_f32(wait_interval));
@@ -63,7 +63,7 @@ impl DummyProcessHelper {
             unsafe {
                 qobj_signature_backend_wrapper::invoke_wait_process
                         (backend_thread_ptr.as_mut().unwrap(),
-                         invokable::DIRECT_CONNECTION);
+                         invokable::DIRECT_CONNECTION).unwrap();
                 debug!("Invoking finish");
                 let _dummy : Result<(), _> =
                     invokable::invoke(self_thread_ptr.as_mut().unwrap(), "finish()".to_string(), invokable::DIRECT_CONNECTION, &());

@@ -1,4 +1,3 @@
-use std::env;
 use anyhow;
 use backend;
 use common;
@@ -10,8 +9,8 @@ fn generate_dev_launcher_script() -> Result<PathBuf, anyhow::Error> {
     let dev_config_path = config::dev_config_path();
     let dev_config_path_str = dev_config_path.to_string_lossy().replace("\"", "");
 
-    let dev_config = ShoopConfig::load(&dev_config_path, None).expect("Could not load dev config");
-    let (var, paths) = config::config_dynlib_env_var(&dev_config)?;
+    let dev_config = ShoopConfig::_load(&dev_config_path, None).expect("Could not load dev config");
+    let (_var, paths) = config::config_dynlib_env_var(&dev_config)?;
 
     if cfg!(target_os = "windows") {
         let script_content = format!(r#"
@@ -67,12 +66,8 @@ fn main_impl() -> Result<(), anyhow::Error> {
         let dev_launcher_script = generate_dev_launcher_script()?;
         println!("cargo:rustc-env=SHOOPDALOOP_DEV_LAUNCHER_SCRIPT={dev_launcher_script:?}");
 
-        let src_dir = env::current_dir()?;
-
         let profile = std::env::var("PROFILE").unwrap();
-        let is_debug_build = std::env::var("PROFILE").unwrap() == "debug";
-        
-        if !["debug", "release"].contains(&profile.as_str()) {
+        if !["debug", "release", "release-with-debug"].contains(&profile.as_str()) {
             return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
         }
 

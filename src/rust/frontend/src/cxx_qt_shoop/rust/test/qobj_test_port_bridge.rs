@@ -19,10 +19,10 @@ pub mod constants {
     pub const PROP_INITIALIZED: &str = qobj_signature_port::constants::PROP_INITIALIZED;
     pub const SIGNAL_INITIALIZED_CHANGED: &str = qobj_signature_port::constants::SIGNAL_INITIALIZED_CHANGED;
 
-    pub const PROP_CONNECTIONS_STATE: &str = "connectionsState";
-    pub const SIGNAL_CONNECTIONS_STATE_CHANGED: &str = "connectionsStateChanged()";
+    pub const PROP_CONNECTIONS_STATE: &str = "connections_state";
+    pub const SIGNAL_CONNECTIONS_STATE_CHANGED: &str = "connections_stateChanged()";
 
-    pub const SIGNAL_EXTERNAL_CONNECTION_MADE: &str = "externalConnectionMade(QString)";
+    pub const SIGNAL_EXTERNAL_CONNECTION_MADE: &str = "external_connection_made(QString)";
 }
 
 #[cxx_qt::bridge]
@@ -47,8 +47,8 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[base = QQuickItem]
-        #[qproperty(QMap_QString_QVariant, connectionsState)]
-        #[qproperty(i32, dataType)]
+        #[qproperty(QMap_QString_QVariant, connections_state)]
+        #[qproperty(i32, data_type)]
         #[qproperty(i32, direction)]
         #[qproperty(QString, name)]
         #[qproperty(bool, initialized)]
@@ -61,7 +61,7 @@ pub mod ffi {
         pub fn connect_external_port(self: Pin<&mut TestPort>, name : QString) -> bool;
 
         #[qsignal]
-        pub fn externalConnectionMade(self: Pin<&mut TestPort>, port : QString);
+        pub fn external_connection_made(self: Pin<&mut TestPort>, port : QString);
     }
 
     unsafe extern "C++" {
@@ -89,8 +89,8 @@ use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
 use ffi::*;
 
 pub struct TestPortRust {
-    pub connectionsState : QMap_QString_QVariant,
-    pub dataType: i32,
+    pub connections_state : QMap_QString_QVariant,
+    pub data_type: i32,
     pub direction: i32,
     pub name: QString,
     pub initialized: bool,
@@ -100,8 +100,8 @@ pub struct TestPortRust {
 impl Default for TestPortRust {
     fn default() -> TestPortRust {
         TestPortRust {
-            connectionsState : QMap_QString_QVariant::default(),
-            dataType : PortDataType::Audio as i32,
+            connections_state : QMap_QString_QVariant::default(),
+            data_type : PortDataType::Audio as i32,
             direction : PortDirection::Input as i32,
             name: QString::from("unknown"),
             initialized: false,

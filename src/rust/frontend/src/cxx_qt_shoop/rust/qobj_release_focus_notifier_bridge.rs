@@ -10,7 +10,7 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qsignal]
-        fn focusReleased(self: Pin<&mut ReleaseFocusNotifier>);
+        fn focus_released(self: Pin<&mut ReleaseFocusNotifier>);
 
         #[qinvokable]
         fn notify(self: Pin<&mut ReleaseFocusNotifier>);

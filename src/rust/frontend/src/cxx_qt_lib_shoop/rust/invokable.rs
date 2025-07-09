@@ -1,6 +1,6 @@
 use cxx::Exception;
 use cxx_qt;
-use cxx_qt_lib::{QList, QMap, QMapPair, QMapPair_QString_QVariant, QString, QVariant};
+use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 
 use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 
@@ -16,9 +16,6 @@ mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
         type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
-
-        include!("cxx-qt-lib/qvariant.h");
-        type QVariant = cxx_qt_lib::QVariant;
 
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
@@ -73,9 +70,9 @@ mod ffi {
 
 pub trait Invokable<RetVal, Args> {
     fn invoke_fn_qobj(&mut self,
-                      method : String,
-                      connection_type : u32,
-                      args : &Args) -> Result<RetVal, Exception> {
+                      _method : String,
+                      _connection_type : u32,
+                      _args : &Args) -> Result<RetVal, Exception> {
         panic!("Invokable not implemented for return type {} and arguments type {}", std::any::type_name::<RetVal>(), std::any::type_name::<Args>());
     }
 }
@@ -137,7 +134,7 @@ impl Invokable<QList<QVariant>, (QString, i32, i32)> for ffi::QObject {
     }
 }
 
-trait Invoker<RetVal, Args> {
+pub trait Invoker<RetVal, Args> {
     fn invoke(&mut self, method: String, connection_type : u32, args: &Args) -> Result<RetVal, Exception>;
 }
 

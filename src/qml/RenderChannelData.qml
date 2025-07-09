@@ -22,9 +22,9 @@ Item {
     property bool is_midi : root.channel && root.channel.descriptor.type == "midi"
 
     ShoopRenderAudioWaveform {
-        inputData: input_audio_data
-        samplesPerBin: root.samples_per_bin
-        samplesOffset: root.samples_offset
+        input_data: input_audio_data
+        samples_per_bin: root.samples_per_bin
+        samples_offset: root.samples_offset
         width: root.width
         height: root.height
     }
