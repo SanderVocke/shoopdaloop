@@ -59,7 +59,7 @@ fn populate_appdir(
     info!("Bundling additional assets...");
     for (src,dst) in extra_assets {
         let from = src_path.join(src);
-        let to = folder.join(dst);
+        let to = appdir.join(dst);
         info!("  {:?} -> {:?}", &from, &to);
         std::fs::copy(&from, &to)
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
