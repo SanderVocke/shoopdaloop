@@ -117,6 +117,8 @@ BackendSession::BackendSession() :
 
 shoop_backend_session_state_info_t BackendSession::get_state() {
     shoop_backend_session_state_info_t rval;
+    rval.n_audio_buffers_available = audio_buffer_pool->n_available();
+    rval.n_audio_buffers_created = audio_buffer_pool->n_created_since_last_checked();
     return rval;
 }
 

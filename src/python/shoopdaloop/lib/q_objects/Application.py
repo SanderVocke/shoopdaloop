@@ -4,7 +4,7 @@ import signal
 import time
 
 from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType, Signal
+from PySide6.QtCore import QTimer, QObject, Q_ARG, QMetaObject, Qt, QEvent, Slot, QtMsgType, Signal, SIGNAL, SLOT
 from PySide6.QtGui import QIcon
 from PySide6.QtQml import QQmlDebuggingEnabler
 from PySide6.QtQuick import QQuickWindow
@@ -20,6 +20,8 @@ from shoop_rust import shoop_rust_init
 
 from ..logging import *
 from shoop_config import shoop_version, shoop_resource_dir
+
+from ..engine_update_thread import get_engine_update_thread_wrapper
 
 class Application(ShoopQApplication):
     exit_handler_called = ShoopSignal()
@@ -136,6 +138,13 @@ class Application(ShoopQApplication):
         self.root_context_items = create_and_populate_root_context(self.engine, self.global_args, self.additional_root_context)
 
         self.engine.load(filename)
+        for obj in self.engine.rootObjects():
+            if(isinstance(obj, QQuickWindow)):
+                # This connection ensure back-end state updates happen in lock-step with
+                # GUI refreshes.
+                QObject.connect(obj, SIGNAL("frameSwapped()"),
+                                get_engine_update_thread_wrapper(), SLOT("trigger_update()"),
+                                Qt.QueuedConnection)
 
     def reload_qml(self, filename, quit_on_quit=True):
         self.unload_qml()
@@ -162,6 +171,7 @@ class Application(ShoopQApplication):
 
     def exit_handler(self):
         if self.engine:
+            self.logger.debug(lambda: "Quit via exit handler")
             QMetaObject.invokeMethod(self.engine, 'quit')
             self.exit_handler_called.emit()
 

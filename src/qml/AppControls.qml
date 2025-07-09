@@ -40,6 +40,16 @@ Item {
 
     property bool settings_io_enabled: false
 
+    function add_dsp_load_point(dsp_load) {
+        monitorwindow.add_dsp_load_point(dsp_load)
+    }
+    function add_audio_buffer_pool_point(buffers_created, buffers_available) {
+        monitorwindow.add_audio_buffer_pool_point(buffers_created, buffers_available)
+    }
+    function add_backend_refresh_interval_point(interval) {
+        monitorwindow.add_backend_refresh_interval_point(interval)
+    }
+
     Row {
         spacing: 6
         anchors.fill: parent
@@ -74,8 +84,12 @@ Item {
                     onClicked: loadsessiondialog.open()
                 }
                 ShoopMenuItem {
-                    text: "Profiling"
+                    text: "Audio Profiling"
                     onClicked: profilingwindow.visible = true
+                }
+                ShoopMenuItem {
+                    text: "Monitoring"
+                    onClicked: monitorwindow.visible = true
                 }
                 ShoopMenuItem {
                     text: "Settings"
@@ -169,6 +183,10 @@ Item {
             ProfilingWindow {
                 id: profilingwindow
                 backend: root.backend
+            }
+
+            MonitorWindow {
+                id: monitorwindow
             }
 
             DebugInspectionMainWindow {

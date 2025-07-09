@@ -23,5 +23,6 @@ pub fn create_py_module<'py>(
     m.add_function(wrap_pyfunction!(objects::shoop_rust_gui_loop_adopt_ringbuffers, &m)?)?;
     m.add_function(wrap_pyfunction!(objects::shoop_rust_backend_loop_adopt_ringbuffers, &m)?)?;
     m.add_function(wrap_pyfunction!(objects::shoop_rust_get_engine_update_thread_addr, &m)?)?;
+    m.add_function(wrap_pyfunction!(objects::shoop_rust_get_engine_update_thread_wrapper_addr, &m)?)?;
     Ok(m)
 }

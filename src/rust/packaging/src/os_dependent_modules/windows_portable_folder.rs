@@ -33,9 +33,9 @@ fn populate_folder(
         ];
 
 
-    // Explicitly bundle shiboken library
+    // Explicitly bundle libraries not detected automatically
     for base in &["shiboken6.*dll", "pyside6.*dll", "pyside6qml.*dll",
-                         "Qt6*.dll"] {
+                         "Qt6*.dll", "meshoptimizer*.dll"] {
         for path in backend::runtime_link_dirs() {
             let pattern = (&path).join(base);
             println!("{pattern:?}");

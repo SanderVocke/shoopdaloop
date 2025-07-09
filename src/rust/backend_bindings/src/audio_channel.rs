@@ -17,9 +17,9 @@ pub struct AudioChannelState {
 }
 
 impl AudioChannelState {
-    pub fn new(obj : &ffi::shoop_audio_channel_state_info_t) -> Self {
-        return AudioChannelState {
-            mode : ChannelMode::try_from(obj.mode).unwrap(),
+    pub fn new(obj : &ffi::shoop_audio_channel_state_info_t) -> Result<Self, anyhow::Error> {
+        return Ok(AudioChannelState {
+            mode : ChannelMode::try_from(obj.mode)?,
             gain : obj.gain,
             output_peak : obj.output_peak,
             length : obj.length,
@@ -30,7 +30,7 @@ impl AudioChannelState {
             },
             n_preplay_samples : obj.n_preplay_samples,
             data_dirty : obj.data_dirty != 0,
-        }
+        })
     }
 }
 
@@ -107,7 +107,7 @@ impl AudioChannel {
             if state_ptr.is_null() {
                 return Err(anyhow::anyhow!("Failed to retrieve audio channel state"));
             }
-            let state = AudioChannelState::new(&(*state_ptr));
+            let state = AudioChannelState::new(&(*state_ptr))?;
             ffi::destroy_audio_channel_state_info(state_ptr);
             Ok(state)
         }

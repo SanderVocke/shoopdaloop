@@ -1,5 +1,6 @@
 use frontend::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::qobject_to_loop_backend_ptr;
 use frontend::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
+use frontend::cxx_qt_shoop::qobj_update_thread_bridge::UpdateThread;
 use pyo3::prelude::*;
 use std::pin::Pin;
 
@@ -20,6 +21,11 @@ use crate::shoop_py_backend::midi_channel::MidiChannel;
 #[pyfunction]
 pub fn shoop_rust_get_engine_update_thread_addr() -> u64 {
     unsafe { frontend::engine_update_thread::get_engine_update_thread().thread as usize as u64 }
+}
+
+#[pyfunction]
+pub fn shoop_rust_get_engine_update_thread_wrapper_addr() -> u64 {
+    unsafe { frontend::engine_update_thread::get_engine_update_thread() as *mut UpdateThread as usize as u64 }
 }
 
 #[pyfunction]

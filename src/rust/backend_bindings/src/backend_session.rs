@@ -44,12 +44,16 @@ impl ProfilingReportItem {
 
 pub struct BackendSessionState {
     pub audio_driver: *mut ffi::shoop_audio_driver_t,
+    pub n_audio_buffers_created: u32,
+    pub n_audio_buffers_available: u32,
 }
 
 impl BackendSessionState {
     pub fn new(obj: &ffi::shoop_backend_session_state_info_t) -> Self {
         BackendSessionState {
             audio_driver: obj.audio_driver,
+            n_audio_buffers_available: obj.n_audio_buffers_available,
+            n_audio_buffers_created: obj.n_audio_buffers_created,
         }
     }
 }

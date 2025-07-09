@@ -1,4 +1,5 @@
 use common::logging::macros::*;
+use std::time::Instant;
 shoop_log_unit!("Frontend.UpdateThread");
 
 #[cxx_qt::bridge]
@@ -25,6 +26,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn trigger_update(self: Pin<&mut UpdateThread>);
+
+        #[qinvokable]
+        pub fn timer_tick(self: Pin<&mut UpdateThread>);
 
         #[qinvokable]
         pub fn get_thread(self: Pin<&mut UpdateThread>) -> *mut QThread;
@@ -63,6 +67,7 @@ impl AsQObject for UpdateThread {
 pub struct UpdateThreadRust {
     pub thread : *mut ffi::QThread,
     pub backup_timer : *mut ffi::QTimer,
+    pub last_updated : Option<Instant>,
 }
 
 impl Default for UpdateThreadRust {
@@ -70,6 +75,7 @@ impl Default for UpdateThreadRust {
         UpdateThreadRust {
             thread : ffi::QThread::make_raw(),
             backup_timer : ffi::QTimer::make_raw(),
+            last_updated : None,
         }
     }
 }

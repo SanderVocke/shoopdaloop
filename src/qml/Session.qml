@@ -428,6 +428,12 @@ Rectangle {
         id: session_backend
         driver_setting_overrides: ({})
 
+        onUpdated_on_gui_thread: {
+            app_controls.add_dsp_load_point(dsp_load)
+            app_controls.add_audio_buffer_pool_point(n_audio_buffers_created, n_audio_buffers_available)
+            app_controls.add_backend_refresh_interval_point(last_update_interval)
+        }
+
         SessionControlInterface {
             backend: session_backend
             id: control_interface

@@ -8,6 +8,7 @@ use crate::cxx_qt_lib_shoop::qobject::{AsQObject, QObject, qobject_thread};
 use crate::cxx_qt_lib_shoop::qthread::QThread;
 use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants;
 use crate::engine_update_thread;
+use std::time;
 shoop_log_unit!("Frontend.BackendWrapper");
 
 pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::*;
@@ -257,6 +258,8 @@ impl BackendWrapper {
             self.as_mut().set_xruns(update_data.xruns);
             self.as_mut().set_dsp_load(update_data.dsp_load);
             self.as_mut().set_last_processed(update_data.last_processed);
+            self.as_mut().set_n_audio_buffers_available(update_data.n_audio_buffers_available);
+            self.as_mut().set_n_audio_buffers_created(update_data.n_audio_buffers_created);
         }
 
         // Triggers other back-end objects to update as well
@@ -267,6 +270,24 @@ impl BackendWrapper {
     
     pub fn update_on_other_thread(mut self: Pin<&mut BackendWrapper>) {
         trace!("Begin update on back-end thread");
+
+        {
+            let maybe_new_interval : Option<time::Duration>;
+            {
+                let mut rust_mut = self.as_mut().rust_mut();
+                let now = time::Instant::now();
+                if rust_mut.last_updated.is_some() {
+                    maybe_new_interval = Some(now.duration_since(*rust_mut.last_updated.as_ref().unwrap()));
+                    
+                } else {
+                    maybe_new_interval = None;
+                }
+                rust_mut.last_updated = Some(now);
+            }
+            if maybe_new_interval.is_some() {
+                self.as_mut().set_last_update_interval(maybe_new_interval.unwrap().as_secs_f32());
+            }
+        }
 
         let current_xruns;
         {
@@ -279,6 +300,7 @@ impl BackendWrapper {
         }
 
         let driver_state;
+        let session_state;
         {
             let rust = self.as_mut().rust_mut();
             if rust.driver.is_none() {
@@ -286,12 +308,19 @@ impl BackendWrapper {
                 return;
             }
             driver_state = rust.driver.as_ref().unwrap().get_state();
+            if rust.session.is_none() {
+                trace!("update_on_other_thread called on a BackendWrapper with no session");
+                return;
+            }
+            session_state = rust.session.as_ref().unwrap().get_state();
         }
 
         let update_data = BackendWrapperUpdateData {
             xruns: current_xruns + driver_state.xruns_since_last as i32,
             dsp_load: driver_state.dsp_load_percent,
             last_processed: driver_state.last_processed as i32,
+            n_audio_buffers_available: session_state.n_audio_buffers_available as i32,
+            n_audio_buffers_created: session_state.n_audio_buffers_created as i32,
         };
 
         {
