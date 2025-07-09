@@ -41,6 +41,30 @@ fn populate_appdir(
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
     }
 
+    // Explicitly bundle libraries not detected automatically
+    let mut extra_assets : Vec<(String, String)> = vec![];
+    for base in &["meshoptimizer*.so"] {
+        for path in backend::runtime_link_dirs() {
+            let pattern = (&path).join(base);
+            println!("{pattern:?}");
+            let g = glob(&pattern.to_string_lossy())?.filter_map(Result::ok);
+            for extra_lib_path in g {
+                let extra_lib_srcpath : String = extra_lib_path.to_string_lossy().to_string();
+                let extra_lib_filename = &extra_lib_path.file_name().unwrap().to_string_lossy().to_string();
+                let extra_lib_dstpath : String = format!("lib/{}", extra_lib_filename);
+                extra_assets.push((extra_lib_srcpath, extra_lib_dstpath));
+            }
+        }
+    }
+    info!("Bundling additional assets...");
+    for (src,dst) in extra_assets {
+        let from = src_path.join(src);
+        let to = folder.join(dst);
+        info!("  {:?} -> {:?}", &from, &to);
+        std::fs::copy(&from, &to)
+            .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
+    }
+
     info!("AppDir produced in {}", appdir.to_str().unwrap());
 
     Ok(())
