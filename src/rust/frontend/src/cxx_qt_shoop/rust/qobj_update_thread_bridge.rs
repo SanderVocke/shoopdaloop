@@ -1,7 +1,8 @@
 use common::logging::macros::*;
-use std::time::Instant;
+use std::time::{Instant, Duration};
 shoop_log_unit!("Frontend.UpdateThread");
 
+pub const DEFAULT_BACKUP_UPDATE_INTERVAL_MS : i32 = 25;
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
@@ -17,10 +18,10 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
+        #[qproperty(bool, trigger_update_on_frame_swapped)]
+        #[qproperty(i32, backup_timer_interval_ms, READ, WRITE=set_backup_timer_interval_ms)]
         type UpdateThread = super::UpdateThreadRust;
-    }
 
-    unsafe extern "RustQt" {
         #[qsignal]
         fn update(self: Pin<&mut UpdateThread>);
 
@@ -32,6 +33,12 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn get_thread(self: Pin<&mut UpdateThread>) -> *mut QThread;
+
+        #[qinvokable]
+        pub fn set_backup_timer_interval_ms(self: Pin<&mut UpdateThread>, interval_ms : i32);
+
+        #[qinvokable]
+        pub fn frontend_frame_swapped(self: Pin<&mut UpdateThread>);
     }
 
     unsafe extern "C++" {
@@ -68,6 +75,9 @@ pub struct UpdateThreadRust {
     pub thread : *mut ffi::QThread,
     pub backup_timer : *mut ffi::QTimer,
     pub last_updated : Option<Instant>,
+    pub backup_timer_elapsed_threshold : Duration,
+    pub trigger_update_on_frame_swapped : bool,
+    pub backup_timer_interval_ms : i32,
 }
 
 impl Default for UpdateThreadRust {
@@ -76,6 +86,9 @@ impl Default for UpdateThreadRust {
             thread : ffi::QThread::make_raw(),
             backup_timer : ffi::QTimer::make_raw(),
             last_updated : None,
+            backup_timer_elapsed_threshold : Duration::default(),
+            trigger_update_on_frame_swapped : true,
+            backup_timer_interval_ms : 25,
         }
     }
 }

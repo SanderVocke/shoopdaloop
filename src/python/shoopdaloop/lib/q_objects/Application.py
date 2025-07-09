@@ -33,11 +33,15 @@ class Application(ShoopQApplication):
                  additional_root_context = dict(),
                  qml_debug_port=None,
                  qml_debug_wait=False,
-                 nsm=False
+                 nsm=False,
+                 refresh_backend_on_frontend_refresh=True,
+                 backend_backup_refresh_interval_ms=25
                  ):
         super(Application, self).__init__([])
 
         self._quitting = False
+        self.refresh_backend_on_frontend_refresh = refresh_backend_on_frontend_refresh
+        self.backend_backup_refresh_interval_ms = backend_backup_refresh_interval_ms
 
         pkg_version = shoop_version
 
@@ -138,13 +142,19 @@ class Application(ShoopQApplication):
         self.root_context_items = create_and_populate_root_context(self.engine, self.global_args, self.additional_root_context)
 
         self.engine.load(filename)
+
+        engine_update_thread_wrapper = get_engine_update_thread_wrapper()
+        engine_update_thread_wrapper.setProperty('trigger_update_on_frame_swapped', self.refresh_backend_on_frontend_refresh)
+        engine_update_thread_wrapper.setProperty('backup_timer_interval_ms', self.backend_backup_refresh_interval_ms)
         for obj in self.engine.rootObjects():
             if(isinstance(obj, QQuickWindow)):
                 # This connection ensure back-end state updates happen in lock-step with
                 # GUI refreshes.
                 QObject.connect(obj, SIGNAL("frameSwapped()"),
-                                get_engine_update_thread_wrapper(), SLOT("trigger_update()"),
+                                engine_update_thread_wrapper, SLOT("frontend_frame_swapped()"),
                                 Qt.QueuedConnection)
+            else:
+                self.logger.warning(lambda: "Couldn't find top-level QQuickWindow to lock back-end refresh to GUI refresh")
 
     def reload_qml(self, filename, quit_on_quit=True):
         self.unload_qml()
