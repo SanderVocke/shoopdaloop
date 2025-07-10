@@ -24,3 +24,4 @@ target
 .build-env-release.ps1
 .build-env-debug.sh
 .build-env-release.sh
+rust-analyzer-target

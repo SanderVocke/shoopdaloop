@@ -129,16 +129,12 @@ jobs:
             third_package_kind: test_binaries
             upload_release_assets: true
             platform: linux-x64
-            allow_warnings: false
-            check_format: false
           - name: linux_debug
             release_build: false
             package_kind: portable_folder
             second_package_kind: test_binaries
             upload_release_assets: true
             platform: linux-x64
-            allow_warnings: false
-            check_format: false
           # - name: linux_asan
           #   # Note: ASAN build does not have a test because it is not trivial to deploy
           #   # an asan-built program on another system. The build is here to ensure the
@@ -301,8 +297,6 @@ jobs:
             os: macos-13
             upload_release_assets: true
             platform: macos-x64
-            allow_warnings: false
-            check_format: false
           # - name: macos_debug
           #   release_build: false
           #   package_kind: portable_folder
@@ -310,8 +304,6 @@ jobs:
           #   os: macos-13
           #   upload_release_assets: true
           #   platform: macos-x64
-          #   allow_warnings: true
-          #   check_format: false
           - name: macos_release_arm
             release_build: true
             package_kind: portable_folder
@@ -320,8 +312,6 @@ jobs:
             os: macos-14
             upload_release_assets: true
             platform: macos-arm
-            allow_warnings: false
-            check_format: false
           # - name: macos_debug_arm
           #   release_build: false
           #   package_kind: portable_folder
@@ -329,8 +319,6 @@ jobs:
           #   os: macos-14
           #   upload_release_assets: true
           #   platform: macos-arm
-          #   allow_warnings: true
-          #   check_format: false
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
     if: ${{ (github.event.inputs.build_macos || 'false') == 'true' }}
@@ -464,8 +452,6 @@ jobs:
             third_package_kind: test_binaries
             upload_release_assets: true
             platform: windows-msvc-x64
-            allow_warnings: false
-            check_format: false
           # - name: windows_debug
           #   os: windows-2022
           #   python: python.exe
