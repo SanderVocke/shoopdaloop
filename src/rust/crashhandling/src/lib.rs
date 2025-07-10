@@ -7,7 +7,10 @@ const SOCKET_NAME: &str = "shoopdaloop-crashhandling";
 
 use minidumper::{Client, Server};
 
-pub fn init_crashhandling(is_server: bool, start_server_arg: &str) {
+pub fn init_crashhandling(
+    is_server: bool,
+    start_server_arg: &str,
+) -> Option<crash_handler::CrashHandler> {
     if is_server {
         info!("Server - Starting crash handling server");
         let mut server =
@@ -69,7 +72,9 @@ pub fn init_crashhandling(is_server: bool, start_server_arg: &str) {
             .run(Box::new(Handler), &ab, None)
             .expect("failed to run server");
 
-        return;
+        info!("Crash handling server finished.");
+
+        std::process::exit(0);
     }
 
     let mut server = None;
@@ -122,4 +127,6 @@ pub fn init_crashhandling(is_server: bool, start_server_arg: &str) {
     {
         _handler.set_ptracer(Some(_server.id()));
     }
+
+    Some(_handler)
 }
