@@ -1,0 +1,15 @@
+[package]
+name = "crashhandling"
+edition = "2021"
+
+[dependencies]
+minidumper = "0.8"
+crash-handler = "0.6"
+common = { path = "../common" }
+ctor = "0.2"
+log = "0.4"
+uuid = { version = "1.17", features = ["v4"] }
+
+[features]
+# Dummy build to build dependencies only
+prebuild = []
