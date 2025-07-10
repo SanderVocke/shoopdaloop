@@ -1,7 +1,7 @@
 // See audio_channel.rs from backend_bindings
 
-use pyo3::prelude::*;
 use backend_bindings;
+use pyo3::prelude::*;
 
 use crate::shoop_py_backend::audio_port::AudioPort;
 use crate::shoop_py_backend::channel::ChannelMode;
@@ -10,35 +10,35 @@ use crate::shoop_py_backend::channel::ChannelMode;
 #[derive(Clone)]
 pub struct AudioChannelState {
     #[pyo3(get)]
-    pub mode : ChannelMode,
+    pub mode: ChannelMode,
     #[pyo3(get)]
-    pub gain : f32,
+    pub gain: f32,
     #[pyo3(get)]
-    pub output_peak : f32,
+    pub output_peak: f32,
     #[pyo3(get)]
-    pub length : u32,
+    pub length: u32,
     #[pyo3(get)]
-    pub start_offset : i32,
+    pub start_offset: i32,
     #[pyo3(get)]
-    pub played_back_sample : Option<u32>,
+    pub played_back_sample: Option<u32>,
     #[pyo3(get)]
-    pub n_preplay_samples : u32,
+    pub n_preplay_samples: u32,
     #[pyo3(get)]
-    pub data_dirty : bool,
+    pub data_dirty: bool,
 }
 
 impl AudioChannelState {
-    pub fn new(obj : backend_bindings::AudioChannelState) -> Self {
+    pub fn new(obj: backend_bindings::AudioChannelState) -> Self {
         return AudioChannelState {
-            mode : ChannelMode::try_from(obj.mode).unwrap(),
-            gain : obj.gain,
-            output_peak : obj.output_peak,
-            length : obj.length,
-            start_offset : obj.start_offset,
-            played_back_sample : obj.played_back_sample,
-            n_preplay_samples : obj.n_preplay_samples,
-            data_dirty : obj.data_dirty,
-        }
+            mode: ChannelMode::try_from(obj.mode).unwrap(),
+            gain: obj.gain,
+            output_peak: obj.output_peak,
+            length: obj.length,
+            start_offset: obj.start_offset,
+            played_back_sample: obj.played_back_sample,
+            n_preplay_samples: obj.n_preplay_samples,
+            data_dirty: obj.data_dirty,
+        };
     }
 }
 
@@ -50,12 +50,12 @@ pub struct AudioChannelData {
 
 #[pyclass]
 pub struct AudioChannel {
-    pub obj : backend_bindings::AudioChannel,
+    pub obj: backend_bindings::AudioChannel,
 }
 
 #[pymethods]
 impl AudioChannel {
-    fn unsafe_backend_ptr (&self) -> usize {
+    fn unsafe_backend_ptr(&self) -> usize {
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }
 
@@ -81,7 +81,7 @@ impl AudioChannel {
 
     fn get_data(&self) -> PyResult<AudioChannelData> {
         Ok(AudioChannelData {
-            data : self.obj.get_data(),
+            data: self.obj.get_data(),
         })
     }
 
@@ -98,9 +98,8 @@ impl AudioChannel {
     }
 
     fn set_mode(&self, mode: i32) -> PyResult<()> {
-        let mode = backend_bindings::ChannelMode::try_from(mode).map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid channel mode")
-        })?;
+        let mode = backend_bindings::ChannelMode::try_from(mode)
+            .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid channel mode"))?;
         self.obj.set_mode(mode);
         Ok(())
     }

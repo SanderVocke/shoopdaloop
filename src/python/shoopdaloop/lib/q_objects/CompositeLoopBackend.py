@@ -182,8 +182,8 @@ class CompositeLoopBackend(ShoopQObject):
             self._sync_loop = val
             if val:
                 self.logger.debug(lambda: 'connecting to sync loop')
-                QObject.connect(val, SIGNAL("position_changed(::std::int32_t,::std::int32_t)"), self, SLOT("update_sync_position()"), Qt.DirectConnection)
-                QObject.connect(val, SIGNAL("length_changed(::std::int32_t,::std::int32_t)"), self, SLOT("update_sync_length()"), Qt.DirectConnection)
+                QObject.connect(val, SIGNAL("positionChanged(::std::int32_t,::std::int32_t)"), self, SLOT("update_sync_position()"), Qt.DirectConnection)
+                QObject.connect(val, SIGNAL("lengthChanged(::std::int32_t,::std::int32_t)"), self, SLOT("update_sync_length()"), Qt.DirectConnection)
                 QObject.connect(val, SIGNAL("cycled(int)"), self, SLOT("handle_sync_loop_trigger(int)"), Qt.DirectConnection)
                 self.update_sync_position()
                 self.update_sync_length()

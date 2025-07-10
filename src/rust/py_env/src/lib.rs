@@ -72,12 +72,11 @@ pub fn dev_env_pythonpath() -> String {
 
 pub fn dev_env_pythonpath_entries() -> Vec<String> {
     let pythonpath = dev_env_pythonpath();
-    let out : Vec<String> = 
-       env::split_paths(&pythonpath)
-       .collect::<Vec<_>>()
-       .into_iter()
-       .filter(|p| PathBuf::from(&p).exists())
-       .map(|p| p.to_string_lossy().into_owned())
-       .collect();
+    let out: Vec<String> = env::split_paths(&pythonpath)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .filter(|p| PathBuf::from(&p).exists())
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
     out
 }

@@ -1,50 +1,52 @@
-use anyhow;
 use crate::ffi;
+use anyhow;
 use std::sync::Mutex;
 
 use crate::audio_port::AudioPort;
 use crate::channel::ChannelMode;
 
 pub struct AudioChannelState {
-    pub mode : ChannelMode,
-    pub gain : f32,
-    pub output_peak : f32,
-    pub length : u32,
-    pub start_offset : i32,
-    pub played_back_sample : Option<u32>,
-    pub n_preplay_samples : u32,
-    pub data_dirty : bool,
+    pub mode: ChannelMode,
+    pub gain: f32,
+    pub output_peak: f32,
+    pub length: u32,
+    pub start_offset: i32,
+    pub played_back_sample: Option<u32>,
+    pub n_preplay_samples: u32,
+    pub data_dirty: bool,
 }
 
 impl AudioChannelState {
-    pub fn new(obj : &ffi::shoop_audio_channel_state_info_t) -> Result<Self, anyhow::Error> {
+    pub fn new(obj: &ffi::shoop_audio_channel_state_info_t) -> Result<Self, anyhow::Error> {
         return Ok(AudioChannelState {
-            mode : ChannelMode::try_from(obj.mode)?,
-            gain : obj.gain,
-            output_peak : obj.output_peak,
-            length : obj.length,
-            start_offset : obj.start_offset,
-            played_back_sample : match obj.played_back_sample >= 0 {
+            mode: ChannelMode::try_from(obj.mode)?,
+            gain: obj.gain,
+            output_peak: obj.output_peak,
+            length: obj.length,
+            start_offset: obj.start_offset,
+            played_back_sample: match obj.played_back_sample >= 0 {
                 true => Some(obj.played_back_sample as u32),
-                false => None
+                false => None,
             },
-            n_preplay_samples : obj.n_preplay_samples,
-            data_dirty : obj.data_dirty != 0,
-        })
+            n_preplay_samples: obj.n_preplay_samples,
+            data_dirty: obj.data_dirty != 0,
+        });
     }
 }
 
 pub struct AudioChannel {
-    obj : Mutex<*mut ffi::shoopdaloop_loop_audio_channel_t>,
+    obj: Mutex<*mut ffi::shoopdaloop_loop_audio_channel_t>,
 }
 
 unsafe impl Send for AudioChannel {}
 unsafe impl Sync for AudioChannel {}
 
 impl AudioChannel {
-    pub fn new(raw : *mut ffi::shoopdaloop_loop_audio_channel_t) -> Result<Self, anyhow::Error> {
+    pub fn new(raw: *mut ffi::shoopdaloop_loop_audio_channel_t) -> Result<Self, anyhow::Error> {
         if raw.is_null() {
-            Err(anyhow::anyhow!("Cannot create AudioChannel from null pointer"))
+            Err(anyhow::anyhow!(
+                "Cannot create AudioChannel from null pointer"
+            ))
         } else {
             let wrapped = Mutex::new(raw);
             Ok(AudioChannel { obj: wrapped })
@@ -81,7 +83,10 @@ impl AudioChannel {
                 return;
             }
             for (i, &value) in data.iter().enumerate() {
-                (*backend_data).data.offset(i.try_into().unwrap()).write(value);
+                (*backend_data)
+                    .data
+                    .offset(i.try_into().unwrap())
+                    .write(value);
             }
             ffi::load_audio_channel_data(self.unsafe_backend_ptr(), backend_data);
             ffi::destroy_audio_channel_data(backend_data);
@@ -121,7 +126,10 @@ impl AudioChannel {
 
     pub fn set_mode(&self, mode: ChannelMode) {
         unsafe {
-            ffi::set_audio_channel_mode(self.unsafe_backend_ptr(), mode as ffi::shoop_channel_mode_t);
+            ffi::set_audio_channel_mode(
+                self.unsafe_backend_ptr(),
+                mode as ffi::shoop_channel_mode_t,
+            );
         }
     }
 

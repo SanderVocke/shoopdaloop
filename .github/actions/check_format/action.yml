@@ -1,0 +1,14 @@
+# For format-checking the code.
+
+runs:
+  using: "composite"
+  steps:
+  - name: Prepare Rust
+    if: always()
+    uses: dtolnay/rust-toolchain@nightly
+    with:
+      components: rustfmt
+  - name: Check format
+    if: always()
+    shell: bash
+    run: cargo fmt --all --check

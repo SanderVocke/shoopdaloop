@@ -4,25 +4,28 @@ shoop_log_unit!("Frontend.TestPort");
 pub mod constants {
     use crate::cxx_qt_shoop::qobj_signature_port;
 
-    pub const INVOKABLE_DETERMINE_CONNECTIONS_STATE: &str
-        = qobj_signature_port::constants::INVOKABLE_DETERMINE_CONNECTIONS_STATE;
+    pub const INVOKABLE_DETERMINE_CONNECTIONS_STATE: &str =
+        qobj_signature_port::constants::INVOKABLE_DETERMINE_CONNECTIONS_STATE;
 
     pub const PROP_DATA_TYPE: &str = qobj_signature_port::constants::PROP_DATA_TYPE;
-    pub const SIGNAL_DATA_TYPE_CHANGED: &str = qobj_signature_port::constants::SIGNAL_DATA_TYPE_CHANGED;
+    pub const SIGNAL_DATA_TYPE_CHANGED: &str =
+        qobj_signature_port::constants::SIGNAL_DATA_TYPE_CHANGED;
 
     pub const PROP_DIRECTION: &str = qobj_signature_port::constants::PROP_DIRECTION;
-    pub const SIGNAL_DIRECTION_CHANGED: &str = qobj_signature_port::constants::SIGNAL_DIRECTION_CHANGED;
+    pub const SIGNAL_DIRECTION_CHANGED: &str =
+        qobj_signature_port::constants::SIGNAL_DIRECTION_CHANGED;
 
     pub const PROP_NAME: &str = qobj_signature_port::constants::PROP_NAME;
     pub const SIGNAL_NAME_CHANGED: &str = qobj_signature_port::constants::SIGNAL_NAME_CHANGED;
 
     pub const PROP_INITIALIZED: &str = qobj_signature_port::constants::PROP_INITIALIZED;
-    pub const SIGNAL_INITIALIZED_CHANGED: &str = qobj_signature_port::constants::SIGNAL_INITIALIZED_CHANGED;
+    pub const SIGNAL_INITIALIZED_CHANGED: &str =
+        qobj_signature_port::constants::SIGNAL_INITIALIZED_CHANGED;
 
-    pub const PROP_CONNECTIONS_STATE: &str = "connectionsState";
-    pub const SIGNAL_CONNECTIONS_STATE_CHANGED: &str = "connectionsStateChanged()";
+    pub const PROP_CONNECTIONS_STATE: &str = "connections_state";
+    pub const SIGNAL_CONNECTIONS_STATE_CHANGED: &str = "connections_stateChanged()";
 
-    pub const SIGNAL_EXTERNAL_CONNECTION_MADE: &str = "externalConnectionMade(QString)";
+    pub const SIGNAL_EXTERNAL_CONNECTION_MADE: &str = "external_connection_made(QString)";
 }
 
 #[cxx_qt::bridge]
@@ -47,8 +50,8 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[base = QQuickItem]
-        #[qproperty(QMap_QString_QVariant, connectionsState)]
-        #[qproperty(i32, dataType)]
+        #[qproperty(QMap_QString_QVariant, connections_state)]
+        #[qproperty(i32, data_type)]
         #[qproperty(i32, direction)]
         #[qproperty(QString, name)]
         #[qproperty(bool, initialized)]
@@ -58,39 +61,39 @@ pub mod ffi {
         pub fn determine_connections_state(self: Pin<&mut TestPort>) -> QMap_QString_QVariant;
 
         #[qinvokable]
-        pub fn connect_external_port(self: Pin<&mut TestPort>, name : QString) -> bool;
+        pub fn connect_external_port(self: Pin<&mut TestPort>, name: QString) -> bool;
 
         #[qsignal]
-        pub fn externalConnectionMade(self: Pin<&mut TestPort>, port : QString);
+        pub fn external_connection_made(self: Pin<&mut TestPort>, port: QString);
     }
 
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
 
-        #[rust_name="qquickitem_from_ref_test_port"]
-        unsafe fn qquickitemFromRef(obj : &TestPort) -> &QQuickItem;
-        #[rust_name="qquickitem_from_ptr_test_port"]
-        unsafe fn qquickitemFromPtr(obj : *mut TestPort) -> *mut QQuickItem;
+        #[rust_name = "qquickitem_from_ref_test_port"]
+        unsafe fn qquickitemFromRef(obj: &TestPort) -> &QQuickItem;
+        #[rust_name = "qquickitem_from_ptr_test_port"]
+        unsafe fn qquickitemFromPtr(obj: *mut TestPort) -> *mut QQuickItem;
 
         include!("cxx-qt-shoop/make_unique.h");
         #[rust_name = "make_unique_test_port"]
         fn make_unique() -> UniquePtr<TestPort>;
     }
 
-    impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=()> for TestPort {}
-    impl cxx_qt::Constructor<(), NewArguments=()> for TestPort {}
+    impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = ()> for TestPort {}
+    impl cxx_qt::Constructor<(), NewArguments = ()> for TestPort {}
 }
 
-pub use ffi::make_unique_test_port as make_unique;
-pub use ffi::TestPort;
+use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
 use backend_bindings::PortDataType;
 use backend_bindings::PortDirection;
-use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
+pub use ffi::make_unique_test_port as make_unique;
+pub use ffi::TestPort;
 use ffi::*;
 
 pub struct TestPortRust {
-    pub connectionsState : QMap_QString_QVariant,
-    pub dataType: i32,
+    pub connections_state: QMap_QString_QVariant,
+    pub data_type: i32,
     pub direction: i32,
     pub name: QString,
     pub initialized: bool,
@@ -100,9 +103,9 @@ pub struct TestPortRust {
 impl Default for TestPortRust {
     fn default() -> TestPortRust {
         TestPortRust {
-            connectionsState : QMap_QString_QVariant::default(),
-            dataType : PortDataType::Audio as i32,
-            direction : PortDirection::Input as i32,
+            connections_state: QMap_QString_QVariant::default(),
+            data_type: PortDataType::Audio as i32,
+            direction: PortDirection::Input as i32,
             name: QString::from("unknown"),
             initialized: false,
             connect_external_port_return_val: true,
@@ -115,13 +118,19 @@ impl cxx_qt::Constructor<(*mut QQuickItem,)> for TestPort {
     type InitializeArguments = (); // Will be passed to the "initialize" function
     type NewArguments = (); // Will be passed to the "new" function
 
-    fn route_arguments(args: (*mut QQuickItem,)) -> (
+    fn route_arguments(
+        args: (*mut QQuickItem,),
+    ) -> (
         Self::NewArguments,
         Self::BaseArguments,
-        Self::InitializeArguments
-    ) { ((), args, ()) }
+        Self::InitializeArguments,
+    ) {
+        ((), args, ())
+    }
 
-    fn new(_args : ()) -> TestPortRust { TestPortRust::default() }
+    fn new(_args: ()) -> TestPortRust {
+        TestPortRust::default()
+    }
 }
 
 impl cxx_qt::Constructor<()> for TestPort {
@@ -129,18 +138,28 @@ impl cxx_qt::Constructor<()> for TestPort {
     type InitializeArguments = (); // Will be passed to the "initialize" function
     type NewArguments = (); // Will be passed to the "new" function
 
-    fn route_arguments(_args: ()) -> (
+    fn route_arguments(
+        _args: (),
+    ) -> (
         Self::NewArguments,
         Self::BaseArguments,
-        Self::InitializeArguments
-    ) { ((), (), ()) }
+        Self::InitializeArguments,
+    ) {
+        ((), (), ())
+    }
 
-    fn new(_args : ()) -> TestPortRust { TestPortRust::default() }
+    fn new(_args: ()) -> TestPortRust {
+        TestPortRust::default()
+    }
 }
 
 impl AsQQuickItem for TestPort {
-    unsafe fn mut_qquickitem_ptr (&mut self) -> *mut QQuickItem { ffi::qquickitem_from_ptr_test_port(self as *mut Self) }
-    unsafe fn ref_qquickitem_ptr (& self) -> *const QQuickItem { ffi::qquickitem_from_ref_test_port(self) as *const QQuickItem }
+    unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {
+        ffi::qquickitem_from_ptr_test_port(self as *mut Self)
+    }
+    unsafe fn ref_qquickitem_ptr(&self) -> *const QQuickItem {
+        ffi::qquickitem_from_ref_test_port(self) as *const QQuickItem
+    }
 }
 
 impl IsQQuickItem for TestPort {}

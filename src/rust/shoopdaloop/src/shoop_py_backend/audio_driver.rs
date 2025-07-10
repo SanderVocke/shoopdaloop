@@ -1,8 +1,8 @@
 use pyo3::prelude::*;
 // use pyo3::exceptions::*;
+use crate::shoop_py_backend::port;
 use backend_bindings;
 use std::collections::HashMap;
-use crate::shoop_py_backend::port;
 
 #[pyclass(eq, eq_int)]
 #[derive(PartialEq, Clone)]
@@ -18,7 +18,9 @@ impl AudioDriverType {
     fn py_new(value: u32) -> PyResult<Self> {
         match backend_bindings::AudioDriverType::try_from(value) {
             Ok(val) => Ok(AudioDriverType::try_from(val).unwrap()),
-            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid AudioDriverType")),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Invalid AudioDriverType",
+            )),
         }
     }
 
@@ -71,7 +73,10 @@ impl JackAudioDriverSettings {
     #[new]
     #[pyo3(signature = (client_name_hint, maybe_server_name=None))]
     fn py_new(client_name_hint: String, maybe_server_name: Option<String>) -> Self {
-        JackAudioDriverSettings { client_name_hint, maybe_server_name }
+        JackAudioDriverSettings {
+            client_name_hint,
+            maybe_server_name,
+        }
     }
 }
 
@@ -96,7 +101,11 @@ impl DummyAudioDriverSettings {
 impl DummyAudioDriverSettings {
     #[new]
     fn py_new(client_name: String, sample_rate: u32, buffer_size: u32) -> Self {
-        DummyAudioDriverSettings { client_name, sample_rate, buffer_size }
+        DummyAudioDriverSettings {
+            client_name,
+            sample_rate,
+            buffer_size,
+        }
     }
 }
 
@@ -121,14 +130,14 @@ pub struct AudioDriverState {
 impl AudioDriverState {
     pub fn new(obj: &backend_bindings::AudioDriverState) -> Self {
         return AudioDriverState {
-            dsp_load_percent : obj.dsp_load_percent,
-            xruns_since_last : obj.xruns_since_last,
-            maybe_instance_name : obj.maybe_instance_name.clone(),
-            sample_rate : obj.sample_rate,
-            buffer_size : obj.buffer_size,
-            active : obj.active,
-            last_processed : obj.last_processed,
-        }
+            dsp_load_percent: obj.dsp_load_percent,
+            xruns_since_last: obj.xruns_since_last,
+            maybe_instance_name: obj.maybe_instance_name.clone(),
+            sample_rate: obj.sample_rate,
+            buffer_size: obj.buffer_size,
+            active: obj.active,
+            last_processed: obj.last_processed,
+        };
     }
 }
 
@@ -141,8 +150,14 @@ pub struct AudioDriver {
 impl AudioDriver {
     #[new]
     fn py_new(driver_type: u32) -> PyResult<Self> {
-        let driver_type = backend_bindings::AudioDriverType::try_from(driver_type).map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid driver type"))?;
-        let obj = backend_bindings::AudioDriver::new(driver_type).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to create AudioDriver: {:?}", e)))?;
+        let driver_type = backend_bindings::AudioDriverType::try_from(driver_type)
+            .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid driver type"))?;
+        let obj = backend_bindings::AudioDriver::new(driver_type).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to create AudioDriver: {:?}",
+                e
+            ))
+        })?;
         Ok(AudioDriver { obj })
     }
 
@@ -155,11 +170,21 @@ impl AudioDriver {
     }
 
     fn start_dummy(&self, settings: &DummyAudioDriverSettings) -> PyResult<()> {
-        self.obj.start_dummy(&settings.to_ffi()).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to start dummy driver: {:?}", e)))
+        self.obj.start_dummy(&settings.to_ffi()).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to start dummy driver: {:?}",
+                e
+            ))
+        })
     }
 
     fn start_jack(&self, settings: &JackAudioDriverSettings) -> PyResult<()> {
-        self.obj.start_jack(&settings.to_ffi()).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to start jack driver: {:?}", e)))
+        self.obj.start_jack(&settings.to_ffi()).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to start jack driver: {:?}",
+                e
+            ))
+        })
     }
 
     fn active(&self) -> bool {
@@ -191,7 +216,8 @@ impl AudioDriver {
     }
 
     fn dummy_add_external_mock_port(&self, name: &str, direction: u32, data_type: u32) {
-        self.obj.dummy_add_external_mock_port(name, direction, data_type)
+        self.obj
+            .dummy_add_external_mock_port(name, direction, data_type)
     }
 
     fn dummy_remove_external_mock_port(&self, name: &str) {
@@ -207,8 +233,14 @@ impl AudioDriver {
     }
 
     #[pyo3(signature = (maybe_name_regex=None, port_direction=0, data_type=0))]
-    fn find_external_ports(&self, maybe_name_regex: Option<&str>, port_direction: u32, data_type: u32) -> Vec<port::ExternalPortDescriptor> {
-        self.obj.find_external_ports(maybe_name_regex, port_direction, data_type)
+    fn find_external_ports(
+        &self,
+        maybe_name_regex: Option<&str>,
+        port_direction: u32,
+        data_type: u32,
+    ) -> Vec<port::ExternalPortDescriptor> {
+        self.obj
+            .find_external_ports(maybe_name_regex, port_direction, data_type)
             .into_iter()
             .map(port::ExternalPortDescriptor::new)
             .collect()
@@ -221,7 +253,9 @@ impl AudioDriver {
 
 #[pyfunction]
 pub fn driver_type_supported(driver_type: u32) -> bool {
-    backend_bindings::driver_type_supported(backend_bindings::AudioDriverType::try_from(driver_type).unwrap())
+    backend_bindings::driver_type_supported(
+        backend_bindings::AudioDriverType::try_from(driver_type).unwrap(),
+    )
 }
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {

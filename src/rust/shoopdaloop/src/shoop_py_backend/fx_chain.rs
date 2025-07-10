@@ -22,10 +22,12 @@ impl FXChainType {
     fn py_new(value: u32) -> PyResult<Self> {
         match backend_bindings::FXChainType::try_from(value) {
             Ok(val) => Ok(FXChainType::try_from(val).unwrap()),
-            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid FXChainType")),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Invalid FXChainType",
+            )),
         }
     }
-    
+
     #[staticmethod]
     fn enum_items() -> std::collections::HashMap<&'static str, isize> {
         let mut map = std::collections::HashMap::new();
@@ -71,7 +73,7 @@ impl FXChainState {
 
 #[pyclass]
 pub struct FXChain {
-    pub obj : backend_bindings::FXChain,
+    pub obj: backend_bindings::FXChain,
 }
 
 #[pymethods]
@@ -91,7 +93,9 @@ impl FXChain {
     fn get_state(&self) -> PyResult<FXChainState> {
         match self.obj.get_state() {
             Some(state) => Ok(FXChainState::new(state)),
-            None => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Failed to get state")),
+            None => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Failed to get state",
+            )),
         }
     }
 
@@ -127,7 +131,7 @@ impl FXChain {
         self.obj.restore_state(state_str);
     }
 
-    fn unsafe_backend_ptr (&self) -> usize { 
+    fn unsafe_backend_ptr(&self) -> usize {
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }
 }

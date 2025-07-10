@@ -1,12 +1,12 @@
 // See midi_channel.rs from backend_bindings
 
-use pyo3::prelude::*;
 use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
 
 use crate::shoop_py_backend::midi_port::MidiPort;
 
-use crate::shoop_py_backend::midi::MidiEvent;
 use crate::shoop_py_backend::channel::ChannelMode;
+use crate::shoop_py_backend::midi::MidiEvent;
 
 #[pyclass]
 #[derive(Clone)]
@@ -47,12 +47,12 @@ use backend_bindings;
 
 #[pyclass]
 pub struct MidiChannel {
-    pub obj : backend_bindings::MidiChannel,
+    pub obj: backend_bindings::MidiChannel,
 }
 
 #[pymethods]
 impl MidiChannel {
-    fn unsafe_backend_ptr (&self) -> usize {
+    fn unsafe_backend_ptr(&self) -> usize {
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }
 
@@ -62,8 +62,8 @@ impl MidiChannel {
     }
 
     fn load_all_midi_data(&self, _py: Python, msgs: Vec<MidiEvent>) -> PyResult<()> {
-        let backend_msgs: Vec<backend_bindings::MidiEvent> = msgs.into_iter()
-            .map(|msg| msg.to_backend()).collect();
+        let backend_msgs: Vec<backend_bindings::MidiEvent> =
+            msgs.into_iter().map(|msg| msg.to_backend()).collect();
         self.obj.load_all_midi_data(&backend_msgs);
         Ok(())
     }
@@ -84,16 +84,16 @@ impl MidiChannel {
     }
 
     fn get_state(&self) -> PyResult<MidiChannelState> {
-        let state = self.obj.get_state().map_err(|e| {
-            PyErr::new::<PyRuntimeError, _>(format!("Get state failed: {:?}", e))
-        })?;
+        let state = self
+            .obj
+            .get_state()
+            .map_err(|e| PyErr::new::<PyRuntimeError, _>(format!("Get state failed: {:?}", e)))?;
         Ok(MidiChannelState::new(state))
     }
 
     fn set_mode(&self, mode: i32) -> PyResult<()> {
-        let mode = backend_bindings::ChannelMode::try_from(mode).map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid channel mode")
-        })?;
+        let mode = backend_bindings::ChannelMode::try_from(mode)
+            .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid channel mode"))?;
         self.obj.set_mode(mode);
         Ok(())
     }
@@ -113,7 +113,7 @@ impl MidiChannel {
         Ok(())
     }
 
-    fn clear(&self, _length : u32) -> PyResult<()> {
+    fn clear(&self, _length: u32) -> PyResult<()> {
         self.obj.clear();
         Ok(())
     }

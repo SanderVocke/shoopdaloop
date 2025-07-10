@@ -1,5 +1,5 @@
-use pyo3::prelude::*;
 use backend_bindings;
+use pyo3::prelude::*;
 use std::collections::HashMap;
 
 #[pyclass(eq, eq_int)]
@@ -16,7 +16,9 @@ impl PortDirection {
     fn py_new(value: u32) -> PyResult<Self> {
         match backend_bindings::PortDirection::try_from(value) {
             Ok(val) => Ok(PortDirection::try_from(val).unwrap()),
-            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid PortDirection")),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Invalid PortDirection",
+            )),
         }
     }
 
@@ -55,7 +57,9 @@ impl PortConnectabilityKind {
     fn py_new(value: u32) -> PyResult<Self> {
         match backend_bindings::PortConnectabilityKind::try_from(value) {
             Ok(val) => Ok(PortConnectabilityKind::try_from(val).unwrap()),
-            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid PortConnectabilityKind")),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Invalid PortConnectabilityKind",
+            )),
         }
     }
 
@@ -74,8 +78,12 @@ impl TryFrom<backend_bindings::PortConnectabilityKind> for PortConnectabilityKin
     fn try_from(value: backend_bindings::PortConnectabilityKind) -> Result<Self, anyhow::Error> {
         match value {
             backend_bindings::PortConnectabilityKind::None => Ok(PortConnectabilityKind::None),
-            backend_bindings::PortConnectabilityKind::Internal => Ok(PortConnectabilityKind::Internal),
-            backend_bindings::PortConnectabilityKind::External => Ok(PortConnectabilityKind::External),
+            backend_bindings::PortConnectabilityKind::Internal => {
+                Ok(PortConnectabilityKind::Internal)
+            }
+            backend_bindings::PortConnectabilityKind::External => {
+                Ok(PortConnectabilityKind::External)
+            }
         }
     }
 }
@@ -94,7 +102,9 @@ impl PortDataType {
     fn py_new(value: u32) -> PyResult<Self> {
         match backend_bindings::PortDataType::try_from(value) {
             Ok(val) => Ok(PortDataType::try_from(val).unwrap()),
-            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid PortDataType")),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Invalid PortDataType",
+            )),
         }
     }
 
@@ -108,7 +118,7 @@ impl PortDataType {
     }
 }
 
-impl TryFrom<backend_bindings::PortDataType> for PortDataType { 
+impl TryFrom<backend_bindings::PortDataType> for PortDataType {
     type Error = anyhow::Error;
     fn try_from(value: backend_bindings::PortDataType) -> Result<Self, anyhow::Error> {
         match value {
@@ -131,12 +141,12 @@ pub struct ExternalPortDescriptor {
 }
 
 impl ExternalPortDescriptor {
-    pub fn new(obj : backend_bindings::ExternalPortDescriptor) -> Self {
+    pub fn new(obj: backend_bindings::ExternalPortDescriptor) -> Self {
         return ExternalPortDescriptor {
-            name : obj.name,
-            direction : PortDirection::try_from(obj.direction).unwrap(),
-            data_type : PortDataType::try_from(obj.data_type).unwrap(),
-        }
+            name: obj.name,
+            direction: PortDirection::try_from(obj.direction).unwrap(),
+            data_type: PortDataType::try_from(obj.data_type).unwrap(),
+        };
     }
 }
 

@@ -13,7 +13,7 @@ pub mod ffi {
         fn qvariantCanConvertShoopRustCallable(variant: &QVariant) -> bool;
 
         #[rust_name = "register_metatype_shoop_rust_callable"]
-        fn registerMetatypeShoopRustCallable(name : &mut String);
+        fn registerMetatypeShoopRustCallable(name: &mut String);
     }
 
     #[namespace = "rust::cxxqtlib1::qvariant"]
@@ -33,15 +33,13 @@ use ffi::*;
 
 #[repr(C)]
 pub struct ShoopRustCallableRust {
-    callable : fn(&[QVariant]) -> QVariant,
+    callable: fn(&[QVariant]) -> QVariant,
 }
 
 impl Default for ShoopRustCallableRust {
     fn default() -> Self {
         Self {
-            callable : |_a : &[QVariant]| -> QVariant {
-                QVariant::default()
-            }
+            callable: |_a: &[QVariant]| -> QVariant { QVariant::default() },
         }
     }
 }
@@ -52,8 +50,8 @@ unsafe impl cxx::ExternType for ShoopRustCallable {
 }
 
 impl ShoopRustCallable {
-    pub fn call(self : &ShoopRustCallable, args : Option<&[QVariant]>) -> QVariant {
-        let rust : &ShoopRustCallableRust = self.into();
+    pub fn call(self: &ShoopRustCallable, args: Option<&[QVariant]>) -> QVariant {
+        let rust: &ShoopRustCallableRust = self.into();
         (rust.callable)(args.unwrap_or(&[]))
     }
 }
@@ -72,7 +70,7 @@ impl cxx_qt_lib::QVariantValue for ffi::ShoopRustCallable {
     }
 }
 
-pub fn register_metatype(name : &str) {
+pub fn register_metatype(name: &str) {
     let mut str = String::from(name);
     ffi::register_metatype_shoop_rust_callable(&mut str);
 }
@@ -84,12 +82,12 @@ mod tests {
     #[test]
     fn test_callable_no_data() {
         let mut obj = ShoopRustCallableRust::default();
-        obj.callable = |_v : &[QVariant]| -> QVariant {
+        obj.callable = |_v: &[QVariant]| -> QVariant {
             let rval = 123;
             QVariant::from(&rval)
         };
-        let output : QVariant = obj.call(None);
-        let output2 : QVariant = obj.call(None);
+        let output: QVariant = obj.call(None);
+        let output2: QVariant = obj.call(None);
 
         assert_eq!(output.value::<i32>().unwrap(), 123);
         assert_eq!(output2.value::<i32>().unwrap(), 123);

@@ -1,5 +1,5 @@
-use common::logging::macros::*;
 use backend_bindings::{Loop as BackendLoop, LoopState};
+use common::logging::macros::*;
 
 shoop_log_unit!("Frontend.Loop");
 
@@ -7,7 +7,8 @@ pub mod constants {
     pub const SIGNAL_CYCLED: &str = "cycled()";
 
     pub const INVOKABLE_UPDATE: &str = "update()";
-    pub const INVOKABLE_TRANSITION: &str = "transition(::std::int32_t,::std::int32_t,::std::int32_t)";
+    pub const INVOKABLE_TRANSITION: &str =
+        "transition(::std::int32_t,::std::int32_t,::std::int32_t)";
 }
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -72,27 +73,33 @@ pub mod ffi {
         pub fn set_instance_identifier(self: Pin<&mut LoopBackend>, instance_identifier: QString);
 
         #[qinvokable]
-        pub fn transition_multiple(self: Pin<&mut LoopBackend>,
-                                   loops: QList_QVariant,
-                                   to_mode: i32,
-                                   maybe_cycles_delay: i32,
-                                   maybe_to_sync_at_cycle: i32);
-        
+        pub fn transition_multiple(
+            self: Pin<&mut LoopBackend>,
+            loops: QList_QVariant,
+            to_mode: i32,
+            maybe_cycles_delay: i32,
+            maybe_to_sync_at_cycle: i32,
+        );
+
         #[qinvokable]
-        pub fn transition(self: Pin<&mut LoopBackend>,
-                          to_mode: i32,
-                          maybe_cycles_delay: i32,
-                          maybe_to_sync_at_cycle: i32);
+        pub fn transition(
+            self: Pin<&mut LoopBackend>,
+            to_mode: i32,
+            maybe_cycles_delay: i32,
+            maybe_to_sync_at_cycle: i32,
+        );
 
         #[qinvokable]
         pub fn clear(self: Pin<&mut LoopBackend>, length: i32);
 
         #[qinvokable]
-        pub fn adopt_ringbuffers(self: Pin<&mut LoopBackend>,
-                                 maybe_reverse_start_cycle : QVariant,
-                                 maybe_cycles_length : QVariant,
-                                 maybe_go_to_cycle : QVariant,
-                                 go_to_mode : i32);
+        pub fn adopt_ringbuffers(
+            self: Pin<&mut LoopBackend>,
+            maybe_reverse_start_cycle: QVariant,
+            maybe_cycles_length: QVariant,
+            maybe_go_to_cycle: QVariant,
+            go_to_mode: i32,
+        );
 
         #[qinvokable]
         pub fn get_mode(self: &LoopBackend) -> i32;
@@ -125,49 +132,66 @@ pub mod ffi {
         fn starting_update(self: Pin<&mut LoopBackend>);
 
         #[qsignal]
-        fn mode_changed(self: Pin<&mut LoopBackend>, new_mode : i32, old_mode : i32);
+        #[cxx_name = "modeChanged"]
+        fn mode_changed(self: Pin<&mut LoopBackend>, new_mode: i32, old_mode: i32);
 
         #[qsignal]
-        fn length_changed(self: Pin<&mut LoopBackend>, new_length : i32, old_length : i32);
+        #[cxx_name = "lengthChanged"]
+        fn length_changed(self: Pin<&mut LoopBackend>, new_length: i32, old_length: i32);
 
         #[qsignal]
-        fn position_changed(self: Pin<&mut LoopBackend>, new_position : i32, old_position : i32);
+        #[cxx_name = "positionChanged"]
+        fn position_changed(self: Pin<&mut LoopBackend>, new_position: i32, old_position: i32);
 
         #[qsignal]
-        fn next_mode_changed(self: Pin<&mut LoopBackend>, new_next_mode : i32, old_next_mode : i32);
+        #[cxx_name = "nextModeChanged"]
+        fn next_mode_changed(self: Pin<&mut LoopBackend>, new_next_mode: i32, old_next_mode: i32);
 
         #[qsignal]
-        fn next_transition_delay_changed(self: Pin<&mut LoopBackend>, new_next_transition_delay : i32, old_next_transition_delay : i32);
+        #[cxx_name = "nextTransitionDelayChanged"]
+        fn next_transition_delay_changed(
+            self: Pin<&mut LoopBackend>,
+            new_next_transition_delay: i32,
+            old_next_transition_delay: i32,
+        );
 
         #[qsignal]
-        fn cycle_nr_changed(self: Pin<&mut LoopBackend>, new_cycle_nr : i32, old_cycle_nr : i32);
+        #[cxx_name = "cycleNrChanged"]
+        fn cycle_nr_changed(self: Pin<&mut LoopBackend>, new_cycle_nr: i32, old_cycle_nr: i32);
 
         #[qsignal]
-        unsafe fn sync_source_changed(self: Pin<&mut LoopBackend>, sync_source : *mut QObject);
+        #[cxx_name = "syncSourceChanged"]
+        unsafe fn sync_source_changed(self: Pin<&mut LoopBackend>, sync_source: *mut QObject);
 
         #[qsignal]
-        fn instance_identifier_changed(self: Pin<&mut LoopBackend>, instance_identifier : QString);
+        #[cxx_name = "instanceIdentifierChanged"]
+        fn instance_identifier_changed(self: Pin<&mut LoopBackend>, instance_identifier: QString);
 
         #[qsignal]
-        fn initialized_changed(self: Pin<&mut LoopBackend>, initialized : bool);
+        #[cxx_name = "initializedChanged"]
+        fn initialized_changed(self: Pin<&mut LoopBackend>, initialized: bool);
 
         #[qsignal]
+        #[cxx_name = "backendChanged"]
         unsafe fn backend_changed(self: Pin<&mut LoopBackend>, backend: *mut QObject);
 
         #[qsignal]
-        fn state_changed(self: Pin<&mut LoopBackend>,
-                         mode: i32,
-                         length: i32,
-                         position: i32,
-                         next_mode: i32,
-                         next_transition_delay: i32,
-                         cycle_nr : i32);
+        #[cxx_name = "stateChanged"]
+        fn state_changed(
+            self: Pin<&mut LoopBackend>,
+            mode: i32,
+            length: i32,
+            position: i32,
+            next_mode: i32,
+            next_transition_delay: i32,
+            cycle_nr: i32,
+        );
     }
 
     unsafe extern "C++" {
         include!("cxx-qt-shoop/cast_ptr.h");
         #[rust_name = "qobject_to_loop_backend_ptr"]
-        unsafe fn cast_qobject_ptr(obj : *mut QObject) -> *mut LoopBackend;
+        unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut LoopBackend;
 
         include!("cxx-qt-shoop/qobject_classname.h");
         #[rust_name = "qobject_class_name_loop_backend"]
@@ -175,10 +199,10 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "loop_backend_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj : *mut LoopBackend) -> *mut QObject;
+        unsafe fn qobjectFromPtr(obj: *mut LoopBackend) -> *mut QObject;
 
         #[rust_name = "loop_backend_qobject_from_ref"]
-        fn qobjectFromRef(obj : &LoopBackend) -> &QObject;
+        fn qobjectFromRef(obj: &LoopBackend) -> &QObject;
 
         include!("cxx-qt-shoop/make_raw.h");
         #[rust_name = "make_raw_loop_backend"]
@@ -189,9 +213,9 @@ pub mod ffi {
     impl cxx_qt::Constructor<()> for LoopBackend {}
 }
 
+use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 pub use ffi::LoopBackend;
 use ffi::*;
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 
 impl AsQObject for LoopBackend {
     unsafe fn mut_qobject_ptr(&mut self) -> *mut QObject {
@@ -205,15 +229,15 @@ impl AsQObject for LoopBackend {
 
 pub struct LoopBackendRust {
     // Properties
-    pub sync_source : *mut QObject,
+    pub sync_source: *mut QObject,
     pub backend: *mut QObject,
     pub instance_identifier: QString,
     pub frontend_loop: *mut QObject,
 
     // Rust members
-    pub backend_loop : Option<BackendLoop>,
-    pub prev_state : LoopState,
-    pub prev_cycle_nr : i32,
+    pub backend_loop: Option<BackendLoop>,
+    pub prev_state: LoopState,
+    pub prev_cycle_nr: i32,
 }
 
 impl Default for LoopBackendRust {
@@ -235,10 +259,12 @@ impl cxx_qt::Constructor<()> for LoopBackend {
     type InitializeArguments = (); // Will be passed to the "initialize" function
     type NewArguments = (); // Will be passed to the "new" function
 
-    fn route_arguments(_args: ()) -> (
+    fn route_arguments(
+        _args: (),
+    ) -> (
         Self::NewArguments,
         Self::BaseArguments,
-        Self::InitializeArguments
+        Self::InitializeArguments,
     ) {
         ((), (), ())
     }

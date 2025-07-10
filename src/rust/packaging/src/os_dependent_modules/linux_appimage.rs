@@ -7,9 +7,9 @@ use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
 pub fn build_appimage(
-    appimagetool : &str,
-    appdir : &Path,
-    output_file : &Path
+    appimagetool: &str,
+    appdir: &Path,
+    output_file: &Path,
 ) -> Result<(), anyhow::Error> {
     let src_dir = appdir.to_owned();
 

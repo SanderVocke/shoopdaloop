@@ -1,17 +1,17 @@
+use crate::dependencies::get_dependency_libs;
 use anyhow;
 use anyhow::Context;
-use std::path::{PathBuf, Path};
-use crate::dependencies::get_dependency_libs;
 use common::util::copy_dir_merge;
 use copy_dir::copy_dir;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
-const MAYBE_QMAKE : Option<&'static str> = option_env!("QMAKE");
+const MAYBE_QMAKE: Option<&'static str> = option_env!("QMAKE");
 
-fn qmake_command(qmake_path : &str, argstring : &str) -> Command {
+fn qmake_command(qmake_path: &str, argstring: &str) -> Command {
     let shell_command = format!("{} {}", qmake_path, argstring);
     return if cfg!(target_os = "windows") {
         let mut cmd = Command::new("cmd");
@@ -25,30 +25,33 @@ fn qmake_command(qmake_path : &str, argstring : &str) -> Command {
 }
 
 pub fn populate_portable_folder(
-    folder : &Path,
-    exe_path : &Path,
-    src_path : &Path,
-    includelist_path : &Path,
-    excludelist_path : &Path,
+    folder: &Path,
+    exe_path: &Path,
+    src_path: &Path,
+    includelist_path: &Path,
+    excludelist_path: &Path,
 ) -> Result<(), anyhow::Error> {
     let qmake = MAYBE_QMAKE.ok_or(anyhow::anyhow!("QMAKE not set at compile-time"))?;
 
     let lib_dir = folder.join("lib");
-    std::fs::create_dir(&lib_dir)
-        .with_context(|| format!("Cannot create dir: {:?}", lib_dir))?;
+    std::fs::create_dir(&lib_dir).with_context(|| format!("Cannot create dir: {:?}", lib_dir))?;
 
     let py_lib_dir = lib_dir.join("python");
     std::fs::create_dir(&py_lib_dir)
         .with_context(|| format!("Cannot create dir: {:?}", py_lib_dir))?;
 
     info!("Bundling executable...");
-    let final_exe_filename =
-       if cfg!(target_os = "windows") { "shoopdaloop_exe.exe" } else { "shoopdaloop_exe" };
+    let final_exe_filename = if cfg!(target_os = "windows") {
+        "shoopdaloop_exe.exe"
+    } else {
+        "shoopdaloop_exe"
+    };
     let final_exe_path = folder.join(final_exe_filename);
     std::fs::copy(exe_path, &final_exe_path)?;
 
     info!("Bundling development environment Python packages from PYTHONPATH...");
-    let python_lib_paths = crate::remove_subpaths::remove_subpaths(&py_env::dev_env_pythonpath_entries());
+    let python_lib_paths =
+        crate::remove_subpaths::remove_subpaths(&py_env::dev_env_pythonpath_entries());
     for path in python_lib_paths {
         if path.ends_with("site-packages") {
             debug!("--> {} -> site-packages", path);
@@ -82,8 +85,8 @@ pub fn populate_portable_folder(
 
     info!("Bundling Qt plugins...");
     let qt_plugins = qmake_command(qmake, "-query QT_INSTALL_PLUGINS")
-            .stderr(std::process::Stdio::inherit())
-            .output()?;
+        .stderr(std::process::Stdio::inherit())
+        .output()?;
     let qt_plugins = String::from_utf8(qt_plugins.stdout)?;
     let qt_plugins = PathBuf::from(qt_plugins.trim());
     let install_plugins_dir = folder.join("Qt6/plugins");
@@ -92,8 +95,8 @@ pub fn populate_portable_folder(
 
     info!("Bundling Qt QML components...");
     let qt_qml = qmake_command(qmake, "-query QT_INSTALL_QML")
-            .stderr(std::process::Stdio::inherit())
-            .output()?;
+        .stderr(std::process::Stdio::inherit())
+        .output()?;
     let qt_qml = String::from_utf8(qt_qml.stdout)?;
     let qt_qml = PathBuf::from(qt_qml.trim());
     let install_qml_dir = folder.join("Qt6/qml");
@@ -113,12 +116,13 @@ pub fn populate_portable_folder(
         debug!("--> extra search path: {:?}", path);
         common::env::add_lib_search_path(&path);
     }
-    let dependency_libs = get_dependency_libs
-       (&final_exe_path,
+    let dependency_libs = get_dependency_libs(
+        &final_exe_path,
         folder,
         &excludelist_path,
         &includelist_path,
-        false)?;
+        false,
+    )?;
 
     info!("Bundling {} dependencies...", dependency_libs.len());
     for lib in dependency_libs {

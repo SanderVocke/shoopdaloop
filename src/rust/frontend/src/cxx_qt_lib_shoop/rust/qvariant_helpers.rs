@@ -6,9 +6,6 @@ mod ffi {
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
 
-        include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
-
         include!("cxx-qt-lib-shoop/qvariant_helpers.h");
 
         #[rust_name = "qvariant_type_name"]
@@ -16,5 +13,5 @@ mod ffi {
     }
 }
 
-pub use ffi::QVariant;
 pub use ffi::qvariant_type_name;
+pub use ffi::QVariant;

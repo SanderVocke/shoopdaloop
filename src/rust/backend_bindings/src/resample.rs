@@ -1,16 +1,16 @@
-use anyhow;
 use crate::ffi;
+use anyhow;
 use std::sync::Mutex;
 
 pub struct MultichannelAudio {
-    obj : Mutex<*mut ffi::shoop_multichannel_audio_t>,
+    obj: Mutex<*mut ffi::shoop_multichannel_audio_t>,
 }
 
 unsafe impl Send for MultichannelAudio {}
 unsafe impl Sync for MultichannelAudio {}
 
 impl MultichannelAudio {
-    pub fn new(n_channels : u32, n_frames : u32) -> Result<Self, anyhow::Error> {
+    pub fn new(n_channels: u32, n_frames: u32) -> Result<Self, anyhow::Error> {
         let obj = unsafe { ffi::alloc_multichannel_audio(n_channels, n_frames) };
         if obj.is_null() {
             Err(anyhow::anyhow!("alloc_multichannel_audio() failed"))
@@ -20,7 +20,7 @@ impl MultichannelAudio {
         }
     }
 
-    pub fn resample(&self, new_n_frames : u32) -> Result<Self, anyhow::Error> {
+    pub fn resample(&self, new_n_frames: u32) -> Result<Self, anyhow::Error> {
         let guard = self.obj.lock().unwrap();
         let self_obj = *guard;
         let new_obj = unsafe { ffi::resample_audio(self_obj, new_n_frames) };
@@ -32,17 +32,25 @@ impl MultichannelAudio {
         }
     }
 
-    pub fn at(&self, frame : u32, channel: u32) -> Result<f32, anyhow::Error> {
+    pub fn at(&self, frame: u32, channel: u32) -> Result<f32, anyhow::Error> {
         let guard = self.obj.lock().unwrap();
         let self_obj = *guard;
-        let value = unsafe { *(*self_obj).data.offset((frame * (*self_obj).n_channels + channel) as isize) };
+        let value = unsafe {
+            *(*self_obj)
+                .data
+                .offset((frame * (*self_obj).n_channels + channel) as isize)
+        };
         Ok(value)
     }
 
-    pub fn set(&self, frame : u32, channel: u32, value: f32) -> Result<(), anyhow::Error> {
+    pub fn set(&self, frame: u32, channel: u32, value: f32) -> Result<(), anyhow::Error> {
         let guard = self.obj.lock().unwrap();
         let self_obj = *guard;
-        unsafe { *(*self_obj).data.offset((frame * (*self_obj).n_channels + channel) as isize) = value };
+        unsafe {
+            *(*self_obj)
+                .data
+                .offset((frame * (*self_obj).n_channels + channel) as isize) = value
+        };
         Ok(())
     }
 }

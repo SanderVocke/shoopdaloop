@@ -9,18 +9,16 @@ mod ffi {
         include!("cxx-qt-lib-shoop/qvariant_qvariantmap.h");
 
         #[rust_name = "qvariant_as_qvariantmap"]
-        fn qvariantAsQvariantMap(v : &QVariant) -> Result<QMap_QString_QVariant>;
+        fn qvariantAsQvariantMap(v: &QVariant) -> Result<QMap_QString_QVariant>;
 
         #[rust_name = "qvariantmap_as_qvariant"]
-        fn qvariantmapAsQvariant(v : &QMap_QString_QVariant) -> Result<QVariant>;
+        fn qvariantmapAsQvariant(v: &QMap_QString_QVariant) -> Result<QVariant>;
 
         #[rust_name = "qvariant_convertible_to_qvariantmap"]
-        fn qvariantConvertibleToQvariantmap(v : &QVariant) -> Result<bool>;
+        fn qvariantConvertibleToQvariantmap(v: &QVariant) -> Result<bool>;
     }
 }
 
 pub use ffi::{
-    qvariant_as_qvariantmap,
-    qvariantmap_as_qvariant,
-    qvariant_convertible_to_qvariantmap
+    qvariant_as_qvariantmap, qvariant_convertible_to_qvariantmap, qvariantmap_as_qvariant,
 };

@@ -1,6 +1,6 @@
-use common::logging::macros::*;
-use backend_bindings::BackendSession;
 use backend_bindings::AudioDriver;
+use backend_bindings::BackendSession;
+use common::logging::macros::*;
 use std::time;
 shoop_log_unit!("Frontend.BackendWrapper");
 
@@ -72,7 +72,7 @@ pub mod ffi {
         pub fn get_gui_thread(self: &BackendWrapper) -> *mut QThread;
 
         #[qinvokable]
-        pub fn get_backend_thread(self : &BackendWrapper) -> *mut QThread;
+        pub fn get_backend_thread(self: &BackendWrapper) -> *mut QThread;
 
         #[qinvokable]
         pub fn close(self: Pin<&mut BackendWrapper>);
@@ -96,7 +96,12 @@ pub mod ffi {
         pub fn dummy_run_requested_frames(self: Pin<&mut BackendWrapper>);
 
         #[qinvokable]
-        pub fn dummy_add_external_mock_port(self: Pin<&mut BackendWrapper>, _name: QString, _direction: i32, _data_type: i32);
+        pub fn dummy_add_external_mock_port(
+            self: Pin<&mut BackendWrapper>,
+            _name: QString,
+            _direction: i32,
+            _data_type: i32,
+        );
 
         #[qinvokable]
         pub fn dummy_remove_external_mock_port(self: Pin<&mut BackendWrapper>, _name: QString);
@@ -123,17 +128,22 @@ pub mod ffi {
         pub fn abort_on_process_thread(self: Pin<&mut BackendWrapper>);
 
         #[qinvokable]
-        pub fn find_external_ports(self: Pin<&mut BackendWrapper>, _maybe_name_regex: QString, _port_direction: i32, _data_type: i32) -> QList_QVariant;
+        pub fn find_external_ports(
+            self: Pin<&mut BackendWrapper>,
+            _maybe_name_regex: QString,
+            _port_direction: i32,
+            _data_type: i32,
+        ) -> QList_QVariant;
     }
 
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
 
-        #[rust_name="qquickitem_from_ref_backend_wrapper"]
-        unsafe fn qquickitemFromRef(obj : &BackendWrapper) -> &QQuickItem;
+        #[rust_name = "qquickitem_from_ref_backend_wrapper"]
+        unsafe fn qquickitemFromRef(obj: &BackendWrapper) -> &QQuickItem;
 
-        #[rust_name="qquickitem_from_ptr_backend_wrapper"]
-        unsafe fn qquickitemFromPtr(obj : *mut BackendWrapper) -> *mut QQuickItem;
+        #[rust_name = "qquickitem_from_ptr_backend_wrapper"]
+        unsafe fn qquickitemFromPtr(obj: *mut BackendWrapper) -> *mut QQuickItem;
 
         include!("cxx-qt-shoop/make_unique.h");
         #[rust_name = "make_unique_backend_wrapper"]
@@ -141,39 +151,41 @@ pub mod ffi {
 
         include!("cxx-qt-shoop/qobject_classname.h");
         #[rust_name = "qobject_class_name_backend_wrapper"]
-        fn qobject_class_name(obj : &BackendWrapper) -> Result<&str>;
+        fn qobject_class_name(obj: &BackendWrapper) -> Result<&str>;
 
         include!("cxx-qt-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_backend_wrapper"]
-        fn register_qml_type(inference_example: &BackendWrapper,
-                             module_name: &mut String,
-                             version_major: i64, version_minor: i64,
-                             type_name: &mut String);
-        
+        fn register_qml_type(
+            inference_example: &BackendWrapper,
+            module_name: &mut String,
+            version_major: i64,
+            version_minor: i64,
+            type_name: &mut String,
+        );
+
         include!("cxx-qt-shoop/cast_ptr.h");
         #[rust_name = "qobject_ptr_to_backend_ptr"]
-        unsafe fn cast_qobject_ptr(obj : *mut QObject) -> *mut BackendWrapper;
+        unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut BackendWrapper;
     }
 
-    impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments=(*mut QQuickItem,)> for BackendWrapper {}
-    impl cxx_qt::Constructor<(), NewArguments=()> for BackendWrapper {}
-
+    impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)> for BackendWrapper {}
+    impl cxx_qt::Constructor<(), NewArguments = ()> for BackendWrapper {}
 }
 
-use ffi::*;
 pub use ffi::BackendWrapper;
+use ffi::*;
 
 #[derive(Copy, Clone)]
 pub struct BackendWrapperUpdateData {
-    pub xruns : i32,
-    pub dsp_load : f32,
-    pub last_processed : i32,
-    pub n_audio_buffers_created : i32,
-    pub n_audio_buffers_available : i32
+    pub xruns: i32,
+    pub dsp_load: f32,
+    pub last_processed: i32,
+    pub n_audio_buffers_created: i32,
+    pub n_audio_buffers_available: i32,
 }
 pub struct BackendWrapperRust {
     // Properties
-    ready : bool,
+    ready: bool,
     update_interval_ms: i32,
     actual_backend_type: i32,
     client_name_hint: QString,
@@ -184,21 +196,21 @@ pub struct BackendWrapperRust {
     driver_setting_overrides: QMap_QString_QVariant,
     n_audio_buffers_created: i32,
     n_audio_buffers_available: i32,
-    last_update_interval : f32,
+    last_update_interval: f32,
 
     // Rust-side only
-    pub driver : Option<AudioDriver>,
-    pub session : Option<BackendSession>,
-    pub update_data : Option<BackendWrapperUpdateData>,
-    pub closed : bool,
-    pub last_updated : Option<time::Instant>,
+    pub driver: Option<AudioDriver>,
+    pub session: Option<BackendSession>,
+    pub update_data: Option<BackendWrapperUpdateData>,
+    pub closed: bool,
+    pub last_updated: Option<time::Instant>,
 }
 
 impl Default for BackendWrapperRust {
     fn default() -> BackendWrapperRust {
         BackendWrapperRust {
             // Properties
-            ready : false,
+            ready: false,
             update_interval_ms: 50,
             actual_backend_type: 0,
             client_name_hint: QString::default(),
@@ -210,20 +222,24 @@ impl Default for BackendWrapperRust {
             n_audio_buffers_available: 0,
             n_audio_buffers_created: 0,
             last_update_interval: 1.0,
-            
+
             // Rust-side only
-            driver : None,
-            session : None,
-            update_data : None,
-            closed : false,
-            last_updated : None,
+            driver: None,
+            session: None,
+            update_data: None,
+            closed: false,
+            last_updated: None,
         }
     }
 }
 
 impl crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem for BackendWrapper {
-    unsafe fn mut_qquickitem_ptr (&mut self) -> *mut QQuickItem { qquickitem_from_ptr_backend_wrapper(self as *mut Self) }
-    unsafe fn ref_qquickitem_ptr (& self) -> *const QQuickItem { qquickitem_from_ref_backend_wrapper(self) as *const QQuickItem }
+    unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {
+        qquickitem_from_ptr_backend_wrapper(self as *mut Self)
+    }
+    unsafe fn ref_qquickitem_ptr(&self) -> *const QQuickItem {
+        qquickitem_from_ref_backend_wrapper(self) as *const QQuickItem
+    }
 }
 
 impl crate::cxx_qt_lib_shoop::qquickitem::IsQQuickItem for BackendWrapper {}
@@ -233,29 +249,32 @@ impl cxx_qt::Constructor<(*mut QQuickItem,)> for BackendWrapper {
     type InitializeArguments = (); // Will be passed to the "initialize" function
     type NewArguments = (*mut QQuickItem,); // Will be passed to the "new" function
 
-    fn route_arguments(args: (*mut QQuickItem,)) -> (
+    fn route_arguments(
+        args: (*mut QQuickItem,),
+    ) -> (
         Self::NewArguments,
         Self::BaseArguments,
-        Self::InitializeArguments
+        Self::InitializeArguments,
     ) {
         (args, args, ())
     }
 
-    fn new(_parent : (*mut QQuickItem,)) -> BackendWrapperRust {
+    fn new(_parent: (*mut QQuickItem,)) -> BackendWrapperRust {
         BackendWrapperRust::default()
     }
 }
-
 
 impl cxx_qt::Constructor<()> for BackendWrapper {
     type BaseArguments = (); // Will be passed to the base class constructor
     type InitializeArguments = (); // Will be passed to the "initialize" function
     type NewArguments = (); // Will be passed to the "new" function
 
-    fn route_arguments(_args: ()) -> (
+    fn route_arguments(
+        _args: (),
+    ) -> (
         Self::NewArguments,
         Self::BaseArguments,
-        Self::InitializeArguments
+        Self::InitializeArguments,
     ) {
         ((), (), ())
     }

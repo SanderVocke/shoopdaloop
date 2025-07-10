@@ -1,11 +1,11 @@
-use anyhow;
 use crate::ffi;
+use anyhow;
 use std::sync::Mutex;
 
 use crate::audio_driver::AudioDriver;
-use crate::shoop_loop::Loop;
 use crate::common::BackendResult;
 use crate::fx_chain::FXChain;
+use crate::shoop_loop::Loop;
 use std::ffi::CStr;
 use std::slice;
 
@@ -24,7 +24,10 @@ pub struct ProfilingReport {
 impl ProfilingReport {
     pub fn new(obj: &ffi::shoop_profiling_report_t) -> Self {
         let items_slice = unsafe { slice::from_raw_parts(obj.items, obj.n_items as usize) };
-        let items = items_slice.iter().map(|item| ProfilingReportItem::new(item)).collect();
+        let items = items_slice
+            .iter()
+            .map(|item| ProfilingReportItem::new(item))
+            .collect();
         ProfilingReport { items }
     }
 }
@@ -59,7 +62,7 @@ impl BackendSessionState {
 }
 
 pub struct BackendSession {
-    obj : Mutex<*mut ffi::shoop_backend_session_t>,
+    obj: Mutex<*mut ffi::shoop_backend_session_t>,
 }
 
 unsafe impl Send for BackendSession {}
@@ -81,7 +84,7 @@ impl BackendSession {
         *guard
     }
 
-    pub fn set_audio_driver(&self, driver : &AudioDriver) -> Result<(), anyhow::Error> {
+    pub fn set_audio_driver(&self, driver: &AudioDriver) -> Result<(), anyhow::Error> {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
         let driver_guard = driver.lock();
@@ -123,7 +126,11 @@ impl BackendSession {
         }
     }
 
-    pub fn create_fx_chain(&self, chain_type: ffi::shoop_fx_chain_type_t, title: &str) -> Result<FXChain, anyhow::Error> {
+    pub fn create_fx_chain(
+        &self,
+        chain_type: ffi::shoop_fx_chain_type_t,
+        title: &str,
+    ) -> Result<FXChain, anyhow::Error> {
         let obj = unsafe { self.unsafe_backend_ptr() };
         let c_title = std::ffi::CString::new(title).expect("Failed to create CString");
         let chain_ptr = unsafe { ffi::create_fx_chain(obj, chain_type, c_title.as_ptr()) };

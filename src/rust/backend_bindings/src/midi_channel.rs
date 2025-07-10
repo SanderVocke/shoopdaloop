@@ -1,10 +1,10 @@
-use anyhow;
 use crate::ffi;
+use anyhow;
 use std::sync::Mutex;
 
-use crate::midi_port::MidiPort;
 use crate::channel::ChannelMode;
 use crate::midi::MidiEvent;
+use crate::midi_port::MidiPort;
 
 pub struct MidiChannelState {
     pub mode: ChannelMode,
@@ -27,7 +27,7 @@ impl MidiChannelState {
             start_offset: obj.start_offset,
             played_back_sample: match obj.played_back_sample >= 0 {
                 true => Some(obj.played_back_sample as u32),
-                false => None
+                false => None,
             },
             n_preplay_samples: obj.n_preplay_samples,
             data_dirty: obj.data_dirty != 0,
@@ -36,16 +36,18 @@ impl MidiChannelState {
 }
 
 pub struct MidiChannel {
-    obj : Mutex<*mut ffi::shoopdaloop_loop_midi_channel_t>,
+    obj: Mutex<*mut ffi::shoopdaloop_loop_midi_channel_t>,
 }
 
 unsafe impl Send for MidiChannel {}
 unsafe impl Sync for MidiChannel {}
 
 impl MidiChannel {
-    pub fn new(raw : *mut ffi::shoopdaloop_loop_midi_channel_t) -> Result<Self, anyhow::Error> {
+    pub fn new(raw: *mut ffi::shoopdaloop_loop_midi_channel_t) -> Result<Self, anyhow::Error> {
         if raw.is_null() {
-            Err(anyhow::anyhow!("Cannot create MidiChannel from null pointer"))
+            Err(anyhow::anyhow!(
+                "Cannot create MidiChannel from null pointer"
+            ))
         } else {
             let wrapped = Mutex::new(raw);
             Ok(MidiChannel { obj: wrapped })
@@ -63,8 +65,12 @@ impl MidiChannel {
             if data_ptr.is_null() {
                 return Vec::new();
             }
-            let events = std::slice::from_raw_parts((*data_ptr).events, (*data_ptr).n_events as usize);
-            let result: Vec<MidiEvent> = events.iter().map(|event| MidiEvent::new(&**event)).collect();
+            let events =
+                std::slice::from_raw_parts((*data_ptr).events, (*data_ptr).n_events as usize);
+            let result: Vec<MidiEvent> = events
+                .iter()
+                .map(|event| MidiEvent::new(&**event))
+                .collect();
             ffi::destroy_midi_sequence(data_ptr);
             result
         }
@@ -81,7 +87,11 @@ impl MidiChannel {
                 let event_ptr = events_ptr.wrapping_add(i);
                 let event = msgs[i].to_ffi();
                 let new_event_ptr = ffi::alloc_midi_event(event.size);
-                std::ptr::copy_nonoverlapping(event.data, (*new_event_ptr).data, event.size as usize);
+                std::ptr::copy_nonoverlapping(
+                    event.data,
+                    (*new_event_ptr).data,
+                    event.size as usize,
+                );
                 (*new_event_ptr).time = event.time;
                 *event_ptr = new_event_ptr;
             }
@@ -122,7 +132,10 @@ impl MidiChannel {
 
     pub fn set_mode(&self, mode: ChannelMode) {
         unsafe {
-            ffi::set_midi_channel_mode(self.unsafe_backend_ptr(), mode as ffi::shoop_channel_mode_t);
+            ffi::set_midi_channel_mode(
+                self.unsafe_backend_ptr(),
+                mode as ffi::shoop_channel_mode_t,
+            );
         }
     }
 

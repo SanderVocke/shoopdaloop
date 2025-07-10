@@ -2,11 +2,10 @@
 
 use pyo3::prelude::*;
 // use pyo3::exceptions::*;
+use crate::shoop_py_backend::audio_driver::AudioDriver;
 use crate::shoop_py_backend::backend_session::BackendSession;
 use backend_bindings::AudioPortState as BackendAudioPortState;
-use crate::shoop_py_backend::audio_driver::AudioDriver;
 use std::collections::HashMap;
-
 
 #[pyclass]
 pub struct AudioPortState {
@@ -42,7 +41,7 @@ impl AudioPortState {
 
 #[pyclass]
 pub struct AudioPort {
-    pub obj : backend_bindings::AudioPort,
+    pub obj: backend_bindings::AudioPort,
 }
 
 #[pymethods]
@@ -119,26 +118,30 @@ impl AudioPort {
         Ok(self.obj.direction() as i32)
     }
 
-    fn unsafe_backend_ptr (&self) -> usize {
+    fn unsafe_backend_ptr(&self) -> usize {
         unsafe { self.obj.unsafe_backend_ptr() as usize }
     }
 }
 
 #[pyfunction]
-pub fn open_driver_audio_port<'py>
-    (backend_session : &BackendSession,
-     audio_driver : &AudioDriver,
-     name_hint : &str,
-     direction : i32,
-     min_n_ringbuffer_samples : u32) -> PyResult<AudioPort> {
+pub fn open_driver_audio_port<'py>(
+    backend_session: &BackendSession,
+    audio_driver: &AudioDriver,
+    name_hint: &str,
+    direction: i32,
+    min_n_ringbuffer_samples: u32,
+) -> PyResult<AudioPort> {
     let dir = backend_bindings::PortDirection::try_from(direction).unwrap();
-    Ok(AudioPort { obj: backend_bindings::AudioPort::new_driver_port
-                           (&backend_session.obj,
-                            &audio_driver.obj,
-                            name_hint,
-                            &dir,
-                            min_n_ringbuffer_samples)
-                                .unwrap() })
+    Ok(AudioPort {
+        obj: backend_bindings::AudioPort::new_driver_port(
+            &backend_session.obj,
+            &audio_driver.obj,
+            name_hint,
+            &dir,
+            min_n_ringbuffer_samples,
+        )
+        .unwrap(),
+    })
 }
 
 pub fn register_in_module<'py>(m: &Bound<'py, PyModule>) -> PyResult<()> {

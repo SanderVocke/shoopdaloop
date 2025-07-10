@@ -15,9 +15,7 @@ pub mod port;
 pub mod resample;
 pub mod shoop_loop;
 
-pub fn create_py_module<'py>(
-    py : Python<'py>
-) -> Result<Bound<'py, PyModule>, PyErr> {
+pub fn create_py_module<'py>(py: Python<'py>) -> Result<Bound<'py, PyModule>, PyErr> {
     let m = PyModule::new_bound(py, "shoop_py_backend")?;
     resample::register_in_module(&m)?;
     audio_channel::register_in_module(&m)?;

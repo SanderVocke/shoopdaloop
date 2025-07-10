@@ -9,10 +9,14 @@ mod ffi {
         type QSharedPointer_QObject;
 
         #[rust_name = "qsharedpointer_qobject_from_ptr_delete_later"]
-        unsafe fn qSharedPointerFromPtrDeleteLater(ptr: *mut QObject) -> Result<UniquePtr<QSharedPointer_QObject>>;
+        unsafe fn qSharedPointerFromPtrDeleteLater(
+            ptr: *mut QObject,
+        ) -> Result<UniquePtr<QSharedPointer_QObject>>;
 
         #[rust_name = "qsharedpointer_qobject_copy"]
-        unsafe fn qSharedPointerCopy(other: &QSharedPointer_QObject) -> Result<UniquePtr<QSharedPointer_QObject>>;
+        unsafe fn qSharedPointerCopy(
+            other: &QSharedPointer_QObject,
+        ) -> Result<UniquePtr<QSharedPointer_QObject>>;
 
         #[rust_name = "qsharedpointer_qobject_data"]
         unsafe fn qSharedPointerData(ptr: &QSharedPointer_QObject) -> Result<*mut QObject>;
@@ -22,7 +26,9 @@ mod ffi {
 pub use ffi::QSharedPointer_QObject;
 
 impl QSharedPointer_QObject {
-    pub fn from_ptr_delete_later(ptr: *mut ffi::QObject) -> Result<UniquePtr<QSharedPointer_QObject>, cxx::Exception> {
+    pub fn from_ptr_delete_later(
+        ptr: *mut ffi::QObject,
+    ) -> Result<UniquePtr<QSharedPointer_QObject>, cxx::Exception> {
         unsafe { ffi::qsharedpointer_qobject_from_ptr_delete_later(ptr) }
     }
 

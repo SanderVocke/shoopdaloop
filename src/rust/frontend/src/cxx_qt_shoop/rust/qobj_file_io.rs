@@ -1,15 +1,15 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.FileIO");
 
-pub use crate::cxx_qt_shoop::qobj_file_io_bridge::FileIORust;
 use crate::cxx_qt_shoop::qobj_file_io_bridge::ffi::*;
+pub use crate::cxx_qt_shoop::qobj_file_io_bridge::FileIORust;
 
+use dunce;
+use std::env;
 use std::thread;
 use std::time::Duration;
-use std::env;
-use dunce;
 
-pub fn register_qml_singleton(module_name : &str, type_name : &str) {
+pub fn register_qml_singleton(module_name: &str, type_name: &str) {
     let obj = make_unique_fileio();
     let mut mdl = String::from(module_name);
     let mut tp = String::from(type_name);
@@ -18,25 +18,25 @@ pub fn register_qml_singleton(module_name : &str, type_name : &str) {
 
 #[allow(unreachable_code)]
 impl FileIO {
-    pub fn wait_blocking(self : &FileIO, delay_ms : u64) {
+    pub fn wait_blocking(self: &FileIO, delay_ms: u64) {
         debug!("waiting for {} ms", delay_ms);
         thread::sleep(Duration::from_millis(delay_ms));
     }
 
-    pub fn get_current_directory(self : &FileIO) -> QString {
+    pub fn get_current_directory(self: &FileIO) -> QString {
         return match env::current_dir() {
             Ok(p) => match p.to_str() {
-                    Some (pp) => return QString::from(pp),
-                    _ => QString::default(),
-                },
+                Some(pp) => return QString::from(pp),
+                _ => QString::default(),
+            },
             Err(_) => {
                 error!("failed to get current directory");
                 QString::default()
             }
-        }
+        };
     }
 
-    pub fn write_file(self : &FileIO, file_name : QString, data : QString) -> bool {
+    pub fn write_file(self: &FileIO, file_name: QString, data: QString) -> bool {
         let file_name = file_name.to_string();
         let data = data.to_string();
         let result = std::fs::write(&file_name, data);
@@ -44,22 +44,22 @@ impl FileIO {
             Ok(_) => {
                 debug!("wrote file: {}", file_name);
                 return true;
-            },
+            }
             Err(_) => {
                 error!("failed to write file: {}", file_name);
                 return false;
-            },
+            }
         }
     }
 
-    pub fn read_file(self : &FileIO, file_name : QString) -> QString {
+    pub fn read_file(self: &FileIO, file_name: QString) -> QString {
         let file_name = file_name.to_string();
         let result = std::fs::read_to_string(&file_name);
         match result {
             Ok(data) => {
                 debug!("read file: {}", file_name);
                 return QString::from(data.as_str());
-            },
+            }
             Err(_) => {
                 error!("failed to read file: {}", file_name);
                 return QString::default();
@@ -67,7 +67,7 @@ impl FileIO {
         }
     }
 
-    pub fn create_temporary_file(self : &FileIO) -> QString {
+    pub fn create_temporary_file(self: &FileIO) -> QString {
         use tempfile::NamedTempFile;
         let file = NamedTempFile::new();
         match file {
@@ -79,8 +79,8 @@ impl FileIO {
                 return match result {
                     Ok(_) => QString::from(ppath),
                     Err(_) => QString::default(),
-                }
-            },
+                };
+            }
             Err(_) => {
                 error!("failed to create temporary file");
                 return QString::default();
@@ -88,7 +88,7 @@ impl FileIO {
         }
     }
 
-    pub fn generate_temporary_filename(self : &FileIO) -> QString {
+    pub fn generate_temporary_filename(self: &FileIO) -> QString {
         use tempfile::NamedTempFile;
         let temp_file = NamedTempFile::new();
         match temp_file {
@@ -98,7 +98,7 @@ impl FileIO {
                 f.close().expect("Unable to close temporary file");
                 debug!("generated temporary filename: {}", ppath);
                 return QString::from(ppath);
-            },
+            }
             Err(_) => {
                 error!("failed to generate temporary filename");
                 return QString::default();
@@ -106,16 +106,16 @@ impl FileIO {
         }
     }
 
-    pub fn create_temporary_folder(self : &FileIO) -> QString {
+    pub fn create_temporary_folder(self: &FileIO) -> QString {
         use tempfile::tempdir;
         let temp_dir = tempdir();
         match temp_dir {
             Ok(d) => {
-                let path = dunce::canonicalize(d.into_path().to_owned()).unwrap();
+                let path = dunce::canonicalize(d.keep().to_owned()).unwrap();
                 let ppath = path.to_str().unwrap();
                 debug!("created temporary folder: {}", ppath);
                 return QString::from(ppath);
-            },
+            }
             Err(_) => {
                 error!("failed to create temporary folder");
                 return QString::default();
@@ -123,9 +123,9 @@ impl FileIO {
         }
     }
 
-    pub fn delete_recursive(self : &FileIO, path : QString) -> bool {
-        use std::path::Path;
+    pub fn delete_recursive(self: &FileIO, path: QString) -> bool {
         use std::fs;
+        use std::path::Path;
         let path = path.to_string();
         let path = Path::new(&path);
         if path.is_dir() {
@@ -134,11 +134,11 @@ impl FileIO {
                 Ok(_) => {
                     debug!("deleted dir recursive: {}", path.display());
                     return true;
-                },
+                }
                 Err(_) => {
                     error!("failed to delete dir recursive: {}", path.display());
                     return false;
-                },
+                }
             }
         } else if path.is_file() {
             let result = fs::remove_file(path);
@@ -146,18 +146,18 @@ impl FileIO {
                 Ok(_) => {
                     debug!("deleted file: {}", path.display());
                     return true;
-                },
+                }
                 Err(_) => {
                     error!("failed to delete file: {}", path.display());
                     return false;
-                },
+                }
             }
         } else {
             return false;
         }
     }
 
-    pub fn delete_file(self : &FileIO, file_name : QString) -> bool {
+    pub fn delete_file(self: &FileIO, file_name: QString) -> bool {
         use std::fs;
         let file_name = file_name.to_string();
         let result = fs::remove_file(&file_name);
@@ -165,15 +165,15 @@ impl FileIO {
             Ok(_) => {
                 debug!("deleted file: {}", file_name);
                 return true;
-            },
+            }
             Err(_) => {
                 error!("failed to delete file: {}", file_name);
                 return false;
-            },
+            }
         }
     }
 
-    pub fn extract_tarfile(self : &FileIO, tarfile : QString, destination : QString) -> bool {
+    pub fn extract_tarfile(self: &FileIO, tarfile: QString, destination: QString) -> bool {
         use std::fs::File;
         use tar::Archive;
         let tarfile = tarfile.to_string();
@@ -187,18 +187,21 @@ impl FileIO {
                     Ok(_) => {
                         debug!("extracted tarfile: {} into {}", tarfile, destination);
                         return true;
-                    },
+                    }
                     Err(_) => {
-                        error!("failed to extract tarfile: {} into {}", tarfile, destination);
+                        error!(
+                            "failed to extract tarfile: {} into {}",
+                            tarfile, destination
+                        );
                         return false;
-                    },
+                    }
                 }
-            },
+            }
             Err(_) => return false,
         }
     }
 
-    pub fn make_tarfile(self : &FileIO, tarfile : QString, source : QString) -> bool {
+    pub fn make_tarfile(self: &FileIO, tarfile: QString, source: QString) -> bool {
         use std::fs::File;
         use tar::Builder;
         let tarfile = tarfile.to_string();
@@ -212,21 +215,21 @@ impl FileIO {
                     Ok(_) => {
                         debug!("created tarfile: {} from {}", tarfile, source);
                         return true;
-                    },
+                    }
                     Err(_) => {
                         error!("failed to create tarfile: {} from {}", tarfile, source);
                         return false;
-                    },
+                    }
                 }
-            },
+            }
             Err(_) => {
                 error!("failed to create tarfile: {} from {}", tarfile, source);
                 return false;
-            },
+            }
         }
     }
 
-    pub fn basename(self : &FileIO, path : QString) -> QString {
+    pub fn basename(self: &FileIO, path: QString) -> QString {
         use std::path::Path;
         let path = path.to_string();
         let path = Path::new(&path);
@@ -237,14 +240,14 @@ impl FileIO {
         }
     }
 
-    pub fn is_absolute(self : &FileIO, path : QString) -> bool {
+    pub fn is_absolute(self: &FileIO, path: QString) -> bool {
         use std::path::Path;
         let path = path.to_string();
         let path = Path::new(&path);
         return path.is_absolute();
     }
 
-    pub fn realpath(self : &FileIO, path : QString) -> QString {
+    pub fn realpath(self: &FileIO, path: QString) -> QString {
         let path = path.to_string();
         let result = dunce::canonicalize(&path);
         match result {
@@ -252,18 +255,18 @@ impl FileIO {
             Err(_) => {
                 error!("failed to get realpath of: {}", path);
                 return QString::default();
-            },
+            }
         }
     }
 
-    pub fn exists(self : &FileIO, path : QString) -> bool {
+    pub fn exists(self: &FileIO, path: QString) -> bool {
         use std::path::Path;
         let p = path.to_string();
         let pp = Path::new(&p);
         return pp.exists();
     }
 
-    pub fn glob(self : &FileIO, pattern : QString) -> QList_QString {
+    pub fn glob(self: &FileIO, pattern: QString) -> QList_QString {
         use glob::glob;
         let pattern = pattern.to_string();
         let mut paths = QList_QString::default();
@@ -275,17 +278,16 @@ impl FileIO {
                         Ok(p) => {
                             let p = p.to_str().unwrap();
                             paths.append(QString::from(p));
-                        },
-                        Err(_) => {},
+                        }
+                        Err(_) => {}
                     }
                 }
-            },
-            Err(_) => {},
+            }
+            Err(_) => {}
         }
         return paths;
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -366,19 +368,30 @@ mod tests {
 
     #[test]
     fn test_basename() {
-        assert_eq!(make_unique_fileio().basename(QString::from("/a/b/c")), QString::from("c"));
+        assert_eq!(
+            make_unique_fileio().basename(QString::from("/a/b/c")),
+            QString::from("c")
+        );
     }
 
     #[test]
     fn test_is_absolute_no() {
-        assert_eq!(make_unique_fileio().is_absolute(QString::from("a/b/c")), false);
+        assert_eq!(
+            make_unique_fileio().is_absolute(QString::from("a/b/c")),
+            false
+        );
     }
 
     #[test]
     fn test_is_absolute_yes() {
-        assert_eq!(make_unique_fileio().is_absolute(QString::from(
-            if cfg!(windows) { "C:\\a\\b\\c" } else { "/a/b/c" }
-        )), true);
+        assert_eq!(
+            make_unique_fileio().is_absolute(QString::from(if cfg!(windows) {
+                "C:\\a\\b\\c"
+            } else {
+                "/a/b/c"
+            })),
+            true
+        );
     }
 
     #[test]
@@ -387,7 +400,10 @@ mod tests {
         let folder = obj.create_temporary_folder();
         let base = obj.basename(folder.clone());
         let extended = format!("{folder}/../{base}");
-        assert_eq!(obj.realpath(QString::from(&extended)).to_string(), folder.to_string());
+        assert_eq!(
+            obj.realpath(QString::from(&extended)).to_string(),
+            folder.to_string()
+        );
         assert!(obj.delete_recursive(folder));
     }
 
@@ -401,30 +417,38 @@ mod tests {
         std::fs::write(folder.path().join("testfolder").join("test2"), "test").unwrap();
 
         let obj = make_unique_fileio();
-        let qstring_to_pathbuf = |qs : &QString| {
+        let qstring_to_pathbuf = |qs: &QString| {
             let str = qs.to_string();
             let mut pb = PathBuf::new();
             pb.push(str);
             pb
         };
         {
-            let result = obj.glob(QString::from(&format!("{folder}/*", folder = folder.path().to_str().unwrap())));
-            let paths : Vec<PathBuf> = result.iter().map(qstring_to_pathbuf).collect();
-            let expect : Vec<PathBuf> = [
+            let result = obj.glob(QString::from(&format!(
+                "{folder}/*",
+                folder = folder.path().to_str().unwrap()
+            )));
+            let paths: Vec<PathBuf> = result.iter().map(qstring_to_pathbuf).collect();
+            let expect: Vec<PathBuf> = [
                 folder.path().join("test1"),
                 folder.path().join("test2"),
-                folder.path().join("testfolder")
-            ].to_vec();
+                folder.path().join("testfolder"),
+            ]
+            .to_vec();
             assert_eq!(paths, expect);
         }
 
         {
-            let result = obj.glob(QString::from(&format!("{folder}/**/test1", folder = folder.path().to_str().unwrap())));
-            let paths : Vec<PathBuf> = result.iter().map(qstring_to_pathbuf).collect();
-            let expect : Vec<PathBuf> = [
+            let result = obj.glob(QString::from(&format!(
+                "{folder}/**/test1",
+                folder = folder.path().to_str().unwrap()
+            )));
+            let paths: Vec<PathBuf> = result.iter().map(qstring_to_pathbuf).collect();
+            let expect: Vec<PathBuf> = [
                 folder.path().join("test1"),
                 folder.path().join("testfolder/test1"),
-            ].to_vec();
+            ]
+            .to_vec();
             assert_eq!(paths, expect);
         }
     }

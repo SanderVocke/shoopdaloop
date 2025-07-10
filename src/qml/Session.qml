@@ -415,7 +415,7 @@ Rectangle {
         onClicked: forceActiveFocus()
         Connections {
             target: ShoopReleaseFocusNotifier
-            function onFocusReleased() {
+            function onFocus_released() {
                 session_focus_item.forceActiveFocus()
             }
         }

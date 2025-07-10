@@ -1,6 +1,6 @@
-use cxx::Exception;
 use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 use common::logging::macros::*;
+use cxx::Exception;
 shoop_log_unit!("Frontend.Qt");
 
 #[cxx_qt::bridge]
@@ -14,15 +14,15 @@ mod ffi {
         include!("cxx-qt-lib-shoop/connect.h");
 
         #[rust_name = "connect"]
-        unsafe fn connect(obj: *const QObject,
-                          signal : String,
-                          receiver : *const QObject,
-                          slot : String,
-                          connection_type : u32) -> Result<()>;
+        unsafe fn connect(
+            obj: *const QObject,
+            signal: String,
+            receiver: *const QObject,
+            slot: String,
+            connection_type: u32,
+        ) -> Result<()>;
     }
 }
-
-
 
 pub trait QObjectOrConvertible {
     fn qobject_mut(&mut self) -> *mut ffi::QObject;
@@ -34,11 +34,11 @@ where
     T: AsQObject,
 {
     fn qobject_mut(&mut self) -> *mut ffi::QObject {
-        unsafe{ self.qobject_mut() }
+        unsafe { self.qobject_mut() }
     }
 
     fn qobject_ref(&self) -> *const ffi::QObject {
-        unsafe{ self.qobject_ref() }
+        unsafe { self.qobject_ref() }
     }
 }
 
@@ -53,15 +53,15 @@ impl QObjectOrConvertible for crate::cxx_qt_lib_shoop::qobject::QObject {
 
 // Generically connect methods of cxx_qt objects or QObject pointers
 pub fn connect<Sender, Receiver>(
-    sender : &Sender,
-    signal : String,
-    receiver : &Receiver,
-    slot : String,
-    connection_type : u32,
+    sender: &Sender,
+    signal: String,
+    receiver: &Receiver,
+    slot: String,
+    connection_type: u32,
 ) -> Result<(), Exception>
 where
-    Sender : QObjectOrConvertible,
-    Receiver : QObjectOrConvertible,
+    Sender: QObjectOrConvertible,
+    Receiver: QObjectOrConvertible,
 {
     unsafe {
         let sender_qobj = sender.qobject_ref();
@@ -72,15 +72,14 @@ where
 
 // Connect, or if failed, report error via ShoopDaLoop logging
 pub fn connect_or_report<Sender, Receiver>(
-    sender : &Sender,
-    signal : String,
-    receiver : &Receiver,
-    slot : String,
-    connection_type : u32,
-)
-where
-    Sender : QObjectOrConvertible,
-    Receiver : QObjectOrConvertible,
+    sender: &Sender,
+    signal: String,
+    receiver: &Receiver,
+    slot: String,
+    connection_type: u32,
+) where
+    Sender: QObjectOrConvertible,
+    Receiver: QObjectOrConvertible,
 {
     match connect(sender, signal, receiver, slot, connection_type) {
         Ok(_) => (),

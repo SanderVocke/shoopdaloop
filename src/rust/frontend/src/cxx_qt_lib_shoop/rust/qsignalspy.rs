@@ -17,25 +17,25 @@ mod ffi {
         unsafe fn qsignalspyCount(obj: &QSignalSpy) -> Result<i32>;
 
         #[rust_name = "qsignalspy_make_raw"]
-        unsafe fn qsignalspyCreate(obj: *const QObject, signal : String) -> Result<*mut QSignalSpy>;
+        unsafe fn qsignalspyCreate(obj: *const QObject, signal: String) -> Result<*mut QSignalSpy>;
     }
 }
 
 #[repr(C)]
-pub struct QSignalSpyRust {
-}
+pub struct QSignalSpyRust {}
 
 pub use ffi::QSignalSpy;
 
 impl QSignalSpy {
-    pub fn count (&self) -> Result<i32, cxx::Exception> {
-        unsafe {
-            ffi::qsignalspy_count(self)
-        }
+    pub fn count(&self) -> Result<i32, cxx::Exception> {
+        unsafe { ffi::qsignalspy_count(self) }
     }
 }
 
-pub fn make_raw(obj: *const ffi::QObject, signal : String) -> Result<*mut QSignalSpy, cxx::Exception> {
+pub fn make_raw(
+    obj: *const ffi::QObject,
+    signal: String,
+) -> Result<*mut QSignalSpy, cxx::Exception> {
     unsafe { ffi::qsignalspy_make_raw(obj, signal) }
 }
 

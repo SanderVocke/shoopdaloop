@@ -1,13 +1,13 @@
-use anyhow;
 use crate::ffi;
 use crate::integer_enum;
+use anyhow;
 use std::sync::Mutex;
 
 use crate::audio_channel::AudioChannel;
-use crate::midi_channel::MidiChannel;
 use crate::channel::ChannelMode;
+use crate::midi_channel::MidiChannel;
 
-integer_enum!{
+integer_enum! {
     pub enum LoopMode {
         Unknown = ffi::shoop_loop_mode_t_LoopMode_Unknown,
         Stopped = ffi::shoop_loop_mode_t_LoopMode_Stopped,
@@ -20,21 +20,21 @@ integer_enum!{
 }
 
 pub struct LoopState {
-    pub mode : LoopMode,
-    pub length : u32,
-    pub position : u32,
-    pub maybe_next_mode : Option<LoopMode>,
-    pub maybe_next_mode_delay : Option<u32>,
+    pub mode: LoopMode,
+    pub length: u32,
+    pub position: u32,
+    pub maybe_next_mode: Option<LoopMode>,
+    pub maybe_next_mode_delay: Option<u32>,
 }
 
 impl Clone for LoopState {
     fn clone(&self) -> Self {
         LoopState {
-            mode : self.mode,
-            length : self.length,
-            position : self.position,
-            maybe_next_mode : self.maybe_next_mode,
-            maybe_next_mode_delay : self.maybe_next_mode_delay,
+            mode: self.mode,
+            length: self.length,
+            position: self.position,
+            maybe_next_mode: self.maybe_next_mode,
+            maybe_next_mode_delay: self.maybe_next_mode_delay,
         }
     }
 }
@@ -42,11 +42,11 @@ impl Clone for LoopState {
 impl Default for LoopState {
     fn default() -> Self {
         LoopState {
-            mode : LoopMode::Unknown,
-            length : 0,
-            position : 0,
-            maybe_next_mode : None,
-            maybe_next_mode_delay : None,
+            mode: LoopMode::Unknown,
+            length: 0,
+            position: 0,
+            maybe_next_mode: None,
+            maybe_next_mode_delay: None,
         }
     }
 }
@@ -62,19 +62,19 @@ impl PartialEq for LoopState {
 }
 
 impl LoopState {
-    pub fn new(obj : &ffi::shoop_loop_state_info_t) -> Self {
+    pub fn new(obj: &ffi::shoop_loop_state_info_t) -> Self {
         let has_next_mode = obj.maybe_next_mode != ffi::shoop_loop_mode_t_LoopMode_Unknown;
         return LoopState {
-            mode : LoopMode::try_from(obj.mode).unwrap(),
-            length : obj.length,
-            position : obj.position,
-            maybe_next_mode : match has_next_mode {
-                true => Some (LoopMode::try_from(obj.maybe_next_mode).unwrap()),
-                false => None
+            mode: LoopMode::try_from(obj.mode).unwrap(),
+            length: obj.length,
+            position: obj.position,
+            maybe_next_mode: match has_next_mode {
+                true => Some(LoopMode::try_from(obj.maybe_next_mode).unwrap()),
+                false => None,
             },
-            maybe_next_mode_delay : match has_next_mode {
+            maybe_next_mode_delay: match has_next_mode {
                 true => Some(obj.maybe_next_mode_delay),
-                false => None
+                false => None,
             },
         };
     }
@@ -88,7 +88,7 @@ unsafe impl Send for Loop {}
 unsafe impl Sync for Loop {}
 
 impl Loop {
-    pub fn new(obj : *mut ffi::shoopdaloop_loop_t) -> Result<Self, anyhow::Error> {
+    pub fn new(obj: *mut ffi::shoopdaloop_loop_t) -> Result<Self, anyhow::Error> {
         let wrapped = Mutex::new(obj);
         Ok(Loop { obj: wrapped })
     }
@@ -124,7 +124,12 @@ impl Loop {
             return Err(anyhow::anyhow!("Invalid backend object"));
         }
         unsafe {
-            ffi::loop_transition(obj, (to_mode as u32).try_into().unwrap(), maybe_cycles_delay, maybe_to_sync_at_cycle)
+            ffi::loop_transition(
+                obj,
+                (to_mode as u32).try_into().unwrap(),
+                maybe_cycles_delay,
+                maybe_to_sync_at_cycle,
+            )
         };
         Ok(())
     }
@@ -230,7 +235,8 @@ pub fn transition_multiple_loops(
         .iter()
         .map(|l| unsafe { l.unsafe_backend_ptr() })
         .collect();
-    let handles_ptr: *mut *mut ffi::shoopdaloop_loop_t = handles.as_ptr() as *mut *mut ffi::shoopdaloop_loop_t;
+    let handles_ptr: *mut *mut ffi::shoopdaloop_loop_t =
+        handles.as_ptr() as *mut *mut ffi::shoopdaloop_loop_t;
     unsafe {
         ffi::loops_transition(
             handles.len() as u32,

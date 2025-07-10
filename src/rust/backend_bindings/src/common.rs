@@ -1,5 +1,5 @@
-use crate::integer_enum;
 use crate::ffi;
+use crate::integer_enum;
 
 integer_enum! {
     pub enum BackendResult {

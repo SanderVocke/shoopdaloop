@@ -1,5 +1,5 @@
-use crate::integer_enum;
 use crate::ffi;
+use crate::integer_enum;
 
 integer_enum! {
     pub enum PortDirection {
@@ -18,7 +18,12 @@ pub struct ExternalPortDescriptor {
 impl ExternalPortDescriptor {
     pub fn new(ffi_descriptor: &ffi::shoop_external_port_descriptor_t) -> Self {
         ExternalPortDescriptor {
-            name: unsafe { std::ffi::CStr::from_ptr(ffi_descriptor.name).to_str().unwrap().to_string() },
+            name: unsafe {
+                std::ffi::CStr::from_ptr(ffi_descriptor.name)
+                    .to_str()
+                    .unwrap()
+                    .to_string()
+            },
             direction: PortDirection::try_from(ffi_descriptor.direction).unwrap(),
             data_type: PortDataType::try_from(ffi_descriptor.data_type).unwrap(),
         }
@@ -51,9 +56,11 @@ integer_enum! {
 }
 
 impl PortConnectabilityKind {
-    pub fn from_ffi(ffi_kind : u32) -> Self {
-        const INTERNAL : u32 = ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal as u32;
-        const EXTERNAL : u32 = ffi::shoop_port_connectability_t_ShoopPortConnectability_External as u32;
+    pub fn from_ffi(ffi_kind: u32) -> Self {
+        const INTERNAL: u32 =
+            ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal as u32;
+        const EXTERNAL: u32 =
+            ffi::shoop_port_connectability_t_ShoopPortConnectability_External as u32;
         match ffi_kind {
             0 => PortConnectabilityKind::None,
             INTERNAL => PortConnectabilityKind::Internal,
@@ -68,25 +75,31 @@ impl PortConnectabilityKind {
 }
 
 pub struct PortConnectability {
-    pub internal : bool,
-    pub external : bool,
+    pub internal: bool,
+    pub external: bool,
 }
 
 impl PortConnectability {
-    pub fn from_ffi(ffi_connectability : u32) -> Self {
+    pub fn from_ffi(ffi_connectability: u32) -> Self {
         PortConnectability {
-            internal : ffi_connectability & (ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal as u32) != 0,
-            external : ffi_connectability & (ffi::shoop_port_connectability_t_ShoopPortConnectability_External as u32) != 0,
+            internal: ffi_connectability
+                & (ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal as u32)
+                != 0,
+            external: ffi_connectability
+                & (ffi::shoop_port_connectability_t_ShoopPortConnectability_External as u32)
+                != 0,
         }
     }
 
     pub fn to_ffi(&self) -> u32 {
-        let mut ffi_connectability : u32 = 0;
+        let mut ffi_connectability: u32 = 0;
         if self.internal {
-            ffi_connectability |= ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal as u32;
+            ffi_connectability |=
+                ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal as u32;
         }
         if self.external {
-            ffi_connectability |= ffi::shoop_port_connectability_t_ShoopPortConnectability_External as u32;
+            ffi_connectability |=
+                ffi::shoop_port_connectability_t_ShoopPortConnectability_External as u32;
         }
         ffi_connectability
     }

@@ -1,6 +1,6 @@
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
 use backend_bindings::{self, Logger as BackendLogger};
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 use std::collections::HashMap;
 
 #[pyclass(eq, eq_int)]
@@ -47,7 +47,9 @@ impl LogLevel {
     fn py_new(value: u32) -> PyResult<Self> {
         match backend_bindings::LogLevel::try_from(value) {
             Ok(val) => Ok(LogLevel::try_from(val).unwrap()),
-            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid LogLevel")),
+            Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Invalid LogLevel",
+            )),
         }
     }
 
@@ -89,7 +91,7 @@ impl Logger {
 }
 
 #[pyfunction]
-pub fn set_global_logging_level(level : &LogLevel) {
+pub fn set_global_logging_level(level: &LogLevel) {
     backend_bindings::set_global_logging_level(&level.to_ffi());
 }
 

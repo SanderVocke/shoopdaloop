@@ -1,14 +1,16 @@
-use backend_bindings::{PortDataType, PortDirection};
-use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QVariant, QString};
-use crate::cxx_qt_lib_shoop::qvariant_qvariantmap::{qvariant_as_qvariantmap, qvariantmap_as_qvariant};
+use crate::cxx_qt_lib_shoop::qvariant_qvariantmap::{
+    qvariant_as_qvariantmap, qvariantmap_as_qvariant,
+};
 use anyhow::anyhow;
+use backend_bindings::{PortDataType, PortDirection};
 use core::fmt::Debug;
+use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QString, QVariant};
 use std::fmt;
 
 pub struct ExternalPortDescriptor {
-    pub name : String,
-    pub direction : PortDirection,
-    pub data_type : PortDataType,
+    pub name: String,
+    pub direction: PortDirection,
+    pub data_type: PortDataType,
 }
 
 impl Clone for ExternalPortDescriptor {
@@ -16,7 +18,7 @@ impl Clone for ExternalPortDescriptor {
         ExternalPortDescriptor {
             name: self.name.clone(),
             direction: self.direction,
-            data_type: self.data_type
+            data_type: self.data_type,
         }
     }
 }
@@ -24,38 +26,55 @@ impl Clone for ExternalPortDescriptor {
 impl Default for ExternalPortDescriptor {
     fn default() -> Self {
         Self {
-            name : String::from(""),
-            direction : PortDirection::Any,
+            name: String::from(""),
+            direction: PortDirection::Any,
             data_type: PortDataType::Any,
         }
     }
 }
 
 impl ExternalPortDescriptor {
-    pub fn from_qvariantmap(map : &QMap<QMapPair_QString_QVariant>) -> Result<ExternalPortDescriptor, anyhow::Error> {
+    pub fn from_qvariantmap(
+        map: &QMap<QMapPair_QString_QVariant>,
+    ) -> Result<ExternalPortDescriptor, anyhow::Error> {
         let mut rval = ExternalPortDescriptor::default();
 
         if map.len() != 3 {
-            return Err(anyhow!("QVariantMap is not an ExternalPortDescriptor: not 3 keys"));
+            return Err(anyhow!(
+                "QVariantMap is not an ExternalPortDescriptor: not 3 keys"
+            ));
         }
 
         let (name_key, direction_key, data_type_key) = (
-            QString::from("name"), QString::from("direction"), QString::from("data_type")
+            QString::from("name"),
+            QString::from("direction"),
+            QString::from("data_type"),
         );
-        let name_var : QVariant = map.get(&name_key)
+        let name_var: QVariant = map
+            .get(&name_key)
             .ok_or(anyhow!("Not an ExternalPortDescriptor: name missing"))?;
-        let direction_var : QVariant = map.get(&direction_key)
+        let direction_var: QVariant = map
+            .get(&direction_key)
             .ok_or(anyhow!("Not an ExternalPortDescriptor: direction missing"))?;
-        let data_type_var : QVariant = map.get(&data_type_key)
+        let data_type_var: QVariant = map
+            .get(&data_type_key)
             .ok_or(anyhow!("Not an ExternalPortDescriptor: data_type missing"))?;
 
-        let name_qstr = name_var.value::<QString>().ok_or(anyhow!("Not an ExternalPortDescriptor: name not a QString"))?;
-        let direction = direction_var.value::<i32>().ok_or(anyhow!("Not an ExternalPortDescriptor: direction not an int"))?;
-        let data_type = data_type_var.value::<i32>().ok_or(anyhow!("Not an ExternalPortDescriptor: direction not an int"))?;
+        let name_qstr = name_var
+            .value::<QString>()
+            .ok_or(anyhow!("Not an ExternalPortDescriptor: name not a QString"))?;
+        let direction = direction_var.value::<i32>().ok_or(anyhow!(
+            "Not an ExternalPortDescriptor: direction not an int"
+        ))?;
+        let data_type = data_type_var.value::<i32>().ok_or(anyhow!(
+            "Not an ExternalPortDescriptor: direction not an int"
+        ))?;
 
         rval.name = name_qstr.to_string();
-        rval.direction = PortDirection::try_from(direction).map_err(|_| anyhow!("Not an ExternalPortDescriptor: direction out of range"))?;
-        rval.data_type = PortDataType::try_from(data_type).map_err(|_| anyhow!("Not an ExternalPortDescriptor: data_type out of range"))?;
+        rval.direction = PortDirection::try_from(direction)
+            .map_err(|_| anyhow!("Not an ExternalPortDescriptor: direction out of range"))?;
+        rval.data_type = PortDataType::try_from(data_type)
+            .map_err(|_| anyhow!("Not an ExternalPortDescriptor: data_type out of range"))?;
 
         Ok(rval)
     }
@@ -63,7 +82,9 @@ impl ExternalPortDescriptor {
     pub fn to_qvariantmap(self: &Self) -> QMap<QMapPair_QString_QVariant> {
         let mut rval = QMap::<QMapPair_QString_QVariant>::default();
         let (name_key, direction_key, data_type_key) = (
-            QString::from("name"), QString::from("direction"), QString::from("data_type")
+            QString::from("name"),
+            QString::from("direction"),
+            QString::from("data_type"),
         );
         let (name, direction, data_type) = (
             QString::from(self.name.as_str()),
@@ -73,7 +94,7 @@ impl ExternalPortDescriptor {
         let (name_variant, direction_variant, data_type_variant) = (
             QVariant::from(&name),
             QVariant::from(&direction),
-            QVariant::from(&data_type)
+            QVariant::from(&data_type),
         );
         rval.insert(name_key, name_variant);
         rval.insert(direction_key, direction_variant);
@@ -96,7 +117,7 @@ impl TryInto<QVariant> for ExternalPortDescriptor {
 impl TryFrom<QVariant> for ExternalPortDescriptor {
     type Error = anyhow::Error;
 
-    fn try_from(v : QVariant) -> Result<ExternalPortDescriptor, Self::Error> {
+    fn try_from(v: QVariant) -> Result<ExternalPortDescriptor, Self::Error> {
         let qvariantmap = qvariant_as_qvariantmap(&v)?;
         let desc = ExternalPortDescriptor::from_qvariantmap(&qvariantmap)?;
         Ok(desc)
@@ -105,6 +126,10 @@ impl TryFrom<QVariant> for ExternalPortDescriptor {
 
 impl Debug for ExternalPortDescriptor {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ExternalPortDescriptor {{ name: {}, direction: {:?}, data_type: {:?} }}", self.name, self.direction, self.data_type)
+        write!(
+            f,
+            "ExternalPortDescriptor {{ name: {}, direction: {:?}, data_type: {:?} }}",
+            self.name, self.direction, self.data_type
+        )
     }
 }
