@@ -11,8 +11,8 @@ fn generate_dev_launcher_script() -> Result<PathBuf, anyhow::Error> {
 
     #[cfg(not(feature = "prebuild"))]
     {
-        use std::io::Write;
         use config::{self, config::ShoopConfig};
+        use std::io::Write;
 
         let dev_config_path = config::dev_config_path();
         let dev_config_path_str = dev_config_path.to_string_lossy().replace("\"", "");
