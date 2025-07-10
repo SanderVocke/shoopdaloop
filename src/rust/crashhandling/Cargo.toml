@@ -9,6 +9,7 @@ common = { path = "../common" }
 ctor = "0.2"
 log = "0.4"
 uuid = { version = "1.17", features = ["v4"] }
+tempfile = "3.20"
 
 [features]
 # Dummy build to build dependencies only

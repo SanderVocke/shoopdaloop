@@ -12,7 +12,7 @@ pub fn init_crashhandling(
     start_server_arg: &str,
 ) -> Option<crash_handler::CrashHandler> {
     if is_server {
-        info!("Server - Starting crash handling server");
+        info!("Starting crash handling server");
         let mut server =
             Server::with_name(SOCKET_NAME).expect("failed to create crash handling server");
 
@@ -26,17 +26,13 @@ pub fn init_crashhandling(
             fn create_minidump_file(
                 &self,
             ) -> Result<(std::fs::File, std::path::PathBuf), std::io::Error> {
-                let uuid = uuid::Uuid::new_v4();
+                let (dumpfile, dumpfilepath) = tempfile::NamedTempFile::new()
+                    .expect("Could not open temp file for minidump")
+                    .into_parts();
+                let dumpfilepath = dumpfilepath.keep().expect("Could not persist temp file");
 
-                let dump_path = std::path::PathBuf::from(format!("crashdumps/{uuid}.dmp"));
-
-                if let Some(dir) = dump_path.parent() {
-                    if !dir.try_exists()? {
-                        std::fs::create_dir_all(dir)?;
-                    }
-                }
-                let file = std::fs::File::create(&dump_path)?;
-                Ok((file, dump_path))
+                info!("Writing minidump to {}", dumpfilepath.display());
+                Ok((dumpfile, dumpfilepath))
             }
 
             /// Called when a crash has been fully written as a minidump to the provided
@@ -49,10 +45,10 @@ pub fn init_crashhandling(
                     Ok(mut md_bin) => {
                         use std::io::Write;
                         let _ = md_bin.file.flush();
-                        info!("Server - Wrote minidump to disk");
+                        info!("Done writing minidump");
                     }
                     Err(e) => {
-                        error!("Server - Failed to write minidump: {:#}", e);
+                        error!("Failed to write minidump: {:#}", e);
                     }
                 }
 
@@ -62,7 +58,7 @@ pub fn init_crashhandling(
 
             fn on_message(&self, kind: u32, buffer: Vec<u8>) {
                 info!(
-                    "Server - Crash handling message of kind {kind}, message: {}",
+                    "Crash handling server: client sent msg of type {kind}, message: {}",
                     String::from_utf8(buffer).unwrap()
                 );
             }
@@ -99,16 +95,11 @@ pub fn init_crashhandling(
     };
 
     // Register our exception handler
-    client.send_message(1, "Test message").unwrap();
+    // client.send_message(1, "Test message").unwrap();
 
     #[allow(unsafe_code)]
     let _handler = crash_handler::CrashHandler::attach(unsafe {
         crash_handler::make_crash_event(move |crash_context: &crash_handler::CrashContext| {
-            println!("CRASH");
-
-            // Before we request the crash, send a message to the server
-            client.send_message(2, "Client - Detected a crash").unwrap();
-
             // Send a ping to the server, this ensures that all messages that have been sent
             // are "flushed" before the crash event is sent. This is only really useful
             // on macos where messages and crash events are sent via different, unsynchronized,
@@ -116,7 +107,13 @@ pub fn init_crashhandling(
             // the non-crash messages are received/processed
             client.ping().unwrap();
 
-            crash_handler::CrashEventResult::Handled(client.request_dump(crash_context).is_ok())
+            let result = crash_handler::CrashEventResult::Handled(
+                client.request_dump(crash_context).is_ok(),
+            );
+
+            error!("Crash detected - requested minidump");
+
+            result
         })
     })
     .expect("failed to attach signal handler");
