@@ -67,7 +67,7 @@ runs:
     if: always() && inputs.allow_warnings != 'true'
     shell: wrap-shell {0}
     run: |
-      echo "RUSTFLAGS=-Dwarnings" | tee -a $GITHUB_ENV
+      echo "RUSTFLAGS=$RUSTFLAGS -Dwarnings" | tee -a $GITHUB_ENV
 
   - name: Build main packages
     if: always()

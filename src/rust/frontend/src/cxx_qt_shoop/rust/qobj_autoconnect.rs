@@ -199,9 +199,10 @@ impl AutoConnect {
                         }
                         Err(e) => {
                             error!(
-                                "{} failed to auto-connect to {}: {:?}",
+                                "{} failed to auto-connect to {}: {}. Enable debug logging for more details.",
                                 my_name, candidate.name, e
                             );
+                            debug!("Detailed error message:\n{:?}", e);
                         }
                     }
                 } else if is_connected {
@@ -222,7 +223,8 @@ impl AutoConnect {
         match self.update_with_result() {
             Ok(()) => (),
             Err(e) => {
-                error!("Failed to update: {:?}", e);
+                error!("Failed to update: {}. Enable debug logging for more details.", e);
+                debug!("Detailed error message:\n{:?}", e);
             }
         }
     }
@@ -232,7 +234,8 @@ impl AutoConnect {
             match self.initialize_impl_with_result() {
                 Ok(()) => (),
                 Err(e) => {
-                    error!("Failed to initialize: {:?}", e);
+                    error!("Failed to initialize: {}. Enable debug logging for more details.", e);
+                    debug!("Detailed error message:\n{:?}", e);
                 }
             }
         }

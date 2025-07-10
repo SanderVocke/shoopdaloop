@@ -322,7 +322,7 @@ impl AudioDriver {
         r_state
     }
 
-    pub fn lock(&self) -> std::sync::MutexGuard<*mut ffi::shoop_audio_driver_t> {
+    pub fn lock(&self) -> std::sync::MutexGuard<'_, *mut ffi::shoop_audio_driver_t> {
         self.obj.lock().unwrap()
     }
 }
