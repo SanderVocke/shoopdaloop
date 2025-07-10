@@ -96,33 +96,29 @@ fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
 
 fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
-    #[cfg(feature = "prebuild")]
-    {
+    if cfg!(feature = "prebuild") {
         return Ok(());
     }
 
-    #[cfg(not(feature = "prebuild"))]
-    {
-        let write_config =
-            |filename: &PathBuf, config: &config::ShoopConfig| -> Result<(), anyhow::Error> {
-                if filename.exists() {
-                    std::fs::remove_file(filename)?;
-                }
-                let content = config.serialize_toml_values()?;
-                println!("CONFIG! {content}");
-                std::fs::write(filename, content)?;
-                Ok(())
-            };
-        // Write config files
-        let dev_config = dev_config_path();
-        let dev_config_str = dev_config.to_string_lossy();
+    let write_config =
+        |filename: &PathBuf, config: &config::ShoopConfig| -> Result<(), anyhow::Error> {
+            if filename.exists() {
+                std::fs::remove_file(filename)?;
+            }
+            let content = config.serialize_toml_values()?;
+            println!("CONFIG! {content}");
+            std::fs::write(filename, content)?;
+            Ok(())
+        };
+    // Write config files
+    let dev_config = dev_config_path();
+    let dev_config_str = dev_config.to_string_lossy();
 
-        write_config(&dev_config, &generate_dev_config()?)?;
+    write_config(&dev_config, &generate_dev_config()?)?;
 
-        println!("cargo:rustc-env=SHOOP_DEV_CONFIG_PATH={dev_config_str}");
+    println!("cargo:rustc-env=SHOOP_DEV_CONFIG_PATH={dev_config_str}");
 
-        Ok(())
-    }
+    Ok(())
 }
 
 fn main() {

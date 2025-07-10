@@ -1,16 +1,18 @@
 #[cfg(not(feature = "prebuild"))]
 pub mod config;
-
-use anyhow;
 use std::path::PathBuf;
 
 use common::logging::macros::*;
 shoop_log_unit!("Config");
 
 pub fn dev_config_path() -> PathBuf {
-    PathBuf::from(env!("SHOOP_DEV_CONFIG_PATH"))
+    PathBuf::from(option_env!("SHOOP_DEV_CONFIG_PATH").unwrap())
 }
 
+#[cfg(not(feature = "prebuild"))]
+use anyhow;
+
+#[cfg(not(feature = "prebuild"))]
 pub fn config_dynlib_env_var(
     config: &config::ShoopConfig,
 ) -> Result<(String, String), anyhow::Error> {
