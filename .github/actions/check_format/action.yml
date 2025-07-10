@@ -9,6 +9,5 @@ runs:
     with:
       components: rustfmt
   - name: Check format
-    shell: wrap-shell {0}
     if: always()
     run: cargo fmt --all --check
