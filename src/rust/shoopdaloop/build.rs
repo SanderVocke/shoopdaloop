@@ -1,7 +1,6 @@
 use anyhow;
 use backend;
 use common;
-use std::io::Write;
 use std::path::PathBuf;
 
 fn generate_dev_launcher_script() -> Result<PathBuf, anyhow::Error> {
@@ -12,6 +11,7 @@ fn generate_dev_launcher_script() -> Result<PathBuf, anyhow::Error> {
 
     #[cfg(not(feature = "prebuild"))]
     {
+        use std::io::Write;
         use config::{self, config::ShoopConfig};
 
         let dev_config_path = config::dev_config_path();
@@ -75,66 +75,62 @@ $SCRIPT_DIR//shoopdaloop "$@"
 
 fn main_impl() -> Result<(), anyhow::Error> {
     // If we're pre-building, don't do anything
-    #[cfg(feature = "prebuild")]
-    {
+    if cfg!(feature = "prebuild") {
         println!("cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS=");
         return Ok(());
     }
 
-    #[cfg(not(feature = "prebuild"))]
-    {
-        println!("Creating dev launcher script");
-        let dev_launcher_script = generate_dev_launcher_script()?;
-        println!("cargo:rustc-env=SHOOPDALOOP_DEV_LAUNCHER_SCRIPT={dev_launcher_script:?}");
+    println!("Creating dev launcher script");
+    let dev_launcher_script = generate_dev_launcher_script()?;
+    println!("cargo:rustc-env=SHOOPDALOOP_DEV_LAUNCHER_SCRIPT={dev_launcher_script:?}");
 
-        let profile = std::env::var("PROFILE").unwrap();
-        if !["debug", "release", "release-with-debug"].contains(&profile.as_str()) {
-            return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");
-        }
-        println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
-        #[cfg(target_os = "windows")]
-        {
-            // force linkage by manually importing an arbitrary symbol
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=/INCLUDE:create_audio_driver");
-            println!("cargo:rustc-link-lib=shoopdaloop_backend");
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            // Link to portable lib folder
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/../lib");
-
-            // Use RPATH instead of RUNPATH, which will enable finding transitive dependencies
-            // (e.g. in the vcpkg installation folder)
-            println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--disable-new-dtags");
-        }
-
-        for path in backend::build_time_link_dirs() {
-            println!("cargo:rustc-link-search=native={:?}", path);
-        }
-
-        let backend_runtime_link_paths_str = backend::runtime_link_dirs()
-            .iter()
-            .map(|p| p.to_string_lossy().to_string())
-            .collect::<Vec<String>>()
-            .join(common::util::PATH_LIST_SEPARATOR);
-        println!(
-            "cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS={}",
-            backend_runtime_link_paths_str
-        );
-
-        // Rebuild if changed
-        println!("cargo:rerun-if-changed=build.rs");
-        println!("cargo:rerun-if-changed=src");
-
-        println!("build.rs finished.");
-        Ok(())
+    let profile = std::env::var("PROFILE").unwrap();
+    if !["debug", "release", "release-with-debug"].contains(&profile.as_str()) {
+        return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
     }
+
+    #[cfg(target_os = "linux")]
+    {
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--no-as-needed");
+    }
+    println!("cargo:rustc-link-arg-bin=shoopdaloop=-lshoopdaloop_backend");
+    #[cfg(target_os = "windows")]
+    {
+        // force linkage by manually importing an arbitrary symbol
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=/INCLUDE:create_audio_driver");
+        println!("cargo:rustc-link-lib=shoopdaloop_backend");
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Link to portable lib folder
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,-rpath,$ORIGIN/../lib");
+
+        // Use RPATH instead of RUNPATH, which will enable finding transitive dependencies
+        // (e.g. in the vcpkg installation folder)
+        println!("cargo:rustc-link-arg-bin=shoopdaloop=-Wl,--disable-new-dtags");
+    }
+
+    for path in backend::build_time_link_dirs() {
+        println!("cargo:rustc-link-search=native={:?}", path);
+    }
+
+    let backend_runtime_link_paths_str = backend::runtime_link_dirs()
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect::<Vec<String>>()
+        .join(common::util::PATH_LIST_SEPARATOR);
+    println!(
+        "cargo:rustc-env=SHOOP_RUNTIME_LINK_PATHS={}",
+        backend_runtime_link_paths_str
+    );
+
+    // Rebuild if changed
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src");
+
+    println!("build.rs finished.");
+    Ok(())
 }
 
 fn main() {
