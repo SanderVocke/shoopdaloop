@@ -10,4 +10,5 @@ runs:
       components: rustfmt
   - name: Check format
     if: always()
+    shell: bash
     run: cargo fmt --all --check
