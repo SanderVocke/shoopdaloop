@@ -17,19 +17,32 @@ runs:
       if [ $(ls ${{ inputs.dumps_dir}} | wc -l) -gt 0 ]; then
         echo "upload=true" | tee -a $GITHUB_OUTPUT
       fi
+  
+  - name: install stackwalker (Windows)
+    if: always() && steps.process.ouputs.upload && runner.os == 'Windows'
+    shell: wrap-shell {0}
+    run: |
+       curl -L https://github.com/rust-minidump/rust-minidump/releases/download/v0.26.0/minidump-stackwalk-x86_64-pc-windows-msvc.zip --output stackwalk.zip
+       unzip stackwalk.zip -d stackwalk
+       echo "$(cygpath -w $(pwd)/stackwalk)" | tee -a $GITHUB_PATH
 
-  - name: Prepare Rust if crashdumps found
-    if: always() && steps.process.outputs.upload
-    uses: dtolnay/rust-toolchain
+  - name: install stackwalker (Linux)
+    if: always() && steps.process.ouputs.upload && runner.os == 'Linux'
+    shell: wrap-shell {0}
+    run: |
+       curl -L https://github.com/rust-minidump/rust-minidump/releases/download/v0.26.0/minidump-stackwalk-x86_64-unknown-linux-gnu.tar.xz --output stackwalk.tar.xz
+       tar -xvf stackwalk.tar.xz
+       STACKWALK=$(pwd)/$(find . -name "minidump-stackwalk")
+       echo "$(dirname $STACKWALK)" | tee -a $GITHUB_PATH
+
+  # TODO: MacOS
 
   - name: Process crash dumps if found
     if: always() && steps.process.outputs.upload
     shell: wrap-shall {0}
     run: |
-      mkdir cargo-tools
-      CARGO_INSTALL_ROOT=$(pwd)/cargo-tools cargo install minidump-stackwalk
       for dump in $(find ${{ inputs.dumps_dir }} -name "*.dmp"); do
-        cargo-tools/bin/minidump-stackwalk --use-local-debuginfo --outfile ${dump}.stackwalk ${dump}
+        minidump-stackwalk --use-local-debuginfo --outfile ${dump}.stackwalk ${dump}
       done
 
   - name: Upload dumps
