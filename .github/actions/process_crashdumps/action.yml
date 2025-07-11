@@ -14,7 +14,9 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      if [ $(ls ${{ inputs.dumps_dir}} | wc -l) -gt 0 ]; then
+      set -x
+      ls ${{ inputs.dumps_dir }}
+      if [ $(ls ${{ inputs.dumps_dir }} | wc -l) -gt 0 ]; then
         echo "upload=true" | tee -a $GITHUB_OUTPUT
       fi
   
