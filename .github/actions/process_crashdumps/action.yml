@@ -21,7 +21,7 @@ runs:
       fi
   
   - name: install stackwalker (Windows)
-    if: always() && steps.process.ouputs.upload && runner.os == 'Windows'
+    if: always() && steps.process.outputs.upload && runner.os == 'Windows'
     shell: wrap-shell {0}
     run: |
        curl -L https://github.com/rust-minidump/rust-minidump/releases/download/v0.26.0/minidump-stackwalk-x86_64-pc-windows-msvc.zip --output stackwalk.zip
@@ -29,7 +29,7 @@ runs:
        echo "$(cygpath -w $(pwd)/stackwalk)" | tee -a $GITHUB_PATH
 
   - name: install stackwalker (Linux)
-    if: always() && steps.process.ouputs.upload && runner.os == 'Linux'
+    if: always() && steps.process.outputs.upload && runner.os == 'Linux'
     shell: wrap-shell {0}
     run: |
        curl -L https://github.com/rust-minidump/rust-minidump/releases/download/v0.26.0/minidump-stackwalk-x86_64-unknown-linux-gnu.tar.xz --output stackwalk.tar.xz
