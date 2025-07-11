@@ -3,81 +3,126 @@
 use common::logging::macros::*;
 shoop_log_unit!("CrashHandling");
 
-const SOCKET_NAME: &str = "shoopdaloop-crashhandling";
-
 use minidumper::{Client, Server};
+
+fn crashhandling_server() {
+    info!("Starting crash handling server");
+
+    let socket_name = std::env::args().last().expect("no socket name provided");
+
+    debug!("Server: crash handling socket: {socket_name}");
+
+    let mut server =
+        Server::with_name(socket_name.as_str()).expect("failed to create crash handling server");
+
+    let ab = std::sync::atomic::AtomicBool::new(false);
+
+    struct Handler;
+
+    impl minidumper::ServerHandler for Handler {
+        /// Called when a crash has been received and a backing file needs to be
+        /// created to store it.
+        fn create_minidump_file(
+            &self,
+        ) -> Result<(std::fs::File, std::path::PathBuf), std::io::Error> {
+            let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
+
+            let (dumpfile, dumpfilepath) = (if maybe_dump_folder.is_some() {
+                let path = std::path::PathBuf::from(maybe_dump_folder.as_ref().unwrap());
+                tempfile::NamedTempFile::with_suffix_in(".dmp", &path)
+            } else {
+                tempfile::NamedTempFile::with_suffix(".dmp")
+            })
+            .expect("Could not open temp file for minidump")
+            .into_parts();
+            let dumpfilepath = dumpfilepath.keep().expect("Could not persist temp file");
+
+            info!("Writing minidump to {}", dumpfilepath.display());
+            Ok((dumpfile, dumpfilepath))
+        }
+
+        /// Called when a crash has been fully written as a minidump to the provided
+        /// file. Also returns the full heap buffer as well.
+        fn on_minidump_created(
+            &self,
+            result: Result<minidumper::MinidumpBinary, minidumper::Error>,
+        ) -> minidumper::LoopAction {
+            match result {
+                Ok(mut md_bin) => {
+                    use std::io::Write;
+                    let _ = md_bin.file.flush();
+                    info!("Done writing minidump");
+                }
+                Err(e) => {
+                    error!("Failed to write minidump: {:#}", e);
+                }
+            }
+
+            // Tells the server to exit, which will in turn exit the process
+            minidumper::LoopAction::Exit
+        }
+
+        fn on_message(&self, kind: u32, buffer: Vec<u8>) {
+            info!(
+                "Crash handling server: client sent msg of type {kind}, message: {}",
+                String::from_utf8(buffer).unwrap()
+            );
+        }
+    }
+
+    server
+        .run(Box::new(Handler), &ab, None)
+        .expect("failed to run server");
+
+    info!("Crash handling server finished.");
+
+    std::process::exit(0);
+}
 
 pub fn init_crashhandling(
     is_server: bool,
     start_server_arg: &str,
 ) -> Option<crash_handler::CrashHandler> {
-    if is_server {
-        info!("Starting crash handling server");
-        let mut server =
-            Server::with_name(SOCKET_NAME).expect("failed to create crash handling server");
-
-        let ab = std::sync::atomic::AtomicBool::new(false);
-
-        struct Handler;
-
-        impl minidumper::ServerHandler for Handler {
-            /// Called when a crash has been received and a backing file needs to be
-            /// created to store it.
-            fn create_minidump_file(
-                &self,
-            ) -> Result<(std::fs::File, std::path::PathBuf), std::io::Error> {
-                let (dumpfile, dumpfilepath) = tempfile::NamedTempFile::new()
-                    .expect("Could not open temp file for minidump")
-                    .into_parts();
-                let dumpfilepath = dumpfilepath.keep().expect("Could not persist temp file");
-
-                info!("Writing minidump to {}", dumpfilepath.display());
-                Ok((dumpfile, dumpfilepath))
-            }
-
-            /// Called when a crash has been fully written as a minidump to the provided
-            /// file. Also returns the full heap buffer as well.
-            fn on_minidump_created(
-                &self,
-                result: Result<minidumper::MinidumpBinary, minidumper::Error>,
-            ) -> minidumper::LoopAction {
-                match result {
-                    Ok(mut md_bin) => {
-                        use std::io::Write;
-                        let _ = md_bin.file.flush();
-                        info!("Done writing minidump");
-                    }
-                    Err(e) => {
-                        error!("Failed to write minidump: {:#}", e);
-                    }
-                }
-
-                // Tells the server to exit, which will in turn exit the process
-                minidumper::LoopAction::Exit
-            }
-
-            fn on_message(&self, kind: u32, buffer: Vec<u8>) {
-                info!(
-                    "Crash handling server: client sent msg of type {kind}, message: {}",
-                    String::from_utf8(buffer).unwrap()
-                );
-            }
+    let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
+    if maybe_dump_folder.is_some() {
+        debug!(
+            "Using dump folder: {:?}",
+            maybe_dump_folder.as_ref().unwrap()
+        );
+        let path = std::path::PathBuf::from(maybe_dump_folder.unwrap());
+        if !path.exists() || !path.is_dir() {
+            warn!("Dump folder {path:?} does not exist or is not a directory - crash handler not enabled.");
+            return None;
         }
+    } else {
+        debug!("Dumps will go to OS-specific temp folder");
+    }
 
-        server
-            .run(Box::new(Handler), &ab, None)
-            .expect("failed to run server");
+    if is_server {
+        crashhandling_server();
 
-        info!("Crash handling server finished.");
-
-        std::process::exit(0);
+        // Unreachable
+        return None;
     }
 
     let mut server = None;
 
+    // Determine which socket to open
+    let socket_name: String = if cfg!(target_os = "linux") {
+        format!("shoopdaloop-server-{}", uuid::Uuid::new_v4())
+    } else {
+        let dir = tempfile::tempdir()
+            .expect("Unable to create temporary dir for crash handling socket")
+            .keep();
+        let dirpath = dir.join("shoop.crashsocket");
+        dirpath.to_str().unwrap().to_string()
+    };
+
+    debug!("Client: crash handling socket: {socket_name}");
+
     // Attempt to connect to the server
     let (client, _server) = loop {
-        if let Ok(client) = Client::with_name(SOCKET_NAME) {
+        if let Ok(client) = Client::with_name(socket_name.as_str()) {
             break (client, server.unwrap());
         }
 
@@ -86,6 +131,7 @@ pub fn init_crashhandling(
         server = Some(
             std::process::Command::new(exe)
                 .arg(start_server_arg)
+                .arg(socket_name.as_str())
                 .spawn()
                 .expect("unable to spawn server process"),
         );

@@ -584,115 +584,115 @@ jobs:
   # ## Crash collection
   # ##############################################################
 
-  collect_crashes:
-    runs-on: ubuntu-latest
-    needs:
-      - build_linux
-      - test_linux
-      - build_macos
-      - test_macos
-      - build_windows
-      - test_windows
-    if: always()
-    container:
-      image: archlinux:latest
-      options: --user root --workdir /
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    - uses: ./.github/actions/checkpoint_setup
-      with:
-        shell: bash --noprofile --norc -eo pipefail
-    - name: Download artifacts
-      uses: actions/download-artifact@v4
-      with:
-        pattern: crashdumps_*_${{ github.run_number }}
-        path: crashdumps
-    - name: Count crash dumps
-      id: count
-      shell: wrap-shell {0}
-      run: |
-        mkdir -p crashdumps
-        echo "crashdumps=$(ls crashdumps/crashdumps_* | wc -l)" | tee -a $GITHUB_OUTPUT
-        pacman --noconfirm -Syy
-        pacman --noconfirm -S --needed tree git
-    - name: Download debug information
-      uses: actions/download-artifact@v4
-      if: steps.count.outputs.crashdumps != 0
-      with:
-        path: debuginfo
-        pattern: debuginfo_*
-        merge-multiple: true
-    - name: Cache minidump-stackwalk
-      id: cache-minidump
-      uses: actions/cache@v4
-      with:
-        path: minidump-stackwalk
-        key: minidump-stackwalk-1
-    - name: Get minidump package sources
-      if: steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true'
-      shell: wrap-shell {0}
-      run: |
-        pacman --noconfirm -Syy
-        pacman --noconfirm -S --needed git base-devel && git clone https://aur.archlinux.org/minidump-stackwalk.git
-    - name: Makepkg Build
-      id: makepkg
-      if: steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true'
-      uses: edlanglois/pkgbuild-action@v1
-      with:
-        pkgdir: minidump-stackwalk
-    - name: Install minidump package
-      if: steps.count.outputs.crashdumps != 0
-      shell: wrap-shell {0}
-      run: |
-        pacman --noconfirm -U minidump-stackwalk/minidump-stackwalk*.pkg*
-    - name: Process dumps
-      if: steps.count.outputs.crashdumps != 0
-      shell: wrap-shell {0}
-      run: |
-        tree crashdumps
-        if [ -e debuginfo ]; then
-          cp -r debuginfo crashdumps/debuginfo
-          echo "found_debuginfo=true" | tee -a $GITHUB_ENV
-        fi
-        mkdir -p debuginfo/breakpad_symbols
-        mkdir -p crashdumps/debuginfo
-        for dump in $(find crashdumps -name "*.dmp"); do
-          echo ""
-          echo "================================================="
-          echo "Processing $dump..."
-          echo "================================================="
-          minidump-stackwalk $dump debuginfo/breakpad_symbols || true | tee $dump.stackwalk
-        done
-    - name: Upload crash dumps to Bugsplat
-      if: (success() || failure()) && steps.count.outputs.crashdumps != 0
-      shell: wrap-shell {0}
-      run: |
-        for dump in $(find crashdumps -name "*.dmp"); do
-          echo ""
-          echo "================================================="
-          echo "Uploading $dump..."
-          echo "================================================="
-          bash ./scripts/upload_crash_info.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" ${dump}.moreinfo
-        done
-    - uses: actions/setup-node@v4
-      if: (success() || failure()) && steps.count.outputs.crashdumps != 0
-      with:
-        node-version: 19
-    - name: Upload BugSplat debug symbols
-      if: (success() || failure()) && steps.count.outputs.crashdumps != 0 && env.found_debuginfo == 'true'
-      uses: SanderVocke/symbol-upload@test_action
-      with:
-        clientId: "${{ secrets.BUGSPLAT_CLIENT_ID }}"
-        clientSecret: "${{ secrets.BUGSPLAT_CLIENT_SECRET }}"
-        database: shoopdaloop
-        application: shoopdaloop
-        version: git-${{ github.sha }}
-        files: "**/*.sym"
-        directory: crashdumps/debuginfo
-    - name: Upload crash dumps as artifact
-      if: (success() || failure()) && steps.count.outputs.crashdumps != 0
-      uses: actions/upload-artifact@v4
-      with:
-        name: crashdumps_summary
-        path: crashdumps
+  # collect_crashes:
+  #   runs-on: ubuntu-latest
+  #   needs:
+  #     - build_linux
+  #     - test_linux
+  #     - build_macos
+  #     - test_macos
+  #     - build_windows
+  #     - test_windows
+  #   if: always()
+  #   container:
+  #     image: archlinux:latest
+  #     options: --user root --workdir /
+  #   steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v4
+  #   - uses: ./.github/actions/checkpoint_setup
+  #     with:
+  #       shell: bash --noprofile --norc -eo pipefail
+  #   - name: Download artifacts
+  #     uses: actions/download-artifact@v4
+  #     with:
+  #       pattern: crashdumps_*_${{ github.run_number }}
+  #       path: crashdumps
+  #   - name: Count crash dumps
+  #     id: count
+  #     shell: wrap-shell {0}
+  #     run: |
+  #       mkdir -p crashdumps
+  #       echo "crashdumps=$(ls crashdumps/crashdumps_* | wc -l)" | tee -a $GITHUB_OUTPUT
+  #       pacman --noconfirm -Syy
+  #       pacman --noconfirm -S --needed tree git
+  #   - name: Download debug information
+  #     uses: actions/download-artifact@v4
+  #     if: steps.count.outputs.crashdumps != 0
+  #     with:
+  #       path: debuginfo
+  #       pattern: debuginfo_*
+  #       merge-multiple: true
+  #   - name: Cache minidump-stackwalk
+  #     id: cache-minidump
+  #     uses: actions/cache@v4
+  #     with:
+  #       path: minidump-stackwalk
+  #       key: minidump-stackwalk-1
+  #   - name: Get minidump package sources
+  #     if: steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true'
+  #     shell: wrap-shell {0}
+  #     run: |
+  #       pacman --noconfirm -Syy
+  #       pacman --noconfirm -S --needed git base-devel && git clone https://aur.archlinux.org/minidump-stackwalk.git
+  #   - name: Makepkg Build
+  #     id: makepkg
+  #     if: steps.count.outputs.crashdumps != 0 && steps.cache-minidump.outputs.cache-hit != 'true'
+  #     uses: edlanglois/pkgbuild-action@v1
+  #     with:
+  #       pkgdir: minidump-stackwalk
+  #   - name: Install minidump package
+  #     if: steps.count.outputs.crashdumps != 0
+  #     shell: wrap-shell {0}
+  #     run: |
+  #       pacman --noconfirm -U minidump-stackwalk/minidump-stackwalk*.pkg*
+  #   - name: Process dumps
+  #     if: steps.count.outputs.crashdumps != 0
+  #     shell: wrap-shell {0}
+  #     run: |
+  #       tree crashdumps
+  #       if [ -e debuginfo ]; then
+  #         cp -r debuginfo crashdumps/debuginfo
+  #         echo "found_debuginfo=true" | tee -a $GITHUB_ENV
+  #       fi
+  #       mkdir -p debuginfo/breakpad_symbols
+  #       mkdir -p crashdumps/debuginfo
+  #       for dump in $(find crashdumps -name "*.dmp"); do
+  #         echo ""
+  #         echo "================================================="
+  #         echo "Processing $dump..."
+  #         echo "================================================="
+  #         minidump-stackwalk $dump debuginfo/breakpad_symbols || true | tee $dump.stackwalk
+  #       done
+  #   - name: Upload crash dumps to Bugsplat
+  #     if: (success() || failure()) && steps.count.outputs.crashdumps != 0
+  #     shell: wrap-shell {0}
+  #     run: |
+  #       for dump in $(find crashdumps -name "*.dmp"); do
+  #         echo ""
+  #         echo "================================================="
+  #         echo "Uploading $dump..."
+  #         echo "================================================="
+  #         bash ./scripts/upload_crash_info.sh $dump git-${{ github.sha }} "sandervocke@gmail.com" "Found on GitHub Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" ${dump}.moreinfo
+  #       done
+  #   - uses: actions/setup-node@v4
+  #     if: (success() || failure()) && steps.count.outputs.crashdumps != 0
+  #     with:
+  #       node-version: 19
+  #   - name: Upload BugSplat debug symbols
+  #     if: (success() || failure()) && steps.count.outputs.crashdumps != 0 && env.found_debuginfo == 'true'
+  #     uses: SanderVocke/symbol-upload@test_action
+  #     with:
+  #       clientId: "${{ secrets.BUGSPLAT_CLIENT_ID }}"
+  #       clientSecret: "${{ secrets.BUGSPLAT_CLIENT_SECRET }}"
+  #       database: shoopdaloop
+  #       application: shoopdaloop
+  #       version: git-${{ github.sha }}
+  #       files: "**/*.sym"
+  #       directory: crashdumps/debuginfo
+  #   - name: Upload crash dumps as artifact
+  #     if: (success() || failure()) && steps.count.outputs.crashdumps != 0
+  #     uses: actions/upload-artifact@v4
+  #     with:
+  #       name: crashdumps_summary
+  #       path: crashdumps

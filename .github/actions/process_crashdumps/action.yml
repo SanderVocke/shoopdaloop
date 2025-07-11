@@ -18,6 +18,20 @@ runs:
         echo "upload=true" | tee -a $GITHUB_OUTPUT
       fi
 
+  - name: Prepare Rust if crashdumps found
+    if: always() && steps.process.outputs.upload
+    uses: dtolnay/rust-toolchain
+
+  - name: Process crash dumps if found
+    if: always() && steps.process.outputs.upload
+    shell: wrap-shall {0}
+    run: |
+      mkdir cargo-tools
+      CARGO_INSTALL_ROOT=$(pwd)/cargo-tools cargo install minidump-stackwalk
+      for dump in $(find ${{ inputs.dumps_dir }} -name "*.dmp"); do
+        cargo-tools/bin/minidump-stackwalk --use-local-debuginfo --outfile ${dump}.stackwalk ${dump}
+      done
+
   - name: Upload dumps
     if: always() && steps.process.outputs.upload
     uses: actions/upload-artifact@v4
