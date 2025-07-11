@@ -41,7 +41,7 @@ runs:
 
   - name: Process crash dumps if found
     if: always() && steps.process.outputs.upload
-    shell: wrap-shall {0}
+    shell: wrap-shell {0}
     run: |
       for dump in $(find ${{ inputs.dumps_dir }} -name "*.dmp"); do
         minidump-stackwalk --use-local-debuginfo --outfile ${dump}.stackwalk ${dump}
