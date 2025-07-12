@@ -1,6 +1,7 @@
 */MSVCP*.dll
 */VCRUNTIME*.dll
 */bcryptPrimitives.dll
+*/dbghelp.dll
 */zita-resampler.dll
 */pthreadVC3*.dll
 */python*.dll

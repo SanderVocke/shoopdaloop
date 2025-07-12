@@ -30,6 +30,7 @@ log = "0.4"
 ctor = "0.2"
 toml = "0.8"
 serde = "1.0"
+crashhandling = { path = "../crashhandling" }
 
 [build-dependencies]
 glob = "0.3"
@@ -50,4 +51,5 @@ prebuild = ["frontend/prebuild",
             "backend/prebuild",
             "py_env/prebuild",
             "common/prebuild",
-            "py_env/prebuild"]
+            "py_env/prebuild",
+            "crashhandling/prebuild"]

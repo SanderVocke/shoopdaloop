@@ -124,7 +124,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       mkdir -p crashdumps
-      echo "SHOOP_CRASH_DIR=crashdumps" | tee -a $GITHUB_ENV
+      echo "SHOOP_CRASHDUMP_DIR=$(pwd)/crashdumps" | tee -a $GITHUB_ENV
   - name: Install Python modules
     if: always()
     shell: wrap-shell {0}
@@ -275,7 +275,6 @@ runs:
     uses: ./.github/actions/process_crashdumps
     with:
       dumps_dir: crashdumps
-      variant: ${{ inputs.name }}
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Upload back-end coverage to CodeCov

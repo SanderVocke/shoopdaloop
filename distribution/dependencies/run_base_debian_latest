@@ -25,3 +25,5 @@ gcc
 
 #for checkout
 git
+
+curl
