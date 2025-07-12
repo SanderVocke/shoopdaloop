@@ -49,7 +49,7 @@ runs:
         mv $f $(dirname $f)/dmp$(basename $f)
       done
       for dump in $(find ${{ inputs.dumps_dir }} -name "*.dmp"); do
-        minidump-stackwalk --use-local-debuginfo --output-file ${dump}.stackwalk ${dump}
+        minidump-stackwalk --features unstable-all --use-local-debuginfo --output-file ${dump}.stackwalk ${dump}
       done
 
   - name: Upload dumps
