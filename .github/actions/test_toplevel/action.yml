@@ -21,6 +21,8 @@ inputs:
   do_qml_tests:
     description: "Whether to do the QML test step."
     default: 'true'
+  sentry_key:
+    type: string
 
 runs:
   using: "composite"
@@ -275,6 +277,7 @@ runs:
     uses: ./.github/actions/process_crashdumps
     with:
       dumps_dir: crashdumps
+      sentry_key: ${{ inputs.sentry_key }}
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Upload back-end coverage to CodeCov
