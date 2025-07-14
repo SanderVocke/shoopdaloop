@@ -110,6 +110,9 @@ pub mod ffi {
         pub fn clear(self: Pin<&mut LoopGui>, length: i32);
 
         #[qinvokable]
+        pub fn close(self: Pin<&mut LoopGui>);
+
+        #[qinvokable]
         pub fn adopt_ringbuffers(
             self: Pin<&mut LoopGui>,
             maybe_reverse_start_cycle: QVariant,
@@ -185,6 +188,10 @@ pub mod ffi {
         #[qsignal]
         #[cxx_name = "nextTransitionDelayChanged"]
         pub unsafe fn next_transition_delay_changed(self: Pin<&mut LoopGui>);
+
+        #[qsignal]
+        #[cxx_name = "backendClose"]
+        pub unsafe fn backend_close(self: Pin<&mut LoopGui>);
 
         #[qsignal]
         fn cycled(self: Pin<&mut LoopGui>, cycle_nr: i32);

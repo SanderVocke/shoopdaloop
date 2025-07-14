@@ -165,6 +165,13 @@ impl LoopGui {
                     "set_sync_source(QVariant)".to_string(),
                     connection_types::QUEUED_CONNECTION,
                 );
+                connect_or_report(
+                    self_ref,
+                    "backendClose()".to_string(),
+                    backend_ref,
+                    "deleteLater()".to_string(),
+                    connection_types::QUEUED_CONNECTION,
+                );
 
                 // Connections : backend object -> GUI
                 connect_or_report(
@@ -229,6 +236,13 @@ impl LoopGui {
                     self.as_mut().cycled(cycle_nr);
                 }
             }
+        }
+    }
+
+    pub fn close(self: Pin<&mut LoopGui>) {
+        debug!(self, "close");
+        unsafe {
+            self.backend_close();
         }
     }
 
