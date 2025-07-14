@@ -63,6 +63,7 @@ runs:
     if: always() && steps.process.outputs.upload
     shell: wrap-shell {0}
     run: |
+      set -x
       for dump in $(find ${{ inputs.dumps_dir }} -name "*.dmp"); do
         metadata=$dump.metadata.json
         if [ -f $metadata ]; then
