@@ -19,3 +19,4 @@ procps-ng
 
 #for checkout
 git
+jq

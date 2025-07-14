@@ -27,3 +27,4 @@ gcc
 git
 
 curl
+jq
