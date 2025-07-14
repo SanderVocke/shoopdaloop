@@ -12,18 +12,33 @@ shoop_log_unit!("CrashHandling");
 
 use minidumper::{Client, Server};
 
-enum _CrashHandlingMessageType {
-    // Given a json snippet, merge it with the existing metadata json
-    // by replacing any keys that are present in the existing metadata json.
-    MergeIntoJsonOverwrite = 0,
-    // Given a json snippet, merge it with the existing metadata json
-    // by adding any keys/values that are present in the existing metadata json.
-    MergeIntoJsonAdd = 1,
+enum CrashHandlingMessageType {
+    // For all the keys in the given JSON object, set the value
+    // of those same keys in the overall metadata json.
+    SetJson = 0,
 }
 
 pub struct CrashHandlerHandle {
     pub sender: mpsc::Sender<()>,
     pub handle: Option<thread::JoinHandle<()>>,
+}
+
+fn set_json(to: &mut JsonValue, from: &JsonValue) -> anyhow::Result<()> {
+    if !from.is_object() {
+        return Err(anyhow::anyhow!("expected object"));
+    }
+    if !to.is_object() {
+        return Err(anyhow::anyhow!("expected object"));
+    }
+
+    let from = from.as_object().unwrap();
+    let to = to.as_object_mut().unwrap();
+
+    for (key, value) in from.iter() {
+        to[key] = value.clone();
+    }
+
+    Ok(())
 }
 
 fn crashhandling_server() {
@@ -117,10 +132,26 @@ fn crashhandling_server() {
         }
 
         fn on_message(&self, kind: u32, buffer: Vec<u8>) {
-            info!(
-                "Crash handling server: client sent msg of type {kind}, message: {}",
-                String::from_utf8(buffer).unwrap()
-            );
+            let content = String::from_utf8(buffer).unwrap();
+            match kind {
+                v if v == CrashHandlingMessageType::SetJson as usize as u32 => {
+                    let result = || -> anyhow::Result<()> {
+                        debug!("Set JSON: {content:?}");
+                        let mut guard = self
+                            .json
+                            .lock()
+                            .map_err(|e| anyhow::anyhow!("Could not lock json: {e:?}"))?;
+                        let incoming_json: JsonValue = serde_json::from_str(content.as_str())?;
+                        set_json(&mut *guard, &incoming_json)?;
+                        Ok(())
+                    }();
+                    match result {
+                        Ok(()) => (),
+                        Err(e) => error!("Failed to write crash metadata json: {e:?}"),
+                    };
+                }
+                _ => error!("Unknown message kind {kind}, content {content}"),
+            };
         }
 
         fn on_client_disconnected(&self, _num_clients: usize) -> minidumper::LoopAction {
