@@ -64,7 +64,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       for dump in $(find ${{ inputs.dumps_dir }} -name "*.dmp"); do
-        curl -X POST 'https://o4506817524924416.ingest.us.sentry.io/api/4509662799986688/minidump/?sentry_key=${{ inputs.sentry_key }}' -F upload_file_minidump=@$dump
+        curl -X POST 'https://o4509665637957632.ingest.de.sentry.io/api/4509665639792720/minidump/?sentry_key=${{ inputs.sentry_key }}' -F upload_file_minidump=@$dump
       done
 
   - name: Upload dumps
