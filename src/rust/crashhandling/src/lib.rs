@@ -1,5 +1,8 @@
 // Note: mostly taken from the example included with the minidumper crate.
 
+use anyhow;
+use serde_json::Value as JsonValue;
+use std::fs::File;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -8,6 +11,15 @@ use common::logging::macros::*;
 shoop_log_unit!("CrashHandling");
 
 use minidumper::{Client, Server};
+
+enum _CrashHandlingMessageType {
+    // Given a json snippet, merge it with the existing metadata json
+    // by replacing any keys that are present in the existing metadata json.
+    MergeIntoJsonOverwrite = 0,
+    // Given a json snippet, merge it with the existing metadata json
+    // by adding any keys/values that are present in the existing metadata json.
+    MergeIntoJsonAdd = 1,
+}
 
 pub struct CrashHandlerHandle {
     pub sender: mpsc::Sender<()>,
@@ -25,8 +37,9 @@ fn crashhandling_server() {
         Server::with_name(socket_name.as_str()).expect("failed to create crash handling server");
 
     let ab = std::sync::atomic::AtomicBool::new(false);
-
-    struct Handler;
+    struct Handler {
+        json: Mutex<JsonValue>,
+    }
 
     impl minidumper::ServerHandler for Handler {
         /// Called when a crash has been received and a backing file needs to be
@@ -61,6 +74,38 @@ fn crashhandling_server() {
                     use std::io::Write;
                     let _ = md_bin.file.flush();
                     info!("Done writing minidump");
+
+                    info!("Writing crash metadata json...");
+                    let path = &md_bin.path;
+
+                    let result = || -> Result<(), anyhow::Error> {
+                        let filename = path
+                            .file_name()
+                            .ok_or(anyhow::anyhow!("Could not get dump filename"))?
+                            .to_str()
+                            .ok_or(anyhow::anyhow!("Could not convert dump filename"))?;
+                        let new_filename = format!("{filename}.metadata.json");
+                        let mut json_path: std::path::PathBuf = path.clone();
+                        json_path.set_file_name(new_filename);
+
+                        // Write the metadata json to this file
+                        let guard = self
+                            .json
+                            .lock()
+                            .map_err(|e| anyhow::anyhow!("Failed to lock json: {e:?}"))?;
+                        let content = serde_json::to_string_pretty(&*guard).map_err(|e| {
+                            anyhow::anyhow!("Failed to serialize metadata json: {e:?}")
+                        })?;
+                        let mut jsonfile = File::create(&json_path)?;
+                        jsonfile.write_all(content.as_bytes())?;
+                        info!("Wrote crash metadata json to {json_path:?}");
+
+                        Ok(())
+                    }();
+                    match result {
+                        Ok(()) => (),
+                        Err(e) => error!("Failed to write crash metadata json: {e:?}"),
+                    };
                 }
                 Err(e) => {
                     error!("Failed to write minidump: {:#}", e);
@@ -85,7 +130,9 @@ fn crashhandling_server() {
 
     server
         .run(
-            Box::new(Handler),
+            Box::new(Handler {
+                json: Mutex::new(serde_json::json!({ "environment": "unknown" })),
+            }),
             &ab,
             Some(std::time::Duration::from_millis(1000)),
         )
