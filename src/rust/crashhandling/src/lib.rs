@@ -181,13 +181,13 @@ fn crashhandling_server() {
         }
     }
 
-    let maybe_base_json : Option<String> = std::env::var("SHOOP_CRASH_METADATA_BASE_JSON").ok();
-    let base_json : JsonValue =
-        if maybe_base_json.is_some() {
-            serde_json::from_str(maybe_base_json.unwrap().as_str()).expect("invalid base crash handling json")
-        } else {
-            serde_json::json!({ "environment": "unknown" })
-        };
+    let maybe_base_json: Option<String> = std::env::var("SHOOP_CRASH_METADATA_BASE_JSON").ok();
+    let base_json: JsonValue = if maybe_base_json.is_some() {
+        serde_json::from_str(maybe_base_json.unwrap().as_str())
+            .expect("invalid base crash handling json")
+    } else {
+        serde_json::json!({ "environment": "unknown" })
+    };
 
     server
         .run(
@@ -370,4 +370,8 @@ pub fn set_crash_json_toplevel_field(key: &str, value: JsonValue) {
 
 pub fn set_crash_json_tag(key: &str, value: JsonValue) {
     set_crash_json_partial(serde_json::json!({"tags": {key: value}}));
+}
+
+pub fn set_crash_json_extra(key: &str, value: JsonValue) {
+    set_crash_json_partial(serde_json::json!({"extra": {key: value}}));
 }
