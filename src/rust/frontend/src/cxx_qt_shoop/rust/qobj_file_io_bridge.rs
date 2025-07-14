@@ -71,9 +71,7 @@ pub mod ffi {
 
         #[rust_name = "make_unique_fileio"]
         fn make_unique() -> UniquePtr<FileIO>;
-    }
 
-    unsafe extern "C++" {
         include!("cxx-qt-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_singleton_file_io"]

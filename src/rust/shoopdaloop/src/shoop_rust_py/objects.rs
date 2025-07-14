@@ -2,6 +2,7 @@ use frontend::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::qobject_to_loop_backe
 use frontend::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
 use frontend::cxx_qt_shoop::qobj_update_thread_bridge::UpdateThread;
 use pyo3::prelude::*;
+use serde_json;
 use std::pin::Pin;
 
 use frontend::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper as CxxQtBackendWrapper;
@@ -21,6 +22,16 @@ use crate::shoop_py_backend::fx_chain::FXChain;
 use crate::shoop_py_backend::midi_channel::MidiChannel;
 use crate::shoop_py_backend::midi_port::MidiPort;
 use crate::shoop_py_backend::shoop_loop::Loop;
+
+#[pyfunction]
+pub fn shoop_rust_set_crash_json_toplevel_field(field_name: &str, json: &str) {
+    crashhandling::set_crash_json_toplevel_field(field_name, serde_json::from_str(json).unwrap());
+}
+
+#[pyfunction]
+pub fn shoop_rust_set_crash_json_tag(tag: &str, json: &str) {
+    crashhandling::set_crash_json_tag(tag, serde_json::from_str(json).unwrap());
+}
 
 #[pyfunction]
 pub fn shoop_rust_get_engine_update_thread_addr() -> u64 {

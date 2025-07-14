@@ -102,7 +102,7 @@ runs:
     run: |
       echo "Uploading debug info..."
       curl -sL https://sentry.io/get-cli/ | SENTRY_CLI_VERSION="2.47.0" sh
-      sentry-cli debug-files upload --include-sources -o ShoopDaLoop -p shoopdaloop --auth-token ${{ inputs.sentry_auth_token }} debug_symbols
+      sentry-cli debug-files upload --include-sources -p shoopdaloop --auth-token ${{ inputs.sentry_auth_token }} debug_symbols
     
 
   # Test binaries for downstream CI

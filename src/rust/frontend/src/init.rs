@@ -10,6 +10,7 @@ fn register_qml_types_and_singletons() {
     qobj_file_io::register_qml_singleton(&mdl, "ShoopFileIO");
     qobj_os_utils::register_qml_singleton(&mdl, "ShoopOSUtils");
     qobj_release_focus_notifier::register_qml_singleton(&mdl, "ShoopReleaseFocusNotifier");
+    qobj_crash_handling::register_qml_singleton(&mdl, "ShoopCrashHandling");
 
     // Types
     qobj_dummy_process_helper::register_qml_type(&mdl, "ShoopDummyProcessHelper");

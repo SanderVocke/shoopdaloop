@@ -128,7 +128,7 @@ find "$input_dir" -type f -print0 | while IFS= read -r -d $'\0' elf_file; do
 
     # 5. Extract debug information to the separate debug file.
     echo "  Extracting debug info to: '$debug_file_path'"
-    # '--only-debug': Extracts only debug sections.
+    # '--only-keep-debug': Extracts only debug sections.
     # '--compress-debug-sections': Compresses the debug sections in the output file.
     objcopy --only-keep-debug --compress-debug-sections "$elf_file" "$debug_file_path"
     if [ $? -ne 0 ]; then
@@ -160,11 +160,9 @@ find "$input_dir" -type f -print0 | while IFS= read -r -d $'\0' elf_file; do
     echo "  Adding GNU debug link to: '$elf_file'"
     # '--add-gnu-debuglink': Adds a .gnu_debuglink section pointing to the separate debug file.
     # Use basename of the *chosen* debug_file_path for the debug link.
-    objcopy --add-gnu-debuglink="$(basename "$debug_file_path")" "$elf_file"
+    objcopy --add-gnu-debuglink="$(basename \"$debug_file_path\")" "$elf_file"
     if [ $? -ne 0 ]; then
         echo "  Error: Failed to add GNU debug link to '$elf_file'."
-        echo "         Removing extracted debug file and skipping this file."
-        rm -f "$debug_file_path" # Clean up the extracted debug file.
         echo ""
         continue
     fi

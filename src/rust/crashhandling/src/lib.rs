@@ -14,8 +14,7 @@ shoop_log_unit!("CrashHandling");
 use minidumper::{Client, Server};
 
 enum CrashHandlingMessageType {
-    // For all the keys in the given JSON object, set the value
-    // of those same keys in the overall metadata json.
+    // Recursively set values in the metadata JSON.
     SetJson = 0,
 }
 
@@ -32,20 +31,33 @@ struct CrashHandlerHandle {
 static CLIENTSIDE_HANDLE: OnceLock<Option<CrashHandlerHandle>> = OnceLock::new();
 
 fn set_json(to: &mut JsonValue, from: &JsonValue) -> anyhow::Result<()> {
-    if !from.is_object() {
-        return Err(anyhow::anyhow!("expected object"));
-    }
-    if !to.is_object() {
-        return Err(anyhow::anyhow!("expected object"));
-    }
+    if from.is_object() {
+        if !to.is_object() {
+            return Err(anyhow::anyhow!("expected object"));
+        }
 
-    let from = from.as_object().unwrap();
-    let to = to.as_object_mut().unwrap();
-
-    for (key, value) in from.iter() {
-        to[key] = value.clone();
+        for (k, v) in from.as_object().unwrap().iter() {
+            if v.is_object() {
+                if to.get(k).is_none() {
+                    to[k] = serde_json::json!({});
+                } else if !to.get(k).unwrap().is_object() {
+                    return Err(anyhow::anyhow!("expected object"));
+                }
+                return set_json(&mut to[k], v);
+            } else if v.is_array() {
+                if to.get(k).is_none() {
+                    to[k] = serde_json::json!([]);
+                } else if !to.get(k).unwrap().is_array() {
+                    return Err(anyhow::anyhow!("expected array"));
+                }
+                return set_json(&mut to[k], v);
+            } else {
+                to[k] = v.clone();
+            }
+        }
+    } else {
+        *to = from.clone();
     }
-
     Ok(())
 }
 
@@ -119,8 +131,10 @@ fn crashhandling_server() {
                         let content = serde_json::to_string_pretty(&*guard).map_err(|e| {
                             anyhow::anyhow!("Failed to serialize metadata json: {e:?}")
                         })?;
+                        let content = format!("{content}\n");
                         let mut jsonfile = File::create(&json_path)?;
                         jsonfile.write_all(content.as_bytes())?;
+                        jsonfile.flush()?;
                         info!("Wrote crash metadata json to {json_path:?}");
 
                         Ok(())
@@ -155,7 +169,7 @@ fn crashhandling_server() {
                     }();
                     match result {
                         Ok(()) => (),
-                        Err(e) => error!("Failed to write crash metadata json: {e:?}"),
+                        Err(e) => error!("Failed to update crash metadata json: {e:?}"),
                     };
                 }
                 _ => error!("Unknown message kind {kind}, content {content}"),
@@ -167,10 +181,18 @@ fn crashhandling_server() {
         }
     }
 
+    let maybe_base_json : Option<String> = std::env::var("SHOOP_CRASH_METADATA_BASE_JSON").ok();
+    let base_json : JsonValue =
+        if maybe_base_json.is_some() {
+            serde_json::from_str(maybe_base_json.unwrap().as_str()).expect("invalid base crash handling json")
+        } else {
+            serde_json::json!({ "environment": "unknown" })
+        };
+
     server
         .run(
             Box::new(Handler {
-                json: Mutex::new(serde_json::json!({ "environment": "unknown" })),
+                json: Mutex::new(base_json),
             }),
             &ab,
             Some(std::time::Duration::from_millis(1000)),
@@ -260,19 +282,17 @@ fn crashhandling_client(start_server_arg: &str) -> CrashHandlerHandle {
 
         loop {
             match receiver.recv_timeout(std::time::Duration::from_millis(100)) {
-                Ok(msg) => match msg.message_type {
-                    CrashHandlingMessageType::SetJson => {
-                        match client_access
-                            .as_ref()
-                            .lock()
-                            .expect("Unable to lock IPC")
-                            .send_message(msg.message_type as usize as u32, msg.message.as_bytes())
-                        {
-                            Ok(_) => (),
-                            Err(err) => warn!("Failed to send message: {}", err),
-                        }
+                Ok(msg) => {
+                    match client_access
+                        .as_ref()
+                        .lock()
+                        .expect("Unable to lock IPC")
+                        .send_message(msg.message_type as usize as u32, msg.message.as_bytes())
+                    {
+                        Ok(_) => (),
+                        Err(err) => warn!("Failed to send message: {}", err),
                     }
-                },
+                }
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                     // Received a signal to stop or sender was dropped
                     info!("Periodic task thread: Stopping.");
@@ -325,29 +345,29 @@ pub fn init_crashhandling(is_server: bool, start_server_arg: &str) {
 
     let handle = crashhandling_client(start_server_arg);
     let _ = CLIENTSIDE_HANDLE.get_or_init(|| -> Option<CrashHandlerHandle> { Some(handle) });
-
-    let maybe_environment: Option<String> = std::env::var("SHOOP_CRASH_ENVIRONMENT").ok();
-    if maybe_environment.is_some() {
-        set_metadata("environment", maybe_environment.as_ref().unwrap().as_str());
-    }
 }
 
-pub fn set_metadata(key: &str, value: &str) {
+pub fn set_crash_json_partial(partial_json: JsonValue) {
     let handle = CLIENTSIDE_HANDLE.get_or_init(|| None);
     if handle.is_none() {
         error!("set_metadata called, but no crash handling client active");
     }
 
     let handle = handle.as_ref().unwrap();
-    let value = serde_json::json!({
-        key: value
-    })
-    .to_string();
+    let content = partial_json.to_string();
     match handle.sender.send(CrashHandlingMessage {
         message_type: CrashHandlingMessageType::SetJson,
-        message: value,
+        message: content,
     }) {
         Ok(_) => (),
         Err(e) => error!("Failed to send crash handling message: {}", e),
     };
+}
+
+pub fn set_crash_json_toplevel_field(key: &str, value: JsonValue) {
+    set_crash_json_partial(serde_json::json!({key: value}));
+}
+
+pub fn set_crash_json_tag(key: &str, value: JsonValue) {
+    set_crash_json_partial(serde_json::json!({"tags": {key: value}}));
 }
