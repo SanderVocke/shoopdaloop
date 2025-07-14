@@ -130,7 +130,7 @@ find "$input_dir" -type f -print0 | while IFS= read -r -d $'\0' elf_file; do
     echo "  Extracting debug info to: '$debug_file_path'"
     # '--only-debug': Extracts only debug sections.
     # '--compress-debug-sections': Compresses the debug sections in the output file.
-    objcopy --only-debug --compress-debug-sections "$elf_file" "$debug_file_path"
+    objcopy --only-keep-debug --compress-debug-sections "$elf_file" "$debug_file_path"
     if [ $? -ne 0 ]; then
         echo "  Error: Failed to extract debug info from '$elf_file'."
         echo "         Skipping this file and cleaning up partial debug file."
