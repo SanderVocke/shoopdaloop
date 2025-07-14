@@ -47,7 +47,7 @@ runs:
     if: always() && steps.process.outputs.upload
     shell: wrap-shell {0}
     run: |
-      for f in ${{ inputs.dumps_dir }}/.*.dmp; do
+      for f in ${{ inputs.dumps_dir }}/.*.dmp*; do
         mv $f $(dirname $f)/dmp$(basename $f)
       done
 
