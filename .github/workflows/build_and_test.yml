@@ -41,7 +41,7 @@ on:
           type: boolean
           default: false
     schedule:
-      - cron: "0 3 * * *" # every day at 3am
+      - cron: "0 1 * * *" # every day at 1am
 
 env:
   checkpoints_enabled: false
