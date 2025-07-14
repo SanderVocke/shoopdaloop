@@ -3,6 +3,7 @@
 use anyhow;
 use serde_json::Value as JsonValue;
 use std::fs::File;
+use std::sync::OnceLock;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -18,10 +19,17 @@ enum CrashHandlingMessageType {
     SetJson = 0,
 }
 
-pub struct CrashHandlerHandle {
-    pub sender: mpsc::Sender<()>,
-    pub handle: Option<thread::JoinHandle<()>>,
+struct CrashHandlingMessage {
+    pub message_type: CrashHandlingMessageType,
+    pub message: String,
 }
+
+struct CrashHandlerHandle {
+    pub sender: mpsc::Sender<CrashHandlingMessage>,
+    pub _handle: Option<thread::JoinHandle<()>>,
+}
+
+static CLIENTSIDE_HANDLE: OnceLock<Option<CrashHandlerHandle>> = OnceLock::new();
 
 fn set_json(to: &mut JsonValue, from: &JsonValue) -> anyhow::Result<()> {
     if !from.is_object() {
@@ -174,8 +182,8 @@ fn crashhandling_server() {
     std::process::exit(0);
 }
 
-pub fn crashhandling_client(start_server_arg: &str) -> CrashHandlerHandle {
-    let (sender, receiver) = mpsc::channel();
+fn crashhandling_client(start_server_arg: &str) -> CrashHandlerHandle {
+    let (sender, receiver) = mpsc::channel::<CrashHandlingMessage>();
     let start_server_arg = start_server_arg.to_string();
 
     let handle = thread::spawn(move || {
@@ -252,7 +260,20 @@ pub fn crashhandling_client(start_server_arg: &str) -> CrashHandlerHandle {
 
         loop {
             match receiver.recv_timeout(std::time::Duration::from_millis(100)) {
-                Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Ok(msg) => match msg.message_type {
+                    CrashHandlingMessageType::SetJson => {
+                        match client_access
+                            .as_ref()
+                            .lock()
+                            .expect("Unable to lock IPC")
+                            .send_message(msg.message_type as usize as u32, msg.message.as_bytes())
+                        {
+                            Ok(_) => (),
+                            Err(err) => warn!("Failed to send message: {}", err),
+                        }
+                    }
+                },
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                     // Received a signal to stop or sender was dropped
                     info!("Periodic task thread: Stopping.");
                     break;
@@ -275,11 +296,11 @@ pub fn crashhandling_client(start_server_arg: &str) -> CrashHandlerHandle {
 
     CrashHandlerHandle {
         sender: sender,
-        handle: Some(handle),
+        _handle: Some(handle),
     }
 }
 
-pub fn init_crashhandling(is_server: bool, start_server_arg: &str) -> Option<CrashHandlerHandle> {
+pub fn init_crashhandling(is_server: bool, start_server_arg: &str) {
     let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
     if maybe_dump_folder.is_some() {
         debug!(
@@ -289,7 +310,7 @@ pub fn init_crashhandling(is_server: bool, start_server_arg: &str) -> Option<Cra
         let path = std::path::PathBuf::from(maybe_dump_folder.unwrap());
         if !path.exists() || !path.is_dir() {
             warn!("Dump folder {path:?} does not exist or is not a directory - crash handler not enabled.");
-            return None;
+            return;
         }
     } else {
         debug!("Dumps will go to OS-specific temp folder");
@@ -299,8 +320,34 @@ pub fn init_crashhandling(is_server: bool, start_server_arg: &str) -> Option<Cra
         crashhandling_server();
 
         // Unreachable
-        return None;
+        return;
     }
 
-    return Some(crashhandling_client(start_server_arg));
+    let handle = crashhandling_client(start_server_arg);
+    let _ = CLIENTSIDE_HANDLE.get_or_init(|| -> Option<CrashHandlerHandle> { Some(handle) });
+
+    let maybe_environment: Option<String> = std::env::var("SHOOP_CRASH_ENVIRONMENT").ok();
+    if maybe_environment.is_some() {
+        set_metadata("environment", maybe_environment.as_ref().unwrap().as_str());
+    }
+}
+
+pub fn set_metadata(key: &str, value: &str) {
+    let handle = CLIENTSIDE_HANDLE.get_or_init(|| None);
+    if handle.is_none() {
+        error!("set_metadata called, but no crash handling client active");
+    }
+
+    let handle = handle.as_ref().unwrap();
+    let value = serde_json::json!({
+        key: value
+    })
+    .to_string();
+    match handle.sender.send(CrashHandlingMessage {
+        message_type: CrashHandlingMessageType::SetJson,
+        message: value,
+    }) {
+        Ok(_) => (),
+        Err(e) => error!("Failed to send crash handling message: {}", e),
+    };
 }
