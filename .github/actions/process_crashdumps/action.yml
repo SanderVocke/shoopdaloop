@@ -64,13 +64,14 @@ runs:
     shell: wrap-shell {0}
     run: |
       for dump in $(find ${{ inputs.dumps_dir }} -name "*.dmp"); do
-        if [ -f $dump.metadata.json ]; then
+        metadata=$dump.metadata.json
+        if [ -f $metadata ]; then
           curl -X POST 'https://o4509665637957632.ingest.de.sentry.io/api/4509665639792720/minidump/?sentry_key=${{ inputs.sentry_key }}' \
-            -F 'upload_file_minidump=@$dump'
+            -F upload_file_minidump=@$dump \
+            -F sentry=@$metadata
         else
           curl -X POST 'https://o4509665637957632.ingest.de.sentry.io/api/4509665639792720/minidump/?sentry_key=${{ inputs.sentry_key }}' \
-            -F 'upload_file_minidump=@$dump' \
-            -F 'sentry=@$dump.metadata.json'
+            -F upload_file_minidump=@$dump
         fi
       done
 
