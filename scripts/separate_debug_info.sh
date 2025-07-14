@@ -19,17 +19,7 @@ usage() {
 # This provides a more user-friendly output for file sizes.
 human_readable_size() {
     local bytes=$1
-    if (( bytes < 1024 )); then
-        echo "${bytes} B"
-    elif (( bytes < 1024 * 1024 )); then
-        # Use 'bc' for floating-point division to get accurate KiB values.
-        printf "%.2f KiB\n" "$(echo "scale=2; $bytes / 1024" | bc)"
-    elif (( bytes < 1024 * 1024 * 1024 )); then
-        # Use 'bc' for floating-point division to get accurate MiB values.
-        printf "%.2f MiB\n" "$(echo "scale=2; $bytes / (1024 * 1024)" | bc)"
-    else
-        # Use 'bc' for floating-point division to get accurate GiB\n" "$(echo "scale=2; $bytes / (1024 * 1024 * 1024)" | bc)"
-    fi
+    echo $(numfmt --to=iec-i --suffix=B --format="%.1f" "$bytes")
 }
 
 # --- Pre-flight Checks ---
