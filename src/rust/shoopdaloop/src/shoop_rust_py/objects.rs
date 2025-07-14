@@ -25,12 +25,28 @@ use crate::shoop_py_backend::shoop_loop::Loop;
 
 #[pyfunction]
 pub fn shoop_rust_set_crash_json_toplevel_field(field_name: &str, json: &str) {
-    crashhandling::set_crash_json_toplevel_field(field_name, serde_json::from_str(json).unwrap());
+    let json_str = json.to_string();
+    let maybe_structured = serde_json::from_str(&json_str);
+    let value = if maybe_structured.is_ok() {
+        maybe_structured.unwrap()
+    } else {
+        serde_json::json!(json_str)
+    };
+
+    crashhandling::set_crash_json_toplevel_field(field_name, value);
 }
 
 #[pyfunction]
 pub fn shoop_rust_set_crash_json_tag(tag: &str, json: &str) {
-    crashhandling::set_crash_json_tag(tag, serde_json::from_str(json).unwrap());
+    let json_str = json.to_string();
+    let maybe_structured = serde_json::from_str(&json_str);
+    let value = if maybe_structured.is_ok() {
+        maybe_structured.unwrap()
+    } else {
+        serde_json::json!(json_str)
+    };
+
+    crashhandling::set_crash_json_tag(tag, value);
 }
 
 #[pyfunction]

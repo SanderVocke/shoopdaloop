@@ -9,16 +9,26 @@ pub fn register_qml_singleton(module_name: &str, type_name: &str) {
 
 impl CrashHandling {
     pub fn set_json_toplevel_field(&self, key: QString, json: QString) {
-        crashhandling::set_crash_json_toplevel_field(
-            key.to_string().as_str(),
-            serde_json::from_str(json.to_string().as_str()).unwrap(),
-        );
+        let json_str = json.to_string();
+        let maybe_structured = serde_json::from_str(&json_str);
+        let value = if maybe_structured.is_ok() {
+            maybe_structured.unwrap()
+        } else {
+            serde_json::json!(json_str)
+        };
+
+        crashhandling::set_crash_json_toplevel_field(key.to_string().as_str(), value);
     }
 
-    pub fn set_json_tag(&self, tag: QString, value: QString) {
-        crashhandling::set_crash_json_toplevel_field(
-            tag.to_string().as_str(),
-            serde_json::from_str(value.to_string().as_str()).unwrap(),
-        );
+    pub fn set_json_tag(&self, tag: QString, json: QString) {
+        let json_str = json.to_string();
+        let maybe_structured = serde_json::from_str(&json_str);
+        let value = if maybe_structured.is_ok() {
+            maybe_structured.unwrap()
+        } else {
+            serde_json::json!(json_str)
+        };
+
+        crashhandling::set_crash_json_toplevel_field(tag.to_string().as_str(), value);
     }
 }
