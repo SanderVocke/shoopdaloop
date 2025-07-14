@@ -265,6 +265,7 @@ jobs:
         coverage: ${{ matrix.kind.coverage }}
         python: ${{ matrix.kind.python }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
+        sentry_key: ${{ secrets.SENTRY_KEY }}
     - uses: ./.github/actions/checkpoint
       if: always()
 

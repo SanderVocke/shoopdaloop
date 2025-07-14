@@ -4,6 +4,8 @@ description: Integration tests at the QML level
 inputs:
   dumps_dir:
     type: string
+  sentry_key:
+    type: string
 
 runs:
   using: "composite"
@@ -41,15 +43,28 @@ runs:
 
   # TODO: MacOS
 
-  - name: Process crash dumps if found
+  - name: Rename hidden files
     if: always() && steps.process.outputs.upload
     shell: wrap-shell {0}
     run: |
       for f in ${{ inputs.dumps_dir }}/.*.dmp; do
         mv $f $(dirname $f)/dmp$(basename $f)
       done
+
+  - name: Process crash dumps if found
+    if: always() && steps.process.outputs.upload
+    shell: wrap-shell {0}
+    run: |
       for dump in $(find ${{ inputs.dumps_dir }} -name "*.dmp"); do
         minidump-stackwalk --features unstable-all --use-local-debuginfo --output-file ${dump}.stackwalk ${dump}
+      done
+
+  - name: Upload dumps to Sentry
+    if: always() && steps.process.outputs.upload
+    shell: wrap-shell {0}
+    run: |
+      for dump in $(find ${{ inputs.dumps_dir }} -name "*.dmp"); do
+        curl -X POST 'https://o4506817524924416.ingest.us.sentry.io/api/4509662799986688/minidump/?sentry_key=${{ inputs.sentry_key }}' -F upload_file_minidump=@$dump
       done
 
   - name: Upload dumps
