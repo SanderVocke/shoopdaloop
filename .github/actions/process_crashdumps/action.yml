@@ -68,7 +68,7 @@ runs:
         metadata=$dump.metadata.json
         SENTRY_METADATA="{}"
         if [ -f $metadata ]; then
-          SENTRY_METADATA="$(jq -c . $metadata)""
+          SENTRY_METADATA="$(jq -c . $metadata)"
         fi
 
         curl -X POST 'https://o4509665637957632.ingest.de.sentry.io/api/4509665639792720/minidump/?sentry_key=${{ inputs.sentry_key }}' \
