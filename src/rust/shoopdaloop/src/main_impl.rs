@@ -8,13 +8,18 @@ use shoopdaloop::shoopdaloop_main;
 use common::logging::macros::*;
 shoop_log_unit!("Main");
 
-fn crash_info_callback_impl() -> Result<Vec<crashhandling::AdditionalCrashAttachment>, anyhow::Error> {
-    let maybe_qml_engine = frontend::cxx_qt_shoop::type_shoopqmlapplicationengine::get_registered_qml_engine()?;
-    let mut qml_stack : String = "".to_string();
+fn crash_info_callback_impl() -> Result<Vec<crashhandling::AdditionalCrashAttachment>, anyhow::Error>
+{
+    let maybe_qml_engine =
+        frontend::cxx_qt_shoop::type_shoopqmlapplicationengine::get_registered_qml_engine()?;
+    let mut qml_stack: String = "".to_string();
     if !maybe_qml_engine.is_null() {
         unsafe {
-            let maybe_qml_engine = &*maybe_qml_engine;
-            qml_stack = frontend::cxx_qt_shoop::type_shoopqmlapplicationengine::get_qml_engine_stack_trace(maybe_qml_engine);
+            let maybe_qml_engine = std::pin::Pin::new_unchecked(&mut *maybe_qml_engine);
+            qml_stack =
+                frontend::cxx_qt_shoop::type_shoopqmlapplicationengine::get_qml_engine_stack_trace(
+                    maybe_qml_engine,
+                );
         }
     }
     let info = crashhandling::AdditionalCrashAttachment {

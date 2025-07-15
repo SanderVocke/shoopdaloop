@@ -1,4 +1,5 @@
 use anyhow;
+use std::pin::Pin;
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -20,7 +21,7 @@ pub mod ffi {
         unsafe fn getRegisteredQmlEngine() -> Result<*mut QQmlApplicationEngine>;
 
         #[rust_name = "get_qml_engine_stack_trace"]
-        unsafe fn getQmlEngineStackTrace(engine: &QQmlApplicationEngine) -> String;
+        unsafe fn getQmlEngineStackTrace(engine: Pin<&mut QQmlApplicationEngine>) -> String;
     }
 }
 
@@ -39,6 +40,6 @@ pub fn get_registered_qml_engine() -> Result<*mut ShoopQmlApplicationEngine, any
     unsafe { Ok(ffi::get_registered_qml_engine()?) }
 }
 
-pub fn get_qml_engine_stack_trace(engine: &ShoopQmlApplicationEngine) -> String {
+pub fn get_qml_engine_stack_trace(engine: Pin<&mut ShoopQmlApplicationEngine>) -> String {
     unsafe { ffi::get_qml_engine_stack_trace(engine) }
 }

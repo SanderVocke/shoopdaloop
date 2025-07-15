@@ -88,7 +88,7 @@ fn crashhandling_server() {
     let ab = std::sync::atomic::AtomicBool::new(false);
     struct Handler {
         json: Mutex<JsonValue>,
-        additional_crash_info: Mutex<Vec<AdditionalCrashAttachment>>, // For interior mutability
+        last_written_dump: Mutex<Option<PathBuf>>, // For interior mutability
     }
 
     impl minidumper::ServerHandler for Handler {
@@ -108,6 +108,8 @@ fn crashhandling_server() {
             .expect("Could not open temp file for minidump")
             .into_parts();
             let dumpfilepath = dumpfilepath.keep().expect("Could not persist temp file");
+            let mut ref_last_written_dump = self.last_written_dump.lock().unwrap();
+            *ref_last_written_dump = Some(dumpfilepath.clone());
 
             info!("Writing minidump to {}", dumpfilepath.display());
             Ok((dumpfile, dumpfilepath))
@@ -152,21 +154,6 @@ fn crashhandling_server() {
                         jsonfile.flush()?;
                         info!("Wrote crash metadata json to {json_path:?}");
 
-                        // Write additional crash info
-                        let guard = self.additional_crash_info.lock().map_err(|e| {
-                            anyhow::anyhow!("Failed to lock additional crash info: {e:?}")
-                        })?;
-                        for attachment in &*guard {
-                            let id = &attachment.id;
-                            let new_filename = format!("{filename}.attach.{id}");
-                            let mut attach_path = path.clone();
-                            attach_path.set_file_name(new_filename);
-                            let mut file = File::create(&attach_path)?;
-                            file.write_all(attachment.contents.as_bytes())?;
-                            file.flush()?;
-                            info!("Wrote crash attachment '{id}' to {attach_path:?}");
-                        }
-
                         Ok(())
                     }();
                     match result {
@@ -179,8 +166,8 @@ fn crashhandling_server() {
                 }
             }
 
-            // Tells the server to exit, which will in turn exit the process
-            minidumper::LoopAction::Exit
+            // Tells the server to continue
+            minidumper::LoopAction::Continue
         }
 
         fn on_message(&self, kind: u32, buffer: Vec<u8>) {
@@ -201,22 +188,52 @@ fn crashhandling_server() {
                         Ok(()) => (),
                         Err(e) => error!("Failed to update crash metadata json: {e:?}"),
                     };
-                },
+                }
                 v if v == CrashHandlingMessageType::AdditionalCrashAttachment as usize as u32 => {
                     let attachment: AdditionalCrashAttachment =
                         serde_json::from_str(content.as_str()).unwrap();
-                    let guard = self.additional_crash_info.lock().map_err(|e| {
-                        anyhow::anyhow!("Could not lock additional crash info: {e:?}")
-                    });
-                    let mut guard = guard.unwrap();
-                    guard.push(attachment);
-                },
+                    let id = attachment.id;
+                    let ref_last_written_dump = self.last_written_dump.lock().unwrap();
+                    let last_written_dump = &*ref_last_written_dump;
+                    if last_written_dump.is_none() {
+                        warn!("Received additional crash data attachment ('{id}'), but no dump written. Ignoring.");
+                    } else {
+                        let result = || -> anyhow::Result<()> {
+                            let path = last_written_dump
+                                .as_ref()
+                                .ok_or(anyhow::anyhow!("No dump file remembered"))?;
+                            let filename = path.file_name().unwrap().to_string_lossy();
+                            let new_filename = format!("{filename}.attach.{id}");
+                            let mut attach_path: std::path::PathBuf = path.clone();
+                            attach_path.set_file_name(new_filename);
+                            let mut file = File::create(&attach_path)?;
+                            file.write_all(attachment.contents.as_bytes())?;
+                            file.flush()?;
+                            info!("Wrote crash attachment '{id}' to {attach_path:?}");
+                            Ok(())
+                        }();
+                        match result {
+                            Ok(()) => (),
+                            Err(e) => error!("Failed to write crash attachment '{id}': {e:?}"),
+                        }
+                    }
+                }
                 _ => error!("Unknown message kind {kind}, content {content}"),
             };
         }
 
         fn on_client_disconnected(&self, _num_clients: usize) -> minidumper::LoopAction {
-            minidumper::LoopAction::Exit
+            info!("Client disconnected, # -> {_num_clients}");
+            if _num_clients == 0 {
+                minidumper::LoopAction::Exit
+            } else {
+                minidumper::LoopAction::Continue
+            }
+        }
+
+        fn on_client_connected(&self, _num_clients: usize) -> minidumper::LoopAction {
+            info!("Client connected, # -> {_num_clients}");
+            minidumper::LoopAction::Continue
         }
     }
 
@@ -232,10 +249,10 @@ fn crashhandling_server() {
         .run(
             Box::new(Handler {
                 json: Mutex::new(base_json),
-                additional_crash_info: Mutex::new(Vec::new()),
+                last_written_dump: Mutex::new(None),
             }),
             &ab,
-            Some(std::time::Duration::from_millis(1000)),
+            Some(std::time::Duration::from_millis(5000)),
         )
         .expect("failed to run server");
 
@@ -267,6 +284,15 @@ fn crashhandling_client(
 
         debug!("Client: crash handling socket: {socket_name}");
 
+        // Instead of just one, we create two client connections to the crash
+        // handling server. This is because:
+        // - The first and most important thing we want to do on crash is to request a minidump.
+        // - After requesting a minidump, the client connection used for that becomes unusable.
+        // - After the minidump we want to salvage whatever information we can to report to
+        //   the server, but this is risky and may re-crash.
+        // Hence we use client 1 to send runtime info and request the minidump on crash,
+        // and client 2 to send additional messages after crash.
+
         // Attempt to connect to the server
         let (client, _server) = loop {
             if let Ok(client) = Client::with_name(socket_name.as_str()) {
@@ -286,38 +312,65 @@ fn crashhandling_client(
             // Give it time to start
             std::thread::sleep(Duration::from_millis(100));
         };
+        // Attempt to connect to the server (client 2)
+        let client2 = loop {
+            if let Ok(client) = Client::with_name(socket_name.as_str()) {
+                break client;
+            }
 
-        let client_access: Arc<Mutex<Client>> = Arc::new(Mutex::new(client));
-        let handler_client_access = client_access.clone();
+            // Give it time to start
+            std::thread::sleep(Duration::from_millis(100));
+        };
+
+        let clients_access: Arc<Mutex<(Client, Client)>> = Arc::new(Mutex::new((client, client2)));
+        let handler_clients_access = clients_access.clone();
+        let ping_clients_access = clients_access.clone();
 
         #[allow(unsafe_code)]
         let _handler = crash_handler::CrashHandler::attach(unsafe {
             crash_handler::make_crash_event(move |crash_context: &crash_handler::CrashContext| {
-                let client = handler_client_access
+                let guard = handler_clients_access
                     .as_ref()
                     .lock()
-                    .expect("Unable to lock IPC client");
+                    .expect("Unable to lock IPC clients");
+                let (client1, client2) = &*guard;
 
                 // Send a ping to the server, this ensures that all messages that have been sent
                 // are "flushed" before the crash event is sent. This is only really useful
                 // on macos where messages and crash events are sent via different, unsynchronized,
                 // methods which can result in the crash event closing the server before
                 // the non-crash messages are received/processed
-                client.ping().unwrap();
+                client1.ping().unwrap();
+                client2.ping().unwrap();
 
                 println!("Crash detected - requesting minidump");
 
-                // Send additional crash data if possible
+                let handled: bool;
+                match client1.request_dump(crash_context) {
+                    Ok(_) => {
+                        handled = true;
+                        println!("Requested minidump.");
+                    }
+                    Err(e) => {
+                        handled = false;
+                        println!("Failed to report crash to handling process: {e}");
+                    }
+                }
+
+                // Send additional crash data if possible over the 2nd connection
                 if let Some(on_crash_callback) = &on_crash_callback {
                     for additional_info in on_crash_callback() {
                         let id = &additional_info.id;
                         println!("Got additional crash info '{id}'");
+
                         let buf = serde_json::to_string(&additional_info).unwrap();
-                        match client.send_message(
+                        match client2.send_message(
                             CrashHandlingMessageType::AdditionalCrashAttachment as usize as u32,
                             buf,
                         ) {
-                            Ok(_) => (),
+                            Ok(_) => {
+                                println!("Sent additional crash info message");
+                            }
                             Err(err) => {
                                 println!("Failed to send additional crash info message: {}", err)
                             }
@@ -325,11 +378,7 @@ fn crashhandling_client(
                     }
                 }
 
-                let result = crash_handler::CrashEventResult::Handled(
-                    client.request_dump(crash_context).is_ok(),
-                );
-
-                result
+                crash_handler::CrashEventResult::Handled(handled)
             })
         })
         .expect("failed to attach signal handler");
@@ -344,10 +393,12 @@ fn crashhandling_client(
         loop {
             match receiver.recv_timeout(std::time::Duration::from_millis(100)) {
                 Ok(msg) => {
-                    match client_access
+                    let guard = ping_clients_access
                         .as_ref()
                         .lock()
-                        .expect("Unable to lock IPC")
+                        .expect("Unable to lock IPC clients");
+                    let (client1, _) = &*guard;
+                    match client1
                         .send_message(msg.message_type as usize as u32, msg.message.as_bytes())
                     {
                         Ok(_) => (),
@@ -360,13 +411,17 @@ fn crashhandling_client(
                     break;
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    // Timeout occurred, means no stop signal, so perform the task
-                    match client_access
+                    let guard = ping_clients_access
                         .as_ref()
                         .lock()
-                        .expect("Unable to lock IPC")
-                        .ping()
-                    {
+                        .expect("Unable to lock IPC clients");
+                    let (client1, client2) = &*guard;
+                    // Timeout occurred, means no stop signal, so perform the task
+                    match client1.ping() {
+                        Ok(_) => (),
+                        Err(e) => warn!("Failed to ping crash handling server. {}", e),
+                    }
+                    match client2.ping() {
                         Ok(_) => (),
                         Err(e) => warn!("Failed to ping crash handling server. {}", e),
                     }
