@@ -1,8 +1,11 @@
 // Note: mostly taken from the example included with the minidumper crate.
 
 use anyhow;
+use serde;
 use serde_json::Value as JsonValue;
 use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -16,6 +19,9 @@ use minidumper::{Client, Server};
 enum CrashHandlingMessageType {
     // Recursively set values in the metadata JSON.
     SetJson = 0,
+    // After a crash dump request, this is used to post additional
+    // information about the crash
+    AdditionalCrashAttachment = 1,
 }
 
 struct CrashHandlingMessage {
@@ -27,6 +33,14 @@ struct CrashHandlerHandle {
     pub sender: mpsc::Sender<CrashHandlingMessage>,
     pub _handle: Option<thread::JoinHandle<()>>,
 }
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct AdditionalCrashAttachment {
+    pub id: String,
+    pub contents: String,
+}
+
+pub type CrashCallback = fn() -> Vec<AdditionalCrashAttachment>;
 
 static CLIENTSIDE_HANDLE: OnceLock<Option<CrashHandlerHandle>> = OnceLock::new();
 
@@ -74,6 +88,7 @@ fn crashhandling_server() {
     let ab = std::sync::atomic::AtomicBool::new(false);
     struct Handler {
         json: Mutex<JsonValue>,
+        additional_crash_info: Mutex<Vec<AdditionalCrashAttachment>>, // For interior mutability
     }
 
     impl minidumper::ServerHandler for Handler {
@@ -137,6 +152,21 @@ fn crashhandling_server() {
                         jsonfile.flush()?;
                         info!("Wrote crash metadata json to {json_path:?}");
 
+                        // Write additional crash info
+                        let guard = self.additional_crash_info.lock().map_err(|e| {
+                            anyhow::anyhow!("Failed to lock additional crash info: {e:?}")
+                        })?;
+                        for attachment in &*guard {
+                            let id = &attachment.id;
+                            let new_filename = format!("{filename}.attach.{id}");
+                            let mut attach_path = path.clone();
+                            attach_path.set_file_name(new_filename);
+                            let mut file = File::create(&attach_path)?;
+                            file.write_all(attachment.contents.as_bytes())?;
+                            file.flush()?;
+                            info!("Wrote crash attachment '{id}' to {attach_path:?}");
+                        }
+
                         Ok(())
                     }();
                     match result {
@@ -171,7 +201,16 @@ fn crashhandling_server() {
                         Ok(()) => (),
                         Err(e) => error!("Failed to update crash metadata json: {e:?}"),
                     };
-                }
+                },
+                v if v == CrashHandlingMessageType::AdditionalCrashAttachment as usize as u32 => {
+                    let attachment: AdditionalCrashAttachment =
+                        serde_json::from_str(content.as_str()).unwrap();
+                    let guard = self.additional_crash_info.lock().map_err(|e| {
+                        anyhow::anyhow!("Could not lock additional crash info: {e:?}")
+                    });
+                    let mut guard = guard.unwrap();
+                    guard.push(attachment);
+                },
                 _ => error!("Unknown message kind {kind}, content {content}"),
             };
         }
@@ -193,6 +232,7 @@ fn crashhandling_server() {
         .run(
             Box::new(Handler {
                 json: Mutex::new(base_json),
+                additional_crash_info: Mutex::new(Vec::new()),
             }),
             &ab,
             Some(std::time::Duration::from_millis(1000)),
@@ -204,7 +244,10 @@ fn crashhandling_server() {
     std::process::exit(0);
 }
 
-fn crashhandling_client(start_server_arg: &str) -> CrashHandlerHandle {
+fn crashhandling_client(
+    start_server_arg: &str,
+    on_crash_callback: Option<CrashCallback>,
+) -> CrashHandlerHandle {
     let (sender, receiver) = mpsc::channel::<CrashHandlingMessage>();
     let start_server_arg = start_server_arg.to_string();
 
@@ -262,11 +305,29 @@ fn crashhandling_client(start_server_arg: &str) -> CrashHandlerHandle {
                 // the non-crash messages are received/processed
                 client.ping().unwrap();
 
+                println!("Crash detected - requesting minidump");
+
+                // Send additional crash data if possible
+                if let Some(on_crash_callback) = &on_crash_callback {
+                    for additional_info in on_crash_callback() {
+                        let id = &additional_info.id;
+                        println!("Got additional crash info '{id}'");
+                        let buf = serde_json::to_string(&additional_info).unwrap();
+                        match client.send_message(
+                            CrashHandlingMessageType::AdditionalCrashAttachment as usize as u32,
+                            buf,
+                        ) {
+                            Ok(_) => (),
+                            Err(err) => {
+                                println!("Failed to send additional crash info message: {}", err)
+                            }
+                        }
+                    }
+                }
+
                 let result = crash_handler::CrashEventResult::Handled(
                     client.request_dump(crash_context).is_ok(),
                 );
-
-                error!("Crash detected - requested minidump");
 
                 result
             })
@@ -320,7 +381,11 @@ fn crashhandling_client(start_server_arg: &str) -> CrashHandlerHandle {
     }
 }
 
-pub fn init_crashhandling(is_server: bool, start_server_arg: &str) {
+pub fn init_crashhandling(
+    is_server: bool,
+    start_server_arg: &str,
+    on_crash_callback: Option<CrashCallback>,
+) {
     let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
     if maybe_dump_folder.is_some() {
         debug!(
@@ -343,7 +408,7 @@ pub fn init_crashhandling(is_server: bool, start_server_arg: &str) {
         return;
     }
 
-    let handle = crashhandling_client(start_server_arg);
+    let handle = crashhandling_client(start_server_arg, on_crash_callback);
     let _ = CLIENTSIDE_HANDLE.get_or_init(|| -> Option<CrashHandlerHandle> { Some(handle) });
 }
 

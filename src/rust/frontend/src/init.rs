@@ -20,9 +20,7 @@ fn register_qml_types_and_singletons() {
     qobj_backend_wrapper::register_qml_type(&mdl, "ShoopBackendWrapper");
 }
 
-fn register_metatypes() {
-    crate::cxx_qt_shoop::type_shoop_rust_callable::register_metatype("ShoopRustCallable");
-}
+fn register_metatypes() {}
 
 #[no_mangle]
 pub extern "C" fn shoop_rust_init() {

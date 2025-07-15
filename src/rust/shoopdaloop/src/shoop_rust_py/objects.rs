@@ -21,7 +21,6 @@ use crate::shoop_py_backend::decoupled_midi_port::DecoupledMidiPort;
 use crate::shoop_py_backend::fx_chain::FXChain;
 use crate::shoop_py_backend::midi_channel::MidiChannel;
 use crate::shoop_py_backend::midi_port::MidiPort;
-use crate::shoop_py_backend::shoop_loop::Loop;
 
 #[pyfunction]
 pub fn shoop_rust_set_crash_json_toplevel_field(field_name: &str, json: &str) {
@@ -50,6 +49,17 @@ pub fn shoop_rust_set_crash_json_tag(tag: &str, json: &str) {
 }
 
 #[pyfunction]
+pub fn shoop_rust_make_qml_application_engine(parent: u64) -> u64 {
+    let parent_obj = parent as *mut frontend::cxx_qt_lib_shoop::qobject::QObject;
+    let engine =
+        frontend::cxx_qt_shoop::type_shoopqmlapplicationengine::make_shoop_qml_application_engine(
+            parent_obj,
+        )
+        .unwrap();
+    engine as usize as u64
+}
+
+#[pyfunction]
 pub fn shoop_rust_get_engine_update_thread_addr() -> u64 {
     frontend::engine_update_thread::get_engine_update_thread().thread as usize as u64
 }
@@ -62,18 +72,6 @@ pub fn shoop_rust_get_engine_update_thread_wrapper_addr() -> u64 {
 #[pyfunction]
 pub fn shoop_rust_create_autoconnect() -> u64 {
     unsafe { frontend::init::shoop_rust_create_autoconnect() as usize as u64 }
-}
-
-#[pyfunction]
-pub fn shoop_rust_create_loop(backend_addr: usize) -> Loop {
-    unsafe {
-        let backend_ptr: *mut CxxQtBackendWrapper = backend_addr as *mut CxxQtBackendWrapper;
-        let backend_mut: &mut CxxQtBackendWrapper = backend_ptr.as_mut().unwrap();
-        let backend_pin: Pin<&mut CxxQtBackendWrapper> = Pin::new_unchecked(backend_mut);
-        Loop {
-            obj: backend_pin.create_loop(),
-        }
-    }
 }
 
 #[pyfunction]

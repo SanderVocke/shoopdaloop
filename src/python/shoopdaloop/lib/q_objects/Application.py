@@ -16,12 +16,14 @@ if have_nsm:
     from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
 from ..qml_helpers import *
-from shoop_rust import shoop_rust_init
+from shoop_rust import shoop_rust_init, shoop_rust_make_qml_application_engine
 
 from ..logging import *
 from shoop_config import shoop_version, shoop_resource_dir
 
 from ..engine_update_thread import get_engine_update_thread_wrapper
+
+from shiboken6 import Shiboken, getCppPointer
 
 class Application(ShoopQApplication):
     exit_handler_called = ShoopSignal()
@@ -119,7 +121,10 @@ class Application(ShoopQApplication):
             if obj and isinstance(obj, QQuickWindow):
                 self.logger.debug("Window created, installing event filter")
                 obj.installEventFilter(self)
-        self.engine = QQmlApplicationEngine(parent=self)
+
+        self_addr = getCppPointer(self)[0]
+        eng_addr = shoop_rust_make_qml_application_engine(self_addr)
+        self.engine = Shiboken.wrapInstance(eng_addr, QQmlApplicationEngine)
 
         qml_paths = os.getenv("SHOOP_QML_PATHS")
         qml_paths = qml_paths.split(';' if os.name == "nt" else ":") if qml_paths else []

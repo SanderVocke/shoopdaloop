@@ -36,15 +36,15 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/qobj_release_focus_notifier_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_render_audio_waveform_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_update_thread_bridge.rs")
-        .file("src/cxx_qt_shoop/rust/type_shoop_rust_callable.rs")
         .file("src/cxx_qt_shoop/rust/test/qobj_generic_test_item_bridge.rs")
         .file("src/cxx_qt_shoop/rust/test/qobj_test_backend_wrapper_bridge.rs")
         .file("src/cxx_qt_shoop/rust/test/qobj_test_port_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/type_shoopqmlapplicationengine.rs")
         .cc_builder(|cc| {
             cc.include("src/cxx_qt_shoop/include");
             cc.file("src/cxx_qt_shoop/cxx/ShoopQObject.cpp");
-            cc.file("src/cxx_qt_shoop/cxx/shoop_rust_callable.cpp");
             cc.include("src/cxx_qt_lib_shoop/include");
+            cc.file("src/cxx_qt_lib_shoop/cxx/qqmlengine_helpers.cpp");
         })
         .qobject_header("src/cxx_qt_shoop/include/cxx-qt-shoop/ShoopQObject.h")
         .build();

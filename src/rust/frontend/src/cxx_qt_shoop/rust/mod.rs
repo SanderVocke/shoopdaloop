@@ -31,6 +31,6 @@ pub mod qobj_signature_backend_wrapper;
 pub mod qobj_signature_port;
 
 pub mod type_external_port_descriptor;
-pub mod type_shoop_rust_callable;
+pub mod type_shoopqmlapplicationengine;
 
 pub mod test;
