@@ -10,11 +10,13 @@ shoop_log_unit!("Main");
 
 pub fn main() {
     common::init().unwrap();
-    let _crash_handler = crashhandling::init_crashhandling(
+    crashhandling::init_crashhandling(
         std::env::args().any(|arg| arg == "--crash-handling-server"),
         "--crash-handling-server",
     );
     info!("Start client!");
+    let args: Vec<String> = std::env::args().collect();
+    crashhandling::set_crash_json_extra("cmdline", serde_json::json!(args.join(" ")));
 
     // For normalizing Windows paths
     let normalize_path = |path: &Path| -> PathBuf {

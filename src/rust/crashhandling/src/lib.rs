@@ -1,5 +1,9 @@
 // Note: mostly taken from the example included with the minidumper crate.
 
+use anyhow;
+use serde_json::Value as JsonValue;
+use std::fs::File;
+use std::sync::OnceLock;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -9,9 +13,52 @@ shoop_log_unit!("CrashHandling");
 
 use minidumper::{Client, Server};
 
-pub struct CrashHandlerHandle {
-    pub sender: mpsc::Sender<()>,
-    pub handle: Option<thread::JoinHandle<()>>,
+enum CrashHandlingMessageType {
+    // Recursively set values in the metadata JSON.
+    SetJson = 0,
+}
+
+struct CrashHandlingMessage {
+    pub message_type: CrashHandlingMessageType,
+    pub message: String,
+}
+
+struct CrashHandlerHandle {
+    pub sender: mpsc::Sender<CrashHandlingMessage>,
+    pub _handle: Option<thread::JoinHandle<()>>,
+}
+
+static CLIENTSIDE_HANDLE: OnceLock<Option<CrashHandlerHandle>> = OnceLock::new();
+
+fn set_json(to: &mut JsonValue, from: &JsonValue) -> anyhow::Result<()> {
+    if from.is_object() {
+        if !to.is_object() {
+            return Err(anyhow::anyhow!("expected object"));
+        }
+
+        for (k, v) in from.as_object().unwrap().iter() {
+            if v.is_object() {
+                if to.get(k).is_none() {
+                    to[k] = serde_json::json!({});
+                } else if !to.get(k).unwrap().is_object() {
+                    return Err(anyhow::anyhow!("expected object"));
+                }
+                return set_json(&mut to[k], v);
+            } else if v.is_array() {
+                if to.get(k).is_none() {
+                    to[k] = serde_json::json!([]);
+                } else if !to.get(k).unwrap().is_array() {
+                    return Err(anyhow::anyhow!("expected array"));
+                }
+                return set_json(&mut to[k], v);
+            } else {
+                to[k] = v.clone();
+            }
+        }
+    } else {
+        *to = from.clone();
+    }
+    Ok(())
 }
 
 fn crashhandling_server() {
@@ -25,8 +72,9 @@ fn crashhandling_server() {
         Server::with_name(socket_name.as_str()).expect("failed to create crash handling server");
 
     let ab = std::sync::atomic::AtomicBool::new(false);
-
-    struct Handler;
+    struct Handler {
+        json: Mutex<JsonValue>,
+    }
 
     impl minidumper::ServerHandler for Handler {
         /// Called when a crash has been received and a backing file needs to be
@@ -61,6 +109,40 @@ fn crashhandling_server() {
                     use std::io::Write;
                     let _ = md_bin.file.flush();
                     info!("Done writing minidump");
+
+                    info!("Writing crash metadata json...");
+                    let path = &md_bin.path;
+
+                    let result = || -> Result<(), anyhow::Error> {
+                        let filename = path
+                            .file_name()
+                            .ok_or(anyhow::anyhow!("Could not get dump filename"))?
+                            .to_str()
+                            .ok_or(anyhow::anyhow!("Could not convert dump filename"))?;
+                        let new_filename = format!("{filename}.metadata.json");
+                        let mut json_path: std::path::PathBuf = path.clone();
+                        json_path.set_file_name(new_filename);
+
+                        // Write the metadata json to this file
+                        let guard = self
+                            .json
+                            .lock()
+                            .map_err(|e| anyhow::anyhow!("Failed to lock json: {e:?}"))?;
+                        let content = serde_json::to_string_pretty(&*guard).map_err(|e| {
+                            anyhow::anyhow!("Failed to serialize metadata json: {e:?}")
+                        })?;
+                        let content = format!("{content}\n");
+                        let mut jsonfile = File::create(&json_path)?;
+                        jsonfile.write_all(content.as_bytes())?;
+                        jsonfile.flush()?;
+                        info!("Wrote crash metadata json to {json_path:?}");
+
+                        Ok(())
+                    }();
+                    match result {
+                        Ok(()) => (),
+                        Err(e) => error!("Failed to write crash metadata json: {e:?}"),
+                    };
                 }
                 Err(e) => {
                     error!("Failed to write minidump: {:#}", e);
@@ -72,10 +154,26 @@ fn crashhandling_server() {
         }
 
         fn on_message(&self, kind: u32, buffer: Vec<u8>) {
-            info!(
-                "Crash handling server: client sent msg of type {kind}, message: {}",
-                String::from_utf8(buffer).unwrap()
-            );
+            let content = String::from_utf8(buffer).unwrap();
+            match kind {
+                v if v == CrashHandlingMessageType::SetJson as usize as u32 => {
+                    let result = || -> anyhow::Result<()> {
+                        debug!("Set JSON: {content:?}");
+                        let mut guard = self
+                            .json
+                            .lock()
+                            .map_err(|e| anyhow::anyhow!("Could not lock json: {e:?}"))?;
+                        let incoming_json: JsonValue = serde_json::from_str(content.as_str())?;
+                        set_json(&mut *guard, &incoming_json)?;
+                        Ok(())
+                    }();
+                    match result {
+                        Ok(()) => (),
+                        Err(e) => error!("Failed to update crash metadata json: {e:?}"),
+                    };
+                }
+                _ => error!("Unknown message kind {kind}, content {content}"),
+            };
         }
 
         fn on_client_disconnected(&self, _num_clients: usize) -> minidumper::LoopAction {
@@ -83,9 +181,19 @@ fn crashhandling_server() {
         }
     }
 
+    let maybe_base_json: Option<String> = std::env::var("SHOOP_CRASH_METADATA_BASE_JSON").ok();
+    let base_json: JsonValue = if maybe_base_json.is_some() {
+        serde_json::from_str(maybe_base_json.unwrap().as_str())
+            .expect("invalid base crash handling json")
+    } else {
+        serde_json::json!({ "environment": "unknown" })
+    };
+
     server
         .run(
-            Box::new(Handler),
+            Box::new(Handler {
+                json: Mutex::new(base_json),
+            }),
             &ab,
             Some(std::time::Duration::from_millis(1000)),
         )
@@ -96,8 +204,8 @@ fn crashhandling_server() {
     std::process::exit(0);
 }
 
-pub fn crashhandling_client(start_server_arg: &str) -> CrashHandlerHandle {
-    let (sender, receiver) = mpsc::channel();
+fn crashhandling_client(start_server_arg: &str) -> CrashHandlerHandle {
+    let (sender, receiver) = mpsc::channel::<CrashHandlingMessage>();
     let start_server_arg = start_server_arg.to_string();
 
     let handle = thread::spawn(move || {
@@ -174,7 +282,18 @@ pub fn crashhandling_client(start_server_arg: &str) -> CrashHandlerHandle {
 
         loop {
             match receiver.recv_timeout(std::time::Duration::from_millis(100)) {
-                Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Ok(msg) => {
+                    match client_access
+                        .as_ref()
+                        .lock()
+                        .expect("Unable to lock IPC")
+                        .send_message(msg.message_type as usize as u32, msg.message.as_bytes())
+                    {
+                        Ok(_) => (),
+                        Err(err) => warn!("Failed to send message: {}", err),
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                     // Received a signal to stop or sender was dropped
                     info!("Periodic task thread: Stopping.");
                     break;
@@ -197,11 +316,11 @@ pub fn crashhandling_client(start_server_arg: &str) -> CrashHandlerHandle {
 
     CrashHandlerHandle {
         sender: sender,
-        handle: Some(handle),
+        _handle: Some(handle),
     }
 }
 
-pub fn init_crashhandling(is_server: bool, start_server_arg: &str) -> Option<CrashHandlerHandle> {
+pub fn init_crashhandling(is_server: bool, start_server_arg: &str) {
     let maybe_dump_folder: Option<String> = std::env::var("SHOOP_CRASHDUMP_DIR").ok();
     if maybe_dump_folder.is_some() {
         debug!(
@@ -211,7 +330,7 @@ pub fn init_crashhandling(is_server: bool, start_server_arg: &str) -> Option<Cra
         let path = std::path::PathBuf::from(maybe_dump_folder.unwrap());
         if !path.exists() || !path.is_dir() {
             warn!("Dump folder {path:?} does not exist or is not a directory - crash handler not enabled.");
-            return None;
+            return;
         }
     } else {
         debug!("Dumps will go to OS-specific temp folder");
@@ -221,8 +340,38 @@ pub fn init_crashhandling(is_server: bool, start_server_arg: &str) -> Option<Cra
         crashhandling_server();
 
         // Unreachable
-        return None;
+        return;
     }
 
-    return Some(crashhandling_client(start_server_arg));
+    let handle = crashhandling_client(start_server_arg);
+    let _ = CLIENTSIDE_HANDLE.get_or_init(|| -> Option<CrashHandlerHandle> { Some(handle) });
+}
+
+pub fn set_crash_json_partial(partial_json: JsonValue) {
+    let handle = CLIENTSIDE_HANDLE.get_or_init(|| None);
+    if handle.is_none() {
+        error!("set_metadata called, but no crash handling client active");
+    }
+
+    let handle = handle.as_ref().unwrap();
+    let content = partial_json.to_string();
+    match handle.sender.send(CrashHandlingMessage {
+        message_type: CrashHandlingMessageType::SetJson,
+        message: content,
+    }) {
+        Ok(_) => (),
+        Err(e) => error!("Failed to send crash handling message: {}", e),
+    };
+}
+
+pub fn set_crash_json_toplevel_field(key: &str, value: JsonValue) {
+    set_crash_json_partial(serde_json::json!({key: value}));
+}
+
+pub fn set_crash_json_tag(key: &str, value: JsonValue) {
+    set_crash_json_partial(serde_json::json!({"tags": {key: value}}));
+}
+
+pub fn set_crash_json_extra(key: &str, value: JsonValue) {
+    set_crash_json_partial(serde_json::json!({"extra": {key: value}}));
 }

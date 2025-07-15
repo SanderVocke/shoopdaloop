@@ -9,6 +9,8 @@ inputs:
   release_upload_assets_url:
     description: "Where to upload release assets"
     default: ''
+  sentry_auth_token:
+    type: string
 
 outputs:
   output:
@@ -68,6 +70,12 @@ runs:
         echo "Symlink $from -> $to"
         ln -s $to $from
       done
+  - name: Split debug information
+    if: always() && inputs.package_kind == 'portable_folder' && runner.os == 'Linux'
+    shell: wrap-shell {0}
+    run: |
+      echo "Splitting out debug info..."
+      bash scripts/separate_debug_info.sh $PORTABLE_DIR debug_symbols
   - if: always() && inputs.package_kind == 'portable_folder'
     shell: wrap-shell {0}
     run: |
@@ -88,6 +96,14 @@ runs:
     with:
       upload_url: ${{ inputs.release_upload_assets_url }}
       asset_path: ${{ env.BUILT_RELEASE_ARTIFACT }}
+  - name: Upload debug symbols
+    if: always() && inputs.package_kind == 'portable_folder' && runner.os == 'Linux'
+    shell: wrap-shell {0}
+    run: |
+      echo "Uploading debug info..."
+      curl -sL https://sentry.io/get-cli/ | SENTRY_CLI_VERSION="2.47.0" sh
+      sentry-cli debug-files upload --include-sources -p shoopdaloop --auth-token ${{ inputs.sentry_auth_token }} debug_symbols
+    
 
   # Test binaries for downstream CI
   - name: Build test binaries

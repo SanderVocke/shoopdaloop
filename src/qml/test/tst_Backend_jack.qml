@@ -19,7 +19,6 @@ ShoopTestFile {
             filename : TestFilename.test_filename()
             when: {
                 let ready = backend.ready || backend.backend_type == null
-                console.log("Backend ready: " + ready)
                 return ready
             }
 

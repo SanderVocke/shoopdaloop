@@ -47,7 +47,7 @@ runs:
     if: always() && steps.process.outputs.upload
     shell: wrap-shell {0}
     run: |
-      for f in ${{ inputs.dumps_dir }}/.*.dmp; do
+      for f in ${{ inputs.dumps_dir }}/.*.dmp*; do
         mv $f $(dirname $f)/dmp$(basename $f)
       done
 
@@ -63,8 +63,16 @@ runs:
     if: always() && steps.process.outputs.upload
     shell: wrap-shell {0}
     run: |
+      set -x
       for dump in $(find ${{ inputs.dumps_dir }} -name "*.dmp"); do
-        curl -X POST 'https://o4506817524924416.ingest.us.sentry.io/api/4509662799986688/minidump/?sentry_key=${{ inputs.sentry_key }}' -F upload_file_minidump=@$dump
+        metadata=$dump.metadata.json
+        SENTRY_METADATA="{}"
+        if [ -f $metadata ]; then
+          SENTRY_METADATA="$(jq -c . $metadata)"
+        fi
+
+        curl -X POST 'https://o4509665637957632.ingest.de.sentry.io/api/4509665639792720/minidump/?sentry_key=${{ inputs.sentry_key }}' \
+          -F "upload_file_minidump=@$dump" -F "sentry=$SENTRY_METADATA"
       done
 
   - name: Upload dumps

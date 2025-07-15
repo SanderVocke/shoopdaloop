@@ -97,6 +97,8 @@ wget
 curl
 file
 pax-utils
+bc
+jq
 
 # for Github Actions
 nodejs

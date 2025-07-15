@@ -41,7 +41,7 @@ on:
           type: boolean
           default: false
     schedule:
-      - cron: "0 3 * * *" # every day at 3am
+      - cron: "0 1 * * *" # every day at 1am
 
 env:
   checkpoints_enabled: false
@@ -200,6 +200,7 @@ jobs:
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
       if: always()
 
@@ -213,15 +214,18 @@ jobs:
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
+            sentry_build_type: release
           - name: debug_debian_stable
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
+            sentry_build_type: debug
           - name: release_debian_appimage
             python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.AppImage
+            sentry_build_type: release
           # - name: coverage_debian_bullseye
           #   python: python3
           #   container: docker.io/sandervocke/shoopdaloop_build_base_debian_bullseye_x86_64:latest
@@ -266,6 +270,7 @@ jobs:
         python: ${{ matrix.kind.python }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
         sentry_key: ${{ secrets.SENTRY_KEY }}
+        sentry_build_type: ${{ matrix.kind.sentry_build_type }}
     - uses: ./.github/actions/checkpoint
       if: always()
 
@@ -355,6 +360,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         macos_target_version: ${{ matrix.kind.macos_target_version }}
         vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
+        sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
       if: always()
 
@@ -369,6 +375,7 @@ jobs:
             os: macos-14
             package: shoopdaloop.*.release-macos-arm.portable.tar.gz
             second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
+            sentry_build_type: release
           # - name: debug_macos_arm
           #   python: python3
           #   container: null
@@ -381,6 +388,7 @@ jobs:
             os: macos-13
             package: shoopdaloop.*.release-macos-x64.portable.tar.gz
             second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
+            sentry_build_type: release
           # - name: debug_macos
           #   python: python3
           #   container: null
@@ -413,6 +421,7 @@ jobs:
         coverage: ${{ matrix.kind.coverage }}
         python: ${{ matrix.kind.python }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
+        sentry_build_type: ${{ matrix.kind.sentry_build_type }}
     - uses: ./.github/actions/checkpoint
 
 
@@ -511,6 +520,7 @@ jobs:
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
 
   test_windows:
@@ -525,12 +535,14 @@ jobs:
             package: shoopdaloop.*.release-windows-msvc-x64.portable.tar.gz
             second_package: shoopdaloop.*.release-windows-msvc-x64.test_binaries.tar.gz
             pathconvert: "| cygpath -u -f -"
+            sentry_build_type: release
           - name: release_windows_innosetup
             python: python.exe
             container: null
             os: windows-2022
             package: ShoopDaLoop-Installer-*.exe
             pathconvert: "| cygpath -u -f -"
+            sentry_build_type: release
           # - name: debug_windows
           #   python: python.exe
           #   container: null
@@ -563,6 +575,7 @@ jobs:
         coverage: ${{ matrix.kind.coverage }}
         python: ${{ matrix.kind.python }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
+        sentry_build_type: ${{ matrix.kind.sentry_build_type }}
     - uses: ./.github/actions/checkpoint
 
 

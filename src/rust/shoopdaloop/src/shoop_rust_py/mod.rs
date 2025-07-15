@@ -67,5 +67,14 @@ pub fn create_py_module<'py>(py: Python<'py>) -> Result<Bound<'py, PyModule>, Py
         objects::shoop_rust_get_engine_update_thread_wrapper_addr,
         &m
     )?)?;
+    m.add_function(wrap_pyfunction!(
+        objects::shoop_rust_set_crash_json_tag,
+        &m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        objects::shoop_rust_set_crash_json_toplevel_field,
+        &m
+    )?)?;
+
     Ok(m)
 }

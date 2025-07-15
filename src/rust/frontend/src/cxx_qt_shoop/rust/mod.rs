@@ -6,6 +6,8 @@ pub mod qobj_autoconnect;
 pub mod qobj_autoconnect_bridge;
 pub mod qobj_backend_wrapper;
 pub mod qobj_backend_wrapper_bridge;
+pub mod qobj_crash_handling;
+pub mod qobj_crash_handling_bridge;
 pub mod qobj_dummy_process_helper;
 pub mod qobj_dummy_process_helper_bridge;
 pub mod qobj_file_io;

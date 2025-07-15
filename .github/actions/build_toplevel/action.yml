@@ -38,6 +38,9 @@ inputs:
     description: "macOS target version"
   vcpkg_rebuild:
     description: "whether to rebuild vcpkg packages"
+  sentry_auth_token:
+    type: string
+
 runs:
   using: "composite"
   steps:
@@ -140,6 +143,7 @@ runs:
       package_kind: ${{ inputs.package_kind }}
       upload_release_assets: ${{ inputs.upload_release_assets }}
       release_upload_assets_url: ${{ env.release_upload_assets_url }}
+      sentry_auth_token: ${{ inputs.sentry_auth_token }}
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
@@ -158,6 +162,7 @@ runs:
       package_kind: ${{ inputs.second_package_kind }}
       upload_release_assets: ${{ inputs.upload_release_assets }}
       release_upload_assets_url: ${{ env.release_upload_assets_url }}
+      sentry_auth_token: ${{ inputs.sentry_auth_token }}
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
@@ -176,6 +181,7 @@ runs:
       package_kind: ${{ inputs.third_package_kind }}
       upload_release_assets: ${{ inputs.upload_release_assets }}
       release_upload_assets_url: ${{ env.release_upload_assets_url }}
+      sentry_auth_token: ${{ inputs.sentry_auth_token }}
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}
