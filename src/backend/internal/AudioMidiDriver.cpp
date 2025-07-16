@@ -4,11 +4,12 @@
 #include "shoop_globals.h"
 #include <thread>
 
-AudioMidiDriver::AudioMidiDriver() :
+AudioMidiDriver::AudioMidiDriver(void (*maybe_process_callback)()) :
   WithCommandQueue(),
   m_processors(shoop_make_shared<std::vector<shoop_weak_ptr<HasAudioProcessingFunction>>>()),
   m_active(false),
-  m_client_name("unknown")
+  m_client_name("unknown"),
+  m_maybe_process_callback(maybe_process_callback)
 {
 }
 
@@ -37,6 +38,9 @@ std::vector<shoop_weak_ptr<HasAudioProcessingFunction>> AudioMidiDriver::process
 
 void AudioMidiDriver::PROC_process(uint32_t nframes) {
     log<log_level_debug_trace>("AudioMidiDriver::process {}", nframes);
+    if (m_maybe_process_callback) {
+        m_maybe_process_callback();
+    }
     PROC_handle_command_queue();
     PROC_process_decoupled_midi_ports(nframes);
     auto ps_lock = m_processors;

@@ -21,8 +21,11 @@ pub fn create_py_module<'py>(py: Python<'py>) -> Result<Bound<'py, PyModule>, Py
         objects::shoop_rust_create_autoconnect,
         &m
     )?)?;
-    m.add_function(wrap_pyfunction!(objects::shoop_rust_create_loop, &m)?)?;
     m.add_function(wrap_pyfunction!(objects::shoop_rust_create_fx_chain, &m)?)?;
+    m.add_function(wrap_pyfunction!(
+        objects::shoop_rust_make_qml_application_engine,
+        &m
+    )?)?;
     m.add_function(wrap_pyfunction!(
         objects::shoop_rust_open_driver_audio_port,
         &m

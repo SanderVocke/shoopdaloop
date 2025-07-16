@@ -20,5 +20,11 @@ ApplicationWindow {
         anchors.fill: parent
         initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, null, true)
         settings_io_enabled: true
+
+        onLoadedChanged: {
+            if (loaded) {
+                ShoopCrashHandling.set_json_tag("shoop_phase", "runtime")
+            }
+        }
     }
 }

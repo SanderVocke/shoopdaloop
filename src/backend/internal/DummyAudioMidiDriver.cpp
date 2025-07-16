@@ -357,8 +357,8 @@ uint32_t DummyAudioMidiDriver<Time, Size>::get_controlled_mode_samples_to_proces
 
 
 template <typename Time, typename Size>
-DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver()
-    : AudioMidiDriver(),
+DummyAudioMidiDriver<Time, Size>::DummyAudioMidiDriver(void (*maybe_process_callback)())
+    : AudioMidiDriver(maybe_process_callback),
       m_finish(false),
       m_paused(false),
       m_mode(DummyAudioMidiDriverMode::Automatic),

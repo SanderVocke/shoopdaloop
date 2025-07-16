@@ -123,6 +123,8 @@ Item {
             let chosen_action = pick_random(actions_distribution, (a) => action_possible(a))
             root.logger.debug(`Main action: ${chosen_action}`)
 
+            ShoopCrashHandling.set_json_tag("shoop_action", `monkey test (${chosen_action})`)
+
             if (chosen_action == 'add_track') { add_track(); }
             else if (chosen_action == 'add_loop') { add_loop(); }
             else if (chosen_action == 'remove_track') { remove_track(); }
@@ -254,5 +256,9 @@ Item {
         root.logger.debug(`--> play dry ${track.name}::${loop.name}`)
         loop.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, ShoopConstants.DontAlignToSyncImmediately)
         loop.transition(ShoopConstants.LoopMode.Stopped, 4, ShoopConstants.DontAlignToSyncImmediately)
+    }
+
+    Component.onDestruction: {
+        ShoopCrashHandling.set_json_tag("shoop_action", "monkey test (finished)")
     }
 }

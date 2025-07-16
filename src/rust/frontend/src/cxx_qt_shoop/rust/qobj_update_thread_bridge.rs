@@ -39,6 +39,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn frontend_frame_swapped(self: Pin<&mut UpdateThread>);
+
+        #[qinvokable]
+        pub fn update_thread_started(self: Pin<&mut UpdateThread>);
     }
 
     unsafe extern "C++" {

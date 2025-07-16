@@ -37,7 +37,7 @@ runs:
       echo "PIP=${{ inputs.python }} -m pip" | tee -a $GITHUB_ENV
       echo "PYTEST=${{ inputs.python }} -m pytest" | tee -a $GITHUB_ENV
       echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
-      echo 'SHOOP_CRASH_METADATA_BASE_JSON={"environment": "ci", "tags": {"ci_build_type": "${{ inputs.sentry_build_type }}"}}' | tee -a $GITHUB_ENV
+      echo 'SHOOP_CRASH_METADATA_BASE_JSON={"environment": "ci", "tags": {"ci_build_type": "${{ inputs.sentry_build_type }}", "ci_run": "${{ github.run_id }}", "vc_ref": "${{ github.ref }}"}}' | tee -a $GITHUB_ENV
 
   - name: Setup dependencies checker (Windows)
     if: always() && runner.os == 'Windows'

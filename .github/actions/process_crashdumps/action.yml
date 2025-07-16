@@ -18,7 +18,7 @@ runs:
     run: |
       set -x
       ls -a ${{ inputs.dumps_dir }}
-      if [ $(ls -a ${{ inputs.dumps_dir }} | wc -l) -gt 0 ]; then
+      if [ $(find ${{ inputs.dumps_dir }} -type f | wc -l) -gt 0 ]; then
         echo "upload=true" | tee -a $GITHUB_OUTPUT
       fi
   
@@ -71,8 +71,14 @@ runs:
           SENTRY_METADATA="$(jq -c . $metadata)"
         fi
 
+        SENTRY_ATTACHMENTS=""
+        for f in $dump.attach.*; do
+          ATTACHMENT_ID=$(basename $f | sed 's/^.*\.//')
+          SENTRY_ATTACHMENTS="$SENTRY_ATTACHMENTS -F $f=@$f"
+        done
+
         curl -X POST 'https://o4509665637957632.ingest.de.sentry.io/api/4509665639792720/minidump/?sentry_key=${{ inputs.sentry_key }}' \
-          -F "upload_file_minidump=@$dump" -F "sentry=$SENTRY_METADATA"
+          -F "upload_file_minidump=@$dump" -F "sentry=$SENTRY_METADATA" $SENTRY_ATTACHMENTS
       done
 
   - name: Upload dumps

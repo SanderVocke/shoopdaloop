@@ -29,6 +29,6 @@ impl CrashHandling {
             serde_json::json!(json_str)
         };
 
-        crashhandling::set_crash_json_toplevel_field(tag.to_string().as_str(), value);
+        crashhandling::set_crash_json_tag(tag.to_string().as_str(), value);
     }
 }

@@ -58,6 +58,10 @@ impl UpdateThread {
                 .as_mut()
                 .connect_started(timer.as_mut().qobject_from_ptr(), "start()".to_string())
                 .unwrap();
+            thread
+                .as_mut()
+                .connect_started(self_qobject, "update_thread_started()".to_string())
+                .unwrap();
             thread.as_mut().start();
 
             qobject_move_to_thread(self_qobject, rust.thread).unwrap();
@@ -95,10 +99,6 @@ impl UpdateThread {
             let timer_mut_ref = &mut *rust.backup_timer;
             let timer_slice = slice::from_raw_parts_mut(timer_mut_ref, 1);
             let timer: Pin<&mut QTimer> = Pin::new_unchecked(&mut timer_slice[0]);
-            // match invokable::invoke(&mut *timer.qobject_from_ptr(), "stop()".to_string(), connection_types::QUEUED_CONNECTION, &()) {
-            //     Ok(_) => (),
-            //     Err(e) => error!("Failed to request stop of backend timer. Error: {}", e),
-            // }
             match invokable::invoke(
                 &mut *timer.qobject_from_ptr(),
                 "start(int)".to_string(),
@@ -117,5 +117,9 @@ impl UpdateThread {
 
     pub fn get_thread(self: Pin<&mut UpdateThread>) -> *mut QThread {
         self.as_ref().thread
+    }
+
+    pub fn update_thread_started(self: Pin<&mut UpdateThread>) {
+        crashhandling::registered_threads::register_thread("backend_update".to_string());
     }
 }

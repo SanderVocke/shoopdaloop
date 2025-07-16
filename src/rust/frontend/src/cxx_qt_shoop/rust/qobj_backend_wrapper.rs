@@ -5,15 +5,24 @@ use crate::cxx_qt_lib_shoop::{connect, connection_types};
 use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants;
 use crate::engine_update_thread;
 use backend_bindings::*;
-use common::logging::macros::*;
 use std::pin::Pin;
+use std::sync::OnceLock;
 use std::time;
+
+use common::logging::macros::*;
 shoop_log_unit!("Frontend.BackendWrapper");
 
 pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::ffi::*;
 pub use crate::cxx_qt_shoop::qobj_backend_wrapper_bridge::*;
 
 use cxx_qt::{ConnectionType, CxxQtType};
+
+unsafe extern "C" fn register_process_thread() {
+    static ONCE_LOCK: OnceLock<()> = OnceLock::new();
+    ONCE_LOCK.get_or_init(|| {
+        crashhandling::registered_threads::register_thread("audio".to_string());
+    });
+}
 
 fn audio_driver_settings_from_qvariantmap(
     map: &QMap_QString_QVariant,
@@ -115,7 +124,8 @@ impl BackendWrapper {
         unsafe {
             let mut rust = self.as_mut().rust_mut();
 
-            let local_driver = AudioDriver::new(driver_type).expect("Failed to create driver");
+            let local_driver = AudioDriver::new(driver_type, Some(register_process_thread))
+                .expect("Failed to create driver");
             local_driver
                 .start(&settings)
                 .expect("Failed to start driver");

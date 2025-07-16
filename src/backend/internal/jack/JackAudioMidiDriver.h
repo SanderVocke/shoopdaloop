@@ -49,7 +49,7 @@ private:
     void wait_process() override;
 
 public:
-    GenericJackAudioMidiDriver();
+    GenericJackAudioMidiDriver(void (*maybe_process_callback)()=nullptr);
     ~GenericJackAudioMidiDriver() override;
     
     void start(AudioMidiDriverSettingsInterface &settings) override;

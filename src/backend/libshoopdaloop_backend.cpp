@@ -300,10 +300,11 @@ shoop_backend_session_t *create_backend_session() {
 }
 
 shoop_audio_driver_t *create_audio_driver (
-    shoop_audio_driver_type_t type
+    shoop_audio_driver_type_t type,
+    void (*maybe_process_callback)()
 ) {
   return api_impl<shoop_audio_driver_t*>("create_audio_driver", [&]() {
-    auto rval = create_audio_midi_driver(type);
+    auto rval = create_audio_midi_driver(type, maybe_process_callback);
     g_active_drivers.insert(rval);
     return external_audio_driver(rval);
   }, nullptr);

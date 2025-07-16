@@ -214,7 +214,7 @@ public:
 
     shoop_shared_ptr<DummyExternalConnections> m_external_connections;
 
-    DummyAudioMidiDriver();
+    DummyAudioMidiDriver(void (*maybe_process_callback)() = nullptr);
     virtual ~DummyAudioMidiDriver();
 
     void start(AudioMidiDriverSettingsInterface &settings) override;
