@@ -40,7 +40,7 @@ fn set_json(to: &mut JsonValue, from: &JsonValue) -> anyhow::Result<()> {
 }
 
 pub fn crashhandling_server() {
-    info!("Starting crash handling server");
+    debug!("Starting crash handling server");
 
     let socket_name = std::env::args().last().expect("no socket name provided");
 
@@ -91,7 +91,7 @@ pub fn crashhandling_server() {
                     let _ = md_bin.file.flush();
                     info!("Done writing minidump");
 
-                    info!("Writing crash metadata json...");
+                    debug!("Writing crash metadata json...");
                     let path = &md_bin.path;
 
                     let result = || -> Result<(), anyhow::Error> {
@@ -187,7 +187,7 @@ pub fn crashhandling_server() {
         }
 
         fn on_client_disconnected(&self, _num_clients: usize) -> minidumper::LoopAction {
-            info!("Client disconnected, # -> {_num_clients}");
+            debug!("Client disconnected, # -> {_num_clients}");
             if _num_clients == 0 {
                 minidumper::LoopAction::Exit
             } else {
@@ -196,7 +196,7 @@ pub fn crashhandling_server() {
         }
 
         fn on_client_connected(&self, _num_clients: usize) -> minidumper::LoopAction {
-            info!("Client connected, # -> {_num_clients}");
+            debug!("Client connected, # -> {_num_clients}");
             minidumper::LoopAction::Continue
         }
     }
@@ -220,7 +220,7 @@ pub fn crashhandling_server() {
         )
         .expect("failed to run server");
 
-    info!("Crash handling server finished.");
+    info!("Crash handling server exiting");
 
     std::process::exit(0);
 }
