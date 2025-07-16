@@ -18,7 +18,7 @@ runs:
     run: |
       set -x
       ls -a ${{ inputs.dumps_dir }}
-      if [ $(ls -a ${{ inputs.dumps_dir }} | wc -l) -gt 0 ]; then
+      if [ $(find ${{ inputs.dumps_dir }} -type f | wc -l) -gt 0 ]; then
         echo "upload=true" | tee -a $GITHUB_OUTPUT
       fi
   
