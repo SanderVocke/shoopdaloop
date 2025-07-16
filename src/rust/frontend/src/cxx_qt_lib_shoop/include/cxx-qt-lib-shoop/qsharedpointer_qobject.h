@@ -5,12 +5,8 @@
 
 using QSharedPointer_QObject = QSharedPointer<QObject>;
 
-inline void doDeleteLater(QSharedPointer_QObject *obj) {
-
-    QObject* data = obj->data();
-    if (data) {
-        data->deleteLater();
-    }
+inline void doDeleteLater(QObject *obj) {
+    obj->deleteLater();
 }
 
 inline std::unique_ptr<QSharedPointer_QObject> qSharedPointerFromPtrDeleteLater(QObject *ptr) {
