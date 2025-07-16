@@ -16,7 +16,6 @@ pub use types::*;
 use common::logging::macros::*;
 shoop_log_unit!("CrashHandling");
 
-
 static CLIENTSIDE_HANDLE: OnceLock<Option<client::CrashHandlerHandle>> = OnceLock::new();
 
 pub fn init_crashhandling(

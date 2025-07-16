@@ -234,9 +234,7 @@ impl LoopGui {
 
     pub fn close(self: Pin<&mut LoopGui>) {
         debug!(self, "close");
-        unsafe {
-            self.rust_mut().backend_loop_wrapper = cxx::UniquePtr::null();
-        }
+        self.rust_mut().backend_loop_wrapper = cxx::UniquePtr::null();
     }
 
     pub fn queue_set_length(self: Pin<&mut LoopGui>, length: i32) {
