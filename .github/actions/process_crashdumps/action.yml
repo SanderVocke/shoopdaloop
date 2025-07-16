@@ -73,7 +73,8 @@ runs:
 
         SENTRY_ATTACHMENTS=""
         for f in $dump.attach.*; do
-          SENTRY_ATTACHMENTS="$SENTRY_ATTACHMENTS -F \"$f=@$f\""
+          ATTACHMENT_ID=$(basename $f | sed 's/^.*\.//')
+          SENTRY_ATTACHMENTS="$SENTRY_ATTACHMENTS -F $f=@$f"
         done
 
         curl -X POST 'https://o4509665637957632.ingest.de.sentry.io/api/4509665639792720/minidump/?sentry_key=${{ inputs.sentry_key }}' \
