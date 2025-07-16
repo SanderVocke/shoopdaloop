@@ -21,7 +21,7 @@ runs:
     if: always() && inputs.release_build == 'true'
     shell: wrap-shell {0}
     run: |
-        echo "CARGO_BUILD_FLAGS=--release" | tee -a $GITHUB_ENV
+        echo "CARGO_BUILD_FLAGS=--profile release-with-debug" | tee -a $GITHUB_ENV
         echo "BUILD_ENV_FILE=./build/build-env-release.sh" | tee -a $GITHUB_ENV
 
   - name: Set debug flags

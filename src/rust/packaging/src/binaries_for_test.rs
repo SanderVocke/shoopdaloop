@@ -134,7 +134,8 @@ fn populate_folder(folder: &Path, release: bool) -> Result<(), anyhow::Error> {
         true => vec![
             "nextest",
             "archive",
-            "--release",
+            "--profile",
+            "release-with-debug",
             "--archive-file",
             archive.to_str().unwrap(),
         ],
