@@ -75,7 +75,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       echo "Splitting out debug info..."
-      bash scripts/separate_debug_info.sh $PORTABLE_DIR debug_symbols
+      bash -x scripts/separate_debug_info.sh $PORTABLE_DIR debug_symbols
   - if: always() && inputs.package_kind == 'portable_folder'
     shell: wrap-shell {0}
     run: |

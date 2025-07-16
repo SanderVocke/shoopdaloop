@@ -145,7 +145,7 @@ find "$input_dir" -type f -print0 | while IFS= read -r -d $'\0' elf_file; do
     # 6. Strip debug information from the original ELF file (in-place).
     echo "  Stripping debug info from original file: '$elf_file'"
     # '--strip-debug': Removes all debug sections from the file.
-    objcopy --strip-debug "$elf_file"
+    strip --strip-debug "$elf_file"
     if [ $? -ne 0 ]; then
         echo "  Error: Failed to strip debug info from '$elf_file'."
         echo "         Removing extracted debug file and skipping this file."
@@ -166,6 +166,10 @@ find "$input_dir" -type f -print0 | while IFS= read -r -d $'\0' elf_file; do
         echo ""
         continue
     fi
+
+    # 8. Also put the stripped binary in the target folder, as it will
+    # be useful for stack unwind information.
+    cp "$elf_file" "$output_dir/$elf_file"
 
     # Update global counters for successful processing.
     processed_files_count=$((processed_files_count + 1))
