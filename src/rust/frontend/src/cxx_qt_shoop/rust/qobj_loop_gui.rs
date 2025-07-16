@@ -359,7 +359,9 @@ impl LoopGui {
         // make a better solution for this.
         let backend_wrapper = &self.as_ref().backend_loop_wrapper;
         if backend_wrapper.is_null() {
-            return Err(anyhow::anyhow!("Cannot add audio channel: no backend loop present"));
+            return Err(anyhow::anyhow!(
+                "Cannot add audio channel: no backend loop present"
+            ));
         }
         let backend_wrapper_qobj = backend_wrapper.data().unwrap();
         unsafe {
@@ -384,7 +386,9 @@ impl LoopGui {
         // make a better solution for this.
         let backend_wrapper = &self.as_ref().backend_loop_wrapper;
         if backend_wrapper.is_null() {
-            return Err(anyhow::anyhow!("Cannot add midi channel: no backend loop present"));
+            return Err(anyhow::anyhow!(
+                "Cannot add midi channel: no backend loop present"
+            ));
         }
         let backend_wrapper_qobj = backend_wrapper.data().unwrap();
         unsafe {
