@@ -52,7 +52,8 @@ def substitute_schedule_backend_loops(schedule):
                     o.append(transform_list(i))
                 elif i and isinstance(i, QObject):
                     backend_loop = i.property("backend_loop_wrapper")
-                    o.append(backend_loop)
+                    if backend_loop:
+                        o.append(backend_loop)
                 else:
                     o.append(i)
             return o
@@ -68,7 +69,9 @@ def substitute_schedule_backend_loops(schedule):
         if 'loop_modes' in iteration_data.keys():
             loop_modes_out = dict()
             for (key, value) in iteration_data['loop_modes'].items():
-                loop_modes_out[key.get_backend_loop_wrapper()] = value
+                backend_wrapper = key.get_backend_loop_wrapper()
+                if backend_wrapper:
+                    loop_modes_out[backend_wrapper] = value
             schedule_out[iteration]['loop_modes'] = loop_modes_out
     return schedule_out
 
@@ -222,8 +225,9 @@ class CompositeLoop(ShoopQQuickItem):
             self.syncLoopChanged.emit(val)
     def update_backend_sync_loop(self):
         backend_sync_loop = self._sync_loop.property('backend_loop_wrapper') if self._sync_loop else None
-        self.logger.debug(lambda: f'set backend sync loop -> {backend_sync_loop}')
-        self.backend_set_sync_loop.emit(backend_sync_loop)
+        if backend_sync_loop:
+            self.logger.debug(lambda: f'set backend sync loop -> {backend_sync_loop}')
+            self.backend_set_sync_loop.emit(backend_sync_loop)
     
     # running_loops (backend -> frontend)
     runningLoopsChanged = ShoopSignal('QVariant')

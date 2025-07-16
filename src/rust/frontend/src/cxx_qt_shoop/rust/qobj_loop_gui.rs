@@ -315,7 +315,10 @@ impl LoopGui {
                     )?;
                     let loop_gui_ptr: *mut LoopGui = qobject_to_loop_ptr(loop_gui_qobj);
                     let backend_loop_ptr: &cxx::UniquePtr<QSharedPointer_QObject> =
-                        &loop_gui_ptr.as_ref().unwrap().backend_loop_wrapper;
+                        &loop_gui_ptr.as_ref().ok_or(anyhow::anyhow!("Failed to get loop GUI reference"))?.backend_loop_wrapper;
+                    if backend_loop_ptr.is_null() {
+                        return Err(anyhow::anyhow!("Loop GUI has no back-end"));
+                    }
                     let backend_loop_handle: QVariant =
                         qsharedpointer_qobject_to_qvariant(&backend_loop_ptr.as_ref().unwrap());
                     backend_loop_handles.append(backend_loop_handle);
@@ -325,7 +328,7 @@ impl LoopGui {
             .for_each(|result| match result {
                 Ok(_) => (),
                 Err(err) => {
-                    raw_error!("Failed to increment reference count for loop: {:?}", err)
+                    raw_error!("Failed to increment reference count for loop. This loop will be omitted. Details: {:?}", err)
                 }
             });
 
@@ -354,7 +357,11 @@ impl LoopGui {
     ) -> Result<AudioChannel, anyhow::Error> {
         // TODO: this is not thread-safe. Once audio channels have been rustified,
         // make a better solution for this.
-        let backend_wrapper_qobj = self.as_ref().backend_loop_wrapper.data().unwrap();
+        let backend_wrapper = &self.as_ref().backend_loop_wrapper;
+        if backend_wrapper.is_null() {
+            return Err(anyhow::anyhow!("Cannot add audio channel: no backend loop present"));
+        }
+        let backend_wrapper_qobj = backend_wrapper.data().unwrap();
         unsafe {
             let backend_wrapper_obj = &mut *qobject_to_loop_backend_ptr(backend_wrapper_qobj);
             let maybe_backend_loop = backend_wrapper_obj.backend_loop.as_ref();
@@ -373,9 +380,13 @@ impl LoopGui {
         self: Pin<&mut LoopGui>,
         mode: i32,
     ) -> Result<MidiChannel, anyhow::Error> {
-        // TODO: this is not thread-safe. Once audio channels have been rustified,
+        // TODO: this is not thread-safe. Once midi channels have been rustified,
         // make a better solution for this.
-        let backend_wrapper_qobj = self.as_ref().backend_loop_wrapper.data().unwrap();
+        let backend_wrapper = &self.as_ref().backend_loop_wrapper;
+        if backend_wrapper.is_null() {
+            return Err(anyhow::anyhow!("Cannot add midi channel: no backend loop present"));
+        }
+        let backend_wrapper_qobj = backend_wrapper.data().unwrap();
         unsafe {
             let backend_wrapper_obj = &mut *qobject_to_loop_backend_ptr(backend_wrapper_qobj);
             let maybe_backend_loop = backend_wrapper_obj.backend_loop.as_ref();
@@ -478,7 +489,11 @@ impl LoopGui {
     }
 
     pub fn get_backend_loop_wrapper(mut self: Pin<&mut LoopGui>) -> *mut QObject {
-        self.as_mut().backend_loop_wrapper.data().unwrap()
+        let wrapper = &self.as_mut().backend_loop_wrapper;
+        if wrapper.is_null() {
+            return std::ptr::null_mut();
+        }
+        wrapper.data().unwrap()
     }
 }
 
