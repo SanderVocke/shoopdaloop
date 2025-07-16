@@ -190,10 +190,6 @@ pub mod ffi {
         pub unsafe fn next_transition_delay_changed(self: Pin<&mut LoopGui>);
 
         #[qsignal]
-        #[cxx_name = "backendClose"]
-        pub unsafe fn backend_close(self: Pin<&mut LoopGui>);
-
-        #[qsignal]
         fn cycled(self: Pin<&mut LoopGui>, cycle_nr: i32);
 
         // The following signals are to internally connect to the back-end object
