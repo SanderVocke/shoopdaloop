@@ -257,4 +257,8 @@ Item {
         loop.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, ShoopConstants.DontAlignToSyncImmediately)
         loop.transition(ShoopConstants.LoopMode.Stopped, 4, ShoopConstants.DontAlignToSyncImmediately)
     }
+
+    Component.onDestruction: {
+        ShoopCrashHandling.set_json_tag("shoop_action", "monkey test (finished)")
+    }
 }
