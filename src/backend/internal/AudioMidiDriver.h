@@ -47,6 +47,7 @@ class AudioMidiDriver : public WithCommandQueue,
     std::atomic<bool> m_active = false;
     std::atomic<uint32_t> m_last_processed = 1;
     std::set<shoop_shared_ptr<shoop_types::_DecoupledMidiPort>> m_decoupled_midi_ports;
+    void (*m_maybe_process_callback)() = nullptr;
 
 protected:
     // Derived class should call these
@@ -113,6 +114,6 @@ public:
         shoop_port_data_type_t maybe_data_type_filter
     ) = 0;
 
-    AudioMidiDriver();
+    AudioMidiDriver(void (*maybe_process_callback)()=nullptr);
     virtual ~AudioMidiDriver() {}
 };

@@ -16,7 +16,7 @@ if have_nsm:
     from ...third_party.pynsm.nsmclient import NSMClient, NSMNotRunningError
 
 from ..qml_helpers import *
-from shoop_rust import shoop_rust_init, shoop_rust_make_qml_application_engine
+from shoop_rust import shoop_rust_init, shoop_rust_make_qml_application_engine, shoop_rust_set_crash_json_tag
 
 from ..logging import *
 from shoop_config import shoop_version, shoop_resource_dir
@@ -292,6 +292,7 @@ class Application(ShoopQApplication):
     @ShoopSlot()
     def do_quit(self):
         self.logger.debug("Quit requested")
+        shoop_rust_set_crash_json_tag("shoop_phase", "quit")
         if not self._quitting:
             self._quitting = True
             if self.engine:

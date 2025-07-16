@@ -75,7 +75,8 @@ void GenericJackAudioMidiDriver<API>::PROC_update_ports_cb_inst() {
 }
 
 template<typename API>
-GenericJackAudioMidiDriver<API>::GenericJackAudioMidiDriver():
+GenericJackAudioMidiDriver<API>::GenericJackAudioMidiDriver(void (*maybe_process_callback)()):
+    AudioMidiDriver(maybe_process_callback),
     m_started(false),
     m_all_ports_tracker(shoop_make_shared<GenericJackAllPorts<API>>()) {}
 

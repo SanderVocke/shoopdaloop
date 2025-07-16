@@ -1,5 +1,7 @@
 // Note: mostly taken from the example included with the minidumper crate.
 
+pub mod registered_threads;
+
 use anyhow;
 use serde;
 use serde_json::Value as JsonValue;
@@ -15,7 +17,6 @@ use common::logging::macros::*;
 shoop_log_unit!("CrashHandling");
 
 use minidumper::{Client, Server};
-
 enum CrashHandlingMessageType {
     // Recursively set values in the metadata JSON.
     SetJson = 0,
@@ -334,6 +335,16 @@ fn crashhandling_client(
                     .lock()
                     .expect("Unable to lock IPC clients");
                 let (client1, client2) = &*guard;
+
+                let thread_name = registered_threads::current_thread_registered_name()
+                    .or(Some("unknown".to_string()))
+                    .unwrap();
+                client1
+                    .send_message(
+                        CrashHandlingMessageType::SetJson as u32,
+                        format!("{{\"tags\":{{\"thread_name\":\"{thread_name}\"}}}}"),
+                    )
+                    .unwrap();
 
                 // Send a ping to the server, this ensures that all messages that have been sent
                 // are "flushed" before the crash event is sent. This is only really useful

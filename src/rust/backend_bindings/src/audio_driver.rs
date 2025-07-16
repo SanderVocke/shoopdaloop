@@ -160,10 +160,19 @@ pub struct AudioDriver {
 unsafe impl Send for AudioDriver {}
 unsafe impl Sync for AudioDriver {}
 
+pub type ProcessCallback = unsafe extern "C" fn();
+
 impl AudioDriver {
-    pub fn new(driver_type: AudioDriverType) -> Result<Self, anyhow::Error> {
-        let obj =
-            unsafe { ffi::create_audio_driver(driver_type as ffi::shoop_audio_driver_type_t) };
+    pub fn new(
+        driver_type: AudioDriverType,
+        maybe_callback: Option<ProcessCallback>,
+    ) -> Result<Self, anyhow::Error> {
+        let obj = unsafe {
+            ffi::create_audio_driver(
+                driver_type as ffi::shoop_audio_driver_type_t,
+                maybe_callback,
+            )
+        };
         if obj.is_null() {
             Err(anyhow::anyhow!("create_audio_driver() failed"))
         } else {

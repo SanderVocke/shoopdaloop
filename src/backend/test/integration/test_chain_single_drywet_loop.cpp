@@ -73,7 +73,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
         api_backend_session = create_backend_session();
         int_backend_session = internal_backend_session(api_backend_session);
 
-        api_driver = create_audio_driver(Dummy);
+        api_driver = create_audio_driver(Dummy, nullptr);
         int_driver = shoop_dynamic_pointer_cast<_DummyAudioMidiDriver>(internal_audio_driver(api_driver));
 
         auto settings = DummyAudioMidiDriverSettings{};

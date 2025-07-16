@@ -11,7 +11,7 @@ extern "C" {
 #endif
 
 // Audio driver
-SHOOP_EXPORT shoop_audio_driver_t *create_audio_driver (shoop_audio_driver_type_t type);
+SHOOP_EXPORT shoop_audio_driver_t *create_audio_driver (shoop_audio_driver_type_t type, void (*maybe_process_callback)());
 SHOOP_EXPORT shoop_audio_driver_state_t *get_audio_driver_state (shoop_audio_driver_t *driver);
 SHOOP_EXPORT unsigned driver_type_supported(shoop_audio_driver_type_t driver_type);
 SHOOP_EXPORT void destroy_audio_driver (shoop_audio_driver_t *driver);

@@ -181,12 +181,12 @@ PythonTestCase {
     }
 
     function start_test_fn(name) {
-        ShoopCrashHandling.set_json_tag("active_test", `${name}`)
+        ShoopCrashHandling.set_json_tag("shoop_action", `qml test (${name})`)
         logger.info(() => (`===== TEST START ${name}`))
     }
 
     function end_test_fn(name) {
-        ShoopCrashHandling.set_json_tag("active_test", "")
+        ShoopCrashHandling.set_json_tag("shoop_action", "qml test (none)")
         logger.info(() => (`===== TEST END ${name}`))
     }
 

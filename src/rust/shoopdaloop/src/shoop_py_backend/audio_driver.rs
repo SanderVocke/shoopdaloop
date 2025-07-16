@@ -152,7 +152,7 @@ impl AudioDriver {
     fn py_new(driver_type: u32) -> PyResult<Self> {
         let driver_type = backend_bindings::AudioDriverType::try_from(driver_type)
             .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid driver type"))?;
-        let obj = backend_bindings::AudioDriver::new(driver_type).map_err(|e| {
+        let obj = backend_bindings::AudioDriver::new(driver_type, None).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Failed to create AudioDriver: {:?}",
                 e
