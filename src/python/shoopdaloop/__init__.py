@@ -60,11 +60,6 @@ def main():
             myappid = 'shoopdaloop.shoopdaloop' # arbitrary string
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 
-        if args.qml_self_test:
-            import shoopdaloop.qml_tests
-            result = shoopdaloop.qml_tests.run_qml_tests(bare_args[1] if len(bare_args) > 1 else [])
-            sys.exit(result)
-
         if args.info:
             print('ShoopDaLoop {}'.format(shoop_version))
             print('Installation: {}'.format(shoop_install_info))
@@ -74,30 +69,35 @@ def main():
             print(shoop_version)
             sys.exit(0)
 
-        global_args = {
-            'backend_type': int(args.backend),
-            'load_session_on_startup': args.session_filename,
-            'test_grab_screens': args.test_grab_screens,
-            'developer': args.developer,
-            'quit_after': args.quit_after,
-            'monkey_tester': bool(args.monkey_tester)
-        }
+        if args.qml_self_test:
+            import shoopdaloop.qml_tests
+            result = shoopdaloop.qml_tests.run_qml_tests(bare_args[1] if len(bare_args) > 1 else [])
+            return result
+        else:
+            global_args = {
+                'backend_type': int(args.backend),
+                'load_session_on_startup': args.session_filename,
+                'test_grab_screens': args.test_grab_screens,
+                'developer': args.developer,
+                'quit_after': args.quit_after,
+                'monkey_tester': bool(args.monkey_tester)
+            }
 
-        app = Application(
-            'ShoopDaLoop',
-            '{}/applications/{}.qml'.format(shoop_qml_dir, args.main),
-            global_args,
-            dict(),
-            args.qml_debug,
-            args.debug_wait,
-            True,
-            not args.dont_refresh_with_gui,
-            args.max_backend_refresh_interval_ms
-            )
-        shoop_rust_init_engine_update_thread()
-        app.exec()
+            app = Application(
+                'ShoopDaLoop',
+                '{}/applications/{}.qml'.format(shoop_qml_dir, args.main),
+                global_args,
+                dict(),
+                args.qml_debug,
+                args.debug_wait,
+                True,
+                not args.dont_refresh_with_gui,
+                args.max_backend_refresh_interval_ms
+                )
+            shoop_rust_init_engine_update_thread()
+            app.exec()
 
-        return 0
+            return 0
     except SystemExit as e:
         return e.code
     except Exception as e:

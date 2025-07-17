@@ -6,7 +6,7 @@ use std::process::Command;
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
-fn populate_folder(folder: &Path, release: bool) -> Result<(), anyhow::Error> {
+fn populate_folder(folder: &Path, cargo_flags: &str) -> Result<(), anyhow::Error> {
     // For normalizing Windows paths
     let normalize_path = |path: PathBuf| -> PathBuf {
         PathBuf::from(
@@ -130,22 +130,15 @@ fn populate_folder(folder: &Path, release: bool) -> Result<(), anyhow::Error> {
 
     info!("Creating nextest archive...");
     let archive = folder.join("nextest-archive.tar.zst");
-    let args = match release {
-        true => vec![
-            "nextest",
-            "archive",
-            "--profile",
-            "release-with-debug",
-            "--archive-file",
-            archive.to_str().unwrap(),
-        ],
-        false => vec![
-            "nextest",
-            "archive",
-            "--archive-file",
-            archive.to_str().unwrap(),
-        ],
-    };
+    let mut cargo_flags: Vec<&str> = cargo_flags.split(" ").collect();
+    let mut args = vec![
+        "nextest",
+        "archive",
+        "--archive-file",
+        archive.to_str().unwrap(),
+    ];
+    args.append(&mut cargo_flags);
+
     Command::new(&nextest_path)
         .current_dir(&src_path)
         .args(&args[..])
@@ -159,7 +152,10 @@ fn populate_folder(folder: &Path, release: bool) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-pub fn build_test_binaries_folder(output_dir: &Path, release: bool) -> Result<(), anyhow::Error> {
+pub fn build_test_binaries_folder(
+    output_dir: &Path,
+    cargo_flags: &str,
+) -> Result<(), anyhow::Error> {
     if output_dir.exists() {
         return Err(anyhow::anyhow!(
             "Output directory {:?} already exists",
@@ -179,7 +175,7 @@ pub fn build_test_binaries_folder(output_dir: &Path, release: bool) -> Result<()
     info!("Creating test binaries directory...");
     std::fs::create_dir(output_dir)?;
 
-    populate_folder(output_dir, release)?;
+    populate_folder(output_dir, cargo_flags)?;
 
     info!("Test binaries folder created @ {output_dir:?}");
     Ok(())

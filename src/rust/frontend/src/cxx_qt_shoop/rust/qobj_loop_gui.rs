@@ -497,7 +497,7 @@ impl LoopGui {
         if wrapper.is_null() {
             return std::ptr::null_mut();
         }
-        wrapper.data().unwrap()
+        wrapper.data().expect("Could not access backend loop")
     }
 }
 

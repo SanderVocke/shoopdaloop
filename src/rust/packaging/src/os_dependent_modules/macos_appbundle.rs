@@ -146,12 +146,7 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
     Ok(())
 }
 
-pub fn build_appbundle(
-    exe_path: &Path,
-    _dev_exe_path: &Path,
-    output_dir: &Path,
-    _release: bool,
-) -> Result<(), anyhow::Error> {
+pub fn build_appbundle(exe_path: &Path, output_dir: &Path) -> Result<(), anyhow::Error> {
     if output_dir.exists() {
         return Err(anyhow::anyhow!(
             "Output directory {:?} already exists",

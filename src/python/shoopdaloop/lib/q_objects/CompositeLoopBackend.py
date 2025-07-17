@@ -94,15 +94,15 @@ class CompositeLoopBackend(ShoopQObject):
     def set_kind(self, v):
         self.kind = v
     
-    @ShoopSlot('QVariant')
+    @ShoopSlot('QObject*')
     def set_sync_loop(self, v):
         self.sync_loop = v
     
-    @ShoopSlot('QVariant')
+    @ShoopSlot('QObject*')
     def set_backend(self, v):
         self.backend = v
     
-    @ShoopSlot('QVariant')
+    @ShoopSlot('QVariantMap')
     def set_schedule(self, v):
         self.schedule = v
     
@@ -123,13 +123,13 @@ class CompositeLoopBackend(ShoopQObject):
     ######################
 
     # frontend_loop
-    @ShoopProperty('QVariant')
+    @ShoopProperty('QObject*')
     def frontend_loop(self):
         return self._frontend_loop
     
     # backend
-    backendChanged = ShoopSignal('QVariant')
-    @ShoopProperty('QVariant', notify=backendChanged)
+    backendChanged = ShoopSignal('QObject*')
+    @ShoopProperty('QObject*', notify=backendChanged)
     def backend(self):
         return self._backend
     @backend.setter
@@ -144,8 +144,8 @@ class CompositeLoopBackend(ShoopQObject):
 
     # schedule
     # See CompositeLoop.qml for the format of this property.
-    scheduleChanged = ShoopSignal('QVariant')
-    @ShoopProperty('QVariant', notify=scheduleChanged)
+    scheduleChanged = ShoopSignal('QVariantMap')
+    @ShoopProperty('QVariantMap', notify=scheduleChanged)
     def schedule(self):
         return self._schedule
     @schedule.setter
@@ -168,8 +168,8 @@ class CompositeLoopBackend(ShoopQObject):
         return self._initialized
     
     # sync_loop
-    syncLoopChanged = ShoopSignal('QVariant')
-    @ShoopProperty('QVariant', notify=syncLoopChanged)
+    syncLoopChanged = ShoopSignal('QObject*')
+    @ShoopProperty('QObject*', notify=syncLoopChanged)
     def sync_loop(self):
         return self._sync_loop
     @sync_loop.setter
@@ -190,8 +190,8 @@ class CompositeLoopBackend(ShoopQObject):
             self.syncLoopChanged.emit(self._sync_loop)
     
     # running_loops
-    runningLoopsChanged = ShoopSignal('QVariant')
-    @ShoopProperty('QVariant', notify=runningLoopsChanged)
+    runningLoopsChanged = ShoopSignal('QVariantList')
+    @ShoopProperty('QVariantList', notify=runningLoopsChanged)
     def running_loops(self):
         return list(self._running_loops)
     @running_loops.setter
@@ -201,8 +201,8 @@ class CompositeLoopBackend(ShoopQObject):
         self.running_frontend_loops = [l.property('frontend_loop') for l in self._running_loops]
     
     # running_frontend_loops
-    runningFrontendLoopsChanged = ShoopSignal('QVariant')
-    @ShoopProperty('QVariant', notify=runningFrontendLoopsChanged)
+    runningFrontendLoopsChanged = ShoopSignal('QVariantList')
+    @ShoopProperty('QVariantList', notify=runningFrontendLoopsChanged)
     def running_frontend_loops(self):
         return list(self._running_frontend_loops)
     @running_frontend_loops.setter
