@@ -35,6 +35,7 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/qobj_os_utils_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_release_focus_notifier_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_render_audio_waveform_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_schema_validator_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_update_thread_bridge.rs")
         .file("src/cxx_qt_shoop/rust/test/qobj_generic_test_item_bridge.rs")
         .file("src/cxx_qt_shoop/rust/test/qobj_test_backend_wrapper_bridge.rs")

@@ -3,10 +3,10 @@
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 
-use crate::shoop_py_backend::midi_port::MidiPort;
+use crate::midi_port::MidiPort;
 
-use crate::shoop_py_backend::channel::ChannelMode;
-use crate::shoop_py_backend::midi::MidiEvent;
+use crate::channel::ChannelMode;
+use crate::midi::MidiEvent;
 
 #[pyclass]
 #[derive(Clone)]

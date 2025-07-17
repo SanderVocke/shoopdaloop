@@ -4,8 +4,8 @@ use pyo3::prelude::*;
 // use pyo3::exceptions::*;
 use backend_bindings;
 
-use crate::shoop_py_backend::audio_port::AudioPort;
-use crate::shoop_py_backend::midi_port::MidiPort;
+use crate::audio_port::AudioPort;
+use crate::midi_port::MidiPort;
 
 #[pyclass(eq, eq_int)]
 #[derive(PartialEq, Clone)]

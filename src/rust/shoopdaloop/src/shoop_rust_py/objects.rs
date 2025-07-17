@@ -15,12 +15,12 @@ use frontend::cxx_qt_lib_shoop::qvariant_qobject::{
     qobject_ptr_to_qvariant, qvariant_to_qobject_ptr,
 };
 
-use crate::shoop_py_backend::audio_channel::AudioChannel;
-use crate::shoop_py_backend::audio_port::AudioPort;
-use crate::shoop_py_backend::decoupled_midi_port::DecoupledMidiPort;
-use crate::shoop_py_backend::fx_chain::FXChain;
-use crate::shoop_py_backend::midi_channel::MidiChannel;
-use crate::shoop_py_backend::midi_port::MidiPort;
+use shoop_py_backend::audio_channel::AudioChannel;
+use shoop_py_backend::audio_port::AudioPort;
+use shoop_py_backend::decoupled_midi_port::DecoupledMidiPort;
+use shoop_py_backend::fx_chain::FXChain;
+use shoop_py_backend::midi_channel::MidiChannel;
+use shoop_py_backend::midi_port::MidiPort;
 
 #[pyfunction]
 pub fn shoop_rust_set_crash_json_toplevel_field(field_name: &str, json: &str) {

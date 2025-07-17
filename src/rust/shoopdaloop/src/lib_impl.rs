@@ -32,18 +32,16 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
     // Get the command-line arguments
     let args: Vec<String> = env::args().collect();
 
-    pyo3::prepare_freethreaded_python();
-
     // Initialize the Python interpreter
     Python::with_gil(|py| {
         // Forward command-line arguments
-        let sys = py.import_bound("sys")?;
-        let os = py.import_bound("os")?;
-        let py_args: Vec<PyObject> = args
+        let sys = py.import("sys")?;
+        let os = py.import("os")?;
+        let py_args: Vec<_> = args
             .into_iter()
-            .map(|arg| PyString::new_bound(py, &arg).to_object(py))
+            .map(|arg| PyString::new(py, &arg))
             .collect();
-        sys.setattr("argv", PyList::new_bound(py, &py_args))?;
+        sys.setattr("argv", PyList::new(py, &py_args)?)?;
 
         // Print system path
         let runtime_link_path_var = if cfg!(target_os = "windows") {
@@ -90,13 +88,13 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
                 .set_item("shoop_rust", shoop_rust_py_module)?;
         }
         {
-            let shoop_py_backend_module = crate::shoop_py_backend::create_py_module(py).unwrap();
+            let shoop_py_backend_module = shoop_py_backend::create_py_module(py).unwrap();
             sys.getattr("modules")?
                 .set_item("shoop_py_backend", shoop_py_backend_module)?;
         }
 
         // Call main
-        let shoop = PyModule::import_bound(py, "shoopdaloop").map_err(|e| {
+        let shoop = PyModule::import(py, "shoopdaloop").map_err(|e| {
             e.print_and_set_sys_last_vars(py);
             anyhow::anyhow!("Python error (details printed)")
         })?;

@@ -25,7 +25,6 @@ from .q_objects.Tasks import Tasks
 from .q_objects.FXChain import FXChain
 from .q_objects.FetchChannelData import FetchChannelData
 from .q_objects.FileIO import FileIO
-from .q_objects.SchemaValidator import SchemaValidator
 from .q_objects.KeyModifiers import KeyModifiers
 from .q_objects.ApplicationMetadata import ApplicationMetadata
 from .q_objects.Logger import Logger
@@ -92,7 +91,6 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(Tasks, 'Tasks')
     register_qml_class(FetchChannelData, 'FetchChannelData')
     register_qml_class(FileIO, 'FileIO')
-    register_qml_class(SchemaValidator, 'SchemaValidator')
     register_qml_class(KeyModifiers, 'KeyModifiers')
     register_qml_class(ApplicationMetadata, 'ApplicationMetadata')
     register_qml_class(Logger, 'Logger')
@@ -125,7 +123,6 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
 
     items = {
         'file_io': FileIO(parent=engine),
-        'schema_validator': SchemaValidator(parent=engine),
         'click_track_generator': ClickTrackGenerator(parent=engine),
         'key_modifiers': KeyModifiers(parent=engine),
         'app_metadata': ApplicationMetadata(parent=engine),

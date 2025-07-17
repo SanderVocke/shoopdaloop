@@ -5,6 +5,7 @@ import QtQuick.Dialogs
 import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.PythonControlHandler
 import ShoopDaLoop.PythonControlInterface
+import ShoopDaLoop.Rust
 
 import "./js/generate_session.js" as GenerateSession
 import ShoopConstants
@@ -282,7 +283,7 @@ Rectangle {
             let our_sample_rate = session_backend.get_sample_rate()
             let incoming_sample_rate = descriptor.sample_rate
 
-            if (!schema_validator.validate_schema(descriptor, "Session object", validator.schema, false)) {
+            if (!ShoopSchemaValidator.validate_schema(descriptor, "Session object", validator.schema, false)) {
                 return;
             }
 

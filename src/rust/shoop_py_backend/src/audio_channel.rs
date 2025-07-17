@@ -3,8 +3,8 @@
 use backend_bindings;
 use pyo3::prelude::*;
 
-use crate::shoop_py_backend::audio_port::AudioPort;
-use crate::shoop_py_backend::channel::ChannelMode;
+use crate::audio_port::AudioPort;
+use crate::channel::ChannelMode;
 
 #[pyclass]
 #[derive(Clone)]

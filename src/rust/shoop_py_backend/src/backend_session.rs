@@ -2,9 +2,9 @@
 
 use pyo3::prelude::*;
 // use pyo3::exceptions::*;
-use crate::shoop_py_backend::audio_driver::AudioDriver;
-use crate::shoop_py_backend::fx_chain::FXChain;
-use crate::shoop_py_backend::shoop_loop::Loop;
+use crate::audio_driver::AudioDriver;
+use crate::fx_chain::FXChain;
+use crate::shoop_loop::Loop;
 use backend_bindings;
 
 #[pyclass]

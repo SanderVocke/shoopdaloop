@@ -3,8 +3,8 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use crate::shoop_py_backend::audio_driver::AudioDriver;
-use crate::shoop_py_backend::midi::MidiEvent;
+use crate::audio_driver::AudioDriver;
+use crate::midi::MidiEvent;
 
 #[pyclass]
 pub struct DecoupledMidiPort {

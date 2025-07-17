@@ -57,7 +57,7 @@ runs:
       set -x
       . ${BUILD_ENV_FILE}
       echo "cargo: $(which cargo)"
-      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild config/prebuild frontend/prebuild py_env/prebuild py_prepare/prebuild" ${CARGO_BUILD_FLAGS}
+      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild config/prebuild frontend/prebuild py_env/prebuild py_prepare/prebuild shoop_py_backend/prebuild shoop_py_utils/prebuild" ${CARGO_BUILD_FLAGS}
 
   - name: Extra flags for main build
     if: always()

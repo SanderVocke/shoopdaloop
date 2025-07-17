@@ -1,0 +1,15 @@
+[package]
+name = "shoop_py_wrapped_objects"
+edition = "2021"
+
+[dependencies]
+pyo3 = { version = "0.25", features = ["auto-initialize"] }
+cxx-qt = "0.7"
+cxx-qt-lib = { version = "0.7", features = ["full"] }
+shoop_py_utils = { path = "../shoop_py_utils" }
+
+[build-dependencies]
+
+[features]
+# Dummy build to build dependencies only
+prebuild = ["shoop_py_utils/prebuild"]

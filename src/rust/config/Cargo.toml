@@ -7,7 +7,7 @@ name = "print_configs_dir"
 path = "src/bin/print_configs_dir.rs"
 
 [dependencies]
-pyo3 = "0.22"
+pyo3 = { version = "0.25", features = ["auto-initialize"] }
 glob = "0.3"
 anyhow = "1.0"
 regex = "1.10"
