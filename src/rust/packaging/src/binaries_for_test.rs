@@ -6,7 +6,7 @@ use std::process::Command;
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
-fn populate_folder(folder: &Path, release: bool) -> Result<(), anyhow::Error> {
+fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Error> {
     // For normalizing Windows paths
     let normalize_path = |path: PathBuf| -> PathBuf {
         PathBuf::from(
@@ -130,21 +130,15 @@ fn populate_folder(folder: &Path, release: bool) -> Result<(), anyhow::Error> {
 
     info!("Creating nextest archive...");
     let archive = folder.join("nextest-archive.tar.zst");
-    let args = match release {
-        true => vec![
-            "nextest",
-            "archive",
-            "--release",
-            "--archive-file",
-            archive.to_str().unwrap(),
-        ],
-        false => vec![
-            "nextest",
-            "archive",
-            "--archive-file",
-            archive.to_str().unwrap(),
-        ],
-    };
+    let args = vec![
+        "nextest",
+        "archive",
+        "--archive-file",
+        archive.to_str().unwrap(),
+        "--cargo-profile",
+        cargo_profile,
+    ];
+
     Command::new(&nextest_path)
         .current_dir(&src_path)
         .args(&args[..])
@@ -158,7 +152,10 @@ fn populate_folder(folder: &Path, release: bool) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-pub fn build_test_binaries_folder(output_dir: &Path, release: bool) -> Result<(), anyhow::Error> {
+pub fn build_test_binaries_folder(
+    output_dir: &Path,
+    cargo_profile: &str,
+) -> Result<(), anyhow::Error> {
     if output_dir.exists() {
         return Err(anyhow::anyhow!(
             "Output directory {:?} already exists",
@@ -178,7 +175,7 @@ pub fn build_test_binaries_folder(output_dir: &Path, release: bool) -> Result<()
     info!("Creating test binaries directory...");
     std::fs::create_dir(output_dir)?;
 
-    populate_folder(output_dir, release)?;
+    populate_folder(output_dir, cargo_profile)?;
 
     info!("Test binaries folder created @ {output_dir:?}");
     Ok(())

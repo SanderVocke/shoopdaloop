@@ -2,7 +2,6 @@ from typing import *
 import sys
 
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer
-from PySide6.QtQml import QJSValue
 
 from .ShoopPyObject import *
 
@@ -23,11 +22,9 @@ class SchemaValidator(ShoopQObject):
     ###########
 
     # Validate a schema asynchronously.
-    @ShoopSlot('QVariant', str, str, bool, result=bool)
+    @ShoopSlot('QVariantMap', str, str, bool, result=bool)
     def validate_schema(self, obj, obj_desc, schemaname, asynchronous):
         _obj = obj
-        if isinstance(obj, QJSValue):
-            _obj = obj.toVariant()
 
         if type(_obj) not in [list, dict]:
             self.logger.error(lambda: f"Cannot validate a non-list/dict object: {type(_obj)}")

@@ -361,7 +361,7 @@ def main():
     print(f'\nWrote build environment files to build/build-env-[debug|release].[sh|ps1].')
     print('Apply the debug or release environment file by sourcing the relevant script.')
     print('\nThen build using cargo, e.g.:')
-    print('\n    cargo build [--release]')
+    print('\n    cargo build [--release / --profile release-with-debug]')
 
 if __name__ == '__main__':
     main()

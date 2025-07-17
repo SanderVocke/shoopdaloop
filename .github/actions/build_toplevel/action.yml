@@ -73,7 +73,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       echo "ARTIFACT_VARIANT=release-${{ inputs.platform }}" | tee -a $GITHUB_ENV
-      echo "CARGO_ARTIFACTS_DIR=$(${{ env.CONVERT_PATH_FN }} $(pwd)/target/release)" | tee -a $GITHUB_ENV
+      echo "CARGO_ARTIFACTS_DIR=$(${{ env.CONVERT_PATH_FN }} $(pwd)/target/release-with-debug)" | tee -a $GITHUB_ENV
   - name: set Cargo build flags (debug)
     if: always() && inputs.release_build != 'true'
     shell: wrap-shell {0}
@@ -198,12 +198,12 @@ runs:
     with:
       name: vcpkg_dependencies_installed_${{ inputs.name }}
       path: build/vcpkg_installed
-  - name: Upload debug info
-    if: always() && inputs.upload_artifacts == 'true'
-    uses: actions/upload-artifact@v4
-    with:
-      name: breakpad_debuginfo_${{ inputs.name }}
-      path: debuginfo
+  # - name: Upload debug info
+  #   if: always() && inputs.upload_artifacts == 'true'
+  #   uses: actions/upload-artifact@v4
+  #   with:
+  #     name: breakpad_debuginfo_${{ inputs.name }}
+  #     path: debuginfo
   - name: Save build info for coverage analyis
     shell: wrap-shell {0}
     if: always() && inputs.coverage
@@ -217,14 +217,14 @@ runs:
       path: |
         ./**/*.gcno
         ori_build_dir.txt
-  - name: Upload .PDB files
-    if: always() && inputs.prepare_kind == 'windows' && inputs.upload_artifacts == 'true'
-    uses: actions/upload-artifact@v4
-    with:
-      name: pdb_${{ inputs.name }}
-      path: |
-        ./target/**/*.pdb
-        ./target/**/*.PDB
+  # - name: Upload .PDB files
+  #   if: always() && inputs.prepare_kind == 'windows' && inputs.upload_artifacts == 'true'
+  #   uses: actions/upload-artifact@v4
+  #   with:
+  #     name: pdb_${{ inputs.name }}
+  #     path: |
+  #       ./target/**/*.pdb
+  #       ./target/**/*.PDB
   - uses: ./.github/actions/checkpoint
     if: always()
   - shell: wrap-shell {0}

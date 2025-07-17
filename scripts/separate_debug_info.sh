@@ -145,7 +145,7 @@ find "$input_dir" -type f -print0 | while IFS= read -r -d $'\0' elf_file; do
     # 6. Strip debug information from the original ELF file (in-place).
     echo "  Stripping debug info from original file: '$elf_file'"
     # '--strip-debug': Removes all debug sections from the file.
-    objcopy --strip-debug "$elf_file"
+    strip --strip-debug "$elf_file"
     if [ $? -ne 0 ]; then
         echo "  Error: Failed to strip debug info from '$elf_file'."
         echo "         Removing extracted debug file and skipping this file."
@@ -156,16 +156,26 @@ find "$input_dir" -type f -print0 | while IFS= read -r -d $'\0' elf_file; do
     # Get the size of the original file after stripping.
     current_stripped_size=$(stat -c%s "$elf_file")
 
-    # 7. Create a GNU debug link in the original ELF file.
-    echo "  Adding GNU debug link to: '$elf_file'"
-    # '--add-gnu-debuglink': Adds a .gnu_debuglink section pointing to the separate debug file.
-    # Use basename of the *chosen* debug_file_path for the debug link.
-    objcopy --add-gnu-debuglink="$(basename \"$debug_file_path\")" "$elf_file"
-    if [ $? -ne 0 ]; then
-        echo "  Error: Failed to add GNU debug link to '$elf_file'."
-        echo ""
-        continue
-    fi
+    # NOTE: below section commented out because:
+    # - Plan to rely on build ID, not debug link
+    # - The command below doesn't work - the debug file should be in the same directory
+    #   as the binary. Need to refactor this file a bit to get it working
+    # # 7. Create a GNU debug link in the original ELF file.
+    # echo "  Adding GNU debug link to: '$elf_file'"
+    # # '--add-gnu-debuglink': Adds a .gnu_debuglink section pointing to the separate debug file.
+    # # Use basename of the *chosen* debug_file_path for the debug link.
+    # objcopy --add-gnu-debuglink="$(basename $debug_file_path)" "$elf_file"
+    # if [ $? -ne 0 ]; then
+    #     echo "  Error: Failed to add GNU debug link to '$elf_file'."
+    #     echo ""
+    #     continue
+    # fi
+
+    # Note: this doesn't get picked up by sentry-cli.
+    # find out how to get unwind info.
+    # 8. Also put the stripped binary in the target folder, as it will
+    # be useful for stack unwind information.
+    # cp "$elf_file" "$output_dir/$elf_file"
 
     # Update global counters for successful processing.
     processed_files_count=$((processed_files_count + 1))

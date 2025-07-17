@@ -50,7 +50,7 @@ runs:
       RELEASE_PORTABLE_DIR=$(pwd)/shoopdaloop-${{ env.SHOOP_VERSION }}.${{ env.ARTIFACT_VARIANT }}.portable
       echo "PORTABLE_DIR=$PORTABLE_DIR" | tee -a $GITHUB_ENV
       echo "RELEASE_PORTABLE_DIR=$RELEASE_PORTABLE_DIR" | tee -a $GITHUB_ENV
-      ${CARGO_ARTIFACTS_DIR}/package build-portable-folder -o $PORTABLE_DIR ${CARGO_BUILD_FLAGS}
+      ${CARGO_ARTIFACTS_DIR}/package build-portable-folder -o $PORTABLE_DIR
   # - name: Make relocatable (MacOS)
   #   if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
   #   uses: ./.github/actions/macos_make_relocatable
@@ -96,7 +96,13 @@ runs:
     with:
       upload_url: ${{ inputs.release_upload_assets_url }}
       asset_path: ${{ env.BUILT_RELEASE_ARTIFACT }}
-  - name: Upload debug symbols
+  - name: Upload debug symbols (GitHub)
+    uses: actions/upload-artifact@v4
+    if: always() && inputs.package_kind == 'portable_folder'
+    with:
+      name: ${{ env.BUILT_PACKAGE_NAME }}.debuginfo
+      path: debug_symbols
+  - name: Upload debug symbols (Sentry)
     if: always() && inputs.package_kind == 'portable_folder' && runner.os == 'Linux'
     shell: wrap-shell {0}
     run: |
@@ -118,7 +124,7 @@ runs:
       echo "TEST_BINARIES_DIR=$TEST_BINARIES_DIR" | tee -a $GITHUB_ENV
       USE_PACKAGE_BINARY_PATH=$(${{ env.CONVERT_PATH_FN }} ${CARGO_ARTIFACTS_DIR}/package)
       USE_OUT_DIRECTORY_PATH=$(${{ env.CONVERT_PATH_FN }} $TEST_BINARIES_DIR)
-      ${NATIVE_SHELL_CMD} "${USE_PACKAGE_BINARY_PATH} build-test-binaries -o ${USE_OUT_DIRECTORY_PATH} ${CARGO_BUILD_FLAGS}"
+      ${NATIVE_SHELL_CMD} "${USE_PACKAGE_BINARY_PATH} build-test-binaries -o ${USE_OUT_DIRECTORY_PATH} --cargo-profile=${CARGO_PROFILE}"
       cp -r $TEST_BINARIES_DIR $RELEASE_TEST_BINARIES_DIR
       COMPRESSED_TEST_BINARIES_DIR=$(${{ env.COMPRESS_FOLDER_FN }} ${TEST_BINARIES_DIR})
       COMPRESSED_RELEASE_TEST_BINARIES_DIR=$(${{ env.COMPRESS_FOLDER_FN }} ${RELEASE_TEST_BINARIES_DIR})

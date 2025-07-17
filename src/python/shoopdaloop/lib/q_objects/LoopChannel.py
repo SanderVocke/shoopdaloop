@@ -65,8 +65,8 @@ class LoopChannel(ShoopQQuickItem):
     ######################
     
     # backend
-    backendChanged = ShoopSignal("QVariant")
-    @ShoopProperty("QVariant", notify=backendChanged)
+    backendChanged = ShoopSignal("QObject*")
+    @ShoopProperty("QObject*", notify=backendChanged)
     def backend(self):
         return self._backend
     @backend.setter
@@ -84,8 +84,8 @@ class LoopChannel(ShoopQQuickItem):
         return bool(self._backend_obj)
 
     # loop
-    loopChanged = ShoopSignal('QVariant')
-    @ShoopProperty('QVariant', notify=loopChanged)
+    loopChanged = ShoopSignal('QObject*')
+    @ShoopProperty('QObject*', notify=loopChanged)
     def loop(self):
         return self._loop
     @loop.setter
@@ -105,7 +105,7 @@ class LoopChannel(ShoopQQuickItem):
     def loop_mode(self):
         return (self._loop.property('mode') if self._loop else 0)
 
-    # recording_started_at
+    # recording_started_at (optional string)
     recordingStartedAtChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=recordingStartedAtChanged)
     def recording_started_at(self):
@@ -137,7 +137,7 @@ class LoopChannel(ShoopQQuickItem):
     def data_length(self):
         return self._data_length
     
-    # last played sample
+    # last played sample (optional int)
     playedBackSampleChanged = ShoopSignal('QVariant')
     @ShoopProperty('QVariant', notify=playedBackSampleChanged)
     def played_back_sample(self):
@@ -225,7 +225,7 @@ class LoopChannel(ShoopQQuickItem):
     def initialize(self):
         self.maybe_initialize()
 
-    @ShoopSlot('QVariant')
+    @ShoopSlot('QObject*')
     def connect_port(self, port):
         self.__logger.debug(lambda: f'Connect port {port}')
         if not port.isValid():
@@ -247,7 +247,7 @@ class LoopChannel(ShoopQQuickItem):
             self._connected_ports.append(port)
             self.connectedPortsChanged.emit(self._connected_ports)
     
-    @ShoopSlot('QVariant')
+    @ShoopSlot('QObject*')
     def disconnect(self, port):
         if not port.isValid():
             return
