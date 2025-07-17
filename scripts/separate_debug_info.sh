@@ -171,9 +171,11 @@ find "$input_dir" -type f -print0 | while IFS= read -r -d $'\0' elf_file; do
     #     continue
     # fi
 
+    # Note: this doesn't get picked up by sentry-cli.
+    # find out how to get unwind info.
     # 8. Also put the stripped binary in the target folder, as it will
     # be useful for stack unwind information.
-    cp "$elf_file" "$output_dir/$elf_file"
+    # cp "$elf_file" "$output_dir/$elf_file"
 
     # Update global counters for successful processing.
     processed_files_count=$((processed_files_count + 1))

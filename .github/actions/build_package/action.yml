@@ -96,7 +96,13 @@ runs:
     with:
       upload_url: ${{ inputs.release_upload_assets_url }}
       asset_path: ${{ env.BUILT_RELEASE_ARTIFACT }}
-  - name: Upload debug symbols
+  - name: Upload debug symbols (GitHub)
+    uses: actions/upload-artifact@v4
+    if: always() && inputs.package_kind == 'portable_folder'
+    with:
+      name: ${{ env.BUILT_PACKAGE_NAME }}.debuginfo
+      path: debug_symbols
+  - name: Upload debug symbols (Sentry)
     if: always() && inputs.package_kind == 'portable_folder' && runner.os == 'Linux'
     shell: wrap-shell {0}
     run: |
