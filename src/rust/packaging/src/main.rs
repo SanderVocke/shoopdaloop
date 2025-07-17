@@ -47,7 +47,7 @@ enum Commands {
         output_dir: PathBuf,
 
         #[arg(short, long)]
-        cargo_flags: String,
+        cargo_profile: String,
 
         #[arg(long, action = clap::ArgAction::SetTrue)]
         replace: bool,
@@ -111,14 +111,14 @@ pub fn main_impl() -> Result<(), anyhow::Error> {
         }
         Some(Commands::BuildTestBinaries {
             output_dir,
-            cargo_flags,
+            cargo_profile,
             replace,
         }) => {
             if *replace && std::fs::exists(output_dir)? {
                 info!("Removing existing directory: {}", output_dir.display());
                 std::fs::remove_dir_all(output_dir)?;
             }
-            build_test_binaries_folder(output_dir.as_path(), cargo_flags.as_str())
+            build_test_binaries_folder(output_dir.as_path(), cargo_profile.as_str())
         }
         Some(Commands::BuildAppImage {
             appimagetool,

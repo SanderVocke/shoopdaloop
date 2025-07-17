@@ -21,6 +21,7 @@ runs:
     if: always() && inputs.release_build == 'true'
     shell: wrap-shell {0}
     run: |
+        echo "CARGO_PROFILE=release-with-debug" | tee -a $GITHUB_ENV
         echo "CARGO_BUILD_FLAGS=--profile release-with-debug" | tee -a $GITHUB_ENV
         echo "BUILD_ENV_FILE=./build/build-env-release.sh" | tee -a $GITHUB_ENV
 
@@ -28,7 +29,8 @@ runs:
     if: always() && inputs.release_build != 'true'
     shell: wrap-shell {0}
     run: |
-        echo "CARGO_BUILD_FLAGS=" | tee -a $GITHUB_ENV
+        echo "CARGO_PROFILE=dev" | tee -a $GITHUB_ENV
+        echo "CARGO_BUILD_FLAGS=--profile dev" | tee -a $GITHUB_ENV
         echo "BUILD_ENV_FILE=./build/build-env-debug.sh" | tee -a $GITHUB_ENV
 
   - name: Setup build env and build vcpkg packages

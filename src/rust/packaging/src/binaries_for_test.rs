@@ -6,7 +6,7 @@ use std::process::Command;
 use common::logging::macros::*;
 shoop_log_unit!("packaging");
 
-fn populate_folder(folder: &Path, cargo_flags: &str) -> Result<(), anyhow::Error> {
+fn populate_folder(folder: &Path, cargo_profile: &str) -> Result<(), anyhow::Error> {
     // For normalizing Windows paths
     let normalize_path = |path: PathBuf| -> PathBuf {
         PathBuf::from(
@@ -130,14 +130,14 @@ fn populate_folder(folder: &Path, cargo_flags: &str) -> Result<(), anyhow::Error
 
     info!("Creating nextest archive...");
     let archive = folder.join("nextest-archive.tar.zst");
-    let mut cargo_flags: Vec<&str> = cargo_flags.split(" ").collect();
-    let mut args = vec![
+    let args = vec![
         "nextest",
         "archive",
         "--archive-file",
         archive.to_str().unwrap(),
+        "--cargo-profile",
+        cargo_profile,
     ];
-    args.append(&mut cargo_flags);
 
     Command::new(&nextest_path)
         .current_dir(&src_path)
@@ -154,7 +154,7 @@ fn populate_folder(folder: &Path, cargo_flags: &str) -> Result<(), anyhow::Error
 
 pub fn build_test_binaries_folder(
     output_dir: &Path,
-    cargo_flags: &str,
+    cargo_profile: &str,
 ) -> Result<(), anyhow::Error> {
     if output_dir.exists() {
         return Err(anyhow::anyhow!(
@@ -175,7 +175,7 @@ pub fn build_test_binaries_folder(
     info!("Creating test binaries directory...");
     std::fs::create_dir(output_dir)?;
 
-    populate_folder(output_dir, cargo_flags)?;
+    populate_folder(output_dir, cargo_profile)?;
 
     info!("Test binaries folder created @ {output_dir:?}");
     Ok(())
