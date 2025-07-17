@@ -73,7 +73,7 @@ runs:
     shell: wrap-shell {0}
     run: |
       echo "ARTIFACT_VARIANT=release-${{ inputs.platform }}" | tee -a $GITHUB_ENV
-      echo "CARGO_ARTIFACTS_DIR=$(${{ env.CONVERT_PATH_FN }} $(pwd)/target/release)" | tee -a $GITHUB_ENV
+      echo "CARGO_ARTIFACTS_DIR=$(${{ env.CONVERT_PATH_FN }} $(pwd)/target/release-with-debug)" | tee -a $GITHUB_ENV
   - name: set Cargo build flags (debug)
     if: always() && inputs.release_build != 'true'
     shell: wrap-shell {0}
