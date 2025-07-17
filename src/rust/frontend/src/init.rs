@@ -24,10 +24,11 @@ fn register_qml_types_and_singletons() {
 fn register_metatypes() {}
 
 #[no_mangle]
-pub extern "C" fn shoop_rust_init() {
+pub extern "C" fn init() {
     debug!("Initializing rust metatypes, types and singletons");
     register_metatypes();
     register_qml_types_and_singletons();
+    crate::engine_update_thread::init();
 }
 
 #[no_mangle]

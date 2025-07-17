@@ -47,11 +47,15 @@ class Application(ShoopQApplication):
 
         pkg_version = shoop_version
 
+
+        # DONE
         self.setApplicationName('ShoopDaLoop')
         self.setApplicationVersion(pkg_version)
         self.setOrganizationName('ShoopDaLoop')
+        
 
         self.logger = Logger("Frontend.Application")
+        # /DONE
 
         self.nsm_client = None
         self.title = title
@@ -70,7 +74,9 @@ class Application(ShoopQApplication):
             dbg = QQmlDebuggingEnabler(True)
             QQmlDebuggingEnabler.startTcpDebugServer(qml_debug_port, mode)
 
+        #DONE
         shoop_rust_init()
+        #/DONE
         register_shoopdaloop_qml_classes()
         self.global_args = global_args
         self.additional_root_context = additional_root_context
@@ -78,8 +84,10 @@ class Application(ShoopQApplication):
 
         self.engine = None
 
+        # DONE
         if main_qml:
             self.reload_qml(main_qml)
+            # /DONE
 
             def start_nsm():
                 if have_nsm:
@@ -161,9 +169,11 @@ class Application(ShoopQApplication):
             else:
                 self.logger.warning(lambda: "Couldn't find top-level QQuickWindow to lock back-end refresh to GUI refresh")
 
+    # DONE
     def reload_qml(self, filename, quit_on_quit=True):
         self.unload_qml()
         self.load_qml(filename, quit_on_quit)
+    # /DONE
 
     def exit(self):
         if self.nsm_client:

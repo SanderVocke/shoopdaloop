@@ -1,11 +1,14 @@
-use std::pin::Pin;
 use cxx::UniquePtr;
+use std::pin::Pin;
 
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-shoop/ShoopApplication.h");
         type ShoopApplication;
+
+        include!("cxx-qt-lib/qstring.h");
+        type QString = cxx_qt_lib::QString;
     }
 
     unsafe extern "RustQt" {
@@ -21,6 +24,18 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn wait(self: Pin<&mut Application>, delay_ms: u64);
+
+        #[inherit]
+        #[cxx_name = "setApplicationName"]
+        unsafe fn set_application_name(self: Pin<&mut Application>, name: &QString);
+
+        #[inherit]
+        #[cxx_name = "setApplicationVersion"]
+        unsafe fn set_application_version(self: Pin<&mut Application>, version: &QString);
+
+        #[inherit]
+        #[cxx_name = "setOrganizationName"]
+        unsafe fn set_organization_name(self: Pin<&mut Application>, name: &QString);
     }
 
     unsafe extern "C++" {
@@ -31,13 +46,16 @@ pub mod ffi {
     }
 }
 
-use cxx_qt_lib::c_void;
 pub use ffi::Application;
 
-pub struct ApplicationRust {}
+pub struct ApplicationRust {
+    pub config: config::config::ShoopConfig,
+}
 
 impl Default for ApplicationRust {
     fn default() -> ApplicationRust {
-        ApplicationRust {}
+        ApplicationRust {
+            config: config::config::ShoopConfig::default(),
+        }
     }
 }
