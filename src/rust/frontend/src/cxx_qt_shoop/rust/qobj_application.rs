@@ -4,6 +4,7 @@ use cxx::UniquePtr;
 use cxx_qt::CxxQtType;
 use std::path::Path;
 use std::pin::Pin;
+use std::time::{Duration, Instant};
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.Application");
@@ -15,7 +16,16 @@ impl Application {
 
     pub fn do_quit(self: Pin<&mut Application>) {}
 
-    pub fn wait(self: Pin<&mut Application>, delay_ms: u64) {}
+    pub fn wait(mut self: Pin<&mut Application>, delay_ms: u64) {
+        let duration = Duration::from_millis(delay_ms);
+        let start = Instant::now();
+        while start.elapsed() < duration {
+            unsafe {
+                self.as_mut().process_events();
+                self.as_mut().send_posted_events();
+            }
+        }
+    }
 
     pub fn reload_qml(mut self: Pin<&mut Application>, qml: &Path, quit_on_quit: bool) {
         self.as_mut().unload_qml();
@@ -26,11 +36,11 @@ impl Application {
 
     pub fn load_qml(self: Pin<&mut Application>, qml: &Path, quit_on_quit: bool) {}
 
-    pub fn start(
+    pub fn execute(
         mut self: Pin<&mut Application>,
         config: config::config::ShoopConfig,
         main_qml: Option<&Path>,
-    ) {
+    ) -> i32 {
         {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.config = config.clone();
@@ -50,7 +60,9 @@ impl Application {
 
         if main_qml.is_some() {
             let main_qml = main_qml.unwrap();
-            self.reload_qml(main_qml, true);
+            self.as_mut().reload_qml(main_qml, true);
         }
+
+        unsafe { self.as_mut().exec() }
     }
 }

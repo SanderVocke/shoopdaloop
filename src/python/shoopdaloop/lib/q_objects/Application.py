@@ -263,8 +263,10 @@ class Application(ShoopQApplication):
         self.logger.info(lambda: "Exiting.")
         sys.exit(0)
 
+    # DONE
     def exec(self):
         return super(Application, self).exec()
+    # /DONE
 
     def eventFilter(self, source, event):
         if event.type() in [QEvent.KeyPress, QEvent.KeyRelease]:
@@ -292,12 +294,14 @@ class Application(ShoopQApplication):
             else:
                 self.logger.error(lambda: msg)
 
+    # DONE
     @ShoopSlot(int)
     def wait(self, ms):
         end = time.time() + ms * 0.001
         while time.time() < end:
             self.processEvents()
             self.sendPostedEvents()
+    # /DONE
 
     @ShoopSlot()
     def do_quit(self):

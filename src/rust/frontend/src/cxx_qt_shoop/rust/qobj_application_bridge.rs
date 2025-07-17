@@ -36,6 +36,17 @@ pub mod ffi {
         #[inherit]
         #[cxx_name = "setOrganizationName"]
         unsafe fn set_organization_name(self: Pin<&mut Application>, name: &QString);
+
+        #[inherit]
+        #[cxx_name = "processEvents"]
+        unsafe fn process_events(self: Pin<&mut Application>);
+
+        #[inherit]
+        #[cxx_name = "sendPostedEvents"]
+        unsafe fn send_posted_events(self: Pin<&mut Application>);
+
+        #[inherit]
+        unsafe fn exec(self: Pin<&mut Application>) -> i32;
     }
 
     unsafe extern "C++" {
