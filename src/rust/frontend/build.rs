@@ -24,6 +24,7 @@ fn main() {
         .file("src/cxx_qt_lib_shoop/rust/qvariant_qobject.rs")
         .file("src/cxx_qt_lib_shoop/rust/qvariant_qvariantmap.rs")
         .file("src/cxx_qt_lib_shoop/rust/qvariant_qsharedpointer_qobject.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_application_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_autoconnect_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_backend_wrapper_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_crash_handling_bridge.rs")

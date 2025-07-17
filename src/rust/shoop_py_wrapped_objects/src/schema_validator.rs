@@ -1,26 +1,30 @@
 use cxx_qt_lib;
 use pyo3::prelude::*;
-use pyo3::types::PyAny;
+use pyo3::types::{PyAny, PyDict};
 
 pub struct SchemaValidator {
-    py_object: Py<PyAny>,
+    py_object: Option<Py<PyAny>>,
+}
+
+fn create_py_schema_validator<'py>(py: Python<'py>) -> PyResult<Py<PyAny>> {
+    let module = py
+        .import("shoopdaloop.lib.q_objects.SchemaValidatorImpl")
+        .unwrap();
+    let class = module
+        .getattr("SchemaValidatorImpl")
+        .unwrap()
+        .extract::<Py<PyAny>>()
+        .unwrap();
+    let object = class.call0(py).unwrap();
+    Ok(object)
 }
 
 impl Default for SchemaValidator {
     fn default() -> Self {
-        let result = || -> PyResult<Py<PyAny>> {
-            Python::with_gil(|py| {
-                let module = py.import("shoopdaloop.lib.q_objects.SchemaValidatorImpl")?;
-                let object = module
-                    .getattr("SchemaValidatorImpl")?
-                    .extract::<Py<PyAny>>()?;
-                Ok(object)
-            })
-        }();
-        match result {
-            Ok(object) => SchemaValidator { py_object: object },
-            Err(_) => panic!("Could not create a new instance of the SchemaValidator class"),
-        }
+        // Python::with_gil(|py| {
+        //     return SchemaValidator { py_object: create_py_schema_validator(py).unwrap() }
+        // })
+        return SchemaValidator { py_object: None };
     }
 }
 
@@ -32,21 +36,22 @@ impl SchemaValidator {
         schemaname: &str,
         asynchronous: bool,
     ) -> bool {
-        Python::with_gil(|py| {
-            let dict = shoop_py_utils::conversions::qvariantmap_to_python(py, &obj);
-            let args = (dict, obj_desc, schemaname, asynchronous)
-                .into_pyobject(py)
-                .unwrap();
-            let result: bool = self
-                .py_object
-                .getattr(py, "validate_schema")
-                .unwrap()
-                .call(py, args, None)
-                .unwrap()
-                .extract(py)
-                .unwrap();
-            return result;
-        });
-        return false;
+        return true;
+        // Python::with_gil(|py| {
+        //     let dict = shoop_py_utils::conversions::qvariantmap_to_python(py, &obj);
+        //     let args = (dict, obj_desc, schemaname, asynchronous)
+        //         .into_pyobject(py)
+        //         .unwrap();
+        //     let result: bool = self
+        //         .py_object
+        //         .getattr(py, "validate_schema")
+        //         .unwrap()
+        //         .call(py, args, None)
+        //         .unwrap()
+        //         .extract(py)
+        //         .unwrap();
+        //     return result;
+        // });
+        // return false;
     }
 }

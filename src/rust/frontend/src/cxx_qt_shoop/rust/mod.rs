@@ -2,6 +2,8 @@ pub mod fn_find_backend_wrapper;
 pub mod fn_qlist_helpers;
 pub mod fn_qvariantmap_helpers;
 
+pub mod qobj_application;
+pub mod qobj_application_bridge;
 pub mod qobj_autoconnect;
 pub mod qobj_autoconnect_bridge;
 pub mod qobj_backend_wrapper;
