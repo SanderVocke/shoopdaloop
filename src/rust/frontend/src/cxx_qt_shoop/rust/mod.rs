@@ -22,6 +22,8 @@ pub mod qobj_loop_gui;
 pub mod qobj_loop_gui_bridge;
 pub mod qobj_os_utils;
 pub mod qobj_os_utils_bridge;
+pub mod qobj_qmlengine;
+pub mod qobj_qmlengine_bridge;
 pub mod qobj_release_focus_notifier;
 pub mod qobj_release_focus_notifier_bridge;
 pub mod qobj_render_audio_waveform;
