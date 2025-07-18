@@ -28,6 +28,7 @@ fn main() {
         .file("src/rust/qvariant_qvariantlist.rs")
         .file("src/rust/qvariant_qvariantmap.rs")
         .file("src/rust/qvariant_qsharedpointer_qobject.rs")
+        .file("src/rust/qvariant_qstringlist.rs")
         .cc_builder(|cc| {
             cc.include("src/include");
             cc.file("src/cxx/qqmlengine_helpers.cpp");

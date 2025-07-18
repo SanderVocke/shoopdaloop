@@ -44,6 +44,23 @@ pub fn qvariantlist_to_python<'py>(
     Ok(list)
 }
 
+pub fn qstringlist_to_python<'py>(
+    py: Python<'py>,
+    value: &cxx_qt_lib::QList<cxx_qt_lib::QString>,
+) -> PyResult<Bound<'py, PyList>> {
+    let mut vec: Vec<Bound<'py, PyAny>> = Vec::new();
+    value
+        .iter()
+        .enumerate()
+        .try_for_each(|(_, val)| -> Result<(), PyErr> {
+            let val = val.to_string();
+            vec.push(val.into_pyobject(py).unwrap().as_any().to_owned());
+            Ok(())
+        })?;
+    let list = PyList::new(py, vec)?;
+    Ok(list)
+}
+
 pub fn qvariant_to_python<'py>(
     py: Python<'py>,
     value: &cxx_qt_lib::QVariant,
@@ -92,6 +109,11 @@ pub fn qvariant_to_python<'py>(
             let variantlist =
                 cxx_qt_lib_shoop::qvariant_qvariantlist::qvariant_as_qvariantlist(value).unwrap();
             return Ok(qvariantlist_to_python(py, &variantlist)?.into_any());
+        }
+        _v if _v == qmetatype_id_qstringlist() => {
+            let stringlist =
+                cxx_qt_lib_shoop::qvariant_qstringlist::qvariant_as_qstringlist(value).unwrap();
+            return Ok(qstringlist_to_python(py, &stringlist)?.into_any());
         }
         _ => {}
     }

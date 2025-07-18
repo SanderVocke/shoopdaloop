@@ -10,10 +10,11 @@ mod ffi {
         include!("cxx-qt-lib/qlist.h");
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
+        type QString = cxx_qt_lib::QString;
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
         type QList_QVariant = cxx_qt_lib::QList<QVariant>;
+        type QList_QString = cxx_qt_lib::QList<QString>;
 
-        type QString = cxx_qt_lib::QString;
         type QObject = crate::qobject::QObject;
 
         #[rust_name = "qmetatype_id_int"]
@@ -33,6 +34,9 @@ mod ffi {
 
         #[rust_name = "qmetatype_id_qvariantlist"]
         unsafe fn qmetatypeTypeId(v: *mut QList_QVariant) -> i32;
+
+        #[rust_name = "qmetatype_id_qstringlist"]
+        unsafe fn qmetatypeTypeId(v: *mut QList_QString) -> i32;
     }
 }
 
@@ -50,6 +54,8 @@ static QMETATYPE_ID_QVARIANTMAP: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_qvariantmap(std::ptr::null_mut()) });
 static QMETATYPE_ID_QVARIANTLIST: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_qvariantlist(std::ptr::null_mut()) });
+static QMETATYPE_ID_QSTRINGLIST: Lazy<i32> =
+    Lazy::new(|| unsafe { ffi::qmetatype_id_qstringlist(std::ptr::null_mut()) });
 
 pub fn qmetatype_id_int() -> i32 {
     *Lazy::force(&QMETATYPE_ID_INT)
@@ -68,4 +74,7 @@ pub fn qmetatype_id_qvariantmap() -> i32 {
 }
 pub fn qmetatype_id_qvariantlist() -> i32 {
     *Lazy::force(&QMETATYPE_ID_QVARIANTLIST)
+}
+pub fn qmetatype_id_qstringlist() -> i32 {
+    *Lazy::force(&QMETATYPE_ID_QSTRINGLIST)
 }

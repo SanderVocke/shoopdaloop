@@ -9,3 +9,6 @@ mod lib_impl;
 
 #[cfg(not(feature = "prebuild"))]
 pub use lib_impl::*;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod cli_args;
