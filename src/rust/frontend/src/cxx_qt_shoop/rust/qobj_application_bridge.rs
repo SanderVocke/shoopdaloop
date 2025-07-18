@@ -9,6 +9,9 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
     }
 
     unsafe extern "RustQt" {
@@ -54,19 +57,53 @@ pub mod ffi {
 
         #[rust_name = "make_unique_application"]
         fn make_unique() -> UniquePtr<Application>;
+
+        include!("cxx-qt-lib-shoop/qobject.h");
+        #[rust_name = "application_qobject_from_ptr"]
+        unsafe fn qobjectFromPtr(obj: *mut Application) -> *mut QObject;
+
+        #[rust_name = "application_qobject_from_ref"]
+        fn qobjectFromRef(obj: &Application) -> &QObject;
     }
 }
 
+use crate::cxx_qt_lib_shoop::qobject::AsQObject;
+use crate::cxx_qt_shoop::qobj_qmlengine_bridge::ffi::QmlEngine;
 pub use ffi::Application;
 
+#[derive(Default)]
+pub struct ApplicationSettings {
+    pub refresh_backend_on_frontend_refresh: bool,
+    pub backend_backup_refresh_interval_ms: u64,
+    pub nsm: bool,
+    pub qml_debug_port: Option<u32>,
+    pub qml_debug_wait: Option<bool>,
+    pub title: String,
+}
 pub struct ApplicationRust {
     pub config: config::config::ShoopConfig,
+    pub qml_engine: *mut QmlEngine,
+    pub settings: ApplicationSettings,
+    pub setup_after_qml_engine_creation: fn(qml_engine: *mut ffi::QObject),
 }
 
 impl Default for ApplicationRust {
     fn default() -> ApplicationRust {
         ApplicationRust {
             config: config::config::ShoopConfig::default(),
+            qml_engine: std::ptr::null_mut(),
+            settings: ApplicationSettings::default(),
+            setup_after_qml_engine_creation: |_| {},
         }
+    }
+}
+
+impl AsQObject for Application {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+        ffi::application_qobject_from_ptr(self as *mut Self)
+    }
+
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
+        ffi::application_qobject_from_ref(self) as *const ffi::QObject
     }
 }

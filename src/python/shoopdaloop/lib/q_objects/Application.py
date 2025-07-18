@@ -110,6 +110,7 @@ class Application(ShoopQApplication):
 
         self.setWindowIcon(QIcon(os.path.join(shoop_resource_dir, 'iconset', 'icon_128x128.png')))
 
+    # DONE
     def unload_qml(self):
         if self.engine:
             self.logger.debug("Unloading QML.")
@@ -123,42 +124,60 @@ class Application(ShoopQApplication):
                     obj.deleteLater()
             self.engine.deleteLater()
             self.engine = None
+    # /DONE
 
     def load_qml(self, filename, quit_on_quit=True):
+        # SKIPPED
         def maybe_install_event_filter(obj):
             if obj and isinstance(obj, QQuickWindow):
                 self.logger.debug("Window created, installing event filter")
                 obj.installEventFilter(self)
+        #/SKIPPED
 
+        #DONE
         self_addr = getCppPointer(self)[0]
         eng_addr = shoop_rust_make_qml_application_engine(self_addr)
         self.engine = Shiboken.wrapInstance(eng_addr, QQmlApplicationEngine)
+        #/DONE
 
+
+        #DONE
         qml_paths = os.getenv("SHOOP_QML_PATHS")
         qml_paths = qml_paths.split(';' if os.name == "nt" else ":") if qml_paths else []
         for path in qml_paths:
             self.engine.addImportPath(path)
+        #/DONE
 
+        # SKIPPED
         self.logger.debug(f"QML engine path list: {self.engine.importPathList()}")
 
         self.engine.destroyed.connect(lambda: self.logger.debug("QML engine being destroyed."))
         self.engine.objectCreated.connect(lambda obj, _: maybe_install_event_filter(obj))
+        #/SKIPPED
 
         if quit_on_quit:
             self.engine.quit.connect(self.do_quit)
         self.aboutToQuit.connect(self.do_quit)
 
+        #SKIPPED
         self.engine.setOutputWarningsToStandardError(False)
         self.engine.objectCreated.connect(self.onQmlObjectCreated)
         self.engine.warnings.connect(self.onQmlWarnings)
+        #/SKIPPED
 
         self.root_context_items = create_and_populate_root_context(self.engine, self.global_args, self.additional_root_context)
 
+        #DONE
         self.engine.load(filename)
+        #/DONE
 
+        #DONE
         engine_update_thread_wrapper = get_engine_update_thread_wrapper()
         engine_update_thread_wrapper.setProperty('trigger_update_on_frame_swapped', self.refresh_backend_on_frontend_refresh)
         engine_update_thread_wrapper.setProperty('backup_timer_interval_ms', self.backend_backup_refresh_interval_ms)
+        #/DONE
+
+        #DONE
         for obj in self.engine.rootObjects():
             if(isinstance(obj, QQuickWindow)):
                 # This connection ensure back-end state updates happen in lock-step with
@@ -168,6 +187,7 @@ class Application(ShoopQApplication):
                                 Qt.QueuedConnection)
             else:
                 self.logger.warning(lambda: "Couldn't find top-level QQuickWindow to lock back-end refresh to GUI refresh")
+        #/DONE
 
     # DONE
     def reload_qml(self, filename, quit_on_quit=True):

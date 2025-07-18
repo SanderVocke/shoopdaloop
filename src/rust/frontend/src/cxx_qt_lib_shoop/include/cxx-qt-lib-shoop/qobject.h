@@ -116,3 +116,8 @@ inline void qobjectSetObjectName(QObject *obj, ::rust::String name) {
 inline bool qobjectMoveToThread(QObject *obj, QThread *targetThread) {
     return obj->moveToThread(targetThread);
 }
+
+template<typename T>
+inline void qobjectSetProperty(QObject *object, ::rust::String property, T const& value) {
+    object->setProperty(property.c_str(), QVariant(value));
+}

@@ -58,7 +58,7 @@ pub fn qvariant_to_python<'py>(py: Python<'py>, value: &cxx_qt_lib::QVariant) ->
         None => (),
     }
 
-    panic!("unimplemented")
+    panic!("unimplemented QVariant type conversion")
 }
 
 mod tests {

@@ -3,10 +3,10 @@ use std::pin::Pin;
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
-        include!("<QQmlEngine>");
-        type QQmlEngine;
+        include!("cxx-qt-shoop/ShoopQmlEngine.h");
+        type ShoopQmlEngine;
 
-        include!("<QObject>");
+        include!("cxx-qt-lib-shoop/qobject.h");
         type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
 
         include!("cxx-qt-lib/qstring.h");
@@ -15,24 +15,72 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
-        #[base = QQmlEngine]
+        #[base = ShoopQmlEngine]
         type QmlEngine = super::QmlEngineRust;
+
+        #[inherit]
+        #[cxx_name = "collectGarbage"]
+        fn collect_garbage(self: Pin<&mut QmlEngine>);
+
+        #[inherit]
+        #[cxx_name = "addImportPath"]
+        fn add_import_path(self: Pin<&mut QmlEngine>, path: &QString);
+
+        #[inherit]
+        #[cxx_name = "closeRoot"]
+        fn close_root(self: Pin<&mut QmlEngine>);
+
+        #[inherit]
+        #[cxx_name = "getRootWindow"]
+        fn get_root_window(self: Pin<&mut QmlEngine>) -> Result<*mut QObject>;
+
+        #[inherit]
+        #[cxx_name = "deleteLater"]
+        fn delete_later(self: Pin<&mut QmlEngine>);
+
+        #[inherit]
+        fn load(self: Pin<&mut QmlEngine>, path: &QString);
+
+        #[inherit]
+        #[qsignal]
+        unsafe fn quit(self: Pin<&mut QmlEngine>);
     }
 
     unsafe extern "C++" {
         include!("cxx-qt-shoop/make_raw.h");
 
         #[rust_name = "make_raw_qmlengine"]
-        unsafe fn make_raw_with_one_arg(parent : *mut QObject) -> *mut QmlEngine;
+        unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut QmlEngine;
+
+        include!("cxx-qt-lib-shoop/qobject.h");
+        #[rust_name = "qmlengine_qobject_from_ptr"]
+        unsafe fn qobjectFromPtr(obj: *mut QmlEngine) -> *mut QObject;
+
+        #[rust_name = "qmlengine_qobject_from_ref"]
+        fn qobjectFromRef(obj: &QmlEngine) -> &QObject;
     }
 }
 
 pub use ffi::QmlEngine;
 
-pub struct QmlEngineRust {}
+use crate::cxx_qt_lib_shoop::qobject::AsQObject;
+
+pub struct QmlEngineRust {
+    pub initialized: bool,
+}
 
 impl Default for QmlEngineRust {
     fn default() -> QmlEngineRust {
-        QmlEngineRust {}
+        QmlEngineRust { initialized: false }
+    }
+}
+
+impl AsQObject for QmlEngine {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+        ffi::qmlengine_qobject_from_ptr(self as *mut Self)
+    }
+
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
+        ffi::qmlengine_qobject_from_ref(self) as *const ffi::QObject
     }
 }

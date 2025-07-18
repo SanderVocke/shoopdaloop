@@ -12,6 +12,7 @@ fn main() {
         .qt_module("Network")
         .qt_module("Test")
         .qt_module("Qml")
+        .qt_module("Widgets")
         .file("src/cxx_qt_lib_shoop/rust/connect.rs")
         .file("src/cxx_qt_lib_shoop/rust/invokable.rs")
         .file("src/cxx_qt_lib_shoop/rust/qjsonobject.rs")

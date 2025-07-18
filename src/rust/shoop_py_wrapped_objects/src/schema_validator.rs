@@ -21,10 +21,9 @@ fn create_py_schema_validator<'py>(py: Python<'py>) -> PyResult<Py<PyAny>> {
 
 impl Default for SchemaValidator {
     fn default() -> Self {
-        // Python::with_gil(|py| {
-        //     return SchemaValidator { py_object: create_py_schema_validator(py).unwrap() }
-        // })
-        return SchemaValidator { py_object: None };
+        Python::with_gil(|py| {
+            return SchemaValidator { py_object: Some(create_py_schema_validator(py).unwrap()) }
+        })
     }
 }
 
@@ -36,22 +35,23 @@ impl SchemaValidator {
         schemaname: &str,
         asynchronous: bool,
     ) -> bool {
-        return true;
-        // Python::with_gil(|py| {
-        //     let dict = shoop_py_utils::conversions::qvariantmap_to_python(py, &obj);
-        //     let args = (dict, obj_desc, schemaname, asynchronous)
-        //         .into_pyobject(py)
-        //         .unwrap();
-        //     let result: bool = self
-        //         .py_object
-        //         .getattr(py, "validate_schema")
-        //         .unwrap()
-        //         .call(py, args, None)
-        //         .unwrap()
-        //         .extract(py)
-        //         .unwrap();
-        //     return result;
-        // });
-        // return false;
+        Python::with_gil(|py| {
+            let dict = shoop_py_utils::conversions::qvariantmap_to_python(py, &obj);
+            let args = (dict, obj_desc, schemaname, asynchronous)
+                .into_pyobject(py)
+                .unwrap();
+            let result: bool = self
+                .py_object
+                .as_ref()
+                .unwrap()
+                .getattr(py, "validate_schema")
+                .unwrap()
+                .call(py, args, None)
+                .unwrap()
+                .extract(py)
+                .unwrap();
+            return result;
+        });
+        return false;
     }
 }

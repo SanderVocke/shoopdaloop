@@ -8,5 +8,5 @@ inline int &dummy_argc() {
 
 class ShoopApplication : public QApplication {
     public:
-    ShoopApplication(QObject *parent = nullptr) : QApplication(dummy_argc(), nullptr) {}
+    ShoopApplication(QObject *parent = nullptr) : QApplication(dummy_argc(), nullptr) { (void) parent; }
 };

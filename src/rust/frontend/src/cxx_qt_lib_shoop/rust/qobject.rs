@@ -42,6 +42,20 @@ pub mod ffi {
 
         #[rust_name = "qobject_move_to_thread"]
         unsafe fn qobjectMoveToThread(obj: *mut QObject, thread: *mut QThread) -> Result<bool>;
+
+        #[rust_name = "qobject_set_property_int"]
+        unsafe fn qobjectSetProperty(
+            obj: *mut QObject,
+            property: String,
+            value: &i32,
+        ) -> Result<()>;
+
+        #[rust_name = "qobject_set_property_bool"]
+        unsafe fn qobjectSetProperty(
+            obj: *mut QObject,
+            property: String,
+            value: &bool,
+        ) -> Result<()>;
     }
 }
 
@@ -115,9 +129,22 @@ pub unsafe fn qobject_set_object_name(
 pub unsafe fn qobject_move_to_thread(
     obj: *mut QObject,
     thread: *mut QThread,
+) -> Result<bool, cxx::Exception> {
+    ffi::qobject_move_to_thread(obj, thread)
+}
+pub unsafe fn qobject_set_property_int(
+    obj: *mut QObject,
+    property: String,
+    value: &i32,
 ) -> Result<(), cxx::Exception> {
-    ffi::qobject_move_to_thread(obj, thread)?;
-    Ok(())
+    ffi::qobject_set_property_int(obj, property, value)
+}
+pub unsafe fn qobject_set_property_bool(
+    obj: *mut QObject,
+    property: String,
+    value: &bool,
+) -> Result<(), cxx::Exception> {
+    ffi::qobject_set_property_bool(obj, property, value)
 }
 
 pub trait IsQObject: AsQObject {
@@ -159,5 +186,23 @@ pub trait IsQObject: AsQObject {
     unsafe fn set_object_name(self: Pin<&mut Self>, name: String) -> Result<(), cxx::Exception> {
         let self_item = self.pin_mut_qobject_ptr();
         qobject_set_object_name(self_item, name)
+    }
+
+    unsafe fn set_property_int(
+        self: Pin<&mut Self>,
+        property: String,
+        value: &i32,
+    ) -> Result<(), cxx::Exception> {
+        let self_item = self.pin_mut_qobject_ptr();
+        qobject_set_property_int(self_item, property, value)
+    }
+
+    unsafe fn set_property_bool(
+        self: Pin<&mut Self>,
+        property: String,
+        value: &bool,
+    ) -> Result<(), cxx::Exception> {
+        let self_item = self.pin_mut_qobject_ptr();
+        qobject_set_property_bool(self_item, property, value)
     }
 }
