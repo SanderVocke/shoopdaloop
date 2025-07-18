@@ -32,6 +32,7 @@ toml = "0.8"
 serde = "1.0"
 crashhandling = { path = "../crashhandling" }
 shoop_py_backend = { path = "../shoop_py_backend" }
+cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
 serde_json = "1.0"
 
 [build-dependencies]

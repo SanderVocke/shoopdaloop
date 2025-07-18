@@ -8,7 +8,7 @@ mod ffi {
         type QSignalSpy = super::QSignalSpyRust;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QObject = crate::qobject::QObject;
     }
 
     unsafe extern "C++" {

@@ -1,10 +1,10 @@
 use anyhow;
 use common::logging::macros::*;
 use config::config::ShoopConfig;
-use frontend::cxx_qt_lib_shoop::qobject::QObject;
+use cxx_qt_lib_shoop::qobject::QObject;
 use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationSettings};
-use pyo3::{prelude::*, IntoPyObjectExt};
 use pyo3::types::{PyDict, PyList, PyNone, PyString, PyTuple};
+use pyo3::{prelude::*, IntoPyObjectExt};
 use std::env;
 use std::path::{Path, PathBuf};
 shoop_log_unit!("Main");
@@ -201,7 +201,7 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
         let qml = PathBuf::from("src/qml/applications/shoopdaloop_main.qml");
         app.as_mut().initialize(
             config,
-            |engine : *mut QObject| {
+            |engine: *mut QObject| {
                 Python::with_gil(|py| -> PyResult<()> {
                     // Temporary : global arguments setting
                     let qml_helpers = py.import("shoopdaloop.lib.qml_helpers")?;
@@ -218,11 +218,14 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
                     unsafe {
                         let engine_addr = engine as usize as u64;
                         let args = (engine_addr, global_args, PyNone::get(py));
-                        create_and_populate_root_context_with_engine_addr.call(args.into_pyobject(py)?, None)?;
+                        create_and_populate_root_context_with_engine_addr
+                            .call(args.into_pyobject(py)?, None)?;
                     }
 
                     Ok(())
-                }).map_err(|e| anyhow::anyhow!("Unable to initialize QML Python state: {e}")).unwrap();
+                })
+                .map_err(|e| anyhow::anyhow!("Unable to initialize QML Python state: {e}"))
+                .unwrap();
             },
             Some(&qml),
             settings,

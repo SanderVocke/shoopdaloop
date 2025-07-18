@@ -28,7 +28,7 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
 
         #[rust_name = "make_unique_osutils"]
         fn make_unique() -> UniquePtr<OSUtils>;

@@ -5,7 +5,7 @@ mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
         include!("cxx-qt-lib-shoop/qsharedpointer_qobject.h");
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QObject = crate::qobject::QObject;
         type QSharedPointer_QObject;
 
         #[rust_name = "qsharedpointer_qobject_from_ptr_delete_later"]

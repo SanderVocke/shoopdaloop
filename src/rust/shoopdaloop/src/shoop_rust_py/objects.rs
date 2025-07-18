@@ -12,9 +12,7 @@ use frontend::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::{
 };
 use frontend::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
 
-use frontend::cxx_qt_lib_shoop::qvariant_qobject::{
-    qobject_ptr_to_qvariant, qvariant_to_qobject_ptr,
-};
+use cxx_qt_lib_shoop::qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr};
 
 use shoop_py_backend::audio_channel::AudioChannel;
 use shoop_py_backend::audio_port::AudioPort;
@@ -51,7 +49,7 @@ pub fn shoop_rust_set_crash_json_tag(tag: &str, json: &str) {
 
 #[pyfunction]
 pub fn shoop_rust_make_qml_application_engine(parent: u64) -> u64 {
-    let parent_obj = parent as *mut frontend::cxx_qt_lib_shoop::qobject::QObject;
+    let parent_obj = parent as *mut cxx_qt_lib_shoop::qobject::QObject;
     let engine =
         frontend::cxx_qt_shoop::type_shoopqmlapplicationengine::make_shoop_qml_application_engine(
             parent_obj,

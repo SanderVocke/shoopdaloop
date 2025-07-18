@@ -6,3 +6,7 @@
 inline ::rust::Str qvariantTypeName(const QVariant& variant) {
     return ::rust::Str(variant.typeName());
 }
+
+inline int qvariantTypeId(const QVariant& variant) {
+    return variant.typeId();
+}

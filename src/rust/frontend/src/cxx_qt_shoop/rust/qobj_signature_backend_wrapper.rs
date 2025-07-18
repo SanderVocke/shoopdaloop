@@ -1,7 +1,7 @@
 use cxx::Exception;
 use cxx_qt_lib::{QList, QString, QVariant};
 
-use crate::cxx_qt_lib_shoop::invokable;
+use cxx_qt_lib_shoop::invokable;
 
 pub mod constants {
     pub const PROP_READY: &str = "ready";

@@ -7,7 +7,7 @@ mod ffi {
         type QVariant = cxx_qt_lib::QVariant;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QObject = crate::qobject::QObject;
 
         include!("cxx-qt-lib-shoop/qvariant_qobject.h");
 

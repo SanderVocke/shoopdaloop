@@ -8,13 +8,13 @@ shoop_log_unit!("Frontend.BackendWrapper");
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
-        type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
+        type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
 
         include!("cxx-qt-lib-shoop/qthread.h");
-        type QThread = crate::cxx_qt_lib_shoop::qthread::QThread;
+        type QThread = cxx_qt_lib_shoop::qthread::QThread;
 
         include!("cxx-qt-lib-shoop/qtimer.h");
-        type QTimer = crate::cxx_qt_lib_shoop::qtimer::QTimer;
+        type QTimer = cxx_qt_lib_shoop::qtimer::QTimer;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -29,7 +29,7 @@ pub mod ffi {
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
     }
 
     unsafe extern "RustQt" {
@@ -145,11 +145,11 @@ pub mod ffi {
         #[rust_name = "qquickitem_from_ptr_backend_wrapper"]
         unsafe fn qquickitemFromPtr(obj: *mut BackendWrapper) -> *mut QQuickItem;
 
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_backend_wrapper"]
         fn make_unique() -> UniquePtr<BackendWrapper>;
 
-        include!("cxx-qt-shoop/qobject_classname.h");
+        include!("cxx-qt-lib-shoop/qobject_classname.h");
         #[rust_name = "qobject_class_name_backend_wrapper"]
         fn qobject_class_name(obj: &BackendWrapper) -> Result<&str>;
 
@@ -163,7 +163,7 @@ pub mod ffi {
             type_name: &mut String,
         );
 
-        include!("cxx-qt-shoop/cast_ptr.h");
+        include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "qobject_ptr_to_backend_ptr"]
         unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut BackendWrapper;
     }
@@ -233,7 +233,7 @@ impl Default for BackendWrapperRust {
     }
 }
 
-impl crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem for BackendWrapper {
+impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for BackendWrapper {
     unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {
         qquickitem_from_ptr_backend_wrapper(self as *mut Self)
     }
@@ -242,7 +242,7 @@ impl crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem for BackendWrapper {
     }
 }
 
-impl crate::cxx_qt_lib_shoop::qquickitem::IsQQuickItem for BackendWrapper {}
+impl cxx_qt_lib_shoop::qquickitem::IsQQuickItem for BackendWrapper {}
 
 impl cxx_qt::Constructor<(*mut QQuickItem,)> for BackendWrapper {
     type BaseArguments = (*mut QQuickItem,); // Will be passed to the base class constructor

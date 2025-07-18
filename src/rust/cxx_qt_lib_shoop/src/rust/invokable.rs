@@ -2,7 +2,7 @@ use cxx::Exception;
 use cxx_qt;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
+use crate::qobject::AsQObject;
 
 pub const AUTO_CONNECTION: u32 = 0;
 pub const DIRECT_CONNECTION: u32 = 1;
@@ -15,7 +15,7 @@ pub const SINGLE_SHOT_CONNECTION: u32 = 0x100;
 mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QObject = crate::qobject::QObject;
 
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
@@ -234,7 +234,7 @@ where
     }
 }
 
-impl QObjectOrConvertible for crate::cxx_qt_lib_shoop::qobject::QObject {
+impl QObjectOrConvertible for crate::qobject::QObject {
     fn qobject_mut(&mut self) -> *mut ffi::QObject {
         self as *mut ffi::QObject
     }

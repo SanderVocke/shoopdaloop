@@ -10,8 +10,10 @@ mod ffi {
 
         #[rust_name = "qvariant_type_name"]
         fn qvariantTypeName(obj: &QVariant) -> Result<&str>;
+
+        #[rust_name = "qvariant_type_id"]
+        fn qvariantTypeId(obj: &QVariant) -> Result<i32>;
     }
 }
 
-pub use ffi::qvariant_type_name;
-pub use ffi::QVariant;
+pub use ffi::*;

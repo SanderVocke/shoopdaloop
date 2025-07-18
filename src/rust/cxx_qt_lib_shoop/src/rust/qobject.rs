@@ -8,7 +8,7 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qthread.h");
         type QObject;
         type QString = cxx_qt_lib::QString;
-        type QThread = crate::cxx_qt_lib_shoop::qthread::QThread;
+        type QThread = crate::qthread::QThread;
 
         #[rust_name = "qobject_set_parent"]
         unsafe fn qobjectSetParent(item: *mut QObject, parent: *mut QObject) -> Result<()>;

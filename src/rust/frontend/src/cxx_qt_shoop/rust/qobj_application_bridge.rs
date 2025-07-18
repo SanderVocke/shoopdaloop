@@ -11,7 +11,7 @@ pub mod ffi {
         type QString = cxx_qt_lib::QString;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
     }
 
     unsafe extern "RustQt" {
@@ -53,7 +53,7 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
 
         #[rust_name = "make_unique_application"]
         fn make_unique() -> UniquePtr<Application>;
@@ -67,8 +67,8 @@ pub mod ffi {
     }
 }
 
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 use crate::cxx_qt_shoop::qobj_qmlengine_bridge::ffi::QmlEngine;
+use cxx_qt_lib_shoop::qobject::AsQObject;
 pub use ffi::Application;
 
 #[derive(Default)]

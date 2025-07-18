@@ -13,19 +13,6 @@ fn main() {
         .qt_module("Test")
         .qt_module("Qml")
         .qt_module("Widgets")
-        .file("src/cxx_qt_lib_shoop/rust/connect.rs")
-        .file("src/cxx_qt_lib_shoop/rust/invokable.rs")
-        .file("src/cxx_qt_lib_shoop/rust/qjsonobject.rs")
-        .file("src/cxx_qt_lib_shoop/rust/qobject.rs")
-        .file("src/cxx_qt_lib_shoop/rust/qquickitem.rs")
-        .file("src/cxx_qt_lib_shoop/rust/qsignalspy.rs")
-        .file("src/cxx_qt_lib_shoop/rust/qsharedpointer_qobject.rs")
-        .file("src/cxx_qt_lib_shoop/rust/qthread.rs")
-        .file("src/cxx_qt_lib_shoop/rust/qtimer.rs")
-        .file("src/cxx_qt_lib_shoop/rust/qvariant_helpers.rs")
-        .file("src/cxx_qt_lib_shoop/rust/qvariant_qobject.rs")
-        .file("src/cxx_qt_lib_shoop/rust/qvariant_qvariantmap.rs")
-        .file("src/cxx_qt_lib_shoop/rust/qvariant_qsharedpointer_qobject.rs")
         .file("src/cxx_qt_shoop/rust/qobj_application_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_autoconnect_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_backend_wrapper_bridge.rs")
@@ -47,9 +34,8 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/type_shoopqmlapplicationengine.rs")
         .cc_builder(|cc| {
             cc.include("src/cxx_qt_shoop/include");
+            cc.include("../cxx_qt_lib_shoop/src/include");
             cc.file("src/cxx_qt_shoop/cxx/ShoopQObject.cpp");
-            cc.include("src/cxx_qt_lib_shoop/include");
-            cc.file("src/cxx_qt_lib_shoop/cxx/qqmlengine_helpers.cpp");
         })
         .qobject_header("src/cxx_qt_shoop/include/cxx-qt-shoop/ShoopQObject.h")
         .build();

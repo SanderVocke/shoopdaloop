@@ -1,5 +1,5 @@
-use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
-use crate::cxx_qt_lib_shoop::qthread::QThread;
+use crate::qobject::ffi::qobject_move_to_thread;
+use crate::qthread::QThread;
 use cxx::{type_id, ExternType};
 use cxx_qt;
 use std::pin::Pin;
@@ -10,7 +10,7 @@ mod ffi {
         include!("cxx-qt-lib-shoop/qtimer.h");
         include!("cxx-qt-lib-shoop/qobject.h");
         type QTimer = super::QTimerRust;
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QObject = crate::qobject::QObject;
 
         #[rust_name = "qtimer_set_single_shot"]
         fn qtimerSetSingleShot(timer: Pin<&mut QTimer>, single_shot: bool);
@@ -37,7 +37,7 @@ mod ffi {
             slot: String,
         ) -> Result<()>;
 
-        include!("cxx-qt-shoop/make_raw.h");
+        include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_qtimer_with_parent"]
         unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut QTimer;
         #[rust_name = "make_raw_qtimer"]

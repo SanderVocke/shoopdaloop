@@ -2,8 +2,8 @@
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
-        type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -40,7 +40,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/invoke.h");
 
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_dummy_process_helper"]
         fn make_unique() -> UniquePtr<DummyProcessHelper>;
 
@@ -87,7 +87,7 @@ impl Default for DummyProcessHelperRust {
     }
 }
 
-impl crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem for DummyProcessHelper {
+impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for DummyProcessHelper {
     unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {
         qquickitem_from_ptr_dummy_process_helper(self as *mut Self)
     }
@@ -96,7 +96,7 @@ impl crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem for DummyProcessHelper {
     }
 }
 
-impl crate::cxx_qt_lib_shoop::qquickitem::IsQQuickItem for DummyProcessHelper {}
+impl cxx_qt_lib_shoop::qquickitem::IsQQuickItem for DummyProcessHelper {}
 
 impl cxx_qt::Constructor<(*mut QQuickItem,)> for DummyProcessHelper {
     type BaseArguments = (*mut QQuickItem,);

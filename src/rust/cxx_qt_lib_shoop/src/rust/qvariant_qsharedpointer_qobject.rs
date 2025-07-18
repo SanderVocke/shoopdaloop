@@ -7,8 +7,7 @@ mod ffi {
         type QVariant = cxx_qt_lib::QVariant;
 
         include!("cxx-qt-lib-shoop/qsharedpointer_qobject.h");
-        type QSharedPointer_QObject =
-            crate::cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
+        type QSharedPointer_QObject = crate::qsharedpointer_qobject::QSharedPointer_QObject;
 
         include!("cxx-qt-lib-shoop/qvariant_qsharedpointer_qobject.h");
 

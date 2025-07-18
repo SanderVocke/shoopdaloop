@@ -6,9 +6,15 @@ edition = "2021"
 pyo3 = { version = "0.25", features = ["auto-initialize"] }
 cxx-qt = "0.7"
 cxx-qt-lib = { version = "0.7", features = ["full"] }
+cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
+
+common = { path = "../common" }
+ctor = "0.2"
+log = "0.4"
 
 [build-dependencies]
 
 [features]
 # Dummy build to build dependencies only
-prebuild = []
+prebuild = ["common/prebuild",
+            "cxx_qt_lib_shoop/prebuild"]

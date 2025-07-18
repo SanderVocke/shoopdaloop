@@ -1,4 +1,4 @@
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
+use crate::qobject::AsQObject;
 use common::logging::macros::*;
 use cxx::Exception;
 shoop_log_unit!("Frontend.Qt");
@@ -7,7 +7,7 @@ shoop_log_unit!("Frontend.Qt");
 mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QObject = crate::qobject::QObject;
     }
 
     unsafe extern "C++" {
@@ -42,7 +42,7 @@ where
     }
 }
 
-impl QObjectOrConvertible for crate::cxx_qt_lib_shoop::qobject::QObject {
+impl QObjectOrConvertible for crate::qobject::QObject {
     fn qobject_mut(&mut self) -> *mut ffi::QObject {
         self as *mut ffi::QObject
     }

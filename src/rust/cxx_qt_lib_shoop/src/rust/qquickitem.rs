@@ -1,4 +1,4 @@
-use crate::cxx_qt_lib_shoop::qobject::{AsQObject, IsQObject};
+use crate::qobject::{AsQObject, IsQObject};
 use std::pin::Pin;
 
 #[cxx_qt::bridge]
@@ -7,7 +7,7 @@ mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem;
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QObject = crate::qobject::QObject;
 
         include!("cxx-qt-lib/qlist.h");
         include!("cxx-qt-lib/qvariant.h");

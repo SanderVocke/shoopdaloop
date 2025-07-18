@@ -2,6 +2,9 @@ use cxx_qt_lib;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict};
 
+use common::logging::macros::*;
+shoop_log_unit!("Frontend.SchemaValidator");
+
 pub struct SchemaValidator {
     py_object: Option<Py<PyAny>>,
 }
@@ -22,7 +25,9 @@ fn create_py_schema_validator<'py>(py: Python<'py>) -> PyResult<Py<PyAny>> {
 impl Default for SchemaValidator {
     fn default() -> Self {
         Python::with_gil(|py| {
-            return SchemaValidator { py_object: Some(create_py_schema_validator(py).unwrap()) }
+            return SchemaValidator {
+                py_object: Some(create_py_schema_validator(py).unwrap()),
+            };
         })
     }
 }
@@ -35,8 +40,8 @@ impl SchemaValidator {
         schemaname: &str,
         asynchronous: bool,
     ) -> bool {
-        Python::with_gil(|py| {
-            let dict = shoop_py_utils::conversions::qvariantmap_to_python(py, &obj);
+        match Python::with_gil(|py| -> PyResult<bool> {
+            let dict = shoop_py_utils::conversions::qvariantmap_to_python(py, &obj)?;
             let args = (dict, obj_desc, schemaname, asynchronous)
                 .into_pyobject(py)
                 .unwrap();
@@ -50,8 +55,14 @@ impl SchemaValidator {
                 .unwrap()
                 .extract(py)
                 .unwrap();
-            return result;
-        });
-        return false;
+            debug!("Schema validation for {schemaname} returned {result}");
+            Ok(result)
+        }) {
+            Ok(result) => result,
+            Err(e) => {
+                error!("Failed to validate schema, ignoring: {e}");
+                return true;
+            }
+        }
     }
 }

@@ -1,4 +1,4 @@
-use crate::cxx_qt_lib_shoop::qobject::QObject;
+use crate::qobject::QObject;
 use cxx::{type_id, ExternType};
 use cxx_qt;
 use std::pin::Pin;
@@ -9,7 +9,7 @@ mod ffi {
         include!("cxx-qt-lib-shoop/qthread.h");
         include!("cxx-qt-lib-shoop/qobject.h");
         type QThread = super::QThreadRust;
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QObject = crate::qobject::QObject;
 
         #[rust_name = "qthread_start"]
         fn qthreadStart(thread: Pin<&mut QThread>);
@@ -20,7 +20,7 @@ mod ffi {
         #[rust_name = "qthread_is_running"]
         fn qthreadIsRunning(thread: Pin<&mut QThread>) -> bool;
 
-        include!("cxx-qt-shoop/make_raw.h");
+        include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_qthread_with_parent"]
         unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut QThread;
 

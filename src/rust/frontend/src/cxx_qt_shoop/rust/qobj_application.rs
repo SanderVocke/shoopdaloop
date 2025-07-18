@@ -1,5 +1,3 @@
-use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_set_property_int;
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 use crate::cxx_qt_shoop::qobj_application_bridge::ffi::*;
 pub use crate::cxx_qt_shoop::qobj_application_bridge::Application;
 use crate::cxx_qt_shoop::qobj_application_bridge::ApplicationSettings;
@@ -8,6 +6,8 @@ use crate::engine_update_thread;
 use anyhow;
 use cxx::UniquePtr;
 use cxx_qt::CxxQtType;
+use cxx_qt_lib_shoop::qobject::ffi::qobject_set_property_int;
+use cxx_qt_lib_shoop::qobject::AsQObject;
 use std::path::Path;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
@@ -87,7 +87,7 @@ impl Application {
     pub fn initialize(
         mut self: Pin<&mut Application>,
         config: config::config::ShoopConfig,
-        setup_after_qml_engine_creation: fn(engine : *mut QObject),
+        setup_after_qml_engine_creation: fn(engine: *mut QObject),
         main_qml: Option<&Path>,
         settings: ApplicationSettings,
     ) -> Result<(), anyhow::Error> {

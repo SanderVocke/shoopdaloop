@@ -21,4 +21,5 @@ mod ffi {
 
 pub use ffi::{
     qvariant_as_qvariantmap, qvariant_convertible_to_qvariantmap, qvariantmap_as_qvariant,
+    QMap_QString_QVariant,
 };
