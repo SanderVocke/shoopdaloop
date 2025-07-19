@@ -36,7 +36,9 @@ fn main() {
             cc.include("src/cxx_qt_shoop/include");
             cc.include("../cxx_qt_lib_shoop/src/include");
             cc.file("src/cxx_qt_shoop/cxx/ShoopQObject.cpp");
+            cc.file("src/cxx_qt_shoop/cxx/ShoopQmlEngine.cpp");
         })
         .qobject_header("src/cxx_qt_shoop/include/cxx-qt-shoop/ShoopQObject.h")
+        .qobject_header("src/cxx_qt_shoop/include/cxx-qt-shoop/ShoopQmlEngine.h")
         .build();
 }

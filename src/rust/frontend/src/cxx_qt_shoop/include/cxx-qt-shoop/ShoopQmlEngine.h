@@ -10,11 +10,9 @@ class ShoopQmlEngine : public QQmlApplicationEngine {
     Q_OBJECT
 
     public:
-    ShoopQmlEngine(QObject *parent = nullptr)
-        : QQmlApplicationEngine(parent)
-    {}
+    explicit ShoopQmlEngine(QObject *parent = nullptr);
 
-    virtual ~ShoopQmlEngine() {}
+    virtual ~ShoopQmlEngine();
 
     void closeRoot() {
         auto root_objects = this->rootObjects();
@@ -62,3 +60,5 @@ public slots:
         this->rootContext()->setContextProperty(key, value);
     }
 };
+
+Q_DECLARE_METATYPE(ShoopQmlEngine *)
