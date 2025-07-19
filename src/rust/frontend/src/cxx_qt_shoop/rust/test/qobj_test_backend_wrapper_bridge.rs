@@ -5,8 +5,8 @@ shoop_log_unit!("Frontend.TestBackendWrapper");
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
-        type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
 
         include!("cxx-qt-lib/qlist.h");
         include!("cxx-qt-lib/qvariant.h");
@@ -42,7 +42,7 @@ pub mod ffi {
         #[rust_name = "qquickitem_from_ptr_test_backend_wrapper"]
         unsafe fn qquickitemFromPtr(obj: *mut TestBackendWrapper) -> *mut QQuickItem;
 
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_test_backend_wrapper"]
         fn make_unique() -> UniquePtr<TestBackendWrapper>;
     }
@@ -51,8 +51,8 @@ pub mod ffi {
     impl cxx_qt::Constructor<(), NewArguments = ()> for TestBackendWrapper {}
 }
 
-use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
 use crate::cxx_qt_shoop::type_external_port_descriptor::ExternalPortDescriptor;
+use cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
 pub use ffi::make_unique_test_backend_wrapper as make_unique;
 pub use ffi::TestBackendWrapper;
 use ffi::*;

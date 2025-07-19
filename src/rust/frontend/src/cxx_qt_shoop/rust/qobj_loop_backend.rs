@@ -1,7 +1,3 @@
-use crate::cxx_qt_lib_shoop::connect::connect_or_report;
-use crate::cxx_qt_lib_shoop::connection_types;
-use crate::cxx_qt_lib_shoop::qobject::qobject_property_bool;
-use crate::cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
@@ -13,6 +9,10 @@ use common::logging::macros::{
 };
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QString, QVariant};
+use cxx_qt_lib_shoop::connect::connect_or_report;
+use cxx_qt_lib_shoop::connection_types;
+use cxx_qt_lib_shoop::qobject::qobject_property_bool;
+use cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Loop");
 

@@ -1,16 +1,10 @@
 from PySide6.QtCore import Signal, Property, Slot, QTimer
-
 from .ShoopPyObject import *
-from ..logging import Logger as BaseLogger
-
+from .LoggerImpl import LoggerImpl
 class Logger(ShoopQObject):
     def __init__(self, parent=None):
-        global logger_id
-        global logger_ids_lock
         super(Logger, self).__init__(parent)
-        self.logger = BaseLogger("Frontend.Unknown")
-        self._id = None
-        self._id_to_print = self._obj_id
+        self.impl = LoggerImpl(self._obj_id)
 
     ######################
     # PROPERTIES
@@ -20,57 +14,54 @@ class Logger(ShoopQObject):
     nameChanged = ShoopSignal(str)
     @ShoopProperty(str, notify=nameChanged, thread_protection=ThreadProtectionType.AnyThread)
     def name(self):
-        return self.logger.name()
+        return self.impl.get_name()
     @name.setter
     def name(self, l):
-        if l and l != self.logger.name():
-            self.logger = BaseLogger(l)
-    
+        if self.impl.set_name(l):
+            self.nameChanged.emit(l)
+
     # instanceIdentifier (for clarity in debugging)
     instanceIdentifierChanged = ShoopSignal(str)
     @ShoopProperty(str, notify=instanceIdentifierChanged, thread_protection=ThreadProtectionType.AnyThread)
     def instanceIdentifier(self):
-        return self._id
+        return self.impl.get_instance_identifier()
     @instanceIdentifier.setter
     def instanceIdentifier(self, l):
-        if l and l != self._id:
-            self._id = l
-            self._id_to_print = str(self._obj_id) + ":" + l
+        if self.impl.set_instance_identifier(l):
             self.instanceIdentifierChanged.emit(l)
         
     ###########
     ## SLOTS
     ###########
 
-    @ShoopSlot('QVariant', thread_protection=ThreadProtectionType.AnyThread)
+    @ShoopSlot('QString', thread_protection=ThreadProtectionType.AnyThread)
     def trace(self, msg):
-        self.logger.trace(msg, _id=self._id_to_print)
+        self.impl.trace(msg)
     
-    @ShoopSlot('QVariant', thread_protection=ThreadProtectionType.AnyThread)
+    @ShoopSlot('QString', thread_protection=ThreadProtectionType.AnyThread)
     def debug(self, msg):
-        self.logger.debug(msg, _id=self._id_to_print)
+        self.impl.debug(msg)
     
-    @ShoopSlot('QVariant', thread_protection=ThreadProtectionType.AnyThread)
+    @ShoopSlot('QString', thread_protection=ThreadProtectionType.AnyThread)
     def info(self, msg):
-        self.logger.info(msg, _id=self._id_to_print)
+        self.impl.info(msg)
     
-    @ShoopSlot('QVariant', thread_protection=ThreadProtectionType.AnyThread)
+    @ShoopSlot('QString', thread_protection=ThreadProtectionType.AnyThread)
     def warning(self, msg):
-        self.logger.warning(msg, _id=self._id_to_print)
+        self.impl.warning(msg)
     
-    @ShoopSlot('QVariant', thread_protection=ThreadProtectionType.AnyThread)
+    @ShoopSlot('QString', thread_protection=ThreadProtectionType.AnyThread)
     def error(self, msg):
-        self.logger.error(msg, _id=self._id_to_print)
+        self.impl.error(msg)
     
-    @ShoopSlot('QVariant', thread_protection=ThreadProtectionType.AnyThread)
+    @ShoopSlot('QString', thread_protection=ThreadProtectionType.AnyThread)
     def throw_error(self, msg):
-        self.logger.error(msg, _id=self._id_to_print)
-        raise Exception(msg)
+        self.impl.error(msg)
     
-    @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
+    @ShoopSlot(result=bool, thread_protection=ThreadProtectionType.AnyThread)
     def should_trace(self):
-        return self.logger.should_trace()
+        return self.impl.should_trace()
     
-    @ShoopSlot(thread_protection=ThreadProtectionType.AnyThread)
+    @ShoopSlot(result=bool, thread_protection=ThreadProtectionType.AnyThread)
     def should_debug(self):
-        return self.logger.should_debug()
+        return self.impl.should_debug()

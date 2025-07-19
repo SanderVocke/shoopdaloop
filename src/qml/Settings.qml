@@ -1,5 +1,6 @@
 import QtQuick 6.6
 import ShoopDaLoop.PythonLogger
+import ShoopDaLoop.Rust
 
 // Generic settings with tools for reading, writing upgrading settings data.
 QtObject {
@@ -12,12 +13,12 @@ QtObject {
     property var contents: []
     property var current_version: 1
 
-    readonly property PythonLogger logger: PythonLogger { name: `Frontend.Qml.Settings.${name}` }
+    readonly property PythonLogger logger: PythonLogger { name: `Frontend.Qml.Settings.${root.name}` }
 
     function validate() {
         let dict = to_dict()
         let schema = `${schema_name}.${current_version}`
-        return schema_validator.validate_schema(dict, `${name} settings`, schema, true)
+        return ShoopSchemaValidator.validate_schema(dict, `${name} settings`, schema, true)
     }
 
     onContentsChanged: validate()

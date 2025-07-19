@@ -1,5 +1,6 @@
 import QtQuick 6.6
 import ShoopDaLoop.PythonLogger
+import ShoopDaLoop.Rust
 
 QtObject {
     id: root
@@ -14,6 +15,6 @@ QtObject {
     
     function maybe_check() {
         if (!enabled) { return; }
-        schema_validator.validate_schema(descriptor, object_description, schema, true)
+        ShoopSchemaValidator.validate_schema(descriptor, object_description, schema, true)
     }
 }

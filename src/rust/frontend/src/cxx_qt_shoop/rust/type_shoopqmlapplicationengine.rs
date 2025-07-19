@@ -8,7 +8,7 @@ pub mod ffi {
         type QQmlApplicationEngine = cxx_qt_lib::QQmlApplicationEngine;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
 
         include!("cxx-qt-lib-shoop/qqmlengine_helpers.h");
 

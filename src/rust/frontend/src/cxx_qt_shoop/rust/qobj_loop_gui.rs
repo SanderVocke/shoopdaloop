@@ -1,12 +1,3 @@
-use crate::cxx_qt_lib_shoop::connect::connect_or_report;
-use crate::cxx_qt_lib_shoop::connection_types;
-use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
-use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
-use crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
-use crate::cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
-use crate::cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
-use crate::cxx_qt_lib_shoop::qvariant_qsharedpointer_qobject::qsharedpointer_qobject_to_qvariant;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::loop_backend_qobject_from_ptr;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::make_raw_loop_backend;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::qobject_to_loop_backend_ptr;
@@ -19,6 +10,15 @@ use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
 use cxx_qt::CxxQtType;
+use cxx_qt_lib_shoop::connect::connect_or_report;
+use cxx_qt_lib_shoop::connection_types;
+use cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
+use cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
+use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
+use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
+use cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
+use cxx_qt_lib_shoop::qvariant_qsharedpointer_qobject::qsharedpointer_qobject_to_qvariant;
 
 use cxx_qt_lib::{QList, QString, QVariant};
 use std::pin::Pin;

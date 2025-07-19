@@ -1,22 +1,20 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.FindParentItem");
 
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
 pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::constants::*;
 pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::ffi::make_unique_find_parent_item as make_unique;
 pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::FindParentItem;
 use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::*;
+use cxx_qt_lib_shoop::qobject::AsQObject;
 
-use crate::cxx_qt_lib_shoop::qobject::qobject_object_name;
-use crate::cxx_qt_lib_shoop::qobject::{qobject_class_name, qobject_property_bool};
-use crate::cxx_qt_lib_shoop::qquickitem;
-use crate::cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_ref, AsQQuickItem};
+use cxx_qt_lib_shoop::qobject::qobject_object_name;
+use cxx_qt_lib_shoop::qobject::{qobject_class_name, qobject_property_bool};
+use cxx_qt_lib_shoop::qquickitem;
+use cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_ref, AsQQuickItem};
 use ffi::{QObject, QQuickItem};
 use std::{pin::Pin, ptr::null_mut};
 
 use cxx_qt::CxxQtType;
-
-use crate::cxx_qt_lib_shoop;
 
 type Predicate = dyn Fn(*mut QQuickItem) -> bool;
 type BoxedPredicate = Box<Predicate>;
@@ -50,8 +48,7 @@ unsafe fn find_parent_item(
         return item;
     }
     trace!("  -> {} (no match)", fmt_object(item));
-    let parent =
-        crate::cxx_qt_lib_shoop::qquickitem::qquickitem_parent_item(item.as_ref().unwrap());
+    let parent = cxx_qt_lib_shoop::qquickitem::qquickitem_parent_item(item.as_ref().unwrap());
     return find_parent_item(parent, predicate, false);
 }
 
@@ -95,7 +92,7 @@ impl FindParentItem {
         }
         let find_predicate = maybe_find_predicate.unwrap();
         let quick_parent_ptr =
-            crate::cxx_qt_lib_shoop::qquickitem::qquickitem_parent_item(quick.as_ref().unwrap());
+            cxx_qt_lib_shoop::qquickitem::qquickitem_parent_item(quick.as_ref().unwrap());
         let item = find_parent_item(quick_parent_ptr, find_predicate, true);
         self.as_mut().set_found_item(item);
         self.as_mut().update_found_item_bool_property();
@@ -162,9 +159,9 @@ impl FindParentItem {
 
 #[cfg(test)]
 mod tests {
-    use crate::cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
     use crate::cxx_qt_shoop::test::qobj_generic_test_item;
     use cxx_qt_lib::QString;
+    use cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
 
     use super::*;
 

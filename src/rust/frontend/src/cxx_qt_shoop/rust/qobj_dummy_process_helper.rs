@@ -6,11 +6,11 @@ use std::time::Duration;
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.DummyProcessHelper");
 
-use crate::cxx_qt_lib_shoop::invokable;
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
-use crate::cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
 use crate::cxx_qt_shoop::qobj_dummy_process_helper_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_signature_backend_wrapper;
+use cxx_qt_lib_shoop::invokable;
+use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
 
 impl DummyProcessHelper {
     pub fn start(mut self: Pin<&mut Self>) {

@@ -1,10 +1,8 @@
-use crate::cxx_qt_lib_shoop::qvariant_qvariantmap::{
-    qvariant_as_qvariantmap, qvariantmap_as_qvariant,
-};
 use anyhow::anyhow;
 use backend_bindings::{PortDataType, PortDirection};
 use core::fmt::Debug;
 use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QString, QVariant};
+use cxx_qt_lib_shoop::qvariant_qvariantmap::{qvariant_as_qvariantmap, qvariantmap_as_qvariant};
 use std::fmt;
 
 pub struct ExternalPortDescriptor {

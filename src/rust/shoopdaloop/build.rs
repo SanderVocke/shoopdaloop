@@ -47,7 +47,7 @@ SET "SHOOP_CONFIG={dev_config_path_str}"
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:{paths}"
 export SHOOP_CONFIG="{dev_config_path_str}"
-$SCRIPT_DIR//shoopdaloop "$@"
+$SHOOP_CMD_PREFIX $SCRIPT_DIR//shoopdaloop "$@"
 "#
             );
             let script_path = PathBuf::from(std::env::var("OUT_DIR").unwrap())

@@ -5,7 +5,7 @@ pub fn create_py_config_module<'py>(
     config: &ShoopConfig,
     py: Python<'py>,
 ) -> Result<Bound<'py, PyModule>, PyErr> {
-    let m = PyModule::new_bound(py, "shoop_config")?;
+    let m = PyModule::new(py, "shoop_config")?;
     m.setattr("shoop_version", config._version.clone())?;
     m.setattr("shoop_description", config._description.clone())?;
     m.setattr("shoop_install_info", config._install_info.clone())?;

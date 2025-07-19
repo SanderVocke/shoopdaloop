@@ -14,8 +14,8 @@ pub mod constants {
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
-        type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -189,11 +189,11 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-shoop/cast_ptr.h");
+        include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "qobject_to_loop_backend_ptr"]
         unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut LoopBackend;
 
-        include!("cxx-qt-shoop/qobject_classname.h");
+        include!("cxx-qt-lib-shoop/qobject_classname.h");
         #[rust_name = "qobject_class_name_loop_backend"]
         fn qobject_class_name(obj: &LoopBackend) -> Result<&str>;
 
@@ -204,7 +204,7 @@ pub mod ffi {
         #[rust_name = "loop_backend_qobject_from_ref"]
         fn qobjectFromRef(obj: &LoopBackend) -> &QObject;
 
-        include!("cxx-qt-shoop/make_raw.h");
+        include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_loop_backend"]
         unsafe fn make_raw() -> *mut LoopBackend;
 
@@ -213,7 +213,7 @@ pub mod ffi {
     impl cxx_qt::Constructor<()> for LoopBackend {}
 }
 
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::qobject::AsQObject;
 pub use ffi::LoopBackend;
 use ffi::*;
 

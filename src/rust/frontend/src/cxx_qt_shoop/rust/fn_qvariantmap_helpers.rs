@@ -17,7 +17,7 @@ where
                     anyhow::anyhow!(
                         "Error converting from QVariant to {:?}, variant metatype is {:?}",
                         type_name::<T>(),
-                        crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_type_name(p.1)
+                        cxx_qt_lib_shoop::qvariant_helpers::qvariant_type_name(p.1)
                             .unwrap_or("Unknown")
                     )
                 })?;
@@ -41,7 +41,7 @@ where
                     return Err(anyhow!(
                         "Cannot convert QVariant to {:?}, metatype is {:?}",
                         type_name::<T>(),
-                        crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_type_name(p.1)
+                        cxx_qt_lib_shoop::qvariant_helpers::qvariant_type_name(p.1)
                             .unwrap_or("Unknown")
                     ));
                 }

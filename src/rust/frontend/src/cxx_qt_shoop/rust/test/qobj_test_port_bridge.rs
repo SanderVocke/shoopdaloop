@@ -33,8 +33,8 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         include!("cxx-qt-lib-shoop/qquickitem.h");
-        type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
         type QString = cxx_qt_lib::QString;
 
         include!("cxx-qt-lib/qmap.h");
@@ -44,7 +44,7 @@ pub mod ffi {
         type QVariant = cxx_qt_lib::QVariant;
 
         include!("cxx-qt-lib-shoop/qjsonobject.h");
-        type QJsonObject = crate::cxx_qt_lib_shoop::qjsonobject::QJsonObject;
+        type QJsonObject = cxx_qt_lib_shoop::qjsonobject::QJsonObject;
     }
 
     unsafe extern "RustQt" {
@@ -75,7 +75,7 @@ pub mod ffi {
         #[rust_name = "qquickitem_from_ptr_test_port"]
         unsafe fn qquickitemFromPtr(obj: *mut TestPort) -> *mut QQuickItem;
 
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_test_port"]
         fn make_unique() -> UniquePtr<TestPort>;
     }
@@ -84,9 +84,9 @@ pub mod ffi {
     impl cxx_qt::Constructor<(), NewArguments = ()> for TestPort {}
 }
 
-use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
 use backend_bindings::PortDataType;
 use backend_bindings::PortDirection;
+use cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
 pub use ffi::make_unique_test_port as make_unique;
 pub use ffi::TestPort;
 use ffi::*;
