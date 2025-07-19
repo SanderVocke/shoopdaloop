@@ -12,6 +12,7 @@ use std::pin::Pin;
 use frontend::cxx_qt_shoop::qobj_qmlengine::QmlEngine;
 use cxx_qt_lib::QString;
 
+use crate::audio_driver_names::get_audio_driver_from_name;
 use crate::global_qml_settings::GlobalQmlSettings;
 
 shoop_log_unit!("Main");
@@ -148,6 +149,19 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
     let args: Vec<String> = env::args().collect();
     let cli_args = crate::cli_args::parse_arguments(args.iter());
 
+    if cli_args.print_backends {
+        println!("Available backends:\n");
+        let all_audio_driver_types = crate::audio_driver_names::all_audio_driver_types();
+        for driver_type in all_audio_driver_types {
+            println!("{}", crate::audio_driver_names::get_audio_driver_name(driver_type));
+        }
+        return Ok(0);
+    }
+
+    if cli_args.developer_options.print_main_windows {
+        todo!();
+    }
+
     // Initialize the Python interpreter
     Python::with_gil(|py| -> PyResult<()> {
         let sys = py.import("sys")?;
@@ -198,7 +212,7 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
     };
 
     let global_qml_settings = GlobalQmlSettings {
-        backend_type: backend_bindings::AudioDriverType::Dummy, // TODO
+        backend_type: get_audio_driver_from_name(&cli_args.backend),
         load_session_on_startup: cli_args.session_filename.map(|s| PathBuf::from(s)),
         test_grab_screens_dir: cli_args
             .developer_options
