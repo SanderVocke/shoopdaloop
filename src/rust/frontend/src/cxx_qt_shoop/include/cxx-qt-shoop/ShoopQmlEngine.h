@@ -2,13 +2,19 @@
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQuick/QQuickWindow>
 #include <QObject>
+#include <QQmlContext>
 #include <stdexcept>
-
+#include <QString>
+#include <QVariant>
 class ShoopQmlEngine : public QQmlApplicationEngine {
+    Q_OBJECT
+
     public:
     ShoopQmlEngine(QObject *parent = nullptr)
         : QQmlApplicationEngine(parent)
     {}
+
+    virtual ~ShoopQmlEngine() {}
 
     void closeRoot() {
         auto root_objects = this->rootObjects();
@@ -49,5 +55,10 @@ class ShoopQmlEngine : public QQmlApplicationEngine {
         }
 
         return root;
+    }
+
+public slots:
+    void setRootContextProperty(QString const& key, QVariant const& value) {
+        this->rootContext()->setContextProperty(key, value);
     }
 };

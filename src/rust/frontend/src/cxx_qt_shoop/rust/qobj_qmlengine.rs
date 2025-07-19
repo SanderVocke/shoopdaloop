@@ -1,4 +1,5 @@
 use crate::cxx_qt_shoop::qobj_qmlengine_bridge::ffi::*;
+pub use crate::cxx_qt_shoop::qobj_qmlengine_bridge::QmlEngine;
 use crate::engine_update_thread;
 use anyhow;
 use common::util::PATH_LIST_SEPARATOR;

@@ -72,7 +72,7 @@ use cxx_qt_lib_shoop::qobject::AsQObject;
 pub use ffi::Application;
 
 #[derive(Default)]
-pub struct ApplicationSettings {
+pub struct ApplicationStartupSettings {
     pub refresh_backend_on_frontend_refresh: bool,
     pub backend_backup_refresh_interval_ms: u64,
     pub nsm: bool,
@@ -83,8 +83,8 @@ pub struct ApplicationSettings {
 pub struct ApplicationRust {
     pub config: config::config::ShoopConfig,
     pub qml_engine: *mut QmlEngine,
-    pub settings: ApplicationSettings,
-    pub setup_after_qml_engine_creation: fn(qml_engine: *mut ffi::QObject),
+    pub settings: ApplicationStartupSettings,
+    pub setup_after_qml_engine_creation: fn(qml_engine: Pin<&mut QmlEngine>),
 }
 
 impl Default for ApplicationRust {
@@ -92,7 +92,7 @@ impl Default for ApplicationRust {
         ApplicationRust {
             config: config::config::ShoopConfig::default(),
             qml_engine: std::ptr::null_mut(),
-            settings: ApplicationSettings::default(),
+            settings: ApplicationStartupSettings::default(),
             setup_after_qml_engine_creation: |_| {},
         }
     }

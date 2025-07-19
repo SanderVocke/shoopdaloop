@@ -1,6 +1,6 @@
 use crate::cxx_qt_shoop::qobj_application_bridge::ffi::*;
 pub use crate::cxx_qt_shoop::qobj_application_bridge::Application;
-use crate::cxx_qt_shoop::qobj_application_bridge::ApplicationSettings;
+use crate::cxx_qt_shoop::qobj_application_bridge::ApplicationStartupSettings;
 use crate::cxx_qt_shoop::qobj_qmlengine_bridge::QmlEngine;
 use crate::engine_update_thread;
 use anyhow;
@@ -73,9 +73,8 @@ impl Application {
             let mut qml_engine_mut = std::pin::Pin::new_unchecked(&mut *qml_engine);
             let self_ref = self.as_ref();
             let rust = self_ref.rust();
-            let qml_engine_qobj = qml_engine_mut.as_mut().pin_mut_qobject_ptr();
             qml_engine_mut.as_mut().initialize()?;
-            (rust.setup_after_qml_engine_creation)(qml_engine_qobj);
+            (rust.setup_after_qml_engine_creation)(qml_engine_mut.as_mut());
             qml_engine_mut
                 .as_mut()
                 .load_and_init_qml(qml, rust.settings.refresh_backend_on_frontend_refresh)?;
@@ -87,9 +86,9 @@ impl Application {
     pub fn initialize(
         mut self: Pin<&mut Application>,
         config: config::config::ShoopConfig,
-        setup_after_qml_engine_creation: fn(engine: *mut QObject),
+        setup_after_qml_engine_creation: fn(qml_engine: Pin<&mut QmlEngine>),
         main_qml: Option<&Path>,
-        settings: ApplicationSettings,
+        settings: ApplicationStartupSettings,
     ) -> Result<(), anyhow::Error> {
         {
             let mut rust_mut = self.as_mut().rust_mut();

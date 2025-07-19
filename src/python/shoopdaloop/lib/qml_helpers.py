@@ -108,13 +108,13 @@ def register_shoopdaloop_qml_classes():
     qmlRegisterSingletonType("ShoopConstants", 1, 0, "ShoopConstants", create_constants_instance)
     install_qt_message_handler()
 
-def create_and_populate_root_context_with_engine_addr(engine_addr, global_args, additional_items={}):
+def create_and_populate_root_context_with_engine_addr(engine_addr):
     from shiboken6 import Shiboken, getCppPointer
     from PySide6.QtQml import QQmlApplicationEngine
     engine = Shiboken.wrapInstance(engine_addr, QQmlApplicationEngine)
-    return create_and_populate_root_context(engine, global_args, additional_items)
+    return create_and_populate_root_context(engine)
 
-def create_and_populate_root_context(engine, global_args, additional_items={}):
+def create_and_populate_root_context(engine):
     def create_component(path):
         comp = QQmlComponent(engine, QUrl.fromLocalFile(path))
         while comp.status() == QQmlComponent.Loading:
@@ -134,15 +134,15 @@ def create_and_populate_root_context(engine, global_args, additional_items={}):
         'app_metadata': ApplicationMetadata(parent=engine),
         'default_logger': Logger(),
         'tree_model_factory': DictTreeModelFactory(parent=engine),
-        'global_args': global_args,
+        # 'global_args': global_args,
         'settings_io': SettingsIO(parent=engine),
         'registries': registries,
         'screen_grabber': TestScreenGrabber(weak_engine=weakref.ref(engine), parent=engine)
     }
 
-    if additional_items:
-        for key, item in additional_items.items():
-            items[key] = item
+    # if additional_items:
+    #     for key, item in additional_items.items():
+    #         items[key] = item
 
     items['default_logger'].name = 'Frontend.Qml'
 

@@ -11,12 +11,24 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+
+        include!("cxx-qt-lib/qvariant.h");
+        type QVariant = cxx_qt_lib::QVariant;
     }
 
     unsafe extern "RustQt" {
         #[qobject]
         #[base = ShoopQmlEngine]
         type QmlEngine = super::QmlEngineRust;
+
+        #[inherit]
+        #[qinvokable]
+        #[cxx_name = "setRootContextProperty"]
+        unsafe fn set_root_context_property(
+            self: Pin<&mut QmlEngine>,
+            key: &QString,
+            value: &QVariant,
+        );
 
         #[inherit]
         #[cxx_name = "collectGarbage"]

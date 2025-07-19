@@ -2,12 +2,21 @@ use anyhow;
 use common::logging::macros::*;
 use config::config::ShoopConfig;
 use cxx_qt_lib_shoop::qobject::QObject;
-use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationSettings};
+use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationStartupSettings};
+use once_cell::sync::OnceCell;
 use pyo3::types::{PyDict, PyList, PyNone, PyString, PyTuple};
 use pyo3::{prelude::*, IntoPyObjectExt};
 use std::env;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use frontend::cxx_qt_shoop::qobj_qmlengine::QmlEngine;
+use cxx_qt_lib::QString;
+
+use crate::global_qml_settings::GlobalQmlSettings;
+
 shoop_log_unit!("Main");
+
+static GLOBAL_QML_SETTINGS: OnceCell<GlobalQmlSettings> = OnceCell::new();
 
 // fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
 //     // Set up PYTHONPATH.
@@ -135,19 +144,14 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
     debug!("SHOOP_QML_PATHS={:?}", env::var("SHOOP_QML_PATHS"));
     debug!("QT_PLUGIN_PATH={:?}", env::var("QT_PLUGIN_PATH"));
 
-    // Get the command-line arguments
+    // Get and parse the command-line arguments
     let args: Vec<String> = env::args().collect();
+    let cli_args = crate::cli_args::parse_arguments(args.iter());
 
     // Initialize the Python interpreter
     Python::with_gil(|py| -> PyResult<()> {
-        // Forward command-line arguments
         let sys = py.import("sys")?;
         let os = py.import("os")?;
-        let py_args: Vec<_> = args
-            .into_iter()
-            .map(|arg| PyString::new(py, &arg))
-            .collect();
-        sys.setattr("argv", PyList::new(py, &py_args)?)?;
 
         // Explicitly add DLL search paths for extension modules
         if cfg!(target_os = "windows") {
@@ -184,7 +188,7 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
     })
     .map_err(|e| anyhow::anyhow!("Failed to initialize Python environment: {e}"))?;
 
-    let settings = ApplicationSettings {
+    let startup_settings = ApplicationStartupSettings {
         refresh_backend_on_frontend_refresh: true,
         backend_backup_refresh_interval_ms: 25,
         nsm: false,
@@ -192,6 +196,19 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
         qml_debug_wait: None,
         title: "ShoopDaLoop".to_string(),
     };
+
+    let global_qml_settings = GlobalQmlSettings {
+        backend_type: backend_bindings::AudioDriverType::Dummy, // TODO
+        load_session_on_startup: cli_args.session_filename.map(|s| PathBuf::from(s)),
+        test_grab_screens_dir: cli_args
+            .developer_options
+            .test_grab_screens
+            .map(|s| PathBuf::from(s)),
+        developer_mode: cli_args.developer_options.developer,
+        quit_after: cli_args.developer_options.quit_after,
+        monkey_tester: cli_args.developer_options.monkey_tester,
+    };
+    GLOBAL_QML_SETTINGS.set(global_qml_settings).unwrap();
 
     let mut app = Application::make_unique();
     {
@@ -201,25 +218,26 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
         let qml = PathBuf::from("src/qml/applications/shoopdaloop_main.qml");
         app.as_mut().initialize(
             config,
-            |engine: *mut QObject| {
+            |mut qml_engine: Pin<&mut QmlEngine>| {
+                // Set global QML arguments
+                let global_args: &GlobalQmlSettings = GLOBAL_QML_SETTINGS.get().unwrap();
+                let global_args = global_args.as_qvariantmap();
+                let global_args = cxx_qt_lib_shoop::qvariant_qvariantmap::qvariantmap_as_qvariant(&global_args).unwrap();
+                unsafe {
+                    qml_engine
+                        .as_mut()
+                        .set_root_context_property(&QString::from("global_args"), &global_args);
+                }
+
                 Python::with_gil(|py| -> PyResult<()> {
-                    // Temporary : global arguments setting
+                    // Python-side setup
                     let qml_helpers = py.import("shoopdaloop.lib.qml_helpers")?;
                     let create_and_populate_root_context_with_engine_addr =
                         qml_helpers.getattr("create_and_populate_root_context_with_engine_addr")?;
-                    let global_args = PyDict::new(py);
-                    global_args.set_item("backend_type", 2)?;
-                    global_args.set_item("load_session_on_startup", PyNone::get(py))?;
-                    global_args.set_item("test_grab_screens", false)?;
-                    global_args.set_item("developer", true)?;
-                    global_args.set_item("quit_after", PyNone::get(py))?;
-                    global_args.set_item("monkey_tester", false)?;
-
                     unsafe {
-                        let engine_addr = engine as usize as u64;
-                        let args = (engine_addr, global_args, PyNone::get(py));
-                        create_and_populate_root_context_with_engine_addr
-                            .call(args.into_pyobject(py)?, None)?;
+                        let engine_addr = qml_engine.get_unchecked_mut() as *mut QmlEngine as usize as u64;
+                        let args = (engine_addr,);
+                        create_and_populate_root_context_with_engine_addr.call1(args)?;
                     }
 
                     Ok(())
@@ -228,7 +246,7 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
                 .unwrap();
             },
             Some(&qml),
-            settings,
+            startup_settings,
         )?;
 
         unsafe { Ok(app.exec()) }

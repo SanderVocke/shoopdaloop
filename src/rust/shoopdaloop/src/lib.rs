@@ -12,3 +12,6 @@ pub use lib_impl::*;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod cli_args;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod global_qml_settings;
