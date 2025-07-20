@@ -95,7 +95,7 @@ pub struct DeveloperOptions {
     pub qml_self_test: bool,
 
     /// Don't couple the poll rate of back-end engine state to screen refresh
-    #[clap(long = "dont-refresh-with-gui", help_heading = "Developer Options")]
+    #[clap(long = "dont-refresh-with-gui", help_heading = "Developer Options", default_value=false)]
     pub dont_refresh_with_gui: bool,
 
     /// Ensures a minimum (back-up) refresh rate of the back-end engine state.

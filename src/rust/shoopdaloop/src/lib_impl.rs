@@ -162,6 +162,18 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
         todo!();
     }
 
+    if cli_args.info {
+        todo!();
+    }
+
+    if cli_args.session_filename.is_some() {
+        todo!();
+    }
+
+    if cli_args.version {
+        todo!();
+    }
+
     // Initialize the Python interpreter
     Python::with_gil(|py| -> PyResult<()> {
         let sys = py.import("sys")?;
@@ -203,13 +215,17 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
     .map_err(|e| anyhow::anyhow!("Failed to initialize Python environment: {e}"))?;
 
     let startup_settings = ApplicationStartupSettings {
-        refresh_backend_on_frontend_refresh: true,
-        backend_backup_refresh_interval_ms: 25,
+        refresh_backend_on_frontend_refresh: !cli_args.developer_options.dont_refresh_with_gui,
+        backend_backup_refresh_interval_ms: cli_args.developer_options.max_backend_refresh_interval_ms,
         nsm: false,
-        qml_debug_port: None,
-        qml_debug_wait: None,
+        qml_debug_port: cli_args.qml_debug,
+        qml_debug_wait: if cli_args.qml_debug {Some(cli_args.debug_wait)} else {None},
         title: "ShoopDaLoop".to_string(),
     };
+
+    if startup_settings.nsm {
+        todo!();
+    }
 
     let global_qml_settings = GlobalQmlSettings {
         backend_type: get_audio_driver_from_name(&cli_args.backend),
