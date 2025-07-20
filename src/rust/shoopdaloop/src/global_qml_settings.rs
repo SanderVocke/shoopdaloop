@@ -1,6 +1,6 @@
 use cxx_qt_lib::*;
-use std::{iter, option};
 use std::path::{Path, PathBuf};
+use std::{iter, option};
 
 #[derive(Debug)]
 pub struct GlobalQmlSettings {
@@ -54,7 +54,7 @@ impl GlobalQmlSettings {
         )))
     }
 
-    pub fn as_qvariantmap(self: &Self) -> QMap::<QMapPair_QString_QVariant> {
+    pub fn as_qvariantmap(self: &Self) -> QMap<QMapPair_QString_QVariant> {
         let mut map = QMap::<QMapPair_QString_QVariant>::default();
         for (key, value) in self.as_named_qvariants() {
             map.insert(key, value);

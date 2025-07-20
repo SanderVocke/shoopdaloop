@@ -1,16 +1,17 @@
+use crate::cli_args::CliArgs;
 use anyhow;
 use common::logging::macros::*;
 use config::config::ShoopConfig;
+use cxx_qt_lib::QString;
 use cxx_qt_lib_shoop::qobject::QObject;
 use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationStartupSettings};
+use frontend::cxx_qt_shoop::qobj_qmlengine::QmlEngine;
 use once_cell::sync::OnceCell;
 use pyo3::types::{PyDict, PyList, PyNone, PyString, PyTuple};
 use pyo3::{prelude::*, IntoPyObjectExt};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use frontend::cxx_qt_shoop::qobj_qmlengine::QmlEngine;
-use cxx_qt_lib::QString;
 
 use crate::audio_driver_names::get_audio_driver_from_name;
 use crate::global_qml_settings::GlobalQmlSettings;
@@ -19,7 +20,7 @@ shoop_log_unit!("Main");
 
 static GLOBAL_QML_SETTINGS: OnceCell<GlobalQmlSettings> = OnceCell::new();
 
-// fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
+// fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
 //     // Set up PYTHONPATH.
 //     env::set_var(
 //         "PYTHONPATH",
@@ -122,7 +123,87 @@ static GLOBAL_QML_SETTINGS: OnceCell<GlobalQmlSettings> = OnceCell::new();
 //     })
 // }
 
-fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
+fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Error> {
+    let startup_settings = ApplicationStartupSettings {
+        refresh_backend_on_frontend_refresh: !cli_args.developer_options.dont_refresh_with_gui,
+        backend_backup_refresh_interval_ms: cli_args
+            .developer_options
+            .max_backend_refresh_interval_ms as u64,
+        nsm: false,
+        qml_debug_port: cli_args.developer_options.qml_debug,
+        qml_debug_wait: if cli_args.developer_options.qml_debug.is_some() {
+            Some(cli_args.developer_options.debug_wait)
+        } else {
+            None
+        },
+        title: "ShoopDaLoop".to_string(),
+    };
+
+    if startup_settings.nsm {
+        todo!();
+    }
+
+    let global_qml_settings = GlobalQmlSettings {
+        backend_type: get_audio_driver_from_name(&cli_args.backend),
+        load_session_on_startup: cli_args.session_filename.as_ref().map(|s| PathBuf::from(s)),
+        test_grab_screens_dir: cli_args
+            .developer_options
+            .test_grab_screens
+            .as_ref()
+            .map(|s| PathBuf::from(s)),
+        developer_mode: cli_args.developer_options.developer,
+        quit_after: cli_args.developer_options.quit_after,
+        monkey_tester: cli_args.developer_options.monkey_tester,
+    };
+    GLOBAL_QML_SETTINGS.set(global_qml_settings).unwrap();
+
+    let mut app = Application::make_unique();
+    {
+        let mut app = app
+            .as_mut()
+            .ok_or(anyhow::anyhow!("Failed to get application handle"))?;
+        let qml = PathBuf::from("src/qml/applications/shoopdaloop_main.qml");
+        app.as_mut().initialize(
+            config,
+            |mut qml_engine: Pin<&mut QmlEngine>| {
+                // Set global QML arguments
+                let global_args: &GlobalQmlSettings = GLOBAL_QML_SETTINGS.get().unwrap();
+                let global_args = global_args.as_qvariantmap();
+                let global_args =
+                    cxx_qt_lib_shoop::qvariant_qvariantmap::qvariantmap_as_qvariant(&global_args)
+                        .unwrap();
+                unsafe {
+                    qml_engine
+                        .as_mut()
+                        .set_root_context_property(&QString::from("global_args"), &global_args);
+                }
+
+                Python::with_gil(|py| -> PyResult<()> {
+                    // Python-side setup
+                    let qml_helpers = py.import("shoopdaloop.lib.qml_helpers")?;
+                    let create_and_populate_root_context_with_engine_addr =
+                        qml_helpers.getattr("create_and_populate_root_context_with_engine_addr")?;
+                    unsafe {
+                        let engine_addr =
+                            qml_engine.get_unchecked_mut() as *mut QmlEngine as usize as u64;
+                        let args = (engine_addr,);
+                        create_and_populate_root_context_with_engine_addr.call1(args)?;
+                    }
+
+                    Ok(())
+                })
+                .map_err(|e| anyhow::anyhow!("Unable to initialize QML Python state: {e}"))
+                .unwrap();
+            },
+            Some(&qml),
+            startup_settings,
+        )?;
+
+        unsafe { Ok(app.exec()) }
+    }
+}
+
+fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
     // Set up PYTHONPATH.
     env::set_var(
         "PYTHONPATH",
@@ -153,7 +234,10 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
         println!("Available backends:\n");
         let all_audio_driver_types = crate::audio_driver_names::all_audio_driver_types();
         for driver_type in all_audio_driver_types {
-            println!("{}", crate::audio_driver_names::get_audio_driver_name(driver_type));
+            println!(
+                "{}",
+                crate::audio_driver_names::get_audio_driver_name(driver_type)
+            );
         }
         return Ok(0);
     }
@@ -214,78 +298,12 @@ fn shoopdaloop_main_impl<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error>
     })
     .map_err(|e| anyhow::anyhow!("Failed to initialize Python environment: {e}"))?;
 
-    let startup_settings = ApplicationStartupSettings {
-        refresh_backend_on_frontend_refresh: !cli_args.developer_options.dont_refresh_with_gui,
-        backend_backup_refresh_interval_ms: cli_args.developer_options.max_backend_refresh_interval_ms,
-        nsm: false,
-        qml_debug_port: cli_args.qml_debug,
-        qml_debug_wait: if cli_args.qml_debug {Some(cli_args.debug_wait)} else {None},
-        title: "ShoopDaLoop".to_string(),
-    };
-
-    if startup_settings.nsm {
-        todo!();
-    }
-
-    let global_qml_settings = GlobalQmlSettings {
-        backend_type: get_audio_driver_from_name(&cli_args.backend),
-        load_session_on_startup: cli_args.session_filename.map(|s| PathBuf::from(s)),
-        test_grab_screens_dir: cli_args
-            .developer_options
-            .test_grab_screens
-            .map(|s| PathBuf::from(s)),
-        developer_mode: cli_args.developer_options.developer,
-        quit_after: cli_args.developer_options.quit_after,
-        monkey_tester: cli_args.developer_options.monkey_tester,
-    };
-    GLOBAL_QML_SETTINGS.set(global_qml_settings).unwrap();
-
-    let mut app = Application::make_unique();
-    {
-        let mut app = app
-            .as_mut()
-            .ok_or(anyhow::anyhow!("Failed to get application handle"))?;
-        let qml = PathBuf::from("src/qml/applications/shoopdaloop_main.qml");
-        app.as_mut().initialize(
-            config,
-            |mut qml_engine: Pin<&mut QmlEngine>| {
-                // Set global QML arguments
-                let global_args: &GlobalQmlSettings = GLOBAL_QML_SETTINGS.get().unwrap();
-                let global_args = global_args.as_qvariantmap();
-                let global_args = cxx_qt_lib_shoop::qvariant_qvariantmap::qvariantmap_as_qvariant(&global_args).unwrap();
-                unsafe {
-                    qml_engine
-                        .as_mut()
-                        .set_root_context_property(&QString::from("global_args"), &global_args);
-                }
-
-                Python::with_gil(|py| -> PyResult<()> {
-                    // Python-side setup
-                    let qml_helpers = py.import("shoopdaloop.lib.qml_helpers")?;
-                    let create_and_populate_root_context_with_engine_addr =
-                        qml_helpers.getattr("create_and_populate_root_context_with_engine_addr")?;
-                    unsafe {
-                        let engine_addr = qml_engine.get_unchecked_mut() as *mut QmlEngine as usize as u64;
-                        let args = (engine_addr,);
-                        create_and_populate_root_context_with_engine_addr.call1(args)?;
-                    }
-
-                    Ok(())
-                })
-                .map_err(|e| anyhow::anyhow!("Unable to initialize QML Python state: {e}"))
-                .unwrap();
-            },
-            Some(&qml),
-            startup_settings,
-        )?;
-
-        unsafe { Ok(app.exec()) }
-    }
+    app_main(&cli_args, config)
 }
 
 #[cfg(not(feature = "prebuild"))]
 pub fn shoopdaloop_main(config: ShoopConfig) -> i32 {
-    match shoopdaloop_main_impl(config) {
+    match entry_point(config) {
         Ok(r) => {
             return r;
         }

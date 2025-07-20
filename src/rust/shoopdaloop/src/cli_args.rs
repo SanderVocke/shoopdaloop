@@ -59,7 +59,7 @@ pub struct DeveloperOptions {
         value_name = "PORT",
         help_heading = "Developer Options"
     )]
-    pub qml_debug: Option<u16>,
+    pub qml_debug: Option<u32>,
 
     /// With QML debugging enabled, will wait until debugger connects.
     #[clap(short = 'w', long = "debug-wait", help_heading = "Developer Options")]
@@ -95,7 +95,11 @@ pub struct DeveloperOptions {
     pub qml_self_test: bool,
 
     /// Don't couple the poll rate of back-end engine state to screen refresh
-    #[clap(long = "dont-refresh-with-gui", help_heading = "Developer Options", default_value=false)]
+    #[clap(
+        long = "dont-refresh-with-gui",
+        help_heading = "Developer Options",
+        default_value = "false"
+    )]
     pub dont_refresh_with_gui: bool,
 
     /// Ensures a minimum (back-up) refresh rate of the back-end engine state.

@@ -20,6 +20,6 @@ pub fn get_audio_driver_from_name(driver_name: &str) -> AudioDriverType {
 
 pub fn all_audio_driver_types() -> impl Iterator<Item = AudioDriverType> {
     once(AudioDriverType::Dummy)
-    .chain(once(AudioDriverType::Jack))
-    .chain(once(AudioDriverType::JackTest))
+        .chain(once(AudioDriverType::Jack))
+        .chain(once(AudioDriverType::JackTest))
 }
