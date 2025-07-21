@@ -3,7 +3,6 @@ use frontend::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
 use frontend::cxx_qt_shoop::qobj_update_thread_bridge::UpdateThread;
 use pyo3::prelude::*;
 use serde_json;
-use std::ffi::CStr;
 use std::pin::Pin;
 
 use frontend::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper as CxxQtBackendWrapper;

@@ -1,4 +1,3 @@
-use std::pin::Pin;
 
 #[cxx_qt::bridge]
 pub mod ffi {

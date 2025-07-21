@@ -1,6 +1,6 @@
 use cxx_qt_lib;
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyDict};
+use pyo3::types::PyAny;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.SchemaValidator");

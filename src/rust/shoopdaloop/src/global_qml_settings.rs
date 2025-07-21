@@ -1,6 +1,6 @@
 use cxx_qt_lib::*;
-use std::path::{Path, PathBuf};
-use std::{iter, option};
+use std::path::PathBuf;
+use std::iter;
 
 #[derive(Debug)]
 pub struct GlobalQmlSettings {

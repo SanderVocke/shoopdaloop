@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser};
 
 /// An Audio+MIDI looper with DAW features
 #[derive(Parser, Debug)]

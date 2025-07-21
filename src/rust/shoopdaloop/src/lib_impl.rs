@@ -5,14 +5,13 @@ use common::logging::macros::*;
 use config::config::ShoopConfig;
 use cxx_qt_lib::QString;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_register_qml_singleton_instance;
-use cxx_qt_lib_shoop::qobject::{AsQObject, QObject};
+use cxx_qt_lib_shoop::qobject::AsQObject;
 use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationStartupSettings};
 use frontend::cxx_qt_shoop::qobj_qmlengine::QmlEngine;
 use once_cell::sync::OnceCell;
-use pyo3::types::{PyDict, PyList, PyNone, PyString, PyTuple};
-use pyo3::{prelude::*, IntoPyObjectExt};
+use pyo3::prelude::*;
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::pin::Pin;
 
 use crate::audio_driver_names::get_audio_driver_from_name;

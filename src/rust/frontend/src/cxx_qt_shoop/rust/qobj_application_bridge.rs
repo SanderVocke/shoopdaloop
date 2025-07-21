@@ -1,4 +1,3 @@
-use cxx::UniquePtr;
 use std::pin::Pin;
 
 #[cxx_qt::bridge]
