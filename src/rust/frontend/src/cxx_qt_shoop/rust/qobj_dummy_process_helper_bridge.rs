@@ -44,7 +44,7 @@ pub mod ffi {
         #[rust_name = "make_unique_dummy_process_helper"]
         fn make_unique() -> UniquePtr<DummyProcessHelper>;
 
-        include!("cxx-qt-shoop/register_qml_type.h");
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_dummy_process_helper"]
         fn register_qml_type(
             inference_example: &DummyProcessHelper,

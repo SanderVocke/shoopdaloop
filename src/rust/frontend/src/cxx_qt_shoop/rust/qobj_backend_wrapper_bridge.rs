@@ -153,7 +153,7 @@ pub mod ffi {
         #[rust_name = "qobject_class_name_backend_wrapper"]
         fn qobject_class_name(obj: &BackendWrapper) -> Result<&str>;
 
-        include!("cxx-qt-shoop/register_qml_type.h");
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_backend_wrapper"]
         fn register_qml_type(
             inference_example: &BackendWrapper,

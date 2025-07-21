@@ -73,7 +73,7 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-shoop/register_qml_type.h");
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_type_renderaudiowaveform"]
         fn register_qml_type(

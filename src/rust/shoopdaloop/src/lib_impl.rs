@@ -1,9 +1,11 @@
 use crate::cli_args::CliArgs;
 use anyhow;
+use backend_bindings::AudioDriverType;
 use common::logging::macros::*;
 use config::config::ShoopConfig;
 use cxx_qt_lib::QString;
-use cxx_qt_lib_shoop::qobject::QObject;
+use cxx_qt_lib_shoop::qobject::ffi::qobject_register_qml_singleton_instance;
+use cxx_qt_lib_shoop::qobject::{AsQObject, QObject};
 use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationStartupSettings};
 use frontend::cxx_qt_shoop::qobj_qmlengine::QmlEngine;
 use once_cell::sync::OnceCell;
@@ -20,110 +22,12 @@ shoop_log_unit!("Main");
 
 static GLOBAL_QML_SETTINGS: OnceCell<GlobalQmlSettings> = OnceCell::new();
 
-// fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
-//     // Set up PYTHONPATH.
-//     env::set_var(
-//         "PYTHONPATH",
-//         &config.pythonpaths.join(common::util::PATH_LIST_SEPARATOR),
-//     );
-//     env::set_var("PYTHONHOME", &config.pythonhome);
-
-//     let qt_plugins_path = &config.qt_plugins_dir;
-//     if !qt_plugins_path.is_empty() {
-//         env::set_var("QT_PLUGIN_PATH", qt_plugins_path);
-//     }
-
-//     let mut qml_dirs: Vec<String> = (&config).additional_qml_dirs.clone();
-//     qml_dirs.insert(0, (&config).qml_dir.clone());
-//     let qml_dirs_string = qml_dirs.join(common::util::PATH_LIST_SEPARATOR);
-//     env::set_var("SHOOP_QML_PATHS", &qml_dirs_string);
-
-//     debug!("PYTHONPATH={:?}", env::var("PYTHONPATH"));
-//     debug!("PYTHONHOME={:?}", env::var("PYTHONHOME"));
-//     debug!("SHOOP_QML_PATHS={:?}", env::var("SHOOP_QML_PATHS"));
-//     debug!("QT_PLUGIN_PATH={:?}", env::var("QT_PLUGIN_PATH"));
-
-//     // Get the command-line arguments
-//     let args: Vec<String> = env::args().collect();
-
-//     // Initialize the Python interpreter
-//     Python::with_gil(|py| {
-//         // Forward command-line arguments
-//         let sys = py.import("sys")?;
-//         let os = py.import("os")?;
-//         let py_args: Vec<_> = args
-//             .into_iter()
-//             .map(|arg| PyString::new(py, &arg))
-//             .collect();
-//         sys.setattr("argv", PyList::new(py, &py_args)?)?;
-
-//         // Print system path
-//         let runtime_link_path_var = if cfg!(target_os = "windows") {
-//             "PATH"
-//         } else if cfg!(target_os = "macos") {
-//             "DYLD_LIBRARY_PATH"
-//         } else {
-//             "LD_LIBRARY_PATH"
-//         };
-//         debug!(
-//             "{runtime_link_path_var}: {:?}",
-//             env::var(runtime_link_path_var).unwrap()
-//         );
-
-//         // Print python configuration information
-//         let pythonpaths = sys.getattr("path")?;
-//         debug!("[python] Python paths: {:?}", pythonpaths);
-//         let version_info = sys.getattr("version_info")?;
-//         debug!("[python] Python version: {:?}", version_info);
-
-//         // Print env vars once more from within python
-//         let qml_import_path = os.getattr("getenv")?.call1(("SHOOP_QML_PATHS",))?;
-//         debug!("[python] QML paths: {:?}", qml_import_path);
-//         let qt_plugins_path = os.getattr("getenv")?.call1(("QT_PLUGIN_PATH",))?;
-//         debug!("[python] Qt plugin path: {:?}", qt_plugins_path);
-
-//         // Explicitly add DLL search paths for extension modules
-//         if cfg!(target_os = "windows") {
-//             for path in &config.dynlibpaths {
-//                 debug!("Add DLL directory: {}", path);
-//                 os.getattr("add_dll_directory")?.call1((path.as_str(),))?;
-//             }
-//         }
-
-//         // Expose Rust functionality to Python modules
-//         {
-//             let py_config = crate::py_config::create_py_config_module(&config, py).unwrap();
-//             sys.getattr("modules")?
-//                 .set_item("shoop_config", py_config)?;
-//         }
-//         {
-//             let shoop_rust_py_module = crate::shoop_rust_py::create_py_module(py).unwrap();
-//             sys.getattr("modules")?
-//                 .set_item("shoop_rust", shoop_rust_py_module)?;
-//         }
-//         {
-//             let shoop_py_backend_module = shoop_py_backend::create_py_module(py).unwrap();
-//             sys.getattr("modules")?
-//                 .set_item("shoop_py_backend", shoop_py_backend_module)?;
-//         }
-
-//         // Call main
-//         let shoop = PyModule::import(py, "shoopdaloop").map_err(|e| {
-//             e.print_and_set_sys_last_vars(py);
-//             anyhow::anyhow!("Python error (details printed)")
-//         })?;
-//         let result = shoop.getattr("main")?.call0().map_err(|e| {
-//             e.print_and_set_sys_last_vars(py);
-//             anyhow::anyhow!("Python error (details printed)")
-//         });
-
-//         result?
-//             .extract::<i32>()
-//             .map_err(|e| anyhow::anyhow!("Python error: {:?}", e))
-//     })
-// }
-
 fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Error> {
+    let title: String = match cli_args.self_test_options.self_test {
+        true => "ShoopDaLoop Self-Test".to_string(),
+        false => "ShoopDaLoop".to_string(),
+    };
+
     let startup_settings = ApplicationStartupSettings {
         refresh_backend_on_frontend_refresh: !cli_args.developer_options.dont_refresh_with_gui,
         backend_backup_refresh_interval_ms: cli_args
@@ -136,15 +40,23 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
         } else {
             None
         },
-        title: "ShoopDaLoop".to_string(),
+        title: title,
     };
 
     if startup_settings.nsm {
         todo!();
     }
 
+    let backend_type = match &cli_args.backend {
+        Some(backend) => get_audio_driver_from_name(backend.as_str()),
+        None => match cli_args.self_test_options.self_test {
+            true => AudioDriverType::Dummy,
+            false => AudioDriverType::Jack,
+        },
+    };
+
     let global_qml_settings = GlobalQmlSettings {
-        backend_type: get_audio_driver_from_name(&cli_args.backend),
+        backend_type: backend_type,
         load_session_on_startup: cli_args.session_filename.as_ref().map(|s| PathBuf::from(s)),
         test_grab_screens_dir: cli_args
             .developer_options
@@ -157,14 +69,26 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
     };
     GLOBAL_QML_SETTINGS.set(global_qml_settings).unwrap();
 
+    let main_qml =
+        if cli_args.developer_options.main.is_none() && !cli_args.self_test_options.self_test {
+            Some(String::from("shoopdaloop_main"))
+        } else {
+            cli_args.developer_options.main.clone()
+        };
+    let qml: Option<PathBuf> = match main_qml {
+        Some(name) => Some(PathBuf::from(&config.qml_dir).join(format!("applications/{name}.qml"))),
+        None => None,
+    };
+    let qml = qml.as_ref();
+    let qml = qml.map(|p| p.as_path());
+
     let mut app = Application::make_unique();
     {
         let mut app = app
             .as_mut()
             .ok_or(anyhow::anyhow!("Failed to get application handle"))?;
-        let qml = PathBuf::from("src/qml/applications/shoopdaloop_main.qml");
         app.as_mut().initialize(
-            config,
+            config.clone(),
             |mut qml_engine: Pin<&mut QmlEngine>| {
                 // Set global QML arguments
                 let global_args: &GlobalQmlSettings = GLOBAL_QML_SETTINGS.get().unwrap();
@@ -195,9 +119,49 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                 .map_err(|e| anyhow::anyhow!("Unable to initialize QML Python state: {e}"))
                 .unwrap();
             },
-            Some(&qml),
+            qml,
             startup_settings,
         )?;
+
+        if cli_args.self_test_options.self_test {
+            use frontend::cxx_qt_shoop::test::qobj_test_runner::TestRunner;
+            // Let Qt manage the lifetime of our test runner by parenting it
+            // to the application object. Also, register it as a singleton
+            // in QML-land.
+            unsafe {
+                let app_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
+                    app.as_mut().pin_mut_qobject_ptr();
+                let testrunner_ptr = TestRunner::make_raw(app_qobj);
+                let mut testrunner = std::pin::Pin::new_unchecked(&mut *testrunner_ptr);
+                testrunner.as_mut().start(
+                    QString::from(config.qml_dir),
+                    QString::from(
+                        cli_args
+                            .self_test_options
+                            .filter
+                            .as_ref()
+                            .unwrap_or(&"*".to_string()),
+                    ),
+                    QString::from(
+                        cli_args
+                            .self_test_options
+                            .filter
+                            .as_ref()
+                            .unwrap_or(&".*".to_string()),
+                    ),
+                    app_qobj,
+                    cli_args.self_test_options.list,
+                );
+                let testrunner_qobj = testrunner.as_mut().pin_mut_qobject_ptr();
+                qobject_register_qml_singleton_instance(
+                    testrunner_qobj,
+                    &mut String::from("ShoopDaLoop.Rust"),
+                    1,
+                    0,
+                    &mut String::from("ShoopTestRunner"),
+                )?;
+            }
+        }
 
         unsafe { Ok(app.exec()) }
     }

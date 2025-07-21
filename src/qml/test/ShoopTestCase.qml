@@ -29,7 +29,7 @@ PythonTestCase {
         if (when && !_internal_triggered) {
             _internal_triggered = true
             logger.debug("Ready to start")
-            shoop_test_runner.testcase_ready_to_start(root)
+            ShoopTestRunner.testcase_ready_to_start(root)
         } else {
             logger.debug(`Not ready to start yet: ${when}, ${_internal_triggered}`)
         }
@@ -63,7 +63,7 @@ PythonTestCase {
             logger.warning(() => ("Testcase " + name + " has a test function filter: " + testfn_filter))
         }
 
-        shoop_test_runner.register_testcase(root)
+        ShoopTestRunner.register_testcase(root)
         update_next_cycle.trigger()
     }
     Component.onDestruction: logger.info(() => ("Testcase " + name + " destroyed."))
@@ -279,7 +279,7 @@ PythonTestCase {
 
     function should_skip(fn) {
         let full_name = name + "::" + fn
-        return shoop_test_runner.should_skip(full_name)
+        return ShoopTestRunner.should_skip(full_name)
     }
 
     function skip(msg) {
@@ -301,7 +301,7 @@ PythonTestCase {
         testcase_init_fn()
 
         for (var key in test_fns) {
-            shoop_test_runner.testcase_register_fn(root, key)
+            ShoopTestRunner.testcase_register_fn(root, key)
         }
 
         for (var key in test_fns) {
@@ -339,7 +339,7 @@ PythonTestCase {
                 status = 'fail'
                 logger.error(format_error(error.message, error.stack))
             }
-            shoop_test_runner.testcase_ran_fn(root, key, status)
+            ShoopTestRunner.testcase_ran_fn(root, key, status)
             current_testcase = null
         }
 

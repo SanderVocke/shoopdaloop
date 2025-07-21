@@ -117,6 +117,10 @@ inline bool qobjectMoveToThread(QObject *obj, QThread *targetThread) {
     return obj->moveToThread(targetThread);
 }
 
+inline QObject* qobjectFindChild(QObject *obj, ::rust::String name) {
+    return obj->findChild<QObject*>(QString(name.c_str()));
+}
+
 template<typename T>
 inline void qobjectSetProperty(QObject *object, ::rust::String property, T const& value) {
     object->setProperty(property.c_str(), QVariant(value));

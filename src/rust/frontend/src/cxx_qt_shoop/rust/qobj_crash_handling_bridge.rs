@@ -22,7 +22,7 @@ pub mod ffi {
         #[rust_name = "make_unique_crash_handling"]
         fn make_unique() -> UniquePtr<CrashHandling>;
 
-        include!("cxx-qt-shoop/register_qml_type.h");
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_singleton_crash_handling"]
         fn register_qml_singleton(

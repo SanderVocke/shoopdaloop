@@ -72,7 +72,7 @@ pub mod ffi {
         #[rust_name = "make_unique_fileio"]
         fn make_unique() -> UniquePtr<FileIO>;
 
-        include!("cxx-qt-shoop/register_qml_type.h");
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_singleton_file_io"]
         fn register_qml_singleton(

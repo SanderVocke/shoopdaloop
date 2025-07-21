@@ -257,7 +257,7 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qjsonobject.h");
         type QJsonObject = cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 
-        include!("cxx-qt-shoop/register_qml_type.h");
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_loop"]
         fn register_qml_type(
             inference_example: &LoopGui,

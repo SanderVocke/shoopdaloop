@@ -28,7 +28,7 @@ pub mod ffi {
         #[rust_name = "make_unique_schemavalidator"]
         fn make_unique() -> UniquePtr<SchemaValidator>;
 
-        include!("cxx-qt-shoop/register_qml_type.h");
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_type_schemavalidator"]
         fn register_qml_singleton(

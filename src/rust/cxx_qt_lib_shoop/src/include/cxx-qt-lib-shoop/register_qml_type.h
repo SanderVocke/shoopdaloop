@@ -25,3 +25,12 @@ inline void register_qml_singleton(
     qmlRegisterType<T>(module_name.c_str(), version_major, version_minor, type_name.c_str());
     qmlRegisterSingletonType<T>(module_name.c_str(), version_major, version_minor, type_name.c_str(), [](auto*, auto*) { return new T(); });
 }
+
+inline void register_qml_singleton_instance(
+                       QObject * instance,
+                       ::rust::String& module_name,
+                       ::std::int64_t version_major, ::std::int64_t version_minor,
+                       ::rust::String& type_name)
+{
+    qmlRegisterSingletonInstance(module_name.c_str(), version_major, version_minor, type_name.c_str(), instance);
+}

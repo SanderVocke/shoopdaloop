@@ -56,6 +56,20 @@ pub mod ffi {
             property: String,
             value: &bool,
         ) -> Result<()>;
+
+        #[rust_name = "qobject_find_child"]
+        unsafe fn qobjectFindChild(obj: *mut QObject, name: String) -> Result<*mut QObject>;
+
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
+
+        #[rust_name = "qobject_register_qml_singleton_instance"]
+        unsafe fn register_qml_singleton_instance(
+            instance: *mut QObject,
+            module_name: &mut String,
+            version_major: i64,
+            version_minor: i64,
+            type_name: &mut String,
+        ) -> Result<()>;
     }
 }
 
@@ -146,6 +160,27 @@ pub unsafe fn qobject_set_property_bool(
 ) -> Result<(), cxx::Exception> {
     ffi::qobject_set_property_bool(obj, property, value)
 }
+pub unsafe fn qobject_find_child(
+    obj: *mut QObject,
+    name: String,
+) -> Result<*mut QObject, cxx::Exception> {
+    ffi::qobject_find_child(obj, name)
+}
+unsafe fn qobject_register_qml_singleton_instance(
+    instance: *mut QObject,
+    module_name: &mut String,
+    version_major: i64,
+    version_minor: i64,
+    type_name: &mut String,
+) -> Result<(), cxx::Exception> {
+    ffi::qobject_register_qml_singleton_instance(
+        instance,
+        module_name,
+        version_major,
+        version_minor,
+        type_name,
+    )
+}
 
 pub trait IsQObject: AsQObject {
     unsafe fn set_parent(self: Pin<&mut Self>, parent: *mut QObject) -> Result<(), cxx::Exception> {
@@ -204,5 +239,13 @@ pub trait IsQObject: AsQObject {
     ) -> Result<(), cxx::Exception> {
         let self_item = self.pin_mut_qobject_ptr();
         qobject_set_property_bool(self_item, property, value)
+    }
+
+    unsafe fn find_child(
+        self: Pin<&mut Self>,
+        name: String,
+    ) -> Result<*mut QObject, cxx::Exception> {
+        let self_item = self.pin_mut_qobject_ptr();
+        qobject_find_child(self_item, name)
     }
 }
