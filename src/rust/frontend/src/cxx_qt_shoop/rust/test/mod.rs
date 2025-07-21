@@ -4,5 +4,5 @@ pub mod qobj_test_backend_wrapper;
 pub mod qobj_test_backend_wrapper_bridge;
 pub mod qobj_test_port;
 pub mod qobj_test_port_bridge;
-pub mod qobj_test_runner;
-pub mod qobj_test_runner_bridge;
+pub mod qobj_test_file_runner;
+pub mod qobj_test_file_runner_bridge;

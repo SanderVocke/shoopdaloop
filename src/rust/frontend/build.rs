@@ -31,7 +31,7 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/test/qobj_generic_test_item_bridge.rs")
         .file("src/cxx_qt_shoop/rust/test/qobj_test_backend_wrapper_bridge.rs")
         .file("src/cxx_qt_shoop/rust/test/qobj_test_port_bridge.rs")
-        .file("src/cxx_qt_shoop/rust/test/qobj_test_runner_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/test/qobj_test_file_runner_bridge.rs")
         .file("src/cxx_qt_shoop/rust/type_shoopqmlapplicationengine.rs")
         .cc_builder(|cc| {
             cc.include("src/cxx_qt_shoop/include");

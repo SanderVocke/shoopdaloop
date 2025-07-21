@@ -123,7 +123,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
         )?;
 
         if cli_args.self_test_options.self_test {
-            use frontend::cxx_qt_shoop::test::qobj_test_runner::TestRunner;
+            use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestRunner;
             // Let Qt manage the lifetime of our test runner by parenting it
             // to the application object. Also, register it as a singleton
             // in QML-land.

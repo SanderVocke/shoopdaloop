@@ -1,14 +1,15 @@
-use crate::cxx_qt_shoop::test::qobj_test_runner_bridge::ffi::*;
+use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::ffi::*;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_set_object_name;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use glob::glob;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::time::Duration;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.TestRunner");
 
-pub use crate::cxx_qt_shoop::test::qobj_test_runner_bridge::ffi::TestRunner;
+pub use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::ffi::TestRunner;
 
 impl TestRunner {
     pub unsafe fn make_raw(parent: *mut QObject) -> *mut TestRunner {
@@ -22,7 +23,7 @@ impl TestRunner {
         ptr
     }
 
-    fn run_test_file(self: Pin<&mut Self>, test_file: &Path) -> Result<(), anyhow::Error> {
+    fn run_test_file(mut self: Pin<&mut Self>, test_file: &Path) -> Result<(), anyhow::Error> {
         let filename = test_file
             .file_name()
             .ok_or(anyhow::anyhow!("Unable to get filename"))?
@@ -31,7 +32,15 @@ impl TestRunner {
         println!();
         info!("===== Test file: {filename} =====");
 
-        
+        unsafe {
+            self.as_mut()
+                .reload_qml(QString::from(test_file.to_string_lossy().to_string()));
+
+            while !self.as_ref().current_testcase_done {
+                self.as_mut().process_app_events();
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
 
         Ok(())
     }
