@@ -25,6 +25,12 @@ pub mod ffi {
             application: *mut QObject,
             list_only: bool,
         ) -> bool;
+
+        #[qsignal]
+        pub unsafe fn reload_qml(self: Pin<&mut TestRunner>, qml_file: QString);
+
+        #[qsignal]
+        pub unsafe fn process_app_events(self: Pin<&mut TestRunner>);
     }
 
     unsafe extern "C++" {
@@ -55,4 +61,5 @@ impl AsQObject for ffi::TestRunner {
 pub struct TestRunnerRust {
     pub running_testcase: Option<String>,
     pub ran_testcase_results: HashMap<String, Result<(), String>>,
+    pub current_testcase_done: bool,
 }

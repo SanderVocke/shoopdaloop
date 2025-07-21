@@ -2,7 +2,7 @@ use crate::cxx_qt_shoop::test::qobj_test_runner_bridge::ffi::*;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_set_object_name;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use glob::glob;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
 use common::logging::macros::*;
@@ -22,8 +22,22 @@ impl TestRunner {
         ptr
     }
 
+    fn run_test_file(self: Pin<&mut Self>, test_file: &Path) -> Result<(), anyhow::Error> {
+        let filename = test_file
+            .file_name()
+            .ok_or(anyhow::anyhow!("Unable to get filename"))?
+            .to_string_lossy();
+
+        println!();
+        info!("===== Test file: {filename} =====");
+
+        
+
+        Ok(())
+    }
+
     pub fn start(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         qml_files_path: QString,
         test_file_pattern: QString,
         test_filter_pattern: QString,
@@ -45,6 +59,10 @@ impl TestRunner {
             )?;
 
             debug!("Test files to run: {all_test_files:?}");
+
+            for test_file in all_test_files {
+                self.as_mut().run_test_file(&test_file)?;
+            }
 
             Ok(())
         })() {
