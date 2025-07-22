@@ -27,6 +27,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn wait(self: Pin<&mut Application>, delay_ms: u64);
 
+        #[qinvokable]
+        pub fn reload_qml(self: Pin<&mut Application>, qml: QString);
+
         #[inherit]
         #[cxx_name = "setApplicationName"]
         unsafe fn set_application_name(self: Pin<&mut Application>, name: &QString);

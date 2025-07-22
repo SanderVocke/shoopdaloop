@@ -1,4 +1,3 @@
-
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {

@@ -1,29 +1,35 @@
 use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::ffi::*;
+use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_set_object_name;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use glob::glob;
+use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::time::Duration;
 
 use common::logging::macros::*;
-shoop_log_unit!("Frontend.TestRunner");
+shoop_log_unit!("Frontend.TestFileRunner");
 
-pub use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::ffi::TestRunner;
+pub use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::ffi::TestFileRunner;
 
-impl TestRunner {
-    pub unsafe fn make_raw(parent: *mut QObject) -> *mut TestRunner {
+impl TestFileRunner {
+    pub unsafe fn make_raw(parent: *mut QObject) -> *mut TestFileRunner {
         let ptr = make_raw_test_runner(parent);
-        let mut pin = std::pin::Pin::new_unchecked(&mut *ptr);
-        qobject_set_object_name(
-            pin.as_mut().pin_mut_qobject_ptr(),
-            "ShoopTestRunner".to_string(),
-        )
-        .unwrap();
         ptr
     }
 
-    fn run_test_file(mut self: Pin<&mut Self>, test_file: &Path) -> Result<(), anyhow::Error> {
+    fn maybe_run_test_file(
+        mut self: Pin<&mut Self>
+    ) -> Result<(), anyhow::Error> {
+        let test_files = self.as_ref().test_files_to_run.clone();
+
+        if test_files.len() == 0 {
+            return Ok(());
+        }
+
+        let test_file = test_files.first().unwrap();
+
         let filename = test_file
             .file_name()
             .ok_or(anyhow::anyhow!("Unable to get filename"))?
@@ -35,11 +41,6 @@ impl TestRunner {
         unsafe {
             self.as_mut()
                 .reload_qml(QString::from(test_file.to_string_lossy().to_string()));
-
-            while !self.as_ref().current_testcase_done {
-                self.as_mut().process_app_events();
-                std::thread::sleep(Duration::from_millis(1));
-            }
         }
 
         Ok(())
@@ -57,21 +58,27 @@ impl TestRunner {
             info!("Starting self-test runner.");
 
             let qml_files_path = qml_files_path.to_string();
-            let test_file_pattern = test_file_pattern.to_string();
+            let test_file_pattern = Regex::new(test_file_pattern.to_string().as_str())?;
             let mut all_test_files: Vec<PathBuf> = Vec::default();
 
             glob(format!("{qml_files_path}/**/tst_*.qml").as_str())?.try_for_each(
                 |s| -> Result<(), anyhow::Error> {
-                    all_test_files.push(PathBuf::from(s?));
+                    let s = s?;
+                    let s = s.to_str().ok_or(anyhow::anyhow!("Cannot convert path to string"))?;
+                    if test_file_pattern.is_match(&s) {
+                        all_test_files.push(PathBuf::from(s));
+                    }
                     Ok(())
                 },
             )?;
 
             debug!("Test files to run: {all_test_files:?}");
 
-            for test_file in all_test_files {
-                self.as_mut().run_test_file(&test_file)?;
+            {
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.test_files_to_run = all_test_files.clone();
             }
+            self.as_mut().maybe_run_test_file()?;
 
             Ok(())
         })() {

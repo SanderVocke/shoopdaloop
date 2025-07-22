@@ -8,7 +8,7 @@ use cxx::UniquePtr;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_set_property_int;
 use cxx_qt_lib_shoop::qobject::AsQObject;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 
@@ -35,14 +35,18 @@ impl Application {
 
     pub fn reload_qml(
         mut self: Pin<&mut Application>,
-        qml: &Path,
-        quit_on_quit: bool,
-    ) -> Result<(), anyhow::Error> {
+        qml: QString
+    ) {
+        let qml : PathBuf = PathBuf::from(qml.to_string());
         self.as_mut().unload_qml();
-        self.as_mut().load_qml(qml, quit_on_quit)
+        match self.as_mut().load_qml(&qml) {
+            Ok(_) => (),
+            Err(e) => { error!("Unable to load QML: {e}"); }
+        }
     }
 
     pub fn unload_qml(mut self: Pin<&mut Application>) {
+        debug!("Unloading QML.");
         let self_mut = self.as_mut();
         let mut rust_mut = self_mut.rust_mut();
 
@@ -61,8 +65,8 @@ impl Application {
     pub fn load_qml(
         mut self: Pin<&mut Application>,
         qml: &Path,
-        quit_on_quit: bool,
     ) -> Result<(), anyhow::Error> {
+        debug!("Load qml: {qml:?}");
         let qml_engine: *mut QmlEngine;
         unsafe {
             let self_qobj = self.as_mut().pin_mut_qobject_ptr();
@@ -125,7 +129,7 @@ impl Application {
 
         if main_qml.is_some() {
             let main_qml = main_qml.unwrap();
-            self.as_mut().reload_qml(main_qml, true)?;
+            self.as_mut().reload_qml(QString::from(main_qml.to_str().unwrap()));
         }
 
         Ok(())

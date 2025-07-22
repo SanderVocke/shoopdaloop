@@ -101,7 +101,7 @@ pub struct DeveloperOptions {
 
 /// Developer options group.
 #[derive(Args, Debug)]
-#[group(requires = "qml_self_test")]
+#[group(requires = "self_test")]
 pub struct SelfTestOptions {
     /// Run QML tests and exit. See additional options under "QML Self-Test Options".
     #[clap(short = 't', long = "self-test", help_heading = "Self-test options")]

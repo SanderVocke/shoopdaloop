@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use cxx_qt_lib_shoop::qobject::AsQObject;
 
@@ -14,11 +14,12 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
-        type TestRunner = super::TestRunnerRust;
+        #[qproperty(*mut QObject, testcase_runner)]
+        type TestFileRunner = super::TestFileRunnerRust;
 
         #[qinvokable]
         pub unsafe fn start(
-            self: Pin<&mut TestRunner>,
+            self: Pin<&mut TestFileRunner>,
             qml_files_path: QString,
             test_file_pattern: QString,
             test_filter_pattern: QString,
@@ -27,27 +28,27 @@ pub mod ffi {
         ) -> bool;
 
         #[qsignal]
-        pub unsafe fn reload_qml(self: Pin<&mut TestRunner>, qml_file: QString);
+        pub unsafe fn reload_qml(self: Pin<&mut TestFileRunner>, qml_file: QString);
 
         #[qsignal]
-        pub unsafe fn process_app_events(self: Pin<&mut TestRunner>);
+        pub unsafe fn process_app_events(self: Pin<&mut TestFileRunner>);
     }
 
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_test_runner"]
-        unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut TestRunner;
+        unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut TestFileRunner;
 
         include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "test_runner_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut TestRunner) -> *mut QObject;
+        unsafe fn qobjectFromPtr(obj: *mut TestFileRunner) -> *mut QObject;
 
         #[rust_name = "test_runner_qobject_from_ref"]
-        fn qobjectFromRef(obj: &TestRunner) -> &QObject;
+        fn qobjectFromRef(obj: &TestFileRunner) -> &QObject;
     }
 }
 
-impl AsQObject for ffi::TestRunner {
+impl AsQObject for ffi::TestFileRunner {
     unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
         ffi::test_runner_qobject_from_ptr(self as *mut Self)
     }
@@ -57,9 +58,24 @@ impl AsQObject for ffi::TestRunner {
     }
 }
 
-#[derive(Default)]
-pub struct TestRunnerRust {
+pub struct TestFileRunnerRust {
     pub running_testcase: Option<String>,
     pub ran_testcase_results: HashMap<String, Result<(), String>>,
     pub current_testcase_done: bool,
+    pub testcase_runner: *mut ffi::QObject,
+    pub test_files_to_run: Vec<PathBuf>,
+    pub test_files_ran: Vec<PathBuf>,
+}
+
+impl Default for TestFileRunnerRust {
+    fn default() -> TestFileRunnerRust {
+        TestFileRunnerRust {
+            running_testcase: None,
+            ran_testcase_results: HashMap::new(),
+            current_testcase_done: false,
+            testcase_runner: std::ptr::null_mut(),
+            test_files_to_run: Vec::default(),
+            test_files_ran: Vec::default(),
+        }
+    }
 }

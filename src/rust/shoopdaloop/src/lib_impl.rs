@@ -4,6 +4,8 @@ use backend_bindings::AudioDriverType;
 use common::logging::macros::*;
 use config::config::ShoopConfig;
 use cxx_qt_lib::QString;
+use cxx_qt_lib_shoop::connect::connect_or_report;
+use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_register_qml_singleton_instance;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationStartupSettings};
@@ -122,16 +124,49 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             startup_settings,
         )?;
 
+        unsafe {
+            let app_qobj = app.as_mut().pin_mut_qobject_ptr();
+            qobject_register_qml_singleton_instance(
+                app_qobj,
+                &mut String::from("ShoopDaLoop.Rust"),
+                1,
+                0,
+                &mut String::from("ShoopApplication"),
+            )?;
+        }
+
         if cli_args.self_test_options.self_test {
-            use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestRunner;
+            use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
             // Let Qt manage the lifetime of our test runner by parenting it
             // to the application object. Also, register it as a singleton
             // in QML-land.
             unsafe {
                 let app_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
                     app.as_mut().pin_mut_qobject_ptr();
-                let testrunner_ptr = TestRunner::make_raw(app_qobj);
+                let testrunner_ptr = TestFileRunner::make_raw(app_qobj);
                 let mut testrunner = std::pin::Pin::new_unchecked(&mut *testrunner_ptr);
+
+                {
+                    let testrunner_qobj = testrunner.as_mut().pin_mut_qobject_ptr();
+                    // Connect to application slots
+                    connect_or_report(
+                        &*testrunner_qobj,
+                        "reload_qml(QString)".to_string(),
+                        &*app_qobj,
+                        "reload_qml(QString)".to_string(),
+                        connection_types::DIRECT_CONNECTION,
+                    );
+
+                    // Register as a singleton so it can be found from QML
+                    qobject_register_qml_singleton_instance(
+                        testrunner_qobj,
+                        &mut String::from("ShoopDaLoop.Rust"),
+                        1,
+                        0,
+                        &mut String::from("ShoopTestFileRunner"),
+                    )?;
+                }
+
                 testrunner.as_mut().start(
                     QString::from(config.qml_dir),
                     QString::from(
@@ -139,7 +174,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                             .self_test_options
                             .filter
                             .as_ref()
-                            .unwrap_or(&"*".to_string()),
+                            .unwrap_or(&".*".to_string()),
                     ),
                     QString::from(
                         cli_args
@@ -151,14 +186,6 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                     app_qobj,
                     cli_args.self_test_options.list,
                 );
-                let testrunner_qobj = testrunner.as_mut().pin_mut_qobject_ptr();
-                qobject_register_qml_singleton_instance(
-                    testrunner_qobj,
-                    &mut String::from("ShoopDaLoop.Rust"),
-                    1,
-                    0,
-                    &mut String::from("ShoopTestRunner"),
-                )?;
             }
         }
 
