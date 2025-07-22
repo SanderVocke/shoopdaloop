@@ -8,8 +8,10 @@ use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_register_qml_singleton_instance;
 use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::qvariant_qobject::qobject_ptr_to_qvariant;
 use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationStartupSettings};
 use frontend::cxx_qt_shoop::qobj_qmlengine::QmlEngine;
+use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
 use once_cell::sync::OnceCell;
 use pyo3::prelude::*;
 use std::env;
@@ -22,6 +24,10 @@ use crate::global_qml_settings::GlobalQmlSettings;
 shoop_log_unit!("Main");
 
 static GLOBAL_QML_SETTINGS: OnceCell<GlobalQmlSettings> = OnceCell::new();
+
+thread_local! {
+static TEST_RUNNER: OnceCell<*mut TestFileRunner> = OnceCell::new();
+}
 
 fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Error> {
     let title: String = match cli_args.self_test_options.self_test {
@@ -88,6 +94,45 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
         let mut app = app
             .as_mut()
             .ok_or(anyhow::anyhow!("Failed to get application handle"))?;
+
+        if cli_args.self_test_options.self_test {
+            // Let Qt manage the lifetime of our test runner by parenting it
+            // to the application object. Also, register it as a singleton
+            // in QML-land.
+            unsafe {
+                let app_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
+                    app.as_mut().pin_mut_qobject_ptr();
+                let testrunner_ptr = TestFileRunner::make_raw(app_qobj);
+                let mut testrunner = std::pin::Pin::new_unchecked(&mut *testrunner_ptr);
+
+                {
+                    let testrunner_qobj = testrunner.as_mut().pin_mut_qobject_ptr();
+                    // Connect to application slots
+                    connect_or_report(
+                        &*testrunner_qobj,
+                        "reload_qml(QString)".to_string(),
+                        &*app_qobj,
+                        "reload_qml(QString)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+
+                    // Register as a singleton so it can be found from QML
+                    qobject_register_qml_singleton_instance(
+                        testrunner_qobj,
+                        &mut String::from("ShoopDaLoop.Rust"),
+                        1,
+                        0,
+                        &mut String::from("ShoopTestFileRunner"),
+                    )?;
+                }
+
+                TEST_RUNNER.with(|c| {
+                    c.set(testrunner.get_unchecked_mut() as *mut TestFileRunner)
+                        .unwrap()
+                });
+            }
+        }
+
         app.as_mut().initialize(
             config.clone(),
             |mut qml_engine: Pin<&mut QmlEngine>| {
@@ -101,6 +146,20 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                     qml_engine
                         .as_mut()
                         .set_root_context_property(&QString::from("global_args"), &global_args);
+                }
+
+                unsafe {
+                    TEST_RUNNER.with(|c| {
+                        if let Some(runner) = c.get() {
+                            let mut runner_pin = std::pin::Pin::new_unchecked(&mut **runner);
+                            let runner_qobj = runner_pin.as_mut().pin_mut_qobject_ptr();
+                            let runner_qvariant = qobject_ptr_to_qvariant(runner_qobj);
+                            qml_engine.as_mut().set_root_context_property(
+                                &QString::from("shoop_test_file_runner"),
+                                &runner_qvariant,
+                            );
+                        }
+                    })
                 }
 
                 Python::with_gil(|py| -> PyResult<()> {
@@ -124,68 +183,73 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             startup_settings,
         )?;
 
-        unsafe {
-            let app_qobj = app.as_mut().pin_mut_qobject_ptr();
-            qobject_register_qml_singleton_instance(
-                app_qobj,
-                &mut String::from("ShoopDaLoop.Rust"),
-                1,
-                0,
-                &mut String::from("ShoopApplication"),
-            )?;
-        }
+        // unsafe {
+        //     let app_qobj = app.as_mut().pin_mut_qobject_ptr();
+        //     qobject_register_qml_singleton_instance(
+        //         app_qobj,
+        //         &mut String::from("ShoopDaLoop.Rust"),
+        //         1,
+        //         0,
+        //         &mut String::from("ShoopApplication"),
+        //     )?;
+        // }
 
         if cli_args.self_test_options.self_test {
-            use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
+            // use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
             // Let Qt manage the lifetime of our test runner by parenting it
             // to the application object. Also, register it as a singleton
             // in QML-land.
             unsafe {
                 let app_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
                     app.as_mut().pin_mut_qobject_ptr();
-                let testrunner_ptr = TestFileRunner::make_raw(app_qobj);
-                let mut testrunner = std::pin::Pin::new_unchecked(&mut *testrunner_ptr);
+                // let testrunner_ptr = TestFileRunner::make_raw(app_qobj);
+                // let mut testrunner = std::pin::Pin::new_unchecked(&mut *testrunner_ptr);
 
-                {
-                    let testrunner_qobj = testrunner.as_mut().pin_mut_qobject_ptr();
-                    // Connect to application slots
-                    connect_or_report(
-                        &*testrunner_qobj,
-                        "reload_qml(QString)".to_string(),
-                        &*app_qobj,
-                        "reload_qml(QString)".to_string(),
-                        connection_types::DIRECT_CONNECTION,
-                    );
+                // {
+                //     let testrunner_qobj = testrunner.as_mut().pin_mut_qobject_ptr();
+                //     // Connect to application slots
+                //     connect_or_report(
+                //         &*testrunner_qobj,
+                //         "reload_qml(QString)".to_string(),
+                //         &*app_qobj,
+                //         "reload_qml(QString)".to_string(),
+                //         connection_types::QUEUED_CONNECTION,
+                //     );
 
-                    // Register as a singleton so it can be found from QML
-                    qobject_register_qml_singleton_instance(
-                        testrunner_qobj,
-                        &mut String::from("ShoopDaLoop.Rust"),
-                        1,
-                        0,
-                        &mut String::from("ShoopTestFileRunner"),
-                    )?;
-                }
+                //     // Register as a singleton so it can be found from QML
+                //     // qobject_register_qml_singleton_instance(
+                //     //     testrunner_qobj,
+                //     //     &mut String::from("ShoopDaLoop.Rust"),
+                //     //     1,
+                //     //     0,
+                //     //     &mut String::from("ShoopTestFileRunner"),
+                //     // )?;
+                // }
 
-                testrunner.as_mut().start(
-                    QString::from(config.qml_dir),
-                    QString::from(
-                        cli_args
-                            .self_test_options
-                            .filter
-                            .as_ref()
-                            .unwrap_or(&".*".to_string()),
-                    ),
-                    QString::from(
-                        cli_args
-                            .self_test_options
-                            .filter
-                            .as_ref()
-                            .unwrap_or(&".*".to_string()),
-                    ),
-                    app_qobj,
-                    cli_args.self_test_options.list,
-                );
+                TEST_RUNNER.with(|c| {
+                    if let Some(testrunner) = c.get() {
+                        let mut testrunner = std::pin::Pin::new_unchecked(&mut **testrunner);
+                        testrunner.as_mut().start(
+                            QString::from(config.qml_dir),
+                            QString::from(
+                                cli_args
+                                    .self_test_options
+                                    .filter
+                                    .as_ref()
+                                    .unwrap_or(&".*".to_string()),
+                            ),
+                            QString::from(
+                                cli_args
+                                    .self_test_options
+                                    .filter
+                                    .as_ref()
+                                    .unwrap_or(&".*".to_string()),
+                            ),
+                            app_qobj,
+                            cli_args.self_test_options.list,
+                        );
+                    }
+                });
             }
         }
 

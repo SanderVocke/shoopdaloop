@@ -29,7 +29,7 @@ PythonTestCase {
         if (when && !_internal_triggered) {
             _internal_triggered = true
             logger.debug("Ready to start")
-            ShoopTestFileRunner.testcase_runner.testcase_ready_to_start(root)
+            shoop_test_file_runner.testcase_runner.testcase_ready_to_start(root)
         } else {
             logger.debug(`Not ready to start yet: ${when}, ${_internal_triggered}`)
         }
@@ -63,16 +63,16 @@ PythonTestCase {
             logger.warning(`Testcase ${name} has a test function filter: ${testfn_filter}`)
         }
 
-        ShoopTestFileRunner.testcase_runner.register_testcase(root)
+        shoop_test_file_runner.testcase_runner.register_testcase(root)
         update_next_cycle.trigger()
     }
 
     Component.onCompleted: {
-        if (ShoopTestFileRunner.testcase_runner) { register() }
+        if (shoop_test_file_runner.testcase_runner) { register() }
     }
     Connections {
-        target: ShoopTestFileRunner
-        onTestcase_runnerChanged: { if (ShoopTestFileRunner.testcase_runner) { register()} }
+        target: shoop_test_file_runner
+        function onTestcase_runnerChanged() { if (shoop_test_file_runner.testcase_runner) { register()} }
     }
     Component.onDestruction: logger.info(`Testcase ${name} destroyed.`)
 
@@ -215,7 +215,7 @@ PythonTestCase {
     }
 
     function wait(ms) {
-        ShoopApplication.wait(ms)
+        shoop_application.wait(ms)
     }
 
     function wait_condition(condition, timeout=2000, msg=`condition not met in time`) {
@@ -287,7 +287,7 @@ PythonTestCase {
 
     function should_skip(fn) {
         let full_name = name + "::" + fn
-        return ShoopTestFileRunner.testcase_runner.should_skip(full_name)
+        return shoop_test_file_runner.testcase_runner.should_skip(full_name)
     }
 
     function skip(msg) {
@@ -309,7 +309,7 @@ PythonTestCase {
         testcase_init_fn()
 
         for (var key in test_fns) {
-            ShoopTestFileRunner.testcase_runner.testcase_register_fn(root, key)
+            shoop_test_file_runner.testcase_runner.testcase_register_fn(root, key)
         }
 
         for (var key in test_fns) {
@@ -347,7 +347,7 @@ PythonTestCase {
                 status = 'fail'
                 logger.error(format_error(error.message, error.stack))
             }
-            ShoopTestFileRunner.testcase_runner.testcase_ran_callback(root, key, status)
+            shoop_test_file_runner.testcase_runner.testcase_ran_callback(root, key, status)
             current_testcase = null
         }
 

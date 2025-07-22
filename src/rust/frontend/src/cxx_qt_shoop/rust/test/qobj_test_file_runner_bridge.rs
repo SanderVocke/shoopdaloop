@@ -27,6 +27,9 @@ pub mod ffi {
             list_only: bool,
         ) -> bool;
 
+        #[qinvokable]
+        pub unsafe fn on_testcase_done(self: Pin<&mut TestFileRunner>);
+
         #[qsignal]
         pub unsafe fn reload_qml(self: Pin<&mut TestFileRunner>, qml_file: QString);
 

@@ -7,15 +7,22 @@ Item {
     property var testcase_results: ({})
     property var ran_testcases: []
     property string filter_regex: ".*"
-    
+
     readonly property bool done: {
+        logger.debug(`Registered testcases: ${registered_testcases.length}. Ran: ${ran_testcases.length}`)
         return registered_testcases.length > 0 &&
                ran_testcases.length == registered_testcases.length;
     }
+    onDoneChanged: {
+        if (done) { testcase_done() }
+    }
+
+    signal testcase_done()
 
     function register_testcase(testcase) {
-        logger.info(`Registering testcase: ${testcase}`)
+        logger.info(`Registering testcase: ${testcase.name}`)
         registered_testcases.push(testcase)
+        registered_testcasesChanged(); //for recalc
     }
 
     function testcase_ready_to_start(testcase) {
@@ -51,5 +58,6 @@ Item {
         testcase_obj.run()
         running_testcase = null
         ran_testcases.push(testcase_obj)
+        ran_testcasesChanged()
     }
 }

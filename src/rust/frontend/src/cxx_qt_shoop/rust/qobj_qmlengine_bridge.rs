@@ -37,6 +37,10 @@ pub mod ffi {
         fn add_import_path(self: Pin<&mut QmlEngine>, path: &QString);
 
         #[inherit]
+        #[cxx_name = "clearSingletons"]
+        fn clear_singletons(self: Pin<&mut QmlEngine>);
+
+        #[inherit]
         #[cxx_name = "closeRoot"]
         fn close_root(self: Pin<&mut QmlEngine>);
 

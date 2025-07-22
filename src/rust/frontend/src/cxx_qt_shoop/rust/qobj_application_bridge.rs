@@ -86,7 +86,7 @@ pub struct ApplicationRust {
     pub config: config::config::ShoopConfig,
     pub qml_engine: *mut QmlEngine,
     pub settings: ApplicationStartupSettings,
-    pub setup_after_qml_engine_creation: fn(qml_engine: Pin<&mut QmlEngine>),
+    pub setup_after_qml_engine_creation: Box<dyn FnMut(Pin<&mut QmlEngine>)>,
 }
 
 impl Default for ApplicationRust {
@@ -95,7 +95,7 @@ impl Default for ApplicationRust {
             config: config::config::ShoopConfig::default(),
             qml_engine: std::ptr::null_mut(),
             settings: ApplicationStartupSettings::default(),
-            setup_after_qml_engine_creation: |_| {},
+            setup_after_qml_engine_creation: Box::new(|_| {}),
         }
     }
 }

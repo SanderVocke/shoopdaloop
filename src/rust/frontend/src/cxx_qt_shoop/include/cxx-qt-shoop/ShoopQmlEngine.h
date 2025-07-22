@@ -30,9 +30,8 @@ class ShoopQmlEngine : public QQmlApplicationEngine {
         if (root->inherits("QQuickWindow")) {
             auto window = static_cast<QQuickWindow*>(root);
             window->close();
-        } else {
-            root->deleteLater();
         }
+        root->deleteLater();
     }
 
     QObject * getRootWindow() {

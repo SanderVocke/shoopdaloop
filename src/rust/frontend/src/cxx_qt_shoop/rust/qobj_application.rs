@@ -8,6 +8,7 @@ use cxx::UniquePtr;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_set_property_int;
 use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::qvariant_qobject::qobject_ptr_to_qvariant;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::time::{Duration, Instant};
@@ -20,7 +21,9 @@ impl Application {
         make_unique_application()
     }
 
-    pub fn do_quit(self: Pin<&mut Application>) {}
+    pub fn do_quit(self: Pin<&mut Application>) {
+        todo!();
+    }
 
     pub fn wait(mut self: Pin<&mut Application>, delay_ms: u64) {
         let duration = Duration::from_millis(delay_ms);
@@ -33,15 +36,17 @@ impl Application {
         }
     }
 
-    pub fn reload_qml(
-        mut self: Pin<&mut Application>,
-        qml: QString
-    ) {
-        let qml : PathBuf = PathBuf::from(qml.to_string());
+    pub fn reload_qml(mut self: Pin<&mut Application>, qml: QString) {
+        let qml: PathBuf = PathBuf::from(qml.to_string());
         self.as_mut().unload_qml();
+
+        self.as_mut().wait(50);
+
         match self.as_mut().load_qml(&qml) {
             Ok(_) => (),
-            Err(e) => { error!("Unable to load QML: {e}"); }
+            Err(e) => {
+                error!("Unable to load QML: {e}");
+            }
         }
     }
 
@@ -54,6 +59,7 @@ impl Application {
             debug!("Skip unload QML - no engine");
         } else {
             unsafe {
+                debug!("Deleting engine");
                 let mut engine = std::pin::Pin::new_unchecked(&mut *rust_mut.qml_engine);
                 engine.as_mut().unload();
                 engine.as_mut().delete_later();
@@ -62,43 +68,57 @@ impl Application {
         }
     }
 
-    pub fn load_qml(
-        mut self: Pin<&mut Application>,
-        qml: &Path,
-    ) -> Result<(), anyhow::Error> {
+    pub fn load_qml(mut self: Pin<&mut Application>, qml: &Path) -> Result<(), anyhow::Error> {
         debug!("Load qml: {qml:?}");
         let qml_engine: *mut QmlEngine;
+
         unsafe {
             let self_qobj = self.as_mut().pin_mut_qobject_ptr();
-            qml_engine = QmlEngine::make_raw(self_qobj);
+            let mut rust_mut = self.as_mut().rust_mut();
+            if rust_mut.qml_engine.is_null() {
+                rust_mut.qml_engine = QmlEngine::make_raw(self_qobj);
+            }
+            qml_engine = rust_mut.qml_engine;
+        }
+
+        unsafe {
+            let self_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
+                self.as_mut().pin_mut_qobject_ptr();
+            let self_qvariant = qobject_ptr_to_qvariant(self_qobj);
+            let mut qml_engine_pin = std::pin::Pin::new_unchecked(&mut *qml_engine);
+            qml_engine_pin
+                .as_mut()
+                .set_root_context_property(&QString::from("shoop_application"), &self_qvariant);
         }
 
         unsafe {
             let mut qml_engine_mut = std::pin::Pin::new_unchecked(&mut *qml_engine);
-            let self_ref = self.as_ref();
-            let rust = self_ref.rust();
+            let mut rust_mut = self.as_mut().rust_mut();
             qml_engine_mut.as_mut().initialize()?;
-            (rust.setup_after_qml_engine_creation)(qml_engine_mut.as_mut());
+            (rust_mut.setup_after_qml_engine_creation)(qml_engine_mut.as_mut());
             qml_engine_mut
                 .as_mut()
-                .load_and_init_qml(qml, rust.settings.refresh_backend_on_frontend_refresh)?;
+                .load_and_init_qml(qml, rust_mut.settings.refresh_backend_on_frontend_refresh)?;
         }
 
         Ok(())
     }
 
-    pub fn initialize(
+    pub fn initialize<QmlEngineCreatedCallback>(
         mut self: Pin<&mut Application>,
         config: config::config::ShoopConfig,
-        setup_after_qml_engine_creation: fn(qml_engine: Pin<&mut QmlEngine>),
+        setup_after_qml_engine_creation: QmlEngineCreatedCallback,
         main_qml: Option<&Path>,
         settings: ApplicationStartupSettings,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), anyhow::Error>
+    where
+        QmlEngineCreatedCallback: FnMut(Pin<&mut QmlEngine>) + 'static,
+    {
         {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.config = config.clone();
             rust_mut.settings = settings;
-            rust_mut.setup_after_qml_engine_creation = setup_after_qml_engine_creation;
+            rust_mut.setup_after_qml_engine_creation = Box::new(setup_after_qml_engine_creation);
         }
 
         unsafe {
@@ -129,7 +149,8 @@ impl Application {
 
         if main_qml.is_some() {
             let main_qml = main_qml.unwrap();
-            self.as_mut().reload_qml(QString::from(main_qml.to_str().unwrap()));
+            self.as_mut()
+                .reload_qml(QString::from(main_qml.to_str().unwrap()));
         }
 
         Ok(())
