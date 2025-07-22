@@ -96,7 +96,6 @@ impl QmlEngine {
 
     pub fn unload(mut self: Pin<&mut Self>) {
         self.as_mut().collect_garbage();
-        // self.as_mut().clear_singletons();
         self.as_mut().close_root();
     }
 }
