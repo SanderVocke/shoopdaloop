@@ -52,7 +52,7 @@ Rectangle {
                 test_grab_screens_and_quit(global_args.test_grab_screens)
             }
             if (global_args.quit_after >= 0.0) {
-                root.logger.info(() => `Auto-quit scheduled for ${global_args.quit_after} seconds.`)
+                root.logger.info(`Auto-quit scheduled for ${global_args.quit_after} seconds.`)
                 autoquit_timer.interval = global_args.quit_after * 1000.0
                 autoquit_timer.start()
             }
@@ -65,7 +65,7 @@ Rectangle {
         repeat: false
         running: false
         onTriggered: {
-            root.logger.info(() => "Auto-quitting as per request.")
+            root.logger.info("Auto-quitting as per request.")
             Qt.callLater(Qt.quit)
         }
     }
@@ -75,7 +75,7 @@ Rectangle {
         property string output_folder
         onExecute: {
             screen_grabber.grab_all(output_folder)
-            root.logger.info(() => ("Screenshots written to: " + output_folder + ". Quitting."))
+            root.logger.info("Screenshots written to: " + output_folder + ". Quitting.")
             Qt.callLater(Qt.quit)
         }
     }
@@ -213,7 +213,7 @@ Rectangle {
                 if (!ShoopFileIO.make_tarfile(filename, tempdir)) {
                     throw new Error(`Failed to create tarfile ${filename}`)
                 }
-                root.logger.info(() => ("Session written to: " + filename))
+                root.logger.info("Session written to: " + filename)
             } finally {
                 registries.state_registry.save_action_finished()
                 ShoopFileIO.delete_recursive(tempdir)
@@ -312,7 +312,7 @@ Rectangle {
                     try {
                         ShoopFileIO.delete_recursive(tempdir)
                     } finally {
-                        root.logger.info(() => ("Session loaded from: " + filename))
+                        root.logger.info("Session loaded from: " + filename)
                         registries.state_registry.load_action_finished()
                         tasks.parent = null
                         tasks.deleteLater()

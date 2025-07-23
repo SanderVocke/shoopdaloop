@@ -39,9 +39,7 @@ impl Application {
     pub fn reload_qml(mut self: Pin<&mut Application>, qml: QString) {
         let qml: PathBuf = PathBuf::from(qml.to_string());
         self.as_mut().unload_qml();
-
-        self.as_mut().wait(5000);
-
+        self.as_mut().wait(50);
         match self.as_mut().load_qml(&qml) {
             Ok(_) => (),
             Err(e) => {

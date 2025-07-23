@@ -115,6 +115,13 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                         "reload_qml(QString)".to_string(),
                         connection_types::QUEUED_CONNECTION,
                     );
+                    connect_or_report(
+                        &*testrunner_qobj,
+                        "unload_qml()".to_string(),
+                        &*app_qobj,
+                        "unload_qml()".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
 
                     // Register as a singleton so it can be found from QML
                     qobject_register_qml_singleton_instance(
@@ -157,6 +164,14 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                             qml_engine.as_mut().set_root_context_property(
                                 &QString::from("shoop_test_file_runner"),
                                 &runner_qvariant,
+                            );
+                            let qml_engine_qobj = qml_engine.as_mut().pin_mut_qobject_ptr();
+                            connect_or_report(
+                                &*qml_engine_qobj,
+                                "destroyed(QObject*)".to_string(),
+                                &*runner_qobj,
+                                "on_qml_engine_destroyed()".to_string(),
+                                connection_types::QUEUED_CONNECTION,
                             );
                         }
                     })
@@ -229,15 +244,14 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                 TEST_RUNNER.with(|c| {
                     if let Some(testrunner) = c.get() {
                         let mut testrunner = std::pin::Pin::new_unchecked(&mut **testrunner);
+                        let qmldir = &config.qml_dir;
+                        let files_pattern = match &cli_args.self_test_options.files_pattern {
+                            Some(pattern) => pattern,
+                            None => &format!("{qmldir}/test/**/tst*.qml"),
+                        };
                         testrunner.as_mut().start(
                             QString::from(config.qml_dir),
-                            QString::from(
-                                cli_args
-                                    .self_test_options
-                                    .filter
-                                    .as_ref()
-                                    .unwrap_or(&".*".to_string()),
-                            ),
+                            QString::from(files_pattern),
                             QString::from(
                                 cli_args
                                     .self_test_options

@@ -36,12 +36,12 @@ ShoopTestFile {
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.shl'
 
-                    session.logger.info(() => ("Saving session to " + filename))
+                    session.logger.info("Saving session to " + filename)
                     session.save_session(filename)
 
                     testcase.wait_session_io_done()
 
-                    session.logger.info(() => ("Re-loading session"))
+                    session.logger.info("Re-loading session")
                     session.load_session(filename)
 
                     testcase.wait_session_io_done()

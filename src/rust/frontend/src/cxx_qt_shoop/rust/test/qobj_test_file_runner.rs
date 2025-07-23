@@ -58,21 +58,19 @@ impl TestFileRunner {
             info!("Starting self-test runner.");
 
             let qml_files_path = qml_files_path.to_string();
-            let test_file_pattern = Regex::new(test_file_pattern.to_string().as_str())?;
+            let test_file_pattern = test_file_pattern.to_string();
             let mut all_test_files: Vec<PathBuf> = Vec::default();
 
-            glob(format!("{qml_files_path}/**/tst_*.qml").as_str())?.try_for_each(
-                |s| -> Result<(), anyhow::Error> {
-                    let s = s?;
-                    let s = s
-                        .to_str()
-                        .ok_or(anyhow::anyhow!("Cannot convert path to string"))?;
-                    if test_file_pattern.is_match(&s) {
-                        all_test_files.push(PathBuf::from(s));
-                    }
-                    Ok(())
-                },
-            )?;
+            let glob_pattern = format!("{test_file_pattern}");
+            debug!("Glob pattern: {glob_pattern}");
+            glob(glob_pattern.as_str())?.try_for_each(|s| -> Result<(), anyhow::Error> {
+                let s = s?;
+                let s = s
+                    .to_str()
+                    .ok_or(anyhow::anyhow!("Cannot convert path to string"))?;
+                all_test_files.push(PathBuf::from(s));
+                Ok(())
+            })?;
 
             debug!("Test files to run: {all_test_files:?}");
 
@@ -95,12 +93,14 @@ impl TestFileRunner {
     }
 
     pub fn on_testcase_done(self: Pin<&mut Self>) {
-        info!("on testcase done");
-        match self.maybe_run_next_test_file() {
-            Ok(()) => {}
-            Err(e) => {
-                println!("Error running testcase: {e}");
-            }
+        debug!("testcase done");
+        unsafe {
+            self.unload_qml();
         }
+    }
+
+    pub unsafe fn on_qml_engine_destroyed(self: Pin<&mut TestFileRunner>) {
+        debug!("QML engine destroyed");
+        self.maybe_run_next_test_file();
     }
 }

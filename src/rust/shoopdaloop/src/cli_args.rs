@@ -111,10 +111,9 @@ pub struct SelfTestOptions {
     #[clap(
         short = 'f',
         long = "test-files-pattern",
-        default_value = "./**/tst_*.qml",
         help_heading = "Self-test options"
     )]
-    pub files_pattern: String,
+    pub files_pattern: Option<String>,
 
     /// Don't run, but list all found test functions
     #[clap(

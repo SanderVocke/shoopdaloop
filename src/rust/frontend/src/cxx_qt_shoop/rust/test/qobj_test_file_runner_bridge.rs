@@ -30,8 +30,14 @@ pub mod ffi {
         #[qinvokable]
         pub unsafe fn on_testcase_done(self: Pin<&mut TestFileRunner>);
 
+        #[qinvokable]
+        pub unsafe fn on_qml_engine_destroyed(self: Pin<&mut TestFileRunner>);
+
         #[qsignal]
         pub unsafe fn reload_qml(self: Pin<&mut TestFileRunner>, qml_file: QString);
+
+        #[qsignal]
+        pub unsafe fn unload_qml(self: Pin<&mut TestFileRunner>);
 
         #[qsignal]
         pub unsafe fn process_app_events(self: Pin<&mut TestFileRunner>);

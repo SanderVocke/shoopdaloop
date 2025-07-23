@@ -17,7 +17,6 @@ Window {
         shoop_test_file_runner.testcase_runner = runner
     }
     Component.onDestruction: {
-        console.log("DELETING")
         ShoopCrashHandling.set_json_tag("shoop_phase", "quit")
     }
 }

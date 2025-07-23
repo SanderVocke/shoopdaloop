@@ -30,6 +30,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn reload_qml(self: Pin<&mut Application>, qml: QString);
 
+        #[qinvokable]
+        pub fn unload_qml(self: Pin<&mut Application>);
+
         #[inherit]
         #[cxx_name = "setApplicationName"]
         unsafe fn set_application_name(self: Pin<&mut Application>, name: &QString);
