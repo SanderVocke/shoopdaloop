@@ -17,6 +17,10 @@ use common::logging::macros::*;
 shoop_log_unit!("Frontend.Application");
 
 impl Application {
+    pub unsafe fn rust_exit(self: Pin<&mut Application>, code: i32) {
+        self.exit(code);
+    }
+
     pub fn make_unique() -> UniquePtr<Application> {
         make_unique_application()
     }

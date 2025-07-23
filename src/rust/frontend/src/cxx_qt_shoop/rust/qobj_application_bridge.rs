@@ -34,6 +34,13 @@ pub mod ffi {
         pub fn unload_qml(self: Pin<&mut Application>);
 
         #[inherit]
+        #[qinvokable]
+        unsafe fn exit(self: Pin<&mut Application>, code: i32);
+
+        #[qinvokable]
+        unsafe fn rust_exit(self: Pin<&mut Application>, code: i32);
+
+        #[inherit]
         #[cxx_name = "setApplicationName"]
         unsafe fn set_application_name(self: Pin<&mut Application>, name: &QString);
 

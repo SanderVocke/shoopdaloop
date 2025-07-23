@@ -3,13 +3,14 @@ name = "shoop_py_wrapped_objects"
 edition = "2021"
 
 [dependencies]
-pyo3 = { version = "0.25", features = ["auto-initialize"] }
-cxx-qt = "0.7"
-cxx-qt-lib = { version = "0.7", features = ["full"] }
 shoop_py_utils = { path = "../shoop_py_utils" }
 common = { path = "../common" }
-ctor = "0.2"
-log = "0.4"
+
+ctor = { workspace = true }
+log = { workspace = true }
+pyo3 = { workspace = true, features = ["auto-initialize"] }
+cxx-qt = { workspace = true }
+cxx-qt-lib = { workspace = true, features = ["full"] }
 
 [build-dependencies]
 

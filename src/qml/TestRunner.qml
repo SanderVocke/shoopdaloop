@@ -16,7 +16,7 @@ Item {
     onDoneChanged: {
         if (done) { testcase_done() }
     }
-
+    
     signal testcase_done()
 
     function register_testcase(testcase) {
@@ -36,6 +36,7 @@ Item {
             testcase_results[name] = {}
         }
         testcase_results[name][fn_name] = status
+        testcase_resultsChanged()
     }
 
     function testcase_register_fn(testcase_obj, fn_name) {
@@ -44,6 +45,7 @@ Item {
             testcase_results[name] = {}
         }
         testcase_results[name][fn_name] = "fail"
+        testcase_resultsChanged()
     }
 
     function should_skip(function_name) {

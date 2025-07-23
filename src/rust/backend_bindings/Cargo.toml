@@ -5,14 +5,16 @@ edition = "2021"
 [lib]
 
 [dependencies]
-anyhow = "1.0"
-static_assertions = "1.1"
 backend = { path = "../backend" }
 
+anyhow = { workspace = true }
+static_assertions = { workspace = true }
+
 [build-dependencies]
-bindgen = "0.70.1"
-anyhow = "1.0"
 backend = { path = "../backend" }
+
+bindgen = { workspace = true }
+anyhow = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only

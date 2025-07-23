@@ -3,9 +3,10 @@ name = "shoop_py_backend"
 edition = "2021"
 
 [dependencies]
-pyo3 = { version = "0.25", features = ["auto-initialize"] }
-anyhow = "1.0"
 backend_bindings = { path = "../backend_bindings" }
+
+pyo3 = { workspace = true, features = ["auto-initialize"] }
+anyhow = { workspace = true }
 
 [build-dependencies]
 

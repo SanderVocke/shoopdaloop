@@ -21,7 +21,6 @@ pub mod ffi {
         #[qinvokable]
         pub unsafe fn start(
             self: Pin<&mut TestFileRunner>,
-            qml_files_path: QString,
             test_file_pattern: QString,
             test_filter_pattern: QString,
             application: *mut QObject,
@@ -42,6 +41,9 @@ pub mod ffi {
 
         #[qsignal]
         pub unsafe fn process_app_events(self: Pin<&mut TestFileRunner>);
+
+        #[qsignal]
+        pub unsafe fn done(self: Pin<&mut TestFileRunner>, exit_code : i32);
     }
 
     unsafe extern "C++" {
@@ -68,26 +70,45 @@ impl AsQObject for ffi::TestFileRunner {
     }
 }
 
+#[derive(Debug)]
+pub enum ResultStatus {
+    Pass,
+    Fail,
+    Skip
+}
+
+pub struct TestFnResult {
+    pub name : String,
+    pub result : ResultStatus,
+}
+
+#[derive(Default)]
+pub struct TestCaseResults {
+    pub name : String,
+    pub fn_results : Vec<TestFnResult>,
+}
+pub type TestResults = Vec<TestCaseResults>;
+
 pub struct TestFileRunnerRust {
     pub running_testcase: Option<String>,
-    pub ran_testcase_results: HashMap<String, Result<(), String>>,
     pub current_testcase_done: bool,
     pub testcase_runner: *mut ffi::QObject,
     pub test_files_to_run: Vec<PathBuf>,
     pub test_files_ran: Vec<PathBuf>,
     pub test_filter_pattern: cxx_qt_lib::QString,
+    pub test_results: TestResults,
 }
 
 impl Default for TestFileRunnerRust {
     fn default() -> TestFileRunnerRust {
         TestFileRunnerRust {
             running_testcase: None,
-            ran_testcase_results: HashMap::new(),
             current_testcase_done: false,
             testcase_runner: std::ptr::null_mut(),
             test_files_to_run: Vec::default(),
             test_files_ran: Vec::default(),
             test_filter_pattern: cxx_qt_lib::QString::from(""),
+            test_results: TestResults::default(),
         }
     }
 }

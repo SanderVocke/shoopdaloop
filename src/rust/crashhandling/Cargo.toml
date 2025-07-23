@@ -3,17 +3,18 @@ name = "crashhandling"
 edition = "2021"
 
 [dependencies]
-minidumper = "0.8"
-crash-handler = "0.6"
 common = { path = "../common" }
-ctor = "0.2"
-log = "0.4"
-uuid = { version = "1.17", features = ["v4"] }
-tempfile = "3.20"
-serde_json = "1.0"
-serde = "1.0"
-anyhow = "1.0"
-once_cell = "1.21"
+
+minidumper = { workspace = true }
+crash-handler = { workspace = true }
+ctor = { workspace = true }
+log = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+tempfile = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
+once_cell = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only

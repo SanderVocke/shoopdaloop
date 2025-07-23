@@ -5,17 +5,17 @@ edition = "2021"
 [lib]
 
 [dependencies]
-log = "0.4"
-colored = "2.1"
-humantime = "2.1"
-fern = { version = "0.6", features = ["colored"] }
-lazy_static = "1.5"
-anyhow = "1.0"
-ctor = "0.2"
-walkdir = "2.4"
+log = { workspace = true }
+colored = { workspace = true }
+humantime = { workspace = true }
+fern = { workspace = true, features = ["colored"] }
+lazy_static = { workspace = true }
+anyhow = { workspace = true }
+ctor = { workspace = true }
+walkdir = { workspace = true }
 
 [build-dependencies]
-toml = "0.8"
+toml = { workspace = true }
 
 
 [features]

@@ -249,8 +249,17 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                             Some(pattern) => pattern,
                             None => &format!("{qmldir}/test/**/tst*.qml"),
                         };
+
+                        {
+                            let testrunner_qobj = testrunner.as_mut().pin_mut_qobject_ptr();
+                            connect_or_report(& *testrunner_qobj,
+                                             "done(::std::int32_t)".to_string(),
+                                              & *app_qobj,
+                                              "rust_exit(::std::int32_t)".to_string(),
+                                              connection_types::QUEUED_CONNECTION);
+                        }
+
                         testrunner.as_mut().start(
-                            QString::from(config.qml_dir),
                             QString::from(files_pattern),
                             QString::from(
                                 cli_args

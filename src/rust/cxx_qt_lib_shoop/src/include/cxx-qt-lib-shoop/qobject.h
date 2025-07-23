@@ -87,6 +87,18 @@ inline QString qobjectPropertyString(QObject const& obj, ::rust::String name) {
     return result.toString();
 }
 
+inline QVariant qobjectPropertyQVariant(QObject const& obj, ::rust::String name) {
+    auto result = obj.property(name.c_str());
+    if (!result.isValid()) {
+        std::string err = "getting property ";
+        err += name.operator std::string();
+        err += " yielded invalid result";
+        throw std::runtime_error(err);
+    }
+
+    return result;
+}
+
 inline bool qobjectHasSignal(QObject const& obj, ::rust::String name) {
     auto meta = obj.metaObject();
     int signalIndex = meta->indexOfSignal(name.c_str());

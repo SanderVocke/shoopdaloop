@@ -10,6 +10,11 @@ pub mod ffi {
         type QString = cxx_qt_lib::QString;
         type QThread = crate::qthread::QThread;
 
+        include!("cxx-qt-lib/qmap.h");
+        include!("cxx-qt-lib/qvariant.h");
+        type QVariant = cxx_qt_lib::QVariant;
+        type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
+
         #[rust_name = "qobject_set_parent"]
         unsafe fn qobjectSetParent(item: *mut QObject, parent: *mut QObject) -> Result<()>;
 
@@ -42,6 +47,9 @@ pub mod ffi {
 
         #[rust_name = "qobject_move_to_thread"]
         unsafe fn qobjectMoveToThread(obj: *mut QObject, thread: *mut QThread) -> Result<bool>;
+
+        #[rust_name = "qobject_property_qvariant"]
+        unsafe fn qobjectPropertyQVariant(obj: &QObject, name: String) -> Result<QVariant>;
 
         #[rust_name = "qobject_set_property_int"]
         unsafe fn qobjectSetProperty(
@@ -131,6 +139,12 @@ pub unsafe fn qobject_property_string(
 ) -> Result<QString, cxx::Exception> {
     ffi::qobject_property_string(obj, name)
 }
+pub unsafe fn qobject_property_qvariant(
+    obj: &QObject,
+    name: String,
+) -> Result<QVariant, cxx::Exception> {
+    ffi::qobject_property_qvariant(obj, name)
+}
 pub unsafe fn qobject_object_name(obj: &QObject) -> Result<String, cxx::Exception> {
     ffi::qobject_object_name(obj)
 }
@@ -211,6 +225,11 @@ pub trait IsQObject: AsQObject {
     unsafe fn property_string(self: &Self, name: String) -> Result<QString, cxx::Exception> {
         let obj = self.qobject_ref();
         qobject_property_string(obj, name)
+    }
+
+    unsafe fn property_qvariant(self: &Self, name: String) -> Result<QVariant, cxx::Exception> {
+        let obj = self.qobject_ref();
+        qobject_property_qvariant(obj, name)
     }
 
     unsafe fn object_name(self: &Self) -> Result<String, cxx::Exception> {
