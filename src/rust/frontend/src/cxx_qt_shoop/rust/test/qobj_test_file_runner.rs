@@ -51,13 +51,19 @@ impl TestFileRunner {
         qml_files_path: QString,
         test_file_pattern: QString,
         test_filter_pattern: QString,
-        application: *mut QObject,
+        _application: *mut QObject,
         list_only: bool,
     ) -> bool {
         match (|| -> Result<(), anyhow::Error> {
             info!("Starting self-test runner.");
 
-            let qml_files_path = qml_files_path.to_string();
+            let filter_pattern = match list_only {
+                false => test_filter_pattern,
+                true => QString::from("^$") //match nothing
+            };
+            debug!("Test function filter: {filter_pattern}");
+            self.as_mut().set_test_filter_pattern(filter_pattern);
+
             let test_file_pattern = test_file_pattern.to_string();
             let mut all_test_files: Vec<PathBuf> = Vec::default();
 

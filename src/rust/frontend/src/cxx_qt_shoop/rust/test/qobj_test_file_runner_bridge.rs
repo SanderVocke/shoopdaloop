@@ -15,6 +15,7 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[qproperty(*mut QObject, testcase_runner)]
+        #[qproperty(QString, test_filter_pattern)]
         type TestFileRunner = super::TestFileRunnerRust;
 
         #[qinvokable]
@@ -74,6 +75,7 @@ pub struct TestFileRunnerRust {
     pub testcase_runner: *mut ffi::QObject,
     pub test_files_to_run: Vec<PathBuf>,
     pub test_files_ran: Vec<PathBuf>,
+    pub test_filter_pattern: cxx_qt_lib::QString,
 }
 
 impl Default for TestFileRunnerRust {
@@ -85,6 +87,7 @@ impl Default for TestFileRunnerRust {
             testcase_runner: std::ptr::null_mut(),
             test_files_to_run: Vec::default(),
             test_files_ran: Vec::default(),
+            test_filter_pattern: cxx_qt_lib::QString::from(""),
         }
     }
 }
