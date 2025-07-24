@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
 use cxx_qt_lib_shoop::qobject::AsQObject;
 
@@ -43,7 +43,7 @@ pub mod ffi {
         pub unsafe fn process_app_events(self: Pin<&mut TestFileRunner>);
 
         #[qsignal]
-        pub unsafe fn done(self: Pin<&mut TestFileRunner>, exit_code : i32);
+        pub unsafe fn done(self: Pin<&mut TestFileRunner>, exit_code: i32);
     }
 
     unsafe extern "C++" {
@@ -74,18 +74,18 @@ impl AsQObject for ffi::TestFileRunner {
 pub enum ResultStatus {
     Pass,
     Fail,
-    Skip
+    Skip,
 }
 
 pub struct TestFnResult {
-    pub name : String,
-    pub result : ResultStatus,
+    pub name: String,
+    pub result: ResultStatus,
 }
 
 #[derive(Default)]
 pub struct TestCaseResults {
-    pub name : String,
-    pub fn_results : Vec<TestFnResult>,
+    pub name: String,
+    pub fn_results: Vec<TestFnResult>,
 }
 pub type TestResults = Vec<TestCaseResults>;
 

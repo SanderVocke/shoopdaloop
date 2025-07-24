@@ -1,13 +1,12 @@
-use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::{ffi::*, TestCaseResults, TestFnResult, ResultStatus};
+use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::{
+    ffi::*, ResultStatus, TestCaseResults, TestFnResult,
+};
 use cxx_qt::CxxQtType;
-use cxx_qt_lib_shoop::qobject::ffi::qobject_set_object_name;
-use cxx_qt_lib_shoop::qobject::{qobject_property_qvariant, AsQObject};
-use cxx_qt_lib_shoop::qvariant_qvariantmap::{self, qvariant_as_qvariantmap};
+use cxx_qt_lib_shoop::qobject::qobject_property_qvariant;
+use cxx_qt_lib_shoop::qvariant_qvariantmap::qvariant_as_qvariantmap;
 use glob::glob;
-use regex::Regex;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::pin::Pin;
-use std::time::Duration;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.TestFileRunner");
@@ -21,21 +20,24 @@ impl TestFileRunner {
     }
 
     fn report_results(self: Pin<&mut Self>) -> bool {
-        let mut failed_cases : Vec<String> = Vec::default();
-        let mut skipped_cases : Vec<String> = Vec::default();
-        let mut passed_cases : Vec<String> = Vec::default();
+        let mut failed_cases: Vec<String> = Vec::default();
+        let mut skipped_cases: Vec<String> = Vec::default();
+        let mut passed_cases: Vec<String> = Vec::default();
 
         self.test_results.iter().for_each(|testcase_results| {
             let testcase_name = &testcase_results.name;
-            testcase_results.fn_results.iter().for_each(|fn_result : &TestFnResult| {
-                let fn_name = &fn_result.name;
-                let full_name = format!("{testcase_name}::{fn_name}");
-                match fn_result.result {
-                    ResultStatus::Pass => passed_cases.push(full_name),
-                    ResultStatus::Skip => skipped_cases.push(full_name),
-                    ResultStatus::Fail => failed_cases.push(full_name),
-                }
-            })
+            testcase_results
+                .fn_results
+                .iter()
+                .for_each(|fn_result: &TestFnResult| {
+                    let fn_name = &fn_result.name;
+                    let full_name = format!("{testcase_name}::{fn_name}");
+                    match fn_result.result {
+                        ResultStatus::Pass => passed_cases.push(full_name),
+                        ResultStatus::Skip => skipped_cases.push(full_name),
+                        ResultStatus::Fail => failed_cases.push(full_name),
+                    }
+                })
         });
 
         let n_failed = failed_cases.len() as i32;
@@ -43,7 +45,7 @@ impl TestFileRunner {
         let n_skipped = skipped_cases.len() as i32;
         let n_total = n_failed + n_passed + n_skipped;
 
-        let success : bool = n_failed == 0;
+        let success: bool = n_failed == 0;
 
         let overall_result_readable = if success {
             "PASS"
@@ -53,7 +55,8 @@ impl TestFileRunner {
             "FAIL"
         };
 
-        println!(r#"
+        println!(
+            r#"
 ========================================================
 Test run finished. Overall result: {overall_result_readable}.
 ========================================================
@@ -63,7 +66,8 @@ Totals:
 - Passed: {n_passed}
 - Failed: {n_failed}
 - Skipped: {n_skipped}
-"#);
+"#
+        );
 
         if n_failed > 0 {
             println!("Failed cases:");
@@ -87,7 +91,9 @@ Totals:
             if test_files.len() == 0 {
                 // No files left to test.
                 let success = self.as_mut().report_results();
-                unsafe { self.done(if success {0} else {1}); }
+                unsafe {
+                    self.done(if success { 0 } else { 1 });
+                }
                 return;
             }
         }
@@ -96,10 +102,7 @@ Totals:
             let mut rust_mut = self.as_mut().rust_mut();
             let test_file = rust_mut.test_files_to_run.remove(0);
 
-            let filename = test_file
-                .file_name()
-                .unwrap()
-                .to_string_lossy();
+            let filename = test_file.file_name().unwrap().to_string_lossy();
 
             println!();
             info!("===== Test file: {filename} =====");
@@ -121,7 +124,7 @@ Totals:
 
             let filter_pattern = match list_only {
                 false => test_filter_pattern,
-                true => QString::from("^$") //match nothing
+                true => QString::from("^$"), //match nothing
             };
             debug!("Test function filter: {filter_pattern}");
             self.as_mut().set_test_filter_pattern(filter_pattern);
@@ -165,10 +168,11 @@ Totals:
 
         unsafe {
             // Gather the test results from our QML runner and store them in our own Rust struct.
-            let results : cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
+            let results: cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
             {
                 let runner = self.as_ref().testcase_runner;
-                let results_variant = qobject_property_qvariant(& *runner, "testcase_results".to_string()).unwrap();
+                let results_variant =
+                    qobject_property_qvariant(&*runner, "testcase_results".to_string()).unwrap();
                 results = qvariant_as_qvariantmap(&results_variant).unwrap();
             }
 

@@ -180,7 +180,7 @@ pub unsafe fn qobject_find_child(
 ) -> Result<*mut QObject, cxx::Exception> {
     ffi::qobject_find_child(obj, name)
 }
-unsafe fn qobject_register_qml_singleton_instance(
+pub unsafe fn qobject_register_qml_singleton_instance(
     instance: *mut QObject,
     module_name: &mut String,
     version_major: i64,

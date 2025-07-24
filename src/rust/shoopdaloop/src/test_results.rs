@@ -1,43 +1,40 @@
-use serde::Serialize;
-use serde_xml_rs::to_string;
 use serde;
+use serde::Serialize;
 
 #[derive(Serialize)]
 pub enum ResultStatus {
     Passed,
     Failed,
-    Skipped
+    Skipped,
 }
-
 
 #[derive(Serialize)]
 pub struct TestFnResult {
     #[serde(rename = "@name")]
-    name : String,
+    name: String,
     #[serde(rename = "@classname")]
-    class_name : String,
+    class_name: String,
     #[serde(flatten)]
-    status : ResultStatus
+    status: ResultStatus,
 }
 
 #[derive(Serialize)]
 pub struct TestCaseResults {
     #[serde(rename = "@name")]
-    name : String,
+    name: String,
     #[serde(rename = "testcase")]
-    test_fn_results: Vec<TestFnResult>
+    test_fn_results: Vec<TestFnResult>,
 }
 
 #[derive(Serialize)]
 #[serde(rename = "testsuites")]
 pub struct TestResults {
     #[serde(rename = "testsuite")]
-    test_case_results: Vec<TestCaseResults>
+    test_case_results: Vec<TestCaseResults>,
 }
 
 impl TestResults {
-    pub fn serialize_xml<W>(&self) -> Result<String, anyhow::Error>
-    {
+    pub fn serialize_xml<W>(&self) -> Result<String, anyhow::Error> {
         serde_xml_rs::to_string(self).map_err(|e| e.into())
     }
 }

@@ -80,11 +80,6 @@ class LuaEngineImpl():
 
     def to_lua_val(self, val):
         rval = val
-        if isinstance(rval, QJSValue):
-            if rval.isCallable():
-                rval = lambda *args: val.call(*args)
-            else:
-                rval = rval.toVariant()
         if isinstance(rval, list):
             rval = self.py_list_to_lua_table([self.to_lua_val(v) for v in rval])
         elif isinstance(rval, dict):
