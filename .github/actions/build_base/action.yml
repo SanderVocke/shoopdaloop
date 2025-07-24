@@ -50,15 +50,6 @@ runs:
     run: |
       cargo fmt --all --check
 
-  - name: Build Cargo dependencies
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-      set -x
-      . ${BUILD_ENV_FILE}
-      echo "cargo: $(which cargo)"
-      cargo build --features "shoopdaloop/prebuild packaging/prebuild py_env/prebuild backend/prebuild backend_bindings/prebuild macros/prebuild common/prebuild config/prebuild frontend/prebuild py_env/prebuild py_prepare/prebuild shoop_py_backend/prebuild shoop_py_utils/prebuild cxx_qt_lib_shoop/prebuild" ${CARGO_BUILD_FLAGS}
-
   - name: Extra flags for main build
     if: always()
     shell: wrap-shell {0}
@@ -71,7 +62,7 @@ runs:
     run: |
       set -x
       . ${BUILD_ENV_FILE}
-      cargo build -vv ${CARGO_BUILD_FLAGS}
+      cargo build ${CARGO_BUILD_FLAGS}
   
   - name: Build test code
     if: always()
@@ -79,4 +70,4 @@ runs:
     run: |
       set -x
       . ${BUILD_ENV_FILE}
-      cargo test -vv --no-run ${CARGO_BUILD_FLAGS}
+      cargo test --no-run ${CARGO_BUILD_FLAGS}
