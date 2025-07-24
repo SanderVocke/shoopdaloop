@@ -23,6 +23,7 @@ PythonTestCase {
 
     property bool when: true
     property bool _internal_triggered: false
+    property bool registered: false
     onWhenChanged: update_next_cycle.trigger()
 
     function update_trigger() {
@@ -55,24 +56,29 @@ PythonTestCase {
         onExecute: { root.update_trigger() }
     }
 
-    function register() {
-        logger.info(`Testcase ${name} created (${Object.keys(test_fns).length} tests).`);
+    function maybe_register() {
+        if(shoop_test_file_runner.testcase_runner &&
+           shoop_test_file_runner.testcase_runner.objectName == "TestRunner" &&
+           !root.registered) {
+                logger.info(`Testcase ${name} created (${Object.keys(test_fns).length} tests).`);
 
-        if (testfn_filter) {
-            logger.warning("Unimplemented: filtering")
-            logger.warning(`Testcase ${name} has a test function filter: ${testfn_filter}`)
-        }
+                if (testfn_filter) {
+                    logger.warning("Unimplemented: filtering")
+                    logger.warning(`Testcase ${name} has a test function filter: ${testfn_filter}`)
+                }
 
-        shoop_test_file_runner.testcase_runner.register_testcase(root)
-        update_next_cycle.trigger()
+                shoop_test_file_runner.testcase_runner.register_testcase(root)
+                update_next_cycle.trigger()
+                root.registered = true
+           }
     }
 
     Component.onCompleted: {
-        if (shoop_test_file_runner.testcase_runner) { register() }
+        maybe_register()
     }
     Connections {
         target: shoop_test_file_runner
-        function onTestcase_runnerChanged() { if (shoop_test_file_runner.testcase_runner) { register()} }
+        function onTestcase_runnerChanged() { maybe_register() }
     }
     Component.onDestruction: logger.info(`Testcase ${name} destroyed.`)
 

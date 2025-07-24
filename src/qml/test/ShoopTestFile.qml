@@ -7,6 +7,7 @@ Window {
 
     TestRunner {
         id: runner
+        objectName: "TestRunner"
         filter_regex: shoop_test_file_runner.test_filter_pattern
         onTestcase_done: {
             shoop_test_file_runner.on_testcase_done()
