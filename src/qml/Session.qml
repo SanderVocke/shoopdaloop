@@ -45,7 +45,7 @@ Rectangle {
                 did_auto_load = true
                 var filename = global_args.load_session_on_startup
                 auto_session_loader.filename = filename
-                root.logger.debug(() => ("Loading session on startup: " + filename))
+                root.logger.debug("Loading session on startup: " + filename)
                 auto_session_loader.trigger()
             }
             if (global_args.test_grab_screens) {
@@ -190,7 +190,7 @@ Rectangle {
     TasksFactory { id: tasks_factory }
 
     function save_session(filename) {
-        root.logger.debug(() => `saving session to: ${filename}`)
+        root.logger.debug(`saving session to: ${filename}`)
         registries.state_registry.reset_saving_loading()
         registries.state_registry.save_action_started()
         var tempdir = ShoopFileIO.create_temporary_folder()
@@ -224,7 +224,7 @@ Rectangle {
     }
 
     function reload() {
-        root.logger.debug(() => ("Reloading session"))
+        root.logger.debug("Reloading session")
         registries.state_registry.clear([
             'sync_active'
         ])
@@ -236,7 +236,7 @@ Rectangle {
     function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
         tracks_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
         if (sync_loop_loader.track_widget) {
-            root.logger.debug(() => (`Queue load tasks for sync track`))
+            root.logger.debug(`Queue load tasks for sync track`)
             sync_loop_loader.track_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
         }
     }
@@ -260,13 +260,13 @@ Rectangle {
             close()
             auto_session_loader.filename = session_filename
             auto_session_loader.ignore_resample_warning = true
-            root.logger.debug(() => ("Loading session on startup: " + filename))
+            root.logger.debug("Loading session on startup: " + filename)
             auto_session_loader.trigger()
         }
     }
 
     function load_session(filename, ignore_resample_warning=false) {
-        root.logger.debug(() => `loading session: ${filename}`)
+        root.logger.debug(`loading session: ${filename}`)
         registries.state_registry.reset_saving_loading()
         registries.state_registry.load_action_started()
         var tempdir = ShoopFileIO.create_temporary_folder()
@@ -275,7 +275,7 @@ Rectangle {
             var tasks = tasks_factory.create_tasks_obj(root)
 
             ShoopFileIO.extract_tarfile(filename, tempdir)
-            root.logger.debug(() => (`Extracted files: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`))
+            root.logger.debug(`Extracted files: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`)
 
             var session_filename = tempdir + '/session.json'
             var session_file_contents = ShoopFileIO.read_file(session_filename)
@@ -305,7 +305,7 @@ Rectangle {
             registries.state_registry.load_action_started()
 
             let finish_fn = () => {
-                root.logger.debug(() => ("Queueing load tasks"))
+                root.logger.debug("Queueing load tasks")
                 queue_load_tasks(tempdir, incoming_sample_rate, our_sample_rate, tasks)
 
                 tasks.when_finished(() => {
@@ -407,7 +407,7 @@ Rectangle {
 
         property var focusItem : Window.activeFocusItem
         onFocusItemChanged: {
-            root.logger.debug(() => ("Focus item changed: " + focusItem))
+            root.logger.debug("Focus item changed: " + focusItem)
             if (!focusItem || focusItem == Window.contentItem) {
                 takeFocus.trigger()
             }

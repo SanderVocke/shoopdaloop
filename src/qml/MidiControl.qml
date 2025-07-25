@@ -39,7 +39,7 @@ shoop_format = require('shoop_format')
 
         update_all_handlers()
 
-        root.logger.debug(() => ('MIDI control initialized'))
+        root.logger.debug('MIDI control initialized')
 
         ready = true
         initialized = true
@@ -98,7 +98,7 @@ shoop_format = require('shoop_format')
             let fn = _lua_engine.evaluate(script, 'MidiControl', true, true)
             let _name = action_name
             return function(msg, port, _fn=fn, name=_name) {
-                root.logger.debug(() => (`Running action ${name}`))
+                root.logger.debug(`Running action ${name}`)
                 _lua_engine.call(_fn, [msg, port], false)
             }
         }
@@ -114,7 +114,7 @@ shoop_format = require('shoop_format')
             return result == filter[2]
         }
 
-        root.logger.debug(() => (`Received: [${msg}]. Matching against ${configuration.contents.length} action items.`))
+        root.logger.debug(`Received: [${msg}]. Matching against ${configuration.contents.length} action items.`)
 
         let msg_object = Midi.parse_msg(msg)
 
@@ -124,9 +124,9 @@ shoop_format = require('shoop_format')
             const condition = configuration.contents[i].condition
             const input_overrides = configuration.contents[i].inputs
             if (!( new Set(filters.map(f => try_filter(f, msg))).has(false) )) {
-                root.logger.debug(() => (`Matched MIDI control filter: msg = ${msg}, filters = ${filters}, action = ${action}`))
+                root.logger.debug(`Matched MIDI control filter: msg = ${msg}, filters = ${filters}, action = ${action}`)
                 if (configuration_handlers.length <= i) {
-                    root.logger.error(() => ('MIDI control handlers not up-to-date'))
+                    root.logger.error('MIDI control handlers not up-to-date')
                 }
                 configuration_handlers[i].callable(msg_object, control_port ? control_port.lua_interface : null)
             } else {

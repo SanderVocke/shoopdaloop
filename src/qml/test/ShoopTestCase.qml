@@ -162,7 +162,7 @@ PythonTestCase {
         result = compare(a,b);
 
         if (!result) {
-            logger.error(() => (format_error(failstring)))
+            logger.error(format_error(failstring))
         }
         verify(result, failstring)
     }

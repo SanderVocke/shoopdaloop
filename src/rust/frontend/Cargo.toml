@@ -14,6 +14,7 @@ crashhandling = { path = "../crashhandling" }
 config = { path = "../config" }
 shoop_py_wrapped_objects = { path = "../shoop_py_wrapped_objects" }
 cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
+shoop_py_backend = { path = "../shoop_py_backend"}
 
 cxx = { workspace = true }
 tempfile = { workspace = true }

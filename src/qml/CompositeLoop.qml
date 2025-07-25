@@ -30,7 +30,7 @@ Item {
     // The Python-side object manages triggering other loops based on the
     // schedule. This needs to keep running even if the QML/GUI thread hangs.
     // In the QML side, we manage updating/calculating the schedule.
-    property var schedule: {}
+    property var schedule: ({})
     property alias iteration: py_loop.iteration
     property alias running_loops: py_loop.running_loops
     property alias mode: py_loop.mode
@@ -151,9 +151,10 @@ Item {
     // loops_end lists the loops that should be stopped in this iteration. Each entry is a loop.
     // loops_ignored lists loops that are not really scheduled but stored to still keep traceability -
     // for example when a 0-length loop is in the playlist.
+    // TODO: the "iteration" key is currently a string, because of interop limitations with cxx-qt.
     function recalculate_schedule() {
-        root.logger.debug(() => 'Recalculating schedule.')
-        root.logger.trace(() => `--> playlists to schedule: ${JSON.stringify(playlists, null, 2)}`)
+        root.logger.debug('Recalculating schedule.')
+        root.logger.trace(`--> playlists to schedule: ${JSON.stringify(playlists, null, 2)}`)
 
         var _scheduled_playlists = playlists ? JSON.parse(JSON.stringify(playlists)) : []
         for (var pidx=0; pidx < _scheduled_playlists.length; pidx++) {
@@ -167,7 +168,7 @@ Item {
                     let elem = elems[h]
                     let loop_widget = registries.objects_registry.value_or(elem.loop_id, undefined)
                     if (!loop_widget) {
-                        root.logger.debug(() => "Could not find " + elem.loop_id) 
+                        root.logger.debug("Could not find " + elem.loop_id) 
                         continue
                     }
                     let loop_start = _it + elem.delay
@@ -264,6 +265,14 @@ Item {
             delete v.loop_modes
             delete v.loops_start
             v.loops_start = starts.map(l => [l, modes[l]])
+        }
+
+        // Stringify the keys.
+        for (var k in _schedule) {
+            if (String(k) != k) {
+                schedule[String(k)] = _schedule[k]
+                _schedule[k] = undefined
+            }
         }
 
         root.logger.trace(() => `full schedule:\n${

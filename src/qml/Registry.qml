@@ -19,12 +19,12 @@ Item {
             logger && logger.throw_error("attempting to re-register existing key: " + id)
         }
         if(!(id in registry_data)) {
-            logger && logger.debug(() => (`Registered: ${id} => ${object}`))
+            logger && logger.debug(`Registered: ${id} => ${object}`)
             registry_data[id] = object
             itemAdded(id, object)
             contentsChanged()
         } else if(overwrite && (id in registry_data)) {
-            logger &&logger.debug(() => (`Overwrite: ${id}: ${registry_data[id]}  => ${object}`))
+            logger &&logger.debug(`Overwrite: ${id}: ${registry_data[id]}  => ${object}`)
             registry_data[id] = object
             itemModified(id, object)
             contentsChanged()
@@ -35,7 +35,7 @@ Item {
         if(!(id in registry_data)) {
             return;
         }
-        logger && logger.debug(() => ("Unregistered:" + id))
+        logger && logger.debug("Unregistered:" + id)
         delete registry_data[id]
         itemRemoved(id)
         contentsChanged()
@@ -65,14 +65,14 @@ Item {
             if (typeof d === 'object') { itemModified(id, val) }
             return;
         }
-        logger.debug(() => (`Replacing ${id}: ${d} => ${val}`))
+        logger.debug(`Replacing ${id}: ${d} => ${val}`)
         registry_data[id] = val
         itemModified(id, val)
         contentsChanged()
     }
 
     function multi_replace(dict) {
-        logger.debug(() => (`Multi replace: ${Object.keys(dict)}`))
+        logger.debug(`Multi replace: ${Object.keys(dict)}`)
         var n_changed = 0;
         for (const [key, val] of Object.entries(dict)) {
             if (registry_data[key] != val) {
@@ -91,13 +91,13 @@ Item {
     function add_to_set(id, val) {
         if (!has(id)) { registry_data[id] = new Set() }
         mutate(id, s => { s.add(val); return s } )
-        logger.debug(() => (`set contents after add: ${registry_data[id]}`))
+        logger.debug(`set contents after add: ${registry_data[id]}`)
     }
 
     function remove_from_set(id, val) {
         if (!has(id)) { registry_data[id] = new Set() }
         mutate(id, s => { s.delete(val); return s } )
-        logger.debug(() => (`set contents after remove: ${registry_data[id]}`))
+        logger.debug(`set contents after remove: ${registry_data[id]}`)
     }
 
     function clear_set(id) {
@@ -107,7 +107,7 @@ Item {
     function mutate(id, fn) {
         const mutated = fn(registry_data[id])
         if(verbose) {
-            logger.debug(() => (`Mutating: ${id}, ${registry_data[id]} => ${mutated}`))
+            logger.debug(`Mutating: ${id}, ${registry_data[id]} => ${mutated}`)
         }
         registry_data[id] = mutated
         itemModified(id, registry_data[id])
@@ -145,7 +145,7 @@ Item {
     function clear(except_keys=[]) {
         var replace = {}
         for(const key of except_keys) { replace[key] = registry_data[key] }
-        logger.debug(() => ("Clearing"))
+        logger.debug("Clearing")
         for(var key of Object.keys(registry_data)) {
             itemRemoved(key)
         }

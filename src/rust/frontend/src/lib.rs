@@ -25,3 +25,6 @@ pub mod engine_update_thread;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod test_results;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod composite_loop_schedule;
