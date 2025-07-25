@@ -31,7 +31,10 @@ impl CompositeLoopIterationEvents {
             let mut entry: QVariantList = QList::default();
             entry.append(qobject_ptr_to_qvariant(*loop_start));
             let mode: QVariant = match loop_mode {
-                Some(mode) => { let mode = mode.clone() as isize as i32; QVariant::from(&mode) },
+                Some(mode) => {
+                    let mode = mode.clone() as isize as i32;
+                    QVariant::from(&mode)
+                }
                 None => QVariant::default(),
             };
             entry.append(mode);
@@ -80,8 +83,8 @@ impl CompositeLoopIterationEvents {
                         .ok_or(anyhow::anyhow!("No loop mode entry in schedule elem"))?;
                     let loop_start = qvariant_to_qobject_ptr(loop_start)
                         .ok_or(anyhow::anyhow!("Loop start entry is not an object ptr"))?;
-                    let loop_mode : Option<LoopMode> = match loop_mode.value::<i32>() {
-                        Some(mode) => { Some(LoopMode::try_from(mode)?) },
+                    let loop_mode: Option<LoopMode> = match loop_mode.value::<i32>() {
+                        Some(mode) => Some(LoopMode::try_from(mode)?),
                         None => None,
                     };
                     result.loops_start.insert(loop_start, loop_mode);

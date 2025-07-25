@@ -118,6 +118,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn handle_sync_loop_trigger(self: Pin<&mut CompositeLoopBackend>, cycle_nr: i32);
 
+        #[qinvokable]
+        pub fn update_position(self: Pin<&mut CompositeLoopBackend>);
+
         #[qsignal]
         #[cxx_name = "stateChanged"]
         fn state_changed(

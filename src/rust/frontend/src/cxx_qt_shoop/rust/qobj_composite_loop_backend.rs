@@ -1,13 +1,18 @@
 use crate::{
     composite_loop_schedule::CompositeLoopSchedule,
-    cxx_qt_shoop::qobj_composite_loop_backend_bridge::ffi::*,
+    cxx_qt_shoop::qobj_composite_loop_backend_bridge::ffi::*, loop_mode_helpers::is_running_mode,
 };
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
 use cxx_qt::CxxQtType;
-use cxx_qt_lib_shoop::{connect::connect_or_report, connection_types, qobject::AsQObject};
-use std::pin::Pin;
+use cxx_qt_lib_shoop::{
+    connect::connect_or_report,
+    connection_types,
+    qobject::{ffi::qobject_property_int, AsQObject},
+};
+use backend_bindings::LoopMode;
+use std::{cmp::max, collections::HashSet, hash::Hash, pin::Pin};
 shoop_log_unit!("Frontend.CompositeLoop");
 
 #[allow(unused_macros)]
@@ -51,6 +56,19 @@ impl CompositeLoopBackend {
     ) {
     }
 
+    fn all_loops(self: &Self) -> HashSet<*mut QObject> {
+        let mut result : HashSet<*mut QObject> = HashSet::new();
+        for (iteration, events) in self.schedule.data.iter() {
+            for (l, _mode) in events.loops_start.iter() {
+                result.insert(*l);
+            }
+            for l in events.loops_end.iter().chain(events.loops_ignored.iter()) {
+                result.insert(*l);
+            }
+        }
+        result
+    }
+
     pub unsafe fn set_sync_source(mut self: Pin<&mut Self>, sync_source: *mut QObject) {
         debug!(self, "set sync source -> {sync_source:?}");
         if sync_source != self.sync_source {
@@ -88,9 +106,47 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub fn update_sync_position(self: Pin<&mut CompositeLoopBackend>) {}
+    pub fn update_sync_position(mut self: Pin<&mut CompositeLoopBackend>) {
+        trace!(self, "update sync position");
+        let mut v = 0;
+        unsafe {
+            if !self.sync_source.is_null() {
+                match qobject_property_int(&*self.sync_source, "position".to_string()) {
+                    Ok(pos) => { v = pos; },
+                    Err(e) => { error!(self, "Unable to get sync loop position: {e}"); }
+                }
+            }
+        }
+        if v != self.sync_position {
+            trace!(self, "sync position -> {v}");
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.sync_position = v;
+            unsafe {
+                self.as_mut().sync_position_changed();
+            }
+        }
+    }
 
-    pub fn update_sync_length(self: Pin<&mut CompositeLoopBackend>) {}
+    pub fn update_sync_length(mut self: Pin<&mut CompositeLoopBackend>) {
+        trace!(self, "update sync length");
+        let mut v = 0;
+        unsafe {
+            if !self.sync_source.is_null() {
+                match qobject_property_int(&*self.sync_source, "length".to_string()) {
+                    Ok(l) => { v = l; },
+                    Err(e) => { error!(self, "Unable to get sync loop length: {e}"); }
+                }
+            }
+        }
+        if v != self.sync_length {
+            trace!(self, "sync length -> {v}");
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.sync_length = v;
+            unsafe {
+                self.as_mut().sync_length_changed();
+            }
+        }
+    }
 
     pub fn handle_sync_loop_trigger(self: Pin<&mut CompositeLoopBackend>, cycle_nr: i32) {}
 
@@ -103,14 +159,45 @@ impl CompositeLoopBackend {
         }
     }
 
+    pub fn update_length(mut self: Pin<&mut Self>) {
+        trace!(self, "update length");
+        let length = self.sync_length * self.n_cycles;
+        if length != self.length {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.length = length;
+            unsafe {
+                self.as_mut().length_changed();
+            }
+        }
+    }
+
+    pub fn update_position(self: Pin<&mut CompositeLoopBackend>) {
+        trace!(self, "update position");
+        let mut v = max(0, self.iteration) * self.sync_length;
+        if is_running_mode(LoopMode::try_from(self.mode).unwrap()) {
+            v += self.sync_position;
+        }
+        if v != self.position {
+            trace!(self, "position -> {v}");
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.position = v;
+            unsafe {
+                self.as_mut().position_changed();
+            }
+        }
+    }
+
     pub fn update_n_cycles(mut self: Pin<&mut Self>) {
         let highest_iteration = *self.schedule.data.keys().max().unwrap_or(&0);
         if self.n_cycles != highest_iteration {
-            debug!(self, "n_cycles -> {highest_iteration}");
-            let self_mut = self.as_mut();
-            let mut rust_mut = self_mut.rust_mut();
-            rust_mut.n_cycles = highest_iteration;
-            unsafe { self.n_cycles_changed() };
+            debug!(self, "n cycles -> {highest_iteration}");
+            {
+                let self_mut = self.as_mut();
+                let mut rust_mut = self_mut.rust_mut();
+                rust_mut.n_cycles = highest_iteration;
+                unsafe { self.as_mut().n_cycles_changed() };
+            }
+            self.as_mut().update_length();
         }
     }
 
