@@ -4,7 +4,7 @@
 # build stuff
 build-essential
 git
-cmake/bookworm-backports
+cmake
 ninja-build
 pkgconf
 lcov
