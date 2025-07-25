@@ -22,3 +22,6 @@ mod loop_mode_helpers;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod engine_update_thread;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod test_results;

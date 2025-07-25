@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use cxx_qt_lib_shoop::qobject::AsQObject;
+use test_results::TestResults;
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -25,6 +26,7 @@ pub mod ffi {
             test_filter_pattern: QString,
             application: *mut QObject,
             list_only: bool,
+            xml_report: QString,
         ) -> bool;
 
         #[qinvokable]
@@ -70,25 +72,6 @@ impl AsQObject for ffi::TestFileRunner {
     }
 }
 
-#[derive(Debug)]
-pub enum ResultStatus {
-    Pass,
-    Fail,
-    Skip,
-}
-
-pub struct TestFnResult {
-    pub name: String,
-    pub result: ResultStatus,
-}
-
-#[derive(Default)]
-pub struct TestCaseResults {
-    pub name: String,
-    pub fn_results: Vec<TestFnResult>,
-}
-pub type TestResults = Vec<TestCaseResults>;
-
 pub struct TestFileRunnerRust {
     pub running_testcase: Option<String>,
     pub current_testcase_done: bool,
@@ -97,6 +80,7 @@ pub struct TestFileRunnerRust {
     pub test_files_ran: Vec<PathBuf>,
     pub test_filter_pattern: cxx_qt_lib::QString,
     pub test_results: TestResults,
+    pub xml_report: Option<PathBuf>,
 }
 
 impl Default for TestFileRunnerRust {
@@ -109,6 +93,7 @@ impl Default for TestFileRunnerRust {
             test_files_ran: Vec::default(),
             test_filter_pattern: cxx_qt_lib::QString::from(""),
             test_results: TestResults::default(),
+            xml_report: None,
         }
     }
 }

@@ -1,6 +1,5 @@
-use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::{
-    ffi::*, ResultStatus, TestCaseResults, TestFnResult,
-};
+use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::ffi::*;
+use crate::test_results::*;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::qobject::qobject_property_qvariant;
 use cxx_qt_lib_shoop::qvariant_qvariantmap::qvariant_as_qvariantmap;
@@ -82,6 +81,20 @@ Totals:
             }
         }
 
+        if let Some(report_file) = &self.xml_report {
+            match self.test_results.serialize_xml() {
+                Ok(xml) => {
+                    info!("Writing XML report to {report_file:?}");
+                    if let Err(e) = std::fs::write(report_file, xml) {
+                        error!("Failed to write XML report: {e}");
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to serialize XML report: {e}");
+                }
+            }
+        }
+
         success
     }
 
@@ -118,6 +131,7 @@ Totals:
         test_filter_pattern: QString,
         _application: *mut QObject,
         list_only: bool,
+        xml_report: QString,
     ) -> bool {
         match (|| -> Result<(), anyhow::Error> {
             info!("Starting self-test runner.");
@@ -148,6 +162,10 @@ Totals:
             {
                 let mut rust_mut = self.as_mut().rust_mut();
                 rust_mut.test_files_to_run = all_test_files.clone();
+
+                if !xml_report.is_empty() {
+                    rust_mut.xml_report = Some(PathBuf::from(xml_report.to_string()));
+                }
             }
             self.as_mut().maybe_run_next_test_file();
 
@@ -192,7 +210,7 @@ Totals:
                             other => return Err(anyhow::anyhow!("Unknown test result {other}")),
                         };
                         debug!("found test function {name} result: {result:?}");
-                        testcase_results.fn_results.push(TestFnResult { name: name, result: result });
+                        testcase_results.fn_results.push(TestFnResult { name: name, class_name: testcase_name.to_string(), result: result });
                         Ok(())
                     })?;
                     our_results.push(testcase_results);

@@ -4,7 +4,7 @@
 # build stuff
 build-essential
 git
-cmake/bullseye-backports
+cmake/bookworm-backports
 ninja-build
 pkgconf
 lcov
@@ -15,7 +15,7 @@ libclang-dev
 desktop-file-utils
 strace
 mono-complete
-# autoconf  <-- built from source, too old on bullseye
+autoconf
 automake
 libtool
 bison

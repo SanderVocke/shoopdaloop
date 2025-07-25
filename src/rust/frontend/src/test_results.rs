@@ -1,36 +1,36 @@
 use serde;
 use serde::Serialize;
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub enum ResultStatus {
     Passed,
     Failed,
     Skipped,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct TestFnResult {
     #[serde(rename = "@name")]
-    name: String,
+    pub name: String,
     #[serde(rename = "@classname")]
-    class_name: String,
+    pub class_name: String,
     #[serde(flatten)]
-    status: ResultStatus,
+    pub status: ResultStatus,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct TestCaseResults {
     #[serde(rename = "@name")]
-    name: String,
+    pub name: String,
     #[serde(rename = "testcase")]
-    test_fn_results: Vec<TestFnResult>,
+    pub test_fn_results: Vec<TestFnResult>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug, Default)]
 #[serde(rename = "testsuites")]
 pub struct TestResults {
     #[serde(rename = "testsuite")]
-    test_case_results: Vec<TestCaseResults>,
+    pub test_case_results: Vec<TestCaseResults>,
 }
 
 impl TestResults {
