@@ -114,10 +114,87 @@ impl CompositeLoopGui {
                     // Connections: backend object -> GUI
                     connect_or_report(
                         backend_ref,
-                        "stateChanged(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,QList<QVariant>)".to_string(),
+                        "nCyclesChanged(::std::int32_t)".to_string(),
                         self_ref,
-                        "on_backend_state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,QList<QVariant>)".to_string(),
-                        connection_types::QUEUED_CONNECTION
+                        "on_backend_n_cycles_changed(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "syncLengthChanged(::std::int32_t)".to_string(),
+                        self_ref,
+                        "on_backend_sync_length_changed(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "iterationChanged(::std::int32_t)".to_string(),
+                        self_ref,
+                        "on_backend_iteration_changed(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "modeChanged(::std::int32_t)".to_string(),
+                        self_ref,
+                        "on_backend_mode_changed(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "syncPositionChanged(::std::int32_t)".to_string(),
+                        self_ref,
+                        "on_backend_sync_position_changed(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "nextModeChanged(::std::int32_t)".to_string(),
+                        self_ref,
+                        "on_backend_next_mode_changed(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "nextTransitionDelayChanged(::std::int32_t)".to_string(),
+                        self_ref,
+                        "on_backend_next_transition_delay_changed(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "runningLoopsChanged(QList<QVariant>)".to_string(),
+                        self_ref,
+                        "on_backend_running_loops_changed(QList<QVariant>)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "lengthChanged(::std::int32_t)".to_string(),
+                        self_ref,
+                        "on_backend_length_changed(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "positionChanged(::std::int32_t)".to_string(),
+                        self_ref,
+                        "on_backend_position_changed(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "initializedChanged(bool)".to_string(),
+                        self_ref,
+                        "on_backend_initialized_changed(bool)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "cycled(::std::int32_t)".to_string(),
+                        self_ref,
+                        "on_backend_cycled(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
                     );
                 }
                 {
@@ -205,21 +282,6 @@ impl CompositeLoopGui {
 
     pub fn get_schedule(self: &CompositeLoopGui) -> QMap_QString_QVariant {
         self.schedule.to_qvariantmap()
-    }
-
-    pub fn on_backend_state_changed(
-        self: Pin<&mut Self>,
-        mode: i32,
-        length: i32,
-        position: i32,
-        next_mode: i32,
-        next_transition_delay: i32,
-        cycle_nr: i32,
-        sync_position: i32,
-        sync_length: i32,
-        iteration: i32,
-        running_loops: QList_QVariant,
-    ) {
     }
 
     pub fn transition(
@@ -336,6 +398,123 @@ impl CompositeLoopGui {
         self.backend_loop_wrapper
             .data()
             .unwrap_or(std::ptr::null_mut())
+    }
+
+    pub fn on_backend_n_cycles_changed(mut self: Pin<&mut CompositeLoopGui>, n_cycles: i32) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        if n_cycles != rust_mut.n_cycles {
+            rust_mut.n_cycles = n_cycles;
+            unsafe {
+                self.n_cycles_changed();
+            }
+        }
+    }
+
+    pub fn on_backend_sync_length_changed(mut self: Pin<&mut CompositeLoopGui>, sync_length: i32) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        if sync_length != rust_mut.sync_length {
+            rust_mut.sync_length = sync_length;
+            unsafe {
+                self.sync_length_changed();
+            }
+        }
+    }
+
+    pub fn on_backend_iteration_changed(mut self: Pin<&mut CompositeLoopGui>, iteration: i32) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        if iteration != rust_mut.iteration {
+            rust_mut.iteration = iteration;
+            unsafe {
+                self.iteration_changed(iteration);
+            }
+        }
+    }
+
+    pub fn on_backend_mode_changed(mut self: Pin<&mut CompositeLoopGui>, mode: i32) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        if mode != rust_mut.mode {
+            rust_mut.mode = mode;
+            unsafe {
+                self.mode_changed();
+            }
+        }
+    }
+
+    pub fn on_backend_sync_position_changed(
+        mut self: Pin<&mut CompositeLoopGui>,
+        sync_position: i32,
+    ) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        if sync_position != rust_mut.sync_position {
+            rust_mut.sync_position = sync_position;
+            unsafe {
+                self.sync_position_changed();
+            }
+        }
+    }
+
+    pub fn on_backend_next_mode_changed(mut self: Pin<&mut CompositeLoopGui>, next_mode: i32) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        if next_mode != rust_mut.next_mode {
+            rust_mut.next_mode = next_mode;
+            unsafe {
+                self.next_mode_changed();
+            }
+        }
+    }
+
+    pub fn on_backend_next_transition_delay_changed(
+        mut self: Pin<&mut CompositeLoopGui>,
+        next_transition_delay: i32,
+    ) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        if next_transition_delay != rust_mut.next_transition_delay {
+            rust_mut.next_transition_delay = next_transition_delay;
+            unsafe {
+                self.next_transition_delay_changed();
+            }
+        }
+    }
+
+    pub fn on_backend_running_loops_changed(
+        mut self: Pin<&mut CompositeLoopGui>,
+        running_loops: QList_QVariant,
+    ) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        if running_loops != rust_mut.running_loops {
+            rust_mut.running_loops = running_loops.clone();
+            unsafe {
+                self.running_loops_changed();
+            }
+        }
+    }
+
+    pub fn on_backend_length_changed(mut self: Pin<&mut CompositeLoopGui>, length: i32) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        if length != rust_mut.length {
+            rust_mut.length = length;
+            unsafe{ self.length_changed(); }
+        }
+    }
+
+    pub fn on_backend_position_changed(mut self: Pin<&mut CompositeLoopGui>, position: i32) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        if position != rust_mut.position {
+            rust_mut.position = position;
+            unsafe{ self.position_changed(); }
+        }
+    }
+
+    pub fn on_backend_cycled(self: Pin<&mut CompositeLoopGui>, cycle_nr: i32) {
+        self.cycled(cycle_nr);
+    }
+
+    pub fn on_backend_initialized_changed(mut self: Pin<&mut Self>, initialized: bool) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        if initialized != rust_mut.initialized {
+            rust_mut.initialized = initialized;
+            unsafe{ self.initialized_changed(initialized); }
+        }
     }
 }
 

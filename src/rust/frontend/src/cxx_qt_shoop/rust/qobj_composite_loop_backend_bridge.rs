@@ -122,22 +122,6 @@ pub mod ffi {
         pub fn update_position(self: Pin<&mut CompositeLoopBackend>);
 
         #[qsignal]
-        #[cxx_name = "stateChanged"]
-        fn state_changed(
-            self: Pin<&mut CompositeLoopBackend>,
-            mode: i32,
-            length: i32,
-            position: i32,
-            next_mode: i32,
-            next_transition_delay: i32,
-            cycle_nr: i32,
-            sync_position: i32,
-            sync_length: i32,
-            iteration: i32,
-            running_loops: QList_QVariant,
-        );
-
-        #[qsignal]
         #[cxx_name = "scheduleChanged"]
         pub unsafe fn schedule_changed(
             self: Pin<&mut CompositeLoopBackend>,
@@ -176,51 +160,51 @@ pub mod ffi {
 
         #[qsignal]
         #[cxx_name = "nextModeChanged"]
-        pub unsafe fn next_mode_changed(self: Pin<&mut CompositeLoopBackend>);
+        pub unsafe fn next_mode_changed(self: Pin<&mut CompositeLoopBackend>, next_mode: i32);
 
         #[qsignal]
         #[cxx_name = "modeChanged"]
-        pub unsafe fn mode_changed(self: Pin<&mut CompositeLoopBackend>);
+        pub unsafe fn mode_changed(self: Pin<&mut CompositeLoopBackend>, mode: i32);
 
         #[qsignal]
         #[cxx_name = "lengthChanged"]
-        pub unsafe fn length_changed(self: Pin<&mut CompositeLoopBackend>);
+        pub unsafe fn length_changed(self: Pin<&mut CompositeLoopBackend>, length: i32);
 
         #[qsignal]
         #[cxx_name = "positionChanged"]
-        pub unsafe fn position_changed(self: Pin<&mut CompositeLoopBackend>);
+        pub unsafe fn position_changed(self: Pin<&mut CompositeLoopBackend>, position: i32);
 
         #[qsignal]
         #[cxx_name = "nextTransitionDelayChanged"]
-        pub unsafe fn next_transition_delay_changed(self: Pin<&mut CompositeLoopBackend>);
+        pub unsafe fn next_transition_delay_changed(self: Pin<&mut CompositeLoopBackend>, next_transition_delay: i32);
 
         #[qsignal]
         #[cxx_name = "nCyclesChanged"]
-        pub unsafe fn n_cycles_changed(self: Pin<&mut CompositeLoopBackend>);
+        pub unsafe fn n_cycles_changed(self: Pin<&mut CompositeLoopBackend>, n_cycles: i32);
 
         #[qsignal]
         #[cxx_name = "syncPositionChanged"]
-        pub unsafe fn sync_position_changed(self: Pin<&mut CompositeLoopBackend>);
+        pub unsafe fn sync_position_changed(self: Pin<&mut CompositeLoopBackend>, sync_position: i32);
 
         #[qsignal]
         #[cxx_name = "syncLengthChanged"]
-        pub unsafe fn sync_length_changed(self: Pin<&mut CompositeLoopBackend>);
+        pub unsafe fn sync_length_changed(self: Pin<&mut CompositeLoopBackend>, sync_length: i32);
 
         #[qsignal]
         #[cxx_name = "runningLoopsChanged"]
-        pub unsafe fn running_loops_changed(self: Pin<&mut CompositeLoopBackend>);
+        pub unsafe fn running_loops_changed(self: Pin<&mut CompositeLoopBackend>, running_loops: QList_QVariant);
 
         #[qsignal]
         #[cxx_name = "playAfterRecordChanged"]
-        pub unsafe fn play_after_record_changed(self: Pin<&mut CompositeLoopBackend>);
+        pub unsafe fn play_after_record_changed(self: Pin<&mut CompositeLoopBackend>, play_after_record: bool);
 
         #[qsignal]
         #[cxx_name = "syncModeActiveChanged"]
-        pub unsafe fn sync_mode_active_changed(self: Pin<&mut CompositeLoopBackend>);
+        pub unsafe fn sync_mode_active_changed(self: Pin<&mut CompositeLoopBackend>, sync_mode_active: bool);
 
         #[qsignal]
         #[cxx_name = "kindChanged"]
-        pub unsafe fn kind_changed(self: Pin<&mut CompositeLoopBackend>);
+        pub unsafe fn kind_changed(self: Pin<&mut CompositeLoopBackend>, kind: QString);
 
         #[qsignal]
         fn cycled(self: Pin<&mut CompositeLoopBackend>, cycle_nr: i32);

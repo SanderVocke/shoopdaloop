@@ -105,21 +105,6 @@ pub mod ffi {
         #[qinvokable]
         pub fn get_backend_loop_wrapper(self: Pin<&mut CompositeLoopGui>) -> *mut QObject;
 
-        #[qinvokable]
-        pub fn on_backend_state_changed(
-            self: Pin<&mut CompositeLoopGui>,
-            mode: i32,
-            length: i32,
-            position: i32,
-            next_mode: i32,
-            next_transition_delay: i32,
-            cycle_nr: i32,
-            sync_position: i32,
-            sync_length: i32,
-            iteration: i32,
-            running_loops: QList_QVariant,
-        );
-
         #[qsignal]
         #[cxx_name = "backendChanged"]
         pub unsafe fn backend_changed(self: Pin<&mut CompositeLoopGui>, backend: *mut QObject);
@@ -245,6 +230,51 @@ pub mod ffi {
             self: Pin<&mut CompositeLoopGui>,
             sync_source: *mut QObject,
         );
+
+        #[qinvokable]
+        pub fn on_backend_n_cycles_changed(self: Pin<&mut CompositeLoopGui>, n_cycles: i32);
+
+        #[qinvokable]
+        pub fn on_backend_sync_length_changed(self: Pin<&mut CompositeLoopGui>, sync_length: i32);
+
+        #[qinvokable]
+        pub fn on_backend_iteration_changed(self: Pin<&mut CompositeLoopGui>, iteration: i32);
+
+        #[qinvokable]
+        pub fn on_backend_mode_changed(self: Pin<&mut CompositeLoopGui>, mode: i32);
+
+        #[qinvokable]
+        pub fn on_backend_sync_position_changed(
+            self: Pin<&mut CompositeLoopGui>,
+            sync_position: i32,
+        );
+
+        #[qinvokable]
+        pub fn on_backend_next_mode_changed(self: Pin<&mut CompositeLoopGui>, next_mode: i32);
+
+        #[qinvokable]
+        pub fn on_backend_next_transition_delay_changed(
+            self: Pin<&mut CompositeLoopGui>,
+            next_transition_delay: i32,
+        );
+
+        #[qinvokable]
+        pub fn on_backend_running_loops_changed(
+            self: Pin<&mut CompositeLoopGui>,
+            running_loops: QList_QVariant,
+        );
+
+        #[qinvokable]
+        pub fn on_backend_length_changed(self: Pin<&mut CompositeLoopGui>, length: i32);
+
+        #[qinvokable]
+        pub fn on_backend_position_changed(self: Pin<&mut CompositeLoopGui>, position: i32);
+
+        #[qinvokable]
+        pub fn on_backend_cycled(self: Pin<&mut CompositeLoopGui>, cycle_nr: i32);
+
+        #[qinvokable]
+        pub fn on_backend_initialized_changed(self: Pin<&mut CompositeLoopGui>, initialized: bool);
     }
 
     unsafe extern "C++" {
