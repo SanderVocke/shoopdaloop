@@ -1,7 +1,10 @@
-use cxx_qt_lib_shoop::{qobject::QObject, qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr}, qvariant_qvariantlist::{qvariant_as_qvariantlist, qvariantlist_as_qvariant}, qvariant_qvariantmap::qvariantmap_as_qvariant};
+use cxx_qt_lib_shoop::qobject::QObject;
+use cxx_qt_lib_shoop::qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr};
+use cxx_qt_lib_shoop::qvariant_qvariantlist::{qvariant_as_qvariantlist, qvariantlist_as_qvariant};
+use cxx_qt_lib_shoop::qvariant_qvariantmap::{qvariant_as_qvariantmap, qvariantmap_as_qvariant};
 use cxx_qt_lib::{QMap, QList, QVariant, QMapPair_QString_QVariant, QString};
 use std::collections::{HashMap, HashSet};
-use shoop_py_backend::shoop_loop::LoopMode;
+use backend_bindings::LoopMode;
 use anyhow;
 
 type QVariantMap = QMap<QMapPair_QString_QVariant>;
@@ -16,6 +19,7 @@ pub struct CompositeLoopIterationEvents {
 
 pub type CompositeLoopIteration = i32;
 
+#[derive(Default)]
 pub struct CompositeLoopSchedule {
     pub data : HashMap<CompositeLoopIteration, CompositeLoopIterationEvents>
 }
@@ -52,8 +56,14 @@ impl CompositeLoopIterationEvents {
         map
     }
 
+    pub fn to_qvariant(&self) -> QVariant {
+        let map = self.to_qvariantmap();
+        qvariantmap_as_qvariant(&map).unwrap()
+    }
+
     pub fn from_qvariantmap(map : &QVariantMap) -> Result<Self, anyhow::Error> {
         let mut result = Self::default();
+
         match map.get(&QString::from("loops_start")) {
             Some(loops_start) => {
                 let loops_start = qvariant_as_qvariantlist(&loops_start)?;
@@ -63,13 +73,42 @@ impl CompositeLoopIterationEvents {
                     let loop_mode = entry.get(1).ok_or(anyhow::anyhow!("No loop mode entry in schedule elem"))?;
                     let loop_start = qvariant_to_qobject_ptr(loop_start).ok_or(anyhow::anyhow!("Loop start entry is not an object ptr"))?;
                     let loop_mode = loop_mode.value::<i32>().ok_or(anyhow::anyhow!("Loop mode is not an integer"))?;
-                    todo!();
+                    let loop_mode : LoopMode = LoopMode::try_from(loop_mode)?;
+                    result.loops_start.insert(loop_start, loop_mode);
                 }
             },
             None => return Err(anyhow::anyhow!("CompositeLoopSchedule: missing loops_start")),
         }
 
+        match map.get(&QString::from("loops_end")) {
+            Some(loops_end) => {
+                let loops_end = qvariant_as_qvariantlist(&loops_end)?;
+                for entry in loops_end.iter() {
+                    let object = qvariant_to_qobject_ptr(&entry).ok_or(anyhow::anyhow!("loop in loops_end is not a QObject"))?;
+                    result.loops_end.insert(object);
+                }
+            },
+            None => return Err(anyhow::anyhow!("CompositeLoopSchedule: missing loops_end")),
+        }
+
+        match map.get(&QString::from("loops_ignored")) {
+            Some(loops_ignored) => {
+                let loops_ignored = qvariant_as_qvariantlist(&loops_ignored)?;
+                for entry in loops_ignored.iter() {
+                    let object = qvariant_to_qobject_ptr(&entry).ok_or(anyhow::anyhow!("loop in loops_ignored is not a QObject"))?;
+                    result.loops_ignored.insert(object);
+                }
+            },
+            None => return Err(anyhow::anyhow!("CompositeLoopSchedule: missing loops_ignored")),
+        }
+
         Ok(result)
+    }
+
+    pub fn from_qvariant(qvariant: &QVariant) -> Result<Self, anyhow::Error> {
+        let map = qvariant_as_qvariantmap(qvariant)
+            .map_err(|e| anyhow::anyhow!("CompositeLoopSchedule: could not convert to QVariantMap: {e}"))?;
+        Self::from_qvariantmap(&map)
     }
 }
 
@@ -79,12 +118,22 @@ impl CompositeLoopSchedule {
         // we stringify the integer keys.
         let mut map : QVariantMap = QMap::default();
         for (iteration, events) in &self.data {
-            let events_map : QVariantMap = events.to_qvariantmap();
-            let events = qvariantmap_as_qvariant(&events_map).unwrap();
+            let events = events.to_qvariant();
             let key = QString::from(format!("{iteration}"));
             map.insert(key, events);
         }
 
         map
+    }
+
+    pub fn from_qvariantmap(map : &QVariantMap) -> Result<Self, anyhow::Error> {
+        let mut result = CompositeLoopSchedule::default();
+        for (key, value) in map.iter() {
+            let iteration = key.to_string().parse::<CompositeLoopIteration>()?;
+            let events = CompositeLoopIterationEvents::from_qvariant(&value)?;
+            result.data.insert(iteration, events);
+        }
+
+        Ok(result)
     }
 }

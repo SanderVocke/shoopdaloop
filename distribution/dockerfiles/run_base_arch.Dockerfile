@@ -4,6 +4,8 @@ FROM archlinux:base-devel
 WORKDIR /root
 USER root
 
+COPY dependencies dependencies
+
 RUN pacman --noconfirm -Syy && \
     pacman --noconfirm -Syu
 RUN pacman --noconfirm -S --needed --overwrite "*" $(dependencies/get_dependencies.sh run_base_arch)

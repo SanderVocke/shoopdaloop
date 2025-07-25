@@ -59,20 +59,23 @@ pub mod ffi {
         #[qobject]
         #[qml_element]
         #[base = QQuickItem]
-        #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        // Backend -> Frontend properties
         #[qproperty(bool, initialized, READ, NOTIFY=initialized_changed)]
         #[qproperty(i32, mode, READ, NOTIFY=mode_changed)]
         #[qproperty(i32, length, READ, NOTIFY=length_changed)]
         #[qproperty(i32, position, READ, NOTIFY=position_changed)]
         #[qproperty(i32, next_mode, READ, NOTIFY=next_mode_changed)]
         #[qproperty(i32, next_transition_delay, READ, NOTIFY=next_transition_delay_changed)]
-        #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
-        #[qproperty(*mut QObject, backend_loop_wrapper, READ=get_backend_loop_wrapper)]
         #[qproperty(QList_f32, display_peaks, READ, NOTIFY)]
         #[qproperty(i32, display_midi_notes_active, READ, NOTIFY)]
         #[qproperty(i32, display_midi_events_triggered, READ, NOTIFY)]
-        #[qproperty(QString, instance_identifier, READ, WRITE=set_instance_identifier, NOTIFY=instance_identifier_changed)]
         #[qproperty(i32, cycle_nr, READ, NOTIFY)]
+        // Frontend -> Backend properties
+        #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
+        #[qproperty(QString, instance_identifier, READ, WRITE=set_instance_identifier, NOTIFY=instance_identifier_changed)]
+        // Other properties
+        #[qproperty(*mut QObject, backend_loop_wrapper, READ=get_backend_loop_wrapper)]
         type LoopGui = super::LoopGuiRust;
 
         pub fn initialize_impl(self: Pin<&mut LoopGui>);
