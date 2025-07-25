@@ -5,7 +5,7 @@ use cxx_qt_lib_shoop::qobject::QObject;
 use cxx_qt_lib_shoop::qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr};
 use cxx_qt_lib_shoop::qvariant_qvariantlist::{qvariant_as_qvariantlist, qvariantlist_as_qvariant};
 use cxx_qt_lib_shoop::qvariant_qvariantmap::{qvariant_as_qvariantmap, qvariantmap_as_qvariant};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 type QVariantMap = QMap<QMapPair_QString_QVariant>;
 type QVariantList = QList<QVariant>;
@@ -21,7 +21,7 @@ pub type CompositeLoopIteration = i32;
 
 #[derive(Default, PartialEq, Clone)]
 pub struct CompositeLoopSchedule {
-    pub data: HashMap<CompositeLoopIteration, CompositeLoopIterationEvents>,
+    pub data: BTreeMap<CompositeLoopIteration, CompositeLoopIterationEvents>,
 }
 
 impl CompositeLoopIterationEvents {

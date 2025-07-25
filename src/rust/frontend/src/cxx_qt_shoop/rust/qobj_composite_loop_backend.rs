@@ -2,6 +2,7 @@ use crate::{
     composite_loop_schedule::CompositeLoopSchedule,
     cxx_qt_shoop::qobj_composite_loop_backend_bridge::ffi::*, loop_mode_helpers::is_running_mode,
 };
+use backend_bindings::LoopMode;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
@@ -11,7 +12,6 @@ use cxx_qt_lib_shoop::{
     connection_types,
     qobject::{ffi::qobject_property_int, AsQObject},
 };
-use backend_bindings::LoopMode;
 use std::{cmp::max, collections::HashSet, hash::Hash, pin::Pin};
 shoop_log_unit!("Frontend.CompositeLoop");
 
@@ -39,12 +39,103 @@ macro_rules! error {
 impl CompositeLoopBackend {
     pub fn initialize_impl(mut self: Pin<&mut Self>) {}
 
+    pub fn list_transitions(
+        self: Pin<&mut Self>,
+        mode: LoopMode,
+        start_cycle: i32,
+        end_cycle: i32,
+    ) {
+        todo!();
+    }
+
+    pub fn transition_with_immediate_sync(self: Pin<&mut Self>, to_mode: i32, sync_at_cycle: i32) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            todo!();
+        }() {
+            error!(
+                self,
+                "Could not perform transition with immediate sync: {e}"
+            );
+        }
+    }
+
+    pub fn transition_regular(mut self: Pin<&mut Self>, to_mode: i32, delay: Option<i32>) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let our_mode = LoopMode::try_from(self.mode)?;
+            let to_mode = LoopMode::try_from(to_mode)?;
+
+            let iteration = if !is_running_mode(our_mode) && is_running_mode(to_mode) {
+                -1
+            } else {
+                self.iteration
+            };
+            let next_transition_delay = delay.unwrap_or(0);
+            let next_mode = to_mode;
+
+            self.as_mut().set_iteration(iteration);
+            self.as_mut().set_next_mode(next_mode as isize as i32);
+            self.as_mut()
+                .set_next_transition_delay(next_transition_delay);
+
+            Ok(())
+        }() {
+            error!(self, "Could not perform transition: {e}");
+        }
+    }
+
+    pub fn set_iteration(mut self: Pin<&mut Self>, iteration: i32) {
+        if iteration != self.iteration {
+            debug!(self, "iteration -> {iteration}");
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.iteration = iteration;
+            unsafe {
+                self.as_mut().iteration_changed(iteration);
+            }
+        }
+    }
+
+    pub fn set_next_mode(mut self: Pin<&mut Self>, next_mode: i32) {
+        if next_mode != self.next_mode {
+            debug!(self, "next mode -> {next_mode}");
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.next_mode = next_mode;
+            unsafe {
+                self.as_mut().next_mode_changed();
+            }
+        }
+    }
+
+    pub fn set_next_transition_delay(mut self: Pin<&mut Self>, next_transition_delay: i32) {
+        if next_transition_delay != self.next_transition_delay {
+            debug!(self, "next transition delay -> {next_transition_delay}");
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.next_transition_delay = next_transition_delay;
+            unsafe {
+                self.as_mut().next_transition_delay_changed();
+            }
+        }
+    }
+
     pub fn transition(
         self: Pin<&mut Self>,
         to_mode: i32,
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
+        debug!(self, "transition -> {to_mode}: wait {maybe_cycles_delay:?}, align @ {maybe_to_sync_at_cycle:?}");
+        let maybe_cycles_delay = match maybe_cycles_delay {
+            v if v < 0 => None,
+            other => Some(other),
+        };
+        let maybe_to_sync_at_cycle = match maybe_to_sync_at_cycle {
+            v if v < 0 => None,
+            other => Some(other),
+        };
+        if maybe_to_sync_at_cycle.is_some() {
+            self.transition_with_immediate_sync(to_mode, maybe_to_sync_at_cycle.unwrap());
+        } else {
+            self.transition_regular(to_mode, maybe_cycles_delay);
+        }
     }
 
     pub fn adopt_ringbuffers(
@@ -57,7 +148,7 @@ impl CompositeLoopBackend {
     }
 
     fn all_loops(self: &Self) -> HashSet<*mut QObject> {
-        let mut result : HashSet<*mut QObject> = HashSet::new();
+        let mut result: HashSet<*mut QObject> = HashSet::new();
         for (iteration, events) in self.schedule.data.iter() {
             for (l, _mode) in events.loops_start.iter() {
                 result.insert(*l);
@@ -102,6 +193,8 @@ impl CompositeLoopBackend {
                 "handle_sync_loop_trigger(int)".to_string(),
                 connection_types::DIRECT_CONNECTION,
             );
+            self.as_mut().update_sync_position();
+            self.as_mut().update_sync_length();
             self.sync_source_changed(sync_source);
         }
     }
@@ -112,8 +205,12 @@ impl CompositeLoopBackend {
         unsafe {
             if !self.sync_source.is_null() {
                 match qobject_property_int(&*self.sync_source, "position".to_string()) {
-                    Ok(pos) => { v = pos; },
-                    Err(e) => { error!(self, "Unable to get sync loop position: {e}"); }
+                    Ok(pos) => {
+                        v = pos;
+                    }
+                    Err(e) => {
+                        error!(self, "Unable to get sync loop position: {e}");
+                    }
                 }
             }
         }
@@ -133,8 +230,12 @@ impl CompositeLoopBackend {
         unsafe {
             if !self.sync_source.is_null() {
                 match qobject_property_int(&*self.sync_source, "length".to_string()) {
-                    Ok(l) => { v = l; },
-                    Err(e) => { error!(self, "Unable to get sync loop length: {e}"); }
+                    Ok(l) => {
+                        v = l;
+                    }
+                    Err(e) => {
+                        error!(self, "Unable to get sync loop length: {e}");
+                    }
                 }
             }
         }
@@ -171,7 +272,7 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub fn update_position(self: Pin<&mut CompositeLoopBackend>) {
+    pub fn update_position(mut self: Pin<&mut CompositeLoopBackend>) {
         trace!(self, "update position");
         let mut v = max(0, self.iteration) * self.sync_length;
         if is_running_mode(LoopMode::try_from(self.mode).unwrap()) {
@@ -266,4 +367,16 @@ impl CompositeLoopBackend {
     }
 
     pub fn clear(self: Pin<&mut CompositeLoopBackend>) {}
+
+    pub fn do_triggers(
+        self: Pin<&mut Self>,
+        iteration: i32,
+        mode: LoopMode,
+        trigger_callback: Option<bool>,
+        nested: bool,
+    ) {
+        let schedule = &self.schedule;
+        let kind = self.kind.to_string();
+        debug!(self, "{kind} composite loop - do triggers ({iteration}, {mode:?})")
+    }
 }
