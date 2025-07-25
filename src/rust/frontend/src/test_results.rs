@@ -18,7 +18,7 @@ pub struct TestFnResult {
     pub status: ResultStatus,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Default)]
 pub struct TestCaseResults {
     #[serde(rename = "@name")]
     pub name: String,
@@ -34,7 +34,7 @@ pub struct TestResults {
 }
 
 impl TestResults {
-    pub fn serialize_xml<W>(&self) -> Result<String, anyhow::Error> {
+    pub fn serialize_xml(&self) -> Result<String, anyhow::Error> {
         serde_xml_rs::to_string(self).map_err(|e| e.into())
     }
 }

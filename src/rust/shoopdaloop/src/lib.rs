@@ -18,6 +18,3 @@ pub mod global_qml_settings;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod audio_driver_names;
-
-#[cfg(not(feature = "prebuild"))]
-pub mod test_results;

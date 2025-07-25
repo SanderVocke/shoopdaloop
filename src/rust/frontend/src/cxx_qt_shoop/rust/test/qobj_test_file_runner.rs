@@ -23,21 +23,24 @@ impl TestFileRunner {
         let mut skipped_cases: Vec<String> = Vec::default();
         let mut passed_cases: Vec<String> = Vec::default();
 
-        self.test_results.iter().for_each(|testcase_results| {
-            let testcase_name = &testcase_results.name;
-            testcase_results
-                .fn_results
-                .iter()
-                .for_each(|fn_result: &TestFnResult| {
-                    let fn_name = &fn_result.name;
-                    let full_name = format!("{testcase_name}::{fn_name}");
-                    match fn_result.result {
-                        ResultStatus::Pass => passed_cases.push(full_name),
-                        ResultStatus::Skip => skipped_cases.push(full_name),
-                        ResultStatus::Fail => failed_cases.push(full_name),
-                    }
-                })
-        });
+        self.test_results
+            .test_case_results
+            .iter()
+            .for_each(|testcase_results| {
+                let testcase_name = &testcase_results.name;
+                testcase_results
+                    .test_fn_results
+                    .iter()
+                    .for_each(|fn_result: &TestFnResult| {
+                        let fn_name = &fn_result.name;
+                        let full_name = format!("{testcase_name}::{fn_name}");
+                        match fn_result.status {
+                            ResultStatus::Passed => passed_cases.push(full_name),
+                            ResultStatus::Skipped => skipped_cases.push(full_name),
+                            ResultStatus::Failed => failed_cases.push(full_name),
+                        }
+                    })
+            });
 
         let n_failed = failed_cases.len() as i32;
         let n_passed = passed_cases.len() as i32;
@@ -204,16 +207,16 @@ Totals:
                     fn_results.iter().try_for_each(|(testfn_name, testfn_content)| -> Result<(), anyhow::Error> {
                         let name = testfn_name.to_string();
                         let result = match testfn_content.value::<QString>().ok_or(anyhow::anyhow!("QVariant not convertible to QString"))?.to_string().as_str() {
-                            "pass" => ResultStatus::Pass,
-                            "fail" => ResultStatus::Fail,
-                            "skip" => ResultStatus::Skip,
+                            "pass" => ResultStatus::Passed,
+                            "fail" => ResultStatus::Failed,
+                            "skip" => ResultStatus::Skipped,
                             other => return Err(anyhow::anyhow!("Unknown test result {other}")),
                         };
                         debug!("found test function {name} result: {result:?}");
-                        testcase_results.fn_results.push(TestFnResult { name: name, class_name: testcase_name.to_string(), result: result });
+                        testcase_results.test_fn_results.push(TestFnResult { name: name, class_name: testcase_name.to_string(), status: result });
                         Ok(())
                     })?;
-                    our_results.push(testcase_results);
+                    our_results.test_case_results.push(testcase_results);
                     Ok(())
                 }).unwrap();
             }

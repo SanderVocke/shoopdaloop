@@ -272,6 +272,10 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                             ),
                             app_qobj,
                             cli_args.self_test_options.list,
+                            match cli_args.self_test_options.junit_xml.as_ref() {
+                                Some(path) => QString::from(path),
+                                None => QString::from(""),
+                            },
                         );
                     }
                 });

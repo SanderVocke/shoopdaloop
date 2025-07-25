@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
+use crate::test_results::TestResults;
 use cxx_qt_lib_shoop::qobject::AsQObject;
-use test_results::TestResults;
 
 #[cxx_qt::bridge]
 pub mod ffi {
