@@ -3,6 +3,7 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.PythonCompositeLoop
+import ShoopDaLoop.Rust
 
 import ShoopConstants
 import 'js/mode_helpers.js' as ModeHelpers
@@ -20,7 +21,7 @@ Item {
     property string obj_id : 'unknown'
     property var loop_widget : null
 
-    onObj_idChanged: py_loop.instanceIdentifier = obj_id
+    onObj_idChanged: py_loop.instance_identifier = obj_id
 
     readonly property bool initialized: true
 
@@ -44,9 +45,10 @@ Item {
     property alias py_loop : py_loop
     property alias backend : py_loop.backend
 
-    PythonCompositeLoop {
+    // PythonCompositeLoop {
+    CompositeLoopGui {
         id: py_loop
-        sync_loop: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
+        sync_source: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
         schedule: root.schedule
         play_after_record: registries.state_registry.play_after_record_active
         sync_mode_active: registries.state_registry.sync_active
@@ -264,7 +266,9 @@ Item {
             let starts = v.loops_start
             delete v.loop_modes
             delete v.loops_start
-            v.loops_start = starts.map(l => [l, modes[l]])
+            v.loops_start = starts.map(l => {
+                return [l, modes[l]]
+            })
         }
 
         // Stringify the keys.
@@ -275,7 +279,7 @@ Item {
             }
         }
 
-        root.logger.trace(() => `full schedule:\n${
+        root.logger.trace(`full schedule:\n${
             Array.from(Object.entries(_schedule)).map(([k,v]) => 
                 `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l[0].obj_id + ` @ mode ${l[1]}`)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
             ).join("\n")

@@ -82,98 +82,104 @@ impl LoopGui {
                 let backend_thread_wrapper =
                     &*engine_update_thread::get_engine_update_thread().ref_qobject_ptr();
 
-                // Connections : update thread -> backend object
-                connect_or_report(
-                    backend_thread_wrapper,
-                    "update()".to_string(),
-                    backend_ref,
-                    "update()".to_string(),
-                    connection_types::DIRECT_CONNECTION,
-                );
-
-                // Connections : GUI -> GUI
-
-                // Connections : backend object -> GUI
-                connect_or_report(
-                    backend_ref,
-                    "stateChanged(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                    self_ref,
-                    "on_backend_state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                    connection_types::QUEUED_CONNECTION);
-
-                // Connections : GUI -> backend object
-                connect_or_report(
-                    self_ref,
-                    "backend_set_position(::std::int32_t)".to_string(),
-                    backend_ref,
-                    "set_position(::std::int32_t)".to_string(),
-                    connection_types::QUEUED_CONNECTION,
-                );
-                connect_or_report(
-                    self_ref,
-                    "backend_set_length(::std::int32_t)".to_string(),
-                    backend_ref,
-                    "set_length(::std::int32_t)".to_string(),
-                    connection_types::QUEUED_CONNECTION,
-                );
-                connect_or_report(
-                    self_ref,
-                    "backend_clear(::std::int32_t)".to_string(),
-                    backend_ref,
-                    "clear(::std::int32_t)".to_string(),
-                    connection_types::QUEUED_CONNECTION,
-                );
-                connect_or_report(
-                    self_ref,
-                    "backend_transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                    backend_ref,
-                    "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                    connection_types::QUEUED_CONNECTION,
-                );
-                connect_or_report(
-                    self_ref,
-                    "backend_adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)"
-                        .to_string(),
-                    backend_ref,
-                    "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)".to_string(),
-                    connection_types::QUEUED_CONNECTION,
-                );
-                connect_or_report(
+                {
+                    // Connections : update thread -> backend object
+                    connect_or_report(
+                        backend_thread_wrapper,
+                        "update()".to_string(),
+                        backend_ref,
+                        "update()".to_string(),
+                        connection_types::DIRECT_CONNECTION,
+                    );
+                }
+                {
+                    // Connections : backend object -> GUI
+                    connect_or_report(
+                        backend_ref,
+                        "stateChanged(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        self_ref,
+                        "on_backend_state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION
+                    );
+                }
+                {
+                    // Connections : GUI -> backend object
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_position(::std::int32_t)".to_string(),
+                        backend_ref,
+                        "set_position(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_length(::std::int32_t)".to_string(),
+                        backend_ref,
+                        "set_length(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_clear(::std::int32_t)".to_string(),
+                        backend_ref,
+                        "clear(::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_transition(::std::int32_t,::std::int32_t,::std::int32_t)"
+                            .to_string(),
+                        backend_ref,
+                        "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)"
+                            .to_string(),
+                        backend_ref,
+                        "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
                     self_ref,
                     "backend_transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
                     backend_ref,
                     "transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
                     connection_types::QUEUED_CONNECTION);
-                connect_or_report(
-                    self_ref,
-                    "backendChanged(QObject*)".to_string(),
-                    backend_ref,
-                    "set_backend(QObject*)".to_string(),
-                    connection_types::QUEUED_CONNECTION,
-                );
-                connect_or_report(
-                    self_ref,
-                    "instanceIdentifierChanged(QString)".to_string(),
-                    backend_ref,
-                    "set_instance_identifier(QString)".to_string(),
-                    connection_types::QUEUED_CONNECTION,
-                );
-                connect_or_report(
-                    self_ref,
-                    "backend_set_sync_source(QVariant)".to_string(),
-                    backend_ref,
-                    "set_sync_source(QVariant)".to_string(),
-                    connection_types::QUEUED_CONNECTION,
-                );
+                    connect_or_report(
+                        self_ref,
+                        "backendChanged(QObject*)".to_string(),
+                        backend_ref,
+                        "set_backend(QObject*)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "instanceIdentifierChanged(QString)".to_string(),
+                        backend_ref,
+                        "set_instance_identifier(QString)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_sync_source(QVariant)".to_string(),
+                        backend_ref,
+                        "set_sync_source(QVariant)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                }
 
-                // Connections : backend object -> GUI
-                connect_or_report(
-                    backend_ref,
-                    "initializedChanged(bool)".to_string(),
-                    self_ref,
-                    "set_initialized(bool)".to_string(),
-                    connection_types::QUEUED_CONNECTION,
-                );
+                {
+                    // Connections : backend object -> GUI
+                    connect_or_report(
+                        backend_ref,
+                        "initializedChanged(bool)".to_string(),
+                        self_ref,
+                        "set_initialized(bool)".to_string(),
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                }
             }
 
             let mut rust_mut = self.as_mut().rust_mut();

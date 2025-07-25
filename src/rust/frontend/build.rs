@@ -16,6 +16,8 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/qobj_application_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_autoconnect_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_backend_wrapper_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_composite_loop_backend_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_composite_loop_gui_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_crash_handling_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_dummy_process_helper_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_file_io_bridge.rs")

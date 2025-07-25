@@ -19,6 +19,7 @@ fn register_qml_types_and_singletons() {
     qobj_autoconnect::register_qml_type(&mdl, "ShoopAutoConnect");
     qobj_loop_gui::register_qml_type(&mdl, "LoopGui");
     qobj_backend_wrapper::register_qml_type(&mdl, "ShoopBackendWrapper");
+    qobj_composite_loop_gui::register_qml_type(&mdl, "CompositeLoopGui");
 }
 
 fn register_metatypes() {}

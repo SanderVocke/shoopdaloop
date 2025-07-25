@@ -75,6 +75,13 @@ mod ffi {
             arg2: i32,
             arg3: i32,
         ) -> Result<QList_QVariant>;
+
+        #[rust_name = "invoke_qobject_noargs"]
+        unsafe fn invoke_with_return(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+        ) -> Result<*mut QObject>;
     }
 }
 
@@ -183,6 +190,17 @@ impl Invokable<QList<QVariant>, (QString, i32, i32)> for ffi::QObject {
                 args.2,
             )
         }
+    }
+}
+
+impl Invokable<*mut ffi::QObject, ()> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: String,
+        connection_type: u32,
+        _args: &(),
+    ) -> Result<*mut ffi::QObject, Exception> {
+        unsafe { ffi::invoke_qobject_noargs(self as *mut ffi::QObject, method, connection_type) }
     }
 }
 
