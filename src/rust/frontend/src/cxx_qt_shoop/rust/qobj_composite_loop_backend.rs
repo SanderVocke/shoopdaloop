@@ -7,12 +7,24 @@ use backend_bindings::LoopMode;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
+use core::sync;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::{
-    connect::connect_or_report, connection_types, invokable::invoke, qobject::{ffi::qobject_property_int, AsQObject}, qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr}
+    connect::connect_or_report,
+    connection_types,
+    invokable::invoke,
+    qobject::{
+        ffi::{qobject_property_int, qobject_property_string},
+        AsQObject,
+    },
+    qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
-use core::sync;
-use std::{cmp::max, collections::HashSet, hash::Hash, pin::Pin};
+use std::{
+    cmp::max,
+    collections::{BTreeMap, HashMap, HashSet},
+    hash::Hash,
+    pin::Pin,
+};
 shoop_log_unit!("Frontend.CompositeLoop");
 
 #[allow(unused_macros)]
@@ -37,24 +49,77 @@ macro_rules! error {
 }
 
 fn get_loop_iid(l: &*mut QObject) -> String {
-    todo!();
+    unsafe {
+        match qobject_property_string(&**l, "instance_identifier".to_string()) {
+            Ok(iid) => {
+                return iid.to_string();
+            }
+            Err(e) => {
+                raw_error!("Could not get instance identifier: {e}");
+                return "error-unknown".to_string();
+            }
+        }
+    }
 }
+
+type Transition = (*mut QObject, LoopMode);
+type Transitions = Vec<Transition>;
+type TransitionsPerIteration = BTreeMap<i32, Transitions>;
 
 impl CompositeLoopBackend {
     pub fn initialize_impl(mut self: Pin<&mut Self>) {}
 
     pub fn list_transitions(
-        self: Pin<&mut Self>,
+        mut self: Pin<&mut Self>,
         mode: LoopMode,
         start_cycle: i32,
         end_cycle: i32,
-    ) {
-        todo!();
+    ) -> TransitionsPerIteration {
+        let mut transitions: TransitionsPerIteration = BTreeMap::new();
+
+        // Step through the transitions up to the given iteration.
+        let until = self.schedule.data.last_key_value().unwrap().0 + 1;
+        for i in start_cycle..until {
+            let mut iteration_transitions: Transitions = Transitions::default();
+            self.as_mut().do_triggers_with_callback(
+                i,
+                mode,
+                |obj: *mut QObject, obj_mode: LoopMode| {
+                    iteration_transitions.push((obj, obj_mode));
+                },
+            );
+            transitions.insert(i, iteration_transitions);
+            if i >= end_cycle {
+                break;
+            }
+        }
+
+        transitions
     }
 
-    pub fn transition_with_immediate_sync(self: Pin<&mut Self>, to_mode: i32, sync_at_cycle: i32) {
+    pub fn transition_with_immediate_sync(
+        mut self: Pin<&mut Self>,
+        to_mode: i32,
+        sync_at_cycle: i32,
+    ) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
+            let all_transitions =
+                self.as_mut()
+                    .list_transitions(LoopMode::try_from(to_mode)?, 0, sync_at_cycle);
+
+            debug!(
+                self,
+                "immediate sync transition - stepping through virtual transition list"
+            );
+
+            // Find the last transition for each loop up until this point
+            type LastTransitionPerLoop = HashMap<*mut QObject, (LoopMode, i32)>;
+            for (iteration, transitions) in transitions.iter() {
+
+            }
+            
             todo!();
+            Ok(())
         }() {
             error!(
                 self,
@@ -115,7 +180,8 @@ impl CompositeLoopBackend {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.next_transition_delay = next_transition_delay;
             unsafe {
-                self.as_mut().next_transition_delay_changed(next_transition_delay);
+                self.as_mut()
+                    .next_transition_delay_changed(next_transition_delay);
             }
         }
     }
@@ -253,7 +319,51 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub fn handle_sync_loop_trigger(self: Pin<&mut CompositeLoopBackend>, cycle_nr: i32) {}
+    pub fn handle_sync_loop_trigger(mut self: Pin<&mut CompositeLoopBackend>, cycle_nr: i32) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            if Some(cycle_nr) == self.last_handled_sync_cycle {
+                trace!(self, "already handled sync cycle {cycle_nr}");
+                return Ok(());
+            }
+
+            unsafe {
+                // Before we start, give all of the loops in our schedule a chance
+                // to handle the sync cycle first. This ensures a deterministic ordering
+                // of events.
+                for loop_obj in self.as_mut().all_loops().iter() {
+                    invoke::<QObject, (), ()>(
+                        &mut **loop_obj,
+                        "dependent_will_handle_sync_loop_cycle()".to_string(),
+                        connection_types::DIRECT_CONNECTION,
+                        &(),
+                    );
+                }
+
+                if self.next_transition_delay == 0 {
+                    let next_mode = self.next_mode;
+                    self.as_mut()
+                        .handle_transition(LoopMode::try_from(next_mode)?);
+                } else if self.next_transition_delay > 0 {
+                    let next_mode = LoopMode::try_from(self.next_mode)?;
+                    let mut rust_mut = self.as_mut().rust_mut();
+                    rust_mut.next_transition_delay -= 1;
+                    if rust_mut.next_transition_delay == 0 {
+                        self.as_mut().do_triggers(0, next_mode);
+                    }
+                }
+
+                todo!();
+            }
+
+            Ok(())
+        }() {
+            error!(self, "Could not handle sync loop trigger: {e}");
+        }
+    }
+
+    pub fn handle_transition(mut self: Pin<&mut Self>, mode: LoopMode) {
+        todo!();
+    }
 
     pub unsafe fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
         debug!(self, "set backend -> {backend:?}");
@@ -353,13 +463,14 @@ impl CompositeLoopBackend {
     }
 
     pub fn set_instance_identifier(mut self: Pin<&mut Self>, instance_identifier: QString) {
-        let dbg = instance_identifier.to_string();
-        debug!(self, "instance identifier -> {dbg}");
-        if instance_identifier != self.instance_identifier {
+        let mut extended: QString = instance_identifier.clone();
+        extended.append(&QString::from("-backend"));
+        debug!(self, "instance identifier -> {extended:?}");
+        if extended != self.instance_identifier {
             let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.instance_identifier = instance_identifier.clone();
+            rust_mut.instance_identifier = extended.clone();
             unsafe {
-                self.instance_identifier_changed(instance_identifier);
+                self.instance_identifier_changed(extended);
             };
         }
     }
@@ -376,11 +487,11 @@ impl CompositeLoopBackend {
         mut self: Pin<&mut CompositeLoopBackend>,
         loop_obj: *mut QObject,
         mode: LoopMode,
-        callback: Option<AlternativeTriggerCallback>,
+        mut callback: Option<&mut AlternativeTriggerCallback>,
     ) where
-        AlternativeTriggerCallback: Fn(*mut QObject, LoopMode),
+        AlternativeTriggerCallback: FnMut(*mut QObject, LoopMode),
     {
-        if let Some(callback) = callback.as_ref() {
+        if let Some(callback) = callback.as_mut() {
             callback(loop_obj, mode);
         } else {
             let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
@@ -401,14 +512,30 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub fn do_triggers<AlternativeTriggerCallback>(
+    pub fn do_triggers(self: Pin<&mut Self>, iteration: i32, mode: LoopMode) {
+        type Callback = fn(*mut QObject, LoopMode);
+        self.do_triggers_impl::<Callback>(iteration, mode, None, false);
+    }
+
+    pub fn do_triggers_with_callback<TriggerCallback>(
+        self: Pin<&mut Self>,
+        iteration: i32,
+        mode: LoopMode,
+        mut callback: TriggerCallback,
+    ) where
+        TriggerCallback: FnMut(*mut QObject, LoopMode),
+    {
+        self.do_triggers_impl::<TriggerCallback>(iteration, mode, Some(&mut callback), false);
+    }
+
+    pub fn do_triggers_impl<AlternativeTriggerCallback>(
         mut self: Pin<&mut Self>,
         iteration: i32,
         mode: LoopMode,
-        trigger_callback: Option<AlternativeTriggerCallback>,
+        mut trigger_callback: Option<&mut AlternativeTriggerCallback>,
         nested: bool,
     ) where
-        AlternativeTriggerCallback: Fn(*mut QObject, LoopMode) + Copy,
+        AlternativeTriggerCallback: FnMut(*mut QObject, LoopMode),
     {
         if let Err(err) = || -> Result<(), anyhow::Error> {
             let schedule = self.schedule.clone();
@@ -440,8 +567,11 @@ impl CompositeLoopBackend {
                 for loop_end in loops_end.iter() {
                     let loop_iid = get_loop_iid(loop_end);
                     debug!(self, "loop end: {loop_iid}");
-                    self.as_mut()
-                        .do_trigger(*loop_end, LoopMode::Stopped, trigger_callback);
+                    self.as_mut().do_trigger(
+                        *loop_end,
+                        LoopMode::Stopped,
+                        trigger_callback.as_mut(),
+                    );
                     running_loops_changed = running_loops.remove(loop_end);
                 }
 
@@ -456,8 +586,11 @@ impl CompositeLoopBackend {
                                 self,
                                 "generate loop start (explicit mode {explicit_mode:?}): {loop_iid}"
                             );
-                            self.as_mut()
-                                .do_trigger(*loop_start, *explicit_mode, trigger_callback);
+                            self.as_mut().do_trigger(
+                                *loop_start,
+                                *explicit_mode,
+                                trigger_callback.as_mut(),
+                            );
                             running_loops_changed = running_loops.insert(*loop_start);
                         } else {
                             // Implicit mode, set it based on our own
@@ -486,7 +619,7 @@ impl CompositeLoopBackend {
                                             self.as_mut().do_trigger(
                                                 *loop_start,
                                                 LoopMode::Stopped,
-                                                trigger_callback,
+                                                trigger_callback.as_mut(),
                                             );
                                             running_loops_changed =
                                                 running_loops.remove(loop_start);
@@ -501,7 +634,7 @@ impl CompositeLoopBackend {
                                 self.as_mut().do_trigger(
                                     *loop_start,
                                     implicit_mode,
-                                    trigger_callback,
+                                    trigger_callback.as_mut(),
                                 );
                                 running_loops_changed = running_loops.insert(*loop_start);
                             }
@@ -533,18 +666,24 @@ impl CompositeLoopBackend {
                     && !(self.next_transition_delay >= 0 && is_running_mode(next_mode))
                 {
                     debug!(self, "Ending script");
-                    self.as_mut().do_trigger(self_qobj, LoopMode::Stopped, trigger_callback);
-                }
-                else if is_recording_mode(self_mode) {
+                    self.as_mut()
+                        .do_trigger(self_qobj, LoopMode::Stopped, trigger_callback);
+                } else if is_recording_mode(self_mode) {
                     debug!(self, "Ending recording");
                     // At end of recording cycle, transition to playing or stopped
-                    let new_mode = if self.play_after_record { LoopMode::Playing } else { LoopMode::Stopped };
-                    self.as_mut().do_trigger(self_qobj, new_mode, trigger_callback);
+                    let new_mode = if self.play_after_record {
+                        LoopMode::Playing
+                    } else {
+                        LoopMode::Stopped
+                    };
+                    self.as_mut()
+                        .do_trigger(self_qobj, new_mode, trigger_callback);
                 } else {
                     // Just cycle around
                     let self_mode = LoopMode::try_from(self.mode)?;
                     debug!(self, "cycling");
-                    self.as_mut().do_triggers(0, self_mode, trigger_callback, true);
+                    self.as_mut()
+                        .do_triggers_impl(0, self_mode, trigger_callback, true);
                 }
             }
 

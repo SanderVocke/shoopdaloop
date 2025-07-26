@@ -424,7 +424,7 @@ impl Default for CompositeLoopGuiRust {
             play_after_record: false,
             sync_mode_active: false,
             kind: QString::default(),
-            instance_identifier: QString::default(),
+            instance_identifier: QString::from("unknown"),
             backend_loop_wrapper: cxx::UniquePtr::null(),
             cycle_nr: 0,
             schedule: CompositeLoopSchedule::default(),

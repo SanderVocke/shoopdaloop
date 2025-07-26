@@ -288,6 +288,7 @@ pub struct CompositeLoopBackendRust {
 
     // Others
     pub schedule: CompositeLoopSchedule,
+    pub last_handled_sync_cycle: Option<i32>,
 }
 
 impl Default for CompositeLoopBackendRust {
@@ -309,10 +310,11 @@ impl Default for CompositeLoopBackendRust {
             play_after_record: false,
             sync_mode_active: false,
             kind: QString::default(),
-            instance_identifier: QString::default(),
+            instance_identifier: QString::from("unknown-backend"),
             cycle_nr: 0,
             frontend_loop: std::ptr::null_mut(),
             schedule: CompositeLoopSchedule::default(),
+            last_handled_sync_cycle: None,
         }
     }
 }
