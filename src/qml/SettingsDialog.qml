@@ -1,9 +1,9 @@
-import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
-import QtQuick.Controls.Material
+import QtQuick 6.6
+import QtQuick.Controls 6.6
+import QtQuick.Layouts 6.6
+import QtQuick.Controls.Material 6.6
 import Qt.labs.qmlmodels 1.0
-import QtQuick.Dialogs
+import QtQuick.Dialogs 6.6
 
 import ShoopDaLoop.PythonLogger
 
