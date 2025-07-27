@@ -223,6 +223,7 @@ impl LoopBackend {
                 //         n_events_triggered
                 //     }
                 // }).sum();
+
                 new_cycle_nr = if new_state.position < prev_state.position
                     && is_playing_mode(prev_state.mode.try_into().unwrap())
                     && is_playing_mode(new_state.mode.try_into().unwrap())
@@ -312,6 +313,7 @@ impl LoopBackend {
                 debug!(self, "cycle nr: {} -> {}", prev_cycle_nr, new_cycle_nr);
                 self.as_mut().cycle_nr_changed(new_cycle_nr, prev_cycle_nr);
                 if (new_cycle_nr - prev_cycle_nr) == 1 {
+                    debug!(self, "cycled");
                     self.as_mut().cycled(new_cycle_nr);
                 }
             }

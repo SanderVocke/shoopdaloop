@@ -114,10 +114,15 @@ impl CompositeLoopBackend {
 
             // Find the last transition for each loop up until this point
             type LastTransitionPerLoop = HashMap<*mut QObject, (LoopMode, i32)>;
-            for (iteration, transitions) in transitions.iter() {
-
+            let mut last_transition_per_loop: LastTransitionPerLoop = HashMap::new();
+            for (iteration, transitions) in all_transitions.iter() {
+                for (loop_obj, mode) in transitions.iter() {
+                    last_transition_per_loop.insert(*loop_obj, (*mode, *iteration));
+                }
             }
-            
+
+            // Get all currently active loops into their correct mode and cycle
+
             todo!();
             Ok(())
         }() {
@@ -258,9 +263,9 @@ impl CompositeLoopBackend {
             );
             connect_or_report(
                 &*sync_source,
-                "cycled(int)".to_string(),
+                "cycled(::std::int32_t)".to_string(),
                 &*self_qobj,
-                "handle_sync_loop_trigger(int)".to_string(),
+                "handle_sync_loop_trigger(::std::int32_t)".to_string(),
                 connection_types::DIRECT_CONNECTION,
             );
             self.as_mut().update_sync_position();
@@ -319,6 +324,17 @@ impl CompositeLoopBackend {
         }
     }
 
+    pub fn set_cycle_nr(mut self: Pin<&mut Self>, cycle_nr: i32) {
+        if cycle_nr != self.cycle_nr {
+            debug!(self, "cycle nr -> {cycle_nr}");
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.cycle_nr = cycle_nr;
+            unsafe {
+                self.as_mut().cycle_nr_changed(cycle_nr);
+            }
+        }
+    }
+
     pub fn handle_sync_loop_trigger(mut self: Pin<&mut CompositeLoopBackend>, cycle_nr: i32) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             if Some(cycle_nr) == self.last_handled_sync_cycle {
@@ -352,7 +368,25 @@ impl CompositeLoopBackend {
                     }
                 }
 
-                todo!();
+                if is_running_mode(LoopMode::try_from(self.mode)?) {
+                    let mut cycled = false;
+                    let mut new_iteration = self.iteration + 1;
+                    if new_iteration >= self.n_cycles {
+                        new_iteration = 0;
+                        cycled = true;
+                    }
+                    self.as_mut().set_iteration(new_iteration);
+
+                    let mode = LoopMode::try_from(self.mode)?;
+                    self.as_mut()
+                        .do_triggers(new_iteration + 1, mode);
+
+                    if cycled {
+                        let cycle_nr = self.cycle_nr + 1;
+                        self.as_mut().set_cycle_nr(cycle_nr);
+                        self.as_mut().cycled(cycle_nr);
+                    }
+                }
             }
 
             Ok(())
@@ -361,8 +395,29 @@ impl CompositeLoopBackend {
         }
     }
 
+    pub fn set_mode(mut self: Pin<&mut Self>, mode: i32) {
+        debug!(self, "mode -> {mode:?}");
+        if mode != self.mode {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.mode = mode;
+            unsafe {
+                self.as_mut().mode_changed(mode);
+            }
+        }
+    }
+
     pub fn handle_transition(mut self: Pin<&mut Self>, mode: LoopMode) {
-        todo!();
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            debug!(self, "handle transition -> {mode:?}");
+            self.as_mut().set_next_transition_delay(-1);
+            self.as_mut().set_mode(mode as isize as i32);
+            if !is_running_mode(mode) {
+                self.as_mut().set_iteration(0);
+            }
+            Ok(())
+        }() {
+            error!(self, "Could not handle transition: {e}");
+        }
     }
 
     pub unsafe fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
@@ -491,24 +546,37 @@ impl CompositeLoopBackend {
     ) where
         AlternativeTriggerCallback: FnMut(*mut QObject, LoopMode),
     {
-        if let Some(callback) = callback.as_mut() {
-            callback(loop_obj, mode);
-        } else {
-            let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
-            let loop_iid = get_loop_iid(&loop_obj);
-            if loop_obj == self_qobj {
-                // Instead of queueing, apply the transition immediately
-                trace!(self, "Transition self to {mode:?}");
-                self.as_mut().transition(mode as i32, -1, -1);
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            if let Some(callback) = callback.as_mut() {
+                callback(loop_obj, mode);
             } else {
-                // When triggering another loop, delay it by one event loop cycle.
-                // this ensures that with nested composites, the composites always
-                // trigger themselves first, then get triggered by others.
-                // That is good because them being controlled by other loops should
-                // take precedence.
-                trace!(self, "Queue transition {loop_iid} to {mode:?}");
-                todo!();
+                let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
+                let loop_iid = get_loop_iid(&loop_obj);
+                if loop_obj == self_qobj {
+                    // Instead of queueing, apply the transition immediately
+                    trace!(self, "Transition self to {mode:?}");
+                    self.as_mut().transition(mode as i32, -1, -1);
+                } else {
+                    // When triggering another loop, delay it by one event loop cycle.
+                    // this ensures that with nested composites, the composites always
+                    // trigger themselves first, then get triggered by others.
+                    // That is good because them being controlled by other loops should
+                    // take precedence.
+                    unsafe {
+                        trace!(self, "Queue transition {loop_iid} to {mode:?}");
+                        invoke(
+                            &mut *loop_obj,
+                            "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                            connection_types::QUEUED_CONNECTION,
+                            &(mode as isize as i32, 0, -1),
+                        )?;
+                    }
+                }
             }
+
+            Ok(())
+        }() {
+            error!(self, "Could not perform trigger: {e}");
         }
     }
 

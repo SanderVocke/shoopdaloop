@@ -51,6 +51,16 @@ mod ffi {
             arg1: i32,
         ) -> Result<()>;
 
+        #[rust_name = "invoke_noreturn_i32_i32_i32"]
+        unsafe fn invoke_three_args(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+            arg1: i32,
+            arg2: i32,
+            arg3: i32,
+        ) -> Result<()>;
+
         #[rust_name = "invoke_bool_qstring"]
         unsafe fn invoke_one_arg_with_return(
             obj: *mut QObject,
@@ -134,6 +144,26 @@ impl Invokable<(), i32> for ffi::QObject {
     ) -> Result<(), Exception> {
         unsafe {
             ffi::invoke_noreturn_i32(self as *mut ffi::QObject, method, connection_type, *args)
+        }
+    }
+}
+
+impl Invokable<(), (i32, i32, i32)> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: String,
+        connection_type: u32,
+        args: &(i32, i32, i32),
+    ) -> Result<(), Exception> {
+        unsafe {
+            ffi::invoke_noreturn_i32_i32_i32(
+                self as *mut ffi::QObject,
+                method,
+                connection_type,
+                args.0,
+                args.1,
+                args.2,
+            )
         }
     }
 }

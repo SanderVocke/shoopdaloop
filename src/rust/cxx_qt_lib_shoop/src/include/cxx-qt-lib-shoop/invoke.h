@@ -139,3 +139,25 @@ RetVal invoke_three_args_with_return(
         arg3);
     return ret;
 }
+
+template<typename Obj,
+         typename Arg1, typename Arg2, typename Arg3>
+void invoke_three_args(
+            Obj * object,
+            ::rust::String method,
+            unsigned connection_type,
+            Arg1 arg1, Arg2 arg2, Arg3 arg3)
+{
+    auto qobj = static_cast<QObject*>(object);
+    auto meta = qobj->metaObject();
+    int index = meta->indexOfMethod(method.c_str());
+
+    if (index < 0) {
+        report_method_not_found(object, method.operator std::string());
+    }
+    QMetaMethod _method = meta->method(index);
+    _method.invoke(qobj, (Qt::ConnectionType) connection_type,
+        arg1,
+        arg2,
+        arg3);
+}

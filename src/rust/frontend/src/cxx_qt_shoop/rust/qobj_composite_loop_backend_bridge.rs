@@ -227,6 +227,7 @@ pub mod ffi {
 pub use ffi::make_raw_composite_loop_backend;
 pub use ffi::CompositeLoopBackend;
 use ffi::*;
+use backend_bindings::LoopMode;
 
 use crate::composite_loop_schedule::CompositeLoopSchedule;
 
@@ -296,10 +297,10 @@ impl Default for CompositeLoopBackendRust {
         CompositeLoopBackendRust {
             running_loops: QList_QVariant::default(),
             initialized: false,
-            iteration: 0,
-            mode: 0,
-            next_mode: 0,
-            next_transition_delay: 0,
+            iteration: -1,
+            mode: LoopMode::Stopped as isize as i32,
+            next_mode: -1,
+            next_transition_delay: -1,
             n_cycles: 0,
             length: 0,
             sync_position: 0,

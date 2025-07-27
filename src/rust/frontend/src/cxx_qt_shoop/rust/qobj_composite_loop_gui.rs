@@ -290,6 +290,7 @@ impl CompositeLoopGui {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
+        self.backend_transition(to_mode, maybe_cycles_delay, maybe_to_sync_at_cycle);
     }
 
     pub fn adopt_ringbuffers(
@@ -299,6 +300,7 @@ impl CompositeLoopGui {
         maybe_go_to_cycle: QVariant,
         go_to_mode: i32,
     ) {
+        self.backend_adopt_ringbuffers(maybe_reverse_start_cycle, maybe_cycles_length, maybe_go_to_cycle, go_to_mode);
     }
 
     pub fn update_backend_sync_source(mut self: Pin<&mut Self>) {
@@ -388,9 +390,13 @@ impl CompositeLoopGui {
         self.backend_set_kind(kind);
     }
 
-    pub fn set_instance_identifier(self: Pin<&mut Self>, instance_identifier: QString) {
+    pub fn set_instance_identifier(mut self: Pin<&mut Self>, instance_identifier: QString) {
         let dbg = instance_identifier.to_string();
         debug!(self, "queue set instance identifier -> {dbg}");
+        if instance_identifier != self.instance_identifier {
+            self.as_mut().rust_mut().instance_identifier = instance_identifier.clone();
+            unsafe { self.as_mut().instance_identifier_changed(instance_identifier.clone()); }
+        }
         self.backend_set_instance_identifier(instance_identifier);
     }
 
@@ -401,6 +407,7 @@ impl CompositeLoopGui {
     }
 
     pub fn on_backend_n_cycles_changed(mut self: Pin<&mut CompositeLoopGui>, n_cycles: i32) {
+        trace!(self, "backend n cycles -> {n_cycles}");
         let mut rust_mut = self.as_mut().rust_mut();
         if n_cycles != rust_mut.n_cycles {
             rust_mut.n_cycles = n_cycles;
@@ -411,6 +418,7 @@ impl CompositeLoopGui {
     }
 
     pub fn on_backend_sync_length_changed(mut self: Pin<&mut CompositeLoopGui>, sync_length: i32) {
+        trace!(self, "backend sync length -> {sync_length}");
         let mut rust_mut = self.as_mut().rust_mut();
         if sync_length != rust_mut.sync_length {
             rust_mut.sync_length = sync_length;
@@ -421,6 +429,7 @@ impl CompositeLoopGui {
     }
 
     pub fn on_backend_iteration_changed(mut self: Pin<&mut CompositeLoopGui>, iteration: i32) {
+        trace!(self, "backend iteration -> {iteration}");
         let mut rust_mut = self.as_mut().rust_mut();
         if iteration != rust_mut.iteration {
             rust_mut.iteration = iteration;
@@ -431,6 +440,7 @@ impl CompositeLoopGui {
     }
 
     pub fn on_backend_mode_changed(mut self: Pin<&mut CompositeLoopGui>, mode: i32) {
+        trace!(self, "backend mode -> {mode}");
         let mut rust_mut = self.as_mut().rust_mut();
         if mode != rust_mut.mode {
             rust_mut.mode = mode;
@@ -444,6 +454,7 @@ impl CompositeLoopGui {
         mut self: Pin<&mut CompositeLoopGui>,
         sync_position: i32,
     ) {
+        trace!(self, "backend sync position -> {sync_position}");
         let mut rust_mut = self.as_mut().rust_mut();
         if sync_position != rust_mut.sync_position {
             rust_mut.sync_position = sync_position;
@@ -454,6 +465,7 @@ impl CompositeLoopGui {
     }
 
     pub fn on_backend_next_mode_changed(mut self: Pin<&mut CompositeLoopGui>, next_mode: i32) {
+        trace!(self, "backend next mode -> {next_mode}");
         let mut rust_mut = self.as_mut().rust_mut();
         if next_mode != rust_mut.next_mode {
             rust_mut.next_mode = next_mode;
@@ -467,6 +479,7 @@ impl CompositeLoopGui {
         mut self: Pin<&mut CompositeLoopGui>,
         next_transition_delay: i32,
     ) {
+        trace!(self, "backend next transition delay -> {next_transition_delay}");
         let mut rust_mut = self.as_mut().rust_mut();
         if next_transition_delay != rust_mut.next_transition_delay {
             rust_mut.next_transition_delay = next_transition_delay;
@@ -480,6 +493,7 @@ impl CompositeLoopGui {
         mut self: Pin<&mut CompositeLoopGui>,
         running_loops: QList_QVariant,
     ) {
+        trace!(self, "backend running loops changed");
         let mut rust_mut = self.as_mut().rust_mut();
         if running_loops != rust_mut.running_loops {
             rust_mut.running_loops = running_loops.clone();
@@ -490,6 +504,7 @@ impl CompositeLoopGui {
     }
 
     pub fn on_backend_length_changed(mut self: Pin<&mut CompositeLoopGui>, length: i32) {
+        trace!(self, "backend length -> {length}");
         let mut rust_mut = self.as_mut().rust_mut();
         if length != rust_mut.length {
             rust_mut.length = length;
@@ -498,6 +513,7 @@ impl CompositeLoopGui {
     }
 
     pub fn on_backend_position_changed(mut self: Pin<&mut CompositeLoopGui>, position: i32) {
+        trace!(self, "backend position -> {position}");
         let mut rust_mut = self.as_mut().rust_mut();
         if position != rust_mut.position {
             rust_mut.position = position;
@@ -506,10 +522,12 @@ impl CompositeLoopGui {
     }
 
     pub fn on_backend_cycled(self: Pin<&mut CompositeLoopGui>, cycle_nr: i32) {
+        trace!(self, "backend cycled -> {cycle_nr}");
         self.cycled(cycle_nr);
     }
 
     pub fn on_backend_initialized_changed(mut self: Pin<&mut Self>, initialized: bool) {
+        debug!(self, "backend initialized -> {initialized}");
         let mut rust_mut = self.as_mut().rust_mut();
         if initialized != rust_mut.initialized {
             rust_mut.initialized = initialized;

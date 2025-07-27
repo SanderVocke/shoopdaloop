@@ -21,33 +21,33 @@ Item {
     property string obj_id : 'unknown'
     property var loop_widget : null
 
-    onObj_idChanged: py_loop.instance_identifier = obj_id
+    onObj_idChanged: rust_loop.instance_identifier = obj_id
 
     readonly property bool initialized: true
 
     // set internally
-    property alias kind : py_loop.kind
+    property alias kind : rust_loop.kind
 
     // The Python-side object manages triggering other loops based on the
     // schedule. This needs to keep running even if the QML/GUI thread hangs.
     // In the QML side, we manage updating/calculating the schedule.
     property var schedule: ({})
-    property alias iteration: py_loop.iteration
-    property alias running_loops: py_loop.running_loops
-    property alias mode: py_loop.mode
-    property alias n_cycles: py_loop.n_cycles
-    property alias next_mode : py_loop.next_mode
-    property alias next_transition_delay : py_loop.next_transition_delay
-    property alias sync_length : py_loop.sync_length
-    property alias position : py_loop.position
-    property alias sync_position : py_loop.sync_position
-    property alias length : py_loop.length
-    property alias py_loop : py_loop
-    property alias backend : py_loop.backend
+    property alias iteration: rust_loop.iteration
+    property alias running_loops: rust_loop.running_loops
+    property alias mode: rust_loop.mode
+    property alias n_cycles: rust_loop.n_cycles
+    property alias next_mode : rust_loop.next_mode
+    property alias next_transition_delay : rust_loop.next_transition_delay
+    property alias sync_length : rust_loop.sync_length
+    property alias position : rust_loop.position
+    property alias sync_position : rust_loop.sync_position
+    property alias length : rust_loop.length
+    property alias rust_loop : rust_loop
+    property alias backend : rust_loop.backend
 
     // PythonCompositeLoop {
     CompositeLoopGui {
-        id: py_loop
+        id: rust_loop
         sync_source: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
         schedule: root.schedule
         play_after_record: registries.state_registry.play_after_record_active
@@ -225,9 +225,9 @@ Item {
                         }
                     }
                     // If our target is a CompositeLoop, it does not directly inherit a Python loop.
-                    // Instead it will be stored in its py_loop subobject.
+                    // Instead it will be stored in its rust_loop subobject.
                     if (loop.objectName === "Qml.CompositeLoop") {
-                        loop = loop.py_loop
+                        loop = loop.rust_loop
                     }
 
                     if (!_schedule[loop_start]) { _schedule[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set(), loop_modes: {} } }
@@ -383,7 +383,7 @@ Item {
     property var sync_loop : registries.state_registry.sync_loop
 
     function transition(mode, maybe_delay, maybe_align_to_sync_at) {
-        py_loop.transition(mode, maybe_delay, maybe_align_to_sync_at)
+        rust_loop.transition(mode, maybe_delay, maybe_align_to_sync_at)
     }
 
     function actual_composition_descriptor() {
@@ -400,6 +400,6 @@ Item {
     }
 
     function adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode) {
-        py_loop.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
+        rust_loop.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
     }
 }
