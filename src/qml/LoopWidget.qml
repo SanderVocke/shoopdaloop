@@ -472,6 +472,8 @@ Item {
     readonly property int next_mode : maybe_loop ? maybe_loop.next_mode : ShoopConstants.LoopMode.Stopped
     readonly property int next_transition_delay : maybe_loop ? maybe_loop.next_transition_delay : -1
 
+    onNext_modeChanged: console.log("hola", next_mode)
+
     Component {
         id: backend_loop_factory
         BackendLoopWithChannels {

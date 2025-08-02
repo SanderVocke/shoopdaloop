@@ -151,10 +151,22 @@ impl CompositeLoopBackend {
             self.as_mut()
                 .set_next_transition_delay(next_transition_delay);
 
+            if next_transition_delay == 0 {
+                if is_running_mode (to_mode) {
+                    self.as_mut().do_triggers(0, to_mode);
+                } else {
+                    self.as_mut().cancel_all();
+                }
+            }
+
             Ok(())
         }() {
             error!(self, "Could not perform transition: {e}");
         }
+    }
+
+    pub fn cancel_all(mut self: Pin<&mut Self>) {
+        todo!()
     }
 
     pub fn set_iteration(mut self: Pin<&mut Self>, iteration: i32) {
