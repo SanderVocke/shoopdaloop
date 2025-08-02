@@ -45,10 +45,6 @@ Item {
     property alias rust_loop : rust_loop
     property alias backend : rust_loop.backend
 
-    onNext_modeChanged: {
-        console.log("hollo", next_mode, rust_loop.next_mode)
-    }
-
     // PythonCompositeLoop {
     CompositeLoopGui {
         id: rust_loop
@@ -59,8 +55,6 @@ Item {
 
         onCycled: n => root.cycled(n)
         Component.onCompleted: root.recalculate_schedule()
-
-        onNextModeChanged: { console.log("hello", rust_loop.next_mode) }
     }
 
     // The sequence is stored as a set of "playlists". Each playlist represents a parallel

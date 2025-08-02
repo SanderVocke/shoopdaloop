@@ -307,6 +307,7 @@ impl CompositeLoopBackend {
             rust_mut.sync_position = v;
             unsafe {
                 self.as_mut().sync_position_changed(v);
+                self.as_mut().update_position();
             }
         }
     }
@@ -332,6 +333,7 @@ impl CompositeLoopBackend {
             rust_mut.sync_length = v;
             unsafe {
                 self.as_mut().sync_length_changed(v);
+                self.as_mut().update_length();
             }
         }
     }
