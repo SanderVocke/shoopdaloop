@@ -287,6 +287,15 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn on_backend_initialized_changed(self: Pin<&mut CompositeLoopGui>, initialized: bool);
+
+        #[qinvokable]
+        pub fn transition_multiple(
+            self: Pin<&mut CompositeLoopGui>,
+            loops: QList_QVariant,
+            to_mode: i32,
+            maybe_cycles_delay: i32,
+            maybe_to_sync_at_cycle: i32,
+        );
     }
 
     unsafe extern "C++" {

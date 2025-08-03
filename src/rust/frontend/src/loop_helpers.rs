@@ -46,7 +46,37 @@ pub fn get_backend_loop_handles_variant_list(
     Ok(backend_loop_handles)
 }
 
-pub fn transition_loops(
+pub fn transition_gui_loops(
+    loops: impl IntoIterator<Item = *mut QObject>,
+    to_mode: LoopMode,
+    maybe_cycles_delay: Option<i32>,
+    maybe_to_sync_at_cycle: Option<i32>,
+) -> Result<(), anyhow::Error> {
+    unsafe {
+        let mut list : QList_QVariant = QList::default();
+        let mut call_on : *mut QObject = std::ptr::null_mut();
+        for l in loops {
+            list.append(qobject_ptr_to_qvariant(l));
+            call_on = l;
+        }
+        invoke(
+            &mut *call_on,
+            "transition_multiple(QList<QVariant>,::std::int32_t,::std::int32_t,::std::int32_t)"
+                .to_string(),
+            connection_types::DIRECT_CONNECTION,
+            &(
+                list,
+                to_mode as isize as i32,
+                maybe_cycles_delay.unwrap_or(-1),
+                maybe_to_sync_at_cycle.unwrap_or(-1),
+            ),
+        )?;
+    }
+
+    Ok(())
+}
+
+pub fn transition_backend_loops(
     loops: impl IntoIterator<Item = *mut QObject>,
     to_mode: LoopMode,
     maybe_cycles_delay: Option<i32>,
