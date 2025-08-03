@@ -28,3 +28,6 @@ pub mod test_results;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod composite_loop_schedule;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod loop_helpers;

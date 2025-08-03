@@ -3,6 +3,7 @@ use crate::composite_loop_schedule::CompositeLoopSchedule;
 use crate::cxx_qt_shoop::qobj_composite_loop_backend_bridge::make_raw_composite_loop_backend;
 use crate::cxx_qt_shoop::qobj_composite_loop_gui_bridge::ffi::*;
 use crate::engine_update_thread;
+use crate::loop_helpers::get_backend_loop_handles_variant_list;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
@@ -42,7 +43,6 @@ macro_rules! error {
 fn replace_by_backend_objects(
     schedule: &CompositeLoopSchedule,
 ) -> Result<CompositeLoopSchedule, anyhow::Error> {
-
     let get_backend_obj = |object: *mut QObject| -> Result<*mut QObject, anyhow::Error> {
         unsafe {
             match invoke::<QObject, *mut QObject, ()>(
@@ -258,6 +258,13 @@ impl CompositeLoopGui {
                     );
                     connect_or_report(
                         self_ref,
+                        "backend_transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        backend_ref,
+                        "transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION
+                    );
+                    connect_or_report(
+                        self_ref,
                         "backend_adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)"
                             .to_string(),
                         backend_ref,
@@ -314,7 +321,12 @@ impl CompositeLoopGui {
         maybe_go_to_cycle: QVariant,
         go_to_mode: i32,
     ) {
-        self.backend_adopt_ringbuffers(maybe_reverse_start_cycle, maybe_cycles_length, maybe_go_to_cycle, go_to_mode);
+        self.backend_adopt_ringbuffers(
+            maybe_reverse_start_cycle,
+            maybe_cycles_length,
+            maybe_go_to_cycle,
+            go_to_mode,
+        );
     }
 
     pub fn update_backend_sync_source(mut self: Pin<&mut Self>) {
@@ -409,7 +421,10 @@ impl CompositeLoopGui {
         debug!(self, "queue set instance identifier -> {dbg}");
         if instance_identifier != self.instance_identifier {
             self.as_mut().rust_mut().instance_identifier = instance_identifier.clone();
-            unsafe { self.as_mut().instance_identifier_changed(instance_identifier.clone()); }
+            unsafe {
+                self.as_mut()
+                    .instance_identifier_changed(instance_identifier.clone());
+            }
         }
         self.backend_set_instance_identifier(instance_identifier);
     }
@@ -418,6 +433,31 @@ impl CompositeLoopGui {
         self.backend_loop_wrapper
             .data()
             .unwrap_or(std::ptr::null_mut())
+    }
+
+    pub fn transition_multiple(
+        self: Pin<&mut CompositeLoopGui>,
+        loops: QList_QVariant,
+        to_mode: i32,
+        maybe_cycles_delay: i32,
+        maybe_to_sync_at_cycle: i32,
+    ) {
+        trace!(
+            self,
+            "GUI thread: transitioning {} loops to {} with delay {}, sync at cycle {}",
+            loops.len(),
+            to_mode,
+            maybe_cycles_delay,
+            maybe_to_sync_at_cycle
+        );
+
+        let backend_loop_handles = get_backend_loop_handles_variant_list(&loops).unwrap();
+        self.backend_transition_multiple(
+            backend_loop_handles,
+            to_mode,
+            maybe_cycles_delay,
+            maybe_to_sync_at_cycle,
+        );
     }
 
     pub fn on_backend_n_cycles_changed(mut self: Pin<&mut CompositeLoopGui>, n_cycles: i32) {
@@ -493,7 +533,10 @@ impl CompositeLoopGui {
         mut self: Pin<&mut CompositeLoopGui>,
         next_transition_delay: i32,
     ) {
-        trace!(self, "backend next transition delay -> {next_transition_delay}");
+        trace!(
+            self,
+            "backend next transition delay -> {next_transition_delay}"
+        );
         let mut rust_mut = self.as_mut().rust_mut();
         if next_transition_delay != rust_mut.next_transition_delay {
             rust_mut.next_transition_delay = next_transition_delay;
@@ -522,7 +565,9 @@ impl CompositeLoopGui {
         let mut rust_mut = self.as_mut().rust_mut();
         if length != rust_mut.length {
             rust_mut.length = length;
-            unsafe{ self.length_changed(); }
+            unsafe {
+                self.length_changed();
+            }
         }
     }
 
@@ -531,7 +576,9 @@ impl CompositeLoopGui {
         let mut rust_mut = self.as_mut().rust_mut();
         if position != rust_mut.position {
             rust_mut.position = position;
-            unsafe{ self.position_changed(); }
+            unsafe {
+                self.position_changed();
+            }
         }
     }
 
@@ -545,8 +592,14 @@ impl CompositeLoopGui {
         let mut rust_mut = self.as_mut().rust_mut();
         if initialized != rust_mut.initialized {
             rust_mut.initialized = initialized;
-            unsafe{ self.initialized_changed(initialized); }
+            unsafe {
+                self.initialized_changed(initialized);
+            }
         }
+    }
+
+    pub fn get_backend_loop_shared_ptr(self: Pin<&mut CompositeLoopGui>) -> QVariant {
+        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap())
     }
 }
 

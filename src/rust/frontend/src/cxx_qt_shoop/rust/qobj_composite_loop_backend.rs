@@ -152,7 +152,7 @@ impl CompositeLoopBackend {
                 .set_next_transition_delay(next_transition_delay);
 
             if next_transition_delay == 0 {
-                if is_running_mode (to_mode) {
+                if is_running_mode(to_mode) {
                     self.as_mut().do_triggers(0, to_mode);
                 } else {
                     self.as_mut().cancel_all();
@@ -392,8 +392,7 @@ impl CompositeLoopBackend {
                     self.as_mut().set_iteration(new_iteration);
 
                     let mode = LoopMode::try_from(self.mode)?;
-                    self.as_mut()
-                        .do_triggers(new_iteration + 1, mode);
+                    self.as_mut().do_triggers(new_iteration + 1, mode);
 
                     if cycled {
                         let cycle_nr = self.cycle_nr + 1;

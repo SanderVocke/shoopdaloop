@@ -2,7 +2,7 @@ use cxx::Exception;
 use cxx_qt;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 
-use crate::qobject::AsQObject;
+use crate::{qobject::AsQObject};
 
 pub const AUTO_CONNECTION: u32 = 0;
 pub const DIRECT_CONNECTION: u32 = 1;
@@ -22,6 +22,9 @@ mod ffi {
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+
+        include!("cxx-qt-lib/qvariant.h");
+        type QVariant = cxx_qt_lib::QVariant;
 
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
@@ -61,6 +64,17 @@ mod ffi {
             arg3: i32,
         ) -> Result<()>;
 
+        #[rust_name = "invoke_noreturn_qlistqvariant_i32_i32_i32"]
+        unsafe fn invoke_four_args(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+            arg1: QList_QVariant,
+            arg2: i32,
+            arg3: i32,
+            arg4: i32,
+        ) -> Result<()>;
+
         #[rust_name = "invoke_bool_qstring"]
         unsafe fn invoke_one_arg_with_return(
             obj: *mut QObject,
@@ -68,6 +82,20 @@ mod ffi {
             connection_type: u32,
             arg1: QString,
         ) -> Result<bool>;
+
+        #[rust_name = "invoke_bool_noargs"]
+        unsafe fn invoke_with_return(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+        ) -> Result<bool>;
+
+        #[rust_name = "invoke_qvariant_noargs"]
+        unsafe fn invoke_with_return (
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+         ) -> Result<QVariant>;
 
         #[rust_name = "invoke_qmapqstringqvariant_noargs"]
         unsafe fn invoke_with_return(
@@ -135,6 +163,28 @@ impl Invokable<i32, ()> for ffi::QObject {
     }
 }
 
+impl Invokable<bool, ()> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: String,
+        connection_type: u32,
+        _args: &(),
+    ) -> Result<bool, Exception> {
+        unsafe { ffi::invoke_bool_noargs(self as *mut ffi::QObject, method, connection_type) }
+    }
+}
+
+impl Invokable<QVariant, ()> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: String,
+        connection_type: u32,
+        _args: &(),
+    ) -> Result<QVariant, Exception> {
+        unsafe { ffi::invoke_qvariant_noargs(self as *mut ffi::QObject, method, connection_type) }
+    }
+}
+
 impl Invokable<(), i32> for ffi::QObject {
     fn invoke_fn_qobj(
         &mut self,
@@ -163,6 +213,27 @@ impl Invokable<(), (i32, i32, i32)> for ffi::QObject {
                 args.0,
                 args.1,
                 args.2,
+            )
+        }
+    }
+}
+
+impl Invokable<(), (ffi::QList_QVariant, i32, i32, i32)> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: String,
+        connection_type: u32,
+        args: &(ffi::QList_QVariant, i32, i32, i32),
+    ) -> Result<(), Exception> {
+        unsafe {
+            ffi::invoke_noreturn_qlistqvariant_i32_i32_i32(
+                self as *mut ffi::QObject,
+                method,
+                connection_type,
+                args.0.clone(),
+                args.1,
+                args.2,
+                args.3
             )
         }
     }

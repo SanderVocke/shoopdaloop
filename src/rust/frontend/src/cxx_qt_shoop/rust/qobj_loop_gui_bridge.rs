@@ -125,6 +125,9 @@ pub mod ffi {
         );
 
         #[qinvokable]
+        pub fn get_backend_loop_shared_ptr(self: Pin<&mut LoopGui>) -> QVariant;
+
+        #[qinvokable]
         pub fn update_backend_sync_source(self: Pin<&mut LoopGui>);
 
         #[qinvokable]

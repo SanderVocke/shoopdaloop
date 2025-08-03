@@ -161,3 +161,26 @@ void invoke_three_args(
         arg2,
         arg3);
 }
+
+template<typename Obj,
+         typename Arg1, typename Arg2, typename Arg3, typename Arg4>
+void invoke_four_args(
+            Obj * object,
+            ::rust::String method,
+            unsigned connection_type,
+            Arg1 arg1, Arg2 arg2, Arg3 arg3, Arg4 arg4)
+{
+    auto qobj = static_cast<QObject*>(object);
+    auto meta = qobj->metaObject();
+    int index = meta->indexOfMethod(method.c_str());
+
+    if (index < 0) {
+        report_method_not_found(object, method.operator std::string());
+    }
+    QMetaMethod _method = meta->method(index);
+    _method.invoke(qobj, (Qt::ConnectionType) connection_type,
+        arg1,
+        arg2,
+        arg3,
+        arg4);
+}

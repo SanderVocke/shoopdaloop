@@ -4,6 +4,7 @@ use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::qobject_to_loop_backend_
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
 use crate::engine_update_thread;
+use crate::loop_helpers::get_backend_loop_handles_variant_list;
 use backend_bindings::AudioChannel;
 use backend_bindings::MidiChannel;
 use common::logging::macros::{
@@ -142,11 +143,12 @@ impl LoopGui {
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
-                    self_ref,
-                    "backend_transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                    backend_ref,
-                    "transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                    connection_types::QUEUED_CONNECTION);
+                        self_ref,
+                        "backend_transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        backend_ref,
+                        "transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        connection_types::QUEUED_CONNECTION
+                    );
                     connect_or_report(
                         self_ref,
                         "backendChanged(QObject*)".to_string(),
@@ -288,7 +290,8 @@ impl LoopGui {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
-        raw_trace!(
+        trace!(
+            self,
             "GUI thread: transitioning {} loops to {} with delay {}, sync at cycle {}",
             loops.len(),
             to_mode,
@@ -296,7 +299,7 @@ impl LoopGui {
             maybe_to_sync_at_cycle
         );
 
-        let backend_loop_handles = LoopGui::get_backend_loop_handles_variant_list(&loops).unwrap();
+        let backend_loop_handles = get_backend_loop_handles_variant_list(&loops).unwrap();
         self.backend_transition_multiple(
             backend_loop_handles,
             to_mode,
@@ -305,40 +308,8 @@ impl LoopGui {
         );
     }
 
-    pub fn get_backend_loop_handles_variant_list(
-        loop_guis: &QList_QVariant,
-    ) -> Result<QList_QVariant, anyhow::Error> {
-        let mut backend_loop_handles: QList_QVariant = QList_QVariant::default();
-
-        // Increment the reference count for all loops involved by storing shared pointers
-        // into QVariants.
-        loop_guis
-            .iter()
-            .map(|loop_variant| -> Result<(), anyhow::Error> {
-                unsafe {
-                    let loop_gui_qobj: *mut QObject = qvariant_to_qobject_ptr(loop_variant).ok_or(
-                        anyhow::anyhow!("Failed to convert QVariant to QObject pointer"),
-                    )?;
-                    let loop_gui_ptr: *mut LoopGui = qobject_to_loop_ptr(loop_gui_qobj);
-                    let backend_loop_ptr: &cxx::UniquePtr<QSharedPointer_QObject> =
-                        &loop_gui_ptr.as_ref().ok_or(anyhow::anyhow!("Failed to get loop GUI reference"))?.backend_loop_wrapper;
-                    if backend_loop_ptr.is_null() {
-                        return Err(anyhow::anyhow!("Loop GUI has no back-end"));
-                    }
-                    let backend_loop_handle: QVariant =
-                        qsharedpointer_qobject_to_qvariant(&backend_loop_ptr.as_ref().unwrap());
-                    backend_loop_handles.append(backend_loop_handle);
-                    Ok(())
-                }
-            })
-            .for_each(|result| match result {
-                Ok(_) => (),
-                Err(err) => {
-                    raw_error!("Failed to increment reference count for loop. This loop will be omitted. Details: {:?}", err)
-                }
-            });
-
-        Ok(backend_loop_handles)
+    pub fn get_backend_loop_shared_ptr(self: Pin<&mut LoopGui>) -> QVariant {
+        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap())
     }
 
     pub fn transition(

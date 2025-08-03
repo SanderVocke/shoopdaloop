@@ -105,6 +105,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn get_backend_loop_wrapper(self: Pin<&mut CompositeLoopGui>) -> *mut QObject;
 
+        #[qinvokable]
+        pub fn get_backend_loop_shared_ptr(self: Pin<&mut CompositeLoopGui>) -> QVariant;
+
         #[qsignal]
         #[cxx_name = "backendChanged"]
         pub unsafe fn backend_changed(self: Pin<&mut CompositeLoopGui>, backend: *mut QObject);
@@ -231,6 +234,15 @@ pub mod ffi {
             sync_source: *mut QObject,
         );
 
+        #[qsignal]
+        pub fn backend_transition_multiple(
+            self: Pin<&mut CompositeLoopGui>,
+            loops: QList_QVariant,
+            to_mode: i32,
+            maybe_cycles_delay: i32,
+            maybe_to_sync_at_cycle: i32,
+        );
+
         #[qinvokable]
         pub fn on_backend_n_cycles_changed(self: Pin<&mut CompositeLoopGui>, n_cycles: i32);
 
@@ -312,11 +324,11 @@ pub mod ffi {
     impl cxx_qt::Constructor<()> for CompositeLoopGui {}
 }
 
+use backend_bindings::LoopMode;
 use cxx;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 pub use ffi::CompositeLoopGui;
 use ffi::*;
-use backend_bindings::LoopMode;
 
 impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for CompositeLoopGui {
     unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {
