@@ -2,6 +2,7 @@ use anyhow;
 use backend_bindings::LoopMode;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::qobject::QObject;
+use cxx_qt_lib_shoop::qvariant_helpers::qvariant_type_name;
 use cxx_qt_lib_shoop::qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr};
 use cxx_qt_lib_shoop::qvariant_qvariantlist::{qvariant_as_qvariantlist, qvariantlist_as_qvariant};
 use cxx_qt_lib_shoop::qvariant_qvariantmap::{qvariant_as_qvariantmap, qvariantmap_as_qvariant};
@@ -10,7 +11,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 type QVariantMap = QMap<QMapPair_QString_QVariant>;
 type QVariantList = QList<QVariant>;
 
-#[derive(Default, PartialEq, Clone)]
+#[derive(Default, PartialEq, Clone, Debug)]
 pub struct CompositeLoopIterationEvents {
     pub loops_start: HashMap<*mut QObject, Option<LoopMode>>,
     pub loops_end: HashSet<*mut QObject>,
@@ -19,7 +20,7 @@ pub struct CompositeLoopIterationEvents {
 
 pub type CompositeLoopIteration = i32;
 
-#[derive(Default, PartialEq, Clone)]
+#[derive(Default, PartialEq, Clone, Debug)]
 pub struct CompositeLoopSchedule {
     pub data: BTreeMap<CompositeLoopIteration, CompositeLoopIterationEvents>,
 }
@@ -53,6 +54,8 @@ impl CompositeLoopIterationEvents {
         }
         let loops_end = qvariantlist_as_qvariant(&loops_end).unwrap();
         let loops_ignored = qvariantlist_as_qvariant(&loops_ignored).unwrap();
+
+        let typename = qvariant_type_name(&loops_end).unwrap();
 
         let mut map: QVariantMap = QMap::default();
         map.insert(QString::from("loops_start"), loops_start);

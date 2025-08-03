@@ -42,29 +42,43 @@ macro_rules! error {
 fn replace_by_backend_objects(
     schedule: &CompositeLoopSchedule,
 ) -> Result<CompositeLoopSchedule, anyhow::Error> {
+
+    let get_backend_obj = |object: *mut QObject| -> Result<*mut QObject, anyhow::Error> {
+        unsafe {
+            match invoke::<QObject, *mut QObject, ()>(
+                &mut *object,
+                "get_backend_loop_wrapper()".to_string(),
+                connection_types::DIRECT_CONNECTION,
+                &(),
+            ) {
+                Ok(backend_loop) => {
+                    if backend_loop.is_null() {
+                        return Err(anyhow::anyhow!("Backend loop in schedule is null"));
+                    }
+                    return Ok(backend_loop);
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Unable to get backend loop: {e}"));
+                }
+            }
+        }
+    };
+
     let mut rval = CompositeLoopSchedule::default();
 
     for (key, events) in schedule.data.iter() {
         let mut new_events = CompositeLoopIterationEvents::default();
         for (object, mode) in events.loops_start.iter() {
-            unsafe {
-                match invoke::<QObject, *mut QObject, ()>(
-                    &mut **object,
-                    "get_backend_loop_wrapper()".to_string(),
-                    connection_types::DIRECT_CONNECTION,
-                    &(),
-                ) {
-                    Ok(backend_loop) => {
-                        if backend_loop.is_null() {
-                            return Err(anyhow::anyhow!("Backend loop in schedule is null"));
-                        }
-                        new_events.loops_start.insert(backend_loop, *mode);
-                    }
-                    Err(e) => {
-                        return Err(anyhow::anyhow!("Unable to get backend loop: {e}"));
-                    }
-                }
-            }
+            let backend_loop = get_backend_obj(*object)?;
+            new_events.loops_start.insert(backend_loop, *mode);
+        }
+        for object in events.loops_end.iter() {
+            let backend_loop = get_backend_obj(*object)?;
+            new_events.loops_end.insert(backend_loop);
+        }
+        for object in events.loops_ignored.iter() {
+            let backend_loop = get_backend_obj(*object)?;
+            new_events.loops_ignored.insert(backend_loop);
         }
         rval.data.insert(*key, new_events);
     }

@@ -490,6 +490,7 @@ impl CompositeLoopBackend {
             Ok(converted_schedule) => {
                 if converted_schedule != self.schedule {
                     debug!(self, "schedule updated");
+                    trace!(self, "schedule: {converted_schedule:?}");
                     let self_mut = self.as_mut();
                     let mut rust_mut = self_mut.rust_mut();
                     rust_mut.schedule = converted_schedule;
@@ -644,9 +645,6 @@ impl CompositeLoopBackend {
                     })
                     .collect::<Result<HashSet<_>, _>>()?;
                 let mut running_loops_changed = false;
-
-                let n = loops_end.len();
-                error!(self, "# loop end: {n}");
 
                 // Handle any loop that needs to end this iteration.
                 for loop_end in loops_end.iter() {
