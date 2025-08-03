@@ -69,7 +69,7 @@ shoop_format = require('shoop_format')
                 return null
             }
 
-            root.logger.trace(() => ('Generating script for: ' + JSON.stringify(configuration)))
+            root.logger.trace('Generating script for: ' + JSON.stringify(configuration))
 
             let base_script = (typeof action_or_script === 'string') ? action_or_script : action_or_script.script
             let inputs = (typeof action_or_script === 'string') ? {} : action_or_script.inputs
@@ -93,7 +93,7 @@ shoop_format = require('shoop_format')
             script += ` ${base_script} `
             if (do_if) { script += `end ` }
             script += ` end`
-            root.logger.trace(() => ('Generated script: ' + script))
+            root.logger.trace('Generated script: ' + script)
 
             let fn = _lua_engine.evaluate(script, 'MidiControl', true, true)
             let _name = action_name
@@ -130,7 +130,7 @@ shoop_format = require('shoop_format')
                 }
                 configuration_handlers[i].callable(msg_object, control_port ? control_port.lua_interface : null)
             } else {
-                root.logger.trace(() => (`No match for MIDI control filter: msg = ${msg}, filters = ${filters}, action = ${action}`))
+                root.logger.trace(`No match for MIDI control filter: msg = ${msg}, filters = ${filters}, action = ${action}`)
             }
         }
     }

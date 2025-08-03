@@ -266,7 +266,7 @@ Item {
     function push_gain(gain, target, gain_factor = 1.0) {
         convert_gain.dB = gain
         var v = convert_gain.linear * gain_factor
-        logger.trace(() => ("Pushing gain " + v + " to " + target.obj_id))
+        logger.trace("Pushing gain " + v + " to " + target.obj_id)
         if (target && target.gain != v) { target.set_gain(v) }
     }
     function toggle_muted() { mute = !mute }

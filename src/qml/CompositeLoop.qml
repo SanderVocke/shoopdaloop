@@ -15,7 +15,7 @@ Item {
     RequireBackend {}
 
     // Store the current playback iteration.
-    onIterationChanged: root.logger.trace(() => `iteration -> ${iteration}`)
+    onIterationChanged: root.logger.trace(`iteration -> ${iteration}`)
 
     property var initial_composition_descriptor: null
     property string obj_id : 'unknown'
@@ -322,7 +322,7 @@ Item {
     readonly property bool schedule_frozen: (ModeHelpers.is_recording_mode(mode) || (ModeHelpers.is_recording_mode(next_mode) && next_transition_delay === 0))
     readonly property bool sync_empty: !(sync_length > 0)
     onPlaylistsChanged: {
-        root.logger.trace(() => `playlists -> ${JSON.stringify(playlists, null, 2)}`)
+        root.logger.trace(`playlists -> ${JSON.stringify(playlists, null, 2)}`)
         ensure_script_or_regular();
         update_schedule()
     }
@@ -331,7 +331,7 @@ Item {
     // Calculated properties
     readonly property int display_position : position
 
-    onPositionChanged: root.logger.trace(() => `pos -> ${position}`)
+    onPositionChanged: root.logger.trace(`pos -> ${position}`)
 
     property var all_loop_ids: {
         var r = new Set()

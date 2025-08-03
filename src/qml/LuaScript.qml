@@ -46,7 +46,7 @@ Item {
     }
 
     onAccepted_script_codeChanged: {
-        logger.trace(() => ("Accepted code: " + accepted_script_code))
+        logger.trace("Accepted code: " + accepted_script_code)
         execute(accepted_script_code, true, script_name, catch_errors)
         ready = true
         ranScript()
@@ -54,13 +54,13 @@ Item {
 
     function evaluate(expression, script=script_name) {
         if (!ready) return null;
-        logger.trace(() => ("Evaluating expression: " + expression))
+        logger.trace("Evaluating expression: " + expression)
         return lua_engine.evaluate(expression, script, true, catch_errors)
     }
 
     function execute(statement, force=false, script=script_name) {
         if (!ready && !force) return;
-        logger.trace(() => ("Executing statement: " + statement))
+        logger.trace("Executing statement: " + statement)
         lua_engine.execute(statement, script, true, catch_errors)
     }
 }

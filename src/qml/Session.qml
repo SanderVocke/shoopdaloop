@@ -194,7 +194,7 @@ Rectangle {
         registries.state_registry.reset_saving_loading()
         registries.state_registry.save_action_started()
         var tempdir = ShoopFileIO.create_temporary_folder()
-        root.logger.trace(() => `Temporary folder: ${tempdir}`)
+        root.logger.trace(`Temporary folder: ${tempdir}`)
         if (tempdir == null) {
             throw new Error("Failed to create temporary folder")
         }

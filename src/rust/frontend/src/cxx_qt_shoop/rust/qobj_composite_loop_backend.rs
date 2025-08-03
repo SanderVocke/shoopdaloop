@@ -645,6 +645,9 @@ impl CompositeLoopBackend {
                     .collect::<Result<HashSet<_>, _>>()?;
                 let mut running_loops_changed = false;
 
+                let n = loops_end.len();
+                error!(self, "# loop end: {n}");
+
                 // Handle any loop that needs to end this iteration.
                 for loop_end in loops_end.iter() {
                     let loop_iid = get_loop_iid(loop_end);
@@ -666,7 +669,7 @@ impl CompositeLoopBackend {
                             // Explicit mode, just apply it as scheduled
                             debug!(
                                 self,
-                                "generate loop start (explicit mode {explicit_mode:?}): {loop_iid}"
+                                "loop start (explicit mode {explicit_mode:?}): {loop_iid}"
                             );
                             self.as_mut().do_trigger(
                                 *loop_start,
