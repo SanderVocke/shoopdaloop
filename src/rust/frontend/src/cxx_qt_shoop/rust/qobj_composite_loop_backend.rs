@@ -6,7 +6,7 @@ use crate::{
 };
 use backend_bindings::LoopMode;
 use common::logging::macros::{
-    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
+    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
 };
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::{
@@ -37,6 +37,13 @@ macro_rules! trace {
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
         raw_debug!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+    };
+}
+
+#[allow(unused_macros)]
+macro_rules! warn {
+    ($self:ident, $($arg:tt)*) => {
+        raw_warn!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
     };
 }
 
@@ -137,6 +144,7 @@ impl CompositeLoopBackend {
                 self,
                 "immediate sync transition - stepping through virtual transition list"
             );
+            trace!(self, "virtual transition list: {all_transitions:?}");
 
             // Find the last transition for each loop up until this point
             type LastTransitionPerLoop = HashMap<*mut QObject, (LoopMode, i32)>;
@@ -312,6 +320,43 @@ impl CompositeLoopBackend {
         maybe_go_to_cycle: QVariant,
         go_to_mode: i32,
     ) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            if self.sync_source.is_null() || self.sync_length <= 0 {
+                warn!(self, "ignoring grab - undefined / empty sync loop");
+                return Ok(())
+            }
+            let maybe_reverse_start_cycle_opt : Option<i32> = maybe_go_to_cycle.value::<i32>();
+            let maybe_cycles_length_opt : Option<i32> = maybe_cycles_length.value::<i32>();
+            let maybe_go_to_cycle_opt : Option<i32> = maybe_go_to_cycle.value::<i32>();
+            let go_to_mode = LoopMode::try_from(go_to_mode)?;
+
+            trace!(self, "adopt ringbuffers and go to cycle {maybe_go_to_cycle_opt:?}, go to mode {go_to_mode}");
+
+            // Proceed through the schedule up to the point we want to go by
+            // calling our trigger function with a callback to just register
+            // the made transitions.
+            let n_cycles = self.n_cycles;
+            let transitions = self.as_mut().list_transitions(go_to_mode, 0, n_cycles);
+
+            trace!(self, "virtual transition list: {transitions:?}");
+
+            // Find the first recording range for each loop.
+            type IterationPerLoop = HashMap<*mut QObject, i32>;
+            let mut loop_recording_starts = IterationPerLoop::default();
+            let mut loop_recording_ends = IterationPerLoop::default();
+            for (iteration, transitions) in transitions.iter() {
+                for (loop_obj, mode) in transitions.iter() {
+                    if mode == &LoopMode::Recording {
+                        //
+                    }
+                }
+            }
+
+            Ok(())
+        }() {
+            error!(self, "Could not adopt ringbuffers: {e}");
+        }
+        todo!();
     }
 
     fn all_loops(self: &Self) -> HashSet<*mut QObject> {
