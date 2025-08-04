@@ -2,7 +2,6 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.PythonLogger
-import ShoopDaLoop.PythonCompositeLoop
 import ShoopDaLoop.Rust
 
 import ShoopConstants
@@ -45,7 +44,6 @@ Item {
     property alias rust_loop : rust_loop
     property alias backend : rust_loop.backend
 
-    // PythonCompositeLoop {
     CompositeLoopGui {
         id: rust_loop
         sync_source: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null

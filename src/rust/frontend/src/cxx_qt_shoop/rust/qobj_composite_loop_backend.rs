@@ -20,7 +20,7 @@ use cxx_qt_lib_shoop::{
     qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
 use std::{
-    cmp::max,
+    cmp::{max, min},
     collections::{BTreeMap, HashMap, HashSet},
     pin::Pin,
 };
@@ -314,29 +314,27 @@ impl CompositeLoopBackend {
     }
 
     pub fn adopt_ringbuffers(
-        self: Pin<&mut Self>,
-        maybe_reverse_start_cycle: QVariant,
-        maybe_cycles_length: QVariant,
+        mut self: Pin<&mut Self>,
+        _maybe_reverse_start_cycle: QVariant,
+        _maybe_cycles_length: QVariant,
         maybe_go_to_cycle: QVariant,
         go_to_mode: i32,
     ) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             if self.sync_source.is_null() || self.sync_length <= 0 {
                 warn!(self, "ignoring grab - undefined / empty sync loop");
-                return Ok(())
+                return Ok(());
             }
-            let maybe_reverse_start_cycle_opt : Option<i32> = maybe_go_to_cycle.value::<i32>();
-            let maybe_cycles_length_opt : Option<i32> = maybe_cycles_length.value::<i32>();
-            let maybe_go_to_cycle_opt : Option<i32> = maybe_go_to_cycle.value::<i32>();
+            let maybe_go_to_cycle_opt: Option<i32> = maybe_go_to_cycle.value::<i32>();
             let go_to_mode = LoopMode::try_from(go_to_mode)?;
 
-            trace!(self, "adopt ringbuffers and go to cycle {maybe_go_to_cycle_opt:?}, go to mode {go_to_mode}");
+            trace!(self, "adopt ringbuffers and go to cycle {maybe_go_to_cycle_opt:?}, go to mode {go_to_mode:?}");
 
             // Proceed through the schedule up to the point we want to go by
             // calling our trigger function with a callback to just register
             // the made transitions.
             let n_cycles = self.n_cycles;
-            let transitions = self.as_mut().list_transitions(go_to_mode, 0, n_cycles);
+            let transitions = self.as_mut().list_transitions(LoopMode::Recording, 0, n_cycles);
 
             trace!(self, "virtual transition list: {transitions:?}");
 
@@ -346,17 +344,88 @@ impl CompositeLoopBackend {
             let mut loop_recording_ends = IterationPerLoop::default();
             for (iteration, transitions) in transitions.iter() {
                 for (loop_obj, mode) in transitions.iter() {
-                    if mode == &LoopMode::Recording {
-                        //
+                    if *mode == LoopMode::Recording {
+                        // Store only the first recording bounds.
+                        if !loop_recording_starts.contains_key(loop_obj) {
+                            loop_recording_starts.insert(*loop_obj, *iteration);
+                        } else {
+                            let v = loop_recording_starts.get_mut(loop_obj).unwrap();
+                            *v = min(*v, *iteration);
+                        }
                     }
                 }
+            }
+            for (iteration, transitions) in transitions.iter() {
+                for (loop_obj, mode) in transitions.iter() {
+                    if *mode != LoopMode::Recording &&
+                        loop_recording_starts.contains_key(loop_obj) &&
+                        iteration > loop_recording_starts.get(loop_obj).unwrap()
+                    {
+                        if !loop_recording_ends.contains_key(loop_obj) {
+                            loop_recording_ends.insert(*loop_obj, *iteration);
+                        } else {
+                            let v = loop_recording_ends.get_mut(loop_obj).unwrap();
+                            *v = min(*v, *iteration);
+                        }
+                    }
+                }
+            }
+
+            // Determine the grabs to make on our sub-loops.
+            #[derive(Debug)]
+            struct ToGrab {
+                loop_obj: *mut QObject,
+                reverse_start: i32,
+                n_cycles: i32,
+            }
+            let mut to_grab: Vec<ToGrab> = Vec::new();
+            for (loop_obj, start_it) in loop_recording_starts.iter() {
+                let end_it = *loop_recording_ends
+                    .get(loop_obj)
+                    .unwrap_or(&self.n_cycles.clone());
+                let n_cycles = max(end_it - start_it, 1);
+                let mut reverse_start = self.n_cycles - start_it;
+                if !self.sync_mode_active {
+                    // With sync mode inactive, we want to end up inside the
+                    // last cycle with our grab.
+                    reverse_start = max(reverse_start - 1, 0);
+                }
+                let g = ToGrab {
+                    loop_obj: *loop_obj,
+                    reverse_start,
+                    n_cycles,
+                };
+                let iid = get_loop_iid(loop_obj);
+                trace!(self, "will grab {iid}: {g:?}");
+                to_grab.push(g);
+            }
+
+            for g in to_grab.iter() {
+                unsafe {
+                    // Note we don't allow the loop to directly go to the go_to_mode.
+                    // We will instead do that transition after all grabs are done.
+                    invoke(
+                        &mut *g.loop_obj,
+                        "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)".to_string(),
+                        connection_types::DIRECT_CONNECTION,
+                        &(
+                            QVariant::from(&g.reverse_start),
+                            QVariant::from(&g.n_cycles),
+                            QVariant::from(&0),
+                            LoopMode::Unknown as isize as i32,
+                        )
+                    )?;
+                }
+            }
+
+            if go_to_mode != LoopMode::Unknown {
+                self.as_mut().transition(go_to_mode as isize as i32, -1, maybe_go_to_cycle_opt.unwrap_or(-1));
             }
 
             Ok(())
         }() {
             error!(self, "Could not adopt ringbuffers: {e}");
         }
-        todo!();
     }
 
     fn all_loops(self: &Self) -> HashSet<*mut QObject> {

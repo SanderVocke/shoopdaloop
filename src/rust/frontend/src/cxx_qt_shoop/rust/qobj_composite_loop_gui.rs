@@ -5,7 +5,7 @@ use crate::cxx_qt_shoop::qobj_composite_loop_gui_bridge::ffi::*;
 use crate::engine_update_thread;
 use crate::loop_helpers::get_backend_loop_handles_variant_list;
 use common::logging::macros::{
-    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
+    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
 };
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::connect::connect_or_report;
@@ -29,6 +29,13 @@ macro_rules! trace {
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
         raw_debug!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+    };
+}
+
+#[allow(unused_macros)]
+macro_rules! warn {
+    ($self:ident, $($arg:tt)*) => {
+        raw_warn!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
     };
 }
 
@@ -333,22 +340,29 @@ impl CompositeLoopGui {
         let sync_source_in: *mut QObject = *self.sync_source();
 
         unsafe {
-            match invoke::<QObject, *mut QObject, ()>(
-                &mut *sync_source_in,
-                "get_backend_loop_wrapper()".to_string(),
-                connection_types::DIRECT_CONNECTION,
-                &(),
-            ) {
-                Ok(backend_loop) => {
-                    if backend_loop.is_null() {
-                        error!(self, "Backend loop in sync source is null");
+            let backend_loop: *mut QObject = if sync_source_in.is_null() {
+                std::ptr::null_mut()
+            } else {
+                match invoke::<QObject, *mut QObject, ()>(
+                    &mut *sync_source_in,
+                    "get_backend_loop_wrapper()".to_string(),
+                    connection_types::DIRECT_CONNECTION,
+                    &(),
+                ) {
+                    Ok(backend_loop) => {
+                        if backend_loop.is_null() {
+                            warn!(self, "Backend loop in sync source is null");
+                        }
+                        backend_loop
                     }
-                    self.as_mut().backend_set_sync_source(backend_loop);
+                    Err(e) => {
+                        error!(self, "Unable to get backend loop: {e}");
+                        std::ptr::null_mut()
+                    }
                 }
-                Err(e) => {
-                    error!(self, "Unable to get backend loop: {e}");
-                }
-            }
+            };
+
+            self.as_mut().backend_set_sync_source(backend_loop);
         }
     }
 
