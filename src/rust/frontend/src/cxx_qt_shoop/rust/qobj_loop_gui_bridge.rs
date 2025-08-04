@@ -50,9 +50,9 @@ pub mod ffi {
         type QSharedPointer_QObject =
             cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 
-        include!("cxx-qt-lib-shoop/metatype.h");
+        include!("cxx-qt-lib-shoop/qmetatype.h");
         #[rust_name = "loop_gui_metatype_name"]
-        unsafe fn meta_type_name(obj: &LoopGui) -> Result<&str>;
+        unsafe fn meta_type_name(obj: *mut LoopGui) -> Result<String>;
     }
 
     unsafe extern "RustQt" {

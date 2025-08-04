@@ -2,7 +2,7 @@ use cxx::Exception;
 use cxx_qt;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 
-use crate::{qobject::AsQObject};
+use crate::qobject::AsQObject;
 
 pub const AUTO_CONNECTION: u32 = 0;
 pub const DIRECT_CONNECTION: u32 = 1;
@@ -91,11 +91,11 @@ mod ffi {
         ) -> Result<bool>;
 
         #[rust_name = "invoke_qvariant_noargs"]
-        unsafe fn invoke_with_return (
+        unsafe fn invoke_with_return(
             obj: *mut QObject,
             method: String,
             connection_type: u32,
-         ) -> Result<QVariant>;
+        ) -> Result<QVariant>;
 
         #[rust_name = "invoke_qmapqstringqvariant_noargs"]
         unsafe fn invoke_with_return(
@@ -233,7 +233,7 @@ impl Invokable<(), (ffi::QList_QVariant, i32, i32, i32)> for ffi::QObject {
                 args.0.clone(),
                 args.1,
                 args.2,
-                args.3
+                args.3,
             )
         }
     }

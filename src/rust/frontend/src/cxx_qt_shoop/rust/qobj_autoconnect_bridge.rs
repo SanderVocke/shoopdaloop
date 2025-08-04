@@ -38,9 +38,9 @@ pub mod ffi {
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
 
-        include!("cxx-qt-lib-shoop/metatype.h");
+        include!("cxx-qt-lib-shoop/qmetatype.h");
         #[rust_name = "autoconnect_metatype_name"]
-        unsafe fn meta_type_name(obj: &AutoConnect) -> Result<&str>;
+        unsafe fn meta_type_name(obj: *mut AutoConnect) -> Result<String>;
     }
 
     unsafe extern "RustQt" {

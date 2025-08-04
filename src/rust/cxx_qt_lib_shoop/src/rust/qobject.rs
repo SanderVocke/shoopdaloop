@@ -39,6 +39,9 @@ pub mod ffi {
         #[rust_name = "qobject_property_string"]
         unsafe fn qobjectPropertyString(obj: &QObject, name: String) -> Result<QString>;
 
+        #[rust_name = "qobject_property_qobject"]
+        unsafe fn qobjectPropertyQObject(obj: &QObject, name: String) -> Result<*mut QObject>;
+
         #[rust_name = "qobject_object_name"]
         unsafe fn qobjectObjectName(obj: &QObject) -> Result<String>;
 
@@ -78,7 +81,12 @@ pub mod ffi {
             version_minor: i64,
             type_name: &mut String,
         ) -> Result<()>;
-        
+
+        #[rust_name = "qobject_meta_type_name"]
+        unsafe fn qobjectMetaTypeName(obj: &QObject) -> Result<String>;
+
+        #[rust_name = "qobject_has_property"]
+        unsafe fn qobjectHasProperty(obj: &QObject, property: String) -> Result<bool>;
     }
 }
 
@@ -125,6 +133,9 @@ pub unsafe fn qobject_thread(obj: &QObject) -> Result<*mut QThread, cxx::Excepti
 pub unsafe fn qobject_class_name(obj: &QObject) -> Result<&str, cxx::Exception> {
     ffi::qobject_class_name(obj)
 }
+pub unsafe fn qobject_meta_type_name(obj: &QObject) -> Result<String, cxx::Exception> {
+    ffi::qobject_meta_type_name(obj)
+}
 pub unsafe fn qobject_property_bool(obj: &QObject, name: String) -> Result<bool, cxx::Exception> {
     ffi::qobject_property_bool(obj, name)
 }
@@ -133,6 +144,12 @@ pub unsafe fn qobject_property_int(obj: &QObject, name: String) -> Result<i32, c
 }
 pub unsafe fn qobject_property_float(obj: &QObject, name: String) -> Result<f32, cxx::Exception> {
     ffi::qobject_property_float(obj, name)
+}
+pub unsafe fn qobject_property_qobject(
+    obj: &QObject,
+    name: String,
+) -> Result<*mut QObject, cxx::Exception> {
+    ffi::qobject_property_qobject(obj, name)
 }
 pub unsafe fn qobject_property_string(
     obj: &QObject,
@@ -195,6 +212,12 @@ pub unsafe fn qobject_register_qml_singleton_instance(
         version_minor,
         type_name,
     )
+}
+pub unsafe fn qobject_has_property(
+    obj: &QObject,
+    property: String,
+) -> Result<bool, cxx::Exception> {
+    ffi::qobject_has_property(obj, property)
 }
 
 pub trait IsQObject: AsQObject {

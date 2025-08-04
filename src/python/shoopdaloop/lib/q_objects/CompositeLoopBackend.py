@@ -175,7 +175,7 @@ class CompositeLoopBackend(ShoopQObject):
     @sync_loop.setter
     def sync_loop(self, val):
         if val != self._sync_loop:
-            if self._iteration != val:
+            if self._sync_loop != val:
                 self.logger.debug(lambda: f'sync_loop -> {val}')
             if self._sync_loop:
                 self._sync_loop.disconnect(self)

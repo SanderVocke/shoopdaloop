@@ -1,8 +1,10 @@
 use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
+use crate::loop_helpers::transition_backend_loops;
 use crate::loop_mode_helpers::*;
 use backend_bindings::AudioChannel;
+use backend_bindings::LoopMode;
 use backend_bindings::MidiChannel;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
@@ -343,15 +345,28 @@ impl LoopBackend {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) {
-        LoopBackend::transition_multiple_impl(
-            loops,
-            to_mode,
-            maybe_cycles_delay,
-            maybe_to_sync_at_cycle,
-        );
+        if let Err(e) = transition_backend_loops(
+            loops
+                .iter()
+                .map(|variant| qvariant_to_qobject_ptr(variant).unwrap()),
+            LoopMode::try_from(to_mode).unwrap(),
+            if maybe_cycles_delay < 0 {
+                None
+            } else {
+                Some(maybe_cycles_delay)
+            },
+            if maybe_to_sync_at_cycle < 0 {
+                None
+            } else {
+                Some(maybe_to_sync_at_cycle)
+            },
+        ) {
+            error!(self, "Failed to transition backend loops: {e}");
+        }
     }
 
-    pub fn transition_multiple_impl(
+    pub fn transition_multiple_backend_in_unison(
+        self: Pin<&mut LoopBackend>,
         loops: QList_QVariant,
         to_mode: i32,
         maybe_cycles_delay: i32,
@@ -621,4 +636,10 @@ impl LoopBackend {
     pub fn get_initialized(self: &LoopBackend) -> bool {
         self.rust().backend_loop.is_some()
     }
+
+    pub fn metatype_name() -> String {
+        unsafe { loop_backend_metatype_name(std::ptr::null_mut()).unwrap() }
+    }
+
+    pub fn dependent_will_handle_sync_loop_cycle(self: Pin<&mut LoopBackend>, cycle_nr: i32) {}
 }

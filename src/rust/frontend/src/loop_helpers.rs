@@ -4,12 +4,14 @@ use cxx_qt_lib::{QList, QVariant};
 use cxx_qt_lib_shoop::{
     connection_types,
     invokable::invoke,
-    qobject::QObject,
+    qobject::{ffi::qobject_meta_type_name, QObject},
     qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
     qvariant_qvariantlist::QList_QVariant,
 };
 
 use common::logging::macros::*;
+
+use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
 shoop_log_unit!("Frontend.Loop");
 
 pub fn get_backend_loop_handles_variant_list(
@@ -52,9 +54,14 @@ pub fn transition_gui_loops(
     maybe_cycles_delay: Option<i32>,
     maybe_to_sync_at_cycle: Option<i32>,
 ) -> Result<(), anyhow::Error> {
+    // For loops on the GUI side, all they do when a multiple-transition is requested is forward
+    // the call to the backend wrapper thread with a queued call.
+    // It doesn't matter what kind of loop we are dealing with - the details will be
+    // handled by the backend wrapper objects.
+
     unsafe {
-        let mut list : QList_QVariant = QList::default();
-        let mut call_on : *mut QObject = std::ptr::null_mut();
+        let mut list: QList_QVariant = QList::default();
+        let mut call_on: *mut QObject = std::ptr::null_mut();
         for l in loops {
             list.append(qobject_ptr_to_qvariant(l));
             call_on = l;
@@ -82,49 +89,43 @@ pub fn transition_backend_loops(
     maybe_cycles_delay: Option<i32>,
     maybe_to_sync_at_cycle: Option<i32>,
 ) -> Result<(), anyhow::Error> {
-    let mut to_transition_together: QList_QVariant = QList::default();
+    // In the back-end wrappers thread, we need to make a distinction between kinds of loops:
+    // - "true" loops need to be transitioned as a group with a single back-end API call,
+    //   to ensure the transition at the exact same time
+    // - composite loops, which don't exist in the back-end, need to be transitioned one
+    //   at a time.
+    let mut unison_transition_loops: QList_QVariant = QList::default();
 
     unsafe {
         for l in loops {
-            match invoke(
-                &mut *l,
-                "supports_transition_multiple()".to_string(),
-                connection_types::DIRECT_CONNECTION,
-                &(),
-            )? {
-                true => {
-                    // Add to list to transition together
-                    let variant = qobject_ptr_to_qvariant(l);
-                    to_transition_together.append(variant);
-                }
-                false => {
-                    let to_mode = to_mode as isize as i32;
-                    let cycles_delay = maybe_cycles_delay.unwrap_or(-1);
-                    let sync_at = maybe_to_sync_at_cycle.unwrap_or(-1);
-                    // Transition individually
-                    invoke(
-                        &mut *l,
-                        "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                        connection_types::DIRECT_CONNECTION,
-                        &(to_mode, cycles_delay, sync_at),
-                    )?;
-                }
+            if qobject_meta_type_name(&*l)? == LoopBackend::metatype_name() {
+                unison_transition_loops.append(qobject_ptr_to_qvariant(l));
+            } else {
+                let to_mode = to_mode as isize as i32;
+                let cycles_delay = maybe_cycles_delay.unwrap_or(-1);
+                let sync_at = maybe_to_sync_at_cycle.unwrap_or(-1);
+                // Transition individually
+                invoke(
+                    &mut *l,
+                    "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                    connection_types::DIRECT_CONNECTION,
+                    &(to_mode, cycles_delay, sync_at),
+                )?;
             }
         }
 
-        if to_transition_together.len() > 0 {
-            let first = to_transition_together
+        if unison_transition_loops.len() > 0 {
+            let first = unison_transition_loops
                 .get(0)
                 .ok_or(anyhow::anyhow!("No loops to transition"))?;
-            let mut first =
-                qvariant_to_qobject_ptr(first).ok_or(anyhow::anyhow!("Not a QObject"))?;
+            let first = qvariant_to_qobject_ptr(first).ok_or(anyhow::anyhow!("Not a QObject"))?;
             invoke(
                 &mut *first,
-                "transition_multiple(QList<QVariant>,::std::int32_t,::std::int32_t,::std::int32_t)"
+                "transition_multiple_backend_in_unison(QList<QVariant>,::std::int32_t,::std::int32_t,::std::int32_t)"
                     .to_string(),
                 connection_types::DIRECT_CONNECTION,
                 &(
-                    to_transition_together,
+                    unison_transition_loops,
                     to_mode as isize as i32,
                     maybe_cycles_delay.unwrap_or(-1),
                     maybe_to_sync_at_cycle.unwrap_or(-1),

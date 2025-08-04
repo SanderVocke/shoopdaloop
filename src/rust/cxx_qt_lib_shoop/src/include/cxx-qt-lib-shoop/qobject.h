@@ -59,6 +59,20 @@ inline int qobjectPropertyInt(QObject const& obj, ::rust::String name) {
     return result.toInt();
 }
 
+inline QObject* qobjectPropertyQObject(QObject const& obj, ::rust::String name) {
+    auto result = obj.property(name.c_str());
+    if (!result.isValid()) {
+        std::string err = "getting property ";
+        err += name.operator std::string();
+        err += " yielded invalid result";
+        throw std::runtime_error(err);
+    }
+    if (!result.canConvert<QObject*>()) {
+        throw std::runtime_error("not convertible to QObject*");
+    }
+    return result.value<QObject*>();
+}
+
 inline float qobjectPropertyFloat(QObject const& obj, ::rust::String name) {
     auto result = obj.property(name.c_str());
     if (!result.isValid()) {
@@ -137,3 +151,8 @@ template<typename T>
 inline void qobjectSetProperty(QObject *object, ::rust::String property, T const& value) {
     object->setProperty(property.c_str(), QVariant(value));
 }
+
+inline ::rust::String qobjectMetaTypeName(QObject const& obj) {
+    return obj.metaObject()->metaType().name();
+}
+

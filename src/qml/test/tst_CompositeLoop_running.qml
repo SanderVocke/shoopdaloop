@@ -768,6 +768,13 @@ ShoopTestFile {
                     verify_eq(l0().next_mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(l1().next_mode, ShoopConstants.LoopMode.Playing)
 
+                    verify_states(ShoopConstants.LoopMode.Playing,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                ShoopConstants.LoopMode.Stopped,
+                                50, 0, 0, 0, 0)
+
                     process(100) // middle of 1st step
 
                     verify_states(ShoopConstants.LoopMode.Playing,

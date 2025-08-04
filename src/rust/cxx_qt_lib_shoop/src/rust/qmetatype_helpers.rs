@@ -5,7 +5,7 @@ mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         include!("cxx-qt-lib-shoop/qobject.h");
-        include!("cxx-qt-lib-shoop/qmetatype_helpers.h");
+        include!("cxx-qt-lib-shoop/qmetatype.h");
         include!("cxx-qt-lib/qmap.h");
         include!("cxx-qt-lib/qlist.h");
         include!("cxx-qt-lib/qvariant.h");
@@ -18,25 +18,25 @@ mod ffi {
         type QObject = crate::qobject::QObject;
 
         #[rust_name = "qmetatype_id_int"]
-        unsafe fn qmetatypeTypeId(v: *mut i32) -> i32;
+        unsafe fn meta_type_id(v: *mut i32) -> i32;
 
         #[rust_name = "qmetatype_id_qstring"]
-        unsafe fn qmetatypeTypeId(v: *mut QString) -> i32;
+        unsafe fn meta_type_id(v: *mut QString) -> i32;
 
         #[rust_name = "qmetatype_id_bool"]
-        unsafe fn qmetatypeTypeId(v: *mut bool) -> i32;
+        unsafe fn meta_type_id(v: *mut bool) -> i32;
 
         #[rust_name = "qmetatype_id_qobject_ptr"]
-        unsafe fn qmetatypeTypeId(v: *mut *mut QObject) -> i32;
+        unsafe fn meta_type_id(v: *mut *mut QObject) -> i32;
 
         #[rust_name = "qmetatype_id_qvariantmap"]
-        unsafe fn qmetatypeTypeId(v: *mut QMap_QString_QVariant) -> i32;
+        unsafe fn meta_type_id(v: *mut QMap_QString_QVariant) -> i32;
 
         #[rust_name = "qmetatype_id_qvariantlist"]
-        unsafe fn qmetatypeTypeId(v: *mut QList_QVariant) -> i32;
+        unsafe fn meta_type_id(v: *mut QList_QVariant) -> i32;
 
         #[rust_name = "qmetatype_id_qstringlist"]
-        unsafe fn qmetatypeTypeId(v: *mut QList_QString) -> i32;
+        unsafe fn meta_type_id(v: *mut QList_QString) -> i32;
     }
 }
 

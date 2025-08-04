@@ -30,9 +30,9 @@ pub mod ffi {
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
-        include!("cxx-qt-lib-shoop/metatype.h");
+        include!("cxx-qt-lib-shoop/qmetatype.h");
         #[rust_name = "loop_backend_metatype_name"]
-        unsafe fn meta_type_name(obj: &LoopBackend) -> Result<&str>;
+        unsafe fn meta_type_name(obj: *mut LoopBackend) -> Result<String>;
     }
 
     unsafe extern "RustQt" {
@@ -72,8 +72,20 @@ pub mod ffi {
         #[qinvokable]
         pub fn set_instance_identifier(self: Pin<&mut LoopBackend>, instance_identifier: QString);
 
+        // For any backend loop, will split into unison/individual
+        // transitions
         #[qinvokable]
         pub fn transition_multiple(
+            self: Pin<&mut LoopBackend>,
+            loops: QList_QVariant,
+            to_mode: i32,
+            maybe_cycles_delay: i32,
+            maybe_to_sync_at_cycle: i32,
+        );
+
+        // For LoopBackend objects only
+        #[qinvokable]
+        pub fn transition_multiple_backend_in_unison(
             self: Pin<&mut LoopBackend>,
             loops: QList_QVariant,
             to_mode: i32,
@@ -124,6 +136,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn maybe_initialize_backend(self: Pin<&mut LoopBackend>) -> bool;
+
+        #[qinvokable]
+        pub fn dependent_will_handle_sync_loop_cycle(self: Pin<&mut LoopBackend>, cycle_nr: i32);
 
         #[qsignal]
         fn cycled(self: Pin<&mut LoopBackend>, cycle_nr: i32);
@@ -207,7 +222,6 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_loop_backend"]
         unsafe fn make_raw() -> *mut LoopBackend;
-
     }
 
     impl cxx_qt::Constructor<()> for LoopBackend {}

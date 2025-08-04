@@ -121,6 +121,21 @@ pub mod ffi {
         #[qinvokable]
         pub fn update_position(self: Pin<&mut CompositeLoopBackend>);
 
+        #[qinvokable]
+        pub fn transition_multiple(
+            self: Pin<&mut CompositeLoopBackend>,
+            loops: QList_QVariant,
+            to_mode: i32,
+            maybe_cycles_delay: i32,
+            maybe_to_sync_at_cycle: i32,
+        );
+
+        #[qinvokable]
+        pub fn dependent_will_handle_sync_loop_cycle(
+            self: Pin<&mut CompositeLoopBackend>,
+            cycle_nr: i32,
+        );
+
         #[qsignal]
         #[cxx_name = "scheduleChanged"]
         pub unsafe fn schedule_changed(
@@ -176,7 +191,10 @@ pub mod ffi {
 
         #[qsignal]
         #[cxx_name = "nextTransitionDelayChanged"]
-        pub unsafe fn next_transition_delay_changed(self: Pin<&mut CompositeLoopBackend>, next_transition_delay: i32);
+        pub unsafe fn next_transition_delay_changed(
+            self: Pin<&mut CompositeLoopBackend>,
+            next_transition_delay: i32,
+        );
 
         #[qsignal]
         #[cxx_name = "nCyclesChanged"]
@@ -184,7 +202,10 @@ pub mod ffi {
 
         #[qsignal]
         #[cxx_name = "syncPositionChanged"]
-        pub unsafe fn sync_position_changed(self: Pin<&mut CompositeLoopBackend>, sync_position: i32);
+        pub unsafe fn sync_position_changed(
+            self: Pin<&mut CompositeLoopBackend>,
+            sync_position: i32,
+        );
 
         #[qsignal]
         #[cxx_name = "syncLengthChanged"]
@@ -192,15 +213,24 @@ pub mod ffi {
 
         #[qsignal]
         #[cxx_name = "runningLoopsChanged"]
-        pub unsafe fn running_loops_changed(self: Pin<&mut CompositeLoopBackend>, running_loops: QList_QVariant);
+        pub unsafe fn running_loops_changed(
+            self: Pin<&mut CompositeLoopBackend>,
+            running_loops: QList_QVariant,
+        );
 
         #[qsignal]
         #[cxx_name = "playAfterRecordChanged"]
-        pub unsafe fn play_after_record_changed(self: Pin<&mut CompositeLoopBackend>, play_after_record: bool);
+        pub unsafe fn play_after_record_changed(
+            self: Pin<&mut CompositeLoopBackend>,
+            play_after_record: bool,
+        );
 
         #[qsignal]
         #[cxx_name = "syncModeActiveChanged"]
-        pub unsafe fn sync_mode_active_changed(self: Pin<&mut CompositeLoopBackend>, sync_mode_active: bool);
+        pub unsafe fn sync_mode_active_changed(
+            self: Pin<&mut CompositeLoopBackend>,
+            sync_mode_active: bool,
+        );
 
         #[qsignal]
         #[cxx_name = "kindChanged"]
@@ -221,13 +251,17 @@ pub mod ffi {
 
         #[rust_name = "composite_loop_backend_qobject_from_ref"]
         fn qobjectFromRef(obj: &CompositeLoopBackend) -> &QObject;
+
+        include!("cxx-qt-lib-shoop/qmetatype.h");
+        #[rust_name = "composite_loop_backend_metatype_name"]
+        unsafe fn meta_type_name(obj: *mut CompositeLoopBackend) -> Result<String>;
     }
 }
 
+use backend_bindings::LoopMode;
 pub use ffi::make_raw_composite_loop_backend;
 pub use ffi::CompositeLoopBackend;
 use ffi::*;
-use backend_bindings::LoopMode;
 
 use crate::composite_loop_schedule::CompositeLoopSchedule;
 
