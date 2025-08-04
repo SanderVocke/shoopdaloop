@@ -1,5 +1,4 @@
 use cxx_qt_lib_shoop::qobject::AsQObject;
-use std::pin::Pin;
 
 #[cxx_qt::bridge]
 pub mod ffi {

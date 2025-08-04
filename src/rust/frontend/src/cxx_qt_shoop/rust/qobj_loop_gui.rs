@@ -7,9 +7,7 @@ use crate::engine_update_thread;
 use crate::loop_helpers::get_backend_loop_handles_variant_list;
 use backend_bindings::AudioChannel;
 use backend_bindings::MidiChannel;
-use common::logging::macros::{
-    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
-};
+use common::logging::macros::{debug as raw_debug, shoop_log_unit, trace as raw_trace};
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;

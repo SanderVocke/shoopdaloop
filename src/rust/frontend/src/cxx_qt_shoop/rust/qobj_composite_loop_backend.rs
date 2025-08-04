@@ -6,9 +6,8 @@ use crate::{
 };
 use backend_bindings::LoopMode;
 use common::logging::macros::{
-    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
+    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
-use core::sync;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
@@ -23,7 +22,6 @@ use cxx_qt_lib_shoop::{
 use std::{
     cmp::max,
     collections::{BTreeMap, HashMap, HashSet},
-    hash::Hash,
     pin::Pin,
 };
 shoop_log_unit!("Frontend.CompositeLoop");
@@ -68,7 +66,7 @@ type Transitions = Vec<Transition>;
 type TransitionsPerIteration = BTreeMap<i32, Transitions>;
 
 impl CompositeLoopBackend {
-    pub fn initialize_impl(mut self: Pin<&mut Self>) {}
+    pub fn initialize_impl(self: Pin<&mut Self>) {}
 
     pub fn list_transitions(
         mut self: Pin<&mut Self>,
@@ -237,7 +235,7 @@ impl CompositeLoopBackend {
         }
     }
 
-    pub fn cancel_all(mut self: Pin<&mut Self>) {
+    pub fn cancel_all(self: Pin<&mut Self>) {
         trace!(self, "cancel all");
         if let Err(e) = transition_backend_loops(
             self.running_loops
@@ -445,7 +443,7 @@ impl CompositeLoopBackend {
                 // to handle the sync cycle first. This ensures a deterministic ordering
                 // of events.
                 for loop_obj in self.as_mut().all_loops().iter() {
-                    invoke::<QObject, (), (i32)>(
+                    invoke::<QObject, (), i32>(
                         &mut **loop_obj,
                         "dependent_will_handle_sync_loop_cycle(::std::int32_t)".to_string(),
                         connection_types::DIRECT_CONNECTION,

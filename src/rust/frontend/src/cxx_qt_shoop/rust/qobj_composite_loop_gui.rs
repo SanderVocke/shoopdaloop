@@ -14,7 +14,6 @@ use cxx_qt_lib_shoop::invokable::invoke;
 use cxx_qt_lib_shoop::qobject::QObject;
 use cxx_qt_lib_shoop::qobject::*;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::*;
-use cxx_qt_lib_shoop::qvariant_qobject::qobject_ptr_to_qvariant;
 use cxx_qt_lib_shoop::qvariant_qsharedpointer_qobject::qsharedpointer_qobject_to_qvariant;
 use std::pin::Pin;
 shoop_log_unit!("Frontend.CompositeLoop");
