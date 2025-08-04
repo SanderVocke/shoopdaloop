@@ -20,5 +20,6 @@ Window {
     }
     Component.onDestruction: {
         ShoopCrashHandling.set_json_tag("shoop_phase", "quit")
+        shoop_test_file_runner.testcase_runner = null
     }
 }

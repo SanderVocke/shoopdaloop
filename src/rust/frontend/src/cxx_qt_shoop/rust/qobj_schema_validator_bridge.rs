@@ -19,7 +19,7 @@ pub mod ffi {
             descriptor: QString,
             schemaname: QString,
             asynchronous: bool,
-        );
+        ) -> bool;
     }
 
     unsafe extern "C++" {

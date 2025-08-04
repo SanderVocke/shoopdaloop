@@ -15,7 +15,7 @@ class LuaEngine(ShoopQQuickItem):
     ###########
     @ShoopSlot(str, 'QString', bool, bool, result='QVariant')
     def evaluate(self, lua_code, script_name=None, sandboxed=True, catch_errors=True):
-        self.impl.evaluate(str(lua_code), script_name, sandboxed, catch_errors)
+        return self.impl.evaluate(str(lua_code), script_name, sandboxed, catch_errors)
     
     @ShoopSlot(str, 'QString', bool, bool)
     def execute(self, lua_code, script_name=None, sandboxed=True, catch_errors=True):
@@ -23,7 +23,7 @@ class LuaEngine(ShoopQQuickItem):
     
     @ShoopSlot('QVariant', list, bool, result='QVariant')
     def call(self, callable, args=[], convert_args=False):
-        self.impl.call(callable, args, convert_args)
+        return self.impl.call(callable, args, convert_args)
     
     @ShoopSlot(str, 'QObject*')
     def create_lua_qobject_interface_as_global(self, name, qobject):

@@ -18,13 +18,13 @@ impl SchemaValidator {
         descriptor: QString,
         schemaname: QString,
         asynchronous: bool,
-    ) {
+    ) -> bool {
         let rust = self.rust();
         rust.validator.validate_schema(
             &object,
             descriptor.to_string().as_str(),
             schemaname.to_string().as_str(),
             asynchronous,
-        );
+        )
     }
 }
