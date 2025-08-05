@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, Signal, Property, Slot, QSettings
+from PySide6.QtCore import QObject, Signal, Property, Slot
 from PySide6.QtQml import QJSValue
 from PySide6.QtQuick import QQuickWindow
 from .ShoopPyObject import *

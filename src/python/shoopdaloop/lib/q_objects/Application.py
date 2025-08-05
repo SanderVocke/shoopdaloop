@@ -58,7 +58,11 @@ class Application(ShoopQApplication):
         # /DONE
 
         self.nsm_client = None
+
+        # SKIP
         self.title = title
+        # /SKIP
+
         signal.signal(signal.SIGINT, self.exit_signal_handler)
         if hasattr(signal, 'SIGQUIT'):
             signal.signal(signal.SIGQUIT, self.exit_signal_handler)
@@ -74,9 +78,8 @@ class Application(ShoopQApplication):
             dbg = QQmlDebuggingEnabler(True)
             QQmlDebuggingEnabler.startTcpDebugServer(qml_debug_port, mode)
 
-        #DONE
+        # DONE
         shoop_rust_init()
-        #/DONE
         register_shoopdaloop_qml_classes()
         self.global_args = global_args
         self.additional_root_context = additional_root_context
@@ -84,7 +87,6 @@ class Application(ShoopQApplication):
 
         self.engine = None
 
-        # DONE
         if main_qml:
             self.reload_qml(main_qml)
             # /DONE
@@ -108,7 +110,9 @@ class Application(ShoopQApplication):
                 if len(self.engine.rootObjects()) > 0:
                     self.engine.rootObjects()[0].sceneGraphInitialized.connect(start_nsm)
 
+        # DONE
         self.setWindowIcon(QIcon(os.path.join(shoop_resource_dir, 'iconset', 'icon_128x128.png')))
+        # /DONE
 
     # DONE
     def unload_qml(self):
@@ -165,9 +169,8 @@ class Application(ShoopQApplication):
         self.engine.warnings.connect(self.onQmlWarnings)
         #/SKIPPED
 
-        self.root_context_items = create_and_populate_root_context(self.engine, self.global_args, self.additional_root_context)
-
         #DONE
+        self.root_context_items = create_and_populate_root_context(self.engine, self.global_args, self.additional_root_context)
         self.engine.load(filename)
         #/DONE
 

@@ -6,6 +6,8 @@ use crate::engine_update_thread;
 use anyhow;
 use cxx::UniquePtr;
 use cxx_qt::CxxQtType;
+use cxx_qt_lib_shoop::connect::connect_or_report;
+use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_set_property_int;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qvariant_qobject::qobject_ptr_to_qvariant;
@@ -84,6 +86,26 @@ impl Application {
         }
 
         unsafe {
+            let self_obj = self.as_mut().pin_mut_qobject_ptr();
+            let mut qml_engine_pin = std::pin::Pin::new_unchecked(&mut *qml_engine);
+            let qml_engine_obj = qml_engine_pin.as_mut().pin_mut_qobject_ptr();
+            connect_or_report(
+                &*qml_engine_obj,
+                "objectCreated(QObject*,QUrl)".to_string(),
+                &*self_obj,
+                "on_qml_object_created(QObject*,QUrl)".to_string(),
+                connection_types::DIRECT_CONNECTION,
+            );
+            connect_or_report(
+                &*qml_engine_obj,
+                "warnings(QVariant)".to_string(),
+                &*self_obj,
+                "on_qml_warnings(QVariant)".to_string(),
+                connection_types::DIRECT_CONNECTION,
+            );
+        }
+
+        unsafe {
             let self_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
                 self.as_mut().pin_mut_qobject_ptr();
             let self_qvariant = qobject_ptr_to_qvariant(self_qobj);
@@ -123,6 +145,13 @@ impl Application {
             rust_mut.setup_after_qml_engine_creation = Box::new(setup_after_qml_engine_creation);
         }
 
+        {
+            let icon_path = PathBuf::from(config.resource_dir).join("iconset/icon_128x128.png");
+            let icon_path = QString::from(icon_path.to_str().unwrap());
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.icon_path = Some(icon_path);
+        }
+
         unsafe {
             self.as_mut()
                 .set_application_name(&QString::from("ShoopDaLoop"));
@@ -156,5 +185,25 @@ impl Application {
         }
 
         Ok(())
+    }
+
+    pub fn on_qml_object_created(self: Pin<&mut Application>, object: *mut QObject, url: QUrl) {
+        if object.is_null() {
+            warn!("Created invalid object");
+            return;
+        }
+
+        debug!("Created QML object with url: {url:?}");
+
+        if let Some(path) = &self.icon_path {
+            unsafe {
+                debug!("Attempting to set window icon to: {path:?}");
+                set_window_icon_path_if_window(object, &path);
+            }
+        }
+    }
+
+    pub fn on_qml_warnings(self: Pin<&mut Application>, _warnings: QVariant) {
+        error!("TO IMPLEMENT: warning forwarding");
     }
 }

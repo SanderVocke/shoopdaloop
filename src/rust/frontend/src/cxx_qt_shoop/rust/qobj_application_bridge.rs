@@ -3,14 +3,20 @@ use std::pin::Pin;
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
-        include!("cxx-qt-shoop/ShoopApplication.h");
-        type ShoopApplication;
-
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
+        include!("cxx-qt-lib/qvariant.h");
+        type QVariant = cxx_qt_lib::QVariant;
+
         include!("cxx-qt-lib-shoop/qobject.h");
         type QObject = cxx_qt_lib_shoop::qobject::QObject;
+
+        include!("cxx-qt-lib/qurl.h");
+        type QUrl = cxx_qt_lib::QUrl;
+
+        include!("cxx-qt-shoop/ShoopApplication.h");
+        type ShoopApplication;
     }
 
     unsafe extern "RustQt" {
@@ -32,6 +38,12 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn unload_qml(self: Pin<&mut Application>);
+
+        #[qinvokable]
+        pub fn on_qml_object_created(self: Pin<&mut Application>, object : *mut QObject, url : QUrl);
+
+        #[qinvokable]
+        pub fn on_qml_warnings(self: Pin<&mut Application>, warnings : QVariant);
 
         #[inherit]
         #[qinvokable]
@@ -76,6 +88,13 @@ pub mod ffi {
 
         #[rust_name = "application_qobject_from_ref"]
         fn qobjectFromRef(obj: &Application) -> &QObject;
+
+        include!("cxx-qt-shoop/ShoopApplication.h");
+        #[rust_name = set_window_icon_path]
+        pub fn setWindowIconPath(app: Pin<&mut Application>, path: &QString);
+
+        #[rust_name = set_window_icon_path_if_window]
+        pub unsafe fn setWindowIconPathIfWindow(object: *mut QObject, path: &QString);
     }
 }
 
@@ -97,6 +116,7 @@ pub struct ApplicationRust {
     pub qml_engine: *mut QmlEngine,
     pub settings: ApplicationStartupSettings,
     pub setup_after_qml_engine_creation: Box<dyn FnMut(Pin<&mut QmlEngine>)>,
+    pub icon_path: Option<ffi::QString>,
 }
 
 impl Default for ApplicationRust {
@@ -106,6 +126,7 @@ impl Default for ApplicationRust {
             qml_engine: std::ptr::null_mut(),
             settings: ApplicationStartupSettings::default(),
             setup_after_qml_engine_creation: Box::new(|_| {}),
+            icon_path: None,
         }
     }
 }

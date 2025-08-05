@@ -26,7 +26,7 @@ void connect(A const* sender,
         report_signal_not_found(sender, signal.operator std::string());
     }
     if (slotIndex < 0) {
-        report_method_not_found(sender, slot.operator std::string());
+        report_method_not_found(receiver, slot.operator std::string());
     }
 
     QMetaMethod signalMethod = snd_meta->method(signalIndex);
