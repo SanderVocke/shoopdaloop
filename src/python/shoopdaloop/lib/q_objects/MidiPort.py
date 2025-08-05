@@ -126,9 +126,11 @@ class MidiPort(Port):
         converted = midi_msgs_list_to_backend(msgs)
         self._backend_obj.dummy_queue_msgs(converted)
     
-    @ShoopSlot(result=list)
+    @ShoopSlot(result='QList<QVariant>')
     def dummy_dequeue_data(self):
-        return midi_msgs_list_from_backend(self._backend_obj.dummy_dequeue_data())
+        rval = midi_msgs_list_from_backend(self._backend_obj.dummy_dequeue_data())
+        self.logger.trace(f"Dequeued dummy messages: {rval}")
+        return rval
     
     @ShoopSlot(int)
     def dummy_request_data(self, n_frames):

@@ -334,7 +334,9 @@ impl CompositeLoopBackend {
             // calling our trigger function with a callback to just register
             // the made transitions.
             let n_cycles = self.n_cycles;
-            let transitions = self.as_mut().list_transitions(LoopMode::Recording, 0, n_cycles);
+            let transitions = self
+                .as_mut()
+                .list_transitions(LoopMode::Recording, 0, n_cycles);
 
             trace!(self, "virtual transition list: {transitions:?}");
 
@@ -357,9 +359,9 @@ impl CompositeLoopBackend {
             }
             for (iteration, transitions) in transitions.iter() {
                 for (loop_obj, mode) in transitions.iter() {
-                    if *mode != LoopMode::Recording &&
-                        loop_recording_starts.contains_key(loop_obj) &&
-                        iteration > loop_recording_starts.get(loop_obj).unwrap()
+                    if *mode != LoopMode::Recording
+                        && loop_recording_starts.contains_key(loop_obj)
+                        && iteration > loop_recording_starts.get(loop_obj).unwrap()
                     {
                         if !loop_recording_ends.contains_key(loop_obj) {
                             loop_recording_ends.insert(*loop_obj, *iteration);
@@ -413,13 +415,17 @@ impl CompositeLoopBackend {
                             QVariant::from(&g.n_cycles),
                             QVariant::from(&0),
                             LoopMode::Unknown as isize as i32,
-                        )
+                        ),
                     )?;
                 }
             }
 
             if go_to_mode != LoopMode::Unknown {
-                self.as_mut().transition(go_to_mode as isize as i32, -1, maybe_go_to_cycle_opt.unwrap_or(-1));
+                self.as_mut().transition(
+                    go_to_mode as isize as i32,
+                    -1,
+                    maybe_go_to_cycle_opt.unwrap_or(-1),
+                );
             }
 
             Ok(())
@@ -430,7 +436,7 @@ impl CompositeLoopBackend {
 
     fn all_loops(self: &Self) -> HashSet<*mut QObject> {
         let mut result: HashSet<*mut QObject> = HashSet::new();
-        for (iteration, events) in self.schedule.data.iter() {
+        for (_, events) in self.schedule.data.iter() {
             for (l, _mode) in events.loops_start.iter() {
                 result.insert(*l);
             }
@@ -444,38 +450,44 @@ impl CompositeLoopBackend {
     pub unsafe fn set_sync_source(mut self: Pin<&mut Self>, sync_source: *mut QObject) {
         debug!(self, "set sync source -> {sync_source:?}");
         if sync_source != self.sync_source {
-            if !self.sync_source.is_null() {
-                error!(self, "cannot change sync source");
+            if !self.sync_source.is_null() && !sync_source.is_null() {
+                let from_iid = get_loop_iid(&self.sync_source);
+                let to_iid = get_loop_iid(&sync_source);
+                error!(self, "cannot change sync source ({from_iid} -> {to_iid})");
                 return;
             }
+
             let self_qobj = self.as_mut().pin_mut_qobject_ptr();
             let self_mut = self.as_mut();
             let mut rust_mut = self_mut.rust_mut();
 
             rust_mut.sync_source = sync_source;
-            connect_or_report(
-                &*sync_source,
-                "positionChanged(::std::int32_t,::std::int32_t)".to_string(),
-                &*self_qobj,
-                "update_sync_position()".to_string(),
-                connection_types::DIRECT_CONNECTION,
-            );
-            connect_or_report(
-                &*sync_source,
-                "lengthChanged(::std::int32_t,::std::int32_t)".to_string(),
-                &*self_qobj,
-                "update_sync_length()".to_string(),
-                connection_types::DIRECT_CONNECTION,
-            );
-            connect_or_report(
-                &*sync_source,
-                "cycled(::std::int32_t)".to_string(),
-                &*self_qobj,
-                "handle_sync_loop_trigger(::std::int32_t)".to_string(),
-                connection_types::DIRECT_CONNECTION,
-            );
-            self.as_mut().update_sync_position();
-            self.as_mut().update_sync_length();
+
+            if !rust_mut.sync_source.is_null() {
+                connect_or_report(
+                    &*sync_source,
+                    "positionChanged(::std::int32_t,::std::int32_t)".to_string(),
+                    &*self_qobj,
+                    "update_sync_position()".to_string(),
+                    connection_types::DIRECT_CONNECTION,
+                );
+                connect_or_report(
+                    &*sync_source,
+                    "lengthChanged(::std::int32_t,::std::int32_t)".to_string(),
+                    &*self_qobj,
+                    "update_sync_length()".to_string(),
+                    connection_types::DIRECT_CONNECTION,
+                );
+                connect_or_report(
+                    &*sync_source,
+                    "cycled(::std::int32_t)".to_string(),
+                    &*self_qobj,
+                    "handle_sync_loop_trigger(::std::int32_t)".to_string(),
+                    connection_types::DIRECT_CONNECTION,
+                );
+                self.as_mut().update_sync_position();
+                self.as_mut().update_sync_length();
+            }
             self.sync_source_changed(sync_source);
         }
     }

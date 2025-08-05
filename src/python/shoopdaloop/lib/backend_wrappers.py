@@ -23,7 +23,7 @@ def midi_msgs_list_to_backend(msgs):
     return [midi_msg_dict_to_backend(msg) for msg in msgs]
 
 def midi_msg_dict_from_backend(msg):
-    return {'time': msg.time, 'data': msg.data}
+    return {'time': msg.time, 'data': list(msg.data)}
 
 def midi_msgs_list_from_backend(msgs):
     return [midi_msg_dict_from_backend(msg) for msg in msgs]

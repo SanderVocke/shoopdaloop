@@ -100,6 +100,15 @@ pub fn qvariant_to_python<'py>(
                 .as_any()
                 .to_owned());
         }
+        _v if _v == qmetatype_id_double() => {
+            return Ok(value
+                .value::<f64>()
+                .unwrap()
+                .into_pyobject(py)
+                .unwrap()
+                .as_any()
+                .to_owned());
+        }
         _v if _v == qmetatype_id_qvariantmap() => {
             let variantmap =
                 cxx_qt_lib_shoop::qvariant_qvariantmap::qvariant_as_qvariantmap(value).unwrap();

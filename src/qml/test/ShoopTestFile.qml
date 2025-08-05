@@ -12,14 +12,19 @@ Window {
         onTestcase_done: {
             shoop_test_file_runner.on_testcase_done()
         }
+        Component.onCompleted: {
+            shoop_test_file_runner.testcase_runner = runner
+        }
+        Component.onDestruction: {
+            shoop_test_file_runner.testcase_runner = null
+        }
     }
 
     Component.onCompleted: {
         ShoopCrashHandling.set_json_tag("shoop_phase", "runtime")
-        shoop_test_file_runner.testcase_runner = runner
+        
     }
     Component.onDestruction: {
         ShoopCrashHandling.set_json_tag("shoop_phase", "quit")
-        shoop_test_file_runner.testcase_runner = null
     }
 }

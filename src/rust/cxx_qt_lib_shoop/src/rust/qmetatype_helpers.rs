@@ -26,6 +26,9 @@ mod ffi {
         #[rust_name = "qmetatype_id_bool"]
         unsafe fn meta_type_id(v: *mut bool) -> i32;
 
+        #[rust_name = "qmetatype_id_double"]
+        unsafe fn meta_type_id(v: *mut f64) -> i32;
+
         #[rust_name = "qmetatype_id_qobject_ptr"]
         unsafe fn meta_type_id(v: *mut *mut QObject) -> i32;
 
@@ -48,6 +51,8 @@ static QMETATYPE_ID_QSTRING: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_qstring(std::ptr::null_mut()) });
 static QMETATYPE_ID_BOOL: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_bool(std::ptr::null_mut()) });
+static QMETATYPE_ID_DOUBLE: Lazy<i32> =
+    Lazy::new(|| unsafe { ffi::qmetatype_id_double(std::ptr::null_mut()) });
 static QMETATYPE_ID_QOBJECT_PTR: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_qobject_ptr(std::ptr::null_mut()) });
 static QMETATYPE_ID_QVARIANTMAP: Lazy<i32> =
@@ -65,6 +70,9 @@ pub fn qmetatype_id_qstring() -> i32 {
 }
 pub fn qmetatype_id_bool() -> i32 {
     *Lazy::force(&QMETATYPE_ID_BOOL)
+}
+pub fn qmetatype_id_double() -> i32 {
+    *Lazy::force(&QMETATYPE_ID_DOUBLE)
 }
 pub fn qmetatype_id_qobject_ptr() -> i32 {
     *Lazy::force(&QMETATYPE_ID_QOBJECT_PTR)

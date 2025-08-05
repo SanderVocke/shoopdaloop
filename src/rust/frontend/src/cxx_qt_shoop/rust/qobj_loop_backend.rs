@@ -641,5 +641,5 @@ impl LoopBackend {
         unsafe { loop_backend_metatype_name(std::ptr::null_mut()).unwrap() }
     }
 
-    pub fn dependent_will_handle_sync_loop_cycle(self: Pin<&mut LoopBackend>, cycle_nr: i32) {}
+    pub fn dependent_will_handle_sync_loop_cycle(self: Pin<&mut LoopBackend>, _cycle_nr: i32) {}
 }
