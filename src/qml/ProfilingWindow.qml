@@ -5,7 +5,7 @@ import ShoopDaLoop.PythonLogger
 
 // The click track dialog allows the user to interactively configure, preview
 // and select a generated click track clip.
-ApplicationWindow {
+ShoopApplicationWindow {
     id: root
     title: "Profiling"
 

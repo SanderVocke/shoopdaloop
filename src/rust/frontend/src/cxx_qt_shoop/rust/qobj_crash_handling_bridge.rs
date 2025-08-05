@@ -25,8 +25,8 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_singleton_crash_handling"]
-        fn register_qml_singleton(
-            inference_example: &CrashHandling,
+        unsafe fn register_qml_singleton(
+            inference_example: *mut CrashHandling,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,

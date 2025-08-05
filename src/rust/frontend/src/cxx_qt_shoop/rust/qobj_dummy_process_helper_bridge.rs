@@ -46,8 +46,8 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_dummy_process_helper"]
-        fn register_qml_type(
-            inference_example: &DummyProcessHelper,
+        unsafe fn register_qml_type(
+            inference_example: *mut DummyProcessHelper,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,

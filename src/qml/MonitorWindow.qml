@@ -5,7 +5,7 @@ import QtGraphs 6.6
 import QtQuick.Layouts 6.6
 import ShoopDaLoop.PythonLogger
 
-ApplicationWindow {
+ShoopApplicationWindow {
     id: root
     title: "Monitor"
 

@@ -145,12 +145,12 @@ impl Application {
             rust_mut.setup_after_qml_engine_creation = Box::new(setup_after_qml_engine_creation);
         }
 
-        {
-            let icon_path = PathBuf::from(config.resource_dir).join("iconset/icon_128x128.png");
-            let icon_path = QString::from(icon_path.to_str().unwrap());
-            let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.icon_path = Some(icon_path);
-        }
+        // {
+        //     let icon_path = PathBuf::from(config.resource_dir).join("iconset/icon_128x128.png");
+        //     let icon_path = QString::from(icon_path.to_str().unwrap());
+        //     let mut rust_mut = self.as_mut().rust_mut();
+        //     rust_mut.icon_path = Some(icon_path);
+        // }
 
         unsafe {
             self.as_mut()
@@ -195,12 +195,12 @@ impl Application {
 
         debug!("Created QML object with url: {url:?}");
 
-        if let Some(path) = &self.icon_path {
-            unsafe {
-                debug!("Attempting to set window icon to: {path:?}");
-                set_window_icon_path_if_window(object, &path);
-            }
-        }
+        // if let Some(path) = &self.icon_path {
+        //     unsafe {
+        //         debug!("Attempting to set window icon to: {path:?}");
+        //         set_window_icon_path_if_window(object, &path);
+        //     }
+        // }
     }
 
     pub fn on_qml_warnings(self: Pin<&mut Application>, _warnings: QVariant) {

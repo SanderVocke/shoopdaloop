@@ -17,20 +17,3 @@ class ShoopApplication : public QGuiApplication {
     public:
     ShoopApplication(QObject *parent = nullptr) : QGuiApplication(dummy_argc(), dummy_argv()) { (void) parent; }
 };
-
-template<typename App>
-inline void setWindowIconPath(App &app, QString const& path) {
-    auto icon = QIcon(path);
-    app.setWindowIcon(icon);
-}
-
-inline void setWindowIconPathIfWindow(QObject *object, QString const& path) {
-    QQuickWindow *window = qobject_cast<QQuickWindow *>(object);
-    if(window) {
-        std::cout << "MATCH" << std::endl;
-        auto icon = QIcon(path);
-        window->setIcon(icon);
-    } else {
-        std::cout << "WOMP" << std::endl;
-    }
-}

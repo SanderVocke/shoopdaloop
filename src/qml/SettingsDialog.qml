@@ -696,7 +696,7 @@ Dialog {
 
     Component {
         id: script_doc_dialog_factory
-        ApplicationWindow {
+        ShoopApplicationWindow {
             id: window
             property string script_name: '<unknown script>'
             property string docstring: ''

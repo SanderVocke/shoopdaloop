@@ -7,7 +7,7 @@ import ".."
 import ""../js/generate_session.js" as GenerateSession
 import ShoopConstants
 
-ApplicationWindow {
+ShoopApplicationWindow {
     visible: true
     width: 1050
     height: 550

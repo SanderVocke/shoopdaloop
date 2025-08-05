@@ -94,8 +94,8 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_autoconnect"]
-        fn register_qml_type(
-            inference_example: &AutoConnect,
+        unsafe fn register_qml_type(
+            inference_example: *mut AutoConnect,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,

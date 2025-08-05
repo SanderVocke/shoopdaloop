@@ -11,10 +11,9 @@ use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QColor, QLine};
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {
-    let obj = make_unique_renderaudiowaveform();
     let mut mdl = String::from(module_name);
     let mut tp = String::from(type_name);
-    register_qml_type_renderaudiowaveform(obj.as_ref().unwrap(), &mut mdl, 1, 0, &mut tp);
+    unsafe { register_qml_type_renderaudiowaveform(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp); }
 }
 
 impl ffi::RenderAudioWaveform {

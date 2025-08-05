@@ -7,10 +7,9 @@ use cxx_qt_lib::QString;
 use std::env;
 
 pub fn register_qml_singleton(module_name: &str, type_name: &str) {
-    let obj = make_unique_osutils();
     let mut mdl = String::from(module_name);
     let mut tp = String::from(type_name);
-    register_qml_singleton_osutils(obj.as_ref().unwrap(), &mut mdl, 1, 0, &mut tp);
+    unsafe { register_qml_singleton_osutils(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp); }
 }
 
 #[allow(unreachable_code)]

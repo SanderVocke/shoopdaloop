@@ -75,8 +75,8 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_singleton_file_io"]
-        fn register_qml_singleton(
-            inference_example: &FileIO,
+        unsafe fn register_qml_singleton(
+            inference_example: *mut FileIO,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,

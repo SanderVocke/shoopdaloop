@@ -12,6 +12,7 @@ fn register_qml_types_and_singletons() {
     qobj_release_focus_notifier::register_qml_singleton(&mdl, "ShoopReleaseFocusNotifier");
     qobj_crash_handling::register_qml_singleton(&mdl, "ShoopCrashHandling");
     qobj_schema_validator::register_qml_singleton(&mdl, "ShoopSchemaValidator");
+    qobj_global_utils::register_qml_singleton(&mdl, "ShoopGlobalUtils");
 
     // Types
     qobj_dummy_process_helper::register_qml_type(&mdl, "ShoopDummyProcessHelper");

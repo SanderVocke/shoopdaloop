@@ -1,6 +1,7 @@
 pub mod fn_find_backend_wrapper;
 pub mod fn_qlist_helpers;
 pub mod fn_qvariantmap_helpers;
+pub mod fn_window_icons;
 
 pub mod qobj_application;
 pub mod qobj_application_bridge;
@@ -20,6 +21,8 @@ pub mod qobj_file_io;
 pub mod qobj_file_io_bridge;
 pub mod qobj_find_parent_item;
 pub mod qobj_find_parent_item_bridge;
+pub mod qobj_global_utils;
+pub mod qobj_global_utils_bridge;
 pub mod qobj_loop_backend;
 pub mod qobj_loop_backend_bridge;
 pub mod qobj_loop_gui;

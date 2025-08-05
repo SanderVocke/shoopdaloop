@@ -5,7 +5,7 @@
 
 template<typename T>
 inline void register_qml_type(
-                       T const& inference_example,
+                       T* inference_example,
                        ::rust::String& module_name,
                        ::std::int64_t version_major, ::std::int64_t version_minor,
                        ::rust::String& type_name)
@@ -16,7 +16,7 @@ inline void register_qml_type(
 
 template<typename T>
 inline void register_qml_singleton(
-                       T const& inference_example,
+                       T* inference_example,
                        ::rust::String& module_name,
                        ::std::int64_t version_major, ::std::int64_t version_minor,
                        ::rust::String& type_name)

@@ -89,12 +89,12 @@ pub mod ffi {
         #[rust_name = "application_qobject_from_ref"]
         fn qobjectFromRef(obj: &Application) -> &QObject;
 
-        include!("cxx-qt-shoop/ShoopApplication.h");
-        #[rust_name = set_window_icon_path]
-        pub fn setWindowIconPath(app: Pin<&mut Application>, path: &QString);
+        // include!("cxx-qt-shoop/ShoopApplication.h");
+        // #[rust_name = set_window_icon_path]
+        // pub fn setWindowIconPath(app: Pin<&mut Application>, path: &QString);
 
-        #[rust_name = set_window_icon_path_if_window]
-        pub unsafe fn setWindowIconPathIfWindow(object: *mut QObject, path: &QString);
+        // #[rust_name = set_window_icon_path_if_window]
+        // pub unsafe fn setWindowIconPathIfWindow(object: *mut QObject, path: &QString);
     }
 }
 

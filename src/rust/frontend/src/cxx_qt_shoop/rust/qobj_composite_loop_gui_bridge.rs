@@ -307,8 +307,8 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_composite_loop_gui"]
-        fn register_qml_type(
-            inference_example: &CompositeLoopGui,
+        unsafe fn register_qml_type(
+            inference_example: *mut CompositeLoopGui,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,

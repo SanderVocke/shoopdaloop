@@ -76,8 +76,8 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_type_renderaudiowaveform"]
-        fn register_qml_type(
-            inference_example: &RenderAudioWaveform,
+        unsafe fn register_qml_type(
+            inference_example: *mut RenderAudioWaveform,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,

@@ -617,8 +617,9 @@ impl CompositeLoopGui {
 }
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {
-    let obj = make_unique_composite_loop_gui();
     let mut mdl = String::from(module_name);
     let mut tp = String::from(type_name);
-    register_qml_type_composite_loop_gui(obj.as_ref().unwrap(), &mut mdl, 1, 0, &mut tp);
+    unsafe {
+        register_qml_type_composite_loop_gui(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp);
+    }
 }

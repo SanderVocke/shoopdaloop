@@ -155,8 +155,8 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_backend_wrapper"]
-        fn register_qml_type(
-            inference_example: &BackendWrapper,
+        unsafe fn register_qml_type(
+            inference_example: *mut BackendWrapper,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,

@@ -6,7 +6,7 @@ import QtQuick.Dialogs 6.6
 import ".."
 import ShoopConstants
 
-ApplicationWindow {
+ShoopApplicationWindow {
     id: root
     visible: true
     width: 1200

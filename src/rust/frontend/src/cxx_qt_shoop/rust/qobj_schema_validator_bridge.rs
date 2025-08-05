@@ -31,8 +31,8 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_type_schemavalidator"]
-        fn register_qml_singleton(
-            inference_example: &SchemaValidator,
+        unsafe fn register_qml_singleton(
+            inference_example: *mut SchemaValidator,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,

@@ -5,7 +5,7 @@ import ShoopDaLoop.PythonLogger
 
 import 'js/mode_helpers.js' as ModeHelpers
 
-ApplicationWindow {
+ShoopApplicationWindow {
     property var loop_widget
     property var maybe_backend_loop : loop_widget.maybe_backend_loop
     property var maybe_composite_loop : loop_widget.maybe_composite_loop

@@ -7,7 +7,7 @@ import ShoopDaLoop.Rust
 import ".."
 import "../js/generate_session.js" as GenerateSession
 
-ApplicationWindow {
+ShoopApplicationWindow {
     visible: true
     width: 1050
     height: 550
