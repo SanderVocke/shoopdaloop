@@ -102,8 +102,6 @@ runs:
       GITHUB_TOKEN: ${{ inputs.GITHUB_TOKEN }}
       macos_target_version: ${{ inputs.macos_target_version }}
       vcpkg_rebuild: ${{ inputs.vcpkg_rebuild }}
-      pip: ${{ inputs.python }} -m pip
-
   - uses: ./.github/actions/checkpoint
     if: always()
   - uses: ./.github/actions/checkpoint

@@ -210,24 +210,25 @@ jobs:
       matrix:
         kind:
           - name: release_debian_stable
-            python: python
+            python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.release-linux-x64.test_binaries.tar.gz
             sentry_build_type: release
           - name: debug_debian_stable
-            python: python
+            python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.debug-linux-x64.portable.tar.gz
             second_package: shoopdaloop.*.debug-linux-x64.test_binaries.tar.gz
             sentry_build_type: debug
           - name: release_debian_appimage
-            python: python
+            python: python3
             container: docker.io/sandervocke/shoopdaloop_run_base_debian_latest_x86_64:latest
             package: shoopdaloop.*.release-linux-x64.AppImage
             sentry_build_type: release
           # - name: coverage_debian_bookworm
-          #   python: python          #   container: docker.io/sandervocke/shoopdaloop_build_base_debian_bookworm_x86_64:latest
+          #   python: python3
+          #   container: docker.io/sandervocke/shoopdaloop_build_base_debian_bookworm_x86_64:latest
           #   package: wheel_linux_coverage
           #   coverage: true
           #   run_cmd_prefix: >-

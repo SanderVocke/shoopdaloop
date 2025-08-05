@@ -14,8 +14,6 @@ inputs:
     description: "macOS target version"
   vcpkg_rebuild:
     description: "whether to rebuild vcpkg packages"
-  pip:
-    required: true
 
 runs:
   using: "composite"
@@ -50,8 +48,8 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      ${{ inputs.pip }} install --upgrade pip
-      ${{ inputs.pip }} install -r build_python_requirements.txt
+      python3 -m pip install --upgrade pip
+      python3 -m pip install -r build_python_requirements.txt
 
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'
