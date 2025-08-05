@@ -5,6 +5,8 @@ pub mod qjsonobject;
 pub mod qmetatype_helpers;
 pub mod qobject;
 pub mod qquickitem;
+pub mod qqmlerror;
+pub mod qqmlerrorlist;
 pub mod qsharedpointer_qobject;
 pub mod qsignalspy;
 pub mod qthread;

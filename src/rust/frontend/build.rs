@@ -13,6 +13,7 @@ fn main() {
         .qt_module("Test")
         .qt_module("Qml")
         .qt_module("Widgets")
+        .file("src/cxx_qt_shoop/rust/fn_qml_debugging.rs")
         .file("src/cxx_qt_shoop/rust/fn_window_icons.rs")
         .file("src/cxx_qt_shoop/rust/qobj_application_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_autoconnect_bridge.rs")

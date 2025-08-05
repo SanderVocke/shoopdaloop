@@ -35,6 +35,6 @@ pub struct TestResults {
 
 impl TestResults {
     pub fn serialize_xml(&self) -> Result<String, anyhow::Error> {
-        serde_xml_rs::to_string(self).map_err(|e| e.into())
+        quick_xml::se::to_string(self).map_err(|e| e.into())
     }
 }

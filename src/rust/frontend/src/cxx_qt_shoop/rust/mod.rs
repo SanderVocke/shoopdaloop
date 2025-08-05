@@ -1,5 +1,6 @@
 pub mod fn_find_backend_wrapper;
 pub mod fn_qlist_helpers;
+pub mod fn_qml_debugging;
 pub mod fn_qvariantmap_helpers;
 pub mod fn_window_icons;
 

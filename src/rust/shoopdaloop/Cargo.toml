@@ -37,7 +37,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 once_cell = { workspace = true }
 cxx-qt-lib = { workspace = true, features = ["full"] }
-serde-xml-rs = { workspace = true }
 
 [build-dependencies]
 backend = { path = "../backend" }

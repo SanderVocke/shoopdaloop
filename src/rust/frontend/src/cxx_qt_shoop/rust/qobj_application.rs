@@ -1,9 +1,11 @@
+use crate::cxx_qt_shoop::fn_qml_debugging;
 use crate::cxx_qt_shoop::qobj_application_bridge::ffi::*;
 pub use crate::cxx_qt_shoop::qobj_application_bridge::Application;
 use crate::cxx_qt_shoop::qobj_application_bridge::ApplicationStartupSettings;
 use crate::cxx_qt_shoop::qobj_qmlengine_bridge::QmlEngine;
 use crate::engine_update_thread;
 use anyhow;
+use crashhandling::set_crash_json_tag;
 use cxx::UniquePtr;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::connect::connect_or_report;
@@ -27,8 +29,10 @@ impl Application {
         make_unique_application()
     }
 
-    pub fn do_quit(self: Pin<&mut Application>) {
-        todo!();
+    pub fn do_quit(mut self: Pin<&mut Application>) {
+        debug!("Quit requested");
+        set_crash_json_tag("shoop_phase", "quit".into());
+        self.as_mut().unload_qml();
     }
 
     pub fn wait(mut self: Pin<&mut Application>, delay_ms: u64) {
@@ -97,10 +101,17 @@ impl Application {
                 connection_types::DIRECT_CONNECTION,
             );
             connect_or_report(
-                &*qml_engine_obj,
-                "warnings(QVariant)".to_string(),
                 &*self_obj,
-                "on_qml_warnings(QVariant)".to_string(),
+                "aboutToQuit()".to_string(),
+                &*self_obj,
+                "do_quit()".to_string(),
+                connection_types::DIRECT_CONNECTION,
+            );
+            connect_or_report(
+                &*qml_engine_obj,
+                "quit()".to_string(),
+                &*self_obj,
+                "do_quit()".to_string(),
                 connection_types::DIRECT_CONNECTION,
             );
         }
@@ -145,13 +156,6 @@ impl Application {
             rust_mut.setup_after_qml_engine_creation = Box::new(setup_after_qml_engine_creation);
         }
 
-        // {
-        //     let icon_path = PathBuf::from(config.resource_dir).join("iconset/icon_128x128.png");
-        //     let icon_path = QString::from(icon_path.to_str().unwrap());
-        //     let mut rust_mut = self.as_mut().rust_mut();
-        //     rust_mut.icon_path = Some(icon_path);
-        // }
-
         unsafe {
             self.as_mut()
                 .set_application_name(&QString::from("ShoopDaLoop"));
@@ -159,6 +163,13 @@ impl Application {
                 .set_organization_name(&QString::from("ShoopDaLoop"));
             self.as_mut()
                 .set_application_version(&QString::from(config._version));
+        }
+
+        if self.settings.qml_debug_port.is_some() {
+            let wait = self.settings.qml_debug_wait.unwrap_or(false);
+            let port = self.settings.qml_debug_port.unwrap() as i32;
+            info!("Enabling QML debugging on port {port}. Wait on connection: {wait}.");
+            fn_qml_debugging::enable_qml_debugging(wait, port);
         }
 
         // Initialize metatypes, oncecells, etc.
@@ -194,16 +205,5 @@ impl Application {
         }
 
         debug!("Created QML object with url: {url:?}");
-
-        // if let Some(path) = &self.icon_path {
-        //     unsafe {
-        //         debug!("Attempting to set window icon to: {path:?}");
-        //         set_window_icon_path_if_window(object, &path);
-        //     }
-        // }
-    }
-
-    pub fn on_qml_warnings(self: Pin<&mut Application>, _warnings: QVariant) {
-        error!("TO IMPLEMENT: warning forwarding");
     }
 }

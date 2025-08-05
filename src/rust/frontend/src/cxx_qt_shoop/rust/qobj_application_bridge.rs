@@ -42,9 +42,6 @@ pub mod ffi {
         #[qinvokable]
         pub fn on_qml_object_created(self: Pin<&mut Application>, object : *mut QObject, url : QUrl);
 
-        #[qinvokable]
-        pub fn on_qml_warnings(self: Pin<&mut Application>, warnings : QVariant);
-
         #[inherit]
         #[qinvokable]
         unsafe fn exit(self: Pin<&mut Application>, code: i32);

@@ -808,16 +808,6 @@ Rectangle {
                     height: 30
                     onClicked: session_backend.xruns = 0
                 }
-
-                Button {
-                    text: "Icon"
-                    onClicked: {
-                        console.log("Let's go!")
-                        let resource_dir = file_io.get_resource_directory();
-                        let icon_dir = `${resource_dir}/iconset/icon_128x128.png`;
-                        ShoopGlobalUtils.set_window_icon_path(Window.window, icon_dir)
-                    }
-                }
             }
         }
     }

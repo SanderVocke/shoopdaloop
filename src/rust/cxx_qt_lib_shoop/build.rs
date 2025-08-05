@@ -18,6 +18,8 @@ fn main() {
         .file("src/rust/qjsonobject.rs")
         .file("src/rust/qmetatype_helpers.rs")
         .file("src/rust/qobject.rs")
+        .file("src/rust/qqmlerror.rs")
+        .file("src/rust/qqmlerrorlist.rs")
         .file("src/rust/qquickitem.rs")
         .file("src/rust/qsignalspy.rs")
         .file("src/rust/qsharedpointer_qobject.rs")
