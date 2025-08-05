@@ -2,7 +2,9 @@ use common::logging::macros::*;
 shoop_log_unit!("Frontend.GlobalUtils");
 
 pub use crate::cxx_qt_shoop::qobj_global_utils_bridge::ffi::GlobalUtils;
-use crate::cxx_qt_shoop::{fn_window_icons::set_window_icon_path_if_window, qobj_global_utils_bridge::ffi::*};
+use crate::cxx_qt_shoop::{
+    fn_window_icons::set_window_icon_path_if_window, qobj_global_utils_bridge::ffi::*,
+};
 use cxx_qt_lib::QString;
 
 pub fn register_qml_singleton(module_name: &str, type_name: &str) {

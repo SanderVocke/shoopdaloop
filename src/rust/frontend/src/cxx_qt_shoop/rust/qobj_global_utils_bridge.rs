@@ -18,7 +18,7 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qinvokable]
-        pub unsafe fn set_window_icon_path(self: &GlobalUtils, window : *mut QObject, path : QString);
+        pub unsafe fn set_window_icon_path(self: &GlobalUtils, window: *mut QObject, path: QString);
     }
 
     unsafe extern "C++" {

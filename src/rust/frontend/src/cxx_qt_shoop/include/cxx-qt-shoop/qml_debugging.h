@@ -7,6 +7,6 @@ inline void enableQmlDebugging(bool wait, int port) {
         wait ? QQmlDebuggingEnabler::StartMode::WaitForClient : 
         QQmlDebuggingEnabler::StartMode::DoNotWaitForClient;
     
-        QQmlDebuggingEnabler::enableDebugging();
+        QQmlDebuggingEnabler::enableDebugging(false);
         QQmlDebuggingEnabler::startTcpDebugServer(port, mode);
 }

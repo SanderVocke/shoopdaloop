@@ -40,7 +40,7 @@ pub mod ffi {
         pub fn unload_qml(self: Pin<&mut Application>);
 
         #[qinvokable]
-        pub fn on_qml_object_created(self: Pin<&mut Application>, object : *mut QObject, url : QUrl);
+        pub fn on_qml_object_created(self: Pin<&mut Application>, object: *mut QObject, url: QUrl);
 
         #[inherit]
         #[qinvokable]

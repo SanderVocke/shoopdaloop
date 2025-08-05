@@ -7,7 +7,9 @@ use std::pin::Pin;
 pub fn register_qml_singleton(module_name: &str, type_name: &str) {
     let mut mdl = String::from(module_name);
     let mut tp = String::from(type_name);
-    unsafe { register_qml_type_schemavalidator(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp); }
+    unsafe {
+        register_qml_type_schemavalidator(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp);
+    }
 }
 
 impl SchemaValidator {
