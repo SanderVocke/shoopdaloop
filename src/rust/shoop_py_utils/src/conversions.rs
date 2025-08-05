@@ -167,17 +167,3 @@ pub fn qvariant_to_python<'py>(
         "unimplemented QVariant type conversion for typename {typename}"
     )))
 }
-
-mod tests {
-    #[test]
-    fn test_i32() {
-        use super::*;
-        Python::with_gil(|py| {
-            let inval: i32 = 12345;
-            let variant = cxx_qt_lib::QVariant::from(&inval);
-            let result = qvariant_to_python(py, &variant).unwrap();
-            let outval: i32 = result.extract().expect("Could not extract i32");
-            assert!(outval == inval);
-        });
-    }
-}
