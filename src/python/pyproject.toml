@@ -40,7 +40,6 @@ docs = [
 [build-system]
 requires = [
   "setuptools",
-  "setuptools-scm",
   "meson",
   "toml"
 ]
