@@ -170,13 +170,13 @@ pub fn qvariant_to_python<'py>(
 
 mod tests {
     #[test]
-    fn test_u64() {
+    fn test_i32() {
         use super::*;
         Python::with_gil(|py| {
-            let inval: u64 = 12345;
+            let inval: i32 = 12345;
             let variant = cxx_qt_lib::QVariant::from(&inval);
             let result = qvariant_to_python(py, &variant).unwrap();
-            let outval: u64 = result.extract().expect("Could not extract u64");
+            let outval: i32 = result.extract().expect("Could not extract i32");
             assert!(outval == inval);
         });
     }
