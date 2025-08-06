@@ -1,12 +1,6 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.GenericTestItem");
 
-pub mod constants {
-    pub const PROP_BOOL_PROP: &str = "bool_prop";
-
-    pub const SIGNAL_BOOL_PROP_CHANGED: &str = "boolPropChanged()";
-}
-
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {

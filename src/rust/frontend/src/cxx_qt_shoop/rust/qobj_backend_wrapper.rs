@@ -1,4 +1,3 @@
-use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants;
 use crate::engine_update_thread;
 use crate::profiling_report::profiling_report_to_qvariantmap;
 use backend_bindings::*;
@@ -149,7 +148,7 @@ impl BackendWrapper {
                 &*engine_update_thread_obj,
                 "update()".to_string(),
                 &*obj_qobject,
-                String::from(constants::INVOKABLE_UPDATE_ON_OTHER_THREAD),
+                String::from("update_on_other_thread()".to_string()),
                 connection_types::DIRECT_CONNECTION,
             );
         }

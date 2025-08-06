@@ -1,6 +1,5 @@
 use crate::cxx_qt_shoop::qobj_find_parent_item;
 use crate::cxx_qt_shoop::qobj_find_parent_item::FindParentItem;
-use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants::*;
 use cxx::UniquePtr;
 use cxx_qt_lib::QString;
 use cxx_qt_lib_shoop::qobject::{qobject_class_name, qobject_object_name};
@@ -12,7 +11,7 @@ pub fn create_find_parent_backend_wrapper() -> UniquePtr<FindParentItem> {
 
     rval.as_mut()
         .unwrap()
-        .set_item_bool_property_to_check(QString::from(PROP_READY));
+        .set_item_bool_property_to_check(QString::from("ready"));
     rval.as_mut()
         .unwrap()
         .set_find_predicate(Box::new(|q: *mut QQuickItem| unsafe {

@@ -1,7 +1,6 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.FindParentItem");
 
-pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::constants::*;
 pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::ffi::make_unique_find_parent_item as make_unique;
 pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::FindParentItem;
 use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::*;
@@ -101,7 +100,7 @@ impl FindParentItem {
                 item.as_mut().unwrap(),
                 String::from(format!("{}Changed()", self.item_bool_property_to_check())),
                 self.as_mut().pin_mut_qobject_ptr().as_mut().unwrap(),
-                String::from(constants::INVOKABLE_UPDATE_FOUND_ITEM_BOOL_PROPERTY),
+                String::from("update_found_item_bool_property()".to_string()),
                 cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION,
             )?;
         }

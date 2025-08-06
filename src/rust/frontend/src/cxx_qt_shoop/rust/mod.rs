@@ -30,6 +30,8 @@ pub mod qobj_loop_gui;
 pub mod qobj_loop_gui_bridge;
 pub mod qobj_os_utils;
 pub mod qobj_os_utils_bridge;
+pub mod qobj_port_gui;
+pub mod qobj_port_gui_bridge;
 pub mod qobj_qmlengine;
 pub mod qobj_qmlengine_bridge;
 pub mod qobj_release_focus_notifier;
@@ -40,9 +42,6 @@ pub mod qobj_schema_validator;
 pub mod qobj_schema_validator_bridge;
 pub mod qobj_update_thread;
 pub mod qobj_update_thread_bridge;
-
-pub mod qobj_signature_backend_wrapper;
-pub mod qobj_signature_port;
 
 pub mod type_external_port_descriptor;
 pub mod type_shoopqmlapplicationengine;

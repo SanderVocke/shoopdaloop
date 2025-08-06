@@ -9,6 +9,7 @@ use backend_bindings::AudioChannel;
 use backend_bindings::MidiChannel;
 use common::logging::macros::{debug as raw_debug, shoop_log_unit, trace as raw_trace};
 use cxx_qt::CxxQtType;
+use cxx_qt_lib::{QList, QString, QVariant};
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
@@ -18,8 +19,6 @@ use cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
 use cxx_qt_lib_shoop::qvariant_qsharedpointer_qobject::qsharedpointer_qobject_to_qvariant;
-
-use cxx_qt_lib::{QList, QString, QVariant};
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Loop");
 
@@ -49,17 +48,6 @@ impl LoopGui {
         debug!(self, "Initializing");
 
         unsafe {
-            // let backend_qobj : *mut QObject;
-            // {
-            //     let rust_mut = self.as_mut().rust_mut();
-            //     backend_qobj = rust_mut.backend;
-            // }
-            // let backend_ptr : *mut BackendWrapper = BackendWrapper::from_qobject_ptr(backend_qobj);
-            // let backend_thread = (*backend_ptr).get_backend_thread();
-
-            // if backend_qobj.is_null() {
-            //     raw_error!("Failed to convert backend QObject to backend pointer");
-            // } else {
             let backend_loop = make_raw_loop_backend();
             let backend_loop_qobj = loop_backend_qobject_from_ptr(backend_loop);
             qobject_move_to_thread(
