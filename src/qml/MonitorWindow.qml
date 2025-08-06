@@ -28,7 +28,7 @@ ShoopApplicationWindow {
         anchors.left: parent.left
         width: 200
 
-        model: ["DSP load", "Audio buffer pool", "Backend state refresh rate"]
+        model: ["DSP load", "Audio buffer pool", "Backend state request interval"]
     }
 
     StackLayout {

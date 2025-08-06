@@ -26,9 +26,6 @@ pub mod ffi {
         fn update(self: Pin<&mut UpdateThread>);
 
         #[qinvokable]
-        pub fn trigger_update(self: Pin<&mut UpdateThread>);
-
-        #[qinvokable]
         pub fn timer_tick(self: Pin<&mut UpdateThread>);
 
         #[qinvokable]

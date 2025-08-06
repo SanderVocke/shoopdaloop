@@ -70,14 +70,17 @@ impl UpdateThread {
 
     pub fn frontend_frame_swapped(self: Pin<&mut UpdateThread>) {
         if *self.as_ref().trigger_update_on_frame_swapped() {
-            self.trigger_update();
+            let elapsed = self.trigger_update();
+            trace!("Updated (frame swapped) - took {elapsed:?}");
         }
     }
 
-    pub fn trigger_update(mut self: Pin<&mut Self>) {
+    pub fn trigger_update(mut self: Pin<&mut Self>) -> Duration {
         let mut rust = self.as_mut().rust_mut();
-        rust.last_updated = Some(Instant::now());
+        let start = Instant::now();
+        rust.last_updated = Some(start);
         self.update();
+        start.elapsed()
     }
 
     pub fn timer_tick(self: Pin<&mut Self>) {
@@ -86,7 +89,8 @@ impl UpdateThread {
             || Instant::now().duration_since(last_updated.unwrap())
                 > self.as_ref().backup_timer_elapsed_threshold;
         if update {
-            self.trigger_update();
+            let elapsed = self.trigger_update();
+            trace!("Updated (timer expired) - took {elapsed:?}");
         }
     }
 
