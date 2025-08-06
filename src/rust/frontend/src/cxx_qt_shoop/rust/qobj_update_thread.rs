@@ -83,13 +83,20 @@ impl UpdateThread {
         start.elapsed()
     }
 
-    pub fn timer_tick(self: Pin<&mut Self>) {
+    pub fn trigger_update_if_enough_time_elapsed(self: Pin<&mut Self>) -> Option<Duration> {
         let last_updated = self.as_ref().last_updated;
-        let update: bool = last_updated.is_none()
+        let do_update: bool = last_updated.is_none()
             || Instant::now().duration_since(last_updated.unwrap())
                 > self.as_ref().backup_timer_elapsed_threshold;
-        if update {
-            let elapsed = self.trigger_update();
+        if do_update {
+            return Some(self.trigger_update());
+        } else {
+            return None;
+        }
+    }
+
+    pub fn timer_tick(self: Pin<&mut Self>) {
+        if let Some(elapsed) = self.trigger_update_if_enough_time_elapsed() {
             trace!("Updated (timer expired) - took {elapsed:?}");
         }
     }
