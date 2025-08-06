@@ -13,24 +13,30 @@ class TestScreenGrabber(ShoopQObject):
         super(TestScreenGrabber, self).__init__(parent)
         self.weak_engine = weak_engine
         self.logger = Logger('Frontend.TestScreenGrabber')
+        self.windows = set()
+
+    @ShoopSlot("QVariant")
+    def add_window(self, window):
+        if not isinstance(window, QQuickWindow):
+            self.logger.warning(lambda: f"Got a non-QQuickWindow window: {window}")
+            return
+        self.logger.debug(lambda: f"Adding window: {window}")
+        self.windows.add(window)
+
+    @ShoopSlot("QVariant")
+    def remove_window(self, window):
+        if window in self.windows:
+            self.logger.debug(lambda: f"Removing window: {window}")
+            self.windows.remove(window)
     
     @ShoopSlot(str)
     def grab_all(self, output_folder):
         os.makedirs(output_folder, exist_ok=True)
-
-        maybe_engine = self.weak_engine() if self.weak_engine else None
-        if maybe_engine:
-            roots = maybe_engine.rootObjects()
-            windows = set()
-            for root in roots:
-                if (isinstance(root, QQuickWindow)):
-                    windows.add(root)
-                windows.update(root.findChildren(QQuickWindow))
         
-        self.logger.debug(lambda: 'Found {} windows.'.format(len(windows)))
+        self.logger.info(lambda: 'Got {} windows to capture.'.format(len(self.windows)))
 
         images = dict()
-        for window in windows:
+        for window in self.windows:
             image = window.grabWindow()
             filename = window.title().lower().replace(' ','_')
             if not filename:

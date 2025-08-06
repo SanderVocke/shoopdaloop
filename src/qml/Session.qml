@@ -10,9 +10,8 @@ import ShoopDaLoop.Rust
 import "./js/generate_session.js" as GenerateSession
 import ShoopConstants
 
-Rectangle {
+Item {
     id: root
-    color: Material.background
     objectName: 'session'
 
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Session" }
@@ -48,8 +47,8 @@ Rectangle {
                 root.logger.debug("Loading session on startup: " + filename)
                 auto_session_loader.trigger()
             }
-            if (global_args.test_grab_screens) {
-                test_grab_screens_and_quit(global_args.test_grab_screens)
+            if (global_args.test_grab_screens_dir) {
+                test_grab_screens_and_quit(global_args.test_grab_screens_dir)
             }
             if (global_args.quit_after >= 0.0) {
                 root.logger.info(`Auto-quit scheduled for ${global_args.quit_after} seconds.`)
