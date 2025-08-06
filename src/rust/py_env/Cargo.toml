@@ -11,13 +11,14 @@ path = "src/bin/print_py_env_out_dir.rs"
 [dependencies]
 
 [build-dependencies]
-glob = "0.3"
-copy_dir = "0.1"
-anyhow = "1.0"
 backend = { path = "../backend" }
 common = { path = "../common" }
 py_prepare = { path = "../py_prepare" }
-walkdir = "2.4"
+
+walkdir = { workspace = true }
+glob = { workspace = true }
+copy_dir = { workspace = true }
+anyhow = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only

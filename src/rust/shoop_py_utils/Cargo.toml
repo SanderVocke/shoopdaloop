@@ -1,0 +1,20 @@
+[package]
+name = "shoop_py_utils"
+edition = "2021"
+
+[dependencies]
+cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
+common = { path = "../common" }
+
+ctor = { workspace = true }
+log = { workspace = true }
+pyo3 = { workspace = true, features = ["auto-initialize"] }
+cxx-qt = { workspace = true }
+cxx-qt-lib = { workspace = true, features = ["full"] }
+
+[build-dependencies]
+
+[features]
+# Dummy build to build dependencies only
+prebuild = ["common/prebuild",
+            "cxx_qt_lib_shoop/prebuild"]

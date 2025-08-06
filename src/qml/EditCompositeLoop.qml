@@ -16,7 +16,7 @@ Item {
     property int swimlane_height: 28
 
     property var scheduled_playlists : composite_loop.scheduled_playlists
-    property int schedule_length : Math.max.apply(null, Object.keys(composite_loop.schedule))
+    property int schedule_length : Math.max.apply(null, Object.keys(composite_loop.schedule).map((key) => parseInt(key)))
 
     property var sync_track
     property var main_tracks : []

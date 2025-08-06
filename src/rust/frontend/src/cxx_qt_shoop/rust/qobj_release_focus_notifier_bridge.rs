@@ -17,18 +17,18 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
 
         #[rust_name = "make_unique_releasefocusnotifier"]
         fn make_unique() -> UniquePtr<ReleaseFocusNotifier>;
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-shoop/register_qml_type.h");
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_singleton_releasefocusnotifier"]
-        fn register_qml_singleton(
-            inference_example: &ReleaseFocusNotifier,
+        unsafe fn register_qml_singleton(
+            inference_example: *mut ReleaseFocusNotifier,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,

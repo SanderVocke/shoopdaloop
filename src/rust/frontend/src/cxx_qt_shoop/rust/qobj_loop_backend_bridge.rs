@@ -14,8 +14,8 @@ pub mod constants {
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
-        type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -30,9 +30,9 @@ pub mod ffi {
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
-        include!("cxx-qt-lib-shoop/metatype.h");
+        include!("cxx-qt-lib-shoop/qmetatype.h");
         #[rust_name = "loop_backend_metatype_name"]
-        unsafe fn meta_type_name(obj: &LoopBackend) -> Result<&str>;
+        unsafe fn meta_type_name(obj: *mut LoopBackend) -> Result<String>;
     }
 
     unsafe extern "RustQt" {
@@ -42,10 +42,6 @@ pub mod ffi {
         #[qproperty(i32, position, READ=get_position, NOTIFY=position_changed)]
         #[qproperty(i32, next_mode, READ=get_next_mode, NOTIFY=next_mode_changed)]
         #[qproperty(i32, next_transition_delay, READ=get_next_transition_delay, NOTIFY=next_transition_delay_changed)]
-        // #[qproperty(QList_f32, display_peaks)]
-        // #[qproperty(i32, display_midi_notes_active)]
-        // #[qproperty(i32, display_midi_events_triggered)]
-        // #[qproperty(QString, instance_identifier)]
         #[qproperty(i32, cycle_nr, READ=get_cycle_nr, NOTIFY=cycle_nr_changed)]
         #[qproperty(bool, initialized, READ=get_initialized, NOTIFY=initialized_changed)]
         #[qproperty(*mut QObject, backend, READ, NOTIFY=backend_changed)]
@@ -72,8 +68,20 @@ pub mod ffi {
         #[qinvokable]
         pub fn set_instance_identifier(self: Pin<&mut LoopBackend>, instance_identifier: QString);
 
+        // For any backend loop, will split into unison/individual
+        // transitions
         #[qinvokable]
         pub fn transition_multiple(
+            self: Pin<&mut LoopBackend>,
+            loops: QList_QVariant,
+            to_mode: i32,
+            maybe_cycles_delay: i32,
+            maybe_to_sync_at_cycle: i32,
+        );
+
+        // For LoopBackend objects only
+        #[qinvokable]
+        pub fn transition_multiple_backend_in_unison(
             self: Pin<&mut LoopBackend>,
             loops: QList_QVariant,
             to_mode: i32,
@@ -124,6 +132,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn maybe_initialize_backend(self: Pin<&mut LoopBackend>) -> bool;
+
+        #[qinvokable]
+        pub fn dependent_will_handle_sync_loop_cycle(self: Pin<&mut LoopBackend>, cycle_nr: i32);
 
         #[qsignal]
         fn cycled(self: Pin<&mut LoopBackend>, cycle_nr: i32);
@@ -189,11 +200,11 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-shoop/cast_ptr.h");
+        include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "qobject_to_loop_backend_ptr"]
         unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut LoopBackend;
 
-        include!("cxx-qt-shoop/qobject_classname.h");
+        include!("cxx-qt-lib-shoop/qobject_classname.h");
         #[rust_name = "qobject_class_name_loop_backend"]
         fn qobject_class_name(obj: &LoopBackend) -> Result<&str>;
 
@@ -204,16 +215,15 @@ pub mod ffi {
         #[rust_name = "loop_backend_qobject_from_ref"]
         fn qobjectFromRef(obj: &LoopBackend) -> &QObject;
 
-        include!("cxx-qt-shoop/make_raw.h");
+        include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_loop_backend"]
         unsafe fn make_raw() -> *mut LoopBackend;
-
     }
 
     impl cxx_qt::Constructor<()> for LoopBackend {}
 }
 
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::qobject::AsQObject;
 pub use ffi::LoopBackend;
 use ffi::*;
 

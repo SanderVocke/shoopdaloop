@@ -1,9 +1,9 @@
-import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
-import QtQuick.Controls.Material
+import QtQuick 6.6
+import QtQuick.Controls 6.6
+import QtQuick.Layouts 6.6
+import QtQuick.Controls.Material 6.6
 import Qt.labs.qmlmodels 1.0
-import QtQuick.Dialogs
+import QtQuick.Dialogs 6.6
 
 import ShoopDaLoop.PythonLogger
 
@@ -68,14 +68,14 @@ Dialog {
         function save() {
             if (!io_enabled) return
 
-            logger.debug(() => ("Saving settings."))
+            logger.debug("Saving settings.")
             validate()
             settings_io.save_settings(to_dict(), null)
         }
 
         function load() {
             if (io_enabled) {
-                logger.debug(() => ("Loading settings."))
+                logger.debug("Loading settings.")
                 let loaded_settings = settings_io.load_settings(null)
                 if (loaded_settings != null) { from_dict(loaded_settings) }
             }
@@ -696,7 +696,7 @@ Dialog {
 
     Component {
         id: script_doc_dialog_factory
-        ApplicationWindow {
+        ShoopApplicationWindow {
             id: window
             property string script_name: '<unknown script>'
             property string docstring: ''
@@ -706,8 +706,6 @@ Dialog {
             height: 500
             minimumWidth: 100
             minimumHeight: 100
-            
-            Material.theme: Material.Dark
 
             ScrollView {
                 anchors.fill: parent

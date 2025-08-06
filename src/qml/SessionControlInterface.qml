@@ -67,7 +67,7 @@ LuaControlInterface {
                 }
             }
         }
-        logger.debug(() => (`Selected loops for selector ${JSON.stringify(loop_selector)}: ${JSON.stringify(rval.map(l => l ? l.obj_id : null))}.`))
+        logger.debug(`Selected loops for selector ${JSON.stringify(loop_selector)}: ${JSON.stringify(rval.map(l => l ? l.obj_id : null))}.`)
         return rval
     }
 
@@ -104,7 +104,7 @@ LuaControlInterface {
         } else if (Number.isInteger(track_selector)) {
             return select_track(track_selector)
         } 
-        logger.debug(() => (`Selected ${rval.length} target track(s).`))
+        logger.debug(`Selected ${rval.length} target track(s).`)
         return rval
     }
 

@@ -7,13 +7,13 @@ pub const DEFAULT_BACKUP_UPDATE_INTERVAL_MS: i32 = 25;
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qthread.h");
-        type QThread = crate::cxx_qt_lib_shoop::qthread::QThread;
+        type QThread = cxx_qt_lib_shoop::qthread::QThread;
 
         include!("cxx-qt-lib-shoop/qtimer.h");
-        type QTimer = crate::cxx_qt_lib_shoop::qtimer::QTimer;
+        type QTimer = cxx_qt_lib_shoop::qtimer::QTimer;
 
         include!("cxx-qt-lib-shoop/qobject.h");
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
     }
 
     unsafe extern "RustQt" {
@@ -24,9 +24,6 @@ pub mod ffi {
 
         #[qsignal]
         fn update(self: Pin<&mut UpdateThread>);
-
-        #[qinvokable]
-        pub fn trigger_update(self: Pin<&mut UpdateThread>);
 
         #[qinvokable]
         pub fn timer_tick(self: Pin<&mut UpdateThread>);
@@ -45,7 +42,7 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
 
         #[rust_name = "make_unique_update_thread"]
         fn make_unique() -> UniquePtr<UpdateThread>;
@@ -61,7 +58,7 @@ pub mod ffi {
     impl cxx_qt::Constructor<()> for UpdateThread {}
 }
 
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::qobject::AsQObject;
 pub use ffi::UpdateThread;
 
 impl AsQObject for UpdateThread {

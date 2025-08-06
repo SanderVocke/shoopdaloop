@@ -6,8 +6,8 @@ edition = "2021"
 proc-macro = true
 
 [dependencies]
-quote = "*"
-syn = { version = "*", features = ["full"] }
+quote = { workspace = true }
+syn = { workspace = true, features = ["full"] }
 
 [features]
 # Dummy build to build dependencies only

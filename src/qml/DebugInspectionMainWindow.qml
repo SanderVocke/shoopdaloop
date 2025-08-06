@@ -2,7 +2,7 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 
-ApplicationWindow {
+ShoopApplicationWindow {
     
     id: root
     title: "Debug Inspections"
@@ -13,8 +13,6 @@ ApplicationWindow {
     maximumWidth: 700
     minimumHeight: 250
     maximumHeight: 250
-    
-    Material.theme: Material.Dark
 
     property var object_ids: registries.objects_registry.keys()
     Connections {

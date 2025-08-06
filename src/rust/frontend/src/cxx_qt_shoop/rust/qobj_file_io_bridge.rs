@@ -67,16 +67,16 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
 
         #[rust_name = "make_unique_fileio"]
         fn make_unique() -> UniquePtr<FileIO>;
 
-        include!("cxx-qt-shoop/register_qml_type.h");
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_singleton_file_io"]
-        fn register_qml_singleton(
-            inference_example: &FileIO,
+        unsafe fn register_qml_singleton(
+            inference_example: *mut FileIO,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,

@@ -20,14 +20,14 @@ pub mod constants {
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
-        type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
         include!("cxx-qt-lib-shoop/qtimer.h");
-        type QTimer = crate::cxx_qt_lib_shoop::qtimer::QTimer;
+        type QTimer = cxx_qt_lib_shoop::qtimer::QTimer;
 
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
@@ -38,9 +38,9 @@ pub mod ffi {
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
 
-        include!("cxx-qt-lib-shoop/metatype.h");
+        include!("cxx-qt-lib-shoop/qmetatype.h");
         #[rust_name = "autoconnect_metatype_name"]
-        unsafe fn meta_type_name(obj: &AutoConnect) -> Result<&str>;
+        unsafe fn meta_type_name(obj: *mut AutoConnect) -> Result<String>;
     }
 
     unsafe extern "RustQt" {
@@ -77,25 +77,25 @@ pub mod ffi {
         #[rust_name = "qquickitem_from_ptr_autoconnect"]
         unsafe fn qquickitemFromPtr(obj: *mut AutoConnect) -> *mut QQuickItem;
 
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_autoconnect"]
         fn make_unique() -> UniquePtr<AutoConnect>;
 
-        include!("cxx-qt-shoop/make_raw.h");
+        include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_autoconnect"]
         fn make_raw() -> *mut AutoConnect;
 
-        include!("cxx-qt-shoop/qobject_classname.h");
+        include!("cxx-qt-lib-shoop/qobject_classname.h");
         #[rust_name = "qobject_class_name_autoconnect"]
         fn qobject_class_name(obj: &AutoConnect) -> Result<&str>;
 
         include!("cxx-qt-lib-shoop/qjsonobject.h");
-        type QJsonObject = crate::cxx_qt_lib_shoop::qjsonobject::QJsonObject;
+        type QJsonObject = cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 
-        include!("cxx-qt-shoop/register_qml_type.h");
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_autoconnect"]
-        fn register_qml_type(
-            inference_example: &AutoConnect,
+        unsafe fn register_qml_type(
+            inference_example: *mut AutoConnect,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,
@@ -107,10 +107,10 @@ pub mod ffi {
     impl cxx_qt::Constructor<(), NewArguments = ()> for AutoConnect {}
 }
 
-use crate::cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
 use crate::cxx_qt_shoop::fn_find_backend_wrapper;
 use crate::cxx_qt_shoop::qobj_find_parent_item::FindParentItem;
 use cxx::UniquePtr;
+use cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
 pub use ffi::AutoConnect;
 use ffi::*;
 pub struct AutoConnectRust {
@@ -135,7 +135,7 @@ impl Default for AutoConnectRust {
     }
 }
 
-impl crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem for AutoConnect {
+impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for AutoConnect {
     unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {
         qquickitem_from_ptr_autoconnect(self as *mut Self)
     }

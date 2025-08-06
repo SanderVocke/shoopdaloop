@@ -8,7 +8,7 @@ import './testfilename.js' as TestFilename
 ShoopTestFile {
     Backend {
         id: backend
-        update_interval_ms: 30
+        update_interval_ms: 10
         client_name_hint: 'ShoopDaLoop'
         backend_type: ShoopConstants.AudioDriverType.Dummy
         driver_setting_overrides: ({})

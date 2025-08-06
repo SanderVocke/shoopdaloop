@@ -11,7 +11,7 @@ path = "src/bin/print_py_prepare_out_dir.rs"
 [dependencies]
 
 [build-dependencies]
-anyhow = "1.0"
+anyhow = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only

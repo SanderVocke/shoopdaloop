@@ -44,10 +44,10 @@ Item {
                     case LoopContentWidget.Tool.SetEnd:
                         var len = s - channel.start_offset
                         if (len >= 0) { channel.loop.queue_set_length(len); }
-                        else { root.logger.error(() => ("Ignoring invalid end point: is before start offset.")) }
+                        else { root.logger.error("Ignoring invalid end point: is before start offset.") }
                         break;
                     default:
-                        root.logger.error(() => ("Unimplemented tool."))
+                        root.logger.error("Unimplemented tool.")
                         throw new Error("Unimplemented")
                 }
             }

@@ -12,7 +12,7 @@ Item {
     function update() {
         object = (registry && key.length > 0 && registry.has(key)) ?
             registry.get(key) : null;
-        logger.debug(() => `Registry lookup w/ parent ${parent} @ ${registry}:${key}: yielded ${object}`)
+        logger.debug(`Registry lookup w/ parent ${parent} @ ${registry}:${key}: yielded ${object}`)
     }
 
     Component.onCompleted: update()

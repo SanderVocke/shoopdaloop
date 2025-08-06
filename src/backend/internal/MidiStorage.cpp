@@ -360,7 +360,8 @@ CursorFindResult MidiStorageCursor::find_time_forward(
     uint32_t time, std::function<void(Elem *)> maybe_skip_msg_callback)
 {
     auto print_offset = m_offset.has_value() ? (int)m_offset.value() : (int)-1;
-    log<log_level_debug_trace>("find_time_forward (storage {}, cursor {}, target time {})", fmt::ptr(m_storage.get()), print_offset, time);
+    auto storage_ptr = m_storage.get();
+    log<log_level_debug_trace>("find_time_forward (storage {}, cursor {}, target time {})", fmt::ptr(storage_ptr), print_offset, time);
     return find_fn_forward([time](Elem *e) {
         return e->storage_time >= time;
     }, maybe_skip_msg_callback);

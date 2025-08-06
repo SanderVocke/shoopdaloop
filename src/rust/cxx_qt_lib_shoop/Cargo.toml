@@ -1,0 +1,34 @@
+[package]
+name = "cxx_qt_lib_shoop"
+edition = "2021"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+macros = { path = "../macros" }
+common = { path = "../common" }
+
+cxx = { workspace = true }
+cxx-qt = { workspace = true }
+cxx-qt-lib = { workspace = true, features = ["full"] }
+tempfile = { workspace = true }
+tar = { workspace = true }
+glob = { workspace = true }
+dunce = { workspace = true }
+anyhow = { workspace = true }
+ctor = { workspace = true }
+regex = { workspace = true }
+log = { workspace = true }
+once_cell = { workspace = true }
+
+[build-dependencies]
+macros = { path = "../macros" }
+
+cxx-qt-build = { version = "0.7.2" }
+
+[features]
+# Dummy build to build dependencies only
+prebuild = ["macros/prebuild",
+            "common/prebuild"]
+

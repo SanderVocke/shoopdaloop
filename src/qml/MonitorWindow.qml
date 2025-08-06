@@ -1,18 +1,16 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import QtGraphs
-import QtQuick.Layouts
+import QtGraphs 6.6
+import QtQuick.Layouts 6.6
 import ShoopDaLoop.PythonLogger
 
-ApplicationWindow {
+ShoopApplicationWindow {
     id: root
     title: "Monitor"
 
     width: 600
     height: 450
-
-    Material.theme: Material.Dark
 
     function add_dsp_load_point(load) {
         dsp_load.add_point(load)
@@ -30,7 +28,7 @@ ApplicationWindow {
         anchors.left: parent.left
         width: 200
 
-        model: ["DSP load", "Audio buffer pool", "Backend state refresh rate"]
+        model: ["DSP load", "Audio buffer pool", "Backend state request interval"]
     }
 
     StackLayout {

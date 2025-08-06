@@ -18,13 +18,19 @@ pub mod audio_power_pyramid;
 pub mod cxx_qt_shoop;
 
 #[cfg(not(feature = "prebuild"))]
-pub mod cxx_qt_lib_shoop;
-
-#[cfg(not(feature = "prebuild"))]
-mod tests;
-
-#[cfg(not(feature = "prebuild"))]
 mod loop_mode_helpers;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod engine_update_thread;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod test_results;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod composite_loop_schedule;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod loop_helpers;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod profiling_report;

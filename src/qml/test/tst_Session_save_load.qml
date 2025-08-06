@@ -8,7 +8,7 @@ import './testfilename.js' as TestFilename
 import '..'
 
 ShoopTestFile {
-    Session {
+    TestSession {
         id: session
 
         backend_type: ShoopConstants.AudioDriverType.Dummy
@@ -70,7 +70,7 @@ ShoopTestFile {
                 'playlists': []
             }
             let desc = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [direct_track, drywet_track, midi_track])
-            testcase.logger.debug(() => ("session descriptor: " + JSON.stringify(desc, null, 2)))
+            testcase.logger.debug("session descriptor: " + JSON.stringify(desc, null, 2))
             return desc
         }
 
@@ -387,7 +387,7 @@ ShoopTestFile {
         }
     }
 
-    Session {
+    TestSession {
         id: other_session
         backend_type: ShoopConstants.AudioDriverType.Dummy
         driver_setting_overrides: {

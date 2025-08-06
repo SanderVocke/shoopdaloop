@@ -1,13 +1,13 @@
 use cxx_qt::CxxQtType;
 
-use crate::cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
-use crate::cxx_qt_lib_shoop::{connection_types, invokable};
 use crate::cxx_qt_shoop::qobj_update_thread_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_update_thread_bridge::{
     UpdateThread, DEFAULT_BACKUP_UPDATE_INTERVAL_MS,
 };
 use core::pin::Pin;
+use cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
+use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::{connection_types, invokable};
 use std::slice;
 use std::time::{Duration, Instant};
 
@@ -70,23 +70,34 @@ impl UpdateThread {
 
     pub fn frontend_frame_swapped(self: Pin<&mut UpdateThread>) {
         if *self.as_ref().trigger_update_on_frame_swapped() {
-            self.trigger_update();
+            let elapsed = self.trigger_update();
+            trace!("Updated (frame swapped) - took {elapsed:?}");
         }
     }
 
-    pub fn trigger_update(mut self: Pin<&mut Self>) {
+    pub fn trigger_update(mut self: Pin<&mut Self>) -> Duration {
         let mut rust = self.as_mut().rust_mut();
-        rust.last_updated = Some(Instant::now());
+        let start = Instant::now();
+        rust.last_updated = Some(start);
         self.update();
+        start.elapsed()
+    }
+
+    pub fn trigger_update_if_enough_time_elapsed(self: Pin<&mut Self>) -> Option<Duration> {
+        let last_updated = self.as_ref().last_updated;
+        let do_update: bool = last_updated.is_none()
+            || Instant::now().duration_since(last_updated.unwrap())
+                > self.as_ref().backup_timer_elapsed_threshold;
+        if do_update {
+            return Some(self.trigger_update());
+        } else {
+            return None;
+        }
     }
 
     pub fn timer_tick(self: Pin<&mut Self>) {
-        let last_updated = self.as_ref().last_updated;
-        let update: bool = last_updated.is_none()
-            || Instant::now().duration_since(last_updated.unwrap())
-                > self.as_ref().backup_timer_elapsed_threshold;
-        if update {
-            self.trigger_update();
+        if let Some(elapsed) = self.trigger_update_if_enough_time_elapsed() {
+            trace!("Updated (timer expired) - took {elapsed:?}");
         }
     }
 

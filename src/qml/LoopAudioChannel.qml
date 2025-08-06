@@ -95,7 +95,7 @@ PythonLoopAudioChannel {
         function onInitializedChanged() { root.initialize() }
     }
     Component.onCompleted: {
-        root.logger.debug(() => `Created with ${JSON.stringify(descriptor)}`)
+        root.logger.debug(`Created with ${JSON.stringify(descriptor)}`)
         set_mode(initial_mode)
         set_gain(initial_gain)
         initialize()

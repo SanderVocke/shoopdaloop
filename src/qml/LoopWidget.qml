@@ -1,7 +1,7 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import QtQuick.Dialogs
+import QtQuick.Dialogs 6.6
 import ShoopDaLoop.PythonLogger
 import ShoopConstants
 
@@ -28,7 +28,7 @@ Item {
     onIdx_in_trackChanged: print_coords()
 
     function print_coords() {
-        logger.debug(() => (`Loop @ (${track_idx},${idx_in_track})`))
+        logger.debug(`Loop @ (${track_idx},${idx_in_track})`)
     }
 
     // property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LoopWidget" }
@@ -98,8 +98,8 @@ Item {
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         var have_data_files = initial_descriptor.channels ? initial_descriptor.channels.map(c => {
             let r = ('data_file' in c)
-            if (r) { root.logger.debug(() => (`${obj_id} has data file for channel ${c.obj_id}`)) }
-            else   { root.logger.debug(() => (`${obj_id} has no data file for channel ${c.obj_id}`)) }
+            if (r) { root.logger.debug(`${obj_id} has data file for channel ${c.obj_id}`) }
+            else   { root.logger.debug(`${obj_id} has no data file for channel ${c.obj_id}`) }
             return r
         }) : []
         let have_any_data = have_data_files.filter(d => d == true).length > 0
@@ -108,11 +108,11 @@ Item {
             root.logger.error("Loop cannot both have channel data and composition information.")
             return
         } else if (have_any_data) {
-            root.logger.debug(() => (`${obj_id} has data files, queueing load tasks.`))
+            root.logger.debug(`${obj_id} has data files, queueing load tasks.`)
             create_backend_loop()
             channels.forEach((c) => c.queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to))
         } else {
-            root.logger.debug(() => (`${obj_id} has no data files, not queueing load tasks.`))
+            root.logger.debug(`${obj_id} has no data files, not queueing load tasks.`)
         }
     }
 
@@ -174,7 +174,7 @@ Item {
             root.logger.debug("Initializing back-end for sync loop")
             create_backend_loop()
         } else if (initial_descriptor && 'composition' in initial_descriptor) {
-            root.logger.debug(() => (`${obj_id} has composition, creating composite loop.`))
+            root.logger.debug(`${obj_id} has composition, creating composite loop.`)
             create_composite_loop(initial_descriptor.composition)
         }
         loaded = true
@@ -186,7 +186,7 @@ Item {
 
     property var additional_context_menu_options : null // dict of option name -> functor
 
-    onIs_loadedChanged: if(is_loaded) { root.logger.debug(() => ("Loaded back-end loop.")) }
+    onIs_loadedChanged: if(is_loaded) { root.logger.debug("Loaded back-end loop.") }
     onIs_syncChanged: if(is_sync) { create_backend_loop() }
 
     // Internally controlled
@@ -251,7 +251,7 @@ Item {
         other_loops.forEach(o => o.transition(mode, maybe_delay, maybe_align_to_sync_at))
     }
     function transition(mode, maybe_delay, maybe_align_to_sync_at, include_selected=true) {
-        root.logger.debug(() => (`Transitioning to ${mode} with delay ${maybe_delay} and align to sync at ${maybe_align_to_sync_at}`))
+        root.logger.debug(`Transitioning to ${mode} with delay ${maybe_delay} and align to sync at ${maybe_align_to_sync_at}`)
 
         // Do the transition for this loop and all selected loops, if any
         var selected_all = include_selected ? selected_loops : new Set()
@@ -655,7 +655,7 @@ Item {
     property var midi_channels : (maybe_loop && maybe_loop.midi_channels) ? maybe_loop.midi_channels : []
 
     property bool sync_active : registries.state_registry.sync_active
-    onSync_activeChanged: root.logger.debug(() => (`Sync active: ${sync_active}`))
+    onSync_activeChanged: root.logger.debug(`Sync active: ${sync_active}`)
 
     // UI
     StatusRect {
@@ -751,12 +751,12 @@ Item {
                 bottom: parent.bottom
                 margins: 2
             }
+            height: 3
 
             sourceComponent: ProgressBar {
                 id: peak_meter_l
                 visible: load_peak_meter_l.activate
                 anchors.fill: parent
-                height: 3
 
                 AudioLevelMeterModel {
                     id: output_peak_meter_l
@@ -793,6 +793,7 @@ Item {
                 bottom: parent.bottom
                 margins: 2
             }
+            height: 3
 
             sourceComponent: ProgressBar {
                 id: peak_meter_r
@@ -833,13 +834,13 @@ Item {
                 right: load_peak_meter_r.right
                 bottom: load_peak_meter_l.bottom
                 top: load_peak_meter_l.top
+                margins: 0
             }
 
-            ProgressBar {
+            sourceComponent: ProgressBar {
                 id: peak_meter_overall
                 visible: load_peak_meter_overall.activate
                 anchors.fill: load_peak_meter_overall
-                height: 3
 
                 AudioLevelMeterModel {
                     id: output_peak_meter_overall
@@ -1906,7 +1907,7 @@ Item {
             property var channels: []
             onAccepted: {
                 if (!root.maybe_backend_loop) {
-                    root.logger.error(() => ("Cannot save: loop not loaded"))
+                    root.logger.error("Cannot save: loop not loaded")
                     return;
                 }
                 close()
@@ -1932,7 +1933,7 @@ Item {
             property var channel: null
             onAccepted: {
                 if (!root.maybe_backend_loop) {
-                    root.logger.error(() => ("Cannot save: loop not loaded"))
+                    root.logger.error("Cannot save: loop not loaded")
                     return;
                 }
                 close()
@@ -2015,7 +2016,7 @@ Item {
 
             onAccepted: {
                 if (!root.maybe_backend_loop) {
-                    root.logger.error(() => ("Cannot load: loop not loaded"))
+                    root.logger.error("Cannot load: loop not loaded")
                     return;
                 }
                 registries.state_registry.load_action_started()

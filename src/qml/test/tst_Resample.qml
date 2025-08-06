@@ -8,7 +8,7 @@ import './testfilename.js' as TestFilename
 import '..'
 
 ShoopTestFile {
-    Session {
+    TestSession {
         id: session
 
         anchors.fill: parent

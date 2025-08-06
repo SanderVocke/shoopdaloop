@@ -1,17 +1,17 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import QtQuick.Dialogs
+import QtQuick.Dialogs 6.6
 import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.PythonControlHandler
 import ShoopDaLoop.PythonControlInterface
+import ShoopDaLoop.Rust
 
 import "./js/generate_session.js" as GenerateSession
 import ShoopConstants
 
-Rectangle {
+Item {
     id: root
-    color: Material.background
     objectName: 'session'
 
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Session" }
@@ -23,6 +23,7 @@ Rectangle {
     // The actual descriptor can be retrieved with actual_session_descriptor().
     property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, null, [], [], [], [])
     property var backend_type : global_args.backend_type
+    property int backend_update_interval_ms : 30
 
     property alias driver_setting_overrides : session_backend.driver_setting_overrides
 
@@ -44,14 +45,14 @@ Rectangle {
                 did_auto_load = true
                 var filename = global_args.load_session_on_startup
                 auto_session_loader.filename = filename
-                root.logger.debug(() => ("Loading session on startup: " + filename))
+                root.logger.debug("Loading session on startup: " + filename)
                 auto_session_loader.trigger()
             }
-            if (global_args.test_grab_screens) {
-                test_grab_screens_and_quit(global_args.test_grab_screens)
+            if (global_args.test_grab_screens_dir) {
+                test_grab_screens_and_quit(global_args.test_grab_screens_dir)
             }
             if (global_args.quit_after >= 0.0) {
-                root.logger.info(() => `Auto-quit scheduled for ${global_args.quit_after} seconds.`)
+                root.logger.info(`Auto-quit scheduled for ${global_args.quit_after} seconds.`)
                 autoquit_timer.interval = global_args.quit_after * 1000.0
                 autoquit_timer.start()
             }
@@ -64,7 +65,7 @@ Rectangle {
         repeat: false
         running: false
         onTriggered: {
-            root.logger.info(() => "Auto-quitting as per request.")
+            root.logger.info("Auto-quitting as per request.")
             Qt.callLater(Qt.quit)
         }
     }
@@ -74,7 +75,7 @@ Rectangle {
         property string output_folder
         onExecute: {
             screen_grabber.grab_all(output_folder)
-            root.logger.info(() => ("Screenshots written to: " + output_folder + ". Quitting."))
+            root.logger.info("Screenshots written to: " + output_folder + ". Quitting.")
             Qt.callLater(Qt.quit)
         }
     }
@@ -189,11 +190,11 @@ Rectangle {
     TasksFactory { id: tasks_factory }
 
     function save_session(filename) {
-        root.logger.debug(() => `saving session to: ${filename}`)
+        root.logger.debug(`saving session to: ${filename}`)
         registries.state_registry.reset_saving_loading()
         registries.state_registry.save_action_started()
         var tempdir = ShoopFileIO.create_temporary_folder()
-        root.logger.trace(() => `Temporary folder: ${tempdir}`)
+        root.logger.trace(`Temporary folder: ${tempdir}`)
         if (tempdir == null) {
             throw new Error("Failed to create temporary folder")
         }
@@ -212,7 +213,7 @@ Rectangle {
                 if (!ShoopFileIO.make_tarfile(filename, tempdir)) {
                     throw new Error(`Failed to create tarfile ${filename}`)
                 }
-                root.logger.info(() => ("Session written to: " + filename))
+                root.logger.info("Session written to: " + filename)
             } finally {
                 registries.state_registry.save_action_finished()
                 ShoopFileIO.delete_recursive(tempdir)
@@ -223,7 +224,7 @@ Rectangle {
     }
 
     function reload() {
-        root.logger.debug(() => ("Reloading session"))
+        root.logger.debug("Reloading session")
         registries.state_registry.clear([
             'sync_active'
         ])
@@ -235,7 +236,7 @@ Rectangle {
     function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
         tracks_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
         if (sync_loop_loader.track_widget) {
-            root.logger.debug(() => (`Queue load tasks for sync track`))
+            root.logger.debug(`Queue load tasks for sync track`)
             sync_loop_loader.track_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
         }
     }
@@ -259,13 +260,13 @@ Rectangle {
             close()
             auto_session_loader.filename = session_filename
             auto_session_loader.ignore_resample_warning = true
-            root.logger.debug(() => ("Loading session on startup: " + filename))
+            root.logger.debug("Loading session on startup: " + filename)
             auto_session_loader.trigger()
         }
     }
 
     function load_session(filename, ignore_resample_warning=false) {
-        root.logger.debug(() => `loading session: ${filename}`)
+        root.logger.debug(`loading session: ${filename}`)
         registries.state_registry.reset_saving_loading()
         registries.state_registry.load_action_started()
         var tempdir = ShoopFileIO.create_temporary_folder()
@@ -274,7 +275,7 @@ Rectangle {
             var tasks = tasks_factory.create_tasks_obj(root)
 
             ShoopFileIO.extract_tarfile(filename, tempdir)
-            root.logger.debug(() => (`Extracted files: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`))
+            root.logger.debug(`Extracted files: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`)
 
             var session_filename = tempdir + '/session.json'
             var session_file_contents = ShoopFileIO.read_file(session_filename)
@@ -282,7 +283,7 @@ Rectangle {
             let our_sample_rate = session_backend.get_sample_rate()
             let incoming_sample_rate = descriptor.sample_rate
 
-            if (!schema_validator.validate_schema(descriptor, "Session object", validator.schema, false)) {
+            if (!ShoopSchemaValidator.validate_schema(descriptor, "Session object", validator.schema, false)) {
                 return;
             }
 
@@ -304,14 +305,14 @@ Rectangle {
             registries.state_registry.load_action_started()
 
             let finish_fn = () => {
-                root.logger.debug(() => ("Queueing load tasks"))
+                root.logger.debug("Queueing load tasks")
                 queue_load_tasks(tempdir, incoming_sample_rate, our_sample_rate, tasks)
 
                 tasks.when_finished(() => {
                     try {
                         ShoopFileIO.delete_recursive(tempdir)
                     } finally {
-                        root.logger.info(() => ("Session loaded from: " + filename))
+                        root.logger.info("Session loaded from: " + filename)
                         registries.state_registry.load_action_finished()
                         tasks.parent = null
                         tasks.deleteLater()
@@ -406,7 +407,7 @@ Rectangle {
 
         property var focusItem : Window.activeFocusItem
         onFocusItemChanged: {
-            root.logger.debug(() => ("Focus item changed: " + focusItem))
+            root.logger.debug("Focus item changed: " + focusItem)
             if (!focusItem || focusItem == Window.contentItem) {
                 takeFocus.trigger()
             }
@@ -422,7 +423,7 @@ Rectangle {
     }
 
     Backend {
-        update_interval_ms: 30
+        update_interval_ms: root.backend_update_interval_ms
         client_name_hint: 'ShoopDaLoop'
         backend_type: root.backend_type
         id: session_backend

@@ -2,7 +2,7 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.PythonLogger
-import ShoopDaLoop.PythonCompositeLoop
+import ShoopDaLoop.Rust
 
 import ShoopConstants
 import 'js/mode_helpers.js' as ModeHelpers
@@ -14,39 +14,39 @@ Item {
     RequireBackend {}
 
     // Store the current playback iteration.
-    onIterationChanged: root.logger.trace(() => `iteration -> ${iteration}`)
+    onIterationChanged: root.logger.trace(`iteration -> ${iteration}`)
 
     property var initial_composition_descriptor: null
     property string obj_id : 'unknown'
     property var loop_widget : null
 
-    onObj_idChanged: py_loop.instanceIdentifier = obj_id
+    onObj_idChanged: rust_loop.instance_identifier = obj_id
 
     readonly property bool initialized: true
 
     // set internally
-    property alias kind : py_loop.kind
+    property alias kind : rust_loop.kind
 
     // The Python-side object manages triggering other loops based on the
     // schedule. This needs to keep running even if the QML/GUI thread hangs.
     // In the QML side, we manage updating/calculating the schedule.
-    property var schedule: {}
-    property alias iteration: py_loop.iteration
-    property alias running_loops: py_loop.running_loops
-    property alias mode: py_loop.mode
-    property alias n_cycles: py_loop.n_cycles
-    property alias next_mode : py_loop.next_mode
-    property alias next_transition_delay : py_loop.next_transition_delay
-    property alias sync_length : py_loop.sync_length
-    property alias position : py_loop.position
-    property alias sync_position : py_loop.sync_position
-    property alias length : py_loop.length
-    property alias py_loop : py_loop
-    property alias backend : py_loop.backend
+    property var schedule: ({})
+    property alias iteration: rust_loop.iteration
+    property alias running_loops: rust_loop.running_loops
+    property alias mode: rust_loop.mode
+    property alias n_cycles: rust_loop.n_cycles
+    property alias next_mode : rust_loop.next_mode
+    property alias next_transition_delay : rust_loop.next_transition_delay
+    property alias sync_length : rust_loop.sync_length
+    property alias position : rust_loop.position
+    property alias sync_position : rust_loop.sync_position
+    property alias length : rust_loop.length
+    property alias rust_loop : rust_loop
+    property alias backend : rust_loop.backend
 
-    PythonCompositeLoop {
-        id: py_loop
-        sync_loop: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
+    CompositeLoopGui {
+        id: rust_loop
+        sync_source: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
         schedule: root.schedule
         play_after_record: registries.state_registry.play_after_record_active
         sync_mode_active: registries.state_registry.sync_active
@@ -151,9 +151,10 @@ Item {
     // loops_end lists the loops that should be stopped in this iteration. Each entry is a loop.
     // loops_ignored lists loops that are not really scheduled but stored to still keep traceability -
     // for example when a 0-length loop is in the playlist.
+    // TODO: the "iteration" key is currently a string, because of interop limitations with cxx-qt.
     function recalculate_schedule() {
-        root.logger.debug(() => 'Recalculating schedule.')
-        root.logger.trace(() => `--> playlists to schedule: ${JSON.stringify(playlists, null, 2)}`)
+        root.logger.debug('Recalculating schedule.')
+        root.logger.trace(`--> playlists to schedule: ${JSON.stringify(playlists, null, 2)}`)
 
         var _scheduled_playlists = playlists ? JSON.parse(JSON.stringify(playlists)) : []
         for (var pidx=0; pidx < _scheduled_playlists.length; pidx++) {
@@ -167,7 +168,7 @@ Item {
                     let elem = elems[h]
                     let loop_widget = registries.objects_registry.value_or(elem.loop_id, undefined)
                     if (!loop_widget) {
-                        root.logger.debug(() => "Could not find " + elem.loop_id) 
+                        root.logger.debug("Could not find " + elem.loop_id) 
                         continue
                     }
                     let loop_start = _it + elem.delay
@@ -222,9 +223,9 @@ Item {
                         }
                     }
                     // If our target is a CompositeLoop, it does not directly inherit a Python loop.
-                    // Instead it will be stored in its py_loop subobject.
+                    // Instead it will be stored in its rust_loop subobject.
                     if (loop.objectName === "Qml.CompositeLoop") {
-                        loop = loop.py_loop
+                        loop = loop.rust_loop
                     }
 
                     if (!_schedule[loop_start]) { _schedule[loop_start] = { loops_start: new Set(), loops_end: new Set(), loops_ignored: new Set(), loop_modes: {} } }
@@ -263,10 +264,20 @@ Item {
             let starts = v.loops_start
             delete v.loop_modes
             delete v.loops_start
-            v.loops_start = starts.map(l => [l, modes[l]])
+            v.loops_start = starts.map(l => {
+                return [l, modes[l]]
+            })
         }
 
-        root.logger.trace(() => `full schedule:\n${
+        // Stringify the keys.
+        for (var k in _schedule) {
+            if (String(k) != k) {
+                schedule[String(k)] = _schedule[k]
+                _schedule[k] = undefined
+            }
+        }
+
+        root.logger.trace(`full schedule:\n${
             Array.from(Object.entries(_schedule)).map(([k,v]) => 
                 `- ${k}: stop [${Array.from(v.loops_end).map(l => l.obj_id)}], start [${Array.from(v.loops_start).map(l => l[0].obj_id + ` @ mode ${l[1]}`)}], ignore [${Array.from(v.loops_ignored).map(l => l.obj_id)}]`
             ).join("\n")
@@ -309,7 +320,7 @@ Item {
     readonly property bool schedule_frozen: (ModeHelpers.is_recording_mode(mode) || (ModeHelpers.is_recording_mode(next_mode) && next_transition_delay === 0))
     readonly property bool sync_empty: !(sync_length > 0)
     onPlaylistsChanged: {
-        root.logger.trace(() => `playlists -> ${JSON.stringify(playlists, null, 2)}`)
+        root.logger.trace(`playlists -> ${JSON.stringify(playlists, null, 2)}`)
         ensure_script_or_regular();
         update_schedule()
     }
@@ -318,7 +329,7 @@ Item {
     // Calculated properties
     readonly property int display_position : position
 
-    onPositionChanged: root.logger.trace(() => `pos -> ${position}`)
+    onPositionChanged: root.logger.trace(`pos -> ${position}`)
 
     property var all_loop_ids: {
         var r = new Set()
@@ -370,7 +381,7 @@ Item {
     property var sync_loop : registries.state_registry.sync_loop
 
     function transition(mode, maybe_delay, maybe_align_to_sync_at) {
-        py_loop.transition(mode, maybe_delay, maybe_align_to_sync_at)
+        rust_loop.transition(mode, maybe_delay, maybe_align_to_sync_at)
     }
 
     function actual_composition_descriptor() {
@@ -387,6 +398,6 @@ Item {
     }
 
     function adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode) {
-        py_loop.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
+        rust_loop.adopt_ringbuffers(reverse_start_cycle, cycles_length, go_to_cycle, go_to_mode)
     }
 }

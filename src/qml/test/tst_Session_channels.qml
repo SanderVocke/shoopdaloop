@@ -10,7 +10,7 @@ import '..'
 // Note: regression test for https://github.com/SanderVocke/shoopdaloop/issues/77
 
 ShoopTestFile {
-    Session {
+    TestSession {
         id: session
 
         anchors.fill: parent
@@ -30,7 +30,7 @@ ShoopTestFile {
                 undefined
                 )
             let desc = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [direct_track])
-            testcase.logger.debug(() => ("session descriptor: " + JSON.stringify(desc, null, 2)))
+            testcase.logger.debug("session descriptor: " + JSON.stringify(desc, null, 2))
             return desc
         }
 

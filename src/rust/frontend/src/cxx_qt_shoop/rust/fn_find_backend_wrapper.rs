@@ -1,10 +1,10 @@
-use crate::cxx_qt_lib_shoop::qobject::{qobject_class_name, qobject_object_name};
-use crate::cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_mut, QQuickItem};
 use crate::cxx_qt_shoop::qobj_find_parent_item;
 use crate::cxx_qt_shoop::qobj_find_parent_item::FindParentItem;
 use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants::*;
 use cxx::UniquePtr;
 use cxx_qt_lib::QString;
+use cxx_qt_lib_shoop::qobject::{qobject_class_name, qobject_object_name};
+use cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_mut, QQuickItem};
 use regex::Regex;
 
 pub fn create_find_parent_backend_wrapper() -> UniquePtr<FindParentItem> {

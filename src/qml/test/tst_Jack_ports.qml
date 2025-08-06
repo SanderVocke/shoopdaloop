@@ -8,7 +8,7 @@ import '..'
 ShoopTestFile {
     Backend {
         id: backend
-        update_interval_ms: 30
+        update_interval_ms: 10
         client_name_hint: 'shoop'
         backend_type: backend_type_is_supported(ShoopConstants.AudioDriverType.JackTest) ?
                       ShoopConstants.AudioDriverType.JackTest : ShoopConstants.AudioDriverType.Dummy

@@ -1,7 +1,7 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import QtQuick.Layouts
+import QtQuick.Layouts 6.6
 import ShoopDaLoop.PythonLogger
 
 import 'js/midi.js' as Midi
@@ -48,7 +48,7 @@ Column {
         } else {
             root.maybe_suggested_filters = null
         }
-        root.logger.debug(() => (`Received: [${msg}]. Suggestion: [${root.maybe_suggested_filters}]`))
+        root.logger.debug(`Received: [${msg}]. Suggestion: [${root.maybe_suggested_filters}]`)
     }
 
     function create_default_filters(kind) {

@@ -15,10 +15,10 @@ jobs:
         variant: [ run_base ]
         arch: [ x86_64 ]
         include:
-          - os: debian_bullseye
+          - os: debian_bookworm
             variant: build_base
             arch: x86_64
-          - os: debian_bullseye
+          - os: debian_bookworm
             variant: build_base
             arch: arm64
           - os: debian_latest

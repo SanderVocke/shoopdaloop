@@ -23,8 +23,8 @@ pub mod constants {
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
-        type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -61,7 +61,7 @@ pub mod ffi {
         #[rust_name = "qquickitem_from_ptr_find_parent_item"]
         unsafe fn qquickitemFromPtr(obj: *mut FindParentItem) -> *mut QQuickItem;
 
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_find_parent_item"]
         fn make_unique() -> UniquePtr<FindParentItem>;
     }
@@ -70,8 +70,8 @@ pub mod ffi {
     impl cxx_qt::Constructor<(), NewArguments = ()> for FindParentItem {}
 }
 
-use crate::cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
 use cxx_qt_lib::QString;
+use cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
 pub use ffi::make_unique_find_parent_item as make_unique;
 pub use ffi::FindParentItem;
 use ffi::QQuickItem;
@@ -146,7 +146,7 @@ impl cxx_qt::Constructor<()> for FindParentItem {
     }
 }
 
-impl crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem for FindParentItem {
+impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for FindParentItem {
     unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {
         ffi::qquickitem_from_ptr_find_parent_item(self as *mut Self)
     }

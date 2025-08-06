@@ -1,6 +1,6 @@
-use crate::cxx_qt_lib_shoop::invokable;
 use cxx::Exception;
 use cxx_qt_lib::QString;
+use cxx_qt_lib_shoop::invokable;
 
 pub mod constants {
     pub const INVOKABLE_DETERMINE_CONNECTIONS_STATE: &str = "determine_connections_state()";

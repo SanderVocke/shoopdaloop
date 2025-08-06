@@ -26,9 +26,7 @@ runs:
     run: >
       QT_ASSUME_STDERR_HAS_CONSOLE=1
       ${{ env.RUN_CMD_PREFIX }}
-      timeout 15m ${{ env.COMMAND_SHOOPDALOOP }} --qml-self-test
-      --
-      --junit ${{ env.RESULTS_XML }}
+      timeout 15m ${{ env.COMMAND_SHOOPDALOOP }} --self-test --junit-xml ${{ env.RESULTS_XML }}
       2>&1 | tee ${{ inputs.tee_all_output_to }}
 
   - name: Report results filename

@@ -17,6 +17,6 @@ runs:
     shell: wrap-shell {0}
     run: >
         ${{ env.RUN_COMMAND_PREFIX }}
-        timeout 5m ${{ env.COMMAND_SHOOPDALOOP }} --quit-after=40 -b dummy --monkey-tester
+        timeout 5m ${{ env.COMMAND_SHOOPDALOOP }} --quit-after=40 --backend=dummy --monkey-tester
 
 

@@ -1,5 +1,5 @@
-use crate::cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use common::logging::macros::*;
+use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 
 shoop_log_unit!("Frontend.Loop");
 
@@ -30,8 +30,8 @@ pub mod ffi {
 
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
-        type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
@@ -48,31 +48,34 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/qsharedpointer_qobject.h");
         type QSharedPointer_QObject =
-            crate::cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
+            cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 
-        include!("cxx-qt-lib-shoop/metatype.h");
+        include!("cxx-qt-lib-shoop/qmetatype.h");
         #[rust_name = "loop_gui_metatype_name"]
-        unsafe fn meta_type_name(obj: &LoopGui) -> Result<&str>;
+        unsafe fn meta_type_name(obj: *mut LoopGui) -> Result<String>;
     }
 
     unsafe extern "RustQt" {
         #[qobject]
         #[qml_element]
         #[base = QQuickItem]
-        #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        // Backend -> Frontend properties
         #[qproperty(bool, initialized, READ, NOTIFY=initialized_changed)]
         #[qproperty(i32, mode, READ, NOTIFY=mode_changed)]
         #[qproperty(i32, length, READ, NOTIFY=length_changed)]
         #[qproperty(i32, position, READ, NOTIFY=position_changed)]
         #[qproperty(i32, next_mode, READ, NOTIFY=next_mode_changed)]
         #[qproperty(i32, next_transition_delay, READ, NOTIFY=next_transition_delay_changed)]
-        #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
-        #[qproperty(*mut QObject, backend_loop_wrapper, READ=get_backend_loop_wrapper)]
         #[qproperty(QList_f32, display_peaks, READ, NOTIFY)]
         #[qproperty(i32, display_midi_notes_active, READ, NOTIFY)]
         #[qproperty(i32, display_midi_events_triggered, READ, NOTIFY)]
-        #[qproperty(QString, instance_identifier, READ, WRITE=set_instance_identifier, NOTIFY=instance_identifier_changed)]
         #[qproperty(i32, cycle_nr, READ, NOTIFY)]
+        // Frontend -> Backend properties
+        #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
+        #[qproperty(QString, instance_identifier, READ, WRITE=set_instance_identifier, NOTIFY=instance_identifier_changed)]
+        // Other properties
+        #[qproperty(*mut QObject, backend_loop_wrapper, READ=get_backend_loop_wrapper)]
         type LoopGui = super::LoopGuiRust;
 
         pub fn initialize_impl(self: Pin<&mut LoopGui>);
@@ -120,6 +123,9 @@ pub mod ffi {
             maybe_go_to_cycle: QVariant,
             go_to_mode: i32,
         );
+
+        #[qinvokable]
+        pub fn get_backend_loop_shared_ptr(self: Pin<&mut LoopGui>) -> QVariant;
 
         #[qinvokable]
         pub fn update_backend_sync_source(self: Pin<&mut LoopGui>);
@@ -238,29 +244,29 @@ pub mod ffi {
         #[rust_name = "qquickitem_from_ptr_loop"]
         unsafe fn qquickitemFromPtr(obj: *mut LoopGui) -> *mut QQuickItem;
 
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_loop"]
         fn make_unique() -> UniquePtr<LoopGui>;
 
-        include!("cxx-qt-shoop/make_raw.h");
+        include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_loop_gui"]
         fn make_raw() -> *mut LoopGui;
 
-        include!("cxx-qt-shoop/cast_ptr.h");
+        include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "qobject_to_loop_ptr"]
         unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut LoopGui;
 
-        include!("cxx-qt-shoop/qobject_classname.h");
+        include!("cxx-qt-lib-shoop/qobject_classname.h");
         #[rust_name = "qobject_class_name_loop"]
         fn qobject_class_name(obj: &LoopGui) -> Result<&str>;
 
         include!("cxx-qt-lib-shoop/qjsonobject.h");
-        type QJsonObject = crate::cxx_qt_lib_shoop::qjsonobject::QJsonObject;
+        type QJsonObject = cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 
-        include!("cxx-qt-shoop/register_qml_type.h");
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_loop"]
-        fn register_qml_type(
-            inference_example: &LoopGui,
+        unsafe fn register_qml_type(
+            inference_example: *mut LoopGui,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,
@@ -279,7 +285,7 @@ pub mod ffi {
     impl cxx_qt::Constructor<()> for LoopGui {}
 }
 
-use crate::cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
+use cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
 pub use ffi::LoopGui;
 use ffi::*;
 
@@ -322,7 +328,7 @@ impl Default for LoopGuiRust {
     }
 }
 
-impl crate::cxx_qt_lib_shoop::qquickitem::AsQQuickItem for LoopGui {
+impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for LoopGui {
     unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {
         qquickitem_from_ptr_loop(self as *mut Self)
     }

@@ -1,12 +1,12 @@
-import QtQuick 2.15
-import QtQuick.Controls 2.15
-import QtQuick.Controls.Material 2.15
-import QtQuick.Dialogs
+import QtQuick 6.6
+import QtQuick.Controls 6.6
+import QtQuick.Controls.Material 6.6
+import QtQuick.Dialogs 6.6
 
 import ".."
 import ShoopConstants
 
-ApplicationWindow {
+ShoopApplicationWindow {
     id: root
     visible: true
     width: 1200
@@ -16,8 +16,6 @@ ApplicationWindow {
     minimumWidth: width
     minimumHeight: height
     title: "ShoopDaLoop Tracks"
-
-    Material.theme: Material.Dark
     
     AppRegistries {
         id: registries

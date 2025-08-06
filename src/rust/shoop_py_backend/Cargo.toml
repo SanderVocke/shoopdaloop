@@ -1,0 +1,15 @@
+[package]
+name = "shoop_py_backend"
+edition = "2021"
+
+[dependencies]
+backend_bindings = { path = "../backend_bindings" }
+
+pyo3 = { workspace = true, features = ["auto-initialize"] }
+anyhow = { workspace = true }
+
+[build-dependencies]
+
+[features]
+# Dummy build to build dependencies only
+prebuild = ["backend_bindings/prebuild"]

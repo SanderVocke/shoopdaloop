@@ -66,18 +66,18 @@ pub mod ffi {
     impl cxx_qt::Constructor<()> for RenderAudioWaveform {}
 
     unsafe extern "C++" {
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
 
         #[rust_name = "make_unique_renderaudiowaveform"]
         fn make_unique() -> UniquePtr<RenderAudioWaveform>;
     }
 
     unsafe extern "C++" {
-        include!("cxx-qt-shoop/register_qml_type.h");
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
 
         #[rust_name = "register_qml_type_renderaudiowaveform"]
-        fn register_qml_type(
-            inference_example: &RenderAudioWaveform,
+        unsafe fn register_qml_type(
+            inference_example: *mut RenderAudioWaveform,
             module_name: &mut String,
             version_major: i64,
             version_minor: i64,

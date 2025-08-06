@@ -12,8 +12,7 @@ where
                 anyhow::anyhow!(
                     "Error converting from QVariant to {:?}, metatype {:?}",
                     type_name::<T>(),
-                    crate::cxx_qt_lib_shoop::qvariant_helpers::qvariant_type_name(v)
-                        .unwrap_or("Unknown")
+                    cxx_qt_lib_shoop::qvariant_helpers::qvariant_type_name(v).unwrap_or("Unknown")
                 )
             })?;
             Ok(converted)

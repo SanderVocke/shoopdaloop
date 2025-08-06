@@ -72,7 +72,7 @@ Column {
                     'inputs': MidiControl.default_action_config.inputs,
                     'condition': MidiControl.default_action_config.condition
                 }])
-                root.logger.debug(() => (JSON.stringify(new_contents)))
+                root.logger.debug(JSON.stringify(new_contents))
                 configuration.contents = new_contents
                 dialog.close()
                 dialog.destroy()

@@ -1,7 +1,7 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import QtQuick.Window
+import QtQuick.Window 6.6
 import ShoopDaLoop.PythonLogger
 
 import ShoopConstants
@@ -391,7 +391,7 @@ Item {
         if (!root.loops.includes(loop)) {
             throw new Error("Loop not in track")
         }
-        root.logger.debug(() => `Moving loop ${loop} to index ${new_idx}`)
+        root.logger.debug(`Moving loop ${loop} to index ${new_idx}`)
         let src_loop_idx = loop.idx_in_track
         var new_indices = Array.from({ length: root.loops.length }, (v, i) => i).filter(i => i != src_loop_idx)
         var _new_idx = new_idx

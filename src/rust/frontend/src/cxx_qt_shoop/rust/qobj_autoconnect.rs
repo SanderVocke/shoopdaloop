@@ -2,24 +2,23 @@ use common::logging::macros::*;
 use cxx_qt::CxxQtType;
 shoop_log_unit!("Frontend.AutoConnect");
 
-use crate::cxx_qt_lib_shoop;
-use crate::cxx_qt_lib_shoop::invokable;
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::constants::*;
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::make_raw_autoconnect as make_raw;
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::make_unique_autoconnect as make_unique;
 use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::*;
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::AutoConnect;
 use crate::cxx_qt_shoop::qobj_autoconnect_bridge::*;
+use cxx_qt_lib_shoop::invokable;
 
-use crate::cxx_qt_lib_shoop::qobject::AsQObject;
-use crate::cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_mut, AsQQuickItem, IsQQuickItem};
-use crate::cxx_qt_lib_shoop::{qobject, qtimer};
 use crate::cxx_qt_shoop::type_external_port_descriptor::ExternalPortDescriptor;
 use crate::cxx_qt_shoop::{
     fn_qlist_helpers, fn_qvariantmap_helpers, qobj_signature_backend_wrapper, qobj_signature_port,
 };
 use anyhow::Context;
 use backend_bindings::{PortDataType, PortDirection};
+use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_mut, AsQQuickItem, IsQQuickItem};
+use cxx_qt_lib_shoop::{qobject, qtimer};
 use regex::Regex;
 use std::pin::Pin;
 
@@ -249,19 +248,19 @@ impl AutoConnect {
 }
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {
-    let obj = make_unique_autoconnect();
     let mut mdl = String::from(module_name);
     let mut tp = String::from(type_name);
-    register_qml_type_autoconnect(obj.as_ref().unwrap(), &mut mdl, 1, 0, &mut tp);
+    unsafe {
+        register_qml_type_autoconnect(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cxx_qt_lib_shoop;
-    use crate::cxx_qt_lib_shoop::qsignalspy::QSignalSpy;
     use crate::cxx_qt_shoop::test::qobj_test_backend_wrapper;
     use crate::cxx_qt_shoop::test::qobj_test_port;
+    use cxx_qt_lib_shoop::qsignalspy::QSignalSpy;
     #[test]
     fn test_class_name() {
         let obj = make_unique_autoconnect();

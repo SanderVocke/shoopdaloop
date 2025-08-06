@@ -4,6 +4,7 @@ import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.PythonLogger
 import ShoopConstants
 import "./js/generate_session.js" as GenerateSession
+import ShoopDaLoop.Rust
 
 Item {
     id: root

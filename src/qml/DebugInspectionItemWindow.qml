@@ -2,7 +2,7 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 
-ApplicationWindow {
+ShoopApplicationWindow {
     
     id: root
     title: "Inspect " + object ? object.obj_id : "Unknown"
@@ -13,8 +13,6 @@ ApplicationWindow {
     height: 300
     minimumWidth: 100
     minimumHeight: 100
-    
-    Material.theme: Material.Dark
 
     ScrollView {
         anchors.fill: parent

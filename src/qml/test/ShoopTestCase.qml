@@ -23,13 +23,14 @@ PythonTestCase {
 
     property bool when: true
     property bool _internal_triggered: false
+    property bool registered: false
     onWhenChanged: update_next_cycle.trigger()
 
     function update_trigger() {
         if (when && !_internal_triggered) {
             _internal_triggered = true
             logger.debug("Ready to start")
-            shoop_test_runner.testcase_ready_to_start(root)
+            shoop_test_file_runner.testcase_runner.testcase_ready_to_start(root)
         } else {
             logger.debug(`Not ready to start yet: ${when}, ${_internal_triggered}`)
         }
@@ -55,21 +56,34 @@ PythonTestCase {
         onExecute: { root.update_trigger() }
     }
 
-    Component.onCompleted: {
-        logger.info(() => ("Testcase " + name + ` created (${Object.keys(test_fns).length} tests).`))
+    function maybe_register() {
+        if(shoop_test_file_runner.testcase_runner &&
+           shoop_test_file_runner.testcase_runner.objectName == "TestRunner" &&
+           !root.registered) {
+                logger.info(`Testcase ${name} created (${Object.keys(test_fns).length} tests).`);
 
-        if (testfn_filter) {
-            logger.warning(() => "Unimplemented: filtering")
-            logger.warning(() => ("Testcase " + name + " has a test function filter: " + testfn_filter))
-        }
+                if (testfn_filter) {
+                    logger.warning("Unimplemented: filtering")
+                    logger.warning(`Testcase ${name} has a test function filter: ${testfn_filter}`)
+                }
 
-        shoop_test_runner.register_testcase(root)
-        update_next_cycle.trigger()
+                shoop_test_file_runner.testcase_runner.register_testcase(root)
+                update_next_cycle.trigger()
+                root.registered = true
+           }
     }
-    Component.onDestruction: logger.info(() => ("Testcase " + name + " destroyed."))
+
+    Component.onCompleted: {
+        maybe_register()
+    }
+    Connections {
+        target: shoop_test_file_runner
+        function onTestcase_runnerChanged() { maybe_register() }
+    }
+    Component.onDestruction: logger.info(`Testcase ${name} destroyed.`)
 
     function section(title) {
-        logger.debug(() => `Test section: ${title}`)
+        logger.debug(`Test section: ${title}`)
     }
 
     function verify_loop_cleared(loop) {
@@ -106,7 +120,7 @@ PythonTestCase {
             verify(true)
             return;
         }
-        logger.error(() => (format_error(`verify_throw failed (fn = ${fn})`)))
+        logger.error(format_error(`verify_throw failed (fn = ${fn})`))
         verify(false)
     }
 
@@ -114,7 +128,7 @@ PythonTestCase {
         var result = Boolean(a)
         let failstring = `${msg} (v = ${a})`
         if (!result) {
-            logger.error(() => (format_error(failstring)))
+            logger.error(format_error(failstring))
         }
         verify(result, failstring)
     }
@@ -148,7 +162,7 @@ PythonTestCase {
         result = compare(a,b);
 
         if (!result) {
-            logger.error(() => (format_error(failstring)))
+            logger.error(format_error(failstring))
         }
         verify(result, failstring)
     }
@@ -166,7 +180,7 @@ PythonTestCase {
             result = compare(a, b)
         }
         if (!result) {
-            logger.error(() => (format_error(failstring)))
+            logger.error(format_error(failstring))
         }
         verify(result, failstring)
     }
@@ -175,19 +189,19 @@ PythonTestCase {
         let failstring = `verify_gt failed (a = ${a}, b = ${b})`
         let result = a > b;
         if (!result) {
-            logger.error(() => (format_error(failstring)))
+            logger.error(format_error(failstring))
         }
         verify(result, failstring)
     }
 
     function start_test_fn(name) {
         ShoopCrashHandling.set_json_tag("shoop_action", `qml test (${name})`)
-        logger.info(() => (`===== TEST START ${name}`))
+        logger.info(`===== TEST START ${name}`)
     }
 
     function end_test_fn(name) {
         ShoopCrashHandling.set_json_tag("shoop_action", "qml test (none)")
-        logger.info(() => (`===== TEST END ${name}`))
+        logger.info(`===== TEST END ${name}`)
     }
 
     function run_case(name, fn) {
@@ -201,21 +215,21 @@ PythonTestCase {
             end_test_fn(name)
         } catch (e) {
             let failstring = `Uncaught exception: ${e.message} (${e.name})`
-            logger.error(() => (format_error(failstring, e.stack)))
+            logger.error(format_error(failstring, e.stack))
             throw e
         }
     }
 
     function wait(ms) {
-        application.wait(ms)
+        shoop_application.wait(ms)
     }
 
     function wait_condition(condition, timeout=2000, msg=`condition not met in time`) {
-        var waited = 20
+        var waited = 5
         wait(waited)
         while(!condition() && waited <= timeout) {
-            wait(20)
-            waited += 20
+            wait(5)
+            waited += 5
         }
         verify_true(condition(), msg)
     }
@@ -248,8 +262,6 @@ PythonTestCase {
         wait_once()
         wait_once()
         wait_once()
-        wait_once()
-        wait_once()
     }
 
     function wait_controlled_mode(backend) {
@@ -279,13 +291,13 @@ PythonTestCase {
 
     function should_skip(fn) {
         let full_name = name + "::" + fn
-        return shoop_test_runner.should_skip(full_name)
+        return shoop_test_file_runner.testcase_runner.should_skip(full_name)
     }
 
     function skip(msg) {
         if (current_testcase) {
             let fullname = root.name + "::" + current_testcase.name
-            logger.info(() => `skipping ${fullname}`)
+            logger.info(`skipping ${fullname}`)
             current_testcase.skips += 1
         }
     }
@@ -295,13 +307,13 @@ PythonTestCase {
     }
 
     function run() {
-        logger.info(() => (`Running testcase ${name}`))
+        logger.info(`Running testcase ${name}`)
 
-        logger.debug(() => "running testcase_init_fn")
+        logger.debug("running testcase_init_fn")
         testcase_init_fn()
 
         for (var key in test_fns) {
-            shoop_test_runner.testcase_register_fn(root, key)
+            shoop_test_file_runner.testcase_runner.testcase_register_fn(root, key)
         }
 
         for (var key in test_fns) {
@@ -317,14 +329,14 @@ PythonTestCase {
                     'time': 0.0
                 }
                 if (!should_skip(key)) {
-                    logger.info(() => `running ${fullname}`)
+                    logger.info(`running ${fullname}`)
                     var start = new Date()
                     test_fns[key]()
                     var end = new Date()
                     current_testcase.time = (end - start) * 0.001
-                    logger.debug(() => `Passed ${current_testcase.passes} of ${current_testcase.checks} checks in ${current_testcase.name}`)
+                    logger.debug(`Passed ${current_testcase.passes} of ${current_testcase.checks} checks in ${current_testcase.name}`)
                 } else {
-                    logger.info(() => `skipping ${fullname}`)
+                    logger.info(`skipping ${fullname}`)
                 }
                 if(
                     current_testcase.passes > 0 &&
@@ -339,17 +351,17 @@ PythonTestCase {
                 status = 'fail'
                 logger.error(format_error(error.message, error.stack))
             }
-            shoop_test_runner.testcase_ran_fn(root, key, status)
+            shoop_test_file_runner.testcase_runner.testcase_ran_callback(root, key, status)
             current_testcase = null
         }
 
-        logger.debug(() => "running testcase_deinit_fn")
+        logger.debug("running testcase_deinit_fn")
         testcase_deinit_fn()
         var casename = name
         if (status == 'fail') {
-            logger.error(() => (`----------     ${filename}::${casename}: FAIL`))
+            logger.error(`----------     ${filename}::${casename}: FAIL`)
         } else {
-            logger.info(() => (`----------     ${filename}::${casename}: ${status.toUpperCase()}`))
+            logger.info(`----------     ${filename}::${casename}: ${status.toUpperCase()}`)
         }
     }
     onRun_signal: run()

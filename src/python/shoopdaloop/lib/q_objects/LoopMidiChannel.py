@@ -34,13 +34,16 @@ class LoopMidiChannel(LoopChannel):
         if self._backend and self._backend.property('ready') and self._loop and self._loop.property("initialized") and not self._backend_obj:
             from shoop_rust import shoop_rust_add_loop_midi_channel
             from shiboken6 import getCppPointer
-            self._backend_obj = shoop_rust_add_loop_midi_channel(
-                getCppPointer(self._loop)[0],
-                int(self.mode)
-            )
-            self.connect_backend_updates()
-            self.logger.debug(lambda: "Initialized back-end channel")
-            self.initializedChanged.emit(True)
+            try:
+                self._backend_obj = shoop_rust_add_loop_midi_channel(
+                    getCppPointer(self._loop)[0],
+                    int(self.mode)
+                )
+                self.connect_backend_updates()
+                self.logger.debug(lambda: "Initialized back-end channel")
+                self.initializedChanged.emit(True)
+            except Exception as e:
+                self.logger.debug(lambda: f"Couldn't initialize back-end channel: {e}")
 
     ######################
     # PROPERTIES

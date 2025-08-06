@@ -11,8 +11,8 @@ pub mod constants {
 pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
-        type QQuickItem = crate::cxx_qt_lib_shoop::qquickitem::QQuickItem;
-        type QObject = crate::cxx_qt_lib_shoop::qobject::QObject;
+        type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
     }
 
     unsafe extern "RustQt" {
@@ -30,7 +30,7 @@ pub mod ffi {
         #[rust_name = "qquickitem_from_ptr_generic_test_item"]
         unsafe fn qquickitemFromPtr(obj: *mut GenericTestItem) -> *mut QQuickItem;
 
-        include!("cxx-qt-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_generic_test_item"]
         fn make_unique() -> UniquePtr<GenericTestItem>;
     }
@@ -39,7 +39,7 @@ pub mod ffi {
     impl cxx_qt::Constructor<(), NewArguments = ()> for GenericTestItem {}
 }
 
-use crate::cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
+use cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
 pub use ffi::make_unique_generic_test_item as make_unique;
 pub use ffi::GenericTestItem;
 use ffi::QQuickItem;
