@@ -751,12 +751,12 @@ Item {
                 bottom: parent.bottom
                 margins: 2
             }
+            height: 3
 
             sourceComponent: ProgressBar {
                 id: peak_meter_l
                 visible: load_peak_meter_l.activate
                 anchors.fill: parent
-                height: 3
 
                 AudioLevelMeterModel {
                     id: output_peak_meter_l
@@ -793,6 +793,7 @@ Item {
                 bottom: parent.bottom
                 margins: 2
             }
+            height: 3
 
             sourceComponent: ProgressBar {
                 id: peak_meter_r
@@ -833,13 +834,13 @@ Item {
                 right: load_peak_meter_r.right
                 bottom: load_peak_meter_l.bottom
                 top: load_peak_meter_l.top
+                margins: 0
             }
 
-            ProgressBar {
+            sourceComponent: ProgressBar {
                 id: peak_meter_overall
                 visible: load_peak_meter_overall.activate
                 anchors.fill: load_peak_meter_overall
-                height: 3
 
                 AudioLevelMeterModel {
                     id: output_peak_meter_overall

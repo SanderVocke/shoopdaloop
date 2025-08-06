@@ -3,9 +3,7 @@ use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
 use crate::loop_helpers::transition_backend_loops;
 use crate::loop_mode_helpers::*;
-use backend_bindings::AudioChannel;
 use backend_bindings::LoopMode;
-use backend_bindings::MidiChannel;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
@@ -179,15 +177,6 @@ impl LoopBackend {
                 .ok_or(anyhow::anyhow!("backend loop object doesn't exist"))?
                 .get_state()?;
 
-            // let audio_chans : Vec<*mut QObject> = self.as_mut().get_audio_channels()
-            //                                .iter()
-            //                                .map(|v| qvariant_to_qobject_ptr(v).unwrap())
-            //                                .collect();
-            // let midi_chans : Vec<*mut QObject> = self.as_mut().get_midi_channels()
-            //                               .iter()
-            //                               .map(|v| qvariant_to_qobject_ptr(v).unwrap())
-            //                               .collect();
-
             let prev_state;
             let prev_cycle_nr: i32;
             let new_cycle_nr: i32;
@@ -196,35 +185,6 @@ impl LoopBackend {
 
                 prev_state = rust.prev_state.clone();
                 prev_cycle_nr = rust.prev_cycle_nr;
-
-                // let new_display_peaks : Vec<f32> =
-                //    audio_chans.iter()
-                //    .filter(|qobj| {
-                //         unsafe {
-                //             let mode = qobject_property_int(qobj.as_ref().unwrap(), "mode".to_string()).unwrap();
-                //             mode == backend_bindings::ChannelMode::Direct as i32 ||
-                //                mode == backend_bindings::ChannelMode::Wet as i32
-                //         }
-                //      })
-                //       .map(|qobj| {
-                //          unsafe {
-                //               let peak = qobject_property_float(qobj.as_ref().unwrap(), "output_peak".to_string()).unwrap();
-                //               peak as f32
-                //          }
-                //         }).collect();
-                // let display_peaks_changed = prev_display_peaks != new_display_peaks;
-                // let new_display_midi_notes_active : i32 = midi_chans.iter().map(|qobj| -> i32 {
-                //     unsafe {
-                //         let n_notes_active = qobject_property_int(qobj.as_ref().unwrap(), "n_notes_active".to_string()).unwrap();
-                //         n_notes_active
-                //     }
-                // }).sum();
-                // let new_display_midi_events_triggered : i32 = midi_chans.iter().map(|qobj| -> i32 {
-                //     unsafe {
-                //         let n_events_triggered = qobject_property_int(qobj.as_ref().unwrap(), "n_events_triggered".to_string()).unwrap();
-                //         n_events_triggered
-                //     }
-                // }).sum();
 
                 new_cycle_nr = if new_state.position < prev_state.position
                     && is_playing_mode(prev_state.mode.try_into().unwrap())
@@ -236,9 +196,6 @@ impl LoopBackend {
                 };
 
                 rust.prev_state = new_state.clone();
-                // rust.display_peaks = QList::from(new_display_peaks);
-                // rust.display_midi_notes_active = new_display_midi_notes_active;
-                // rust.display_midi_events_triggered = new_display_midi_events_triggered;
                 rust.prev_cycle_nr = new_cycle_nr;
             }
 
@@ -299,18 +256,6 @@ impl LoopBackend {
                 self.as_mut()
                     .next_transition_delay_changed(prev_delay, new_delay);
             }
-            // if display_peaks_changed {
-            //     trace!(self, "display peaks changed");
-            //     self.as_mut().display_peaks_changed();
-            // }
-            // if prev_display_midi_notes_active != new_display_midi_notes_active {
-            //     trace!(self, "midi notes active: {} -> {}", prev_display_midi_notes_active, new_display_midi_notes_active);
-            //     self.as_mut().display_midi_notes_active_changed();
-            // }
-            // if prev_display_midi_events_triggered != new_display_midi_events_triggered {
-            //     trace!(self, "midi events triggered: {} -> {}", prev_display_midi_events_triggered, new_display_midi_events_triggered);
-            //     self.as_mut().display_midi_events_triggered_changed();
-            // }
             if prev_cycle_nr != new_cycle_nr {
                 debug!(self, "cycle nr: {} -> {}", prev_cycle_nr, new_cycle_nr);
                 self.as_mut().cycle_nr_changed(new_cycle_nr, prev_cycle_nr);
@@ -329,14 +274,6 @@ impl LoopBackend {
             }
         }
     }
-
-    // pub fn get_audio_channels(self: Pin<&mut LoopBackend>) -> QList<QVariant> {
-    //     self.get_children_with_object_name("LoopAudioChannel")
-    // }
-
-    // pub fn get_midi_channels(self: Pin<&mut LoopBackend>) -> QList<QVariant> {
-    //     self.get_children_with_object_name("LoopMidiChannel")
-    // }
 
     pub fn transition_multiple(
         self: Pin<&mut LoopBackend>,
@@ -459,40 +396,6 @@ impl LoopBackend {
                 error!(self, "Failed to transition loop: {:?}", err);
             }
         }
-    }
-
-    pub fn add_audio_channel(
-        self: Pin<&mut LoopBackend>,
-        _mode: i32,
-    ) -> Result<AudioChannel, anyhow::Error> {
-        // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-        //         self.as_ref()
-        //             .backend_loop
-        //             .as_ref()
-        //             .ok_or(anyhow::anyhow!("Backend loop not set"))?
-        //             .clone();
-        // let channel = backend_loop_arc.lock()
-        //                 .unwrap()
-        //                 .add_audio_channel(mode.try_into()?)?;
-        //Ok(channel)
-        Err(anyhow::anyhow!("Not implemented"))
-    }
-
-    pub fn add_midi_channel(
-        self: Pin<&mut LoopBackend>,
-        _mode: i32,
-    ) -> Result<MidiChannel, anyhow::Error> {
-        // let backend_loop_arc : Arc<Mutex<backend_bindings::Loop>> =
-        //         self.as_ref()
-        //             .backend_loop
-        //             .as_ref()
-        //             .ok_or(anyhow::anyhow!("Backend loop not set"))?
-        //             .clone();
-        // let channel = backend_loop_arc.lock()
-        //                 .unwrap()
-        //                 .add_midi_channel(mode.try_into()?)?;
-        //Ok(channel)
-        Err(anyhow::anyhow!("Not implemented"))
     }
 
     pub fn clear(mut self: Pin<&mut LoopBackend>, length: i32) {
