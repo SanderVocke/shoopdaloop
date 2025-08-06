@@ -261,6 +261,7 @@ PythonTestCase {
         }
         wait_once()
         wait_once()
+        wait_once()
     }
 
     function wait_controlled_mode(backend) {
