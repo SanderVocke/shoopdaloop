@@ -103,7 +103,6 @@ pub use ffi::Application;
 pub struct ApplicationStartupSettings {
     pub refresh_backend_on_frontend_refresh: bool,
     pub backend_backup_refresh_interval_ms: u64,
-    pub nsm: bool,
     pub qml_debug_port: Option<u32>,
     pub qml_debug_wait: Option<bool>,
     pub title: String,

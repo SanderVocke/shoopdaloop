@@ -12,6 +12,7 @@ use cxx_qt_lib_shoop::qvariant_qobject::qobject_ptr_to_qvariant;
 use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationStartupSettings};
 use frontend::cxx_qt_shoop::qobj_qmlengine::QmlEngine;
 use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
+use glob::glob;
 use once_cell::sync::OnceCell;
 use pyo3::prelude::*;
 use std::env;
@@ -40,7 +41,6 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
         backend_backup_refresh_interval_ms: cli_args
             .developer_options
             .max_backend_refresh_interval_ms as u64,
-        nsm: false,
         qml_debug_port: cli_args.developer_options.qml_debug,
         qml_debug_wait: if cli_args.developer_options.qml_debug.is_some() {
             Some(cli_args.developer_options.debug_wait)
@@ -49,10 +49,6 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
         },
         title: title,
     };
-
-    if startup_settings.nsm {
-        todo!();
-    }
 
     let backend_type = match &cli_args.backend {
         Some(backend) => get_audio_driver_from_name(backend.as_str()),
@@ -198,17 +194,6 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             startup_settings,
         )?;
 
-        // unsafe {
-        //     let app_qobj = app.as_mut().pin_mut_qobject_ptr();
-        //     qobject_register_qml_singleton_instance(
-        //         app_qobj,
-        //         &mut String::from("ShoopDaLoop.Rust"),
-        //         1,
-        //         0,
-        //         &mut String::from("ShoopApplication"),
-        //     )?;
-        // }
-
         if cli_args.self_test_options.self_test {
             // use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
             // Let Qt manage the lifetime of our test runner by parenting it
@@ -217,29 +202,6 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
             unsafe {
                 let app_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
                     app.as_mut().pin_mut_qobject_ptr();
-                // let testrunner_ptr = TestFileRunner::make_raw(app_qobj);
-                // let mut testrunner = std::pin::Pin::new_unchecked(&mut *testrunner_ptr);
-
-                // {
-                //     let testrunner_qobj = testrunner.as_mut().pin_mut_qobject_ptr();
-                //     // Connect to application slots
-                //     connect_or_report(
-                //         &*testrunner_qobj,
-                //         "reload_qml(QString)".to_string(),
-                //         &*app_qobj,
-                //         "reload_qml(QString)".to_string(),
-                //         connection_types::QUEUED_CONNECTION,
-                //     );
-
-                //     // Register as a singleton so it can be found from QML
-                //     // qobject_register_qml_singleton_instance(
-                //     //     testrunner_qobj,
-                //     //     &mut String::from("ShoopDaLoop.Rust"),
-                //     //     1,
-                //     //     0,
-                //     //     &mut String::from("ShoopTestFileRunner"),
-                //     // )?;
-                // }
 
                 TEST_RUNNER.with(|c| {
                     if let Some(testrunner) = c.get() {
@@ -326,19 +288,34 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
     }
 
     if cli_args.developer_options.print_main_windows {
-        todo!();
+        let qmldir = config.qml_dir;
+        println!("Available main windows:\n");
+        for file in glob(format!("{qmldir}/applications/*.qml").as_str())? {
+            let file = file?;
+            let file = file
+                .file_name()
+                .ok_or(anyhow::anyhow!("Could not determine filename"))?
+                .to_str()
+                .ok_or(anyhow::anyhow!("Could not determine filename"))?
+                .strip_suffix(".qml")
+                .ok_or(anyhow::anyhow!("Could not determine filename"))?;
+            println!("- {file}");
+        }
+        return Ok(0);
     }
 
     if cli_args.info {
-        todo!();
-    }
-
-    if cli_args.session_filename.is_some() {
-        todo!();
+        let version = config._version;
+        let install_info = config._install_info;
+        println!("ShoopDaLoop {version}");
+        println!("Installation: {install_info}");
+        return Ok(0);
     }
 
     if cli_args.version {
-        todo!();
+        let version = config._version;
+        println!("{version}");
+        return Ok(0);
     }
 
     // Initialize the Python interpreter
