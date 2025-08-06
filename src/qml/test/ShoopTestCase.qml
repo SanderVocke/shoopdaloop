@@ -225,11 +225,11 @@ PythonTestCase {
     }
 
     function wait_condition(condition, timeout=2000, msg=`condition not met in time`) {
-        var waited = 20
+        var waited = 5
         wait(waited)
         while(!condition() && waited <= timeout) {
-            wait(20)
-            waited += 20
+            wait(5)
+            waited += 5
         }
         verify_true(condition(), msg)
     }
@@ -259,9 +259,6 @@ PythonTestCase {
             connectOnce(backend.updated_on_gui_thread, updated)
             wait_condition(() => done == true, 500, "Backend not updated in time")
         }
-        wait_once()
-        wait_once()
-        wait_once()
         wait_once()
         wait_once()
     }

@@ -13,8 +13,6 @@ ShoopApplicationWindow {
     maximumWidth: 700
     minimumHeight: 250
     maximumHeight: 250
-    
-    Material.theme: Material.Dark
 
     property var object_ids: registries.objects_registry.keys()
     Connections {

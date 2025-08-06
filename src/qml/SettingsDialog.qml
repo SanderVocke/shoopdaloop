@@ -706,8 +706,6 @@ Dialog {
             height: 500
             minimumWidth: 100
             minimumHeight: 100
-            
-            Material.theme: Material.Dark
 
             ScrollView {
                 anchors.fill: parent

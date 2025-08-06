@@ -8,7 +8,7 @@ import './testfilename.js' as TestFilename
 import '..'
 
 ShoopTestFile {
-    Session {
+    TestSession {
         id: session
 
         backend_type: ShoopConstants.AudioDriverType.Dummy
@@ -387,7 +387,7 @@ ShoopTestFile {
         }
     }
 
-    Session {
+    TestSession {
         id: other_session
         backend_type: ShoopConstants.AudioDriverType.Dummy
         driver_setting_overrides: {

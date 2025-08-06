@@ -16,8 +16,6 @@ ShoopApplicationWindow {
     minimumWidth: width
     minimumHeight: height
     title: "ShoopDaLoop Tracks"
-
-    Material.theme: Material.Dark
     
     AppRegistries {
         id: registries

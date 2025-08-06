@@ -19,8 +19,6 @@ ShoopApplicationWindow {
     height: 250
     minimumWidth: 200
     minimumHeight: 50
-    
-    Material.theme: Material.Dark
 
     Loader {
         active: root.maybe_backend_loop

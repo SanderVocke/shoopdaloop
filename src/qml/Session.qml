@@ -23,6 +23,7 @@ Item {
     // The actual descriptor can be retrieved with actual_session_descriptor().
     property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, null, [], [], [], [])
     property var backend_type : global_args.backend_type
+    property int backend_update_interval_ms : 30
 
     property alias driver_setting_overrides : session_backend.driver_setting_overrides
 
@@ -422,7 +423,7 @@ Item {
     }
 
     Backend {
-        update_interval_ms: 30
+        update_interval_ms: root.backend_update_interval_ms
         client_name_hint: 'ShoopDaLoop'
         backend_type: root.backend_type
         id: session_backend

@@ -13,8 +13,6 @@ ShoopApplicationWindow {
     height: 300
     minimumWidth: 100
     minimumHeight: 100
-    
-    Material.theme: Material.Dark
 
     ScrollView {
         anchors.fill: parent

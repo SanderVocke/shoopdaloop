@@ -4,7 +4,7 @@ import QtQuick.Controls.Material 6.6
 import QtQuick.Dialogs 6.6
 
 import ".."
-import ""../js/generate_session.js" as GenerateSession
+import "../js/generate_session.js" as GenerateSession
 import ShoopConstants
 
 ShoopApplicationWindow {
@@ -14,8 +14,6 @@ ShoopApplicationWindow {
     minimumWidth: 500
     minimumHeight: 350
     title: "ShoopDaLoop"
-
-    Material.theme: Material.Dark
 
     Label {
         text: '(Backend test, close when done)'

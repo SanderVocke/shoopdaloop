@@ -9,7 +9,7 @@ import '../js/delay.js' as Delay
 import '..'
 
 ShoopTestFile {
-    Session {
+    TestSession {
         id: session
 
         anchors.fill: parent

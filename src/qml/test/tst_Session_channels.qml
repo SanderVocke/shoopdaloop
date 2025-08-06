@@ -10,7 +10,7 @@ import '..'
 // Note: regression test for https://github.com/SanderVocke/shoopdaloop/issues/77
 
 ShoopTestFile {
-    Session {
+    TestSession {
         id: session
 
         anchors.fill: parent

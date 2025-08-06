@@ -12,8 +12,6 @@ ShoopApplicationWindow {
     width: 400
     height: 450
 
-    Material.theme: Material.Dark
-
     property int cycle_us : 0
     property var backend : null
     property PythonLogger logger : PythonLogger { name: 'Frontend.ProfilingDialog' }
@@ -57,6 +55,12 @@ ShoopApplicationWindow {
 
     function update() {
         var data = root.backend.get_profiling_report()
+
+        if (data === undefined || data === null) {
+            root.logger.error("Could not get profiling report to display.");
+            return
+        }
+
         var bufsize = root.backend.get_buffer_size()
         var samplerate = root.backend && root.backend.ready ? root.backend.get_sample_rate() : 1
         cycle_us = bufsize / samplerate * 1000000.0

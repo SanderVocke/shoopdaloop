@@ -31,3 +31,6 @@ pub mod composite_loop_schedule;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod loop_helpers;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod profiling_report;

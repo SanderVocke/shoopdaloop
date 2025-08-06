@@ -12,8 +12,6 @@ ShoopApplicationWindow {
     width: 600
     height: 450
 
-    Material.theme: Material.Dark
-
     function add_dsp_load_point(load) {
         dsp_load.add_point(load)
     }

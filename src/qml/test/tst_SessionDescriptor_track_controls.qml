@@ -9,7 +9,7 @@ import '..'
 
 
 ShoopTestFile {
-    Session {
+    TestSession {
         id: session
         anchors.fill: parent
         initial_descriptor: {

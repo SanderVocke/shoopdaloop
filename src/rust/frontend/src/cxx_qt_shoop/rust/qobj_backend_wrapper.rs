@@ -1,9 +1,11 @@
 use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants;
 use crate::engine_update_thread;
+use crate::profiling_report::profiling_report_to_qvariantmap;
 use backend_bindings::*;
 use cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 use cxx_qt_lib_shoop::qobject::{qobject_thread, AsQObject};
 use cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_mut, AsQQuickItem};
+use cxx_qt_lib_shoop::qvariant_qvariantmap::qvariantmap_as_qvariant;
 use cxx_qt_lib_shoop::{connect, connection_types};
 use std::pin::Pin;
 use std::sync::OnceLock;
@@ -523,9 +525,15 @@ impl BackendWrapper {
     }
 
     pub fn get_profiling_report(self: Pin<&mut BackendWrapper>) -> QVariant {
-        // TODO
-        error!("get_profiling_report unimplemented");
-        QVariant::default()
+        if let Some(session) = &self.session {
+            let report = session.get_profiling_report();
+            let report_variant = profiling_report_to_qvariantmap(&report);
+            qvariantmap_as_qvariant(&report_variant)
+                .expect("could not convert qvariantmap to qvariant")
+        } else {
+            error!("get_profiling_report called on a BackendWrapper with no session");
+            QVariant::default()
+        }
     }
 
     pub fn backend_type_is_supported(self: Pin<&mut BackendWrapper>, t: i32) -> bool {

@@ -9,7 +9,7 @@ import '../js/midi.js' as Midi
 import '..'
 
 ShoopTestFile {
-    Session {
+    TestSession {
         id: session
 
         anchors.fill: parent
