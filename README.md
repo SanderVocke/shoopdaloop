@@ -29,7 +29,6 @@ For currently open known issues, check the GitHub Issues page.
 - **Synchronization**: every loop is synced to the "sync loop", which typically holds a beat, click-track or just fixed-length silence. Loops may also be a multiple of the sync loop length.
 - **Grabbing**: instead of triggering the recording, you can grab loops retroactively from an always-on recording buffer.
 - **Combining**: A powerful system for combining multiple loops into sequences and/or scenes, which can also be controlled as if they were loops.
-- **NSM**: Non/New Session Manager support on Linux (experimental).
 - **Hackable**: Users can run their own Lua scripts to control the application in new ways.
 
 These features are explained in detail in the [docs](https://sandervocke.github.io/shoopdaloop/).
