@@ -5,15 +5,7 @@ use std::pin::Pin;
 shoop_log_unit!("Frontend.Port");
 
 impl PortGui {
-    pub fn initialize_impl(self: Pin<&mut PortGui>) {
-        todo!();
-    }
-
-    pub fn close(self: Pin<&mut PortGui>) {
-        unsafe {
-            self.backend_close();
-        }
-    }
+    pub fn initialize_impl(self: Pin<&mut PortGui>) {}
 
     pub fn connect_external_port(self: Pin<&mut PortGui>, name: QString) {
         unsafe {

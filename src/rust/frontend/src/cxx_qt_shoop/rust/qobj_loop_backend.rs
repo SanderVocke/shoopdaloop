@@ -1,4 +1,4 @@
-use crate::cxx_qt_shoop::qobj_backend_wrapper::qobject_ptr_to_backend_ptr;
+use crate::cxx_qt_shoop::qobj_backend_wrapper::BackendWrapper;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend;
 use crate::loop_helpers::transition_backend_loops;
@@ -12,6 +12,7 @@ use cxx_qt_lib::{QString, QVariant};
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::qobject_property_bool;
+use cxx_qt_lib_shoop::qobject::FromQObject;
 use cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Loop");
@@ -111,56 +112,62 @@ impl LoopBackend {
     }
 
     pub fn maybe_initialize_backend(mut self: Pin<&mut LoopBackend>) -> bool {
-        let initialize_condition: bool;
+        match || -> Result<bool, anyhow::Error> {
+            let initialize_condition: bool;
 
-        if self.get_initialized() {
-            return true;
-        }
-
-        unsafe {
-            initialize_condition = !self.get_initialized()
-                && self.backend != std::ptr::null_mut()
-                && qobject_property_bool(self.backend.as_ref().unwrap(), "ready".to_string())
-                    .unwrap_or(false)
-                && self.as_ref().backend_loop.is_none();
-        }
-
-        if initialize_condition {
-            debug!(self, "Initializing");
-            unsafe {
-                let backend_ptr = qobject_ptr_to_backend_ptr(self.rust().backend);
-                if backend_ptr.is_null() {
-                    error!(self, "Failed to convert backend QObject to backend pointer");
-                } else {
-                    // FIXME: unwraps
-                    let backend_session = backend_ptr.as_mut().unwrap().session.as_ref().unwrap();
-                    let backend_loop = backend_session.create_loop().unwrap();
-                    let mut rust_mut = self.as_mut().rust_mut();
-                    rust_mut.backend_loop = Some(backend_loop);
-                }
-
-                {
-                    let sync_source = *self.sync_source();
-                    let length = self.as_ref().prev_state.length;
-                    let position = self.as_ref().prev_state.position;
-                    self.as_mut().set_backend_sync_source(sync_source);
-                    self.as_mut().set_length(length as i32);
-                    self.as_mut().set_position(position as i32);
-                }
-
-                {
-                    // Force getting of the initial state
-                    self.as_mut().update();
-
-                    let initialized = self.get_initialized();
-                    self.initialized_changed(initialized);
-                    return initialized;
-                }
+            if self.as_ref().get_initialized() {
+                return Ok(true);
             }
-        } else {
-            debug!(self, "Not initializing as not all conditions are met");
+
+            unsafe {
+                initialize_condition = !self.get_initialized()
+                    && self.as_ref().backend != std::ptr::null_mut()
+                    && qobject_property_bool(self.backend.as_ref().unwrap(), "ready".to_string())
+                        .unwrap_or(false)
+                    && self.as_ref().backend_loop.is_none();
+            }
+
+            if initialize_condition {
+                debug!(self, "Initializing");
+                unsafe {
+                    let backend = BackendWrapper::from_qobject_mut_ptr(self.as_ref().backend)?;
+                    // FIXME: unwraps
+                    let backend_session = backend.session.as_ref().unwrap();
+                    let backend_loop = backend_session.create_loop().unwrap();
+                    {
+                        let mut rust_mut = self.as_mut().rust_mut();
+                        rust_mut.backend_loop = Some(backend_loop);
+                    }
+
+                    {
+                        let sync_source = *self.sync_source();
+                        let length = self.as_ref().prev_state.length;
+                        let position = self.as_ref().prev_state.position;
+                        self.as_mut().set_backend_sync_source(sync_source);
+                        self.as_mut().set_length(length as i32);
+                        self.as_mut().set_position(position as i32);
+                    }
+
+                    {
+                        // Force getting of the initial state
+                        self.as_mut().update();
+
+                        let initialized = self.get_initialized();
+                        self.as_mut().initialized_changed(initialized);
+                        return Ok(initialized);
+                    }
+                }
+            } else {
+                debug!(self, "Not initializing as not all conditions are met");
+                return Ok(false);
+            }
+        }() {
+            Ok(result) => return result,
+            Err(e) => {
+                debug!(self, "Error initializing backend: {e}");
+                return false;
+            }
         }
-        return false;
     }
 
     pub fn update(mut self: Pin<&mut LoopBackend>) {

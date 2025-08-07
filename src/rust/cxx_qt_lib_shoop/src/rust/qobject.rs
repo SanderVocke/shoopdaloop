@@ -118,6 +118,33 @@ pub trait AsQObject {
     }
 }
 
+pub trait FromQObject {
+    // to be implemented per type
+    unsafe fn ptr_from_qobject_ref(obj: &QObject) -> *const Self;
+    unsafe fn ptr_from_qobject_mut(obj: Pin<&mut QObject>) -> *mut Self;
+
+    unsafe fn from_qobject_ref(obj: &QObject) -> Result<&Self, anyhow::Error> {
+        let ptr = Self::ptr_from_qobject_ref(obj);
+        if ptr.is_null() { return Err(anyhow::anyhow!("failed conversion")); }
+        Ok(&*ptr)
+    }
+
+    unsafe fn from_qobject_mut(obj: Pin<&mut QObject>) -> Result<Pin<&mut Self>, anyhow::Error> {
+        let ptr = Self::ptr_from_qobject_mut(obj);
+        if ptr.is_null() { return Err(anyhow::anyhow!("failed conversion")); }
+        let pin = std::pin::Pin::new_unchecked(&mut *ptr);
+        Ok(pin)
+    }
+
+    unsafe fn from_qobject_ref_ptr<'a>(obj: *const QObject) -> Result<&'a Self, anyhow::Error> {
+        Self::from_qobject_ref(& *obj)
+    }
+
+    unsafe fn from_qobject_mut_ptr<'a>(obj: *mut QObject) -> Result<Pin<&'a mut Self>, anyhow::Error> {
+        Self::from_qobject_mut(std::pin::Pin::new_unchecked(&mut *obj))
+    }
+}
+
 pub unsafe fn qobject_parent(obj: &QObject) -> Result<*mut QObject, cxx::Exception> {
     ffi::qobject_parent(obj)
 }

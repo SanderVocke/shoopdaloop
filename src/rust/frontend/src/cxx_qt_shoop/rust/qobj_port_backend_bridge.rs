@@ -1,4 +1,5 @@
 use common::logging::macros::*;
+use crate::any_backend_port::AnyBackendPort;
 
 shoop_log_unit!("Frontend.Port");
 
@@ -37,7 +38,10 @@ pub mod ffi {
         #[qproperty(i32, midi_n_input_notes_active, READ=get_midi_n_input_notes_active, NOTIFY=midi_n_input_notes_active_changed)]
         #[qproperty(i32, midi_n_output_notes_active, READ=get_midi_n_output_notes_active, NOTIFY=midi_n_output_notes_active_changed)]
         // Frontend -> Backend properties
+        #[qproperty(bool, is_midi, READ, WRITE=set_is_midi, NOTIFY=is_midi_changed)]
         #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        #[qproperty(*mut QObject, maybe_fx_chain, READ, WRITE=set_fx_chain, NOTIFY=fx_chain_changed)]
+        #[qproperty(i32, fx_chain_port_idx, READ, WRITE=set_fx_chain_port_idx, NOTIFY=fx_chain_port_idx_changed)]
         #[qproperty(QString, name_hint, READ, WRITE=set_name_hint, NOTIFY=name_hint_changed)]
         #[qproperty(i32, input_connectability, READ, WRITE=set_input_connectability, NOTIFY=input_connectability_changed)]
         #[qproperty(i32, output_connectability, READ, WRITE=set_output_connectability, NOTIFY=output_connectability_changed)]
@@ -73,9 +77,6 @@ pub mod ffi {
         pub fn get_midi_n_output_notes_active(self: &PortBackend) -> i32;
 
         #[qinvokable]
-        pub fn close(self: Pin<&mut PortBackend>);
-
-        #[qinvokable]
         pub fn connect_external_port(self: Pin<&mut PortBackend>, name: QString);
 
         #[qinvokable]
@@ -106,6 +107,12 @@ pub mod ffi {
         pub fn set_is_internal(self: Pin<&mut PortBackend>, is_internal: bool);
 
         #[qinvokable]
+        pub unsafe fn set_fx_chain(self: Pin<&mut PortBackend>, fx_chain: *mut QObject);
+
+        #[qinvokable]
+        pub fn set_fx_chain_port_idx(self: Pin<&mut PortBackend>, fx_chain_port_idx: i32);
+
+        #[qinvokable]
         pub fn set_internal_port_connections(
             self: Pin<&mut PortBackend>,
             internal_port_connections: QList_QVariant,
@@ -116,6 +123,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn set_audio_gain(self: Pin<&mut PortBackend>, audio_gain: f64);
+
+        #[qinvokable]
+        pub fn set_is_midi(self: Pin<&mut PortBackend>, is_midi: bool);
 
         #[qinvokable]
         pub fn dummy_queue_audio_data(self: Pin<&mut PortBackend>, audio_data: QList_f64);
@@ -211,6 +221,14 @@ pub mod ffi {
         );
 
         #[qsignal]
+        #[cxx_name = "fxChainChanged"]
+        pub unsafe fn fx_chain_changed(self: Pin<&mut PortBackend>, fx_chain: *mut QObject);
+
+        #[qsignal]
+        #[cxx_name = "fxChainPortIdxChanged"]
+        pub unsafe fn fx_chain_port_idx_changed(self: Pin<&mut PortBackend>, fx_chain_port_idx: i32);
+
+        #[qsignal]
         #[cxx_name = "midiNOutputEventsChanged"]
         pub unsafe fn midi_n_output_events_changed(
             self: Pin<&mut PortBackend>,
@@ -229,6 +247,13 @@ pub mod ffi {
         pub unsafe fn midi_n_output_notes_active_changed(
             self: Pin<&mut PortBackend>,
             midi_n_output_notes_active: i32,
+        );
+
+        #[qsignal]
+        #[cxx_name = "isMidiChanged"]
+        pub unsafe fn is_midi_changed(
+            self: Pin<&mut PortBackend>,
+            is_midi: QVariant
         );
     }
 }
@@ -256,6 +281,12 @@ pub struct PortBackendRust {
     pub internal_port_connections: QList_QVariant,
     pub n_ringbuffer_samples: i32,
     pub audio_gain: f64,
+    pub is_midi: bool,
+    pub maybe_fx_chain: *mut QObject,
+    pub fx_chain_port_idx: i32,
+
+    // Other fields
+    pub maybe_backend_port : Option<AnyBackendPort>,
 }
 
 impl Default for PortBackendRust {
@@ -279,6 +310,10 @@ impl Default for PortBackendRust {
             internal_port_connections: QList_QVariant::default(),
             n_ringbuffer_samples: 0,
             audio_gain: 1.0,
+            is_midi: false,
+            maybe_fx_chain: std::ptr::null_mut(),
+            fx_chain_port_idx: 0,
+            maybe_backend_port: None,
         }
     }
 }

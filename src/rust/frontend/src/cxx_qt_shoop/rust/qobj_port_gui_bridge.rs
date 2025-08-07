@@ -55,9 +55,6 @@ pub mod ffi {
         pub fn initialize_impl(self: Pin<&mut PortGui>);
 
         #[qinvokable]
-        pub fn close(self: Pin<&mut PortGui>);
-
-        #[qinvokable]
         pub fn connect_external_port(self: Pin<&mut PortGui>, name: QString);
 
         #[qinvokable]
@@ -212,9 +209,6 @@ pub mod ffi {
             self: Pin<&mut PortGui>,
             midi_n_output_notes_active: i32,
         );
-
-        #[qsignal]
-        pub unsafe fn backend_close(self: Pin<&mut PortGui>);
 
         #[qsignal]
         pub unsafe fn backend_connect_external_port(self: Pin<&mut PortGui>, name: QString);

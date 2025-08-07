@@ -711,10 +711,6 @@ impl BackendWrapper {
             .create_fx_chain(chain_type.try_into().unwrap(), title)
             .unwrap()
     }
-
-    pub fn from_qobject_ptr(obj: *mut QObject) -> *mut BackendWrapper {
-        unsafe { qobject_ptr_to_backend_ptr(obj) }
-    }
 }
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {

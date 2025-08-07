@@ -156,3 +156,12 @@ inline ::rust::String qobjectMetaTypeName(QObject const& obj) {
     return obj.metaObject()->metaType().name();
 }
 
+template<typename T>
+inline void fromQObjectRef(QObject const& object, T const* *output) {
+    *output = qobject_cast<T const*>(&object);
+}
+
+template<typename T>
+inline void fromQObjectMut(QObject& object, T **output) {
+    *output = qobject_cast<T*>(&object);
+}
