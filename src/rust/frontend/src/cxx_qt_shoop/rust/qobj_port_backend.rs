@@ -4,11 +4,9 @@ use crate::{
     cxx_qt_shoop::{qobj_backend_wrapper::BackendWrapper, rust::qobj_port_backend_bridge::ffi::*},
 };
 use backend_bindings::{PortConnectability, PortDataType, PortDirection};
-use common::logging::macros::{
-    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
-};
+use common::logging::macros::{debug as raw_debug, error as raw_error, shoop_log_unit};
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant};
+use cxx_qt_lib::{QList, QMap};
 use cxx_qt_lib_shoop::qobject::{qobject_property_bool, FromQObject};
 use std::{collections::HashMap, pin::Pin};
 shoop_log_unit!("Frontend.Port");
@@ -32,8 +30,28 @@ macro_rules! error {
 }
 
 impl PortBackend {
-    pub fn update(self: Pin<&mut PortBackend>) {
-        todo!();
+    pub fn update(mut self: Pin<&mut PortBackend>) {
+        if self.maybe_backend_port.is_none() {
+            return;
+        }
+
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let port = self.maybe_backend_port.as_ref().unwrap();
+            let prev_state = self.prev_state.clone();
+
+            {
+                let new_state = port.get_state();
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.prev_state = new_state;
+            }
+
+            // Self "state_changed" signal
+            todo!();
+
+            Ok(())
+        }() {
+            error!(self, "Could not update: {e}")
+        }
     }
 
     pub fn display_name(self: &PortBackend) -> String {
@@ -503,7 +521,7 @@ impl PortBackend {
     }
 
     pub fn set_internal_port_connections(
-        mut self: Pin<&mut PortBackend>,
+        self: Pin<&mut PortBackend>,
         internal_port_connections: QList_QVariant,
     ) {
         todo!();
@@ -538,7 +556,7 @@ impl PortBackend {
         self.min_n_ringbuffer_samples.unwrap_or(0)
     }
 
-    pub fn set_audio_gain(mut self: Pin<&mut PortBackend>, audio_gain: f64) {
+    pub fn set_audio_gain(self: Pin<&mut PortBackend>, audio_gain: f64) {
         if let Some(port) = self.maybe_backend_port.as_ref() {
             port.set_gain(audio_gain as f32);
         } else {

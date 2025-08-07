@@ -198,7 +198,7 @@ impl AnyBackendPort {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct AnyBackendPortState {
     pub input_peak: f32,
     pub output_peak: f32,
