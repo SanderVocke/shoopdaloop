@@ -1,5 +1,6 @@
+use crate::any_backend_port::{AnyBackendPort, AnyBackendPortState};
+use backend_bindings::{PortConnectability, PortDataType};
 use common::logging::macros::*;
-use crate::any_backend_port::AnyBackendPort;
 
 shoop_log_unit!("Frontend.Port");
 
@@ -37,18 +38,19 @@ pub mod ffi {
         #[qproperty(i32, midi_n_output_events, READ=get_midi_n_output_events, NOTIFY=midi_n_output_events_changed)]
         #[qproperty(i32, midi_n_input_notes_active, READ=get_midi_n_input_notes_active, NOTIFY=midi_n_input_notes_active_changed)]
         #[qproperty(i32, midi_n_output_notes_active, READ=get_midi_n_output_notes_active, NOTIFY=midi_n_output_notes_active_changed)]
+        #[qproperty(i32, n_ringbuffer_samples, READ=get_n_ringbuffer_samples, NOTIFY=n_ringbuffer_samples_changed)]
         // Frontend -> Backend properties
-        #[qproperty(bool, is_midi, READ, WRITE=set_is_midi, NOTIFY=is_midi_changed)]
+        #[qproperty(bool, is_midi, READ=get_is_midi, WRITE=set_is_midi, NOTIFY=is_midi_changed)]
         #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
-        #[qproperty(*mut QObject, maybe_fx_chain, READ, WRITE=set_fx_chain, NOTIFY=fx_chain_changed)]
-        #[qproperty(i32, fx_chain_port_idx, READ, WRITE=set_fx_chain_port_idx, NOTIFY=fx_chain_port_idx_changed)]
-        #[qproperty(QString, name_hint, READ, WRITE=set_name_hint, NOTIFY=name_hint_changed)]
-        #[qproperty(i32, input_connectability, READ, WRITE=set_input_connectability, NOTIFY=input_connectability_changed)]
-        #[qproperty(i32, output_connectability, READ, WRITE=set_output_connectability, NOTIFY=output_connectability_changed)]
-        #[qproperty(bool, is_internal, READ, WRITE=set_is_internal, NOTIFY=is_internal_changed)]
+        #[qproperty(*mut QObject, maybe_fx_chain, READ=get_maybe_fx_chain, WRITE=set_fx_chain, NOTIFY=fx_chain_changed)]
+        #[qproperty(i32, fx_chain_port_idx, READ=get_fx_chain_port_idx, WRITE=set_fx_chain_port_idx, NOTIFY=fx_chain_port_idx_changed)]
+        #[qproperty(QString, name_hint, READ=get_name_hint, WRITE=set_name_hint, NOTIFY=name_hint_changed)]
+        #[qproperty(i32, input_connectability, READ=get_input_connectability, WRITE=set_input_connectability, NOTIFY=input_connectability_changed)]
+        #[qproperty(i32, output_connectability, READ=get_output_connectability, WRITE=set_output_connectability, NOTIFY=output_connectability_changed)]
+        #[qproperty(bool, is_internal, READ=get_is_internal, WRITE=set_is_internal, NOTIFY=is_internal_changed)]
         #[qproperty(QList_QVariant, internal_port_connections, READ, WRITE=set_internal_port_connections, NOTIFY=internal_port_connections_changed)]
-        #[qproperty(i32, n_ringbuffer_samples, READ, WRITE=set_n_ringbuffer_samples, NOTIFY=n_ringbuffer_samples_changed)]
-        #[qproperty(f64, audio_gain, READ, WRITE=set_audio_gain, NOTIFY=audio_gain_changed)]
+        #[qproperty(f32, audio_gain, READ=get_audio_gain, WRITE=set_audio_gain, NOTIFY=audio_gain_changed)]
+        #[qproperty(i32, min_n_ringbuffer_samples, READ=get_min_n_ringbuffer_samples, WRITE=set_min_n_ringbuffer_samples, NOTIFY=min_n_ringbuffer_samples_changed)]
         // Other properties
         //#[qproperty(*mut QObject, backend_port_wrapper, READ=get_backend_port_wrapper)]
         type PortBackend = super::PortBackendRust;
@@ -58,7 +60,7 @@ pub mod ffi {
         #[qinvokable]
         pub fn get_initialized(self: &PortBackend) -> bool;
         #[qinvokable]
-        pub fn get_name(self: &PortBackend) -> &QString;
+        pub fn get_name(self: &PortBackend) -> QString;
         #[qinvokable]
         pub fn get_muted(self: &PortBackend) -> bool;
         #[qinvokable]
@@ -119,7 +121,7 @@ pub mod ffi {
         );
 
         #[qinvokable]
-        pub fn set_n_ringbuffer_samples(self: Pin<&mut PortBackend>, n_ringbuffer_samples: i32);
+        pub fn set_min_n_ringbuffer_samples(self: Pin<&mut PortBackend>, n_ringbuffer_samples: i32);
 
         #[qinvokable]
         pub fn set_audio_gain(self: Pin<&mut PortBackend>, audio_gain: f64);
@@ -144,6 +146,36 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn dummy_clear_queues(self: Pin<&mut PortBackend>);
+
+        #[qinvokable]
+        pub fn get_n_ringbuffer_samples(self: Pin<&mut PortBackend>) -> i32;
+
+        #[qinvokable]
+        pub fn get_is_midi(self: Pin<&mut PortBackend>) -> bool;
+
+        #[qinvokable]
+        pub fn get_maybe_fx_chain(self: Pin<&mut PortBackend>) -> *mut QObject;
+
+        #[qinvokable]
+        pub fn get_fx_chain_port_idx(self: Pin<&mut PortBackend>) -> i32;
+
+        #[qinvokable]
+        pub fn get_name_hint(self: Pin<&mut PortBackend>) -> QString;
+
+        #[qinvokable]
+        pub fn get_input_connectability(self: Pin<&mut PortBackend>) -> i32;
+
+        #[qinvokable]
+        pub fn get_output_connectability(self: Pin<&mut PortBackend>) -> i32;
+
+        #[qinvokable]
+        pub fn get_is_internal(self: Pin<&mut PortBackend>) -> bool;
+
+        #[qinvokable]
+        pub fn get_audio_gain(self: Pin<&mut PortBackend>) -> f32;
+
+        #[qinvokable]
+        pub fn get_min_n_ringbuffer_samples(self: Pin<&mut PortBackend>) -> i32;
 
         #[qsignal]
         #[cxx_name = "backendChanged"]
@@ -186,6 +218,13 @@ pub mod ffi {
         );
 
         #[qsignal]
+        #[cxx_name = "minNRingbufferSamplesChanged"]
+        pub unsafe fn min_n_ringbuffer_samples_changed(
+            self: Pin<&mut PortBackend>,
+            min_n_ringbuffer_samples: i32,
+        );
+
+        #[qsignal]
         #[cxx_name = "audioGainChanged"]
         pub unsafe fn audio_gain_changed(self: Pin<&mut PortBackend>, audio_gain: f64);
 
@@ -203,7 +242,10 @@ pub mod ffi {
 
         #[qsignal]
         #[cxx_name = "passthroughMutedChanged"]
-        pub unsafe fn passthrough_muted_changed(self: Pin<&mut PortBackend>, passthrough_muted: bool);
+        pub unsafe fn passthrough_muted_changed(
+            self: Pin<&mut PortBackend>,
+            passthrough_muted: bool,
+        );
 
         #[qsignal]
         #[cxx_name = "audioInputPeakChanged"]
@@ -211,7 +253,10 @@ pub mod ffi {
 
         #[qsignal]
         #[cxx_name = "audioOutputPeakChanged"]
-        pub unsafe fn audio_output_peak_changed(self: Pin<&mut PortBackend>, audio_output_peak: f64);
+        pub unsafe fn audio_output_peak_changed(
+            self: Pin<&mut PortBackend>,
+            audio_output_peak: f64,
+        );
 
         #[qsignal]
         #[cxx_name = "midiNInputEventsChanged"]
@@ -226,7 +271,10 @@ pub mod ffi {
 
         #[qsignal]
         #[cxx_name = "fxChainPortIdxChanged"]
-        pub unsafe fn fx_chain_port_idx_changed(self: Pin<&mut PortBackend>, fx_chain_port_idx: i32);
+        pub unsafe fn fx_chain_port_idx_changed(
+            self: Pin<&mut PortBackend>,
+            fx_chain_port_idx: i32,
+        );
 
         #[qsignal]
         #[cxx_name = "midiNOutputEventsChanged"]
@@ -251,10 +299,7 @@ pub mod ffi {
 
         #[qsignal]
         #[cxx_name = "isMidiChanged"]
-        pub unsafe fn is_midi_changed(
-            self: Pin<&mut PortBackend>,
-            is_midi: QVariant
-        );
+        pub unsafe fn is_midi_changed(self: Pin<&mut PortBackend>, is_midi: bool);
     }
 }
 
@@ -264,29 +309,20 @@ use ffi::*;
 pub struct PortBackendRust {
     // Properties
     pub initialized: bool,
-    pub name: QString,
-    pub muted: bool,
-    pub passthrough_muted: bool,
-    pub audio_input_peak: f64,
-    pub audio_output_peak: f64,
-    pub midi_n_input_events: i32,
-    pub midi_n_output_events: i32,
-    pub midi_n_input_notes_active: i32,
-    pub midi_n_output_notes_active: i32,
     pub backend: *mut QObject,
-    pub name_hint: QString,
-    pub input_connectability: i32,
-    pub output_connectability: i32,
-    pub is_internal: bool,
     pub internal_port_connections: QList_QVariant,
-    pub n_ringbuffer_samples: i32,
-    pub audio_gain: f64,
-    pub is_midi: bool,
-    pub maybe_fx_chain: *mut QObject,
-    pub fx_chain_port_idx: i32,
 
     // Other fields
-    pub maybe_backend_port : Option<AnyBackendPort>,
+    pub maybe_backend_port: Option<AnyBackendPort>,
+    pub prev_state: AnyBackendPortState,
+    pub name_hint: Option<QString>,
+    pub input_connectability: Option<PortConnectability>,
+    pub output_connectability: Option<PortConnectability>,
+    pub is_internal: Option<bool>,
+    pub port_type: Option<PortDataType>,
+    pub fx_chain: Option<*mut QObject>,
+    pub fx_chain_port_idx: Option<i32>,
+    pub min_n_ringbuffer_samples: Option<i32>,
 }
 
 impl Default for PortBackendRust {
@@ -294,26 +330,17 @@ impl Default for PortBackendRust {
         PortBackendRust {
             initialized: false,
             backend: std::ptr::null_mut(),
-            name: QString::from(""),
-            muted: false,
-            passthrough_muted: false,
-            audio_input_peak: 0.0,
-            audio_output_peak: 0.0,
-            midi_n_input_events: 0,
-            midi_n_output_events: 0,
-            midi_n_input_notes_active: 0,
-            midi_n_output_notes_active: 0,
-            name_hint: QString::from("unknown"),
-            input_connectability: 0,
-            output_connectability: 0,
-            is_internal: false,
+            name_hint: None,
+            input_connectability: None,
+            output_connectability: None,
+            is_internal: None,
             internal_port_connections: QList_QVariant::default(),
-            n_ringbuffer_samples: 0,
-            audio_gain: 1.0,
-            is_midi: false,
-            maybe_fx_chain: std::ptr::null_mut(),
-            fx_chain_port_idx: 0,
+            port_type: None,
+            fx_chain: None,
+            fx_chain_port_idx: None,
             maybe_backend_port: None,
+            prev_state: AnyBackendPortState::default(),
+            min_n_ringbuffer_samples: None,
         }
     }
 }

@@ -1,8 +1,9 @@
-use std::collections::HashMap;
 use backend_bindings::{
-    AudioDriver, AudioPort, AudioPortState, BackendSession, MidiEvent, MidiPort, MidiPortState, PortConnectability, PortDataType, PortDirection
+    AudioDriver, AudioPort, AudioPortState, BackendSession, MidiEvent, MidiPort, MidiPortState,
+    PortConnectability, PortDataType, PortDirection,
 };
 use common::logging::macros::*;
+use std::collections::HashMap;
 shoop_log_unit!("Frontend.AnyPort");
 pub enum AnyBackendPort {
     Audio(AudioPort),
@@ -84,13 +85,17 @@ impl AnyBackendPort {
             AnyBackendPort::Audio(port) => {
                 if let AnyBackendPort::Audio(other_audio) = other {
                     port.connect_internal(other_audio);
-                } else { error!("Attempted to internally connect audio port to a midi port"); }
-            },
+                } else {
+                    error!("Attempted to internally connect audio port to a midi port");
+                }
+            }
             AnyBackendPort::Midi(port) => {
                 if let AnyBackendPort::Midi(other_midi) = other {
                     port.connect_internal(other_midi);
-                } else { error!("Attempted to internally connect midi port to an audio port"); }
-            },
+                } else {
+                    error!("Attempted to internally connect midi port to an audio port");
+                }
+            }
         }
     }
 
@@ -99,7 +104,7 @@ impl AnyBackendPort {
             AnyBackendPort::Audio(port) => port.dummy_queue_data(data),
             AnyBackendPort::Midi(_) => {
                 error!("Attempted to queue audio data on a midi port");
-            },
+            }
         }
     }
 
@@ -109,7 +114,7 @@ impl AnyBackendPort {
             AnyBackendPort::Midi(_) => {
                 error!("Attempted tow dequeue audio data from a midi port");
                 Vec::default()
-            },
+            }
         }
     }
 
@@ -133,7 +138,7 @@ impl AnyBackendPort {
         match self {
             AnyBackendPort::Midi(port) => port.dummy_queue_msg(msg),
             AnyBackendPort::Audio(_) => {
-                error!("Attempted to queue midi message on a audio port"); 
+                error!("Attempted to queue midi message on a audio port");
             }
         }
     }
@@ -142,7 +147,7 @@ impl AnyBackendPort {
         match self {
             AnyBackendPort::Midi(port) => port.dummy_queue_msgs(msgs.to_vec()),
             AnyBackendPort::Audio(_) => {
-                error!("Attempted to queue midi messages on a audio port"); 
+                error!("Attempted to queue midi messages on a audio port");
             }
         }
     }
@@ -151,7 +156,7 @@ impl AnyBackendPort {
         match self {
             AnyBackendPort::Midi(port) => port.dummy_dequeue_data(),
             AnyBackendPort::Audio(_) => {
-                error!("Attempted to dequeue midi messages from a audio port"); 
+                error!("Attempted to dequeue midi messages from a audio port");
                 vec![]
             }
         }
@@ -193,7 +198,7 @@ impl AnyBackendPort {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AnyBackendPortState {
     pub input_peak: f32,
     pub output_peak: f32,

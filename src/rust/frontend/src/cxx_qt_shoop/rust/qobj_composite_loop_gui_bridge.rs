@@ -5,6 +5,9 @@ pub mod ffi {
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
         type QObject = cxx_qt_lib_shoop::qobject::QObject;
 
+        include!("cxx-qt-lib-shoop/qpointer.h");
+        type QPointerQObject = cxx_qt_lib_shoop::qpointer::QPointerQObject;
+
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
 

@@ -4,6 +4,7 @@ pub mod invokable;
 pub mod qjsonobject;
 pub mod qmetatype_helpers;
 pub mod qobject;
+pub mod qpointer;
 pub mod qqmlerror;
 pub mod qqmlerrorlist;
 pub mod qquickitem;

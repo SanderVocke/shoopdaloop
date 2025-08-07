@@ -24,6 +24,8 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/qobj_dummy_process_helper_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_file_io_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_find_parent_item_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_fx_chain_backend_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_fx_chain_gui_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_global_utils_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_loop_backend_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_loop_gui_bridge.rs")

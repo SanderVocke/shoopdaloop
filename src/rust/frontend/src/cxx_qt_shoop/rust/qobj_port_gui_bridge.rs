@@ -49,7 +49,6 @@ pub mod ffi {
         #[qproperty(i32, n_ringbuffer_samples, READ, WRITE=set_n_ringbuffer_samples, NOTIFY=n_ringbuffer_samples_changed)]
         #[qproperty(f64, audio_gain, READ, WRITE=set_audio_gain, NOTIFY=audio_gain_changed)]
         // Other properties
-        //#[qproperty(*mut QObject, backend_port_wrapper, READ=get_backend_port_wrapper)]
         type PortGui = super::PortGuiRust;
 
         pub fn initialize_impl(self: Pin<&mut PortGui>);
