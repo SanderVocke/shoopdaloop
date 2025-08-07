@@ -28,6 +28,7 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/qobj_loop_backend_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_loop_gui_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_os_utils_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_port_backend_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_port_gui_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_qmlengine_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_release_focus_notifier_bridge.rs")

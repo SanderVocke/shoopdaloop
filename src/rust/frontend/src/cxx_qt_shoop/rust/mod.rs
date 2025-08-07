@@ -30,6 +30,8 @@ pub mod qobj_loop_gui;
 pub mod qobj_loop_gui_bridge;
 pub mod qobj_os_utils;
 pub mod qobj_os_utils_bridge;
+pub mod qobj_port_backend;
+pub mod qobj_port_backend_bridge;
 pub mod qobj_port_gui;
 pub mod qobj_port_gui_bridge;
 pub mod qobj_qmlengine;
