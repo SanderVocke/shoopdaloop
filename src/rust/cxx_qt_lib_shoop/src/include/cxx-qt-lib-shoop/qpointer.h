@@ -6,21 +6,21 @@
 
 typedef QPointer<QObject> QPointerQObject;
 
-QObject * qpointerToQObject(QPointerQObject const& p) {
+inline QObject * qpointerToQObject(QPointerQObject const& p) {
     return p.data();
 }
 
-std::unique_ptr<QPointerQObject> qpointerFromQObject(QObject* obj) {
+inline std::unique_ptr<QPointerQObject> qpointerFromQObject(QObject* obj) {
     return std::make_unique<QPointerQObject>(obj);
 }
 
-QVariant qvariantFromQPointer(QPointerQObject const& p) {
+inline QVariant qvariantFromQPointer(QPointerQObject const& p) {
     if (p.isNull()) {
         return QVariant::fromValue(nullptr);
     }
     return QVariant::fromValue(p);
 }
 
-QPointerQObject qpointerFromQVariant(QVariant const& p) {
+inline QPointerQObject qpointerFromQVariant(QVariant const& p) {
     return p.value<QPointerQObject>();
 }
