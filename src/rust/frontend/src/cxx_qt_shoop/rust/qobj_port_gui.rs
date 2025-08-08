@@ -1,12 +1,322 @@
+use crate::cxx_qt_shoop::rust::qobj_port_backend_bridge::ffi::{
+    make_raw_port_backend, port_backend_qobject_from_ptr,
+};
 use crate::cxx_qt_shoop::rust::qobj_port_gui_bridge::ffi::*;
-use common::logging::macros::*;
+use crate::engine_update_thread;
+use common::logging::macros::{
+    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
+};
 use cxx_qt::CxxQtType;
+use cxx_qt_lib::{QList, QMap};
+use cxx_qt_lib_shoop::connect::connect_or_report;
+use cxx_qt_lib_shoop::connection_types;
+use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Port");
 
-impl PortGui {
-    pub fn initialize_impl(self: Pin<&mut PortGui>) {}
+macro_rules! trace {
+    ($self:ident, $($arg:tt)*) => {
+        raw_trace!("[{}] {}", $self.display_name().to_string(), format!($($arg)*));
+    };
+}
 
+macro_rules! debug {
+    ($self:ident, $($arg:tt)*) => {
+        raw_debug!("[{}] {}", $self.display_name().to_string(), format!($($arg)*));
+    };
+}
+
+macro_rules! error {
+    ($self:ident, $($arg:tt)*) => {
+        raw_error!("[{}] {}", $self.display_name().to_string(), format!($($arg)*));
+    };
+}
+
+impl PortGui {
+    pub fn initialize_impl(self: Pin<&mut PortGui>) {
+        debug!(self, "Initializing");
+
+        unsafe {
+            let backend_port = make_raw_port_backend();
+            let backend_port_qobj = port_backend_qobject_from_ptr(backend_port);
+            qobject_move_to_thread(
+                backend_port_qobj,
+                engine_update_thread::get_engine_update_thread().thread,
+            )
+            .unwrap();
+
+            let self_ref = self.as_ref().get_ref();
+
+            {
+                let backend_ref = &*backend_port_qobj;
+                let backend_thread_wrapper =
+                    &*engine_update_thread::get_engine_update_thread().ref_qobject_ptr();
+
+                {
+                    // Connections: update thread -> backend object
+                    connect_or_report(
+                        backend_thread_wrapper,
+                        "update()",
+                        backend_ref,
+                        "update()",
+                        connection_types::DIRECT_CONNECTION,
+                    );
+                }
+                {
+                    // Connections: GUI -> backend object
+                    connect_or_report(
+                        self_ref,
+                        "backend_connect_external_port(QString)",
+                        backend_ref,
+                        "connect_external_port(QString)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_disconnect_external_port(QString)",
+                        backend_ref,
+                        "disconnect_external_port(QString)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_try_make_connections(QList<QString>)",
+                        backend_ref,
+                        "try_make_connections(QList<QString>)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_dummy_queue_audio_data(QList<double>)",
+                        backend_ref,
+                        "dummy_queue_audio_data(QList<double>)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_dummy_request_data(::std::int32_t)",
+                        backend_ref,
+                        "dummy_request_data(::std::int32_t)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_dummy_queue_midi_msgs(QList<QVariant>)",
+                        backend_ref,
+                        "dummy_queue_midi_msgs(QList<QVariant>)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_dummy_clear_queues()",
+                        backend_ref,
+                        "dummy_clear_queues()",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_backend(QObject*)",
+                        backend_ref,
+                        "set_backend(QObject*)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_name_hint(QString)",
+                        backend_ref,
+                        "set_name_hint(QString)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_input_connectability(::std::int32_t)",
+                        backend_ref,
+                        "set_input_connectability(::std::int32_t)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_output_connectability(::std::int32_t)",
+                        backend_ref,
+                        "set_output_connectability(::std::int32_t)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_is_internal(bool)",
+                        backend_ref,
+                        "set_is_internal(bool)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_internal_port_connections(QList<QVariant>)",
+                        backend_ref,
+                        "set_internal_port_connections(QList<QVariant>)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_min_n_ringbuffer_samples(::std::int32_t)",
+                        backend_ref,
+                        "set_min_n_ringbuffer_samples(::std::int32_t)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_audio_gain(double)",
+                        backend_ref,
+                        "push_audio_gain(double)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_muted(bool)",
+                        backend_ref,
+                        "push_muted(bool)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_passthrough_muted(bool)",
+                        backend_ref,
+                        "push_passthrough_muted(bool)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                }
+                {
+                    // Connections: backend object -> GUI
+                    connect_or_report(
+                        backend_ref,
+                        "state_changed(bool,QString,bool,bool,double,double,double,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)",
+                        self_ref,
+                        "backend_state_changed(bool,QString,bool,bool,double,double,double,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)",
+                        connection_types::QUEUED_CONNECTION
+                    );
+                }
+            }
+        }
+    }
+
+    pub unsafe fn backend_state_changed(
+        mut self: Pin<&mut PortGui>,
+        initialized: bool,
+        name: QString,
+        muted: bool,
+        passthrough_muted: bool,
+        audio_gain: f64,
+        audio_input_peak: f64,
+        audio_output_peak: f64,
+        midi_n_input_events: i32,
+        midi_n_output_events: i32,
+        midi_n_input_notes_active: i32,
+        midi_n_output_notes_active: i32,
+        n_ringbuffer_samples: i32,
+    ) {
+        if initialized != self.initialized {
+            debug!(self, "initialized -> {initialized}");
+            self.as_mut().rust_mut().initialized = initialized;
+            unsafe {
+                self.as_mut().initialized_changed(initialized);
+            }
+        }
+        if name != self.name {
+            debug!(self, "name -> {name:?}");
+            self.as_mut().rust_mut().name = name.clone();
+            unsafe {
+                self.as_mut().name_changed(name);
+            }
+        }
+        if muted != self.muted {
+            debug!(self, "muted -> {muted}");
+            self.as_mut().rust_mut().muted = muted;
+            unsafe {
+                self.as_mut().muted_changed(muted);
+            }
+        }
+        if passthrough_muted != self.passthrough_muted {
+            debug!(self, "muted -> {passthrough_muted}");
+            self.as_mut().rust_mut().passthrough_muted = passthrough_muted;
+            unsafe {
+                self.as_mut().passthrough_muted_changed(passthrough_muted);
+            }
+        }
+        if audio_gain != self.audio_gain {
+            trace!(self, "gain -> {audio_gain}");
+            self.as_mut().rust_mut().audio_gain = audio_gain;
+            unsafe {
+                self.as_mut().audio_gain_changed(audio_gain);
+            }
+        }
+        if audio_input_peak != self.audio_input_peak {
+            trace!(self, "input peak -> {audio_input_peak}");
+            self.as_mut().rust_mut().audio_input_peak = audio_input_peak;
+            unsafe {
+                self.as_mut().audio_input_peak_changed(audio_input_peak);
+            }
+        }
+        if audio_output_peak != self.audio_output_peak {
+            trace!(self, "output peak -> {audio_output_peak}");
+            self.as_mut().rust_mut().audio_output_peak = audio_output_peak;
+            unsafe {
+                self.as_mut().audio_output_peak_changed(audio_output_peak);
+            }
+        }
+        if midi_n_input_events != self.midi_n_input_events {
+            trace!(self, "n input events -> {midi_n_input_events}");
+            self.as_mut().rust_mut().midi_n_input_events = midi_n_input_events;
+            unsafe {
+                self.as_mut()
+                    .midi_n_input_events_changed(midi_n_input_events);
+            }
+        }
+        if midi_n_output_events != self.midi_n_output_events {
+            trace!(self, "n output events -> {midi_n_output_events}");
+            self.as_mut().rust_mut().midi_n_output_events = midi_n_output_events;
+            unsafe {
+                self.as_mut()
+                    .midi_n_output_events_changed(midi_n_output_events);
+            }
+        }
+        if midi_n_input_notes_active != self.midi_n_input_notes_active {
+            trace!(self, "n input notes active -> {midi_n_input_notes_active}");
+            self.as_mut().rust_mut().midi_n_input_notes_active = midi_n_input_notes_active;
+            unsafe {
+                self.as_mut()
+                    .midi_n_input_notes_active_changed(midi_n_input_notes_active);
+            }
+        }
+        if midi_n_output_notes_active != self.midi_n_output_notes_active {
+            trace!(
+                self,
+                "n output notes active -> {midi_n_output_notes_active}"
+            );
+            self.as_mut().rust_mut().midi_n_output_notes_active = midi_n_output_notes_active;
+            unsafe {
+                self.as_mut()
+                    .midi_n_output_notes_active_changed(midi_n_output_notes_active);
+            }
+        }
+        if n_ringbuffer_samples != self.n_ringbuffer_samples {
+            debug!(self, "n ringbuffer samples -> {n_ringbuffer_samples}");
+            self.as_mut().rust_mut().n_ringbuffer_samples = n_ringbuffer_samples;
+            unsafe {
+                self.as_mut()
+                    .n_ringbuffer_samples_changed(n_ringbuffer_samples);
+            }
+        }
+    }
+
+    pub fn display_name(self: &PortGui) -> String {
+        if self.name.len() > 0 {
+            self.name.to_string()
+        } else if self.name_hint.len() > 0 {
+            self.name_hint.to_string()
+        } else {
+            "unknown".to_string()
+        }
+    }
     pub fn connect_external_port(self: Pin<&mut PortGui>, name: QString) {
         unsafe {
             self.backend_connect_external_port(name);
@@ -20,11 +330,47 @@ impl PortGui {
     }
 
     pub fn get_connections_state(self: Pin<&mut PortGui>) -> QMap_QString_QVariant {
-        todo!();
+        match || -> Result<QMap_QString_QVariant, anyhow::Error> {
+            let backend_wrapper = if self.backend_port_wrapper.is_null() {
+                return Err(anyhow::anyhow!("backend not initialized"));
+            } else {
+                self.backend_port_wrapper.data()?
+            };
+            unsafe {
+                Ok(invokable::invoke(
+                    &mut *backend_wrapper,
+                    "get_connections_state",
+                    invokable::BLOCKING_QUEUED_CONNECTION,
+                    &(),
+                )?)
+            }
+        }() {
+            Ok(data) => data,
+            Err(e) => {
+                error!(self, "Could not dequeue audio data: {e}");
+                QMap::default()
+            }
+        }
     }
 
     pub fn get_connected_external_ports(self: Pin<&mut PortGui>) -> QList_QString {
-        todo!();
+        match || -> Result<QList_QString, anyhow::Error> {
+            let backend_wrapper = self.backend_port_wrapper.data()?;
+            unsafe {
+                Ok(invokable::invoke(
+                    &mut *backend_wrapper,
+                    "get_connected_external_ports",
+                    invokable::BLOCKING_QUEUED_CONNECTION,
+                    &(),
+                )?)
+            }
+        }() {
+            Ok(data) => data,
+            Err(e) => {
+                error!(self, "Could not dequeue audio data: {e}");
+                QList::default()
+            }
+        }
     }
 
     pub fn try_make_connections(self: Pin<&mut PortGui>, connections: QList_QString) {
@@ -38,6 +384,7 @@ impl PortGui {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.backend = backend;
             unsafe {
+                self.as_mut().backend_set_backend(backend);
                 self.as_mut().backend_changed(backend);
             }
         }
@@ -48,6 +395,7 @@ impl PortGui {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.name_hint = name_hint.clone();
             unsafe {
+                self.as_mut().backend_set_name_hint(name_hint.clone());
                 self.as_mut().name_hint_changed(name_hint);
             }
         }
@@ -58,6 +406,8 @@ impl PortGui {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.input_connectability = input_connectability;
             unsafe {
+                self.as_mut()
+                    .backend_set_input_connectability(input_connectability);
                 self.as_mut()
                     .input_connectability_changed(input_connectability);
             }
@@ -70,6 +420,8 @@ impl PortGui {
             rust_mut.output_connectability = output_connectability;
             unsafe {
                 self.as_mut()
+                    .backend_set_output_connectability(output_connectability);
+                self.as_mut()
                     .output_connectability_changed(output_connectability);
             }
         }
@@ -80,6 +432,7 @@ impl PortGui {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.is_internal = is_internal;
             unsafe {
+                self.as_mut().backend_set_is_internal(is_internal);
                 self.as_mut().is_internal_changed(is_internal);
             }
         }
@@ -94,28 +447,40 @@ impl PortGui {
             rust_mut.internal_port_connections = internal_port_connections.clone();
             unsafe {
                 self.as_mut()
+                    .backend_set_internal_port_connections(internal_port_connections.clone());
+                self.as_mut()
                     .internal_port_connections_changed(internal_port_connections);
             }
         }
     }
 
-    pub fn set_n_ringbuffer_samples(mut self: Pin<&mut PortGui>, n_ringbuffer_samples: i32) {
-        if n_ringbuffer_samples != self.n_ringbuffer_samples {
-            let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.n_ringbuffer_samples = n_ringbuffer_samples;
-            unsafe {
-                self.as_mut()
-                    .n_ringbuffer_samples_changed(n_ringbuffer_samples);
-            }
+    pub fn push_audio_gain(mut self: Pin<&mut PortGui>, audio_gain: f64) {
+        unsafe {
+            self.backend_set_audio_gain(audio_gain as f64);
         }
     }
 
-    pub fn set_audio_gain(mut self: Pin<&mut PortGui>, audio_gain: f64) {
-        if audio_gain != self.audio_gain {
+    pub fn push_muted(self: Pin<&mut PortGui>, muted: bool) {
+        unsafe {
+            self.backend_set_muted(muted);
+        }
+    }
+
+    pub fn push_passthrough_muted(self: Pin<&mut PortGui>, muted: bool) {
+        unsafe {
+            self.backend_set_passthrough_muted(muted);
+        }
+    }
+
+    pub fn set_min_n_ringbuffer_samples(mut self: Pin<&mut PortGui>, n_ringbuffer_samples: i32) {
+        if n_ringbuffer_samples != self.min_n_ringbuffer_samples {
             let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.audio_gain = audio_gain;
+            rust_mut.min_n_ringbuffer_samples = n_ringbuffer_samples;
             unsafe {
-                self.as_mut().audio_gain_changed(audio_gain);
+                self.as_mut()
+                    .backend_set_min_n_ringbuffer_samples(n_ringbuffer_samples);
+                self.as_mut()
+                    .min_n_ringbuffer_samples_changed(n_ringbuffer_samples);
             }
         }
     }
@@ -127,7 +492,23 @@ impl PortGui {
     }
 
     pub fn dummy_dequeue_audio_data(self: Pin<&mut PortGui>) -> QList_f64 {
-        todo!();
+        match || -> Result<QList_f64, anyhow::Error> {
+            let backend_wrapper = self.backend_port_wrapper.data()?;
+            unsafe {
+                Ok(invokable::invoke(
+                    &mut *backend_wrapper,
+                    "dummy_dequeue_audio_data",
+                    invokable::BLOCKING_QUEUED_CONNECTION,
+                    &(),
+                )?)
+            }
+        }() {
+            Ok(data) => data,
+            Err(e) => {
+                error!(self, "Could not dequeue audio data: {e}");
+                QList::default()
+            }
+        }
     }
 
     pub fn dummy_request_data(self: Pin<&mut PortGui>, n: i32) {
@@ -150,5 +531,13 @@ impl PortGui {
         unsafe {
             self.backend_dummy_clear_queues();
         }
+    }
+}
+
+pub fn register_qml_type(module_name: &str, type_name: &str) {
+    let mut mdl = String::from(module_name);
+    let mut tp = String::from(type_name);
+    unsafe {
+        register_qml_type_port_gui(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp);
     }
 }

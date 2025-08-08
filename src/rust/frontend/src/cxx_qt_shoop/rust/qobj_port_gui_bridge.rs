@@ -39,6 +39,8 @@ pub mod ffi {
         #[qproperty(i32, midi_n_output_events, READ, NOTIFY=midi_n_output_events_changed)]
         #[qproperty(i32, midi_n_input_notes_active, READ, NOTIFY=midi_n_input_notes_active_changed)]
         #[qproperty(i32, midi_n_output_notes_active, READ, NOTIFY=midi_n_output_notes_active_changed)]
+        #[qproperty(i32, n_ringbuffer_samples, READ, NOTIFY=n_ringbuffer_samples_changed)]
+        #[qproperty(f64, audio_gain, READ, NOTIFY=audio_gain_changed)]
         // Frontend -> Backend properties
         #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
         #[qproperty(QString, name_hint, READ, WRITE=set_name_hint, NOTIFY=name_hint_changed)]
@@ -46,8 +48,7 @@ pub mod ffi {
         #[qproperty(i32, output_connectability, READ, WRITE=set_output_connectability, NOTIFY=output_connectability_changed)]
         #[qproperty(bool, is_internal, READ, WRITE=set_is_internal, NOTIFY=is_internal_changed)]
         #[qproperty(QList_QVariant, internal_port_connections, READ, WRITE=set_internal_port_connections, NOTIFY=internal_port_connections_changed)]
-        #[qproperty(i32, n_ringbuffer_samples, READ, WRITE=set_n_ringbuffer_samples, NOTIFY=n_ringbuffer_samples_changed)]
-        #[qproperty(f64, audio_gain, READ, WRITE=set_audio_gain, NOTIFY=audio_gain_changed)]
+        #[qproperty(i32, min_n_ringbuffer_samples, READ, WRITE=set_min_n_ringbuffer_samples, NOTIFY=min_n_ringbuffer_samples_changed)]
         // Other properties
         type PortGui = super::PortGuiRust;
 
@@ -84,16 +85,22 @@ pub mod ffi {
         pub fn set_is_internal(self: Pin<&mut PortGui>, is_internal: bool);
 
         #[qinvokable]
+        pub fn set_min_n_ringbuffer_samples(self: Pin<&mut PortGui>, n_ringbuffer_samples: i32);
+
+        #[qinvokable]
         pub fn set_internal_port_connections(
             self: Pin<&mut PortGui>,
             internal_port_connections: QList_QVariant,
         );
 
         #[qinvokable]
-        pub fn set_n_ringbuffer_samples(self: Pin<&mut PortGui>, n_ringbuffer_samples: i32);
+        pub fn push_audio_gain(self: Pin<&mut PortGui>, audio_gain: f64);
 
         #[qinvokable]
-        pub fn set_audio_gain(self: Pin<&mut PortGui>, audio_gain: f64);
+        pub fn push_muted(self: Pin<&mut PortGui>, muted: bool);
+
+        #[qinvokable]
+        pub fn push_passthrough_muted(self: Pin<&mut PortGui>, muted: bool);
 
         #[qinvokable]
         pub fn dummy_queue_audio_data(self: Pin<&mut PortGui>, audio_data: QList_f64);
@@ -113,100 +120,105 @@ pub mod ffi {
         #[qinvokable]
         pub fn dummy_clear_queues(self: Pin<&mut PortGui>);
 
+        #[qinvokable]
+        pub unsafe fn backend_state_changed(
+            self: Pin<&mut PortGui>,
+            initialized: bool,
+            name: QString,
+            muted: bool,
+            passthrough_muted: bool,
+            audio_gain: f64,
+            audio_input_peak: f64,
+            audio_output_peak: f64,
+            midi_n_input_events: i32,
+            midi_n_output_events: i32,
+            midi_n_input_notes_active: i32,
+            midi_n_output_notes_active: i32,
+            n_ringbuffer_samples: i32,
+        );
+
         #[qsignal]
-        #[cxx_name = "backendChanged"]
         pub unsafe fn backend_changed(self: Pin<&mut PortGui>, backend: *mut QObject);
 
         #[qsignal]
-        #[cxx_name = "nameHintChanged"]
         pub unsafe fn name_hint_changed(self: Pin<&mut PortGui>, name_hint: QString);
 
         #[qsignal]
-        #[cxx_name = "inputConnectabilityChanged"]
         pub unsafe fn input_connectability_changed(
             self: Pin<&mut PortGui>,
             input_connectability: i32,
         );
 
         #[qsignal]
-        #[cxx_name = "outputConnectabilityChanged"]
         pub unsafe fn output_connectability_changed(
             self: Pin<&mut PortGui>,
             output_connectability: i32,
         );
 
         #[qsignal]
-        #[cxx_name = "isInternalChanged"]
         pub unsafe fn is_internal_changed(self: Pin<&mut PortGui>, is_internal: bool);
 
         #[qsignal]
-        #[cxx_name = "internalPortConnectionsChanged"]
         pub unsafe fn internal_port_connections_changed(
             self: Pin<&mut PortGui>,
             internal_port_connections: QList_QVariant,
         );
 
         #[qsignal]
-        #[cxx_name = "nRingbufferSamplesChanged"]
         pub unsafe fn n_ringbuffer_samples_changed(
             self: Pin<&mut PortGui>,
             n_ringbuffer_samples: i32,
         );
 
         #[qsignal]
-        #[cxx_name = "audioGainChanged"]
         pub unsafe fn audio_gain_changed(self: Pin<&mut PortGui>, audio_gain: f64);
 
         #[qsignal]
-        #[cxx_name = "initializedChanged"]
         pub unsafe fn initialized_changed(self: Pin<&mut PortGui>, initialized: bool);
 
         #[qsignal]
-        #[cxx_name = "nameChanged"]
         pub unsafe fn name_changed(self: Pin<&mut PortGui>, name: QString);
 
         #[qsignal]
-        #[cxx_name = "mutedChanged"]
         pub unsafe fn muted_changed(self: Pin<&mut PortGui>, muted: bool);
 
         #[qsignal]
-        #[cxx_name = "passthroughMutedChanged"]
         pub unsafe fn passthrough_muted_changed(self: Pin<&mut PortGui>, passthrough_muted: bool);
 
         #[qsignal]
-        #[cxx_name = "audioInputPeakChanged"]
         pub unsafe fn audio_input_peak_changed(self: Pin<&mut PortGui>, audio_input_peak: f64);
 
         #[qsignal]
-        #[cxx_name = "audioOutputPeakChanged"]
         pub unsafe fn audio_output_peak_changed(self: Pin<&mut PortGui>, audio_output_peak: f64);
 
         #[qsignal]
-        #[cxx_name = "midiNInputEventsChanged"]
         pub unsafe fn midi_n_input_events_changed(
             self: Pin<&mut PortGui>,
             midi_n_input_events: i32,
         );
 
         #[qsignal]
-        #[cxx_name = "midiNOutputEventsChanged"]
         pub unsafe fn midi_n_output_events_changed(
             self: Pin<&mut PortGui>,
             midi_n_output_events: i32,
         );
 
         #[qsignal]
-        #[cxx_name = "midiNInputNotesActiveChanged"]
         pub unsafe fn midi_n_input_notes_active_changed(
             self: Pin<&mut PortGui>,
             midi_n_input_notes_active: i32,
         );
 
         #[qsignal]
-        #[cxx_name = "midiNOutputNotesActiveChanged"]
         pub unsafe fn midi_n_output_notes_active_changed(
             self: Pin<&mut PortGui>,
             midi_n_output_notes_active: i32,
+        );
+
+        #[qsignal]
+        pub unsafe fn min_n_ringbuffer_samples_changed(
+            self: Pin<&mut PortGui>,
+            min_n_ringbuffer_samples: i32,
         );
 
         #[qsignal]
@@ -238,6 +250,47 @@ pub mod ffi {
 
         #[qsignal]
         pub unsafe fn backend_dummy_clear_queues(self: Pin<&mut PortGui>);
+
+        #[qsignal]
+        pub unsafe fn backend_set_backend(self: Pin<&mut PortGui>, backend: *mut QObject);
+
+        #[qsignal]
+        pub unsafe fn backend_set_name_hint(self: Pin<&mut PortGui>, name_hint: QString);
+
+        #[qsignal]
+        pub unsafe fn backend_set_input_connectability(
+            self: Pin<&mut PortGui>,
+            input_connectability: i32,
+        );
+
+        #[qsignal]
+        pub unsafe fn backend_set_output_connectability(
+            self: Pin<&mut PortGui>,
+            output_connectability: i32,
+        );
+
+        #[qsignal]
+        pub unsafe fn backend_set_is_internal(self: Pin<&mut PortGui>, is_internal: bool);
+
+        #[qsignal]
+        pub unsafe fn backend_set_internal_port_connections(
+            self: Pin<&mut PortGui>,
+            internal_port_connections: QList_QVariant,
+        );
+
+        #[qsignal]
+        pub unsafe fn backend_set_min_n_ringbuffer_samples(
+            self: Pin<&mut PortGui>,
+            min_n_ringbuffer_samples: i32,
+        );
+
+        #[qsignal]
+        pub unsafe fn backend_set_audio_gain(self: Pin<&mut PortGui>, gain: f64);
+        #[qsignal]
+        pub unsafe fn backend_set_muted(self: Pin<&mut PortGui>, muted: bool);
+        #[qsignal]
+        pub unsafe fn backend_set_passthrough_muted(self: Pin<&mut PortGui>, muted: bool);
+
     }
 
     unsafe extern "C++" {
@@ -248,12 +301,23 @@ pub mod ffi {
 
         #[rust_name = "qquickitem_from_ptr_port_gui"]
         unsafe fn qquickitemFromPtr(obj: *mut PortGui) -> *mut QQuickItem;
+
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
+        #[rust_name = "register_qml_type_port_gui"]
+        unsafe fn register_qml_type(
+            inference_example: *mut PortGui,
+            module_name: &mut String,
+            version_major: i64,
+            version_minor: i64,
+            type_name: &mut String,
+        );
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)> for PortGui {}
+    impl cxx_qt::Constructor<()> for PortGui {}
 }
 
-use cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
+use cxx_qt_lib_shoop::{qquickitem::IsQQuickItem, qsharedpointer_qobject::QSharedPointer_QObject};
 pub use ffi::PortGui;
 use ffi::*;
 
@@ -277,6 +341,10 @@ pub struct PortGuiRust {
     pub internal_port_connections: QList_QVariant,
     pub n_ringbuffer_samples: i32,
     pub audio_gain: f64,
+    pub min_n_ringbuffer_samples: i32,
+
+    // Other
+    pub backend_port_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
 }
 
 impl Default for PortGuiRust {
@@ -300,6 +368,8 @@ impl Default for PortGuiRust {
             internal_port_connections: QList_QVariant::default(),
             n_ringbuffer_samples: 0,
             audio_gain: 1.0,
+            backend_port_wrapper: cxx::UniquePtr::null(),
+            min_n_ringbuffer_samples: 0,
         }
     }
 }
@@ -335,6 +405,30 @@ impl cxx_qt::Constructor<(*mut QQuickItem,)> for PortGui {
     }
 
     fn initialize(self: std::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
+        PortGui::initialize_impl(self);
+    }
+}
+
+impl cxx_qt::Constructor<()> for PortGui {
+    type BaseArguments = (); // Will be passed to the base class constructor
+    type InitializeArguments = (); // Will be passed to the "initialize" function
+    type NewArguments = (); // Will be passed to the "new" function
+
+    fn route_arguments(
+        _args: (),
+    ) -> (
+        Self::NewArguments,
+        Self::BaseArguments,
+        Self::InitializeArguments,
+    ) {
+        ((), (), ())
+    }
+
+    fn new(_args: ()) -> PortGuiRust {
+        PortGuiRust::default()
+    }
+
+    fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
         PortGui::initialize_impl(self);
     }
 }

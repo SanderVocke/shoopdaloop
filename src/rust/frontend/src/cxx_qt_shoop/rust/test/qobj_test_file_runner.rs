@@ -193,7 +193,7 @@ Totals:
             {
                 let runner = self.as_ref().testcase_runner;
                 let results_variant =
-                    qobject_property_qvariant(&*runner, "testcase_results".to_string()).unwrap();
+                    qobject_property_qvariant(&*runner, "testcase_results").unwrap();
                 results = qvariant_as_qvariantmap(&results_variant).unwrap();
             }
 

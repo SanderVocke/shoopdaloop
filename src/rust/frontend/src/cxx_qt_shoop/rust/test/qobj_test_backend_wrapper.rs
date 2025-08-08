@@ -17,7 +17,7 @@ impl TestBackendWrapper {
     ) -> Result<(), cxx::Exception> {
         qobject::qobject_set_object_name(
             self.pin_mut_qobject_ptr(),
-            String::from("shoop_backend_wrapper"),
+            "shoop_backend_wrapper",
         )?;
         Ok(())
     }

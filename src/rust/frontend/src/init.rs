@@ -21,6 +21,7 @@ fn register_qml_types_and_singletons() {
     qobj_loop_gui::register_qml_type(&mdl, "LoopGui");
     qobj_backend_wrapper::register_qml_type(&mdl, "ShoopBackendWrapper");
     qobj_composite_loop_gui::register_qml_type(&mdl, "CompositeLoopGui");
+    qobj_port_gui::register_qml_type(&mdl, "PortGui");
 }
 
 fn register_metatypes() {}

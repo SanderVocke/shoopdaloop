@@ -333,14 +333,14 @@ Item {
         if (Array.isArray(root.audio_out_ports)) {
             root.audio_out_ports.forEach((p) => {
                 if (p) {
-                    p.set_muted(mute)
+                    p.push_muted(mute)
                 } else { logger.warn("Undefined audio out port") }
             })
         }
         if (Array.isArray(root.midi_out_ports)) {
             root.midi_out_ports.forEach((p) => {
                 if (p) {
-                    p.set_muted(mute)
+                    p.push_muted(mute)
                 } else { logger.warn("Undefined audio out port") }
             })
         }
@@ -352,26 +352,26 @@ Item {
         audio_in_ports
             .filter(p => is_dry(p.descriptor))
             .forEach((p) => {
-                p.set_passthrough_muted(logic.mute_drywet_input_passthrough)
+                p.push_passthrough_muted(logic.mute_drywet_input_passthrough)
             })
         audio_in_ports
             .filter(p => is_direct(p.descriptor))
             .forEach((p) => {
-                p.set_passthrough_muted(logic.mute_direct_passthrough)
+                p.push_passthrough_muted(logic.mute_direct_passthrough)
             })
         midi_in_ports
             .filter(p => is_direct(p.descriptor))
             .forEach((p) => {
-                p.set_passthrough_muted(logic.mute_direct_passthrough)
+                p.push_passthrough_muted(logic.mute_direct_passthrough)
             })
         midi_in_ports
             .filter(p => is_dry(p.descriptor))
             .forEach((p) => {
-                p.set_passthrough_muted(logic.mute_drywet_input_passthrough)
+                p.push_passthrough_muted(logic.mute_drywet_input_passthrough)
             })
         fx_out_ports
             .forEach((p) => {
-                p.set_passthrough_muted(logic.mute_drywet_output_passthrough)
+                p.push_passthrough_muted(logic.mute_drywet_output_passthrough)
             })
     }
     function push_fx_active() {

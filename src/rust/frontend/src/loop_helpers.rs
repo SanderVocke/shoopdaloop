@@ -30,7 +30,7 @@ pub fn get_backend_loop_handles_variant_list(
                     )?;
                     let backend_loop_handle : QVariant = invoke(
                         &mut *loop_qobj,
-                        "get_backend_loop_shared_ptr()".to_string(),
+                        "get_backend_loop_shared_ptr()",
                         connection_types::DIRECT_CONNECTION,
                         &(),
                     )?;
@@ -69,7 +69,7 @@ pub fn transition_gui_loops(
         invoke(
             &mut *call_on,
             "transition_multiple(QList<QVariant>,::std::int32_t,::std::int32_t,::std::int32_t)"
-                .to_string(),
+                ,
             connection_types::DIRECT_CONNECTION,
             &(
                 list,
@@ -107,7 +107,7 @@ pub fn transition_backend_loops(
                 // Transition individually
                 invoke(
                     &mut *l,
-                    "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                    "transition(::std::int32_t,::std::int32_t,::std::int32_t)",
                     connection_types::DIRECT_CONNECTION,
                     &(to_mode, cycles_delay, sync_at),
                 )?;
@@ -122,7 +122,7 @@ pub fn transition_backend_loops(
             invoke(
                 &mut *first,
                 "transition_multiple_backend_in_unison(QList<QVariant>,::std::int32_t,::std::int32_t,::std::int32_t)"
-                    .to_string(),
+                    ,
                 connection_types::DIRECT_CONNECTION,
                 &(
                     unison_transition_loops,

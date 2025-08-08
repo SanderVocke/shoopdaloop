@@ -21,7 +21,7 @@ use cxx_qt::{ConnectionType, CxxQtType};
 unsafe extern "C" fn register_process_thread() {
     static ONCE_LOCK: OnceLock<()> = OnceLock::new();
     ONCE_LOCK.get_or_init(|| {
-        crashhandling::registered_threads::register_thread("audio".to_string());
+        crashhandling::registered_threads::register_thread("audio");
     });
 }
 
@@ -146,9 +146,9 @@ impl BackendWrapper {
 
             connect::connect_or_report(
                 &*engine_update_thread_obj,
-                "update()".to_string(),
+                "update()",
                 &*obj_qobject,
-                String::from("update_on_other_thread()".to_string()),
+                "update_on_other_thread()",
                 connection_types::DIRECT_CONNECTION,
             );
         }

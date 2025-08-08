@@ -106,16 +106,16 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                     // Connect to application slots
                     connect_or_report(
                         &*testrunner_qobj,
-                        "reload_qml(QString)".to_string(),
+                        "reload_qml(QString)",
                         &*app_qobj,
-                        "reload_qml(QString)".to_string(),
+                        "reload_qml(QString)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         &*testrunner_qobj,
-                        "unload_qml()".to_string(),
+                        "unload_qml()",
                         &*app_qobj,
-                        "unload_qml()".to_string(),
+                        "unload_qml()",
                         connection_types::QUEUED_CONNECTION,
                     );
 
@@ -164,9 +164,9 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                             let qml_engine_qobj = qml_engine.as_mut().pin_mut_qobject_ptr();
                             connect_or_report(
                                 &*qml_engine_qobj,
-                                "destroyed(QObject*)".to_string(),
+                                "destroyed(QObject*)",
                                 &*runner_qobj,
-                                "on_qml_engine_destroyed()".to_string(),
+                                "on_qml_engine_destroyed()",
                                 connection_types::QUEUED_CONNECTION,
                             );
                         }
@@ -216,9 +216,9 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                             let testrunner_qobj = testrunner.as_mut().pin_mut_qobject_ptr();
                             connect_or_report(
                                 &*testrunner_qobj,
-                                "done(::std::int32_t)".to_string(),
+                                "done(::std::int32_t)",
                                 &*app_qobj,
-                                "rust_exit(::std::int32_t)".to_string(),
+                                "rust_exit(::std::int32_t)",
                                 connection_types::QUEUED_CONNECTION,
                             );
                         }

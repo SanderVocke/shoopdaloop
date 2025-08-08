@@ -11,6 +11,7 @@ use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QString, QVariant};
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
+use cxx_qt_lib_shoop::qobject;
 use cxx_qt_lib_shoop::qobject::qobject_property_bool;
 use cxx_qt_lib_shoop::qobject::FromQObject;
 use cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
@@ -89,9 +90,9 @@ impl LoopBackend {
             unsafe {
                 connect_or_report(
                     &*backend,
-                    "readyChanged()".to_string(),
+                    "readyChanged()",
                     self.as_ref().get_ref(),
-                    "maybe_initialize_backend()".to_string(),
+                    "maybe_initialize_backend()",
                     connection_types::QUEUED_CONNECTION,
                 );
             }
@@ -122,7 +123,7 @@ impl LoopBackend {
             unsafe {
                 initialize_condition = !self.get_initialized()
                     && self.as_ref().backend != std::ptr::null_mut()
-                    && qobject_property_bool(self.backend.as_ref().unwrap(), "ready".to_string())
+                    && qobject::qobject_property_bool(self.backend.as_ref().unwrap(), "ready")
                         .unwrap_or(false)
                     && self.as_ref().backend_loop.is_none();
             }

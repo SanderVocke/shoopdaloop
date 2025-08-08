@@ -62,9 +62,9 @@ impl AutoConnect {
             finder.as_mut().set_parent_item(obj_qquickitem);
             cxx_qt_lib_shoop::connect::connect(
                 finder_qobj.as_mut().unwrap(),
-                String::from("found_item_with_true_checked_property"),
+                "found_item_with_true_checked_property",
                 obj_qobject.as_mut().unwrap(),
-                String::from("update()"),
+                "update()",
                 cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION,
             )?;
             finder.as_mut().rescan();
@@ -78,7 +78,7 @@ impl AutoConnect {
         timer.as_mut().set_single_shot(false);
         timer
             .as_mut()
-            .connect_timeout(obj_qobject, String::from("update()"))?;
+            .connect_timeout(obj_qobject, "update()")?;
         timer.as_mut().start();
 
         Ok(())
@@ -115,7 +115,7 @@ impl AutoConnect {
         unsafe {
             let q_connections_state: QMap_QString_QVariant = invokable::invoke(
                 internal_port.as_mut().unwrap(),
-                "determine_connections_state()".to_string(),
+                "determine_connections_state()",
                 invokable::DIRECT_CONNECTION,
                 &(),
             )?;
@@ -124,21 +124,21 @@ impl AutoConnect {
             debug!("Got connections state: {:?}", connections_state);
 
             let my_data_type: PortDataType =
-                qobject::qobject_property_int(&*internal_port, String::from("data_type"))
+                qobject::qobject_property_int(&*internal_port, "data_type")
                     .map_err(|err| anyhow::anyhow!(err))
                     .and_then(|o| PortDataType::try_from(o))?;
             let my_direction: PortDirection =
-                qobject::qobject_property_int(&*internal_port, String::from("direction"))
+                qobject::qobject_property_int(&*internal_port, "direction")
                     .map_err(|err| anyhow::anyhow!(err))
                     .and_then(|o| PortDirection::try_from(o))?;
             let my_name: String =
-                qobject::qobject_property_string(&*internal_port, String::from("name"))
+                qobject::qobject_property_string(&*internal_port, "name")
                     .and_then(|o| Ok(o.to_string()))?;
             let my_port_initialized: bool =
-                qobject::qobject_property_bool(&*internal_port, String::from("initialized"))?;
+                qobject::qobject_property_bool(&*internal_port, "initialized")?;
             let q_external_ports: QList_QVariant = invokable::invoke(
                 backend.as_mut().unwrap(),
-                "find_external_ports(QString,int,int)".to_string(),
+                "find_external_ports(QString,int,int)",
                 invokable::DIRECT_CONNECTION,
                 &(
                     self.as_mut().connect_to_port_regex().clone(),
@@ -168,7 +168,7 @@ impl AutoConnect {
                     debug!("{} auto-connecting to {}", my_name, candidate.name);
                     let result: Result<bool, _> = invokable::invoke(
                         internal_port.as_mut().unwrap(),
-                        "connect_external_port(QString)".to_string(),
+                        "connect_external_port(QString)",
                         invokable::DIRECT_CONNECTION,
                         &(QString::from(&candidate.name)),
                     );

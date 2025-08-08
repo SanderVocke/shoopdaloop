@@ -49,14 +49,14 @@ impl DummyProcessHelper {
                     debug!("requesting {} frames", samples_per_iter);
                     invokable::invoke::<_, (), _>(
                         backend_thread_ptr.as_mut().unwrap(),
-                        "wait_process()".to_string(),
+                        "wait_process()",
                         invokable::DIRECT_CONNECTION,
                         &(),
                     )
                     .unwrap();
                     invokable::invoke(
                         backend_thread_ptr.as_mut().unwrap(),
-                        "dummy_request_controlled_frames(::std::int32_t)".to_string(),
+                        "dummy_request_controlled_frames(::std::int32_t)",
                         invokable::DIRECT_CONNECTION,
                         &(samples_per_iter),
                     )
@@ -69,7 +69,7 @@ impl DummyProcessHelper {
             unsafe {
                 invokable::invoke::<_, (), _>(
                     backend_thread_ptr.as_mut().unwrap(),
-                    "wait_process()".to_string(),
+                    "wait_process()",
                     invokable::DIRECT_CONNECTION,
                     &(),
                 )
@@ -77,7 +77,7 @@ impl DummyProcessHelper {
                 debug!("Invoking finish");
                 let _dummy: Result<(), _> = invokable::invoke(
                     self_thread_ptr.as_mut().unwrap(),
-                    "finish()".to_string(),
+                    "finish()",
                     invokable::DIRECT_CONNECTION,
                     &(),
                 );

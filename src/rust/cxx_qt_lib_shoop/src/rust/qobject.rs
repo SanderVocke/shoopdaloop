@@ -169,41 +169,41 @@ pub unsafe fn qobject_class_name(obj: &QObject) -> Result<&str, cxx::Exception> 
 pub unsafe fn qobject_meta_type_name(obj: &QObject) -> Result<String, cxx::Exception> {
     ffi::qobject_meta_type_name(obj)
 }
-pub unsafe fn qobject_property_bool(obj: &QObject, name: String) -> Result<bool, cxx::Exception> {
-    ffi::qobject_property_bool(obj, name)
+pub unsafe fn qobject_property_bool(obj: &QObject, name: &str) -> Result<bool, cxx::Exception> {
+    ffi::qobject_property_bool(obj, name.to_string())
 }
-pub unsafe fn qobject_property_int(obj: &QObject, name: String) -> Result<i32, cxx::Exception> {
-    ffi::qobject_property_int(obj, name)
+pub unsafe fn qobject_property_int(obj: &QObject, name: &str) -> Result<i32, cxx::Exception> {
+    ffi::qobject_property_int(obj, name.to_string())
 }
-pub unsafe fn qobject_property_float(obj: &QObject, name: String) -> Result<f32, cxx::Exception> {
-    ffi::qobject_property_float(obj, name)
+pub unsafe fn qobject_property_float(obj: &QObject, name: &str) -> Result<f32, cxx::Exception> {
+    ffi::qobject_property_float(obj, name.to_string())
 }
 pub unsafe fn qobject_property_qobject(
     obj: &QObject,
-    name: String,
+    name: &str,
 ) -> Result<*mut QObject, cxx::Exception> {
-    ffi::qobject_property_qobject(obj, name)
+    ffi::qobject_property_qobject(obj, name.to_string())
 }
 pub unsafe fn qobject_property_string(
     obj: &QObject,
-    name: String,
+    name: &str,
 ) -> Result<QString, cxx::Exception> {
-    ffi::qobject_property_string(obj, name)
+    ffi::qobject_property_string(obj, name.to_string())
 }
 pub unsafe fn qobject_property_qvariant(
     obj: &QObject,
-    name: String,
+    name: &str,
 ) -> Result<QVariant, cxx::Exception> {
-    ffi::qobject_property_qvariant(obj, name)
+    ffi::qobject_property_qvariant(obj, name.to_string())
 }
 pub unsafe fn qobject_object_name(obj: &QObject) -> Result<String, cxx::Exception> {
     ffi::qobject_object_name(obj)
 }
 pub unsafe fn qobject_set_object_name(
     obj: *mut QObject,
-    name: String,
+    name: &str,
 ) -> Result<(), cxx::Exception> {
-    ffi::qobject_set_object_name(obj, name)
+    ffi::qobject_set_object_name(obj, name.to_string())
 }
 pub unsafe fn qobject_move_to_thread(
     obj: *mut QObject,
@@ -213,44 +213,44 @@ pub unsafe fn qobject_move_to_thread(
 }
 pub unsafe fn qobject_set_property_int(
     obj: *mut QObject,
-    property: String,
+    property: &str,
     value: &i32,
 ) -> Result<(), cxx::Exception> {
-    ffi::qobject_set_property_int(obj, property, value)
+    ffi::qobject_set_property_int(obj, property.to_string(), value)
 }
 pub unsafe fn qobject_set_property_bool(
     obj: *mut QObject,
-    property: String,
+    property: &str,
     value: &bool,
 ) -> Result<(), cxx::Exception> {
-    ffi::qobject_set_property_bool(obj, property, value)
+    ffi::qobject_set_property_bool(obj, property.to_string(), value)
 }
 pub unsafe fn qobject_find_child(
     obj: *mut QObject,
-    name: String,
+    name: &str,
 ) -> Result<*mut QObject, cxx::Exception> {
-    ffi::qobject_find_child(obj, name)
+    ffi::qobject_find_child(obj, name.to_string())
 }
 pub unsafe fn qobject_register_qml_singleton_instance(
     instance: *mut QObject,
-    module_name: &mut String,
+    module_name: &str,
     version_major: i64,
     version_minor: i64,
-    type_name: &mut String,
+    type_name: &str,
 ) -> Result<(), cxx::Exception> {
     ffi::qobject_register_qml_singleton_instance(
         instance,
-        module_name,
+        &mut module_name.to_string(),
         version_major,
         version_minor,
-        type_name,
+        &mut type_name.to_string(),
     )
 }
 pub unsafe fn qobject_has_property(
     obj: &QObject,
-    property: String,
+    property: &str,
 ) -> Result<bool, cxx::Exception> {
-    ffi::qobject_has_property(obj, property)
+    ffi::qobject_has_property(obj, property.to_string())
 }
 
 pub trait IsQObject: AsQObject {
@@ -269,22 +269,22 @@ pub trait IsQObject: AsQObject {
         qobject_class_name(obj)
     }
 
-    unsafe fn property_bool(self: &Self, name: String) -> Result<bool, cxx::Exception> {
+    unsafe fn property_bool(self: &Self, name: &str) -> Result<bool, cxx::Exception> {
         let obj = self.qobject_ref();
         qobject_property_bool(obj, name)
     }
 
-    unsafe fn property_int(self: &Self, name: String) -> Result<i32, cxx::Exception> {
+    unsafe fn property_int(self: &Self, name: &str) -> Result<i32, cxx::Exception> {
         let obj = self.qobject_ref();
         qobject_property_int(obj, name)
     }
 
-    unsafe fn property_string(self: &Self, name: String) -> Result<QString, cxx::Exception> {
+    unsafe fn property_string(self: &Self, name: &str) -> Result<QString, cxx::Exception> {
         let obj = self.qobject_ref();
         qobject_property_string(obj, name)
     }
 
-    unsafe fn property_qvariant(self: &Self, name: String) -> Result<QVariant, cxx::Exception> {
+    unsafe fn property_qvariant(self: &Self, name: &str) -> Result<QVariant, cxx::Exception> {
         let obj = self.qobject_ref();
         qobject_property_qvariant(obj, name)
     }
@@ -294,14 +294,14 @@ pub trait IsQObject: AsQObject {
         qobject_object_name(obj)
     }
 
-    unsafe fn set_object_name(self: Pin<&mut Self>, name: String) -> Result<(), cxx::Exception> {
+    unsafe fn set_object_name(self: Pin<&mut Self>, name: &str) -> Result<(), cxx::Exception> {
         let self_item = self.pin_mut_qobject_ptr();
         qobject_set_object_name(self_item, name)
     }
 
     unsafe fn set_property_int(
         self: Pin<&mut Self>,
-        property: String,
+        property: &str,
         value: &i32,
     ) -> Result<(), cxx::Exception> {
         let self_item = self.pin_mut_qobject_ptr();
@@ -310,7 +310,7 @@ pub trait IsQObject: AsQObject {
 
     unsafe fn set_property_bool(
         self: Pin<&mut Self>,
-        property: String,
+        property: &str,
         value: &bool,
     ) -> Result<(), cxx::Exception> {
         let self_item = self.pin_mut_qobject_ptr();
@@ -319,7 +319,7 @@ pub trait IsQObject: AsQObject {
 
     unsafe fn find_child(
         self: Pin<&mut Self>,
-        name: String,
+        name: &str,
     ) -> Result<*mut QObject, cxx::Exception> {
         let self_item = self.pin_mut_qobject_ptr();
         qobject_find_child(self_item, name)

@@ -14,8 +14,7 @@ use cxx_qt_lib_shoop::{
     connection_types,
     invokable::invoke,
     qobject::{
-        ffi::{qobject_property_int, qobject_property_qobject, qobject_property_string},
-        qobject_has_property, AsQObject,
+        self, ffi::{qobject_property_int, qobject_property_qobject, qobject_property_string}, qobject_has_property, AsQObject
     },
     qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
@@ -56,7 +55,7 @@ macro_rules! error {
 
 fn get_loop_iid(l: &*mut QObject) -> String {
     unsafe {
-        match qobject_property_string(&**l, "instance_identifier".to_string()) {
+        match qobject::qobject_property_string(&**l, "instance_identifier") {
             Ok(iid) => {
                 return iid.to_string();
             }
@@ -161,12 +160,12 @@ impl CompositeLoopBackend {
                 let mut n_cycles = 1;
 
                 unsafe {
-                    if qobject_has_property(&**loop_obj, "sync_source".to_string())? {
+                    if qobject_has_property(&**loop_obj, "sync_source")? {
                         let sync_source =
-                            qobject_property_qobject(&**loop_obj, "sync_source".to_string())?;
-                        let loop_length = qobject_property_int(&**loop_obj, "length".to_string())?;
+                            qobject::qobject_property_qobject(&**loop_obj, "sync_source")?;
+                        let loop_length = qobject::qobject_property_int(&**loop_obj, "length")?;
                         let sync_source_length =
-                            qobject_property_int(&*sync_source, "length".to_string())?;
+                            qobject::qobject_property_int(&*sync_source, "length")?;
                         n_cycles = (loop_length as f64 / sync_source_length as f64).ceil() as i32;
                     }
 
@@ -181,7 +180,7 @@ impl CompositeLoopBackend {
                     let sync_to_immediate_cycle = sync_to_immediate_cycle.unwrap_or(-1);
                     invoke(
                         &mut **loop_obj,
-                        "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        "transition(::std::int32_t,::std::int32_t,::std::int32_t)",
                         connection_types::DIRECT_CONNECTION,
                         &(*mode as isize as i32, -1 as i32, sync_to_immediate_cycle),
                     )?;
@@ -408,7 +407,7 @@ impl CompositeLoopBackend {
                     // We will instead do that transition after all grabs are done.
                     invoke(
                         &mut *g.loop_obj,
-                        "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)".to_string(),
+                        "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)",
                         connection_types::DIRECT_CONNECTION,
                         &(
                             QVariant::from(&g.reverse_start),
@@ -466,23 +465,23 @@ impl CompositeLoopBackend {
             if !rust_mut.sync_source.is_null() {
                 connect_or_report(
                     &*sync_source,
-                    "positionChanged(::std::int32_t,::std::int32_t)".to_string(),
+                    "positionChanged(::std::int32_t,::std::int32_t)",
                     &*self_qobj,
-                    "update_sync_position()".to_string(),
+                    "update_sync_position()",
                     connection_types::DIRECT_CONNECTION,
                 );
                 connect_or_report(
                     &*sync_source,
-                    "lengthChanged(::std::int32_t,::std::int32_t)".to_string(),
+                    "lengthChanged(::std::int32_t,::std::int32_t)",
                     &*self_qobj,
-                    "update_sync_length()".to_string(),
+                    "update_sync_length()",
                     connection_types::DIRECT_CONNECTION,
                 );
                 connect_or_report(
                     &*sync_source,
-                    "cycled(::std::int32_t)".to_string(),
+                    "cycled(::std::int32_t)",
                     &*self_qobj,
-                    "handle_sync_loop_trigger(::std::int32_t)".to_string(),
+                    "handle_sync_loop_trigger(::std::int32_t)",
                     connection_types::DIRECT_CONNECTION,
                 );
                 self.as_mut().update_sync_position();
@@ -497,7 +496,7 @@ impl CompositeLoopBackend {
         let mut v = 0;
         unsafe {
             if !self.sync_source.is_null() {
-                match qobject_property_int(&*self.sync_source, "position".to_string()) {
+                match qobject::qobject_property_int(&*self.sync_source, "position") {
                     Ok(pos) => {
                         v = pos;
                     }
@@ -523,7 +522,7 @@ impl CompositeLoopBackend {
         let mut v = 0;
         unsafe {
             if !self.sync_source.is_null() {
-                match qobject_property_int(&*self.sync_source, "length".to_string()) {
+                match qobject::qobject_property_int(&*self.sync_source, "length") {
                     Ok(l) => {
                         v = l;
                     }
@@ -571,7 +570,7 @@ impl CompositeLoopBackend {
                 for loop_obj in self.as_mut().all_loops().iter() {
                     invoke::<QObject, (), i32>(
                         &mut **loop_obj,
-                        "dependent_will_handle_sync_loop_cycle(::std::int32_t)".to_string(),
+                        "dependent_will_handle_sync_loop_cycle(::std::int32_t)",
                         connection_types::DIRECT_CONNECTION,
                         &(cycle_nr),
                     )?;
@@ -792,7 +791,7 @@ impl CompositeLoopBackend {
                         trace!(self, "Queue transition {loop_iid} to {mode:?}");
                         invoke(
                             &mut *loop_obj,
-                            "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                            "transition(::std::int32_t,::std::int32_t,::std::int32_t)",
                             connection_types::QUEUED_CONNECTION,
                             &(mode as isize as i32, 0, -1),
                         )?;

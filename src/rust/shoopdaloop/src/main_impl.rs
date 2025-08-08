@@ -50,7 +50,7 @@ pub fn main() {
     let args: Vec<String> = std::env::args().collect();
     crashhandling::set_crash_json_extra("cmdline", serde_json::json!(args.join(" ")));
     crashhandling::set_crash_json_tag("shoop_phase", "startup".into());
-    crashhandling::registered_threads::register_thread("gui".to_string());
+    crashhandling::registered_threads::register_thread("gui");
 
     // For normalizing Windows paths
     let normalize_path = |path: &Path| -> PathBuf {

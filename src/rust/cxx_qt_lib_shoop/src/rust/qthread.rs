@@ -81,8 +81,8 @@ impl QThread {
     pub fn connect_started(
         self: Pin<&mut Self>,
         receiver: *mut QObject,
-        slot: String,
+        slot: &str,
     ) -> Result<(), cxx::Exception> {
-        unsafe { ffi::qthread_connect_started(self, receiver, slot) }
+        unsafe { ffi::qthread_connect_started(self, receiver, slot.to_string()) }
     }
 }
