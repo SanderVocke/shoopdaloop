@@ -11,6 +11,7 @@ use cxx_qt_lib::{QList, QMap};
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Port");
@@ -34,7 +35,7 @@ macro_rules! error {
 }
 
 impl PortGui {
-    pub fn initialize_impl(self: Pin<&mut PortGui>) {
+    pub fn initialize_impl(mut self: Pin<&mut PortGui>) {
         debug!(self, "Initializing");
 
         unsafe {
@@ -184,6 +185,27 @@ impl PortGui {
                         "push_passthrough_muted(bool)",
                         connection_types::QUEUED_CONNECTION,
                     );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_is_midi(bool)",
+                        backend_ref,
+                        "set_is_midi(bool)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_fx_chain(QObject*)",
+                        backend_ref,
+                        "set_fx_chain(QObject*)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_fx_chain_port_idx(::std::int32_t)",
+                        backend_ref,
+                        "set_fx_chain_port_idx(::std::int32_t)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
                 }
                 {
                     // Connections: backend object -> GUI
@@ -195,6 +217,10 @@ impl PortGui {
                         connection_types::QUEUED_CONNECTION
                     );
                 }
+
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.backend_port_wrapper =
+                    QSharedPointer_QObject::from_ptr_delete_later(backend_port_qobj).unwrap();
             }
         }
     }
@@ -299,7 +325,7 @@ impl PortGui {
             }
         }
         if n_ringbuffer_samples != self.n_ringbuffer_samples {
-            debug!(self, "n ringbuffer samples -> {n_ringbuffer_samples}");
+            trace!(self, "n ringbuffer samples -> {n_ringbuffer_samples}");
             self.as_mut().rust_mut().n_ringbuffer_samples = n_ringbuffer_samples;
             unsafe {
                 self.as_mut()
@@ -339,7 +365,7 @@ impl PortGui {
             unsafe {
                 Ok(invokable::invoke(
                     &mut *backend_wrapper,
-                    "get_connections_state",
+                    "get_connections_state()",
                     invokable::BLOCKING_QUEUED_CONNECTION,
                     &(),
                 )?)
@@ -380,34 +406,38 @@ impl PortGui {
     }
 
     pub unsafe fn set_backend(mut self: Pin<&mut PortGui>, backend: *mut QObject) {
+        self.as_mut().backend_set_backend(backend);
         if backend != self.backend {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.backend = backend;
             unsafe {
-                self.as_mut().backend_set_backend(backend);
                 self.as_mut().backend_changed(backend);
             }
         }
     }
 
     pub fn set_name_hint(mut self: Pin<&mut PortGui>, name_hint: QString) {
+        unsafe {
+            self.as_mut().backend_set_name_hint(name_hint.clone());
+        }
         if name_hint != self.name_hint {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.name_hint = name_hint.clone();
             unsafe {
-                self.as_mut().backend_set_name_hint(name_hint.clone());
                 self.as_mut().name_hint_changed(name_hint);
             }
         }
     }
 
     pub fn set_input_connectability(mut self: Pin<&mut PortGui>, input_connectability: i32) {
+        unsafe {
+            self.as_mut()
+                .backend_set_input_connectability(input_connectability);
+        }
         if input_connectability != self.input_connectability {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.input_connectability = input_connectability;
             unsafe {
-                self.as_mut()
-                    .backend_set_input_connectability(input_connectability);
                 self.as_mut()
                     .input_connectability_changed(input_connectability);
             }
@@ -415,12 +445,14 @@ impl PortGui {
     }
 
     pub fn set_output_connectability(mut self: Pin<&mut PortGui>, output_connectability: i32) {
+        unsafe {
+            self.as_mut()
+                .backend_set_output_connectability(output_connectability);
+        }
         if output_connectability != self.output_connectability {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.output_connectability = output_connectability;
             unsafe {
-                self.as_mut()
-                    .backend_set_output_connectability(output_connectability);
                 self.as_mut()
                     .output_connectability_changed(output_connectability);
             }
@@ -428,12 +460,52 @@ impl PortGui {
     }
 
     pub fn set_is_internal(mut self: Pin<&mut PortGui>, is_internal: bool) {
+        unsafe { self.as_mut().backend_set_is_internal(is_internal); }
         if is_internal != self.is_internal {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.is_internal = is_internal;
             unsafe {
-                self.as_mut().backend_set_is_internal(is_internal);
                 self.as_mut().is_internal_changed(is_internal);
+            }
+        }
+    }
+
+    pub unsafe fn set_is_midi(mut self: Pin<&mut PortGui>, is_midi: bool) {
+        unsafe {
+            self.as_mut().backend_set_is_midi(is_midi);
+        }
+        if is_midi != self.is_midi {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.is_midi = is_midi;
+            unsafe {
+                self.as_mut().is_midi_changed(is_midi);
+            }
+        }
+    }
+
+    pub unsafe fn set_fx_chain(mut self: Pin<&mut PortGui>, fx_chain: *mut QObject) {
+        unsafe {
+            self.as_mut().backend_set_fx_chain(fx_chain);
+        }
+        if fx_chain != self.maybe_fx_chain {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.maybe_fx_chain = fx_chain;
+            unsafe {
+                self.as_mut().fx_chain_changed(fx_chain);
+            }
+        }
+    }
+
+    pub unsafe fn set_fx_chain_port_idx(mut self: Pin<&mut PortGui>, fx_chain_port_idx: i32) {
+        unsafe {
+            self.as_mut()
+                .backend_set_fx_chain_port_idx(fx_chain_port_idx);
+        }
+        if fx_chain_port_idx != self.fx_chain_port_idx {
+            let mut rust_mut = self.as_mut().rust_mut();
+            rust_mut.fx_chain_port_idx = fx_chain_port_idx;
+            unsafe {
+                self.as_mut().fx_chain_port_idx_changed(fx_chain_port_idx);
             }
         }
     }
@@ -442,12 +514,14 @@ impl PortGui {
         mut self: Pin<&mut PortGui>,
         internal_port_connections: QList_QVariant,
     ) {
+        unsafe {
+            self.as_mut()
+                .backend_set_internal_port_connections(internal_port_connections.clone());
+        }
         if internal_port_connections != self.internal_port_connections {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.internal_port_connections = internal_port_connections.clone();
             unsafe {
-                self.as_mut()
-                    .backend_set_internal_port_connections(internal_port_connections.clone());
                 self.as_mut()
                     .internal_port_connections_changed(internal_port_connections);
             }
@@ -473,12 +547,14 @@ impl PortGui {
     }
 
     pub fn set_min_n_ringbuffer_samples(mut self: Pin<&mut PortGui>, n_ringbuffer_samples: i32) {
+        unsafe {
+            self.as_mut()
+                .backend_set_min_n_ringbuffer_samples(n_ringbuffer_samples);
+        }
         if n_ringbuffer_samples != self.min_n_ringbuffer_samples {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.min_n_ringbuffer_samples = n_ringbuffer_samples;
             unsafe {
-                self.as_mut()
-                    .backend_set_min_n_ringbuffer_samples(n_ringbuffer_samples);
                 self.as_mut()
                     .min_n_ringbuffer_samples_changed(n_ringbuffer_samples);
             }

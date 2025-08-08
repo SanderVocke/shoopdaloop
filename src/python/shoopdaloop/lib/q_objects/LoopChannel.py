@@ -19,6 +19,7 @@ from ..backend_wrappers import *
 from ..logging import Logger
 
 from shoop_py_backend import ChannelMode, PortConnectabilityKind
+from shoop_rust import shoop_rust_connect_audio_channel_to_port, shoop_rust_connect_midi_channel_to_port
 
 import traceback
 
@@ -40,6 +41,7 @@ class LoopChannel(ShoopQQuickItem):
         self._played_back_sample = self._new_played_back_sample = None
         self._n_pending_updates = 0
         self.__logger = Logger('Frontend.LoopChannel')
+        self._is_midi = False
 
         self._signal_sender = ThreadUnsafeSignalEmitter()
         self._signal_sender.signal.connect(self.updateOnGuiThread, Qt.QueuedConnection)
@@ -202,10 +204,10 @@ class LoopChannel(ShoopQQuickItem):
     def ports(self, p):
         self.__logger.debug(lambda: 'ports -> {}'.format(p))
         for port in self._connected_ports:
-            if p and port and port.isValid() and not port in p:
+            if p and port and not port in p:
                 self.disconnect(port)
         for port in p:
-            if port and port.isValid() and not port in self._connected_ports:
+            if port and not port in self._connected_ports:
                 self.connect_port(port)
         self._ports = p
     
@@ -228,40 +230,41 @@ class LoopChannel(ShoopQQuickItem):
     @ShoopSlot('QObject*')
     def connect_port(self, port):
         self.__logger.debug(lambda: f'Connect port {port}')
-        if not port.isValid():
-            return
         if not self._backend_obj:
             self.__logger.debug(lambda: 'Defer connect to port')
             self.initializedChanged.connect(lambda: self.connect_port(port))
-        elif not port.initialized:
+        elif not port.property('initialized'):
             self.__logger.debug(lambda: 'Defer connect to port')
-            port.initializedChanged.connect(lambda: self.connect_port(port))
+            QObject.connect(port, SIGNAL("initialized_changed(bool)"), lambda: self.connect_port(port))
         elif port not in self._connected_ports:
             self.__logger.debug(lambda: 'Connect to port')
-            backend_channel = self._backend_obj
-            backend_port = port.get_backend_obj()
-            if not (port.input_connectability & int(PortConnectabilityKind.Internal)):
-                backend_channel.connect_input(backend_port)
+            is_input = not (port.property('input_connectability') & int(PortConnectabilityKind.Internal))
+            from shiboken6 import getCppPointer
+            port_ptr = getCppPointer(port)[0]
+            if self._is_midi:
+                shoop_rust_connect_midi_channel_to_port(self._backend_obj, is_input, False, port_ptr)
             else:
-                backend_channel.connect_output(backend_port)
+                shoop_rust_connect_audio_channel_to_port(self._backend_obj, is_input, False, port_ptr)
             self._connected_ports.append(port)
             self.connectedPortsChanged.emit(self._connected_ports)
     
     @ShoopSlot('QObject*')
     def disconnect(self, port):
-        if not port.isValid():
-            return
         if not self._backend_obj:
             self.__logger.debug(lambda: 'Defer disconnect from port')
             self.initializedChanged.connect(lambda: self.disconnect(port))
-        elif not port.initialized:
+        elif not port.property('initialized'):
             self.__logger.debug(lambda: 'Defer disconnect from port')
-            port.initializedChanged.connect(lambda: self.disconnect(port))
+            QObject.connect(port, SIGNAL("initialized_changed(bool)"), lambda: self.connect_port(port))
         elif port in self._connected_ports:
             self.__logger.debug(lambda: 'Disconnect from port')
-            backend_channel = self._backend_obj
-            backend_port = port.get_backend_obj()
-            backend_channel.disconnect(backend_port)
+            is_input = not (port.property('input_connectability') & int(PortConnectabilityKind.Internal))
+            from shiboken6 import getCppPointer
+            port_ptr = getCppPointer(port)[0]
+            if self._is_midi:
+                shoop_rust_connect_midi_channel_to_port(self._backend_obj, is_input, True, port_ptr)
+            else:
+                shoop_rust_connect_audio_channel_to_port(self._backend_obj, is_input, True, port_ptr)
             self._connected_ports.remove(port)
             self.connectedPortsChanged.emit(self._connected_ports)
 

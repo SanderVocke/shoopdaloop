@@ -30,6 +30,7 @@ class LoopAudioChannel(LoopChannel):
         QObject.connect(self._backend, SIGNAL("updated_on_backend_thread()"), self, SLOT("updateOnOtherThread()"), Qt.DirectConnection)
 
     def maybe_initialize(self):
+        self._is_midi = False
         if self._backend and self._backend.property('ready') and self._loop and self._loop.property("initialized") and not self._backend_obj:
             from shoop_rust import shoop_rust_add_loop_audio_channel
             from shiboken6 import getCppPointer

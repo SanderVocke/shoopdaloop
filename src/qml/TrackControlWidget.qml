@@ -267,7 +267,7 @@ Item {
         convert_gain.dB = gain
         var v = convert_gain.linear * gain_factor
         logger.trace("Pushing gain " + v + " to " + target.obj_id)
-        if (target && target.gain != v) { target.set_gain(v) }
+        if (target && target.gain != v) { target.push_audio_gain(v) }
     }
     function toggle_muted() { mute = !mute }
     function toggle_monitor() { monitor = !monitor }
@@ -428,7 +428,7 @@ Item {
                     id: output_peak_meter_l
                     max_dt: 0.1
 
-                    input: root.audio_out_ports.length > 0 ? root.audio_out_ports[0].input_peak : 0.0
+                    input: root.audio_out_ports.length > 0 ? root.audio_out_ports[0].audio_input_peak : 0.0
                 }
 
                 background: Rectangle {
@@ -470,7 +470,7 @@ Item {
                     id: output_peak_meter_r
                     max_dt: 0.1
 
-                    input: root.audio_out_ports.length > 1 ? root.audio_out_ports[1].input_peak : 0.0
+                    input: root.audio_out_ports.length > 1 ? root.audio_out_ports[1].audio_input_peak : 0.0
                 }
 
                 background: Rectangle {
@@ -511,7 +511,7 @@ Item {
                     id: output_peak_meter_overall
                     max_dt: 0.1
 
-                    input: root.audio_out_ports.length > 0 ? Math.max(...root.audio_out_ports.map(p => p.input_peak)) : 0.0
+                    input: root.audio_out_ports.length > 0 ? Math.max(...root.audio_out_ports.map(p => p.audio_input_peak)) : 0.0
                 }
 
                 background: Rectangle {
@@ -709,7 +709,7 @@ Item {
                     id: input_peak_meter_l
                     max_dt: 0.1
 
-                    input: root.audio_in_ports.length > 0 ? root.audio_in_ports[0].input_peak : 0.0
+                    input: root.audio_in_ports.length > 0 ? root.audio_in_ports[0].audio_input_peak : 0.0
                 }
 
                 background: Rectangle {
@@ -751,7 +751,7 @@ Item {
                     id: input_peak_meter_r
                     max_dt: 0.1
 
-                    input: root.audio_in_ports.length > 1 ? root.audio_in_ports[1].input_peak : 0.0
+                    input: root.audio_in_ports.length > 1 ? root.audio_in_ports[1].audio_input_peak : 0.0
                 }
 
                 background: Rectangle {
@@ -792,7 +792,7 @@ Item {
                     id: input_peak_meter_overall
                     max_dt: 0.1
 
-                    input: root.audio_in_ports.length > 0 ? Math.max(...root.audio_in_ports.map(p => p.input_peak)) : 0.0
+                    input: root.audio_in_ports.length > 0 ? Math.max(...root.audio_in_ports.map(p => p.audio_input_peak)) : 0.0
                 }
 
                 background: Rectangle {

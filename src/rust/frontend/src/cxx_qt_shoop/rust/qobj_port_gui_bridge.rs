@@ -42,6 +42,9 @@ pub mod ffi {
         #[qproperty(i32, n_ringbuffer_samples, READ, NOTIFY=n_ringbuffer_samples_changed)]
         #[qproperty(f64, audio_gain, READ, NOTIFY=audio_gain_changed)]
         // Frontend -> Backend properties
+        #[qproperty(bool, is_midi, READ, WRITE=set_is_midi, NOTIFY=is_midi_changed)]
+        #[qproperty(*mut QObject, maybe_fx_chain, READ, WRITE=set_fx_chain, NOTIFY=fx_chain_changed)]
+        #[qproperty(i32, fx_chain_port_idx, READ, WRITE=set_fx_chain_port_idx, NOTIFY=fx_chain_port_idx_changed)]
         #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
         #[qproperty(QString, name_hint, READ, WRITE=set_name_hint, NOTIFY=name_hint_changed)]
         #[qproperty(i32, input_connectability, READ, WRITE=set_input_connectability, NOTIFY=input_connectability_changed)]
@@ -92,6 +95,15 @@ pub mod ffi {
             self: Pin<&mut PortGui>,
             internal_port_connections: QList_QVariant,
         );
+
+        #[qinvokable]
+        pub unsafe fn set_is_midi(self: Pin<&mut PortGui>, is_midi: bool);
+
+        #[qinvokable]
+        pub unsafe fn set_fx_chain(self: Pin<&mut PortGui>, fx_chain: *mut QObject);
+
+        #[qinvokable]
+        pub unsafe fn set_fx_chain_port_idx(self: Pin<&mut PortGui>, idx: i32);
 
         #[qinvokable]
         pub fn push_audio_gain(self: Pin<&mut PortGui>, audio_gain: f64);
@@ -222,6 +234,15 @@ pub mod ffi {
         );
 
         #[qsignal]
+        pub unsafe fn is_midi_changed(self: Pin<&mut PortGui>, is_midi: bool);
+
+        #[qsignal]
+        pub unsafe fn fx_chain_changed(self: Pin<&mut PortGui>, fx_chain: *mut QObject);
+
+        #[qsignal]
+        pub unsafe fn fx_chain_port_idx_changed(self: Pin<&mut PortGui>, idx: i32);
+
+        #[qsignal]
         pub unsafe fn backend_connect_external_port(self: Pin<&mut PortGui>, name: QString);
 
         #[qsignal]
@@ -291,6 +312,15 @@ pub mod ffi {
         #[qsignal]
         pub unsafe fn backend_set_passthrough_muted(self: Pin<&mut PortGui>, muted: bool);
 
+        #[qsignal]
+        pub unsafe fn backend_set_is_midi(self: Pin<&mut PortGui>, is_midi: bool);
+
+        #[qsignal]
+        pub unsafe fn backend_set_fx_chain(self: Pin<&mut PortGui>, fx_chain: *mut QObject);
+
+        #[qsignal]
+        pub unsafe fn backend_set_fx_chain_port_idx(self: Pin<&mut PortGui>, idx: i32);
+
     }
 
     unsafe extern "C++" {
@@ -342,6 +372,9 @@ pub struct PortGuiRust {
     pub n_ringbuffer_samples: i32,
     pub audio_gain: f64,
     pub min_n_ringbuffer_samples: i32,
+    pub is_midi: bool,
+    pub maybe_fx_chain: *mut QObject,
+    pub fx_chain_port_idx: i32,
 
     // Other
     pub backend_port_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
@@ -370,6 +403,9 @@ impl Default for PortGuiRust {
             audio_gain: 1.0,
             backend_port_wrapper: cxx::UniquePtr::null(),
             min_n_ringbuffer_samples: 0,
+            is_midi: false,
+            maybe_fx_chain: std::ptr::null_mut(),
+            fx_chain_port_idx: 0,
         }
     }
 }

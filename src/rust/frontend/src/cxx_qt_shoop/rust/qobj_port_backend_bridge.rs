@@ -187,6 +187,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn update(self: Pin<&mut PortBackend>);
 
+        #[qinvokable]
+        pub fn maybe_initialize_backend(self: Pin<&mut PortBackend>) -> bool;
+
         #[qsignal]
         pub unsafe fn state_changed(
             self: Pin<&mut PortBackend>,

@@ -81,4 +81,7 @@ PortGui {
     property var name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
     min_n_ringbuffer_samples: descriptor.min_n_ringbuffer_samples
+    maybe_fx_chain: null
+    fx_chain_port_idx: 0
+    is_midi: false
 }

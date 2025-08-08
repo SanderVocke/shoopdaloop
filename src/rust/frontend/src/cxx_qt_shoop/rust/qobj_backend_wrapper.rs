@@ -164,6 +164,7 @@ impl BackendWrapper {
                 )
                 .release();
             self.as_mut().set_ready(true);
+            debug!("ready");
         }
 
         Ok(())
