@@ -13,8 +13,3 @@ pub mod qsignalspy;
 pub mod qthread;
 pub mod qtimer;
 pub mod qvariant_helpers;
-pub mod qvariant_qobject;
-pub mod qvariant_qsharedpointer_qobject;
-pub mod qvariant_qstringlist;
-pub mod qvariant_qvariantlist;
-pub mod qvariant_qvariantmap;
