@@ -1,6 +1,7 @@
 use backend_bindings::MidiEvent;
 use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QVariant, QString, QList};
 use anyhow;
+use cxx_qt_lib_shoop::qvariant_helpers::{qlist_i32_to_qvariant, qvariant_to_qlist_i32, qvariant_to_qvariantmap, qvariantlist_to_qvariant, qvariantmap_to_qvariant};
 
 type QMap_QString_QVariant = QMap<QMapPair_QString_QVariant>;
 
@@ -17,19 +18,27 @@ impl MidiEventToQVariant for MidiEvent {
         let mut data : QList<i32> = QList::default();
         result.insert(QString::from("time"), QVariant::from(&self.time));
         self.data.iter().for_each(|v| data.append(*v as i32));
-        result.insert(QString::from("data"), QVariant::from(&data));
+        result.insert(QString::from("data"), qlist_i32_to_qvariant(&data).unwrap());
         result
     }
     
     fn to_qvariant(&self) -> QVariant {
-        todo!()
+        qvariantmap_to_qvariant(&self.to_qvariantmap()).unwrap()
     }
     
     fn from_qvariant(qvariant: &QVariant) -> Result<Self, anyhow::Error> {
-        todo!()
+        Self::from_qvariantmap(&qvariant_to_qvariantmap(qvariant).unwrap())
     }
     
     fn from_qvariantmap(qvariantmap: &QMap_QString_QVariant) -> Result<Self, anyhow::Error> {
-        todo!()
+        let data_variant : QVariant = qvariantmap.get(&QString::from("data"))
+            .ok_or(anyhow::anyhow!("no data key in map"))?;
+        let time : QVariant = qvariantmap.get(&QString::from("time"))
+            .ok_or(anyhow::anyhow!("no time key in map"))?;
+        let data : QList<i32> = qvariant_to_qlist_i32(&data_variant)?;
+        let data : Vec<u8> = data.iter().map(|v| *v as u8).collect();
+        let time : i32 = time.value::<i32>()
+            .ok_or(anyhow::anyhow!("invalid time value"))?;
+        Ok(Self { data, time })
     }
 }

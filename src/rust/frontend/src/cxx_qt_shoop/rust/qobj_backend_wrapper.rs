@@ -21,7 +21,7 @@ use cxx_qt::{ConnectionType, CxxQtType};
 unsafe extern "C" fn register_process_thread() {
     static ONCE_LOCK: OnceLock<()> = OnceLock::new();
     ONCE_LOCK.get_or_init(|| {
-        crashhandling::registered_threads::register_thread("audio".to_string());
+        crashhandling::registered_threads::register_thread("audio");
     });
 }
 

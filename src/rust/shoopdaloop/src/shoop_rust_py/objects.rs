@@ -282,7 +282,7 @@ pub fn shoop_rust_transition_gui_loops(
 ) -> PyResult<()> {
     let loop_variants: Vec<QVariant> = loop_addrs
         .iter()
-        .map(|addr| qobject_ptr_to_qvariant(*addr as *mut QObject))
+        .map(|addr| qobject_ptr_to_qvariant(&(*addr as *mut QObject)).unwrap())
         .collect();
     let loops_list: QList_QVariant = QList_QVariant::from(loop_variants);
     if loops_list.is_empty() {
@@ -331,7 +331,7 @@ pub fn shoop_rust_transition_backend_loops(
 ) -> PyResult<()> {
     let loop_variants: Vec<QVariant> = loop_addrs
         .iter()
-        .map(|addr| qobject_ptr_to_qvariant(*addr as *mut QObject))
+        .map(|addr| qobject_ptr_to_qvariant(&(*addr as *mut QObject)).unwrap())
         .collect();
     let loops_list: QList_QVariant = QList_QVariant::from(loop_variants);
     if loops_list.is_empty() {

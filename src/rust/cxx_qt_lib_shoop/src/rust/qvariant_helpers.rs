@@ -16,6 +16,7 @@ mod ffi {
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
         type QList_QString = cxx_qt_lib::QList<QString>;
         type QList_QVariant = cxx_qt_lib::QList<QVariant>;
+        type QList_i32 = cxx_qt_lib::QList<i32>;
 
         include!("cxx-qt-lib-shoop/qsharedpointer_qobject.h");
         type QSharedPointer_QObject = crate::qsharedpointer_qobject::QSharedPointer_QObject;
@@ -63,6 +64,15 @@ mod ffi {
 
         #[rust_name = "qvariantlist_to_qvariant"]
         unsafe fn asQVariant(obj: &QList_QVariant) -> Result<QVariant>;
+
+        #[rust_name = "qvariant_convertible_to_qlist_i32"]
+        unsafe fn qvariantConvertibleTo(obj: &QVariant, example: *mut QList_i32) -> Result<bool>;
+
+        #[rust_name = "qvariant_to_qlist_i32"]
+        unsafe fn qvariantAs(variant: &QVariant, example: *mut QList_i32) -> Result<QList_i32>;
+
+        #[rust_name = "qlist_i32_to_qvariant"]
+        unsafe fn asQVariant(obj: &QList_i32) -> Result<QVariant>;
 
         #[rust_name = "qvariant_convertible_to_qsharedpointer_qobject"]
         unsafe fn qvariantConvertibleTo(obj: &QVariant, example: *mut QSharedPointer_QObject) -> Result<bool>;
@@ -124,6 +134,18 @@ pub fn qvariant_to_qvariantlist(obj: &QVariant) -> Result<QList_QVariant, cxx::E
 
 pub fn qvariantlist_to_qvariant(obj: &QList_QVariant) -> Result<QVariant, cxx::Exception> {
     unsafe { ffi::qvariantlist_to_qvariant(obj) }
+}
+
+pub fn qvariant_convertible_to_qlist_i32(obj: &QVariant) -> Result<bool, cxx::Exception> {
+    unsafe { ffi::qvariant_convertible_to_qlist_i32(obj, std::ptr::null_mut()) }
+}
+
+pub fn qvariant_to_qlist_i32(obj: &QVariant) -> Result<QList_i32, cxx::Exception> {
+    unsafe { ffi::qvariant_to_qlist_i32(obj, std::ptr::null_mut()) }
+}
+
+pub fn qlist_i32_to_qvariant(obj: &QList_i32) -> Result<QVariant, cxx::Exception> {
+    unsafe { ffi::qlist_i32_to_qvariant(obj) }
 }
 
 pub fn qvariant_convertible_to_qsharedpointer_qobject(obj: &QVariant) -> Result<bool, cxx::Exception> {

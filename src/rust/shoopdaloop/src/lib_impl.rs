@@ -156,7 +156,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                         if let Some(runner) = c.get() {
                             let mut runner_pin = std::pin::Pin::new_unchecked(&mut **runner);
                             let runner_qobj = runner_pin.as_mut().pin_mut_qobject_ptr();
-                            let runner_qvariant = qobject_ptr_to_qvariant(runner_qobj);
+                            let runner_qvariant = qobject_ptr_to_qvariant(&runner_qobj).unwrap();
                             qml_engine.as_mut().set_root_context_property(
                                 &QString::from("shoop_test_file_runner"),
                                 &runner_qvariant,
