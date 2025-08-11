@@ -12,7 +12,7 @@ use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::{connection_types, qobject};
 use cxx_qt_lib_shoop::qobject::ffi::qobject_set_property_int;
 use cxx_qt_lib_shoop::qobject::AsQObject;
-use cxx_qt_lib_shoop::qvariant_qobject::qobject_ptr_to_qvariant;
+use cxx_qt_lib_shoop::qvariant_helpers::qobject_ptr_to_qvariant;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::time::{Duration, Instant};
@@ -119,7 +119,7 @@ impl Application {
         unsafe {
             let self_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
                 self.as_mut().pin_mut_qobject_ptr();
-            let self_qvariant = qobject_ptr_to_qvariant(self_qobj);
+            let self_qvariant = qobject_ptr_to_qvariant(&self_qobj).unwrap();
             let mut qml_engine_pin = std::pin::Pin::new_unchecked(&mut *qml_engine);
             qml_engine_pin
                 .as_mut()

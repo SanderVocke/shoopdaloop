@@ -2,9 +2,7 @@ use anyhow;
 use backend_bindings::LoopMode;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::qobject::QObject;
-use cxx_qt_lib_shoop::qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr};
-use cxx_qt_lib_shoop::qvariant_qvariantlist::{qvariant_as_qvariantlist, qvariantlist_as_qvariant};
-use cxx_qt_lib_shoop::qvariant_qvariantmap::{qvariant_as_qvariantmap, qvariantmap_as_qvariant};
+use cxx_qt_lib_shoop::qvariant_helpers::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 type QVariantMap = QMap<QMapPair_QString_QVariant>;
@@ -29,7 +27,7 @@ impl CompositeLoopIterationEvents {
         let mut loops_start: QVariantList = QList::default();
         for (loop_start, loop_mode) in self.loops_start.iter() {
             let mut entry: QVariantList = QList::default();
-            entry.append(qobject_ptr_to_qvariant(*loop_start));
+            entry.append(qobject_ptr_to_qvariant(loop_start).unwrap());
             let mode: QVariant = match loop_mode {
                 Some(mode) => {
                     let mode = mode.clone() as isize as i32;
@@ -39,20 +37,20 @@ impl CompositeLoopIterationEvents {
             };
             entry.append(mode);
 
-            loops_start.append(qvariantlist_as_qvariant(&entry).unwrap());
+            loops_start.append(qvariantlist_to_qvariant(&entry).unwrap());
         }
-        let loops_start = qvariantlist_as_qvariant(&loops_start).unwrap();
+        let loops_start = qvariantlist_to_qvariant(&loops_start).unwrap();
 
         let mut loops_end: QVariantList = QList::default();
         let mut loops_ignored: QVariantList = QList::default();
         for loop_obj in self.loops_end.iter() {
-            loops_end.append(qobject_ptr_to_qvariant(*loop_obj));
+            loops_end.append(qobject_ptr_to_qvariant(loop_obj).unwrap());
         }
         for loop_obj in self.loops_ignored.iter() {
-            loops_ignored.append(qobject_ptr_to_qvariant(*loop_obj));
+            loops_ignored.append(qobject_ptr_to_qvariant(loop_obj).unwrap());
         }
-        let loops_end = qvariantlist_as_qvariant(&loops_end).unwrap();
-        let loops_ignored = qvariantlist_as_qvariant(&loops_ignored).unwrap();
+        let loops_end = qvariantlist_to_qvariant(&loops_end).unwrap();
+        let loops_ignored = qvariantlist_to_qvariant(&loops_ignored).unwrap();
 
         let mut map: QVariantMap = QMap::default();
         map.insert(QString::from("loops_start"), loops_start);
@@ -64,7 +62,7 @@ impl CompositeLoopIterationEvents {
 
     pub fn to_qvariant(&self) -> QVariant {
         let map = self.to_qvariantmap();
-        qvariantmap_as_qvariant(&map).unwrap()
+        qvariantmap_to_qvariant(&map).unwrap()
     }
 
     pub fn from_qvariantmap(map: &QVariantMap) -> Result<Self, anyhow::Error> {
@@ -72,17 +70,16 @@ impl CompositeLoopIterationEvents {
 
         match map.get(&QString::from("loops_start")) {
             Some(loops_start) => {
-                let loops_start = qvariant_as_qvariantlist(&loops_start)?;
+                let loops_start = qvariant_to_qvariantlist(&loops_start)?;
                 for entry in loops_start.iter() {
-                    let entry = qvariant_as_qvariantlist(&entry)?;
+                    let entry = qvariant_to_qvariantlist(&entry)?;
                     let loop_start = entry
                         .get(0)
                         .ok_or(anyhow::anyhow!("No loop start entry in schedule elem"))?;
                     let loop_mode = entry
                         .get(1)
                         .ok_or(anyhow::anyhow!("No loop mode entry in schedule elem"))?;
-                    let loop_start = qvariant_to_qobject_ptr(loop_start)
-                        .ok_or(anyhow::anyhow!("Loop start entry is not an object ptr"))?;
+                    let loop_start = qvariant_to_qobject_ptr(loop_start)?;
                     let loop_mode: Option<LoopMode> = match loop_mode.value::<i32>() {
                         Some(mode) => Some(LoopMode::try_from(mode)?),
                         None => None,
@@ -99,10 +96,9 @@ impl CompositeLoopIterationEvents {
 
         match map.get(&QString::from("loops_end")) {
             Some(loops_end) => {
-                let loops_end = qvariant_as_qvariantlist(&loops_end)?;
+                let loops_end = qvariant_to_qvariantlist(&loops_end)?;
                 for entry in loops_end.iter() {
-                    let object = qvariant_to_qobject_ptr(&entry)
-                        .ok_or(anyhow::anyhow!("loop in loops_end is not a QObject"))?;
+                    let object = qvariant_to_qobject_ptr(&entry)?;
                     result.loops_end.insert(object);
                 }
             }
@@ -111,10 +107,9 @@ impl CompositeLoopIterationEvents {
 
         match map.get(&QString::from("loops_ignored")) {
             Some(loops_ignored) => {
-                let loops_ignored = qvariant_as_qvariantlist(&loops_ignored)?;
+                let loops_ignored = qvariant_to_qvariantlist(&loops_ignored)?;
                 for entry in loops_ignored.iter() {
-                    let object = qvariant_to_qobject_ptr(&entry)
-                        .ok_or(anyhow::anyhow!("loop in loops_ignored is not a QObject"))?;
+                    let object = qvariant_to_qobject_ptr(&entry)?;
                     result.loops_ignored.insert(object);
                 }
             }
@@ -129,7 +124,7 @@ impl CompositeLoopIterationEvents {
     }
 
     pub fn from_qvariant(qvariant: &QVariant) -> Result<Self, anyhow::Error> {
-        let map = qvariant_as_qvariantmap(qvariant).map_err(|e| {
+        let map = qvariant_to_qvariantmap(qvariant).map_err(|e| {
             anyhow::anyhow!("CompositeLoopSchedule: could not convert to QVariantMap: {e}")
         })?;
         Self::from_qvariantmap(&map)

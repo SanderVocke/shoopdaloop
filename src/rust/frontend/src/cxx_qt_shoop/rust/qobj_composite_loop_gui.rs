@@ -14,7 +14,7 @@ use cxx_qt_lib_shoop::invokable::invoke;
 use cxx_qt_lib_shoop::qobject::QObject;
 use cxx_qt_lib_shoop::qobject::*;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::*;
-use cxx_qt_lib_shoop::qvariant_qsharedpointer_qobject::qsharedpointer_qobject_to_qvariant;
+use cxx_qt_lib_shoop::qvariant_helpers::qsharedpointer_qobject_to_qvariant;
 use std::pin::Pin;
 shoop_log_unit!("Frontend.CompositeLoop");
 
@@ -612,7 +612,7 @@ impl CompositeLoopGui {
     }
 
     pub fn get_backend_loop_shared_ptr(self: Pin<&mut CompositeLoopGui>) -> QVariant {
-        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap())
+        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap()).unwrap()
     }
 }
 

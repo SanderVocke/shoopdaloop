@@ -16,7 +16,7 @@ use cxx_qt_lib_shoop::{
     qobject::{
         self, ffi::{qobject_property_int, qobject_property_qobject, qobject_property_string}, qobject_has_property, AsQObject
     },
-    qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
+    qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
 use std::{
     cmp::{max, min},
@@ -851,7 +851,6 @@ impl CompositeLoopBackend {
                     .iter()
                     .map(|variant| {
                         qvariant_to_qobject_ptr(variant)
-                            .ok_or(anyhow::anyhow!("Could not convert QVariant to object"))
                     })
                     .collect::<Result<HashSet<_>, _>>()?;
                 let mut running_loops_changed = false;
@@ -941,7 +940,7 @@ impl CompositeLoopBackend {
                 if running_loops_changed {
                     let mut new_running_loops: QList_QVariant = QList_QVariant::default();
                     for l in running_loops.iter() {
-                        let loop_variant = qobject_ptr_to_qvariant(*l);
+                        let loop_variant = qobject_ptr_to_qvariant(l)?;
                         new_running_loops.append(loop_variant);
                     }
                     let mut rust_mut = self.as_mut().rust_mut();

@@ -111,56 +111,21 @@ pub fn qvariant_to_python<'py>(
         }
         _v if _v == qmetatype_id_qvariantmap() => {
             let variantmap =
-                cxx_qt_lib_shoop::qvariant_qvariantmap::qvariant_as_qvariantmap(value).unwrap();
+                cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qvariantmap(value).unwrap();
             return Ok(qvariantmap_to_python(py, &variantmap)?.into_any());
         }
         _v if _v == qmetatype_id_qvariantlist() => {
             let variantlist =
-                cxx_qt_lib_shoop::qvariant_qvariantlist::qvariant_as_qvariantlist(value).unwrap();
+                cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qvariantlist(value).unwrap();
             return Ok(qvariantlist_to_python(py, &variantlist)?.into_any());
         }
         _v if _v == qmetatype_id_qstringlist() => {
             let stringlist =
-                cxx_qt_lib_shoop::qvariant_qstringlist::qvariant_as_qstringlist(value).unwrap();
+                cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qstringlist(value).unwrap();
             return Ok(qstringlist_to_python(py, &stringlist)?.into_any());
         }
         _ => {}
     }
-
-    // match value.value::<cxx_qt_lib::QString>() {
-    //     Some(value) => {
-    //         return Ok(value
-    //             .to_string()
-    //             .into_pyobject(py)
-    //             .unwrap()
-    //             .as_any()
-    //             .to_owned())
-    //     }
-    //     None => (),
-    // }
-
-    // match value.value::<i64>() {
-    //     Some(value) => return Ok(value.into_pyobject(py).unwrap().as_any().to_owned()),
-    //     None => (),
-    // }
-
-    // match value.value::<bool>() {
-    //     Some(value) => return Ok(value.into_pyobject(py).unwrap().as_any().to_owned()),
-    //     None => (),
-    // }
-
-    // if cxx_qt_lib_shoop::qvariant_qvariantmap::qvariant_convertible_to_qvariantmap(value).unwrap() {
-    //     let variantmap =
-    //         cxx_qt_lib_shoop::qvariant_qvariantmap::qvariant_as_qvariantmap(value).unwrap();
-    //     return Ok(qvariantmap_to_python(py, &variantmap)?.into_any());
-    // }
-
-    // if cxx_qt_lib_shoop::qvariant_qvariantlist::qvariant_convertible_to_qvariantlist(value).unwrap()
-    // {
-    //     let variantlist =
-    //         cxx_qt_lib_shoop::qvariant_qvariantlist::qvariant_as_qvariantlist(value).unwrap();
-    //     return Ok(qvariantlist_to_python(py, &variantlist)?.into_any());
-    // }
 
     let typename = qvariant_type_name(value).unwrap();
     Err(PyErr::new::<PyException, _>(format!(
