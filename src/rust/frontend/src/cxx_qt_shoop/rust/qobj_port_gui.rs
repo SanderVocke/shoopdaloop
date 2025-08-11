@@ -10,27 +10,28 @@ use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QList, QMap};
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
-use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
+use cxx_qt_lib_shoop::qvariant_helpers::{qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qsharedpointer_qobject};
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Port");
 
 macro_rules! trace {
     ($self:ident, $($arg:tt)*) => {
-        raw_trace!("[{}] {}", $self.display_name().to_string(), format!($($arg)*));
+        raw_trace!("[{}] {}", $self.display_name().to_string(), format!($($arg)*))
     };
 }
 
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
-        raw_debug!("[{}] {}", $self.display_name().to_string(), format!($($arg)*));
+        raw_debug!("[{}] {}", $self.display_name().to_string(), format!($($arg)*))
     };
 }
 
 macro_rules! error {
     ($self:ident, $($arg:tt)*) => {
-        raw_error!("[{}] {}", $self.display_name().to_string(), format!($($arg)*));
+        raw_error!("[{}] {}", $self.display_name().to_string(), format!($($arg)*))
     };
 }
 
@@ -517,8 +518,22 @@ impl PortGui {
         internal_port_connections: QList_QVariant,
     ) {
         unsafe {
-            self.as_mut()
-                .backend_set_internal_port_connections(internal_port_connections.clone());
+            // Store a list of QVariants which hold QSharedPointer instances so that the backend
+            // loops don't go out of scope waiting for our operation to complete
+            let mut backend_port_handles : QList_QVariant = QList::default();
+            match internal_port_connections.iter().try_for_each(|v| -> Result<(), anyhow::Error> {
+                let other = qvariant_to_qobject_ptr(v)?;
+                let other = PortGui::from_qobject_mut_ptr(other)?;
+                let other_backend = other.backend_port_wrapper.as_ref().ok_or(anyhow::anyhow!("Other backend wrapper not set"))?;
+                let other_backend_copy = qsharedpointer_qobject_to_qvariant(other_backend)?;
+                backend_port_handles.append(other_backend_copy);
+                Ok(())
+            }) {
+                Ok(()) => {
+                    self.as_mut().backend_set_internal_port_connections(backend_port_handles);
+                }
+                Err(e) => { error!(self, "Failed to get other loop backend handle: {e}"); }
+            }
         }
         if internal_port_connections != self.internal_port_connections {
             let mut rust_mut = self.as_mut().rust_mut();
@@ -569,15 +584,15 @@ impl PortGui {
         }
     }
 
-    pub fn dummy_dequeue_audio_data(self: Pin<&mut PortGui>) -> QList_f64 {
+    pub fn dummy_dequeue_audio_data(self: Pin<&mut PortGui>, n: i32) -> QList_f64 {
         match || -> Result<QList_f64, anyhow::Error> {
             let backend_wrapper = self.backend_port_wrapper.data()?;
             unsafe {
                 Ok(invokable::invoke(
                     &mut *backend_wrapper,
-                    "dummy_dequeue_audio_data",
+                    "dummy_dequeue_audio_data(::std::int32_t)",
                     invokable::BLOCKING_QUEUED_CONNECTION,
-                    &(),
+                    &(n),
                 )?)
             }
         }() {
@@ -602,7 +617,23 @@ impl PortGui {
     }
 
     pub fn dummy_dequeue_midi_msgs(self: Pin<&mut PortGui>) -> QList_QVariant {
-        todo!();
+        match || -> Result<QList_QVariant, anyhow::Error> {
+            let backend_wrapper = self.backend_port_wrapper.data()?;
+            unsafe {
+                Ok(invokable::invoke::<_,QList_QVariant,()>(
+                    &mut *backend_wrapper,
+                    "dummy_dequeue_midi_msgs()",
+                    invokable::BLOCKING_QUEUED_CONNECTION,
+                    &(),
+                )?)
+            }
+        }() {
+            Ok(data) => data,
+            Err(e) => {
+                error!(self, "Could not dequeue midi messages: {e}");
+                QList::default()
+            }
+        }
     }
 
     pub fn dummy_clear_queues(self: Pin<&mut PortGui>) {

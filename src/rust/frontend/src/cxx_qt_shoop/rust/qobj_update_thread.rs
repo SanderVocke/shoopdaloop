@@ -110,7 +110,7 @@ impl UpdateThread {
             let timer_mut_ref = &mut *rust.backup_timer;
             let timer_slice = slice::from_raw_parts_mut(timer_mut_ref, 1);
             let timer: Pin<&mut QTimer> = Pin::new_unchecked(&mut timer_slice[0]);
-            match invokable::invoke(
+            match invokable::invoke::<_,(),_>(
                 &mut *timer.qobject_from_ptr(),
                 "start(int)",
                 connection_types::QUEUED_CONNECTION,

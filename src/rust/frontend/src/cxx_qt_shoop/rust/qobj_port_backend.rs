@@ -1,9 +1,12 @@
 use crate::{
     any_backend_port::AnyBackendPort,
-    cxx_qt_shoop::qobj_fx_chain_backend::FXChainBackend,
-    cxx_qt_shoop::{qobj_backend_wrapper::BackendWrapper, rust::qobj_port_backend_bridge::ffi::*},
+    cxx_qt_shoop::{
+        qobj_backend_wrapper::BackendWrapper, qobj_fx_chain_backend::FXChainBackend,
+        rust::qobj_port_backend_bridge::ffi::*,
+    },
+    midi_event_helpers::MidiEventToQVariant,
 };
-use backend_bindings::{PortConnectability, PortDataType, PortDirection};
+use backend_bindings::{MidiEvent, PortConnectability, PortDataType, PortDirection};
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
@@ -12,27 +15,28 @@ use cxx_qt_lib::{QList, QMap};
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,
-    qobject::{qobject_property_bool, FromQObject},
-    qvariant_helpers::qvariant_to_qobject_ptr,
+    qobject::{qobject_property_bool, AsQObject, FromQObject},
+    qsharedpointer_qobject::QSharedPointer_QObject,
+    qvariant_helpers::{qvariant_to_qobject_ptr, qvariant_to_qsharedpointer_qobject},
 };
 use std::{collections::HashMap, pin::Pin};
 shoop_log_unit!("Frontend.Port");
 
 macro_rules! trace {
     ($self:ident, $($arg:tt)*) => {
-        raw_trace!("[{}-backend] {}", $self.display_name().to_string(), format!($($arg)*));
+        raw_trace!("[{}-backend] {}", $self.display_name().to_string(), format!($($arg)*))
     };
 }
 
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
-        raw_debug!("[{}-backend] {}", $self.display_name().to_string(), format!($($arg)*));
+        raw_debug!("[{}-backend] {}", $self.display_name().to_string(), format!($($arg)*))
     };
 }
 
 macro_rules! error {
     ($self:ident, $($arg:tt)*) => {
-        raw_error!("[{}-backend] {}", $self.display_name().to_string(), format!($($arg)*));
+        raw_error!("[{}-backend] {}", $self.display_name().to_string(), format!($($arg)*))
     };
 }
 
@@ -199,6 +203,11 @@ impl PortBackend {
                     )
                 }
             };
+
+            // To push any state that was already set on us before initializing
+            port.push_state(&self.prev_state)?;
+            self.as_mut().update_internal_port_connections_impl();
+
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.maybe_backend_port = Some(port);
 
@@ -238,10 +247,9 @@ impl PortBackend {
                 let min_n_ringbuffer_samples: i32 = self
                     .min_n_ringbuffer_samples
                     .ok_or(anyhow::anyhow!("min_n_ringbuffer_samples not set"))?;
-                let mut rust_mut = self.as_mut().rust_mut();
-                let backend =
-                    BackendWrapper::from_qobject_ref_ptr(rust_mut.backend as *const QObject)?;
-                rust_mut.maybe_backend_port = Some(AnyBackendPort::new_driver_port(
+                let prev_state = self.prev_state.clone();
+                let backend = BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)?;
+                let port = AnyBackendPort::new_driver_port(
                     port_type.clone(),
                     backend
                         .session
@@ -254,7 +262,14 @@ impl PortBackend {
                     name_hint.as_str(),
                     &direction,
                     min_n_ringbuffer_samples as u32,
-                )?);
+                )?;
+
+                // To push any state that was already set on us before initializing
+                port.push_state(&prev_state)?;
+                self.as_mut().update_internal_port_connections_impl();
+
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.maybe_backend_port = Some(port);
             }
             debug!(self, "Initialized as external-facing port ({port_type:?})");
 
@@ -311,7 +326,7 @@ impl PortBackend {
             }
         }
 
-        let initialize_condition: bool = unsafe { !self.initialized && non_ready_vars.is_empty() };
+        let initialize_condition: bool = !self.initialized && non_ready_vars.is_empty();
 
         let result = if initialize_condition {
             if self.is_internal.unwrap() {
@@ -320,7 +335,6 @@ impl PortBackend {
                 self.as_mut().maybe_initialize_backend_external()
             }
         } else {
-            let rust = self.rust();
             trace!(
                 self,
                 "not initializing backend yet. Non-ready variables: {non_ready_vars:?}"
@@ -426,7 +440,7 @@ impl PortBackend {
         }() {
             Ok(connections) => connections,
             Err(err) => {
-                error!(self, "Error while getting connections state: {}", err);
+                debug!(self, "Could not get connections state: {}", err);
                 QMap::default()
             }
         }
@@ -473,6 +487,12 @@ impl PortBackend {
     ) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             self.as_mut().maybe_initialize_backend();
+
+            if !self.initialized {
+                debug!(self, "Could not make connections yet: uninitialized");
+                return Ok(());
+            }
+
             let connected: Vec<String> = self.as_mut().get_connected_external_ports_raw()?;
             let desired_connections: Vec<String> = desired_connections
                 .iter()
@@ -685,35 +705,65 @@ impl PortBackend {
         }
     }
 
-    pub fn set_internal_port_connections(
-        mut self: Pin<&mut PortBackend>,
-        internal_port_connections: QList_QVariant,
-    ) {
-        if let Err(e) = || -> Result<(), anyhow::Error> {
-            self.as_mut().maybe_initialize_backend();
-            if !self.initialized {
-                return Err(anyhow::anyhow!("not initialized"));
-            }
+    pub fn update_internal_port_connections(mut self: Pin<&mut PortBackend>) {
+        self.as_mut().maybe_initialize_backend();
+        if !self.initialized {
+            debug!(self, "cannot make connections yet: not initialized");
+            return;
+        }
+        self.as_mut().update_internal_port_connections_impl();
+    }
 
-            internal_port_connections.iter().try_for_each(
+    pub fn update_internal_port_connections_impl(mut self: Pin<&mut PortBackend>) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let connections = self.internal_port_connections.clone();
+            connections.iter().try_for_each(
                 |other_internal_port| -> Result<(), anyhow::Error> {
-                    let other_internal_port: *mut QObject =
-                        qvariant_to_qobject_ptr(&other_internal_port)?;
+                    let other_internal_port_handle: cxx::UniquePtr<QSharedPointer_QObject> =
+                        qvariant_to_qsharedpointer_qobject(other_internal_port)?;
+                    let other_internal_port: *mut QObject = other_internal_port_handle.data()?;
                     if other_internal_port.is_null() {
                         return Err(anyhow::anyhow!("Internal port is null"));
                     }
                     let other_initialized =
                         unsafe { qobject_property_bool(&*other_internal_port, "initialized")? };
                     if !other_initialized {
-                        return Err(anyhow::anyhow!("Other port is not initialized"));
+                        debug!(self, "skip connection: other port not initialized");
+                        let self_qobj: *mut QObject =
+                            unsafe { self.as_mut().pin_mut_qobject_ptr() };
+                        unsafe {
+                            connect_or_report(
+                                &mut *other_internal_port,
+                                "initialized_changed(bool)",
+                                &mut *self_qobj,
+                                "update_internal_port_connections()",
+                                connection_types::QUEUED_CONNECTION,
+                            );
+                        }
+                        return Ok(());
                     }
                     self.as_mut().connect_internal(other_internal_port);
                     Ok(())
                 },
             )?;
+            Ok(())
+        }() {
+            error!(self, "Failed to set internal port connections: {e}");
+        }
+    }
+
+    pub fn set_internal_port_connections(
+        mut self: Pin<&mut PortBackend>,
+        internal_port_connections: QList_QVariant,
+    ) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            self.as_mut().maybe_initialize_backend();
 
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.internal_port_connections = internal_port_connections.clone();
+
+            self.as_mut().update_internal_port_connections();
+
             unsafe {
                 self.as_mut()
                     .internal_port_connections_changed(internal_port_connections)
@@ -759,10 +809,8 @@ impl PortBackend {
         if let Some(port) = self.maybe_backend_port.as_ref() {
             port.set_gain(audio_gain as f32);
         } else {
-            error!(
-                self,
-                "Can't change audio gain before backend has been initialized"
-            );
+            debug!(self, "gain (deferred) -> {audio_gain}");
+            self.as_mut().rust_mut().prev_state.gain = audio_gain as f32;
         }
     }
 
@@ -771,10 +819,8 @@ impl PortBackend {
         if let Some(port) = self.maybe_backend_port.as_ref() {
             port.set_muted(muted);
         } else {
-            error!(
-                self,
-                "Can't change mute before backend has been initialized"
-            );
+            debug!(self, "muted (deferred) -> {muted}");
+            self.as_mut().rust_mut().prev_state.muted = if muted { 1 } else { 0 };
         }
     }
 
@@ -783,10 +829,9 @@ impl PortBackend {
         if let Some(port) = self.maybe_backend_port.as_ref() {
             port.set_passthrough_muted(passthrough_muted);
         } else {
-            error!(
-                self,
-                "Can't change passthrough mute before backend has been initialized"
-            );
+            debug!(self, "passthrough muted (deferred) -> {passthrough_muted}");
+            self.as_mut().rust_mut().prev_state.passthrough_muted =
+                if passthrough_muted { 1 } else { 0 };
         }
     }
 
@@ -837,11 +882,41 @@ impl PortBackend {
     }
 
     pub fn dummy_queue_midi_msgs(self: Pin<&mut PortBackend>, midi_msgs: QList_QVariant) {
-        todo!();
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let msg_events: Vec<MidiEvent> = midi_msgs
+                .iter()
+                .map(|v| MidiEvent::from_qvariant(v))
+                .collect::<Result<Vec<MidiEvent>, _>>()?;
+            self.maybe_backend_port
+                .as_ref()
+                .ok_or(anyhow::anyhow!("Backend not yet initialized"))?
+                .dummy_queue_midi_msgs(&msg_events);
+            Ok(())
+        }() {
+            error!(self, "Could not queue MIDI messages: {e}");
+        }
     }
 
     pub fn dummy_dequeue_midi_msgs(self: Pin<&mut PortBackend>) -> QList_QVariant {
-        todo!();
+        match || -> Result<QList_QVariant, anyhow::Error> {
+            let mut msg_variants: QList_QVariant = QList::default();
+            self.maybe_backend_port
+                .as_ref()
+                .ok_or(anyhow::anyhow!("Backend not yet initialized"))?
+                .dummy_dequeue_midi_msgs()
+                .iter()
+                .for_each(|event| {
+                    let variant = event.to_qvariant();
+                    msg_variants.append(variant);
+                });
+            Ok(msg_variants)
+        }() {
+            Ok(msg_variants) => msg_variants,
+            Err(e) => {
+                error!(self, "Could not queue MIDI messages: {e}");
+                QList::default()
+            }
+        }
     }
 
     pub fn dummy_clear_queues(mut self: Pin<&mut PortBackend>) {

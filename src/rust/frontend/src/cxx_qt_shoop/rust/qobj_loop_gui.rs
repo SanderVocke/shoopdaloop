@@ -25,21 +25,21 @@ shoop_log_unit!("Frontend.Loop");
 #[allow(unused_macros)]
 macro_rules! trace {
     ($self:ident, $($arg:tt)*) => {
-        raw_trace!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_trace!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*))
     };
 }
 
 #[allow(unused_macros)]
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
-        raw_debug!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_debug!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*))
     };
 }
 
 #[allow(unused_macros)]
 macro_rules! error {
     ($self:ident, $($arg:tt)*) => {
-        raw_error!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_error!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*))
     };
 }
 
@@ -280,6 +280,8 @@ impl LoopGui {
             maybe_to_sync_at_cycle
         );
 
+        // Get handles to the backend loops in terms of QSharedPointers, which will ensure
+        // they don't go out of scope while our transition is queued in the event loop.
         let backend_loop_handles = get_backend_loop_handles_variant_list(&loops).unwrap();
         self.backend_transition_multiple(
             backend_loop_handles,

@@ -59,6 +59,21 @@ impl AnyBackendPort {
         }
     }
 
+    pub fn push_state(&self, state: &AnyBackendPortState) -> Result<(), anyhow::Error> {
+        match self {
+            AnyBackendPort::Audio(port) => {
+                port.set_gain(state.gain);
+                port.set_muted(state.muted != 0);
+                port.set_passthrough_muted(state.passthrough_muted != 0);
+            }
+            AnyBackendPort::Midi(port) => {
+                port.set_muted(state.muted != 0);
+                port.set_passthrough_muted(state.passthrough_muted != 0);
+            }
+        }
+        Ok(())
+    }
+
     pub fn set_gain(&self, gain: f32) {
         match self {
             AnyBackendPort::Audio(port) => port.set_gain(gain),

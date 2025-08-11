@@ -83,5 +83,5 @@ PortGui {
     min_n_ringbuffer_samples: descriptor.min_n_ringbuffer_samples
     maybe_fx_chain: null
     fx_chain_port_idx: 0
-    is_midi: false
+    is_midi: true
 }

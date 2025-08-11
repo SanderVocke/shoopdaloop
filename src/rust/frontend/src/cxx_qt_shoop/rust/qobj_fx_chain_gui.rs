@@ -6,15 +6,15 @@ impl FXChainGui {
         todo!();
     }
 
-    pub fn set_backend(self: Pin<&mut Self>, backend: *mut QObject) {
+    pub fn set_backend(self: Pin<&mut Self>, _backend: *mut QObject) {
         todo!();
     }
 
-    pub fn set_title(self: Pin<&mut Self>, title: QString) {
+    pub fn set_title(self: Pin<&mut Self>, _title: QString) {
         todo!();
     }
 
-    pub fn set_chain_type(self: Pin<&mut Self>, chain_type: i32) {
+    pub fn set_chain_type(self: Pin<&mut Self>, _chain_type: i32) {
         todo!();
     }
 
@@ -22,7 +22,7 @@ impl FXChainGui {
         todo!();
     }
 
-    pub fn restore_state(self: Pin<&mut Self>, state_str: QString) {
+    pub fn restore_state(self: Pin<&mut Self>, _state_str: QString) {
         todo!();
     }
 }

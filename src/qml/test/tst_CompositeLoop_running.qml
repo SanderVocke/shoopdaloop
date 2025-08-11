@@ -180,7 +180,7 @@ ShoopTestFile {
                         }
 
                         // Insert the marker
-                        audio_in().dummy_queue_data([0.51])
+                        audio_in().dummy_queue_audio_data([0.51])
                         session.backend.dummy_request_controlled_frames(1)
                         session.backend.dummy_run_requested_frames()
                         sent += 1

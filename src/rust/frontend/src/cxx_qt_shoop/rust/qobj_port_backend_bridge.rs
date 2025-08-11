@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::any_backend_port::{AnyBackendPort, AnyBackendPortState};
 use backend_bindings::{PortConnectability, PortDataType};
 use common::logging::macros::*;
+use cxx_qt_lib_shoop::qobject::AsQObject;
 
 shoop_log_unit!("Frontend.Port");
 
@@ -120,6 +121,9 @@ pub mod ffi {
             self: Pin<&mut PortBackend>,
             internal_port_connections: QList_QVariant,
         );
+
+        #[qinvokable]
+        pub fn update_internal_port_connections(self: Pin<&mut PortBackend>);
 
         #[qinvokable]
         pub fn set_min_n_ringbuffer_samples(self: Pin<&mut PortBackend>, n_ringbuffer_samples: i32);
@@ -326,6 +330,9 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
         #[rust_name = "port_backend_qobject_from_ptr"]
         unsafe fn qobjectFromPtr(obj: *mut PortBackend) -> *mut QObject;
+
+        #[rust_name = "port_backend_qobject_from_ref"]
+        fn qobjectFromRef(obj: &PortBackend) -> &QObject;
     }
 }
 
@@ -370,6 +377,16 @@ impl Default for PortBackendRust {
             min_n_ringbuffer_samples: None,
             internally_connected_ports: HashSet::default(),
         }
+    }
+}
+
+impl AsQObject for ffi::PortBackend {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+        ffi::port_backend_qobject_from_ptr(self as *mut Self)
+    }
+
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
+        ffi::port_backend_qobject_from_ref(self) as *const ffi::QObject
     }
 }
 

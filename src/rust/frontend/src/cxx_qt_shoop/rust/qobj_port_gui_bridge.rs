@@ -118,7 +118,7 @@ pub mod ffi {
         pub fn dummy_queue_audio_data(self: Pin<&mut PortGui>, audio_data: QList_f64);
 
         #[qinvokable]
-        pub fn dummy_dequeue_audio_data(self: Pin<&mut PortGui>) -> QList_f64;
+        pub fn dummy_dequeue_audio_data(self: Pin<&mut PortGui>, n : i32) -> QList_f64;
 
         #[qinvokable]
         pub fn dummy_request_data(self: Pin<&mut PortGui>, n: i32);
@@ -341,6 +341,14 @@ pub mod ffi {
             version_minor: i64,
             type_name: &mut String,
         );
+
+        include!("cxx-qt-lib-shoop/qobject.h");
+
+        #[rust_name = "from_qobject_ref_port_gui"]
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const PortGui);
+
+        #[rust_name = "from_qobject_mut_port_gui"]
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut PortGui);
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)> for PortGui {}
@@ -466,5 +474,21 @@ impl cxx_qt::Constructor<()> for PortGui {
 
     fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
         PortGui::initialize_impl(self);
+    }
+}
+
+impl cxx_qt_lib_shoop::qobject::FromQObject for PortGui {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+        let mut output: *const Self = std::ptr::null();
+        from_qobject_ref_port_gui(obj, &mut output as *mut *const Self);
+        output
+    }
+
+    unsafe fn ptr_from_qobject_mut(
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+    ) -> *mut Self {
+        let mut output: *mut Self = std::ptr::null_mut();
+        from_qobject_mut_port_gui(obj, &mut output as *mut *mut Self);
+        output
     }
 }

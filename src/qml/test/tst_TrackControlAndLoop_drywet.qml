@@ -165,16 +165,16 @@ ShoopTestFile {
                     lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
-                    input_port_1.dummy_queue_data([2, 4, 6, 8])
-                    input_port_2.dummy_queue_data([8, 6, 4, 2])
+                    input_port_1.dummy_queue_audio_data([2, 4, 6, 8])
+                    input_port_2.dummy_queue_audio_data([8, 6, 4, 2])
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -218,7 +218,7 @@ ShoopTestFile {
 
                     midi_input_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
@@ -226,8 +226,8 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -255,15 +255,15 @@ ShoopTestFile {
                     lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
-                    input_port_1.dummy_queue_data([2, 4, 6, 8])
-                    input_port_2.dummy_queue_data([8, 6, 4, 2])
+                    input_port_1.dummy_queue_audio_data([2, 4, 6, 8])
+                    input_port_2.dummy_queue_audio_data([8, 6, 4, 2])
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -307,7 +307,7 @@ ShoopTestFile {
 
                     midi_input_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
@@ -315,8 +315,8 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -348,15 +348,15 @@ ShoopTestFile {
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
-                    input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
+                    input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -398,7 +398,7 @@ ShoopTestFile {
 
                     midi_input_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
@@ -406,8 +406,8 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -439,15 +439,15 @@ ShoopTestFile {
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
-                    input_port_1.dummy_queue_data([2, 4, 6, 8])
-                    input_port_2.dummy_queue_data([8, 6, 4, 2])
+                    input_port_1.dummy_queue_audio_data([2, 4, 6, 8])
+                    input_port_2.dummy_queue_audio_data([8, 6, 4, 2])
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -495,7 +495,7 @@ ShoopTestFile {
 
                     midi_input_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
@@ -503,8 +503,8 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -536,16 +536,16 @@ ShoopTestFile {
                     lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
-                    input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
+                    input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -603,7 +603,7 @@ ShoopTestFile {
 
                     midi_input_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
@@ -612,8 +612,8 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -645,15 +645,15 @@ ShoopTestFile {
                     lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
-                    input_port_1.dummy_queue_data([2, 4, 6, 8])
-                    input_port_2.dummy_queue_data([8, 6, 4, 2])
+                    input_port_1.dummy_queue_audio_data([2, 4, 6, 8])
+                    input_port_2.dummy_queue_audio_data([8, 6, 4, 2])
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -707,7 +707,7 @@ ShoopTestFile {
 
                     midi_input_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
@@ -716,8 +716,8 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -749,16 +749,16 @@ ShoopTestFile {
                     lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
-                    input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
+                    input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -811,7 +811,7 @@ ShoopTestFile {
 
                     midi_input_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
@@ -820,8 +820,8 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -853,16 +853,16 @@ ShoopTestFile {
                     lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
-                    input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
+                    input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()
@@ -916,7 +916,7 @@ ShoopTestFile {
 
                     midi_input_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
                     output_port_1.dummy_request_data(4)
                     output_port_2.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(2)
@@ -925,8 +925,8 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    let out1 = output_port_1.dummy_dequeue_data(4)
-                    let out2 = output_port_2.dummy_dequeue_data(4)
+                    let out1 = output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let dry1 = dry_channels()[0].get_data_list()
                     let dry2 = dry_channels()[1].get_data_list()
                     let wet1 = wet_channels()[0].get_data_list()

@@ -137,10 +137,10 @@ Item {
         initial_input_gain_dB = convert_gain.dB
     }
     onMidi_in_portsChanged: {
-        if (Array.isArray(midi_in_ports)) { midi_in_ports.forEach((m) => m.nInputNotesActiveChanged.connect(update_midi)) }
-        if (Array.isArray(midi_out_ports)) { midi_out_ports.forEach((m) => m.nOutputNotesActiveChanged.connect(update_midi)) }
-        if (Array.isArray(midi_in_ports)) { midi_in_ports.forEach((m) => m.nInputEventsChanged.connect(update_midi)) }
-        if (Array.isArray(midi_out_ports)) { midi_out_ports.forEach((m) => m.nOutputEventsChanged.connect(update_midi)) }
+        if (Array.isArray(midi_in_ports)) { midi_in_ports.forEach((m) => m.midi_n_input_notes_active_changed.connect(update_midi)) }
+        if (Array.isArray(midi_out_ports)) { midi_out_ports.forEach((m) => m.midi_n_output_notes_active_changed.connect(update_midi)) }
+        if (Array.isArray(midi_in_ports)) { midi_in_ports.forEach((m) => m.midi_n_input_events_changed.connect(update_midi)) }
+        if (Array.isArray(midi_out_ports)) { midi_out_ports.forEach((m) => m.midi_n_output_events_changed.connect(update_midi)) }
     }
     onGain_dBChanged: push_out_gains()
     onInput_gain_dBChanged: push_in_gains()

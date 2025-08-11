@@ -31,6 +31,12 @@ void GraphPort::connect_internal(const shoop_shared_ptr<GraphPort> &other) {
     get_backend().set_graph_node_changes_pending();
 }
 
+void GraphPort::set_passthrough_enabled(bool enabled) {
+    if (m_passthrough_enabled != enabled) {
+        log<log_level_debug>("passthrough enabled -> {}", enabled);
+    }
+    m_passthrough_enabled = enabled;
+}
 
 void GraphPort::PROC_notify_changed_buffer_size(uint32_t buffer_size) {}
 
