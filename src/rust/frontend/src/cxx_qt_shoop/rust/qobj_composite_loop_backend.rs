@@ -13,9 +13,7 @@ use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,
     invokable::invoke,
-    qobject::{
-        self, ffi::{qobject_property_int, qobject_property_qobject, qobject_property_string}, qobject_has_property, AsQObject
-    },
+    qobject::{self, qobject_has_property, AsQObject},
     qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
 use std::{
@@ -849,9 +847,7 @@ impl CompositeLoopBackend {
                     .as_mut()
                     .running_loops
                     .iter()
-                    .map(|variant| {
-                        qvariant_to_qobject_ptr(variant)
-                    })
+                    .map(|variant| qvariant_to_qobject_ptr(variant))
                     .collect::<Result<HashSet<_>, _>>()?;
                 let mut running_loops_changed = false;
 

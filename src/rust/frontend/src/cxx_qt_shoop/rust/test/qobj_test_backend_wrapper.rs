@@ -15,10 +15,7 @@ impl TestBackendWrapper {
     unsafe fn initialize_impl_with_result(
         self: Pin<&mut TestBackendWrapper>,
     ) -> Result<(), cxx::Exception> {
-        qobject::qobject_set_object_name(
-            self.pin_mut_qobject_ptr(),
-            "shoop_backend_wrapper",
-        )?;
+        qobject::qobject_set_object_name(self.pin_mut_qobject_ptr(), "shoop_backend_wrapper")?;
         Ok(())
     }
 

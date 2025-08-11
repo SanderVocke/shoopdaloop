@@ -382,7 +382,7 @@ impl PortBackend {
         self.prev_state.n_output_notes_active as i32
     }
 
-    pub fn initialize_impl(mut self: Pin<&mut PortBackend>) {}
+    pub fn initialize_impl(self: Pin<&mut PortBackend>) {}
 
     pub fn connect_external_port(mut self: Pin<&mut PortBackend>, name: QString) {
         self.as_mut().maybe_initialize_backend();
@@ -463,7 +463,7 @@ impl PortBackend {
         }
     }
 
-    pub fn get_audio_gain(mut self: Pin<&mut PortBackend>) -> f32 {
+    pub fn get_audio_gain(self: Pin<&mut PortBackend>) -> f32 {
         self.prev_state.gain
     }
 
@@ -750,7 +750,7 @@ impl PortBackend {
         }
     }
 
-    pub fn get_min_n_ringbuffer_samples(mut self: Pin<&mut PortBackend>) -> i32 {
+    pub fn get_min_n_ringbuffer_samples(self: Pin<&mut PortBackend>) -> i32 {
         self.min_n_ringbuffer_samples.unwrap_or(0)
     }
 
@@ -836,11 +836,11 @@ impl PortBackend {
         }
     }
 
-    pub fn dummy_queue_midi_msgs(mut self: Pin<&mut PortBackend>, midi_msgs: QList_QVariant) {
+    pub fn dummy_queue_midi_msgs(self: Pin<&mut PortBackend>, midi_msgs: QList_QVariant) {
         todo!();
     }
 
-    pub fn dummy_dequeue_midi_msgs(mut self: Pin<&mut PortBackend>) -> QList_QVariant {
+    pub fn dummy_dequeue_midi_msgs(self: Pin<&mut PortBackend>) -> QList_QVariant {
         todo!();
     }
 
@@ -856,23 +856,23 @@ impl PortBackend {
         }
     }
 
-    pub fn get_n_ringbuffer_samples(mut self: Pin<&mut PortBackend>) -> i32 {
+    pub fn get_n_ringbuffer_samples(self: Pin<&mut PortBackend>) -> i32 {
         self.prev_state.ringbuffer_n_samples as i32
     }
 
-    pub fn get_is_midi(mut self: Pin<&mut PortBackend>) -> bool {
+    pub fn get_is_midi(self: Pin<&mut PortBackend>) -> bool {
         self.port_type.unwrap_or(PortDataType::Audio) == PortDataType::Midi
     }
 
-    pub fn get_maybe_fx_chain(mut self: Pin<&mut PortBackend>) -> *mut QObject {
+    pub fn get_maybe_fx_chain(self: Pin<&mut PortBackend>) -> *mut QObject {
         self.fx_chain.unwrap_or(std::ptr::null_mut())
     }
 
-    pub fn get_fx_chain_port_idx(mut self: Pin<&mut PortBackend>) -> i32 {
+    pub fn get_fx_chain_port_idx(self: Pin<&mut PortBackend>) -> i32 {
         self.fx_chain_port_idx.unwrap_or(0) as i32
     }
 
-    pub fn get_name_hint(mut self: Pin<&mut PortBackend>) -> QString {
+    pub fn get_name_hint(self: Pin<&mut PortBackend>) -> QString {
         if let Some(name_hint) = self.name_hint.as_ref() {
             name_hint.clone()
         } else {
@@ -880,7 +880,7 @@ impl PortBackend {
         }
     }
 
-    pub fn get_input_connectability(mut self: Pin<&mut PortBackend>) -> i32 {
+    pub fn get_input_connectability(self: Pin<&mut PortBackend>) -> i32 {
         if let Some(c) = self.input_connectability.as_ref() {
             c.to_ffi() as i32
         } else {
@@ -888,7 +888,7 @@ impl PortBackend {
         }
     }
 
-    pub fn get_output_connectability(mut self: Pin<&mut PortBackend>) -> i32 {
+    pub fn get_output_connectability(self: Pin<&mut PortBackend>) -> i32 {
         if let Some(c) = self.output_connectability.as_ref() {
             c.to_ffi() as i32
         } else {
@@ -896,7 +896,7 @@ impl PortBackend {
         }
     }
 
-    pub fn get_is_internal(mut self: Pin<&mut PortBackend>) -> bool {
+    pub fn get_is_internal(self: Pin<&mut PortBackend>) -> bool {
         self.is_internal.unwrap_or(false)
     }
 }

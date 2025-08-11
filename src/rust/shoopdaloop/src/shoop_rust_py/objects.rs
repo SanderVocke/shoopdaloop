@@ -8,12 +8,12 @@ use serde_json;
 use std::pin::Pin;
 
 use frontend::cxx_qt_shoop::qobj_backend_wrapper_bridge::BackendWrapper as CxxQtBackendWrapper;
-use frontend::cxx_qt_shoop::qobj_port_backend_bridge::PortBackend as CxxQtPortBackend;
-use frontend::cxx_qt_shoop::qobj_port_gui_bridge::PortGui as CxxQtPortGui;
 use frontend::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::{
     qobject_to_loop_ptr, QList_QVariant, QVariant,
 };
 use frontend::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
+use frontend::cxx_qt_shoop::qobj_port_backend_bridge::PortBackend as CxxQtPortBackend;
+use frontend::cxx_qt_shoop::qobj_port_gui_bridge::PortGui as CxxQtPortGui;
 
 use cxx_qt_lib_shoop::qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr};
 
@@ -97,15 +97,16 @@ pub fn shoop_rust_connect_audio_channel_to_port(
     channel: &shoop_py_backend::audio_channel::AudioChannel,
     input: bool,
     disconnect: bool,
-    port_addr: usize
+    port_addr: usize,
 ) -> PyResult<()> {
     unsafe {
-        let port_ptr : *mut QObject = port_addr as *mut QObject;
-        let port_gui_ptr : *mut CxxQtPortGui = port_ptr as *mut CxxQtPortGui;
-        let port_gui_mut : &mut CxxQtPortGui = port_gui_ptr.as_mut().unwrap();
-        let port_gui_pin : Pin<&mut CxxQtPortGui> = Pin::new_unchecked(port_gui_mut);
-        let port_backend : *mut CxxQtPortBackend = port_gui_pin.backend_port_wrapper.data().unwrap() as *mut CxxQtPortBackend;
-        let port_pin : Pin<&mut CxxQtPortBackend> = Pin::new_unchecked(&mut *port_backend);
+        let port_ptr: *mut QObject = port_addr as *mut QObject;
+        let port_gui_ptr: *mut CxxQtPortGui = port_ptr as *mut CxxQtPortGui;
+        let port_gui_mut: &mut CxxQtPortGui = port_gui_ptr.as_mut().unwrap();
+        let port_gui_pin: Pin<&mut CxxQtPortGui> = Pin::new_unchecked(port_gui_mut);
+        let port_backend: *mut CxxQtPortBackend =
+            port_gui_pin.backend_port_wrapper.data().unwrap() as *mut CxxQtPortBackend;
+        let port_pin: Pin<&mut CxxQtPortBackend> = Pin::new_unchecked(&mut *port_backend);
         if let Some(backend_port) = port_pin.maybe_backend_port.as_ref() {
             if let AnyBackendPort::Audio(backend_port) = backend_port {
                 if input {
@@ -126,7 +127,7 @@ pub fn shoop_rust_connect_audio_channel_to_port(
             println!("could not connect channel to port: port not yet initialized");
         }
     }
-    Ok(()) 
+    Ok(())
 }
 
 #[pyfunction]
@@ -134,15 +135,16 @@ pub fn shoop_rust_connect_midi_channel_to_port(
     channel: &shoop_py_backend::midi_channel::MidiChannel,
     input: bool,
     disconnect: bool,
-    port_addr: usize
+    port_addr: usize,
 ) -> PyResult<()> {
     unsafe {
-        let port_ptr : *mut QObject = port_addr as *mut QObject;
-        let port_gui_ptr : *mut CxxQtPortGui = port_ptr as *mut CxxQtPortGui;
-        let port_gui_mut : &mut CxxQtPortGui = port_gui_ptr.as_mut().unwrap();
-        let port_gui_pin : Pin<&mut CxxQtPortGui> = Pin::new_unchecked(port_gui_mut);
-        let port_backend : *mut CxxQtPortBackend = port_gui_pin.backend_port_wrapper.data().unwrap() as *mut CxxQtPortBackend;
-        let port_pin : Pin<&mut CxxQtPortBackend> = Pin::new_unchecked(&mut *port_backend);
+        let port_ptr: *mut QObject = port_addr as *mut QObject;
+        let port_gui_ptr: *mut CxxQtPortGui = port_ptr as *mut CxxQtPortGui;
+        let port_gui_mut: &mut CxxQtPortGui = port_gui_ptr.as_mut().unwrap();
+        let port_gui_pin: Pin<&mut CxxQtPortGui> = Pin::new_unchecked(port_gui_mut);
+        let port_backend: *mut CxxQtPortBackend =
+            port_gui_pin.backend_port_wrapper.data().unwrap() as *mut CxxQtPortBackend;
+        let port_pin: Pin<&mut CxxQtPortBackend> = Pin::new_unchecked(&mut *port_backend);
         if let Some(backend_port) = port_pin.maybe_backend_port.as_ref() {
             if let AnyBackendPort::Midi(backend_port) = backend_port {
                 if input {
@@ -163,7 +165,7 @@ pub fn shoop_rust_connect_midi_channel_to_port(
             println!("could not connect channel to port: port not yet initialized");
         }
     }
-    Ok(()) 
+    Ok(())
 }
 
 #[pyfunction]

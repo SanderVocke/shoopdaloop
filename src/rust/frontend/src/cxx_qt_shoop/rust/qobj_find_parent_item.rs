@@ -7,7 +7,6 @@ pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::FindParentItem;
 use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::*;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 
-use cxx_qt_lib_shoop::qobject::qobject_object_name;
 use cxx_qt_lib_shoop::qobject::{qobject_class_name, qobject_property_bool};
 use cxx_qt_lib_shoop::qquickitem;
 use cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_ref, AsQQuickItem};
@@ -99,7 +98,7 @@ impl FindParentItem {
         if !item.is_null() && !self.item_bool_property_to_check().is_empty() {
             cxx_qt_lib_shoop::connect::connect(
                 item.as_mut().unwrap(),
-                format!("{}Changed()",self.item_bool_property_to_check()).as_str(),
+                format!("{}Changed()", self.item_bool_property_to_check()).as_str(),
                 self.as_mut().pin_mut_qobject_ptr().as_mut().unwrap(),
                 "update_found_item_bool_property()",
                 cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION,

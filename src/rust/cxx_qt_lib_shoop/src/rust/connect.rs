@@ -66,7 +66,13 @@ where
     unsafe {
         let sender_qobj = sender.qobject_ref();
         let receiver_qobj = receiver.qobject_ref();
-        ffi::connect(sender_qobj, signal.to_string(), receiver_qobj, slot.to_string(), connection_type)
+        ffi::connect(
+            sender_qobj,
+            signal.to_string(),
+            receiver_qobj,
+            slot.to_string(),
+            connection_type,
+        )
     }
 }
 

@@ -199,10 +199,7 @@ pub unsafe fn qobject_property_qvariant(
 pub unsafe fn qobject_object_name(obj: &QObject) -> Result<String, cxx::Exception> {
     ffi::qobject_object_name(obj)
 }
-pub unsafe fn qobject_set_object_name(
-    obj: *mut QObject,
-    name: &str,
-) -> Result<(), cxx::Exception> {
+pub unsafe fn qobject_set_object_name(obj: *mut QObject, name: &str) -> Result<(), cxx::Exception> {
     ffi::qobject_set_object_name(obj, name.to_string())
 }
 pub unsafe fn qobject_move_to_thread(
@@ -246,10 +243,7 @@ pub unsafe fn qobject_register_qml_singleton_instance(
         &mut type_name.to_string(),
     )
 }
-pub unsafe fn qobject_has_property(
-    obj: &QObject,
-    property: &str,
-) -> Result<bool, cxx::Exception> {
+pub unsafe fn qobject_has_property(obj: &QObject, property: &str) -> Result<bool, cxx::Exception> {
     ffi::qobject_has_property(obj, property.to_string())
 }
 
@@ -317,10 +311,7 @@ pub trait IsQObject: AsQObject {
         qobject_set_property_bool(self_item, property, value)
     }
 
-    unsafe fn find_child(
-        self: Pin<&mut Self>,
-        name: &str,
-    ) -> Result<*mut QObject, cxx::Exception> {
+    unsafe fn find_child(self: Pin<&mut Self>, name: &str) -> Result<*mut QObject, cxx::Exception> {
         let self_item = self.pin_mut_qobject_ptr();
         qobject_find_child(self_item, name)
     }

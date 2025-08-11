@@ -30,37 +30,59 @@ mod ffi {
         fn qvariantTypeId(obj: &QVariant) -> Result<i32>;
 
         #[rust_name = "qvariant_convertible_to_qobject_ptr"]
-        unsafe fn qvariantConvertibleTo(obj: &QVariant, example: *mut *mut QObject) -> Result<bool>;
+        unsafe fn qvariantConvertibleTo(obj: &QVariant, example: *mut *mut QObject)
+            -> Result<bool>;
 
         #[rust_name = "qvariant_to_qobject_ptr"]
-        unsafe fn qvariantAs(variant: &QVariant, example: *mut *mut QObject) -> Result<*mut QObject>;
+        unsafe fn qvariantAs(
+            variant: &QVariant,
+            example: *mut *mut QObject,
+        ) -> Result<*mut QObject>;
 
         #[rust_name = "qobject_ptr_to_qvariant"]
         unsafe fn asQVariant(obj: &*mut QObject) -> Result<QVariant>;
 
         #[rust_name = "qvariant_convertible_to_qvariantmap"]
-        unsafe fn qvariantConvertibleTo(obj: &QVariant, example: *mut QMap_QString_QVariant) -> Result<bool>;
+        unsafe fn qvariantConvertibleTo(
+            obj: &QVariant,
+            example: *mut QMap_QString_QVariant,
+        ) -> Result<bool>;
 
         #[rust_name = "qvariant_to_qvariantmap"]
-        unsafe fn qvariantAs(variant: &QVariant, example: *mut QMap_QString_QVariant) -> Result<QMap_QString_QVariant>;
+        unsafe fn qvariantAs(
+            variant: &QVariant,
+            example: *mut QMap_QString_QVariant,
+        ) -> Result<QMap_QString_QVariant>;
 
         #[rust_name = "qvariantmap_to_qvariant"]
         unsafe fn asQVariant(obj: &QMap_QString_QVariant) -> Result<QVariant>;
 
         #[rust_name = "qvariant_convertible_to_qstringlist"]
-        unsafe fn qvariantConvertibleTo(obj: &QVariant, example: *mut QList_QString) -> Result<bool>;
+        unsafe fn qvariantConvertibleTo(
+            obj: &QVariant,
+            example: *mut QList_QString,
+        ) -> Result<bool>;
 
         #[rust_name = "qvariant_to_qstringlist"]
-        unsafe fn qvariantAs(variant: &QVariant, example: *mut QList_QString) -> Result<QList_QString>;
+        unsafe fn qvariantAs(
+            variant: &QVariant,
+            example: *mut QList_QString,
+        ) -> Result<QList_QString>;
 
         #[rust_name = "qstringlist_to_qvariant"]
         unsafe fn asQVariant(obj: &QList_QString) -> Result<QVariant>;
 
         #[rust_name = "qvariant_convertible_to_qvariantlist"]
-        unsafe fn qvariantConvertibleTo(obj: &QVariant, example: *mut QList_QVariant) -> Result<bool>;
+        unsafe fn qvariantConvertibleTo(
+            obj: &QVariant,
+            example: *mut QList_QVariant,
+        ) -> Result<bool>;
 
         #[rust_name = "qvariant_to_qvariantlist"]
-        unsafe fn qvariantAs(variant: &QVariant, example: *mut QList_QVariant) -> Result<QList_QVariant>;
+        unsafe fn qvariantAs(
+            variant: &QVariant,
+            example: *mut QList_QVariant,
+        ) -> Result<QList_QVariant>;
 
         #[rust_name = "qvariantlist_to_qvariant"]
         unsafe fn asQVariant(obj: &QList_QVariant) -> Result<QVariant>;
@@ -75,18 +97,24 @@ mod ffi {
         unsafe fn asQVariant(obj: &QList_i32) -> Result<QVariant>;
 
         #[rust_name = "qvariant_convertible_to_qsharedpointer_qobject"]
-        unsafe fn qvariantConvertibleTo(obj: &QVariant, example: *mut QSharedPointer_QObject) -> Result<bool>;
+        unsafe fn qvariantConvertibleTo(
+            obj: &QVariant,
+            example: *mut QSharedPointer_QObject,
+        ) -> Result<bool>;
 
         #[rust_name = "qvariant_to_qsharedpointer_qobject"]
-        unsafe fn qvariantAsUniquePtr(variant: &QVariant, example: *mut QSharedPointer_QObject) -> Result<UniquePtr<QSharedPointer_QObject>>;
+        unsafe fn qvariantAsUniquePtr(
+            variant: &QVariant,
+            example: *mut QSharedPointer_QObject,
+        ) -> Result<UniquePtr<QSharedPointer_QObject>>;
 
         #[rust_name = "qsharedpointer_qobject_to_qvariant"]
         unsafe fn asQVariant(obj: &QSharedPointer_QObject) -> Result<QVariant>;
     }
 }
 
-pub use ffi::{qvariant_type_name, qvariant_type_id, QList_QVariant};
 use ffi::*;
+pub use ffi::{qvariant_type_id, qvariant_type_name, QList_QVariant};
 
 pub fn qvariant_convertible_to_qobject_ptr(obj: &QVariant) -> Result<bool, cxx::Exception> {
     unsafe { ffi::qvariant_convertible_to_qobject_ptr(obj, std::ptr::null_mut()) }
@@ -96,7 +124,7 @@ pub fn qvariant_to_qobject_ptr(obj: &QVariant) -> Result<*mut QObject, cxx::Exce
     unsafe { ffi::qvariant_to_qobject_ptr(obj, std::ptr::null_mut()) }
 }
 
-pub fn qobject_ptr_to_qvariant(obj: & *mut QObject) -> Result<QVariant, cxx::Exception> {
+pub fn qobject_ptr_to_qvariant(obj: &*mut QObject) -> Result<QVariant, cxx::Exception> {
     unsafe { ffi::qobject_ptr_to_qvariant(obj) }
 }
 
@@ -148,14 +176,20 @@ pub fn qlist_i32_to_qvariant(obj: &QList_i32) -> Result<QVariant, cxx::Exception
     unsafe { ffi::qlist_i32_to_qvariant(obj) }
 }
 
-pub fn qvariant_convertible_to_qsharedpointer_qobject(obj: &QVariant) -> Result<bool, cxx::Exception> {
+pub fn qvariant_convertible_to_qsharedpointer_qobject(
+    obj: &QVariant,
+) -> Result<bool, cxx::Exception> {
     unsafe { ffi::qvariant_convertible_to_qsharedpointer_qobject(obj, std::ptr::null_mut()) }
 }
 
-pub fn qvariant_to_qsharedpointer_qobject(obj: &QVariant) -> Result<cxx::UniquePtr<QSharedPointer_QObject>, cxx::Exception> {
+pub fn qvariant_to_qsharedpointer_qobject(
+    obj: &QVariant,
+) -> Result<cxx::UniquePtr<QSharedPointer_QObject>, cxx::Exception> {
     unsafe { ffi::qvariant_to_qsharedpointer_qobject(obj, std::ptr::null_mut()) }
 }
 
-pub fn qsharedpointer_qobject_to_qvariant(obj: &QSharedPointer_QObject) -> Result<QVariant, cxx::Exception> {
+pub fn qsharedpointer_qobject_to_qvariant(
+    obj: &QSharedPointer_QObject,
+) -> Result<QVariant, cxx::Exception> {
     unsafe { ffi::qsharedpointer_qobject_to_qvariant(obj) }
 }

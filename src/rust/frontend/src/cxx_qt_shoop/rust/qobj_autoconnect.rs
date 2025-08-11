@@ -76,9 +76,7 @@ impl AutoConnect {
         let mut timer: Pin<&mut QTimer> = Pin::new_unchecked(&mut timer_slice[0]);
         timer.as_mut().set_interval(1000);
         timer.as_mut().set_single_shot(false);
-        timer
-            .as_mut()
-            .connect_timeout(obj_qobject, "update()")?;
+        timer.as_mut().connect_timeout(obj_qobject, "update()")?;
         timer.as_mut().start();
 
         Ok(())
@@ -131,9 +129,8 @@ impl AutoConnect {
                 qobject::qobject_property_int(&*internal_port, "direction")
                     .map_err(|err| anyhow::anyhow!(err))
                     .and_then(|o| PortDirection::try_from(o))?;
-            let my_name: String =
-                qobject::qobject_property_string(&*internal_port, "name")
-                    .and_then(|o| Ok(o.to_string()))?;
+            let my_name: String = qobject::qobject_property_string(&*internal_port, "name")
+                .and_then(|o| Ok(o.to_string()))?;
             let my_port_initialized: bool =
                 qobject::qobject_property_bool(&*internal_port, "initialized")?;
             let q_external_ports: QList_QVariant = invokable::invoke(

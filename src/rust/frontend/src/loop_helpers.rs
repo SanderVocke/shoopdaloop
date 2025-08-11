@@ -5,8 +5,8 @@ use cxx_qt_lib_shoop::{
     connection_types,
     invokable::invoke,
     qobject::{ffi::qobject_meta_type_name, QObject},
-    qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
     qvariant_helpers::QList_QVariant,
+    qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
 
 use common::logging::macros::*;
@@ -66,8 +66,7 @@ pub fn transition_gui_loops(
         }
         invoke(
             &mut *call_on,
-            "transition_multiple(QList<QVariant>,::std::int32_t,::std::int32_t,::std::int32_t)"
-                ,
+            "transition_multiple(QList<QVariant>,::std::int32_t,::std::int32_t,::std::int32_t)",
             connection_types::DIRECT_CONNECTION,
             &(
                 list,

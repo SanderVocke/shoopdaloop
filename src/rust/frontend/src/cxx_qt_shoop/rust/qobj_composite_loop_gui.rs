@@ -256,8 +256,7 @@ impl CompositeLoopGui {
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_transition(::std::int32_t,::std::int32_t,::std::int32_t)"
-                            ,
+                        "backend_transition(::std::int32_t,::std::int32_t,::std::int32_t)",
                         backend_ref,
                         "transition(::std::int32_t,::std::int32_t,::std::int32_t)",
                         connection_types::QUEUED_CONNECTION,
@@ -271,8 +270,7 @@ impl CompositeLoopGui {
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)"
-                            ,
+                        "backend_adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)",
                         backend_ref,
                         "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)",
                         connection_types::QUEUED_CONNECTION,

@@ -12,7 +12,6 @@ use cxx_qt_lib::{QString, QVariant};
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject;
-use cxx_qt_lib_shoop::qobject::qobject_property_bool;
 use cxx_qt_lib_shoop::qobject::FromQObject;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use std::pin::Pin;

@@ -460,7 +460,9 @@ impl PortGui {
     }
 
     pub fn set_is_internal(mut self: Pin<&mut PortGui>, is_internal: bool) {
-        unsafe { self.as_mut().backend_set_is_internal(is_internal); }
+        unsafe {
+            self.as_mut().backend_set_is_internal(is_internal);
+        }
         if is_internal != self.is_internal {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.is_internal = is_internal;
@@ -528,7 +530,7 @@ impl PortGui {
         }
     }
 
-    pub fn push_audio_gain(mut self: Pin<&mut PortGui>, audio_gain: f64) {
+    pub fn push_audio_gain(self: Pin<&mut PortGui>, audio_gain: f64) {
         unsafe {
             self.backend_set_audio_gain(audio_gain as f64);
         }

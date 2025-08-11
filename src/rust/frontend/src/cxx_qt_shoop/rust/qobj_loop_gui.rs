@@ -17,8 +17,8 @@ use cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
-use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use cxx_qt_lib_shoop::qvariant_helpers::qsharedpointer_qobject_to_qvariant;
+use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Loop");
 
@@ -104,16 +104,14 @@ impl LoopGui {
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_transition(::std::int32_t,::std::int32_t,::std::int32_t)"
-                            ,
+                        "backend_transition(::std::int32_t,::std::int32_t,::std::int32_t)",
                         backend_ref,
                         "transition(::std::int32_t,::std::int32_t,::std::int32_t)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)"
-                            ,
+                        "backend_adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)",
                         backend_ref,
                         "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)",
                         connection_types::QUEUED_CONNECTION,
@@ -445,7 +443,8 @@ impl LoopGui {
                 let backend_loop_ptr: &cxx::UniquePtr<QSharedPointer_QObject> =
                     &loop_gui_ptr.as_ref().unwrap().backend_loop_wrapper;
                 sync_source_out =
-                    qsharedpointer_qobject_to_qvariant(&backend_loop_ptr.as_ref().unwrap()).unwrap();
+                    qsharedpointer_qobject_to_qvariant(&backend_loop_ptr.as_ref().unwrap())
+                        .unwrap();
             }
         }
 
