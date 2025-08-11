@@ -82,7 +82,6 @@ ShoopTestFile {
             }
         }
 
-
         ShoopTestCase {
             name: 'MidiControl_actions'
             filename : TestFilename.test_filename()

@@ -50,7 +50,7 @@ PortGui {
 
     function push_all() {
         push_muted(descriptor.muted)
-        push_passthrough_muted(descriptor.muted)
+        push_passthrough_muted(descriptor.passthrough_muted)
         try_make_connections(descriptor.external_port_connections)
     }
 

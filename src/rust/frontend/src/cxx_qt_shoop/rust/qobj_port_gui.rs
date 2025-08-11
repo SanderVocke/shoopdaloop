@@ -547,18 +547,21 @@ impl PortGui {
 
     pub fn push_audio_gain(self: Pin<&mut PortGui>, audio_gain: f64) {
         unsafe {
+            debug!(self, "push gain -> {audio_gain}");
             self.backend_set_audio_gain(audio_gain as f64);
         }
     }
 
     pub fn push_muted(self: Pin<&mut PortGui>, muted: bool) {
         unsafe {
+            debug!(self, "push muted -> {muted}");
             self.backend_set_muted(muted);
         }
     }
 
     pub fn push_passthrough_muted(self: Pin<&mut PortGui>, muted: bool) {
         unsafe {
+            debug!(self, "push passhtrough muted -> {muted}");
             self.backend_set_passthrough_muted(muted);
         }
     }

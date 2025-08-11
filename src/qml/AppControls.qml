@@ -180,10 +180,15 @@ Item {
                 }
             }
 
-            ProfilingWindow {
-                id: profilingwindow
-                backend: root.backend
+            Item {
+            Component.onCompleted: console.log("ProfilingWindow HACK")
+               id: profilingwindow
             }
+
+            //  ProfilingWindow {
+            //      id: profilingwindow
+            //      backend: root.backend
+            //  }
 
             MonitorWindow {
                 id: monitorwindow

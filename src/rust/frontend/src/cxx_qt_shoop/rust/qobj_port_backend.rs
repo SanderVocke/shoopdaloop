@@ -49,7 +49,7 @@ impl PortBackend {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let port = self.maybe_backend_port.as_ref().unwrap();
             let prev_state = self.prev_state.clone();
-            let new_state = port.get_state();
+            let new_state = port.get_state()?;
 
             {
                 let mut rust_mut = self.as_mut().rust_mut();
@@ -205,7 +205,9 @@ impl PortBackend {
             };
 
             // To push any state that was already set on us before initializing
-            port.push_state(&self.prev_state)?;
+            let state = &self.prev_state;
+            debug!(self, "Push deferred state: {state:?}");
+            port.push_state(state)?;
             self.as_mut().update_internal_port_connections_impl();
 
             let mut rust_mut = self.as_mut().rust_mut();
@@ -230,7 +232,7 @@ impl PortBackend {
                 .input_connectability
                 .as_ref()
                 .ok_or(anyhow::anyhow!("input_connectability not set"))?;
-            let direction = if input_connectability.internal {
+            let direction = if !input_connectability.internal {
                 PortDirection::Input
             } else {
                 PortDirection::Output
@@ -265,7 +267,9 @@ impl PortBackend {
                 )?;
 
                 // To push any state that was already set on us before initializing
-                port.push_state(&prev_state)?;
+                let state = &self.prev_state;
+                debug!(self, "Push deferred state: {state:?}");
+                port.push_state(state)?;
                 self.as_mut().update_internal_port_connections_impl();
 
                 let mut rust_mut = self.as_mut().rust_mut();

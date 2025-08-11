@@ -1,5 +1,5 @@
 import QtQuick 6.6
-import QtTest 1.0
+import QtQuick.Controls 6.6
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants

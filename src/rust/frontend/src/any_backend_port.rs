@@ -52,10 +52,10 @@ impl AnyBackendPort {
         }
     }
 
-    pub fn get_state(&self) -> AnyBackendPortState {
+    pub fn get_state(&self) -> Result<AnyBackendPortState, anyhow::Error> {
         match self {
-            AnyBackendPort::Audio(port) => AnyBackendPortState::from(port.get_state()),
-            AnyBackendPort::Midi(port) => AnyBackendPortState::from(port.get_state()),
+            AnyBackendPort::Audio(port) => Ok(AnyBackendPortState::from(port.get_state()?)),
+            AnyBackendPort::Midi(port) => Ok(AnyBackendPortState::from(port.get_state()?)),
         }
     }
 

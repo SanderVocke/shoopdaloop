@@ -77,7 +77,6 @@ Item {
                 }
             }
 
-
         }
 
         Rectangle {
