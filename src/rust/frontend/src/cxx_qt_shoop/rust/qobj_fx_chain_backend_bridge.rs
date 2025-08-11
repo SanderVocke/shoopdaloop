@@ -106,6 +106,10 @@ pub mod ffi {
 
         #[rust_name = "fx_chain_backend_qobject_from_ptr"]
         unsafe fn qobjectFromPtr(obj: *mut FXChainBackend) -> *mut QObject;
+
+        include!("cxx-qt-lib-shoop/make_raw.h");
+        #[rust_name = "make_raw_fx_chain_backend"]
+        unsafe fn make_raw() -> *mut FXChainBackend;
     }
 }
 

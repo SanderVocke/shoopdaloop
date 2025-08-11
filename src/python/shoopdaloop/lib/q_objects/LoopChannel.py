@@ -13,7 +13,7 @@ from PySide6.QtQuick import QQuickItem
 
 from .ShoopPyObject import *
 
-from .AudioPort import AudioPort
+# from .AudioPort import AudioPort
 
 from ..backend_wrappers import *
 from ..logging import Logger

@@ -1,10 +1,10 @@
-import ShoopDaLoop.PythonFXChain
 import ShoopDaLoop.PythonLogger
+import ShoopDaLoop.Rust
 import QtQuick 6.6
 
 import ShoopConstants
 
-PythonFXChain {
+FXChainGui {
     id: root
     property bool loaded : initialized
 

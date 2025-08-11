@@ -43,6 +43,15 @@ pub mod ffi {
         #[qinvokable]
         pub fn restore_state(self: Pin<&mut FXChainGui>, state_str: QString);
 
+        #[qinvokable]
+        pub unsafe fn backend_state_changed(
+            self: Pin<&mut FXChainGui>,
+            initialized: bool,
+            ready: bool,
+            active: bool,
+            visible: bool,
+        );
+
         #[qsignal]
         pub unsafe fn initialized_changed(self: Pin<&mut FXChainGui>, initialized: bool);
 
@@ -63,6 +72,24 @@ pub mod ffi {
 
         #[qsignal]
         pub unsafe fn backend_changed(self: Pin<&mut FXChainGui>, backend: *mut QObject);
+
+        #[qsignal]
+        pub unsafe fn backend_set_backend(self: Pin<&mut FXChainGui>, backend: *mut QObject);
+
+        #[qsignal]
+        pub unsafe fn backend_set_title(self: Pin<&mut FXChainGui>, title: QString);
+
+        #[qsignal]
+        pub unsafe fn backend_set_chain_type(self: Pin<&mut FXChainGui>, chain_type: i32);
+
+        #[qsignal]
+        pub unsafe fn backend_push_active(self: Pin<&mut FXChainGui>, active: bool);
+
+        #[qsignal]
+        pub unsafe fn backend_push_ui_visible(self: Pin<&mut FXChainGui>, ui_visible: bool);
+
+        #[qsignal]
+        pub unsafe fn backend_restore_state(self: Pin<&mut FXChainGui>, state_str: QString);
     }
 
     unsafe extern "C++" {
@@ -81,23 +108,34 @@ pub mod ffi {
 
         #[rust_name = "from_qobject_mut_fx_chain_gui"]
         unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut FXChainGui);
+
+        include!("cxx-qt-lib-shoop/register_qml_type.h");
+        #[rust_name = "register_qml_type_fx_chain_gui"]
+        unsafe fn register_qml_type(
+            inference_example: *mut FXChainGui,
+            module_name: &mut String,
+            version_major: i64,
+            version_minor: i64,
+            type_name: &mut String,
+        );
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)> for FXChainGui {}
 }
 
-use cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
+use cxx_qt_lib_shoop::{qquickitem::IsQQuickItem, qsharedpointer_qobject::QSharedPointer_QObject};
 pub use ffi::FXChainGui;
 use ffi::*;
 
 pub struct FXChainGuiRust {
-    initialized: bool,
-    ui_visible: bool,
-    ready: bool,
-    active: bool,
-    backend: *mut QObject,
-    title: QString,
-    chain_type: i32,
+    pub initialized: bool,
+    pub ui_visible: bool,
+    pub ready: bool,
+    pub active: bool,
+    pub backend: *mut QObject,
+    pub title: QString,
+    pub chain_type: i32,
+    pub backend_chain_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
 }
 
 impl Default for FXChainGuiRust {
@@ -110,6 +148,7 @@ impl Default for FXChainGuiRust {
             backend: std::ptr::null_mut(),
             title: QString::from(""),
             chain_type: 0,
+            backend_chain_wrapper: cxx::UniquePtr::null(),
         }
     }
 }

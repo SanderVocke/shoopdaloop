@@ -162,6 +162,13 @@ mod ffi {
             method: String,
             connection_type: u32,
         ) -> Result<*mut QObject>;
+
+        #[rust_name = "invoke_qstring_noargs"]
+        unsafe fn invoke_with_return(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+        ) -> Result<QString>;
     }
 }
 
@@ -464,6 +471,23 @@ impl Invokable<*mut ffi::QObject, ()> for ffi::QObject {
     ) -> Result<*mut ffi::QObject, Exception> {
         unsafe {
             ffi::invoke_qobject_noargs(
+                self as *mut ffi::QObject,
+                method.to_string(),
+                connection_type,
+            )
+        }
+    }
+}
+
+impl Invokable<ffi::QString, ()> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: &str,
+        connection_type: u32,
+        _args: &(),
+    ) -> Result<ffi::QString, Exception> {
+        unsafe {
+            ffi::invoke_qstring_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
