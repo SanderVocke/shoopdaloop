@@ -2,7 +2,7 @@ use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::ffi::*;
 use crate::test_results::*;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::qobject::qobject_property_qvariant;
-use cxx_qt_lib_shoop::qvariant_qvariantmap::qvariant_to_qvariantmap;
+use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qvariantmap;
 use glob::glob;
 use std::path::PathBuf;
 use std::pin::Pin;

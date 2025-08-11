@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use backend_bindings::{PortDataType, PortDirection};
 use core::fmt::Debug;
 use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QString, QVariant};
-use cxx_qt_lib_shoop::qvariant_qvariantmap::{qvariant_to_qvariantmap, qvariantmap_to_qvariant};
+use cxx_qt_lib_shoop::qvariant_helpers::{qvariant_to_qvariantmap, qvariantmap_to_qvariant};
 use std::fmt;
 
 pub struct ExternalPortDescriptor {

@@ -13,7 +13,7 @@ use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,
     qobject::{qobject_property_bool, FromQObject},
-    qvariant_qobject::qvariant_to_qobject_ptr,
+    qvariant_helpers::qvariant_to_qobject_ptr,
 };
 use std::{collections::HashMap, pin::Pin};
 shoop_log_unit!("Frontend.Port");
@@ -698,8 +698,7 @@ impl PortBackend {
             internal_port_connections.iter().try_for_each(
                 |other_internal_port| -> Result<(), anyhow::Error> {
                     let other_internal_port: *mut QObject =
-                        qvariant_to_qobject_ptr(&other_internal_port)
-                            .ok_or(anyhow::anyhow!("Variant is not a QObject"))?;
+                        qvariant_to_qobject_ptr(&other_internal_port)?;
                     if other_internal_port.is_null() {
                         return Err(anyhow::anyhow!("Internal port is null"));
                     }

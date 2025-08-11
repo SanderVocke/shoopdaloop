@@ -17,8 +17,8 @@ use cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
-use cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
-use cxx_qt_lib_shoop::qvariant_qsharedpointer_qobject::qsharedpointer_qobject_to_qvariant;
+use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
+use cxx_qt_lib_shoop::qvariant_helpers::qsharedpointer_qobject_to_qvariant;
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Loop");
 
@@ -292,7 +292,7 @@ impl LoopGui {
     }
 
     pub fn get_backend_loop_shared_ptr(self: Pin<&mut LoopGui>) -> QVariant {
-        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap())
+        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap()).unwrap()
     }
 
     pub fn transition(
@@ -445,7 +445,7 @@ impl LoopGui {
                 let backend_loop_ptr: &cxx::UniquePtr<QSharedPointer_QObject> =
                     &loop_gui_ptr.as_ref().unwrap().backend_loop_wrapper;
                 sync_source_out =
-                    qsharedpointer_qobject_to_qvariant(&backend_loop_ptr.as_ref().unwrap());
+                    qsharedpointer_qobject_to_qvariant(&backend_loop_ptr.as_ref().unwrap()).unwrap();
             }
         }
 

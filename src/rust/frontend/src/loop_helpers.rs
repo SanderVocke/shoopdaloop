@@ -5,8 +5,8 @@ use cxx_qt_lib_shoop::{
     connection_types,
     invokable::invoke,
     qobject::{ffi::qobject_meta_type_name, QObject},
-    qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
-    qvariant_qvariantlist::QList_QVariant,
+    qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
+    qvariant_helpers::QList_QVariant,
 };
 
 use common::logging::macros::*;
@@ -25,9 +25,7 @@ pub fn get_backend_loop_handles_variant_list(
             .iter()
             .map(|loop_variant| -> Result<(), anyhow::Error> {
                 unsafe {
-                    let loop_qobj = qvariant_to_qobject_ptr(loop_variant).ok_or(
-                        anyhow::anyhow!("Failed to convert QVariant to QObject pointer"),
-                    )?;
+                    let loop_qobj = qvariant_to_qobject_ptr(loop_variant)?;
                     let backend_loop_handle : QVariant = invoke(
                         &mut *loop_qobj,
                         "get_backend_loop_shared_ptr()",
@@ -63,7 +61,7 @@ pub fn transition_gui_loops(
         let mut list: QList_QVariant = QList::default();
         let mut call_on: *mut QObject = std::ptr::null_mut();
         for l in loops {
-            list.append(qobject_ptr_to_qvariant(l));
+            list.append(qobject_ptr_to_qvariant(&l)?);
             call_on = l;
         }
         invoke(
@@ -99,7 +97,7 @@ pub fn transition_backend_loops(
     unsafe {
         for l in loops {
             if qobject_meta_type_name(&*l)? == LoopBackend::metatype_name() {
-                unison_transition_loops.append(qobject_ptr_to_qvariant(l));
+                unison_transition_loops.append(qobject_ptr_to_qvariant(&l)?);
             } else {
                 let to_mode = to_mode as isize as i32;
                 let cycles_delay = maybe_cycles_delay.unwrap_or(-1);
@@ -118,7 +116,7 @@ pub fn transition_backend_loops(
             let first = unison_transition_loops
                 .get(0)
                 .ok_or(anyhow::anyhow!("No loops to transition"))?;
-            let first = qvariant_to_qobject_ptr(first).ok_or(anyhow::anyhow!("Not a QObject"))?;
+            let first = qvariant_to_qobject_ptr(first)?;
             invoke(
                 &mut *first,
                 "transition_multiple_backend_in_unison(QList<QVariant>,::std::int32_t,::std::int32_t,::std::int32_t)"

@@ -75,7 +75,7 @@ mod ffi {
     }
 }
 
-pub use ffi::{qvariant_type_name, qvariant_type_id};
+pub use ffi::{qvariant_type_name, qvariant_type_id, QList_QVariant};
 use ffi::*;
 
 pub fn qvariant_convertible_to_qobject_ptr(obj: &QVariant) -> Result<bool, cxx::Exception> {

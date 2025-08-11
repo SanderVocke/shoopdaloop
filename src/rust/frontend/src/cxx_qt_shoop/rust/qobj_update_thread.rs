@@ -131,6 +131,6 @@ impl UpdateThread {
     }
 
     pub fn update_thread_started(self: Pin<&mut UpdateThread>) {
-        crashhandling::registered_threads::register_thread("backend_update");
+        crashhandling::registered_threads::register_thread("backend_update".to_string());
     }
 }

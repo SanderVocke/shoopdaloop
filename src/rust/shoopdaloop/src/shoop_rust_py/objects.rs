@@ -15,7 +15,7 @@ use frontend::cxx_qt_shoop::qobj_loop_gui_bridge::ffi::{
 };
 use frontend::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
 
-use cxx_qt_lib_shoop::qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr};
+use cxx_qt_lib_shoop::qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr};
 
 use shoop_py_backend::audio_channel::AudioChannel;
 use shoop_py_backend::audio_port::AudioPort;

@@ -8,7 +8,7 @@ use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_register_qml_singleton_instance;
 use cxx_qt_lib_shoop::qobject::AsQObject;
-use cxx_qt_lib_shoop::qvariant_qobject::qobject_ptr_to_qvariant;
+use cxx_qt_lib_shoop::qvariant_helpers::qobject_ptr_to_qvariant;
 use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationStartupSettings};
 use frontend::cxx_qt_shoop::qobj_qmlengine::QmlEngine;
 use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
@@ -143,7 +143,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                 let global_args: &GlobalQmlSettings = GLOBAL_QML_SETTINGS.get().unwrap();
                 let global_args = global_args.as_qvariantmap();
                 let global_args =
-                    cxx_qt_lib_shoop::qvariant_qvariantmap::qvariantmap_to_qvariant(&global_args)
+                    cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant(&global_args)
                         .unwrap();
                 unsafe {
                     qml_engine

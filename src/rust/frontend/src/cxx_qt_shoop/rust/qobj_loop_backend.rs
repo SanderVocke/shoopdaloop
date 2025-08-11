@@ -14,7 +14,7 @@ use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject;
 use cxx_qt_lib_shoop::qobject::qobject_property_bool;
 use cxx_qt_lib_shoop::qobject::FromQObject;
-use cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
+use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Loop");
 
@@ -333,9 +333,7 @@ impl LoopBackend {
                 .iter()
                 .map(|loop_variant| -> Result<(), anyhow::Error> {
                     unsafe {
-                        let loop_qobj: *mut QObject = qvariant_to_qobject_ptr(loop_variant).ok_or(
-                            anyhow::anyhow!("Failed to convert QVariant to QObject pointer"),
-                        )?;
+                        let loop_qobj: *mut QObject = qvariant_to_qobject_ptr(loop_variant)?;
                         let loop_ptr: *mut LoopBackend = qobject_to_loop_backend_ptr(loop_qobj);
                         {
                             let loop_pin = std::pin::Pin::new_unchecked(&mut *loop_ptr);
@@ -496,8 +494,8 @@ impl LoopBackend {
 
     pub unsafe fn set_sync_source(mut self: Pin<&mut LoopBackend>, sync_source: QVariant) {
         let maybe_sync_source_ptr = qvariant_to_qobject_ptr(&sync_source);
-        let sync_source_ptr: *mut QObject = if maybe_sync_source_ptr.is_some() {
-            maybe_sync_source_ptr.unwrap()
+        let sync_source_ptr: *mut QObject = if let Ok(ptr) = maybe_sync_source_ptr {
+            ptr
         } else {
             std::ptr::null_mut()
         };
