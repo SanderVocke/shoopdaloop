@@ -161,8 +161,6 @@ impl PortBackend {
                     self.fx_chain.ok_or(anyhow::anyhow!("fx chain not set"))?,
                 )?
             };
-            let backend_fx_chain: &Option<backend_bindings::FXChain> =
-                fx_chain.get_backend_object();
             let is_input = !output_connectability.internal;
             let is_midi = self
                 .port_type
@@ -171,19 +169,13 @@ impl PortBackend {
             let port: AnyBackendPort = if is_input {
                 if is_midi {
                     AnyBackendPort::Midi(
-                        backend_fx_chain
-                            .as_ref()
-                            .unwrap()
-                            .get_midi_input_port(idx as u32)
+                        fx_chain.get_midi_input_port(idx as u32)
                             .ok_or(anyhow::anyhow!("Could not get FX chain MIDI input {idx}"))?,
                     )
                 } else {
                     // audio
                     AnyBackendPort::Audio(
-                        backend_fx_chain
-                            .as_ref()
-                            .unwrap()
-                            .get_audio_input_port(idx as u32)
+                        fx_chain.get_audio_input_port(idx as u32)
                             .ok_or(anyhow::anyhow!("Could not get FX chain audio input {idx}"))?,
                     )
                 }
@@ -195,10 +187,7 @@ impl PortBackend {
                 } else {
                     // audio
                     AnyBackendPort::Audio(
-                        backend_fx_chain
-                            .as_ref()
-                            .unwrap()
-                            .get_audio_output_port(idx as u32)
+                        fx_chain.get_audio_output_port(idx as u32)
                             .ok_or(anyhow::anyhow!("Could not get FX chain audio output {idx}"))?,
                     )
                 }
@@ -249,7 +238,6 @@ impl PortBackend {
                 let min_n_ringbuffer_samples: i32 = self
                     .min_n_ringbuffer_samples
                     .ok_or(anyhow::anyhow!("min_n_ringbuffer_samples not set"))?;
-                let prev_state = self.prev_state.clone();
                 let backend = BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)?;
                 let port = AnyBackendPort::new_driver_port(
                     port_type.clone(),

@@ -15,7 +15,7 @@ integer_enum! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct FXChainState {
     pub ready: u32,
     pub active: u32,
