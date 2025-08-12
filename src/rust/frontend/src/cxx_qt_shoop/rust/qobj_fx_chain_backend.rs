@@ -125,7 +125,7 @@ impl FXChainBackend {
                         .as_ref()
                         .ok_or(anyhow::anyhow!("No session in backend"))?
                         .create_fx_chain(
-                            self.chain_type.unwrap() as u32,
+                            self.chain_type.unwrap().to_ffi(),
                             self.title.as_ref().unwrap().as_str(),
                         )?;
 

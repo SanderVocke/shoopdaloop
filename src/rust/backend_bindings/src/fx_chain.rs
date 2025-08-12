@@ -15,6 +15,12 @@ integer_enum! {
     }
 }
 
+impl FXChainType {
+    pub fn to_ffi(&self) -> ffi::shoop_fx_chain_type_t {
+        *self as ffi::shoop_fx_chain_type_t
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct FXChainState {
     pub ready: u32,
