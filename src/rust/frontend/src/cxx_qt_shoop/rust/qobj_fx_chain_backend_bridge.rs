@@ -131,8 +131,8 @@ pub struct FXChainBackendRust {
     // Other
     pub backend_chain_wrapper: Option<BackendFXChain>,
     pub prev_state: FXChainState,
-    pub chain_type : Option<FXChainType>,
-    pub title : Option<String>,
+    pub chain_type: Option<FXChainType>,
+    pub title: Option<String>,
 }
 
 impl Default for FXChainBackendRust {

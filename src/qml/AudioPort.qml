@@ -1,4 +1,5 @@
 import ShoopDaLoop.Rust
+import ShoopDaLoop.PythonLogger
 import QtQuick 6.6
 
 import ShoopConstants
@@ -7,6 +8,10 @@ PortGui {
     id: root
     property var descriptor : null
     property bool loaded : initialized
+    property var logger : PythonLogger {
+        name: "Frontend.Qml.AudioPort"
+        instanceIdentifier: root.obj_id
+    }
 
     RequireBackend {}
 
@@ -46,8 +51,10 @@ PortGui {
     }
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {}
 
-    Component.onCompleted: push_all()
-    onInitializedChanged: push_all()
+    Component.onCompleted: {
+        root.logger.trace("onCompleted for AudioPort. descriptor: " + JSON.stringify(descriptor, null, 2))
+        push_all()
+    }
     
     function push_all() {
         push_muted(descriptor.muted)
@@ -85,4 +92,8 @@ PortGui {
     maybe_fx_chain: null
     fx_chain_port_idx: 0
     is_midi: false
+
+    onAudio_gain_changed: { root.logger.debug("gain -> " + root.audio_gain) }
+    onMutedChanged: { root.logger.debug("muted -> " + root.muted) }
+    onPassthrough_mutedChanged: { root.logger.debug("passthrough muted -> " + root.passthrough_muted) }
 }

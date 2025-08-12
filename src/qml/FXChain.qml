@@ -59,7 +59,7 @@ FXChainGui {
                     root.restore_state(state_str)
                 }
                 if (initialized) { restore() }
-                else { root.initializedChanged.connect(function() { restore() }) }
+                else { root.initialized_changed.connect(function() { restore() }) }
             }
 
         } else {

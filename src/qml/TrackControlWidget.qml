@@ -29,7 +29,9 @@ Item {
         var ports = initial_track_descriptor.ports
             .filter(p => is_in(p));
         var settings = new Set();
-        ports.forEach((p) => { settings.add(!p.passthrough_muted) })
+        ports.forEach((p) => {
+            settings.add(!p.passthrough_muted)
+        })
         if (settings.size == 1) {
             root.logger.debug("Initial monitor setting: " + Array.from(settings)[0])
             return Array.from(settings)[0]
@@ -60,19 +62,23 @@ Item {
         var ports = initial_track_descriptor.ports
             .filter(p => is_out(p));
         ports.sort((a,b) => a.id.localeCompare(b.id))
-        return gain_and_balance_from_gains(
-            ports.map(p => ('audio_gain' in p) ? p.audio_gain : undefined)
+        let result = gain_and_balance_from_gains(
+            ports.map(p => ('gain' in p) ? p.gain : undefined)
             .filter(p => p != undefined)
         );
+        root.logger.debug("initial_output_gain_and_balance: " + result["gain"] + ", " + result["balance"])
+        return result;
     }
     readonly property var initial_input_gain_and_balance: {
         var ports = initial_track_descriptor.ports
             .filter(p => is_in(p));
         ports.sort((a,b) => a.id.localeCompare(b.id))
-        return gain_and_balance_from_gains(
-            ports.map(p => ('audio_gain' in p) ? p.audio_gain : undefined)
+        let result = gain_and_balance_from_gains(
+            ports.map(p => ('gain' in p) ? p.gain : undefined)
             .filter(p => p != undefined)
         );
+        root.logger.debug("initial_input_gain_and_balance: " + result["gain"] + ", " + result["balance"])
+        return result;
     }
     property real initial_gain: initial_output_gain_and_balance["gain"]
     property real initial_balance: initial_output_gain_and_balance["balance"]

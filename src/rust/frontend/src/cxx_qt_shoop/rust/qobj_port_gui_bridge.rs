@@ -118,7 +118,7 @@ pub mod ffi {
         pub fn dummy_queue_audio_data(self: Pin<&mut PortGui>, audio_data: QList_f64);
 
         #[qinvokable]
-        pub fn dummy_dequeue_audio_data(self: Pin<&mut PortGui>, n : i32) -> QList_f64;
+        pub fn dummy_dequeue_audio_data(self: Pin<&mut PortGui>, n: i32) -> QList_f64;
 
         #[qinvokable]
         pub fn dummy_request_data(self: Pin<&mut PortGui>, n: i32);
@@ -395,7 +395,7 @@ impl Default for PortGuiRust {
             backend: std::ptr::null_mut(),
             name: QString::from(""),
             muted: false,
-            passthrough_muted: false,
+            passthrough_muted: true,
             audio_input_peak: 0.0,
             audio_output_peak: 0.0,
             midi_n_input_events: 0,

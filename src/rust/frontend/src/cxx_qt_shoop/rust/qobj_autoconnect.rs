@@ -62,7 +62,7 @@ impl AutoConnect {
             finder.as_mut().set_parent_item(obj_qquickitem);
             cxx_qt_lib_shoop::connect::connect(
                 finder_qobj.as_mut().unwrap(),
-                "found_item_with_true_checked_property",
+                "found_item_with_true_checked_propertyChanged()",
                 obj_qobject.as_mut().unwrap(),
                 "update()",
                 cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION,

@@ -13,11 +13,13 @@ inline int qvariantTypeId(const QVariant& v) {
 
 template<typename T>
 inline bool qvariantConvertibleTo(QVariant const& v, T* example) {
+    (void) example;
     return v.canConvert<T>();
 }
 
 template<typename T>
 inline T qvariantAs(QVariant const& v, T* example) {
+    (void) example;
     return v.value<T>();
 }
 
@@ -28,6 +30,7 @@ inline QVariant asQVariant(T const& v) {
 
 template<typename T>
 inline std::unique_ptr<T> qvariantAsUniquePtr(QVariant const& v, T* example) {
+    (void) example;
     return std::make_unique<T>(v.value<T>());
 
 }

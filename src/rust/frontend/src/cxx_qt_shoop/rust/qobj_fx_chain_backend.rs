@@ -1,4 +1,4 @@
-use backend_bindings::{FXChain as BackendFXChain, FXChainType};
+use backend_bindings::FXChainType;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,

@@ -46,7 +46,6 @@ PortGui {
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {}
 
     Component.onCompleted: push_all()
-    onInitializedChanged: push_all()
 
     function push_all() {
         push_muted(descriptor.muted)

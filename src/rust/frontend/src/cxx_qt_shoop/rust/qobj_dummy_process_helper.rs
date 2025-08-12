@@ -54,7 +54,7 @@ impl DummyProcessHelper {
                         &(),
                     )
                     .unwrap();
-                    invokable::invoke::<_,(),_>(
+                    invokable::invoke::<_, (), _>(
                         backend_thread_ptr.as_mut().unwrap(),
                         "dummy_request_controlled_frames(::std::int32_t)",
                         invokable::DIRECT_CONNECTION,

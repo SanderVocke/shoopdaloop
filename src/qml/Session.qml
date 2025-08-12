@@ -216,7 +216,7 @@ Item {
                 root.logger.info("Session written to: " + filename)
             } finally {
                 registries.state_registry.save_action_finished()
-                ShoopFileIO.delete_recursive(tempdir)
+                //ShoopFileIO.delete_recursive(tempdir)
                 tasks.parent = null
                 tasks.destroy(30)
             }

@@ -17,7 +17,7 @@ use cxx_qt_lib_shoop::{
     connection_types,
     qobject::{qobject_property_bool, AsQObject, FromQObject},
     qsharedpointer_qobject::QSharedPointer_QObject,
-    qvariant_helpers::{qvariant_to_qobject_ptr, qvariant_to_qsharedpointer_qobject},
+    qvariant_helpers::qvariant_to_qsharedpointer_qobject,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -710,7 +710,10 @@ impl PortBackend {
                 return Ok(());
             }
             if other_backend_obj.maybe_backend_port.is_none() {
-                debug!(self, "defer internal connection: other port not initialized");
+                debug!(
+                    self,
+                    "defer internal connection: other port not initialized"
+                );
                 unsafe {
                     let self_qobj = port_backend_qobject_from_ptr(
                         self.as_mut().get_unchecked_mut() as *mut Self,

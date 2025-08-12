@@ -193,13 +193,13 @@ class LoopChannel(ShoopQQuickItem):
     connectedPortsChanged = ShoopSignal(list)
     @ShoopProperty(list, notify=connectedPortsChanged)
     def connected_ports(self):
-        return [p for p in self._connected_ports if p and p.isValid()]
+        return [p for p in self._connected_ports if p]
     
     # ports to connect
     portsChanged = ShoopSignal(list)
     @ShoopProperty(list, notify=portsChanged)
     def ports(self):
-        return [p for p in self._ports if p and p.isValid()]
+        return [p for p in self._ports if p]
     @ports.setter
     def ports(self, p):
         self.__logger.debug(lambda: 'ports -> {}'.format(p))

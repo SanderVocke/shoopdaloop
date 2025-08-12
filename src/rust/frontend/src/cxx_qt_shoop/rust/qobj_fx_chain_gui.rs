@@ -9,20 +9,15 @@ use crate::{
 };
 use std::pin::Pin;
 
-use common::logging::macros::{
-    debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
-};
+use common::logging::macros::{debug as raw_debug, error as raw_error, shoop_log_unit};
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::{
-    connect::connect_or_report, connection_types, invokable, qobject::{ffi::qobject_move_to_thread, AsQObject}, qsharedpointer_qobject::QSharedPointer_QObject
+    connect::connect_or_report,
+    connection_types, invokable,
+    qobject::{ffi::qobject_move_to_thread, AsQObject},
+    qsharedpointer_qobject::QSharedPointer_QObject,
 };
 shoop_log_unit!("Frontend.FXChain");
-
-macro_rules! trace {
-    ($self:ident, $($arg:tt)*) => {
-        raw_trace!("[{}] {}", $self.display_name().to_string(), format!($($arg)*))
-    };
-}
 
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
@@ -175,26 +170,38 @@ impl FXChainGui {
     }
 
     pub fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
-        unsafe { self.as_mut().backend_set_backend(backend); }
+        unsafe {
+            self.as_mut().backend_set_backend(backend);
+        }
         if backend != self.backend {
             self.as_mut().rust_mut().backend = backend;
-            unsafe { self.as_mut().backend_changed(backend); }
+            unsafe {
+                self.as_mut().backend_changed(backend);
+            }
         }
     }
 
     pub fn set_title(mut self: Pin<&mut Self>, title: QString) {
-        unsafe { self.as_mut().backend_set_title(title.clone()); }
+        unsafe {
+            self.as_mut().backend_set_title(title.clone());
+        }
         if title != self.title {
             self.as_mut().rust_mut().title = title.clone();
-            unsafe { self.as_mut().title_changed(title); }
+            unsafe {
+                self.as_mut().title_changed(title);
+            }
         }
     }
 
     pub fn set_chain_type(mut self: Pin<&mut Self>, chain_type: i32) {
-        unsafe { self.as_mut().backend_set_chain_type(chain_type); }
+        unsafe {
+            self.as_mut().backend_set_chain_type(chain_type);
+        }
         if chain_type != self.chain_type {
             self.as_mut().rust_mut().chain_type = chain_type;
-            unsafe { self.as_mut().chain_type_changed(chain_type); }
+            unsafe {
+                self.as_mut().chain_type_changed(chain_type);
+            }
         }
     }
 
@@ -219,18 +226,22 @@ impl FXChainGui {
     }
 
     pub fn restore_state(self: Pin<&mut Self>, state_str: QString) {
-        unsafe { self.backend_restore_state(state_str); }
+        unsafe {
+            self.backend_restore_state(state_str);
+        }
     }
 
     pub unsafe fn get_backend_fx_chain(self: Pin<&mut FXChainGui>) -> *mut QObject {
-        match || ->Result<*mut QObject, anyhow::Error> {
+        match || -> Result<*mut QObject, anyhow::Error> {
             if self.backend_chain_wrapper.is_null() {
                 return Ok(std::ptr::null_mut());
             } else {
                 return Ok(self.backend_chain_wrapper.data()?);
             }
         }() {
-            Ok(obj) => { return obj; }
+            Ok(obj) => {
+                return obj;
+            }
             Err(e) => {
                 error!(self, "Could not get backend object: {e}");
                 return std::ptr::null_mut();
@@ -239,11 +250,15 @@ impl FXChainGui {
     }
 
     pub fn push_active(mut self: Pin<&mut Self>, active: bool) {
-        unsafe { self.as_mut().backend_push_active(active); }
+        unsafe {
+            self.as_mut().backend_push_active(active);
+        }
     }
 
     pub fn push_ui_visible(mut self: Pin<&mut Self>, visible: bool) {
-        unsafe { self.as_mut().backend_push_ui_visible(visible); }
+        unsafe {
+            self.as_mut().backend_push_ui_visible(visible);
+        }
     }
 }
 

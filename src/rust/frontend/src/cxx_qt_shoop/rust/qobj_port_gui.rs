@@ -13,7 +13,7 @@ use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
-    qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qsharedpointer_qobject,
+    qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
 };
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
@@ -587,7 +587,7 @@ impl PortGui {
 
     pub fn push_passthrough_muted(self: Pin<&mut PortGui>, muted: bool) {
         unsafe {
-            debug!(self, "push passhtrough muted -> {muted}");
+            debug!(self, "push passthrough muted -> {muted}");
             self.backend_set_passthrough_muted(muted);
         }
     }
