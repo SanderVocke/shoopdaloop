@@ -64,6 +64,12 @@ pub mod ffi {
         #[qinvokable]
         pub fn set_initialized(self: Pin<&mut FXChainBackend>, initialized: bool);
 
+        #[qinvokable]
+        pub fn update(self: Pin<&mut FXChainBackend>);
+
+        #[qinvokable]
+        pub fn maybe_initialize_backend(self: Pin<&mut FXChainBackend>) -> bool;
+
         #[qsignal]
         pub unsafe fn state_changed(
             self: Pin<&mut FXChainBackend>,

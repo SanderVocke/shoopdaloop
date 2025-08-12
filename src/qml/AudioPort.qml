@@ -36,7 +36,7 @@ PortGui {
             'type': descriptor.type,
             'input_connectability': descriptor.input_connectability,
             'output_connectability': descriptor.output_connectability,
-            'gain': gain,
+            'gain': audio_gain,
             'muted': muted,
             'passthrough_muted': passthrough_muted,
             'internal_port_connections': descriptor.internal_port_connections,

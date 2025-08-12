@@ -192,6 +192,7 @@ impl FXChainBackend {
                         connection_types::QUEUED_CONNECTION,
                     );
                 }
+                debug!(self, "backend -> {backend:?}");
                 self.as_mut().backend_changed(backend);
             }
         }
@@ -208,6 +209,7 @@ impl FXChainBackend {
         }
         let title_string = title.to_string();
         if !self.title.as_ref().is_some_and(|v| *v == title_string) {
+            debug!(self, "title -> {title_string}");
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.title = Some(title_string);
             unsafe {
@@ -233,6 +235,7 @@ impl FXChainBackend {
         {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.chain_type = Some(chain_type_enum);
+            debug!(self, "chain_type -> {chain_type_enum:?}");
             unsafe {
                 self.as_mut().chain_type_changed(chain_type);
             }
@@ -254,7 +257,8 @@ impl FXChainBackend {
         }
     }
 
-    pub fn restore_state(self: Pin<&mut Self>, state_str: QString) {
+    pub fn restore_state(mut self: Pin<&mut Self>, state_str: QString) {
+        self.as_mut().maybe_initialize_backend();
         if let Some(backend_chain) = self.backend_chain_wrapper.as_ref() {
             backend_chain.restore_state(state_str.to_string().as_str());
         } else {

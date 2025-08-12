@@ -10,7 +10,7 @@ import sys
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, SIGNAL, SLOT
 from PySide6.QtQuick import QQuickItem
 
-from .AudioPort import AudioPort
+# from .AudioPort import AudioPort
 from .LoopChannel import LoopChannel
 from .ShoopPyObject import *
 

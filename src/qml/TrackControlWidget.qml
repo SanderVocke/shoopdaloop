@@ -61,7 +61,7 @@ Item {
             .filter(p => is_out(p));
         ports.sort((a,b) => a.id.localeCompare(b.id))
         return gain_and_balance_from_gains(
-            ports.map(p => ('gain' in p) ? p.gain : undefined)
+            ports.map(p => ('audio_gain' in p) ? p.audio_gain : undefined)
             .filter(p => p != undefined)
         );
     }
@@ -70,7 +70,7 @@ Item {
             .filter(p => is_in(p));
         ports.sort((a,b) => a.id.localeCompare(b.id))
         return gain_and_balance_from_gains(
-            ports.map(p => ('gain' in p) ? p.gain : undefined)
+            ports.map(p => ('audio_gain' in p) ? p.audio_gain : undefined)
             .filter(p => p != undefined)
         );
     }
@@ -267,7 +267,7 @@ Item {
         convert_gain.dB = gain
         var v = convert_gain.linear * gain_factor
         logger.trace("Pushing gain " + v + " to " + target.obj_id)
-        if (target && target.gain != v) { target.push_audio_gain(v) }
+        if (target && target.audio_gain != v) { target.push_audio_gain(v) }
     }
     function toggle_muted() { mute = !mute }
     function toggle_monitor() { monitor = !monitor }
@@ -376,7 +376,7 @@ Item {
     }
     function push_fx_active() {
         if (root.maybe_fx_chain) {
-            root.maybe_fx_chain.set_active(logic.enable_fx)
+            root.maybe_fx_chain.push_active(logic.enable_fx)
         }
     }
     Component.onCompleted: {

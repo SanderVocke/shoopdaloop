@@ -614,7 +614,7 @@ Item {
                             }
                         }
 
-                        onClicked: { if (root.maybe_fx_chain != undefined) { root.maybe_fx_chain.set_ui_visible(!root.maybe_fx_chain.ui_visible) } }
+                        onClicked: { if (root.maybe_fx_chain != undefined) { root.maybe_fx_chain.push_ui_visible(!root.maybe_fx_chain.ui_visible) } }
                     }
 
                 }

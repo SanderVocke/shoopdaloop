@@ -12,7 +12,9 @@ use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
-use cxx_qt_lib_shoop::qvariant_helpers::{qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qsharedpointer_qobject};
+use cxx_qt_lib_shoop::qvariant_helpers::{
+    qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qsharedpointer_qobject,
+};
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Port");
@@ -386,7 +388,7 @@ impl PortGui {
             unsafe {
                 Ok(invokable::invoke(
                     &mut *backend_wrapper,
-                    "get_connected_external_ports",
+                    "get_connected_external_ports()",
                     invokable::BLOCKING_QUEUED_CONNECTION,
                     &(),
                 )?)
@@ -488,9 +490,23 @@ impl PortGui {
 
     pub unsafe fn set_fx_chain(mut self: Pin<&mut PortGui>, fx_chain: *mut QObject) {
         unsafe {
-            self.as_mut().backend_set_fx_chain(fx_chain);
+            if fx_chain.is_null() {
+                trace!(self, "set backend fx chain -> {fx_chain:?}");
+                self.as_mut().backend_set_fx_chain(std::ptr::null_mut());
+            } else {
+                let backend_chain: *mut QObject = invokable::invoke(
+                    &mut *fx_chain,
+                    "get_backend_fx_chain()",
+                    invokable::DIRECT_CONNECTION,
+                    &(),
+                )
+                .unwrap();
+                trace!(self, "set backend fx chain -> {backend_chain:?}");
+                self.as_mut().backend_set_fx_chain(backend_chain);
+            }
         }
         if fx_chain != self.maybe_fx_chain {
+            debug!(self, "fx chain -> {fx_chain:?}");
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.maybe_fx_chain = fx_chain;
             unsafe {
@@ -501,10 +517,12 @@ impl PortGui {
 
     pub unsafe fn set_fx_chain_port_idx(mut self: Pin<&mut PortGui>, fx_chain_port_idx: i32) {
         unsafe {
+            trace!(self, "set backend fx chain port idx -> {fx_chain_port_idx}");
             self.as_mut()
                 .backend_set_fx_chain_port_idx(fx_chain_port_idx);
         }
         if fx_chain_port_idx != self.fx_chain_port_idx {
+            trace!(self, "fx chain port idx -> {fx_chain_port_idx}");
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.fx_chain_port_idx = fx_chain_port_idx;
             unsafe {
@@ -520,19 +538,27 @@ impl PortGui {
         unsafe {
             // Store a list of QVariants which hold QSharedPointer instances so that the backend
             // loops don't go out of scope waiting for our operation to complete
-            let mut backend_port_handles : QList_QVariant = QList::default();
-            match internal_port_connections.iter().try_for_each(|v| -> Result<(), anyhow::Error> {
-                let other = qvariant_to_qobject_ptr(v)?;
-                let other = PortGui::from_qobject_mut_ptr(other)?;
-                let other_backend = other.backend_port_wrapper.as_ref().ok_or(anyhow::anyhow!("Other backend wrapper not set"))?;
-                let other_backend_copy = qsharedpointer_qobject_to_qvariant(other_backend)?;
-                backend_port_handles.append(other_backend_copy);
-                Ok(())
-            }) {
+            let mut backend_port_handles: QList_QVariant = QList::default();
+            match internal_port_connections
+                .iter()
+                .try_for_each(|v| -> Result<(), anyhow::Error> {
+                    let other = qvariant_to_qobject_ptr(v)?;
+                    let other = PortGui::from_qobject_mut_ptr(other)?;
+                    let other_backend = other
+                        .backend_port_wrapper
+                        .as_ref()
+                        .ok_or(anyhow::anyhow!("Other backend wrapper not set"))?;
+                    let other_backend_copy = qsharedpointer_qobject_to_qvariant(other_backend)?;
+                    backend_port_handles.append(other_backend_copy);
+                    Ok(())
+                }) {
                 Ok(()) => {
-                    self.as_mut().backend_set_internal_port_connections(backend_port_handles);
+                    self.as_mut()
+                        .backend_set_internal_port_connections(backend_port_handles);
                 }
-                Err(e) => { error!(self, "Failed to get other loop backend handle: {e}"); }
+                Err(e) => {
+                    error!(self, "Failed to get other loop backend handle: {e}");
+                }
             }
         }
         if internal_port_connections != self.internal_port_connections {
@@ -623,7 +649,7 @@ impl PortGui {
         match || -> Result<QList_QVariant, anyhow::Error> {
             let backend_wrapper = self.backend_port_wrapper.data()?;
             unsafe {
-                Ok(invokable::invoke::<_,QList_QVariant,()>(
+                Ok(invokable::invoke::<_, QList_QVariant, ()>(
                     &mut *backend_wrapper,
                     "dummy_dequeue_midi_msgs()",
                     invokable::BLOCKING_QUEUED_CONNECTION,

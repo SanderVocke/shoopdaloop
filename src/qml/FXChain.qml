@@ -6,7 +6,10 @@ import ShoopConstants
 
 FXChainGui {
     id: root
-    property bool loaded : initialized
+    property bool loaded : (initialized &&
+                            audio_input_ports_mapper.loaded &&
+                            audio_output_ports_mapper.loaded &&
+                            midi_input_ports_mapper.loaded)
 
     RequireBackend {}
 
@@ -70,31 +73,93 @@ FXChainGui {
     }
 
     function all_ports() {
-        return [...audio_ports_mapper.unsorted_instances, ...midi_ports_mapper.unsorted_instances]
+        return [...audio_input_ports_mapper.unsorted_instances.map(l => l.item),
+                ...audio_output_ports_mapper.unsorted_instances.map(l => l.item),
+                ...midi_input_ports_mapper.unsorted_instances.map(l => l.item)]
     }
 
     Mapper {
-        id: audio_ports_mapper
-        model: descriptor.ports.filter(p => p.schema == 'audioport.1')
+        id: audio_input_ports_mapper
+        model: descriptor.ports.filter(p => p.schema == 'audioport.1' && p.output_connectability.length == 0)
+
+        property bool loaded : {
+            if (unsorted_instances.length != model.length) { return false; }
+            var result = true;
+            for (var i=0; i<unsorted_instances.length; i++) {
+                result = result && unsorted_instances[i].loaded;
+            }
+            return result
+        }             
         
-        AudioPort {
+        Loader {
+            active: root.initialized
+            property bool loaded: active && item.loaded
             property var mapped_item
             property int index
-            descriptor: mapped_item
-            is_internal: true
-            backend: root.backend
+
+            sourceComponent: AudioPort {
+                descriptor: mapped_item
+                is_internal: true
+                backend: root.backend
+                maybe_fx_chain: root
+                fx_chain_port_idx: index
+            }
         }
     }
     Mapper {
-        id: midi_ports_mapper
-        model: descriptor.ports.filter(p => p.schema == 'midiport.1')
+        id: audio_output_ports_mapper
+        model: descriptor.ports.filter(p => p.schema == 'audioport.1' && p.input_connectability.length == 0)
+
+        property bool loaded : {
+            if (unsorted_instances.length != model.length) { return false; }
+            var result = true;
+            for (var i=0; i<unsorted_instances.length; i++) {
+                result = result && unsorted_instances[i].loaded;
+            }
+            return result
+        }             
         
-        MidiPort {
+        Loader {
+            active: root.initialized
+            property bool loaded: active && item.loaded
             property var mapped_item
             property int index
-            descriptor: mapped_item
-            is_internal: true
-            backend: root.backend
+
+            sourceComponent: AudioPort {
+                descriptor: mapped_item
+                is_internal: true
+                backend: root.backend
+                maybe_fx_chain: root
+                fx_chain_port_idx: index
+            }
+        }
+    }
+    Mapper {
+        id: midi_input_ports_mapper
+        model: descriptor.ports.filter(p => p.schema == 'midiport.1')
+
+        property bool loaded : {
+            if (unsorted_instances.length != model.length) { return false; }
+            var result = true;
+            for (var i=0; i<unsorted_instances.length; i++) {
+                result = result && unsorted_instances[i].loaded;
+            }
+            return result
+        }  
+        
+        Loader {
+            active: root.initialized
+            property bool loaded: active && item.loaded
+            property var mapped_item
+            property int index
+
+            sourceComponent: MidiPort {
+                descriptor: mapped_item
+                is_internal: true
+                backend: root.backend
+                maybe_fx_chain: root
+                fx_chain_port_idx: index
+            }
         }
     }
 }

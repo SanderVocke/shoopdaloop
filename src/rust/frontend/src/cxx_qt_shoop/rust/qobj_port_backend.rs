@@ -19,7 +19,10 @@ use cxx_qt_lib_shoop::{
     qsharedpointer_qobject::QSharedPointer_QObject,
     qvariant_helpers::{qvariant_to_qobject_ptr, qvariant_to_qsharedpointer_qobject},
 };
-use std::{collections::HashMap, pin::Pin};
+use std::{
+    collections::{HashMap, HashSet},
+    pin::Pin,
+};
 shoop_log_unit!("Frontend.Port");
 
 macro_rules! trace {
@@ -139,6 +142,7 @@ impl PortBackend {
             return;
         }
         if !self.fx_chain.as_ref().is_some_and(|v| *v == fx_chain) {
+            debug!(self, "fx chain -> {fx_chain:?}");
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.fx_chain = Some(fx_chain);
             unsafe {
@@ -148,64 +152,69 @@ impl PortBackend {
     }
 
     pub fn maybe_initialize_backend_internal(mut self: Pin<&mut PortBackend>) -> bool {
-        if let Err(e) = || -> Result<(), anyhow::Error> {
-            let idx = self
-                .fx_chain_port_idx
-                .ok_or(anyhow::anyhow!("no fx chain port index set"))?;
-            let output_connectability = self
-                .output_connectability
-                .as_ref()
-                .ok_or(anyhow::anyhow!("output connectability not set"))?;
-            let fx_chain: Pin<&mut FXChainBackend> = unsafe {
-                FXChainBackend::from_qobject_mut_ptr(
-                    self.fx_chain.ok_or(anyhow::anyhow!("fx chain not set"))?,
-                )?
-            };
-            let is_input = !output_connectability.internal;
-            let is_midi = self
-                .port_type
-                .ok_or(anyhow::anyhow!("port data type (is_midi) not set"))?
-                == PortDataType::Midi;
-            let port: AnyBackendPort = if is_input {
-                if is_midi {
-                    AnyBackendPort::Midi(
-                        fx_chain.get_midi_input_port(idx as u32)
-                            .ok_or(anyhow::anyhow!("Could not get FX chain MIDI input {idx}"))?,
-                    )
-                } else {
-                    // audio
-                    AnyBackendPort::Audio(
-                        fx_chain.get_audio_input_port(idx as u32)
-                            .ok_or(anyhow::anyhow!("Could not get FX chain audio input {idx}"))?,
-                    )
+        if let Err(e) =
+            || -> Result<(), anyhow::Error> {
+                let idx = self
+                    .fx_chain_port_idx
+                    .ok_or(anyhow::anyhow!("no fx chain port index set"))?;
+                let output_connectability = self
+                    .output_connectability
+                    .as_ref()
+                    .ok_or(anyhow::anyhow!("output connectability not set"))?;
+                if self.fx_chain.unwrap_or(std::ptr::null_mut()).is_null() {
+                    return Err(anyhow::anyhow!("FX chain not set"));
                 }
-            } else {
-                if is_midi {
-                    return Err(anyhow::anyhow!(
-                        "FX chains do not support internal MIDI out"
-                    ));
-                } else {
-                    // audio
-                    AnyBackendPort::Audio(
-                        fx_chain.get_audio_output_port(idx as u32)
-                            .ok_or(anyhow::anyhow!("Could not get FX chain audio output {idx}"))?,
-                    )
-                }
-            };
+                let fx_chain: Pin<&mut FXChainBackend> = unsafe {
+                    FXChainBackend::from_qobject_mut_ptr(
+                        self.fx_chain.ok_or(anyhow::anyhow!("fx chain not set"))?,
+                    )?
+                };
+                let is_input = !output_connectability.internal;
+                let is_midi = self
+                    .port_type
+                    .ok_or(anyhow::anyhow!("port data type (is_midi) not set"))?
+                    == PortDataType::Midi;
+                let port: AnyBackendPort =
+                    if is_input {
+                        if is_midi {
+                            AnyBackendPort::Midi(fx_chain.get_midi_input_port(idx as u32).ok_or(
+                                anyhow::anyhow!("Could not get FX chain MIDI input {idx}"),
+                            )?)
+                        } else {
+                            // audio
+                            AnyBackendPort::Audio(fx_chain.get_audio_input_port(idx as u32).ok_or(
+                                anyhow::anyhow!("Could not get FX chain audio input {idx}"),
+                            )?)
+                        }
+                    } else {
+                        if is_midi {
+                            return Err(anyhow::anyhow!(
+                                "FX chains do not support internal MIDI out"
+                            ));
+                        } else {
+                            // audio
+                            AnyBackendPort::Audio(
+                                fx_chain.get_audio_output_port(idx as u32).ok_or(
+                                    anyhow::anyhow!("Could not get FX chain audio output {idx}"),
+                                )?,
+                            )
+                        }
+                    };
 
-            // To push any state that was already set on us before initializing
-            let state = &self.prev_state;
-            debug!(self, "Push deferred state: {state:?}");
-            port.push_state(state)?;
-            self.as_mut().update_internal_port_connections_impl();
+                // To push any state that was already set on us before initializing
+                let state = &self.prev_state;
+                debug!(self, "Push deferred state: {state:?}");
+                port.push_state(state)?;
+                self.as_mut().update_internal_port_connections_impl();
 
-            let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.maybe_backend_port = Some(port);
+                let mut rust_mut = self.as_mut().rust_mut();
+                rust_mut.maybe_backend_port = Some(port);
 
-            debug!(self, "Initialized as internal-facing port");
-            self.as_mut().update();
-            Ok(())
-        }() {
+                debug!(self, "Initialized as internal-facing port");
+                self.as_mut().update();
+                Ok(())
+            }()
+        {
             error!(
                 self,
                 "Failed to initialize internal-facing backend port: {e}"
@@ -282,39 +291,45 @@ impl PortBackend {
             return true;
         }
 
-        let mut non_ready_vars: Vec<String> = Vec::new();
+        let mut non_ready_vars: HashSet<String> = HashSet::new();
         unsafe {
             if self.backend.is_null() {
-                non_ready_vars.push("backend".to_string());
+                non_ready_vars.insert("backend".to_string());
             }
             if !self.backend.is_null()
                 && !qobject_property_bool(self.backend.as_ref().unwrap(), "ready").unwrap_or(false)
             {
-                non_ready_vars.push("backend_ready".to_string());
+                non_ready_vars.insert("backend_ready".to_string());
             }
             if self.is_internal.is_none() {
-                non_ready_vars.push("internal".to_string());
+                non_ready_vars.insert("internal".to_string());
             }
             if self.port_type.is_none() {
-                non_ready_vars.push("port_type".to_string());
+                non_ready_vars.insert("port_type".to_string());
             }
             if self.fx_chain.is_none() {
-                non_ready_vars.push("fx_chain".to_string());
+                non_ready_vars.insert("fx_chain".to_string());
             }
             if self.fx_chain_port_idx.is_none() {
-                non_ready_vars.push("fx_chain_port_idx".to_string());
+                non_ready_vars.insert("fx_chain_port_idx".to_string());
             }
             if self.name_hint.is_none() {
-                non_ready_vars.push("name_hint".to_string());
+                non_ready_vars.insert("name_hint".to_string());
             }
             if self.input_connectability.is_none() {
-                non_ready_vars.push("input_connectability".to_string());
+                non_ready_vars.insert("input_connectability".to_string());
             }
             if self.output_connectability.is_none() {
-                non_ready_vars.push("output_connectability".to_string());
+                non_ready_vars.insert("output_connectability".to_string());
             }
             if self.min_n_ringbuffer_samples.is_none() {
-                non_ready_vars.push("min_n_ringbuffer_samples".to_string());
+                non_ready_vars.insert("min_n_ringbuffer_samples".to_string());
+            }
+            if self.is_internal.is_some()
+                && self.is_internal.unwrap()
+                && self.fx_chain.unwrap_or(std::ptr::null_mut()).is_null()
+            {
+                non_ready_vars.insert("fx_chain non-null".to_string());
             }
         }
 
@@ -641,6 +656,7 @@ impl PortBackend {
             .fx_chain_port_idx
             .is_some_and(|i| fx_chain_port_idx == i)
         {
+            debug!(self, "fx chain port idx -> {fx_chain_port_idx}");
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.fx_chain_port_idx = Some(fx_chain_port_idx);
             unsafe {
@@ -663,6 +679,7 @@ impl PortBackend {
         } else {
             PortDataType::Audio
         };
+        debug!(self, "port type -> {port_type:?}");
         if !self.port_type.as_ref().is_some_and(|v| port_type == *v) {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.port_type = Some(port_type.clone());
@@ -675,10 +692,39 @@ impl PortBackend {
     pub fn connect_internal(mut self: Pin<&mut PortBackend>, other_port: *mut QObject) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             self.as_mut().maybe_initialize_backend();
+            self.as_mut().connect_internal_impl(other_port);
+            Ok(())
+        }() {
+            error!(self, "Could not connect internal port: {e}");
+        }
+    }
+
+    pub fn connect_internal_impl(mut self: Pin<&mut PortBackend>, other_port: *mut QObject) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
             if self.internally_connected_ports.contains(&other_port) {
                 return Ok(());
             }
             let other_backend_obj = unsafe { PortBackend::from_qobject_mut_ptr(other_port)? };
+            if self.maybe_backend_port.is_none() {
+                debug!(self, "skip internal connection: not initialized");
+                return Ok(());
+            }
+            if other_backend_obj.maybe_backend_port.is_none() {
+                debug!(self, "defer internal connection: other port not initialized");
+                unsafe {
+                    let self_qobj = port_backend_qobject_from_ptr(
+                        self.as_mut().get_unchecked_mut() as *mut Self,
+                    );
+                    connect_or_report(
+                        &mut *other_port,
+                        "initialized_changed(bool)",
+                        &mut *self_qobj,
+                        "update_internal_connections()",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                }
+                return Ok(());
+            }
             self.maybe_backend_port
                 .as_ref()
                 .ok_or(anyhow::anyhow!("not initialized"))?
@@ -734,7 +780,7 @@ impl PortBackend {
                         }
                         return Ok(());
                     }
-                    self.as_mut().connect_internal(other_internal_port);
+                    self.as_mut().connect_internal_impl(other_internal_port);
                     Ok(())
                 },
             )?;

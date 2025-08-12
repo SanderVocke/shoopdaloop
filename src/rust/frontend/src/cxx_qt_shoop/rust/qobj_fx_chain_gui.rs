@@ -221,6 +221,30 @@ impl FXChainGui {
     pub fn restore_state(self: Pin<&mut Self>, state_str: QString) {
         unsafe { self.backend_restore_state(state_str); }
     }
+
+    pub unsafe fn get_backend_fx_chain(self: Pin<&mut FXChainGui>) -> *mut QObject {
+        match || ->Result<*mut QObject, anyhow::Error> {
+            if self.backend_chain_wrapper.is_null() {
+                return Ok(std::ptr::null_mut());
+            } else {
+                return Ok(self.backend_chain_wrapper.data()?);
+            }
+        }() {
+            Ok(obj) => { return obj; }
+            Err(e) => {
+                error!(self, "Could not get backend object: {e}");
+                return std::ptr::null_mut();
+            }
+        }
+    }
+
+    pub fn push_active(mut self: Pin<&mut Self>, active: bool) {
+        unsafe { self.as_mut().backend_push_active(active); }
+    }
+
+    pub fn push_ui_visible(mut self: Pin<&mut Self>, visible: bool) {
+        unsafe { self.as_mut().backend_push_ui_visible(visible); }
+    }
 }
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {

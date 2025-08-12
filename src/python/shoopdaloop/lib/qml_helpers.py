@@ -15,14 +15,11 @@ import platform
 from shoop_config import shoop_version, shoop_qml_dir
 pkg_version = shoop_version
 
-from .q_objects.AudioPort import AudioPort
-from .q_objects.MidiPort import MidiPort
 from .q_objects.LoopAudioChannel import LoopAudioChannel
 from .q_objects.LoopMidiChannel import LoopMidiChannel
 from .q_objects.ClickTrackGenerator import ClickTrackGenerator
 from .q_objects.Task import Task
 from .q_objects.Tasks import Tasks
-from .q_objects.FXChain import FXChain
 from .q_objects.FetchChannelData import FetchChannelData
 from .q_objects.FileIO import FileIO
 from .q_objects.KeyModifiers import KeyModifiers
@@ -80,9 +77,6 @@ def create_constants_instance(engine):
 
 def register_shoopdaloop_qml_classes():
     # Register Python classes
-    register_qml_class(AudioPort, 'AudioPort')
-    register_qml_class(MidiPort, 'MidiPort')
-    register_qml_class(FXChain, 'FXChain')
     register_qml_class(LoopAudioChannel, 'LoopAudioChannel')
     register_qml_class(LoopMidiChannel, 'LoopMidiChannel')
     register_qml_class(ClickTrackGenerator, 'ClickTrackGenerator')

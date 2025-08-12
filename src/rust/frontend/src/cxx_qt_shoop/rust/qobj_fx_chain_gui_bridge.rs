@@ -52,6 +52,15 @@ pub mod ffi {
             visible: bool,
         );
 
+        #[qinvokable]
+        pub unsafe fn get_backend_fx_chain(self: Pin<&mut FXChainGui>) -> *mut QObject;
+
+        #[qinvokable]
+        pub fn push_active(self: Pin<&mut FXChainGui>, active: bool);
+
+        #[qinvokable]
+        pub fn push_ui_visible(self: Pin<&mut FXChainGui>, ui_visible: bool);
+
         #[qsignal]
         pub unsafe fn initialized_changed(self: Pin<&mut FXChainGui>, initialized: bool);
 
@@ -121,6 +130,7 @@ pub mod ffi {
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)> for FXChainGui {}
+    impl cxx_qt::Constructor<()> for FXChainGui {}
 }
 
 use cxx_qt_lib_shoop::{qquickitem::IsQQuickItem, qsharedpointer_qobject::QSharedPointer_QObject};
@@ -196,6 +206,30 @@ impl cxx_qt::Constructor<(*mut QQuickItem,)> for FXChainGui {
     }
 
     fn new(_parent: (*mut QQuickItem,)) -> FXChainGuiRust {
+        FXChainGuiRust::default()
+    }
+
+    fn initialize(self: std::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
+        FXChainGui::initialize_impl(self);
+    }
+}
+
+impl cxx_qt::Constructor<()> for FXChainGui {
+    type BaseArguments = (); // Will be passed to the base class constructor
+    type InitializeArguments = (); // Will be passed to the "initialize" function
+    type NewArguments = (); // Will be passed to the "new" function
+
+    fn route_arguments(
+        args: (),
+    ) -> (
+        Self::NewArguments,
+        Self::BaseArguments,
+        Self::InitializeArguments,
+    ) {
+        (args, args, ())
+    }
+
+    fn new(_parent: ()) -> FXChainGuiRust {
         FXChainGuiRust::default()
     }
 
