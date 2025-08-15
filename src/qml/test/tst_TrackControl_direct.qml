@@ -135,6 +135,7 @@ ShoopTestFile {
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
@@ -195,6 +196,7 @@ ShoopTestFile {
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
@@ -218,6 +220,7 @@ ShoopTestFile {
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
@@ -242,6 +245,7 @@ ShoopTestFile {
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
@@ -266,6 +270,7 @@ ShoopTestFile {
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
@@ -288,6 +293,7 @@ ShoopTestFile {
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
@@ -345,6 +351,7 @@ ShoopTestFile {
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 

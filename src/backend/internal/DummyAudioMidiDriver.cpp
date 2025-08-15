@@ -499,10 +499,14 @@ void DummyAudioMidiDriver<Time, Size>::controlled_mode_run_request(uint32_t time
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
+    if (timed_out()) {
+        Log::log<log_level_warning>("DummyAudioMidiDriver: run request timed out");
+    }
+
     wait_process();
 
     if (m_controlled_mode_samples_to_process > 0) {
-        Log::log<log_level_error>("DummyAudioMidiDriver: run request timed out");
+        Log::log<log_level_error>("DummyAudioMidiDriver: run request failed: requested samples remain");
     }
 }
 
