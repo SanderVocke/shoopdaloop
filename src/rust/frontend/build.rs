@@ -29,6 +29,8 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/qobj_global_utils_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_loop_backend_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_loop_gui_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_loop_channel_gui.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_loop_channel_gui_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_os_utils_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_port_backend_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_port_gui_bridge.rs")
