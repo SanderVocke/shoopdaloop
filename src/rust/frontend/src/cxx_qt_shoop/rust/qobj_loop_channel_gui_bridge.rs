@@ -136,6 +136,27 @@ pub mod ffi {
 
         #[qsignal]
         pub unsafe fn initialized_changed(self: Pin<&mut LoopChannelGui>, initialized : bool);
+
+        #[qsignal]
+        pub unsafe fn backend_set_backend(self: Pin<&mut LoopChannelGui>, backend: *mut QObject);
+
+        #[qsignal]
+        pub unsafe fn backend_set_is_midi(self: Pin<&mut LoopChannelGui>, is_midi : bool);
+
+        #[qsignal]
+        pub unsafe fn backend_set_ports_to_connect(self: Pin<&mut LoopChannelGui>, ports: QList_QVariant);
+
+        #[qsignal]
+        pub unsafe fn backend_push_mode(self: Pin<&mut LoopChannelGui>, mode: i32);
+
+        #[qsignal]
+        pub unsafe fn backend_push_start_offset(self: Pin<&mut LoopChannelGui>, start_offset: i32);
+
+        #[qsignal]
+        pub unsafe fn backend_push_n_preplay_samples(self: Pin<&mut LoopChannelGui>, n_preplay_samples: i32);
+
+        #[qsignal]
+        pub unsafe fn backend_push_audio_gain(self: Pin<&mut LoopChannelGui>, audio_gain: f64);
     }
 
     unsafe extern "C++" {

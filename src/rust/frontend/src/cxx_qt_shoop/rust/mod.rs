@@ -34,6 +34,8 @@ pub mod qobj_loop_gui;
 pub mod qobj_loop_gui_bridge;
 pub mod qobj_loop_channel_gui;
 pub mod qobj_loop_channel_gui_bridge;
+pub mod qobj_loop_channel_backend;
+pub mod qobj_loop_channel_backend_bridge;
 pub mod qobj_os_utils;
 pub mod qobj_os_utils_bridge;
 pub mod qobj_port_backend;

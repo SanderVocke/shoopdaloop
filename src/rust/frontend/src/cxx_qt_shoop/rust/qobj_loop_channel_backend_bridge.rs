@@ -1,5 +1,6 @@
+use backend_bindings::PortDataType;
 use common::logging::macros::*;
-use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::{qobject::AsQObject, qweakpointer_qobject::QWeakPointer_QObject};
 
 shoop_log_unit!("Frontend.LoopChannel");
 
@@ -47,10 +48,13 @@ pub mod ffi {
         pub fn set_is_midi(self: Pin<&mut LoopChannelBackend>, is_midi: bool);
 
         #[qinvokable]
-        pub fn set_channel_loop(self: Pin<&mut LoopChannelBackend, parent_sharedptr: QVariant);
+        pub fn set_channel_loop(self: Pin<&mut LoopChannelBackend>, parent_sharedptr: QVariant);
 
         #[qinvokable]
         pub fn get_is_midi(self: Pin<&mut LoopChannelBackend>) -> bool;
+
+        #[qinvokable]
+        pub fn get_channel_loop(self: Pin<&mut LoopChannelBackend>) -> *mut QObject;
 
         #[qinvokable]
         pub fn update(self: Pin<&mut LoopChannelBackend>);
@@ -62,6 +66,16 @@ pub mod ffi {
         pub unsafe fn state_changed(
             self: Pin<&mut LoopChannelBackend>,
             initialized: bool,
+            mode: i32,
+            length: i32,
+            start_offset: i32,
+            played_back_sample: QVariant,
+            n_preplay_samples: i32,
+            data_dirty: bool,
+            audio_gain: f64,
+            output_peak: f64,
+            n_events_triggered: i32,
+            n_notes_active: i32,
         );
 
         #[qsignal]
@@ -72,6 +86,54 @@ pub mod ffi {
 
         #[qsignal]
         pub unsafe fn is_midi_changed(self: Pin<&mut LoopChannelBackend>, is_midi: bool);
+
+        #[qsignal]
+        pub unsafe fn channel_loop_changed(
+            self: Pin<&mut LoopChannelBackend>,
+            channel_loop: *mut QObject,
+        );
+
+        #[qsignal]
+        pub unsafe fn mode_changed(self: Pin<&mut LoopChannelBackend>, mode: i32);
+
+        #[qsignal]
+        pub unsafe fn data_length_changed(self: Pin<&mut LoopChannelBackend>, length: i32);
+
+        #[qsignal]
+        pub unsafe fn start_offset_changed(self: Pin<&mut LoopChannelBackend>, start_offset: i32);
+
+        #[qsignal]
+        pub unsafe fn last_played_sample_changed(
+            self: Pin<&mut LoopChannelBackend>,
+            played_back_sample: QVariant,
+        );
+
+        #[qsignal]
+        pub unsafe fn n_preplay_samples_changed(
+            self: Pin<&mut LoopChannelBackend>,
+            n_preplay_samples: i32,
+        );
+
+        #[qsignal]
+        pub unsafe fn data_dirty_changed(self: Pin<&mut LoopChannelBackend>, data_dirty: bool);
+
+        #[qsignal]
+        pub unsafe fn audio_gain_changed(self: Pin<&mut LoopChannelBackend>, audio_gain: f64);
+
+        #[qsignal]
+        pub unsafe fn audio_output_peak_changed(self: Pin<&mut LoopChannelBackend>, output_peak: f64);
+
+        #[qsignal]
+        pub unsafe fn midi_n_events_triggered_changed(
+            self: Pin<&mut LoopChannelBackend>,
+            n_events_triggered: i32,
+        );
+
+        #[qsignal]
+        pub unsafe fn midi_n_notes_active_changed(
+            self: Pin<&mut LoopChannelBackend>,
+            n_notes_active: i32,
+        );
     }
 
     unsafe extern "C++" {
@@ -99,14 +161,18 @@ pub mod ffi {
 pub use ffi::LoopChannelBackend;
 use ffi::*;
 
+use crate::any_backend_channel::{AnyBackendChannel, AnyBackendChannelState};
+
 pub struct LoopChannelBackendRust {
     // Properties
     pub initialized: bool,
     pub backend: *mut QObject,
 
     // Other fields
-    //pub maybe_backend_port: Option<AnyBackendPort>,
-    //pub prev_state: AnyBackendPortState,
+    pub maybe_backend_channel: Option<AnyBackendChannel>,
+    pub prev_state: AnyBackendChannelState,
+    pub data_type: Option<PortDataType>,
+    pub channel_loop: Option<cxx::UniquePtr<QWeakPointer_QObject>>,
 }
 
 impl Default for LoopChannelBackendRust {
@@ -114,8 +180,10 @@ impl Default for LoopChannelBackendRust {
         LoopChannelBackendRust {
             initialized: false,
             backend: std::ptr::null_mut(),
-            //maybe_backend_port: None,
-            //prev_state: AnyBackendPortState::default(),
+            maybe_backend_channel: None,
+            prev_state: AnyBackendChannelState::default(),
+            data_type: None,
+            channel_loop: None,
         }
     }
 }

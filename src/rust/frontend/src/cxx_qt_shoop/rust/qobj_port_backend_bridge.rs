@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::any_backend_port::{AnyBackendPort, AnyBackendPortState};
 use backend_bindings::{PortConnectability, PortDataType};
 use common::logging::macros::*;
-use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::{qobject::AsQObject, qweakpointer_qobject::QWeakPointer_QObject};
 
 shoop_log_unit!("Frontend.Port");
 
@@ -46,7 +46,7 @@ pub mod ffi {
         // Frontend -> Backend properties
         #[qproperty(bool, is_midi, READ=get_is_midi, WRITE=set_is_midi, NOTIFY=is_midi_changed)]
         #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
-        #[qproperty(*mut QObject, maybe_fx_chain, READ=get_maybe_fx_chain, WRITE=set_fx_chain, NOTIFY=fx_chain_changed)]
+        #[qproperty(*mut QObject, maybe_fx_chain, READ=get_maybe_fx_chain, NOTIFY=fx_chain_changed)]
         #[qproperty(i32, fx_chain_port_idx, READ=get_fx_chain_port_idx, WRITE=set_fx_chain_port_idx, NOTIFY=fx_chain_port_idx_changed)]
         #[qproperty(QString, name_hint, READ=get_name_hint, WRITE=set_name_hint, NOTIFY=name_hint_changed)]
         #[qproperty(i32, input_connectability, READ=get_input_connectability, WRITE=set_input_connectability, NOTIFY=input_connectability_changed)]
@@ -110,8 +110,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn set_is_internal(self: Pin<&mut PortBackend>, is_internal: bool);
 
+        // Pass FX chain as QSharedPointer
         #[qinvokable]
-        pub unsafe fn set_fx_chain(self: Pin<&mut PortBackend>, fx_chain: *mut QObject);
+        pub unsafe fn set_fx_chain(self: Pin<&mut PortBackend>, fx_chain: QVariant);
 
         #[qinvokable]
         pub fn set_fx_chain_port_idx(self: Pin<&mut PortBackend>, fx_chain_port_idx: i32);
@@ -353,7 +354,7 @@ pub struct PortBackendRust {
     pub output_connectability: Option<PortConnectability>,
     pub is_internal: Option<bool>,
     pub port_type: Option<PortDataType>,
-    pub fx_chain: Option<*mut QObject>,
+    pub fx_chain: Option<cxx::UniquePtr<QWeakPointer_QObject>>,
     pub fx_chain_port_idx: Option<i32>,
     pub min_n_ringbuffer_samples: Option<i32>,
     pub internally_connected_ports: HashSet<*mut QObject>,

@@ -18,6 +18,7 @@ use cxx_qt_lib_shoop::{
     qobject::{qobject_property_bool, AsQObject, FromQObject},
     qsharedpointer_qobject::QSharedPointer_QObject,
     qvariant_helpers::qvariant_to_qsharedpointer_qobject,
+    qweakpointer_qobject::QWeakPointer_QObject,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -136,18 +137,25 @@ impl PortBackend {
         }
     }
 
-    pub fn set_fx_chain(mut self: Pin<&mut PortBackend>, fx_chain: *mut QObject) {
+    pub fn set_fx_chain(mut self: Pin<&mut PortBackend>, fx_chain: QVariant) {
         if self.maybe_backend_port.is_some() {
             error!(self, "cannot set FX chain after initialization");
             return;
         }
-        if !self.fx_chain.as_ref().is_some_and(|v| *v == fx_chain) {
-            debug!(self, "fx chain -> {fx_chain:?}");
+
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let fx_chain = qvariant_to_qsharedpointer_qobject(&fx_chain)?;
+            let weak_fx_chain = QWeakPointer_QObject::from_strong(&fx_chain);
+            let raw_fx_chain = fx_chain.data()?;
+            debug!(self, "fx chain -> {raw_fx_chain:?}");
             let mut rust_mut = self.as_mut().rust_mut();
-            rust_mut.fx_chain = Some(fx_chain);
+            rust_mut.fx_chain = Some(weak_fx_chain);
             unsafe {
-                self.as_mut().fx_chain_changed(fx_chain);
+                self.as_mut().fx_chain_changed(raw_fx_chain);
             }
+            Ok(())
+        }() {
+            error!(self, "Could not set FX chain: {e}");
         }
     }
 
@@ -161,12 +169,15 @@ impl PortBackend {
                     .output_connectability
                     .as_ref()
                     .ok_or(anyhow::anyhow!("output connectability not set"))?;
-                if self.fx_chain.unwrap_or(std::ptr::null_mut()).is_null() {
-                    return Err(anyhow::anyhow!("FX chain not set"));
-                }
                 let fx_chain: Pin<&mut FXChainBackend> = unsafe {
                     FXChainBackend::from_qobject_mut_ptr(
-                        self.fx_chain.ok_or(anyhow::anyhow!("fx chain not set"))?,
+                        self.fx_chain
+                            .as_ref()
+                            .ok_or(anyhow::anyhow!("fx chain not set"))?
+                            .to_strong()?
+                            .as_ref()
+                            .ok_or(anyhow::anyhow!("cannot get fx chain"))?
+                            .data()?,
                     )?
                 };
                 let is_input = !output_connectability.internal;
@@ -327,7 +338,11 @@ impl PortBackend {
             }
             if self.is_internal.is_some()
                 && self.is_internal.unwrap()
-                && self.fx_chain.unwrap_or(std::ptr::null_mut()).is_null()
+                && self
+                    .fx_chain
+                    .as_ref()
+                    .unwrap_or(&cxx::UniquePtr::null())
+                    .is_null()
             {
                 non_ready_vars.insert("fx_chain non-null".to_string());
             }
@@ -981,7 +996,26 @@ impl PortBackend {
     }
 
     pub fn get_maybe_fx_chain(self: Pin<&mut PortBackend>) -> *mut QObject {
-        self.fx_chain.unwrap_or(std::ptr::null_mut())
+        if self.fx_chain.is_none()
+            || self.fx_chain.as_ref().unwrap().is_null()
+            || self.fx_chain.as_ref().unwrap().as_ref().is_none()
+        {
+            return std::ptr::null_mut();
+        }
+        let weak = self.fx_chain.as_ref().unwrap().as_ref().unwrap();
+        match weak.to_strong() {
+            Ok(ptr) => match ptr.data() {
+                Ok(ptr) => {
+                    return ptr;
+                }
+                Err(e) => {
+                    return std::ptr::null_mut();
+                }
+            },
+            Err(e) => {
+                return std::ptr::null_mut();
+            }
+        }
     }
 
     pub fn get_fx_chain_port_idx(self: Pin<&mut PortBackend>) -> i32 {

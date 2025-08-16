@@ -13,3 +13,4 @@ pub mod qsignalspy;
 pub mod qthread;
 pub mod qtimer;
 pub mod qvariant_helpers;
+pub mod qweakpointer_qobject;

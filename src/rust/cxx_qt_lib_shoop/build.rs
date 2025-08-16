@@ -27,6 +27,7 @@ fn main() {
         .file("src/rust/qthread.rs")
         .file("src/rust/qtimer.rs")
         .file("src/rust/qvariant_helpers.rs")
+        .file("src/rust/qweakpointer_qobject.rs")
         .cc_builder(|cc| {
             cc.include("src/include");
             cc.file("src/cxx/qqmlengine_helpers.cpp");

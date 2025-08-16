@@ -39,4 +39,7 @@ pub mod profiling_report;
 pub mod any_backend_port;
 
 #[cfg(not(feature = "prebuild"))]
+pub mod any_backend_channel;
+
+#[cfg(not(feature = "prebuild"))]
 pub mod midi_event_helpers;
