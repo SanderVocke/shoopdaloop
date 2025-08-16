@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import QtTest 1.0
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -7,13 +6,11 @@ import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
 
-
 ShoopTestFile {
     TestSession {
         id: session
         anchors.fill: parent
         initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, null, true)
-
 
         ShoopSessionTestCase {
             id: testcase

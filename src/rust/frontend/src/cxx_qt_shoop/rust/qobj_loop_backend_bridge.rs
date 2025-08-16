@@ -3,13 +3,6 @@ use common::logging::macros::*;
 
 shoop_log_unit!("Frontend.Loop");
 
-pub mod constants {
-    pub const SIGNAL_CYCLED: &str = "cycled()";
-
-    pub const INVOKABLE_UPDATE: &str = "update()";
-    pub const INVOKABLE_TRANSITION: &str =
-        "transition(::std::int32_t,::std::int32_t,::std::int32_t)";
-}
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {

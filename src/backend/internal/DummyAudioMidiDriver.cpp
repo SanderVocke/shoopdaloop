@@ -238,7 +238,9 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
     m_buffer_data.clear();
     auto progress_by = n_processed_last_round.load();
     progress_by -= std::min(n_requested_frames.load(), progress_by);
-    if (progress_by > 0) {
+    if (progress_by > 0 && m_queued_msgs.size() > 0) {
+        this->ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("Progress queue by {}", progress_by);
+
         // The queue was used last pass and needs to be truncated now for the current pass.
         // (first erase msgs that will end up having a negative timestamp)
         std::erase_if(m_queued_msgs, [&, this](StoredMessage const& msg) {
@@ -260,6 +262,9 @@ void DummyMidiPort::PROC_prepare(uint32_t nframes) {
 }
 
 void DummyMidiPort::PROC_process(uint32_t nframes) {
+    if (nframes > 0) {
+        ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Process {}", nframes);
+    }
     if (m_direction == shoop_port_direction_t::ShoopPortDirection_Output) {
         std::stable_sort(m_buffer_data.begin(), m_buffer_data.end(), [](StoredMessage const& a, StoredMessage const& b) {
             return a.time < b.time;
@@ -319,6 +324,7 @@ void DummyMidiPort::PROC_get_event_value(uint32_t idx,
 }
 
 std::vector<DummyMidiPort::StoredMessage> DummyMidiPort::get_written_requested_msgs() {
+    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug>("Dequeue (have {} msgs)", m_written_requested_msgs.size());
     auto rval = m_written_requested_msgs;
     m_written_requested_msgs.clear();
     return rval;
@@ -493,10 +499,14 @@ void DummyAudioMidiDriver<Time, Size>::controlled_mode_run_request(uint32_t time
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
+    if (timed_out()) {
+        Log::log<log_level_warning>("DummyAudioMidiDriver: run request timed out");
+    }
+
     wait_process();
 
     if (m_controlled_mode_samples_to_process > 0) {
-        Log::log<log_level_error>("DummyAudioMidiDriver: run request timed out");
+        Log::log<log_level_error>("DummyAudioMidiDriver: run request failed: requested samples remain");
     }
 }
 

@@ -32,7 +32,7 @@ public:
     virtual void PROC_prepare(uint32_t n_frames) = 0;
     virtual void PROC_process(uint32_t n_frames) = 0;
 
-    void set_passthrough_enabled(bool enabled) { m_passthrough_enabled = enabled; }
+    void set_passthrough_enabled(bool enabled);
     bool get_passthrough_enabled() const { return m_passthrough_enabled; }
 
     void PROC_notify_changed_buffer_size(uint32_t buffer_size) override;

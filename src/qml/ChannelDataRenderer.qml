@@ -47,7 +47,7 @@ Item {
     Loader {
         active: root.channel
 
-        Rectangle {
+        sourceComponent: Rectangle {
             id: background_rect
             width: root.width
             height: root.height
@@ -76,7 +76,6 @@ Item {
                     prev_pos = val
                 }
             }
-
 
         }
 

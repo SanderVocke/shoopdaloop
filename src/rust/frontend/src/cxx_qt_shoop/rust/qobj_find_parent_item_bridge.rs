@@ -1,24 +1,6 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.FindParentItem");
 
-pub mod constants {
-    pub const PROP_FOUND_ITEM: &str = "found_item";
-    pub const PROP_ITEMBOOLPROPERTYTOCHECK: &str = "item_bool_property_to_check";
-    pub const PROP_FOUNDITEMWITHTRUECHECKEDPROPERTY: &str = "found_item_with_true_checked_property";
-    pub const PROP_FOUNDITEMHASTRUECHECKEDPROPERTY: &str = "found_item_has_true_checked_property";
-
-    pub const SIGNAL_PARENT_CHANGED: &str = "parentChanged()";
-    pub const SIGNAL_FOUND_ITEM_CHANGED: &str = "found_itemChanged()";
-    pub const SIGNAL_ITEMBOOLPROPERTYTOCHECK_CHANGED: &str = "item_bool_property_to_checkChanged()";
-    pub const SIGNAL_FOUNDITEMWITHTRUECHECKEDPROPERTY_CHANGED: &str =
-        "found_item_with_true_checked_propertyChanged()";
-    pub const SIGNAL_FOUNDITEMHASTRUECHECKEDPROPERTY_CHANGED: &str =
-        "found_item_has_true_checked_propertyChanged()";
-
-    pub const INVOKABLE_RESCAN: &str = "rescan()";
-    pub const INVOKABLE_UPDATE_FOUND_ITEM_BOOL_PROPERTY: &str = "update_found_item_bool_property()";
-}
-
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {

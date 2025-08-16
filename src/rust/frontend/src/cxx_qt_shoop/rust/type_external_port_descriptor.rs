@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use backend_bindings::{PortDataType, PortDirection};
 use core::fmt::Debug;
 use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QString, QVariant};
-use cxx_qt_lib_shoop::qvariant_qvariantmap::{qvariant_as_qvariantmap, qvariantmap_as_qvariant};
+use cxx_qt_lib_shoop::qvariant_helpers::{qvariant_to_qvariantmap, qvariantmap_to_qvariant};
 use std::fmt;
 
 pub struct ExternalPortDescriptor {
@@ -107,7 +107,7 @@ impl TryInto<QVariant> for ExternalPortDescriptor {
 
     fn try_into(self) -> Result<QVariant, Self::Error> {
         let map = self.to_qvariantmap();
-        let variant = qvariantmap_as_qvariant(&map)?;
+        let variant = qvariantmap_to_qvariant(&map)?;
         Ok(variant)
     }
 }
@@ -116,7 +116,7 @@ impl TryFrom<QVariant> for ExternalPortDescriptor {
     type Error = anyhow::Error;
 
     fn try_from(v: QVariant) -> Result<ExternalPortDescriptor, Self::Error> {
-        let qvariantmap = qvariant_as_qvariantmap(&v)?;
+        let qvariantmap = qvariant_to_qvariantmap(&v)?;
         let desc = ExternalPortDescriptor::from_qvariantmap(&qvariantmap)?;
         Ok(desc)
     }

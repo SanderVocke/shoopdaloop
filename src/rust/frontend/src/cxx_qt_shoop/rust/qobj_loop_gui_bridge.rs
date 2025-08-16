@@ -3,28 +3,6 @@ use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 
 shoop_log_unit!("Frontend.Loop");
 
-pub mod constants {
-    pub const PROP_BACKEND: &str = "backend";
-    pub const PROP_INITIALIZED: &str = "initialized";
-    pub const PROP_MODE: &str = "mode";
-    pub const PROP_LENGTH: &str = "length";
-    pub const PROP_POSITION: &str = "position";
-    pub const PROP_NEXT_MODE: &str = "nextMode";
-    pub const PROP_NEXT_TRANSITION_DELAY: &str = "nextTransitionDelay";
-    pub const PROP_SYNC_SOURCE: &str = "syncSource";
-    pub const PROP_DISPLAY_PEAKS: &str = "displayPeaks";
-    pub const PROP_DISPLAY_MIDI_NOTES_ACTIVE: &str = "displayMidiNotesActive";
-    pub const PROP_DISPLAY_MIDI_EVENTS_TRIGGERED: &str = "displayMidiEventsTriggered";
-    pub const PROP_INSTANCE_IDENTIFIER: &str = "instanceIdentifier";
-
-    pub const SIGNAL_CYCLED: &str = "cycled()";
-    pub const SIGNAL_CYCLED_UNSAFE: &str = "cycledUnsafe()";
-
-    pub const INVOKABLE_UPDATE: &str = "update()";
-    pub const INVOKABLE_TRANSITION: &str =
-        "transition(::std::int32_t,::std::int32_t,::std::int32_t)";
-}
-
 #[cxx_qt::bridge]
 pub mod ffi {
 
@@ -66,9 +44,6 @@ pub mod ffi {
         #[qproperty(i32, position, READ, NOTIFY=position_changed)]
         #[qproperty(i32, next_mode, READ, NOTIFY=next_mode_changed)]
         #[qproperty(i32, next_transition_delay, READ, NOTIFY=next_transition_delay_changed)]
-        #[qproperty(QList_f32, display_peaks, READ, NOTIFY)]
-        #[qproperty(i32, display_midi_notes_active, READ, NOTIFY)]
-        #[qproperty(i32, display_midi_events_triggered, READ, NOTIFY)]
         #[qproperty(i32, cycle_nr, READ, NOTIFY)]
         // Frontend -> Backend properties
         #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
@@ -299,9 +274,6 @@ pub struct LoopGuiRust {
     pub next_mode: i32,
     pub next_transition_delay: i32,
     pub sync_source: *mut QObject,
-    pub display_peaks: ffi::QList_f32,
-    pub display_midi_notes_active: i32,
-    pub display_midi_events_triggered: i32,
     pub instance_identifier: QString,
     pub cycle_nr: i32,
     pub backend_loop_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
@@ -318,9 +290,6 @@ impl Default for LoopGuiRust {
             next_mode: 0,
             next_transition_delay: 0,
             sync_source: std::ptr::null_mut(),
-            display_peaks: ffi::QList_f32::default(),
-            display_midi_notes_active: 0,
-            display_midi_events_triggered: 0,
             instance_identifier: QString::from("unknown"),
             cycle_nr: 0,
             backend_loop_wrapper: cxx::UniquePtr::null(),

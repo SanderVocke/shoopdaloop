@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import QtTest 1.0
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -93,7 +92,8 @@ ShoopTestFile {
                         }
 
                         // Insert the marker
-                        audio_in().dummy_queue_data([0.51])
+                        audio_in().dummy_queue_audio_data([0.51])
+                        testcase.wait_updated(session.backend)
                         session.backend.dummy_request_controlled_frames(1)
                         session.backend.dummy_run_requested_frames()
                         sent += 1

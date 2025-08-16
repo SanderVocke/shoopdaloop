@@ -78,6 +78,14 @@ pub fn create_py_module<'py>(py: Python<'py>) -> Result<Bound<'py, PyModule>, Py
         objects::shoop_rust_set_crash_json_toplevel_field,
         &m
     )?)?;
+    m.add_function(wrap_pyfunction!(
+        objects::shoop_rust_connect_midi_channel_to_port,
+        &m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        objects::shoop_rust_connect_audio_channel_to_port,
+        &m
+    )?)?;
 
     Ok(m)
 }

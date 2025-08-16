@@ -38,11 +38,11 @@ impl QmlEngine {
                     window
                         .as_ref()
                         .ok_or(anyhow::anyhow!("Unable to get root window reference"))?,
-                    "frameSwapped()".to_string(),
+                    "frameSwapped()",
                     update_thread
                         .as_ref()
                         .ok_or(anyhow::anyhow!("Unable to get update thread reference"))?,
-                    "frontend_frame_swapped()".to_string(),
+                    "frontend_frame_swapped()",
                     connection_types::QUEUED_CONNECTION,
                 );
             }

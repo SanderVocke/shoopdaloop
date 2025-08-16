@@ -52,7 +52,9 @@ impl AudioPort {
     }
 
     fn get_state(&self) -> PyResult<AudioPortState> {
-        Ok(AudioPortState::new(self.obj.get_state()))
+        Ok(AudioPortState::new(self.obj.get_state().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyException, _>(e.to_string())
+        })?))
     }
 
     fn set_gain(&self, gain: f32) -> PyResult<()> {

@@ -74,6 +74,7 @@ impl PortConnectabilityKind {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct PortConnectability {
     pub internal: bool,
     pub external: bool,

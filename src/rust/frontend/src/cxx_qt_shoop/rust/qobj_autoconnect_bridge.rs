@@ -1,21 +1,6 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.AutoConnect");
 
-pub mod constants {
-    pub const PROP_INTERNAL_PORT: &str = "internal_port";
-    pub const PROP_CONNECTTOPORTREGEX: &str = "connect_to_port_regex";
-    pub const PROP_CLOSED: &str = "closed";
-
-    pub const SIGNAL_INTERNAL_PORT_CHANGED: &str = "internal_portChanged()";
-    pub const SIGNAL_CONNECTTOPORTREGEX_CHANGED: &str = "connect_to_port_regexChanged()";
-    pub const SIGNAL_CLOSED_CHANGED: &str = "closedChanged()";
-
-    pub const SIGNAL_CONNECTED: &str = "connected()";
-    pub const SIGNAL_ONLY_EXTERNAL_FOUND: &str = "only_external_found()";
-
-    pub const INVOKABLE_UPDATE: &str = "update()";
-}
-
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {

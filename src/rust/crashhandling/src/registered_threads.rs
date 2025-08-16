@@ -8,7 +8,7 @@ type ThreadsMap = HashMap<ThreadId, String>;
 static mut REGISTERED_THREADS: Lazy<Mutex<ThreadsMap>> =
     Lazy::new(|| Mutex::new(ThreadsMap::new()));
 
-pub fn register_thread(name: String) {
+pub fn register_thread(name: &str) {
     let id = std::thread::current().id();
     unsafe {
         let ptr: *mut once_cell::sync::Lazy<Mutex<ThreadsMap>> = &raw mut REGISTERED_THREADS;
@@ -17,7 +17,7 @@ pub fn register_thread(name: String) {
         guard
             .as_mut()
             .expect("Could not lock threads map")
-            .insert(id, name);
+            .insert(id, name.to_string());
     }
 }
 

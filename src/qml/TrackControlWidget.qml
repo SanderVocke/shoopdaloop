@@ -29,7 +29,9 @@ Item {
         var ports = initial_track_descriptor.ports
             .filter(p => is_in(p));
         var settings = new Set();
-        ports.forEach((p) => { settings.add(!p.passthrough_muted) })
+        ports.forEach((p) => {
+            settings.add(!p.passthrough_muted)
+        })
         if (settings.size == 1) {
             root.logger.debug("Initial monitor setting: " + Array.from(settings)[0])
             return Array.from(settings)[0]
@@ -60,19 +62,23 @@ Item {
         var ports = initial_track_descriptor.ports
             .filter(p => is_out(p));
         ports.sort((a,b) => a.id.localeCompare(b.id))
-        return gain_and_balance_from_gains(
+        let result = gain_and_balance_from_gains(
             ports.map(p => ('gain' in p) ? p.gain : undefined)
             .filter(p => p != undefined)
         );
+        root.logger.debug("initial_output_gain_and_balance: " + result["gain"] + ", " + result["balance"])
+        return result;
     }
     readonly property var initial_input_gain_and_balance: {
         var ports = initial_track_descriptor.ports
             .filter(p => is_in(p));
         ports.sort((a,b) => a.id.localeCompare(b.id))
-        return gain_and_balance_from_gains(
+        let result = gain_and_balance_from_gains(
             ports.map(p => ('gain' in p) ? p.gain : undefined)
             .filter(p => p != undefined)
         );
+        root.logger.debug("initial_input_gain_and_balance: " + result["gain"] + ", " + result["balance"])
+        return result;
     }
     property real initial_gain: initial_output_gain_and_balance["gain"]
     property real initial_balance: initial_output_gain_and_balance["balance"]
@@ -137,10 +143,10 @@ Item {
         initial_input_gain_dB = convert_gain.dB
     }
     onMidi_in_portsChanged: {
-        if (Array.isArray(midi_in_ports)) { midi_in_ports.forEach((m) => m.nInputNotesActiveChanged.connect(update_midi)) }
-        if (Array.isArray(midi_out_ports)) { midi_out_ports.forEach((m) => m.nOutputNotesActiveChanged.connect(update_midi)) }
-        if (Array.isArray(midi_in_ports)) { midi_in_ports.forEach((m) => m.nInputEventsChanged.connect(update_midi)) }
-        if (Array.isArray(midi_out_ports)) { midi_out_ports.forEach((m) => m.nOutputEventsChanged.connect(update_midi)) }
+        if (Array.isArray(midi_in_ports)) { midi_in_ports.forEach((m) => m.midi_n_input_notes_active_changed.connect(update_midi)) }
+        if (Array.isArray(midi_out_ports)) { midi_out_ports.forEach((m) => m.midi_n_output_notes_active_changed.connect(update_midi)) }
+        if (Array.isArray(midi_in_ports)) { midi_in_ports.forEach((m) => m.midi_n_input_events_changed.connect(update_midi)) }
+        if (Array.isArray(midi_out_ports)) { midi_out_ports.forEach((m) => m.midi_n_output_events_changed.connect(update_midi)) }
     }
     onGain_dBChanged: push_out_gains()
     onInput_gain_dBChanged: push_in_gains()
@@ -267,7 +273,7 @@ Item {
         convert_gain.dB = gain
         var v = convert_gain.linear * gain_factor
         logger.trace("Pushing gain " + v + " to " + target.obj_id)
-        if (target && target.gain != v) { target.set_gain(v) }
+        if (target && target.audio_gain != v) { target.push_audio_gain(v) }
     }
     function toggle_muted() { mute = !mute }
     function toggle_monitor() { monitor = !monitor }
@@ -333,14 +339,14 @@ Item {
         if (Array.isArray(root.audio_out_ports)) {
             root.audio_out_ports.forEach((p) => {
                 if (p) {
-                    p.set_muted(mute)
+                    p.push_muted(mute)
                 } else { logger.warn("Undefined audio out port") }
             })
         }
         if (Array.isArray(root.midi_out_ports)) {
             root.midi_out_ports.forEach((p) => {
                 if (p) {
-                    p.set_muted(mute)
+                    p.push_muted(mute)
                 } else { logger.warn("Undefined audio out port") }
             })
         }
@@ -352,31 +358,31 @@ Item {
         audio_in_ports
             .filter(p => is_dry(p.descriptor))
             .forEach((p) => {
-                p.set_passthrough_muted(logic.mute_drywet_input_passthrough)
+                p.push_passthrough_muted(logic.mute_drywet_input_passthrough)
             })
         audio_in_ports
             .filter(p => is_direct(p.descriptor))
             .forEach((p) => {
-                p.set_passthrough_muted(logic.mute_direct_passthrough)
+                p.push_passthrough_muted(logic.mute_direct_passthrough)
             })
         midi_in_ports
             .filter(p => is_direct(p.descriptor))
             .forEach((p) => {
-                p.set_passthrough_muted(logic.mute_direct_passthrough)
+                p.push_passthrough_muted(logic.mute_direct_passthrough)
             })
         midi_in_ports
             .filter(p => is_dry(p.descriptor))
             .forEach((p) => {
-                p.set_passthrough_muted(logic.mute_drywet_input_passthrough)
+                p.push_passthrough_muted(logic.mute_drywet_input_passthrough)
             })
         fx_out_ports
             .forEach((p) => {
-                p.set_passthrough_muted(logic.mute_drywet_output_passthrough)
+                p.push_passthrough_muted(logic.mute_drywet_output_passthrough)
             })
     }
     function push_fx_active() {
         if (root.maybe_fx_chain) {
-            root.maybe_fx_chain.set_active(logic.enable_fx)
+            root.maybe_fx_chain.push_active(logic.enable_fx)
         }
     }
     Component.onCompleted: {
@@ -428,7 +434,7 @@ Item {
                     id: output_peak_meter_l
                     max_dt: 0.1
 
-                    input: root.audio_out_ports.length > 0 ? root.audio_out_ports[0].input_peak : 0.0
+                    input: root.audio_out_ports.length > 0 ? root.audio_out_ports[0].audio_input_peak : 0.0
                 }
 
                 background: Rectangle {
@@ -470,7 +476,7 @@ Item {
                     id: output_peak_meter_r
                     max_dt: 0.1
 
-                    input: root.audio_out_ports.length > 1 ? root.audio_out_ports[1].input_peak : 0.0
+                    input: root.audio_out_ports.length > 1 ? root.audio_out_ports[1].audio_input_peak : 0.0
                 }
 
                 background: Rectangle {
@@ -511,7 +517,7 @@ Item {
                     id: output_peak_meter_overall
                     max_dt: 0.1
 
-                    input: root.audio_out_ports.length > 0 ? Math.max(...root.audio_out_ports.map(p => p.input_peak)) : 0.0
+                    input: root.audio_out_ports.length > 0 ? Math.max(...root.audio_out_ports.map(p => p.audio_input_peak)) : 0.0
                 }
 
                 background: Rectangle {
@@ -709,7 +715,7 @@ Item {
                     id: input_peak_meter_l
                     max_dt: 0.1
 
-                    input: root.audio_in_ports.length > 0 ? root.audio_in_ports[0].input_peak : 0.0
+                    input: root.audio_in_ports.length > 0 ? root.audio_in_ports[0].audio_input_peak : 0.0
                 }
 
                 background: Rectangle {
@@ -751,7 +757,7 @@ Item {
                     id: input_peak_meter_r
                     max_dt: 0.1
 
-                    input: root.audio_in_ports.length > 1 ? root.audio_in_ports[1].input_peak : 0.0
+                    input: root.audio_in_ports.length > 1 ? root.audio_in_ports[1].audio_input_peak : 0.0
                 }
 
                 background: Rectangle {
@@ -792,7 +798,7 @@ Item {
                     id: input_peak_meter_overall
                     max_dt: 0.1
 
-                    input: root.audio_in_ports.length > 0 ? Math.max(...root.audio_in_ports.map(p => p.input_peak)) : 0.0
+                    input: root.audio_in_ports.length > 0 ? Math.max(...root.audio_in_ports.map(p => p.audio_input_peak)) : 0.0
                 }
 
                 background: Rectangle {

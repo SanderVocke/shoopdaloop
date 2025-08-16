@@ -2,7 +2,7 @@ use crate::cxx_qt_shoop::test::qobj_test_file_runner_bridge::ffi::*;
 use crate::test_results::*;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::qobject::qobject_property_qvariant;
-use cxx_qt_lib_shoop::qvariant_qvariantmap::qvariant_as_qvariantmap;
+use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qvariantmap;
 use glob::glob;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -193,15 +193,15 @@ Totals:
             {
                 let runner = self.as_ref().testcase_runner;
                 let results_variant =
-                    qobject_property_qvariant(&*runner, "testcase_results".to_string()).unwrap();
-                results = qvariant_as_qvariantmap(&results_variant).unwrap();
+                    qobject_property_qvariant(&*runner, "testcase_results").unwrap();
+                results = qvariant_to_qvariantmap(&results_variant).unwrap();
             }
 
             {
                 let mut rust_mut = self.as_mut().rust_mut();
                 let our_results = &mut rust_mut.test_results;
                 results.iter().try_for_each(|(testcase_name, testcase_content) : (&QString, &cxx_qt_lib::QVariant)| -> Result<(), anyhow::Error> {
-                    let fn_results  = qvariant_as_qvariantmap(testcase_content).unwrap();
+                    let fn_results  = qvariant_to_qvariantmap(testcase_content).unwrap();
                     let mut testcase_results : TestCaseResults = TestCaseResults::default();
                     testcase_results.name = testcase_name.to_string();
                     fn_results.iter().try_for_each(|(testfn_name, testfn_content)| -> Result<(), anyhow::Error> {

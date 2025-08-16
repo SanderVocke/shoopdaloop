@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import QtTest 1.0
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -110,7 +109,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
 
                     // Process 6 frames (record)
                     session.backend.dummy_request_controlled_frames(2)
@@ -130,7 +129,7 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -165,7 +164,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
 
                     // Process 6 frames (prerecord then record)
                     session.backend.dummy_request_controlled_frames(6)
@@ -181,7 +180,7 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -223,7 +222,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
 
                     // Process 40 frames (prerecord then record)
                     session.backend.dummy_request_controlled_frames(40)
@@ -238,7 +237,7 @@ ShoopTestFile {
                     // Process 40 frames (play back twice)
                     session.backend.dummy_request_controlled_frames(40)
                     session.backend.dummy_run_requested_frames()
-                    let out = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -287,7 +286,7 @@ ShoopTestFile {
                     midi_output_port.dummy_request_data(40)
                     session.backend.dummy_request_controlled_frames(40)
                     session.backend.dummy_run_requested_frames()
-                    out = midi_output_port.dummy_dequeue_data()
+                    out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     // Verify same as before
                     verify_eq(chan.get_recorded_midi_msgs(), input, null, true)
@@ -309,7 +308,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
 
                     // Process 6 frames (nothing, then record)
                     session.backend.dummy_request_controlled_frames(2)
@@ -329,7 +328,7 @@ ShoopTestFile {
                     // Process 4 frames (play back)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
-                    let out = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -371,7 +370,7 @@ ShoopTestFile {
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
-                    out = midi_output_port.dummy_dequeue_data()
+                    out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     // Verify same as before
                     verify_eq(out, expect, null, true)

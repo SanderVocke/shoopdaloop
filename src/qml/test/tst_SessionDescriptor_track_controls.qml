@@ -1,12 +1,10 @@
 import QtQuick 6.6
-import QtTest 1.0
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
-
 
 ShoopTestFile {
     TestSession {
@@ -49,7 +47,6 @@ ShoopTestFile {
             testcase.logger.debug("session descriptor: " + JSON.stringify(desc, null, 2))
             return desc
         }
-
 
         ShoopSessionTestCase {
             id: testcase

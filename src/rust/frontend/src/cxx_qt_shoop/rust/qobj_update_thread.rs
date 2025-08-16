@@ -52,15 +52,15 @@ impl UpdateThread {
             timer.as_mut().set_single_shot(false);
             timer
                 .as_mut()
-                .connect_timeout(self_qobject, "timer_tick()".to_string())
+                .connect_timeout(self_qobject, "timer_tick()")
                 .unwrap();
             thread
                 .as_mut()
-                .connect_started(timer.as_mut().qobject_from_ptr(), "start()".to_string())
+                .connect_started(timer.as_mut().qobject_from_ptr(), "start()")
                 .unwrap();
             thread
                 .as_mut()
-                .connect_started(self_qobject, "update_thread_started()".to_string())
+                .connect_started(self_qobject, "update_thread_started()")
                 .unwrap();
             thread.as_mut().start();
 
@@ -110,9 +110,9 @@ impl UpdateThread {
             let timer_mut_ref = &mut *rust.backup_timer;
             let timer_slice = slice::from_raw_parts_mut(timer_mut_ref, 1);
             let timer: Pin<&mut QTimer> = Pin::new_unchecked(&mut timer_slice[0]);
-            match invokable::invoke(
+            match invokable::invoke::<_, (), _>(
                 &mut *timer.qobject_from_ptr(),
-                "start(int)".to_string(),
+                "start(int)",
                 connection_types::QUEUED_CONNECTION,
                 &interval_ms,
             ) {
@@ -131,6 +131,6 @@ impl UpdateThread {
     }
 
     pub fn update_thread_started(self: Pin<&mut UpdateThread>) {
-        crashhandling::registered_threads::register_thread("backend_update".to_string());
+        crashhandling::registered_threads::register_thread("backend_update");
     }
 }

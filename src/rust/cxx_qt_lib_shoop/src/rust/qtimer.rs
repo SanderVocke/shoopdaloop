@@ -88,9 +88,9 @@ impl QTimer {
     pub fn connect_timeout(
         self: Pin<&mut Self>,
         receiver: *mut QObject,
-        slot: String,
+        slot: &str,
     ) -> Result<(), cxx::Exception> {
-        unsafe { ffi::qtimer_connect_timeout(self, receiver, slot) }
+        unsafe { ffi::qtimer_connect_timeout(self, receiver, slot.to_string()) }
     }
 
     pub fn move_to_thread(

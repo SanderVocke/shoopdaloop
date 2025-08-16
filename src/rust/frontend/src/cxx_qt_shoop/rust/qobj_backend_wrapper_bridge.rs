@@ -145,6 +145,14 @@ pub mod ffi {
         #[rust_name = "qquickitem_from_ptr_backend_wrapper"]
         unsafe fn qquickitemFromPtr(obj: *mut BackendWrapper) -> *mut QQuickItem;
 
+        include!("cxx-qt-lib-shoop/qobject.h");
+
+        #[rust_name = "from_qobject_ref_backend_wrapper"]
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const BackendWrapper);
+
+        #[rust_name = "from_qobject_mut_backend_wrapper"]
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut BackendWrapper);
+
         include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_backend_wrapper"]
         fn make_unique() -> UniquePtr<BackendWrapper>;
@@ -162,10 +170,6 @@ pub mod ffi {
             version_minor: i64,
             type_name: &mut String,
         );
-
-        include!("cxx-qt-lib-shoop/cast_ptr.h");
-        #[rust_name = "qobject_ptr_to_backend_ptr"]
-        unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut BackendWrapper;
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)> for BackendWrapper {}
@@ -239,6 +243,22 @@ impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for BackendWrapper {
     }
     unsafe fn ref_qquickitem_ptr(&self) -> *const QQuickItem {
         qquickitem_from_ref_backend_wrapper(self) as *const QQuickItem
+    }
+}
+
+impl cxx_qt_lib_shoop::qobject::FromQObject for BackendWrapper {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+        let mut output: *const Self = std::ptr::null();
+        from_qobject_ref_backend_wrapper(obj, &mut output as *mut *const Self);
+        output
+    }
+
+    unsafe fn ptr_from_qobject_mut(
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+    ) -> *mut Self {
+        let mut output: *mut Self = std::ptr::null_mut();
+        from_qobject_mut_backend_wrapper(obj, &mut output as *mut *mut Self);
+        output
     }
 }
 

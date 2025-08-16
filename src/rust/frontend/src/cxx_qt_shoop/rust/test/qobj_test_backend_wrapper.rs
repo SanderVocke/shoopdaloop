@@ -2,7 +2,6 @@ use common::logging::macros::*;
 shoop_log_unit!("Frontend.TestBackendWrapper");
 
 use crate::cxx_qt_shoop::fn_qlist_helpers;
-pub use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants::*;
 pub use crate::cxx_qt_shoop::test::qobj_test_backend_wrapper_bridge::ffi::make_unique_test_backend_wrapper as make_unique;
 use crate::cxx_qt_shoop::test::qobj_test_backend_wrapper_bridge::ffi::*;
 pub use crate::cxx_qt_shoop::test::qobj_test_backend_wrapper_bridge::TestBackendWrapper;
@@ -16,10 +15,7 @@ impl TestBackendWrapper {
     unsafe fn initialize_impl_with_result(
         self: Pin<&mut TestBackendWrapper>,
     ) -> Result<(), cxx::Exception> {
-        qobject::qobject_set_object_name(
-            self.pin_mut_qobject_ptr(),
-            String::from("shoop_backend_wrapper"),
-        )?;
+        qobject::qobject_set_object_name(self.pin_mut_qobject_ptr(), "shoop_backend_wrapper")?;
         Ok(())
     }
 

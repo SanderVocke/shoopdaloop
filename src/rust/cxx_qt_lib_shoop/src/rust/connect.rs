@@ -54,9 +54,9 @@ impl QObjectOrConvertible for crate::qobject::QObject {
 // Generically connect methods of cxx_qt objects or QObject pointers
 pub fn connect<Sender, Receiver>(
     sender: &Sender,
-    signal: String,
+    signal: &str,
     receiver: &Receiver,
-    slot: String,
+    slot: &str,
     connection_type: u32,
 ) -> Result<(), Exception>
 where
@@ -66,16 +66,22 @@ where
     unsafe {
         let sender_qobj = sender.qobject_ref();
         let receiver_qobj = receiver.qobject_ref();
-        ffi::connect(sender_qobj, signal, receiver_qobj, slot, connection_type)
+        ffi::connect(
+            sender_qobj,
+            signal.to_string(),
+            receiver_qobj,
+            slot.to_string(),
+            connection_type,
+        )
     }
 }
 
 // Connect, or if failed, report error via ShoopDaLoop logging
 pub fn connect_or_report<Sender, Receiver>(
     sender: &Sender,
-    signal: String,
+    signal: &str,
     receiver: &Receiver,
-    slot: String,
+    slot: &str,
     connection_type: u32,
 ) where
     Sender: QObjectOrConvertible,

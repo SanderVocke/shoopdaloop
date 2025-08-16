@@ -80,13 +80,16 @@ impl MidiPort {
         }
     }
 
-    pub fn get_state(&self) -> MidiPortState {
+    pub fn get_state(&self) -> Result<MidiPortState, anyhow::Error> {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
         let state_ptr = unsafe { ffi::get_midi_port_state(obj) };
+        if state_ptr.is_null() {
+            return Err(anyhow::anyhow!("Failed to get midi port state"));
+        }
         let state = unsafe { MidiPortState::from_ffi(&*state_ptr) };
         unsafe { ffi::destroy_midi_port_state_info(state_ptr) };
-        state
+        Ok(state)
     }
 
     pub fn set_muted(&self, muted: bool) {

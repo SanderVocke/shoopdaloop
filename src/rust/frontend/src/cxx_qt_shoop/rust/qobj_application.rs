@@ -9,10 +9,9 @@ use crashhandling::set_crash_json_tag;
 use cxx::UniquePtr;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::connect::connect_or_report;
-use cxx_qt_lib_shoop::connection_types;
-use cxx_qt_lib_shoop::qobject::ffi::qobject_set_property_int;
 use cxx_qt_lib_shoop::qobject::AsQObject;
-use cxx_qt_lib_shoop::qvariant_qobject::qobject_ptr_to_qvariant;
+use cxx_qt_lib_shoop::qvariant_helpers::qobject_ptr_to_qvariant;
+use cxx_qt_lib_shoop::{connection_types, qobject};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::time::{Duration, Instant};
@@ -95,23 +94,23 @@ impl Application {
             let qml_engine_obj = qml_engine_pin.as_mut().pin_mut_qobject_ptr();
             connect_or_report(
                 &*qml_engine_obj,
-                "objectCreated(QObject*,QUrl)".to_string(),
+                "objectCreated(QObject*,QUrl)",
                 &*self_obj,
-                "on_qml_object_created(QObject*,QUrl)".to_string(),
+                "on_qml_object_created(QObject*,QUrl)",
                 connection_types::DIRECT_CONNECTION,
             );
             connect_or_report(
                 &*self_obj,
-                "aboutToQuit()".to_string(),
+                "aboutToQuit()",
                 &*self_obj,
-                "do_quit()".to_string(),
+                "do_quit()",
                 connection_types::DIRECT_CONNECTION,
             );
             connect_or_report(
                 &*qml_engine_obj,
-                "quit()".to_string(),
+                "quit()",
                 &*self_obj,
-                "do_quit()".to_string(),
+                "do_quit()",
                 connection_types::DIRECT_CONNECTION,
             );
         }
@@ -119,7 +118,7 @@ impl Application {
         unsafe {
             let self_qobj: *mut cxx_qt_lib_shoop::qobject::QObject =
                 self.as_mut().pin_mut_qobject_ptr();
-            let self_qvariant = qobject_ptr_to_qvariant(self_qobj);
+            let self_qvariant = qobject_ptr_to_qvariant(&self_qobj).unwrap();
             let mut qml_engine_pin = std::pin::Pin::new_unchecked(&mut *qml_engine);
             qml_engine_pin
                 .as_mut()
@@ -181,9 +180,9 @@ impl Application {
             let rust = self_ref.rust();
             let update_thread = engine_update_thread::get_engine_update_thread();
             let update_thread = update_thread.mut_qobject_ptr();
-            qobject_set_property_int(
+            qobject::qobject_set_property_int(
                 update_thread,
-                "backup_timer_interval_ms".to_string(),
+                "backup_timer_interval_ms",
                 &(rust.settings.backend_backup_refresh_interval_ms as i32),
             )
             .map_err(|e| anyhow::anyhow!("Unable to set timer interval property: {e}"))?;

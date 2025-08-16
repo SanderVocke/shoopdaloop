@@ -7,10 +7,9 @@ use common::logging::macros::*;
 shoop_log_unit!("Frontend.DummyProcessHelper");
 
 use crate::cxx_qt_shoop::qobj_dummy_process_helper_bridge::ffi::*;
-use crate::cxx_qt_shoop::qobj_signature_backend_wrapper;
 use cxx_qt_lib_shoop::invokable;
 use cxx_qt_lib_shoop::qobject::AsQObject;
-use cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
+use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 
 impl DummyProcessHelper {
     pub fn start(mut self: Pin<&mut Self>) {
@@ -48,15 +47,18 @@ impl DummyProcessHelper {
             for _ in 0..n_iters {
                 unsafe {
                     debug!("requesting {} frames", samples_per_iter);
-                    qobj_signature_backend_wrapper::invoke_wait_process(
+                    invokable::invoke::<_, (), _>(
                         backend_thread_ptr.as_mut().unwrap(),
+                        "wait_process()",
                         invokable::DIRECT_CONNECTION,
+                        &(),
                     )
                     .unwrap();
-                    qobj_signature_backend_wrapper::invoke_dummy_request_controlled_frames(
+                    invokable::invoke::<_, (), _>(
                         backend_thread_ptr.as_mut().unwrap(),
+                        "dummy_request_controlled_frames(::std::int32_t)",
                         invokable::DIRECT_CONNECTION,
-                        samples_per_iter,
+                        &(samples_per_iter),
                     )
                     .unwrap();
                 }
@@ -65,15 +67,17 @@ impl DummyProcessHelper {
             }
 
             unsafe {
-                qobj_signature_backend_wrapper::invoke_wait_process(
+                invokable::invoke::<_, (), _>(
                     backend_thread_ptr.as_mut().unwrap(),
+                    "wait_process()",
                     invokable::DIRECT_CONNECTION,
+                    &(),
                 )
                 .unwrap();
                 debug!("Invoking finish");
                 let _dummy: Result<(), _> = invokable::invoke(
                     self_thread_ptr.as_mut().unwrap(),
-                    "finish()".to_string(),
+                    "finish()",
                     invokable::DIRECT_CONNECTION,
                     &(),
                 );

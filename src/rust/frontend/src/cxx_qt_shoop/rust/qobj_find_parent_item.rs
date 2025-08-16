@@ -1,13 +1,12 @@
 use common::logging::macros::*;
+use cxx_qt_lib_shoop::qobject;
 shoop_log_unit!("Frontend.FindParentItem");
 
-pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::constants::*;
 pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::ffi::make_unique_find_parent_item as make_unique;
 pub use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::FindParentItem;
 use crate::cxx_qt_shoop::qobj_find_parent_item_bridge::*;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 
-use cxx_qt_lib_shoop::qobject::qobject_object_name;
 use cxx_qt_lib_shoop::qobject::{qobject_class_name, qobject_property_bool};
 use cxx_qt_lib_shoop::qquickitem;
 use cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_ref, AsQQuickItem};
@@ -28,7 +27,7 @@ unsafe fn find_parent_item(
         let obj: *mut QObject = qquickitem::qquickitem_to_qobject_mut(obj);
         let class_name = qobject_class_name(obj.as_ref().unwrap()).unwrap_or("(unknown)");
         let object_name =
-            qobject_object_name(obj.as_ref().unwrap()).unwrap_or("(unknown)".to_string());
+            qobject::qobject_object_name(obj.as_ref().unwrap()).unwrap_or("(unknown)".to_string());
         let full_object_name = match object_name.as_str() {
             "" => "(no name)".to_string(),
             _ => object_name,
@@ -99,9 +98,9 @@ impl FindParentItem {
         if !item.is_null() && !self.item_bool_property_to_check().is_empty() {
             cxx_qt_lib_shoop::connect::connect(
                 item.as_mut().unwrap(),
-                String::from(format!("{}Changed()", self.item_bool_property_to_check())),
+                format!("{}Changed()", self.item_bool_property_to_check()).as_str(),
                 self.as_mut().pin_mut_qobject_ptr().as_mut().unwrap(),
-                String::from(constants::INVOKABLE_UPDATE_FOUND_ITEM_BOOL_PROPERTY),
+                "update_found_item_bool_property()",
                 cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION,
             )?;
         }
@@ -130,13 +129,13 @@ impl FindParentItem {
         let value: bool = if !item.is_null() && !self.item_bool_property_to_check().is_empty() {
             match qobject_property_bool(
                 qquickitem_to_qobject_ref(item.as_ref().unwrap()),
-                self.item_bool_property_to_check().to_string(),
+                self.item_bool_property_to_check().to_string().as_str(),
             ) {
                 Ok(v) => v,
                 Err(e) => {
                     error!(
                         "Failed to get bool property {}: {:?}",
-                        self.item_bool_property_to_check().to_string(),
+                        self.item_bool_property_to_check(),
                         e
                     );
                     false

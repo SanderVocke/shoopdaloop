@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import QtTest 1.0
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -159,6 +158,7 @@ ShoopTestFile {
             // (sending 0 on audio input), but insert "markers" (specifically-valued samples)
             // at particular times. These can later be checked in output to verify alignment.
             function run_with_marker_samples(total_frames, marker_positions) {
+                console.log("start run with marker samples")
                 var sent = 0
                 var idx = 0
                 while (sent < total_frames && idx < marker_positions.length) {
@@ -180,7 +180,8 @@ ShoopTestFile {
                         }
 
                         // Insert the marker
-                        audio_in().dummy_queue_data([0.51])
+                        audio_in().dummy_queue_audio_data([0.51])
+                        testcase.wait_updated(session.backend)
                         session.backend.dummy_request_controlled_frames(1)
                         session.backend.dummy_run_requested_frames()
                         sent += 1
