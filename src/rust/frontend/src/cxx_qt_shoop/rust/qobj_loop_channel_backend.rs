@@ -2,7 +2,7 @@ use crate::cxx_qt_shoop::qobj_loop_channel_backend_bridge::ffi::*;
 use crate::{
     any_backend_channel::AnyBackendChannel, cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend,
 };
-use backend_bindings::{MidiEvent, PortConnectability, PortDataType, PortDirection};
+use backend_bindings::{ChannelMode, MidiEvent, PortConnectability, PortDataType, PortDirection};
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
@@ -174,7 +174,24 @@ impl LoopChannelBackend {
                 unsafe {
                     let channel_loop =
                         LoopBackend::from_qobject_ref_ptr(channel_loop.as_ref().unwrap().data()?)?;
-                    let channel_loop = channel_loop.backend_loop.as_ref().ok_or(anyhow::anyhow!("No backend loop in loop object"))?;
+                    let channel_loop = channel_loop
+                        .backend_loop
+                        .as_ref()
+                        .ok_or(anyhow::anyhow!("No backend loop in loop object"))?;
+                    let mode = ChannelMode::try_from(self.prev_state.mode as i32)?;
+                    let backend_channel = match self.data_type.unwrap() {
+                        PortDataType::Audio => {
+                            AnyBackendChannel::Audio(channel_loop.add_audio_channel(mode)?)
+                        }
+                        PortDataType::Midi => {
+                            AnyBackendChannel::Midi(channel_loop.add_midi_channel(mode)?)
+                        }
+                        PortDataType::Any => {
+                            return Err(anyhow::anyhow!("No specific port data type"));
+                        }
+                    };
+                    let mut rust_mut = self.as_mut().rust_mut();
+                    rust_mut.maybe_backend_channel = Some(backend_channel);
                 }
                 todo!();
             } else {

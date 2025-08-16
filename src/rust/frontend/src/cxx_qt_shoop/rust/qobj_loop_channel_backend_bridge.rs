@@ -121,7 +121,10 @@ pub mod ffi {
         pub unsafe fn audio_gain_changed(self: Pin<&mut LoopChannelBackend>, audio_gain: f64);
 
         #[qsignal]
-        pub unsafe fn audio_output_peak_changed(self: Pin<&mut LoopChannelBackend>, output_peak: f64);
+        pub unsafe fn audio_output_peak_changed(
+            self: Pin<&mut LoopChannelBackend>,
+            output_peak: f64,
+        );
 
         #[qsignal]
         pub unsafe fn midi_n_events_triggered_changed(

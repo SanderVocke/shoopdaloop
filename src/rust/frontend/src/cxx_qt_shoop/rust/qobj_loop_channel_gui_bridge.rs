@@ -59,7 +59,10 @@ pub mod ffi {
         pub fn set_is_midi(self: Pin<&mut LoopChannelGui>, is_midi: bool);
 
         #[qinvokable]
-        pub fn set_ports_to_connect(self: Pin<&mut LoopChannelGui>, ports_to_connect : QList_QVariant);
+        pub fn set_ports_to_connect(
+            self: Pin<&mut LoopChannelGui>,
+            ports_to_connect: QList_QVariant,
+        );
 
         #[qinvokable]
         pub fn push_mode(self: Pin<&mut LoopChannelGui>, mode: i32);
@@ -86,7 +89,7 @@ pub mod ffi {
             audio_gain: f64,
             output_peak: f64,
             n_events_triggered: i32,
-            n_notes_active: i32
+            n_notes_active: i32,
         );
 
         #[qsignal]
@@ -105,22 +108,37 @@ pub mod ffi {
         pub unsafe fn start_offset_changed(self: Pin<&mut LoopChannelGui>, start_offset: i32);
 
         #[qsignal]
-        pub unsafe fn n_preplay_samples_changed(self: Pin<&mut LoopChannelGui>, n_preplay_samples: i32);
+        pub unsafe fn n_preplay_samples_changed(
+            self: Pin<&mut LoopChannelGui>,
+            n_preplay_samples: i32,
+        );
 
         #[qsignal]
         pub unsafe fn data_dirty_changed(self: Pin<&mut LoopChannelGui>, data_dirty: bool);
 
         #[qsignal]
-        pub unsafe fn recording_started_at_changed(self: Pin<&mut LoopChannelGui>, recording_started_at: QVariant);
+        pub unsafe fn recording_started_at_changed(
+            self: Pin<&mut LoopChannelGui>,
+            recording_started_at: QVariant,
+        );
 
         #[qsignal]
-        pub unsafe fn last_played_sample_changed(self: Pin<&mut LoopChannelGui>, last_played_sample: QVariant);
+        pub unsafe fn last_played_sample_changed(
+            self: Pin<&mut LoopChannelGui>,
+            last_played_sample: QVariant,
+        );
 
         #[qsignal]
-        pub unsafe fn connected_ports_changed(self: Pin<&mut LoopChannelGui>, connected_ports: QList_QVariant);
+        pub unsafe fn connected_ports_changed(
+            self: Pin<&mut LoopChannelGui>,
+            connected_ports: QList_QVariant,
+        );
 
         #[qsignal]
-        pub unsafe fn ports_to_connect_changed(self: Pin<&mut LoopChannelGui>, ports_to_connect: QList_QVariant);
+        pub unsafe fn ports_to_connect_changed(
+            self: Pin<&mut LoopChannelGui>,
+            ports_to_connect: QList_QVariant,
+        );
 
         #[qsignal]
         pub unsafe fn audio_gain_changed(self: Pin<&mut LoopChannelGui>, audio_gain: f64);
@@ -129,22 +147,31 @@ pub mod ffi {
         pub unsafe fn audio_output_peak_changed(self: Pin<&mut LoopChannelGui>, output_peak: f64);
 
         #[qsignal]
-        pub unsafe fn midi_n_events_triggered_changed(self: Pin<&mut LoopChannelGui>, n_events_triggered: i32);
+        pub unsafe fn midi_n_events_triggered_changed(
+            self: Pin<&mut LoopChannelGui>,
+            n_events_triggered: i32,
+        );
 
         #[qsignal]
-        pub unsafe fn midi_n_notes_active_changed(self: Pin<&mut LoopChannelGui>, n_notes_active : i32);
+        pub unsafe fn midi_n_notes_active_changed(
+            self: Pin<&mut LoopChannelGui>,
+            n_notes_active: i32,
+        );
 
         #[qsignal]
-        pub unsafe fn initialized_changed(self: Pin<&mut LoopChannelGui>, initialized : bool);
+        pub unsafe fn initialized_changed(self: Pin<&mut LoopChannelGui>, initialized: bool);
 
         #[qsignal]
         pub unsafe fn backend_set_backend(self: Pin<&mut LoopChannelGui>, backend: *mut QObject);
 
         #[qsignal]
-        pub unsafe fn backend_set_is_midi(self: Pin<&mut LoopChannelGui>, is_midi : bool);
+        pub unsafe fn backend_set_is_midi(self: Pin<&mut LoopChannelGui>, is_midi: bool);
 
         #[qsignal]
-        pub unsafe fn backend_set_ports_to_connect(self: Pin<&mut LoopChannelGui>, ports: QList_QVariant);
+        pub unsafe fn backend_set_ports_to_connect(
+            self: Pin<&mut LoopChannelGui>,
+            ports: QList_QVariant,
+        );
 
         #[qsignal]
         pub unsafe fn backend_push_mode(self: Pin<&mut LoopChannelGui>, mode: i32);
@@ -153,7 +180,10 @@ pub mod ffi {
         pub unsafe fn backend_push_start_offset(self: Pin<&mut LoopChannelGui>, start_offset: i32);
 
         #[qsignal]
-        pub unsafe fn backend_push_n_preplay_samples(self: Pin<&mut LoopChannelGui>, n_preplay_samples: i32);
+        pub unsafe fn backend_push_n_preplay_samples(
+            self: Pin<&mut LoopChannelGui>,
+            n_preplay_samples: i32,
+        );
 
         #[qsignal]
         pub unsafe fn backend_push_audio_gain(self: Pin<&mut LoopChannelGui>, audio_gain: f64);
@@ -191,29 +221,29 @@ pub mod ffi {
     impl cxx_qt::Constructor<()> for LoopChannelGui {}
 }
 
+use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::{qquickitem::IsQQuickItem, qsharedpointer_qobject::QSharedPointer_QObject};
 pub use ffi::LoopChannelGui;
 use ffi::*;
-use cxx_qt_lib::QList;
 
 pub struct LoopChannelGuiRust {
     // Properties
     pub initialized: bool,
     pub recording_started_at: QVariant,
-    pub mode : i32,
+    pub mode: i32,
     pub data_length: i32,
-    pub start_offset : i32,
+    pub start_offset: i32,
     pub n_preplay_samples: i32,
     pub data_dirty: bool,
-    pub last_played_sample : QVariant,
-    pub connected_ports : QList_QVariant,
-    pub audio_gain : f64,
-    pub audio_output_peak : f64,
+    pub last_played_sample: QVariant,
+    pub connected_ports: QList_QVariant,
+    pub audio_gain: f64,
+    pub audio_output_peak: f64,
     pub midi_n_events_triggered: i32,
     pub midi_n_notes_active: i32,
-    pub is_midi : bool,
-    pub backend : *mut QObject,
-    pub ports_to_connect : QList_QVariant,
+    pub is_midi: bool,
+    pub backend: *mut QObject,
+    pub ports_to_connect: QList_QVariant,
     // Other
     pub backend_channel_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
 }
@@ -223,20 +253,20 @@ impl Default for LoopChannelGuiRust {
         LoopChannelGuiRust {
             initialized: false,
             recording_started_at: QVariant::default(),
-            mode : ChannelMode::Disabled as i32,
+            mode: ChannelMode::Disabled as i32,
             data_length: 0,
-            start_offset : 0,
+            start_offset: 0,
             n_preplay_samples: 0,
             data_dirty: true,
-            last_played_sample : QVariant::default(),
-            connected_ports : QList::default(),
-            audio_gain : 1.0,
-            audio_output_peak : 0.0,
+            last_played_sample: QVariant::default(),
+            connected_ports: QList::default(),
+            audio_gain: 1.0,
+            audio_output_peak: 0.0,
             midi_n_events_triggered: 0,
             midi_n_notes_active: 0,
-            is_midi : false,
-            backend : std::ptr::null_mut(),
-            ports_to_connect : QList::default(),
+            is_midi: false,
+            backend: std::ptr::null_mut(),
+            ports_to_connect: QList::default(),
             backend_channel_wrapper: cxx::UniquePtr::null(),
         }
     }
