@@ -40,6 +40,8 @@ macro_rules! error {
 }
 
 impl LoopChannelBackend {
+    pub fn initialize_impl(mut self: Pin<&mut LoopChannelBackend>) {}
+
     pub fn update(mut self: Pin<&mut LoopChannelBackend>) {
         if self.maybe_backend_channel.is_none() {
             return;
@@ -190,6 +192,14 @@ impl LoopChannelBackend {
                             return Err(anyhow::anyhow!("No specific port data type"));
                         }
                     };
+
+                    // Push initial state that was already set
+                    let state = &self.prev_state;
+                    debug!(self, "Push deferred state: {state:?}");
+                    backend_channel.push_state(state)?;
+                    self.as_mut().update_port_connections_impl();
+
+                    // Store the newly created backend port
                     let mut rust_mut = self.as_mut().rust_mut();
                     rust_mut.maybe_backend_channel = Some(backend_channel);
                 }
@@ -208,5 +218,33 @@ impl LoopChannelBackend {
                 false
             }
         }
+    }
+
+    pub fn get_initialized(self: &LoopChannelBackend) -> bool {
+        todo!();
+    }
+
+    pub unsafe fn set_backend(self: Pin<&mut LoopChannelBackend>, backend: *mut QObject) {
+        todo!();
+    }
+
+    pub fn set_is_midi(self: Pin<&mut LoopChannelBackend>, is_midi: bool) {
+        todo!();
+    }
+
+    pub fn set_channel_loop(self: Pin<&mut LoopChannelBackend>, parent_sharedptr: QVariant) {
+        todo!();
+    }
+
+    pub fn get_is_midi(self: Pin<&mut LoopChannelBackend>) -> bool {
+        todo!();
+    }
+
+    pub fn get_channel_loop(self: Pin<&mut LoopChannelBackend>) -> *mut QObject {
+        todo!();
+    }
+
+    pub fn update_port_connections_impl(self: Pin<&mut LoopChannelBackend>) {
+        todo!();
     }
 }

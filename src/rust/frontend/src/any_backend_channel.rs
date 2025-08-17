@@ -210,6 +210,23 @@ impl AnyBackendChannel {
             }
         }
     }
+
+    pub fn push_state(&self, state: &AnyBackendChannelState) -> Result<(), anyhow::Error> {
+        match self {
+            AnyBackendChannel::Audio(chan) => {
+                chan.set_gain(state.audio_gain);
+                chan.set_mode(state.mode);
+                chan.set_start_offset(state.start_offset);
+                chan.set_n_preplay_samples(state.n_preplay_samples);
+            }
+            AnyBackendChannel::Midi(chan) => {
+                chan.set_mode(state.mode);
+                chan.set_start_offset(state.start_offset);
+                chan.set_n_preplay_samples(state.n_preplay_samples);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default, Clone)]
