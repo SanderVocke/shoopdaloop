@@ -229,7 +229,7 @@ impl AnyBackendChannel {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct AnyBackendChannelState {
     pub mode: ChannelMode,
     pub length: u32,
@@ -241,6 +241,23 @@ pub struct AnyBackendChannelState {
     pub audio_output_peak: f32,
     pub n_events_triggered: u32,
     pub n_notes_active: u32,
+}
+
+impl Default for AnyBackendChannelState {
+    fn default() -> Self {
+        AnyBackendChannelState {
+            mode: ChannelMode::Disabled,
+            length: 0,
+            start_offset: 0,
+            played_back_sample: None,
+            n_preplay_samples: 0,
+            data_dirty: false,
+            audio_gain: 1.0,
+            audio_output_peak: 0.0,
+            n_events_triggered: 0,
+            n_notes_active: 0,
+        }
+    }
 }
 
 impl From<AudioChannelState> for AnyBackendChannelState {

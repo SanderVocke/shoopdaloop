@@ -18,7 +18,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
-        type QList_f64 = cxx_qt_lib::QList<f64>;
+        type QList_f32 = cxx_qt_lib::QList<f32>;
         type QList_QString = cxx_qt_lib::QList<cxx_qt_lib::QString>;
 
         include!("cxx-qt-lib/qmap.h");
@@ -62,6 +62,27 @@ pub mod ffi {
         #[qinvokable]
         pub fn maybe_initialize_backend(self: Pin<&mut LoopChannelBackend>) -> bool;
 
+        #[qinvokable]
+        pub fn push_mode(self: Pin<&mut LoopChannelBackend>, mode: i32);
+
+        #[qinvokable]
+        pub fn push_audio_gain(self: Pin<&mut LoopChannelBackend>, audio_gain: f32);
+
+        #[qinvokable]
+        pub fn push_n_preplay_samples(self: Pin<&mut LoopChannelBackend>, n_preplay_samples: i32);
+
+        #[qinvokable]
+        pub fn push_start_offset(self: Pin<&mut LoopChannelBackend>, start_offset: i32);
+
+        #[qinvokable]
+        pub fn set_ports_to_connect(self: Pin<&mut LoopChannelBackend>, ports_to_connect: QList_QVariant);
+
+        #[qinvokable]
+        pub fn load_audio_data(self: Pin<&mut LoopChannelBackend>, data: QList_f32);
+
+        #[qinvokable]
+        pub fn load_midi_data(self: Pin<&mut LoopChannelBackend>, data: QList_QVariant);
+
         #[qsignal]
         pub unsafe fn state_changed(
             self: Pin<&mut LoopChannelBackend>,
@@ -72,8 +93,8 @@ pub mod ffi {
             played_back_sample: QVariant,
             n_preplay_samples: i32,
             data_dirty: bool,
-            audio_gain: f64,
-            output_peak: f64,
+            audio_gain: f32,
+            output_peak: f32,
             n_events_triggered: i32,
             n_notes_active: i32,
         );
@@ -118,12 +139,12 @@ pub mod ffi {
         pub unsafe fn data_dirty_changed(self: Pin<&mut LoopChannelBackend>, data_dirty: bool);
 
         #[qsignal]
-        pub unsafe fn audio_gain_changed(self: Pin<&mut LoopChannelBackend>, audio_gain: f64);
+        pub unsafe fn audio_gain_changed(self: Pin<&mut LoopChannelBackend>, audio_gain: f32);
 
         #[qsignal]
         pub unsafe fn audio_output_peak_changed(
             self: Pin<&mut LoopChannelBackend>,
-            output_peak: f64,
+            output_peak: f32,
         );
 
         #[qsignal]
@@ -176,6 +197,8 @@ pub struct LoopChannelBackendRust {
     pub prev_state: AnyBackendChannelState,
     pub data_type: Option<PortDataType>,
     pub channel_loop: Option<cxx::UniquePtr<QWeakPointer_QObject>>,
+    pub ports_to_connect: Vec<cxx::UniquePtr<QWeakPointer_QObject>>,
+    pub ports_connected: Vec<cxx::UniquePtr<QWeakPointer_QObject>>,
 }
 
 impl Default for LoopChannelBackendRust {
@@ -187,6 +210,8 @@ impl Default for LoopChannelBackendRust {
             prev_state: AnyBackendChannelState::default(),
             data_type: None,
             channel_loop: None,
+            ports_to_connect: Vec::new(),
+            ports_connected: Vec::new(),
         }
     }
 }

@@ -67,11 +67,11 @@ Loop {
         LoopAudioChannel {
             property var mapped_item
             property int index
-            loop: root.loop
+            channel_loop: root.loop
             descriptor: mapped_item
             backend : root.backend
 
-            onOutput_peakChanged: { root.dummy_trigger_recalc_display_peaks = !root.dummy_trigger_recalc_display_peaks }
+            onAudio_output_peak_changed: { root.dummy_trigger_recalc_display_peaks = !root.dummy_trigger_recalc_display_peaks }
         }
     }
     Mapper {
@@ -81,7 +81,7 @@ Loop {
         LoopMidiChannel {
             property var mapped_item
             property int index
-            loop: root.loop
+            channel_loop: root.loop
             descriptor: mapped_item
             backend : root.backend
         }

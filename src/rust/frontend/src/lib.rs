@@ -43,3 +43,6 @@ pub mod any_backend_channel;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod midi_event_helpers;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod references_qobject;

@@ -1,9 +1,11 @@
 use crate::composite_loop_schedule::CompositeLoopIterationEvents;
 use crate::composite_loop_schedule::CompositeLoopSchedule;
+use crate::composite_loop_schedule::LoopReference;
 use crate::cxx_qt_shoop::qobj_composite_loop_backend_bridge::make_raw_composite_loop_backend;
 use crate::cxx_qt_shoop::qobj_composite_loop_gui_bridge::ffi::*;
 use crate::engine_update_thread;
 use crate::loop_helpers::get_backend_loop_handles_variant_list;
+use crate::references_qobject::ReferencesQObject;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace, warn as raw_warn,
 };
@@ -15,6 +17,9 @@ use cxx_qt_lib_shoop::qobject::QObject;
 use cxx_qt_lib_shoop::qobject::*;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::*;
 use cxx_qt_lib_shoop::qvariant_helpers::qsharedpointer_qobject_to_qvariant;
+use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
+use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qsharedpointer_qobject;
+use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 use std::pin::Pin;
 shoop_log_unit!("Frontend.CompositeLoop");
 
@@ -47,11 +52,11 @@ macro_rules! error {
 }
 
 fn replace_by_backend_objects(
-    schedule: &CompositeLoopSchedule,
-) -> Result<CompositeLoopSchedule, anyhow::Error> {
-    let get_backend_obj = |object: *mut QObject| -> Result<*mut QObject, anyhow::Error> {
+    schedule: &CompositeLoopSchedule<*mut QObject>,
+) -> Result<CompositeLoopSchedule<cxx::UniquePtr<QWeakPointer_QObject>>, anyhow::Error> {
+    let get_backend_obj = |object: *mut QObject| -> Result<cxx::UniquePtr<QWeakPointer_QObject>, anyhow::Error> {
         unsafe {
-            match invoke::<QObject, *mut QObject, ()>(
+            match invoke::<QObject, QVariant, ()>(
                 &mut *object,
                 "get_backend_loop_wrapper()",
                 connection_types::DIRECT_CONNECTION,
@@ -61,7 +66,9 @@ fn replace_by_backend_objects(
                     if backend_loop.is_null() {
                         return Err(anyhow::anyhow!("Backend loop in schedule is null"));
                     }
-                    return Ok(backend_loop);
+                    let shared = qvariant_to_qsharedpointer_qobject(&backend_loop)?;
+                    let weak = QWeakPointer_QObject::from_strong(&shared);
+                    return Ok(weak);
                 }
                 Err(e) => {
                     return Err(anyhow::anyhow!("Unable to get backend loop: {e}"));
@@ -75,16 +82,16 @@ fn replace_by_backend_objects(
     for (key, events) in schedule.data.iter() {
         let mut new_events = CompositeLoopIterationEvents::default();
         for (object, mode) in events.loops_start.iter() {
-            let backend_loop = get_backend_obj(*object)?;
-            new_events.loops_start.insert(backend_loop, *mode);
+            let backend_loop = get_backend_obj(object.obj.as_qobject_ref() as *mut QObject)?;
+            new_events.loops_start.insert(LoopReference{ obj: backend_loop }, *mode);
         }
         for object in events.loops_end.iter() {
-            let backend_loop = get_backend_obj(*object)?;
-            new_events.loops_end.insert(backend_loop);
+            let backend_loop = get_backend_obj(object.obj.as_qobject_ref() as *mut QObject)?;
+            new_events.loops_end.insert(LoopReference{ obj: backend_loop });
         }
         for object in events.loops_ignored.iter() {
-            let backend_loop = get_backend_obj(*object)?;
-            new_events.loops_ignored.insert(backend_loop);
+            let backend_loop = get_backend_obj(object.obj.as_qobject_ref() as *mut QObject)?;
+            new_events.loops_ignored.insert(LoopReference{ obj: backend_loop });
         }
         rval.data.insert(*key, new_events);
     }
@@ -341,7 +348,7 @@ impl CompositeLoopGui {
             let backend_loop: *mut QObject = if sync_source_in.is_null() {
                 std::ptr::null_mut()
             } else {
-                match invoke::<QObject, *mut QObject, ()>(
+                match invoke::<QObject, QVariant, ()>(
                     &mut *sync_source_in,
                     "get_backend_loop_wrapper()",
                     connection_types::DIRECT_CONNECTION,
@@ -351,7 +358,7 @@ impl CompositeLoopGui {
                         if backend_loop.is_null() {
                             warn!(self, "Backend loop in sync source is null");
                         }
-                        backend_loop
+                        qvariant_to_qobject_ptr(&backend_loop).unwrap()
                     }
                     Err(e) => {
                         error!(self, "Unable to get backend loop: {e}");

@@ -18,7 +18,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
-        type QList_f64 = cxx_qt_lib::QList<f64>;
+        type QList_f32 = cxx_qt_lib::QList<f32>;
         type QList_QString = cxx_qt_lib::QList<cxx_qt_lib::QString>;
 
         include!("cxx-qt-lib/qmap.h");
@@ -31,7 +31,6 @@ pub mod ffi {
         #[base = QQuickItem]
         // Backend -> Frontend properties
         #[qproperty(bool, initialized, READ, NOTIFY=initialized_changed)]
-        #[qproperty(QVariant, recording_started_at, READ, NOTIFY=recording_started_at_changed)]
         #[qproperty(i32, mode, READ, NOTIFY=mode_changed)]
         #[qproperty(i32, data_length, READ, NOTIFY=data_length_changed)]
         #[qproperty(i32, start_offset, READ, NOTIFY=start_offset_changed)]
@@ -39,15 +38,17 @@ pub mod ffi {
         #[qproperty(bool, data_dirty, READ, NOTIFY=data_dirty_changed)]
         #[qproperty(QVariant, last_played_sample, READ, NOTIFY=last_played_sample_changed)]
         #[qproperty(QList_QVariant, connected_ports, READ, NOTIFY=connected_ports_changed)]
-        #[qproperty(f64, audio_gain, READ, NOTIFY=audio_gain_changed)]
-        #[qproperty(f64, audio_output_peak, READ, NOTIFY=audio_output_peak_changed)]
+        #[qproperty(f32, audio_gain, READ, NOTIFY=audio_gain_changed)]
+        #[qproperty(f32, audio_output_peak, READ, NOTIFY=audio_output_peak_changed)]
         #[qproperty(i32, midi_n_events_triggered, READ, NOTIFY=midi_n_events_triggered_changed)]
         #[qproperty(i32, midi_n_notes_active, READ, NOTIFY=midi_n_notes_active_changed)]
         // Frontend -> Backend properties
         #[qproperty(bool, is_midi, READ, WRITE=set_is_midi, NOTIFY=is_midi_changed)]
         #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
         #[qproperty(QList_QVariant, ports_to_connect, READ, WRITE=set_ports_to_connect, NOTIFY=ports_to_connect_changed)]
+        #[qproperty(*mut QObject, channel_loop, READ=get_channel_loop, WRITE=set_channel_loop, NOTIFY=channel_loop_changed)]
         // Other properties
+        #[qproperty(QVariant, recording_started_at, READ, WRITE, NOTIFY)]
         type LoopChannelGui = super::LoopChannelGuiRust;
 
         pub fn initialize_impl(self: Pin<&mut LoopChannelGui>);
@@ -74,7 +75,19 @@ pub mod ffi {
         pub fn push_n_preplay_samples(self: Pin<&mut LoopChannelGui>, n_preplay_samples: i32);
 
         #[qinvokable]
-        pub fn push_audio_gain(self: Pin<&mut LoopChannelGui>, audio_gain: f64);
+        pub fn push_audio_gain(self: Pin<&mut LoopChannelGui>, audio_gain: f32);
+
+        #[qinvokable]
+        pub fn get_channel_loop(self: Pin<&mut LoopChannelGui>) -> *mut QObject;
+
+        #[qinvokable]
+        pub fn set_channel_loop(self: Pin<&mut LoopChannelGui>, channel_loop: *mut QObject);
+
+        #[qinvokable]
+        pub fn load_audio_data(self: Pin<&mut LoopChannelGui>, data: QList_f32);
+
+        #[qinvokable]
+        pub fn load_midi_data(self: Pin<&mut LoopChannelGui>, data: QList_QVariant);
 
         #[qinvokable]
         pub fn backend_state_changed(
@@ -86,8 +99,8 @@ pub mod ffi {
             played_back_sample: QVariant,
             n_preplay_samples: i32,
             data_dirty: bool,
-            audio_gain: f64,
-            output_peak: f64,
+            audio_gain: f32,
+            output_peak: f32,
             n_events_triggered: i32,
             n_notes_active: i32,
         );
@@ -117,12 +130,6 @@ pub mod ffi {
         pub unsafe fn data_dirty_changed(self: Pin<&mut LoopChannelGui>, data_dirty: bool);
 
         #[qsignal]
-        pub unsafe fn recording_started_at_changed(
-            self: Pin<&mut LoopChannelGui>,
-            recording_started_at: QVariant,
-        );
-
-        #[qsignal]
         pub unsafe fn last_played_sample_changed(
             self: Pin<&mut LoopChannelGui>,
             last_played_sample: QVariant,
@@ -141,10 +148,10 @@ pub mod ffi {
         );
 
         #[qsignal]
-        pub unsafe fn audio_gain_changed(self: Pin<&mut LoopChannelGui>, audio_gain: f64);
+        pub unsafe fn audio_gain_changed(self: Pin<&mut LoopChannelGui>, audio_gain: f32);
 
         #[qsignal]
-        pub unsafe fn audio_output_peak_changed(self: Pin<&mut LoopChannelGui>, output_peak: f64);
+        pub unsafe fn audio_output_peak_changed(self: Pin<&mut LoopChannelGui>, output_peak: f32);
 
         #[qsignal]
         pub unsafe fn midi_n_events_triggered_changed(
@@ -156,6 +163,12 @@ pub mod ffi {
         pub unsafe fn midi_n_notes_active_changed(
             self: Pin<&mut LoopChannelGui>,
             n_notes_active: i32,
+        );
+
+        #[qsignal]
+        pub unsafe fn channel_loop_changed(
+            self: Pin<&mut LoopChannelGui>,
+            channel_loop: *mut QObject,
         );
 
         #[qsignal]
@@ -186,7 +199,25 @@ pub mod ffi {
         );
 
         #[qsignal]
-        pub unsafe fn backend_push_audio_gain(self: Pin<&mut LoopChannelGui>, audio_gain: f64);
+        pub unsafe fn backend_push_audio_gain(self: Pin<&mut LoopChannelGui>, audio_gain: f32);
+
+        #[qsignal]
+        pub unsafe fn backend_set_channel_loop(
+            self: Pin<&mut LoopChannelGui>,
+            channel_loop: QVariant,
+        );
+
+        #[qsignal]
+        pub unsafe fn backend_load_audio_data(
+            self: Pin<&mut LoopChannelGui>,
+            data: QList_f32,
+        );
+
+        #[qsignal]
+        pub unsafe fn backend_load_midi_data(
+            self: Pin<&mut LoopChannelGui>,
+            data: QList_QVariant,
+        );
     }
 
     unsafe extern "C++" {
@@ -237,13 +268,14 @@ pub struct LoopChannelGuiRust {
     pub data_dirty: bool,
     pub last_played_sample: QVariant,
     pub connected_ports: QList_QVariant,
-    pub audio_gain: f64,
-    pub audio_output_peak: f64,
+    pub audio_gain: f32,
+    pub audio_output_peak: f32,
     pub midi_n_events_triggered: i32,
     pub midi_n_notes_active: i32,
     pub is_midi: bool,
     pub backend: *mut QObject,
     pub ports_to_connect: QList_QVariant,
+    pub channel_loop: *mut QObject,
     // Other
     pub backend_channel_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
 }
@@ -268,6 +300,7 @@ impl Default for LoopChannelGuiRust {
             backend: std::ptr::null_mut(),
             ports_to_connect: QList::default(),
             backend_channel_wrapper: cxx::UniquePtr::null(),
+            channel_loop: std::ptr::null_mut(),
         }
     }
 }

@@ -29,7 +29,7 @@ mod ffi {
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
         type QList_QString = cxx_qt_lib::QList<cxx_qt_lib::QString>;
-        type QList_f64 = cxx_qt_lib::QList<f64>;
+        type QList_f32 = cxx_qt_lib::QList<f32>;
     }
 
     // Below, add bridge definitions for all combinations of return values and arguments used
@@ -141,20 +141,20 @@ mod ffi {
             connection_type: u32,
         ) -> Result<QList_QString>;
 
-        #[rust_name = "invoke_qlistf64_noargs"]
+        #[rust_name = "invoke_qlistf32_noargs"]
         unsafe fn invoke_with_return(
             obj: *mut QObject,
             method: String,
             connection_type: u32,
-        ) -> Result<QList_f64>;
+        ) -> Result<QList_f32>;
 
-        #[rust_name = "invoke_qlistf64_i32"]
+        #[rust_name = "invoke_qlistf32_i32"]
         unsafe fn invoke_one_arg_with_return(
             obj: *mut QObject,
             method: String,
             connection_type: u32,
             arg1: i32,
-        ) -> Result<QList_f64>;
+        ) -> Result<QList_f32>;
 
         #[rust_name = "invoke_qobject_noargs"]
         unsafe fn invoke_with_return(
@@ -427,15 +427,15 @@ impl Invokable<ffi::QList_QString, ()> for ffi::QObject {
     }
 }
 
-impl Invokable<ffi::QList_f64, ()> for ffi::QObject {
+impl Invokable<ffi::QList_f32, ()> for ffi::QObject {
     fn invoke_fn_qobj(
         &mut self,
         method: &str,
         connection_type: u32,
         _args: &(),
-    ) -> Result<ffi::QList_f64, Exception> {
+    ) -> Result<ffi::QList_f32, Exception> {
         unsafe {
-            ffi::invoke_qlistf64_noargs(
+            ffi::invoke_qlistf32_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
@@ -444,15 +444,15 @@ impl Invokable<ffi::QList_f64, ()> for ffi::QObject {
     }
 }
 
-impl Invokable<ffi::QList_f64, i32> for ffi::QObject {
+impl Invokable<ffi::QList_f32, i32> for ffi::QObject {
     fn invoke_fn_qobj(
         &mut self,
         method: &str,
         connection_type: u32,
         arg: &i32,
-    ) -> Result<ffi::QList_f64, Exception> {
+    ) -> Result<ffi::QList_f32, Exception> {
         unsafe {
-            ffi::invoke_qlistf64_i32(
+            ffi::invoke_qlistf32_i32(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,

@@ -100,9 +100,9 @@ pub fn qvariant_to_python<'py>(
                 .as_any()
                 .to_owned());
         }
-        _v if _v == qmetatype_id_double() => {
+        _v if _v == qmetatype_id_float() => {
             return Ok(value
-                .value::<f64>()
+                .value::<f32>()
                 .unwrap()
                 .into_pyobject(py)
                 .unwrap()

@@ -663,7 +663,9 @@ Item {
                     active = false
                     loaded = false
                     initial_descriptor = root.sync_loop_track_descriptor
-                    active = Qt.binding(() => initial_descriptor != null)
+                    active = Qt.binding(() => {
+                        return initial_descriptor != null
+                    })
                 }
 
                 Component.onCompleted: { initialize() }

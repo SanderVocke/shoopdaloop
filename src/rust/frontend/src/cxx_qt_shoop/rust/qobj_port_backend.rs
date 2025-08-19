@@ -68,9 +68,9 @@ impl PortBackend {
                     QString::from(&new_state.name),
                     new_state.muted != 0,
                     new_state.passthrough_muted != 0,
-                    new_state.gain as f64,
-                    new_state.input_peak as f64,
-                    new_state.output_peak as f64,
+                    new_state.gain as f32,
+                    new_state.input_peak as f32,
+                    new_state.output_peak as f32,
                     new_state.n_input_events as i32,
                     new_state.n_output_events as i32,
                     new_state.n_input_notes_active as i32,
@@ -93,11 +93,11 @@ impl PortBackend {
                 }
                 if new_state.input_peak != prev_state.input_peak {
                     self.as_mut()
-                        .audio_input_peak_changed(new_state.input_peak as f64);
+                        .audio_input_peak_changed(new_state.input_peak as f32);
                 }
                 if new_state.output_peak != prev_state.output_peak {
                     self.as_mut()
-                        .audio_output_peak_changed(new_state.output_peak as f64);
+                        .audio_output_peak_changed(new_state.output_peak as f32);
                 }
                 if new_state.n_input_events != prev_state.n_input_events {
                     self.as_mut()
@@ -259,6 +259,7 @@ impl PortBackend {
                     .min_n_ringbuffer_samples
                     .ok_or(anyhow::anyhow!("min_n_ringbuffer_samples not set"))?;
                 let backend = BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)?;
+                
                 let port = AnyBackendPort::new_driver_port(
                     port_type.clone(),
                     backend
@@ -394,12 +395,12 @@ impl PortBackend {
         self.prev_state.passthrough_muted != 0
     }
 
-    pub fn get_audio_input_peak(&self) -> f64 {
-        self.prev_state.input_peak as f64
+    pub fn get_audio_input_peak(&self) -> f32 {
+        self.prev_state.input_peak as f32
     }
 
-    pub fn get_audio_output_peak(&self) -> f64 {
-        self.prev_state.output_peak as f64
+    pub fn get_audio_output_peak(&self) -> f32 {
+        self.prev_state.output_peak as f32
     }
 
     pub fn get_midi_n_input_events(&self) -> i32 {
@@ -860,7 +861,7 @@ impl PortBackend {
         self.min_n_ringbuffer_samples.unwrap_or(0)
     }
 
-    pub fn push_audio_gain(mut self: Pin<&mut PortBackend>, audio_gain: f64) {
+    pub fn push_audio_gain(mut self: Pin<&mut PortBackend>, audio_gain: f32) {
         self.as_mut().maybe_initialize_backend();
         if let Some(port) = self.maybe_backend_port.as_ref() {
             port.set_gain(audio_gain as f32);
@@ -891,7 +892,7 @@ impl PortBackend {
         }
     }
 
-    pub fn dummy_queue_audio_data(mut self: Pin<&mut PortBackend>, audio_data: QList_f64) {
+    pub fn dummy_queue_audio_data(mut self: Pin<&mut PortBackend>, audio_data: QList_f32) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             self.as_mut().maybe_initialize_backend();
             let converted: Vec<f32> = audio_data.iter().map(|v| *v as f32).collect();
@@ -905,16 +906,16 @@ impl PortBackend {
         }
     }
 
-    pub fn dummy_dequeue_audio_data(mut self: Pin<&mut PortBackend>, n: i32) -> QList_f64 {
-        match || -> Result<QList_f64, anyhow::Error> {
+    pub fn dummy_dequeue_audio_data(mut self: Pin<&mut PortBackend>, n: i32) -> QList_f32 {
+        match || -> Result<QList_f32, anyhow::Error> {
             self.as_mut().maybe_initialize_backend();
-            let mut result: QList_f64 = QList::default();
+            let mut result: QList_f32 = QList::default();
             self.maybe_backend_port
                 .as_ref()
                 .ok_or(anyhow::anyhow!("Not initialized"))?
                 .dummy_dequeue_audio_data(n as u32)
                 .iter()
-                .for_each(|v| result.append(*v as f64));
+                .for_each(|v| result.append(*v as f32));
             Ok(result)
         }() {
             Ok(result) => result,

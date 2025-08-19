@@ -1,10 +1,10 @@
-import ShoopDaLoop.PythonLoopMidiChannel
+import ShoopDaLoop.Rust
 import QtQuick 6.6
 
 import ShoopConstants
 import 'js/schema_conversions.js' as Conversions
 
-PythonLoopMidiChannel {
+LoopChannelGui {
     id: root
     objectName: "LoopMidiChannel"
 
@@ -65,10 +65,11 @@ PythonLoopMidiChannel {
     }
 
     property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
-    onInitial_modeChanged: set_mode(initial_mode)
-    ports: lookup_connected_ports.objects
+    onInitial_modeChanged: push_mode(initial_mode)
+    ports_to_connect: lookup_connected_ports.objects
     property var recording_fx_chain_state_id: ('recording_fx_chain_state_id' in descriptor) ? descriptor.recording_fx_chain_state_id : null
     recording_started_at: 'recording_started_at' in descriptor ? descriptor.recording_started_at : null
+    is_midi: true
 
     RegistryLookups {
         id: lookup_connected_ports
@@ -83,14 +84,8 @@ PythonLoopMidiChannel {
         object: root
     }
 
-    onLoopChanged: initialize()
-    Connections {
-        target: loop
-        function onInitializedChanged() { root.initialize() }
-    }
     Component.onCompleted: {
-        set_mode(initial_mode)
-        initialize()
+        push_mode(initial_mode)
     }
     function qml_close() {
         reg_entry.close()

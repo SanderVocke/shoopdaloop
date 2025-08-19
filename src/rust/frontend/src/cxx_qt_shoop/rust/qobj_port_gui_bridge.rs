@@ -17,7 +17,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
-        type QList_f64 = cxx_qt_lib::QList<f64>;
+        type QList_f32 = cxx_qt_lib::QList<f32>;
         type QList_QString = cxx_qt_lib::QList<cxx_qt_lib::QString>;
 
         include!("cxx-qt-lib/qmap.h");
@@ -33,14 +33,14 @@ pub mod ffi {
         #[qproperty(QString, name, READ, NOTIFY=name_changed)]
         #[qproperty(bool, muted, READ, NOTIFY=muted_changed)]
         #[qproperty(bool, passthrough_muted, READ, NOTIFY=passthrough_muted_changed)]
-        #[qproperty(f64, audio_input_peak, READ, NOTIFY=audio_input_peak_changed)]
-        #[qproperty(f64, audio_output_peak, READ, NOTIFY=audio_output_peak_changed)]
+        #[qproperty(f32, audio_input_peak, READ, NOTIFY=audio_input_peak_changed)]
+        #[qproperty(f32, audio_output_peak, READ, NOTIFY=audio_output_peak_changed)]
         #[qproperty(i32, midi_n_input_events, READ, NOTIFY=midi_n_input_events_changed)]
         #[qproperty(i32, midi_n_output_events, READ, NOTIFY=midi_n_output_events_changed)]
         #[qproperty(i32, midi_n_input_notes_active, READ, NOTIFY=midi_n_input_notes_active_changed)]
         #[qproperty(i32, midi_n_output_notes_active, READ, NOTIFY=midi_n_output_notes_active_changed)]
         #[qproperty(i32, n_ringbuffer_samples, READ, NOTIFY=n_ringbuffer_samples_changed)]
-        #[qproperty(f64, audio_gain, READ, NOTIFY=audio_gain_changed)]
+        #[qproperty(f32, audio_gain, READ, NOTIFY=audio_gain_changed)]
         // Frontend -> Backend properties
         #[qproperty(bool, is_midi, READ, WRITE=set_is_midi, NOTIFY=is_midi_changed)]
         #[qproperty(*mut QObject, maybe_fx_chain, READ, WRITE=set_fx_chain, NOTIFY=fx_chain_changed)]
@@ -106,7 +106,7 @@ pub mod ffi {
         pub unsafe fn set_fx_chain_port_idx(self: Pin<&mut PortGui>, idx: i32);
 
         #[qinvokable]
-        pub fn push_audio_gain(self: Pin<&mut PortGui>, audio_gain: f64);
+        pub fn push_audio_gain(self: Pin<&mut PortGui>, audio_gain: f32);
 
         #[qinvokable]
         pub fn push_muted(self: Pin<&mut PortGui>, muted: bool);
@@ -115,10 +115,10 @@ pub mod ffi {
         pub fn push_passthrough_muted(self: Pin<&mut PortGui>, muted: bool);
 
         #[qinvokable]
-        pub fn dummy_queue_audio_data(self: Pin<&mut PortGui>, audio_data: QList_f64);
+        pub fn dummy_queue_audio_data(self: Pin<&mut PortGui>, audio_data: QList_f32);
 
         #[qinvokable]
-        pub fn dummy_dequeue_audio_data(self: Pin<&mut PortGui>, n: i32) -> QList_f64;
+        pub fn dummy_dequeue_audio_data(self: Pin<&mut PortGui>, n: i32) -> QList_f32;
 
         #[qinvokable]
         pub fn dummy_request_data(self: Pin<&mut PortGui>, n: i32);
@@ -139,9 +139,9 @@ pub mod ffi {
             name: QString,
             muted: bool,
             passthrough_muted: bool,
-            audio_gain: f64,
-            audio_input_peak: f64,
-            audio_output_peak: f64,
+            audio_gain: f32,
+            audio_input_peak: f32,
+            audio_output_peak: f32,
             midi_n_input_events: i32,
             midi_n_output_events: i32,
             midi_n_input_notes_active: i32,
@@ -183,7 +183,7 @@ pub mod ffi {
         );
 
         #[qsignal]
-        pub unsafe fn audio_gain_changed(self: Pin<&mut PortGui>, audio_gain: f64);
+        pub unsafe fn audio_gain_changed(self: Pin<&mut PortGui>, audio_gain: f32);
 
         #[qsignal]
         pub unsafe fn initialized_changed(self: Pin<&mut PortGui>, initialized: bool);
@@ -198,10 +198,10 @@ pub mod ffi {
         pub unsafe fn passthrough_muted_changed(self: Pin<&mut PortGui>, passthrough_muted: bool);
 
         #[qsignal]
-        pub unsafe fn audio_input_peak_changed(self: Pin<&mut PortGui>, audio_input_peak: f64);
+        pub unsafe fn audio_input_peak_changed(self: Pin<&mut PortGui>, audio_input_peak: f32);
 
         #[qsignal]
-        pub unsafe fn audio_output_peak_changed(self: Pin<&mut PortGui>, audio_output_peak: f64);
+        pub unsafe fn audio_output_peak_changed(self: Pin<&mut PortGui>, audio_output_peak: f32);
 
         #[qsignal]
         pub unsafe fn midi_n_input_events_changed(
@@ -257,7 +257,7 @@ pub mod ffi {
         #[qsignal]
         pub unsafe fn backend_dummy_queue_audio_data(
             self: Pin<&mut PortGui>,
-            audio_data: QList_f64,
+            audio_data: QList_f32,
         );
 
         #[qsignal]
@@ -306,7 +306,7 @@ pub mod ffi {
         );
 
         #[qsignal]
-        pub unsafe fn backend_set_audio_gain(self: Pin<&mut PortGui>, gain: f64);
+        pub unsafe fn backend_set_audio_gain(self: Pin<&mut PortGui>, gain: f32);
         #[qsignal]
         pub unsafe fn backend_set_muted(self: Pin<&mut PortGui>, muted: bool);
         #[qsignal]
@@ -316,7 +316,7 @@ pub mod ffi {
         pub unsafe fn backend_set_is_midi(self: Pin<&mut PortGui>, is_midi: bool);
 
         #[qsignal]
-        pub unsafe fn backend_set_fx_chain(self: Pin<&mut PortGui>, fx_chain: *mut QObject);
+        pub unsafe fn backend_set_fx_chain(self: Pin<&mut PortGui>, fx_chain: QVariant);
 
         #[qsignal]
         pub unsafe fn backend_set_fx_chain_port_idx(self: Pin<&mut PortGui>, idx: i32);
@@ -365,8 +365,8 @@ pub struct PortGuiRust {
     pub name: QString,
     pub muted: bool,
     pub passthrough_muted: bool,
-    pub audio_input_peak: f64,
-    pub audio_output_peak: f64,
+    pub audio_input_peak: f32,
+    pub audio_output_peak: f32,
     pub midi_n_input_events: i32,
     pub midi_n_output_events: i32,
     pub midi_n_input_notes_active: i32,
@@ -378,7 +378,7 @@ pub struct PortGuiRust {
     pub is_internal: bool,
     pub internal_port_connections: QList_QVariant,
     pub n_ringbuffer_samples: i32,
-    pub audio_gain: f64,
+    pub audio_gain: f32,
     pub min_n_ringbuffer_samples: i32,
     pub is_midi: bool,
     pub maybe_fx_chain: *mut QObject,

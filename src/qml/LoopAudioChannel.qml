@@ -1,11 +1,11 @@
-import ShoopDaLoop.PythonLoopAudioChannel
+import ShoopDaLoop.Rust
 import QtQuick 6.6
 import ShoopDaLoop.PythonLogger
 
 import 'js/schema_conversions.js' as Conversions
 import ShoopConstants
 
-PythonLoopAudioChannel {
+LoopChannelGui {
     id: root
     objectName: "LoopAudioChannel"
 
@@ -67,14 +67,19 @@ PythonLoopAudioChannel {
         return data_length == 0
     }
 
+    function push_gain(gain) {
+        push_audio_gain(gain)
+    }
+
     readonly property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
     readonly property real initial_gain : ('gain' in descriptor) ? descriptor.gain : 1.0
 
-    onInitial_modeChanged: set_mode(initial_mode)
-    onInitial_gainChanged: set_gain(initial_gain)
-    ports: lookup_connected_ports.objects
+    onInitial_modeChanged: push_mode(initial_mode)
+    onInitial_gainChanged: push_gain(initial_gain)
+    ports_to_connect: lookup_connected_ports.objects
     property var recording_fx_chain_state_id: ('recording_fx_chain_state_id' in descriptor) ? descriptor.recording_fx_chain_state_id : null
     recording_started_at: 'recording_started_at' in descriptor ? descriptor.recording_started_at : null
+    is_midi: false
 
     RegistryLookups {
         id: lookup_connected_ports
@@ -89,16 +94,10 @@ PythonLoopAudioChannel {
         registry: registries.objects_registry
     }
 
-    onLoopChanged: if (loop) { initialize() }
-    Connections {
-        target: root.loop ? root.loop : null
-        function onInitializedChanged() { root.initialize() }
-    }
     Component.onCompleted: {
         root.logger.debug(`Created with ${JSON.stringify(descriptor)}`)
-        set_mode(initial_mode)
-        set_gain(initial_gain)
-        initialize()
+        push_mode(initial_mode)
+        push_gain(initial_gain)
     }
     function qml_close() {
         reg_entry.close()

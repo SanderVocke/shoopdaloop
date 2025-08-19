@@ -425,7 +425,7 @@ pub struct CompositeLoopGuiRust {
     pub cycle_nr: i32,
 
     // Others
-    pub schedule: CompositeLoopSchedule,
+    pub schedule: CompositeLoopSchedule<*mut QObject>,
 }
 
 impl Default for CompositeLoopGuiRust {

@@ -2,7 +2,7 @@ use crate::{
     composite_loop_schedule::CompositeLoopSchedule,
     cxx_qt_shoop::qobj_composite_loop_backend_bridge::ffi::*,
     loop_helpers::transition_backend_loops,
-    loop_mode_helpers::{is_recording_mode, is_running_mode},
+    loop_mode_helpers::{is_recording_mode, is_running_mode}, references_qobject::ReferencesQObject,
 };
 use backend_bindings::LoopMode;
 use common::logging::macros::{
@@ -164,7 +164,7 @@ impl CompositeLoopBackend {
                         let loop_length = qobject::qobject_property_int(&**loop_obj, "length")?;
                         let sync_source_length =
                             qobject::qobject_property_int(&*sync_source, "length")?;
-                        n_cycles = (loop_length as f64 / sync_source_length as f64).ceil() as i32;
+                        n_cycles = (loop_length as f32 / sync_source_length as f32).ceil() as i32;
                     }
 
                     let sync_to_immediate_cycle: Option<i32> = match mode {
@@ -435,10 +435,10 @@ impl CompositeLoopBackend {
         let mut result: HashSet<*mut QObject> = HashSet::new();
         for (_, events) in self.schedule.data.iter() {
             for (l, _mode) in events.loops_start.iter() {
-                result.insert(*l);
+                result.insert(l.obj.as_qobject_ref() as *mut QObject);
             }
             for l in events.loops_end.iter().chain(events.loops_ignored.iter()) {
-                result.insert(*l);
+                result.insert(l.obj.as_qobject_ref() as *mut QObject);
             }
         }
         result
@@ -853,21 +853,23 @@ impl CompositeLoopBackend {
 
                 // Handle any loop that needs to end this iteration.
                 for loop_end in loops_end.iter() {
-                    let loop_iid = get_loop_iid(loop_end);
+                    let loop_end = loop_end.obj.as_qobject_ref() as *mut QObject;
+                    let loop_iid = get_loop_iid(&loop_end);
                     debug!(self, "loop end: {loop_iid}");
                     self.as_mut().do_trigger(
-                        *loop_end,
+                        loop_end,
                         LoopMode::Stopped,
                         trigger_callback.as_mut(),
                     );
-                    running_loops_changed = running_loops.remove(loop_end);
+                    running_loops_changed = running_loops.remove(&loop_end);
                 }
 
                 if is_running_mode(mode) {
                     // Our new mode will be a running mode. Apply it to
                     // loops that start this iteration.
                     for (loop_start, maybe_explicit_mode) in loops_start.iter() {
-                        let loop_iid = get_loop_iid(loop_start);
+                        let loop_start_qobj = loop_start.obj.as_qobject_ref() as *mut QObject;
+                        let loop_iid = get_loop_iid(&loop_start_qobj);
                         if let Some(explicit_mode) = maybe_explicit_mode {
                             // Explicit mode, just apply it as scheduled
                             debug!(
@@ -875,11 +877,11 @@ impl CompositeLoopBackend {
                                 "loop start (explicit mode {explicit_mode:?}): {loop_iid}"
                             );
                             self.as_mut().do_trigger(
-                                *loop_start,
+                                loop_start_qobj,
                                 *explicit_mode,
                                 trigger_callback.as_mut(),
                             );
-                            running_loops_changed = running_loops.insert(*loop_start);
+                            running_loops_changed = running_loops.insert(loop_start_qobj);
                         } else {
                             // Implicit mode, set it based on our own
                             let implicit_mode = mode;
@@ -913,21 +915,21 @@ impl CompositeLoopBackend {
                                 // We have already recorded this loop.
                                 debug!(self, "Not re-recording {loop_iid}, stopping instead");
                                 self.as_mut().do_trigger(
-                                    *loop_start,
+                                    loop_start_qobj,
                                     LoopMode::Stopped,
                                     trigger_callback.as_mut(),
                                 );
-                                running_loops_changed = running_loops.remove(loop_start);
+                                running_loops_changed = running_loops.remove(&loop_start_qobj);
                             } else {
                                 // Implicit mode, apply it
-                                let loop_iid = get_loop_iid(loop_start);
+                                let loop_iid = get_loop_iid(&loop_start_qobj);
                                 debug!(self, "generate loop start (implicit mode {implicit_mode:?}): {loop_iid}");
                                 self.as_mut().do_trigger(
-                                    *loop_start,
+                                    loop_start_qobj,
                                     implicit_mode,
                                     trigger_callback.as_mut(),
                                 );
-                                running_loops_changed = running_loops.insert(*loop_start);
+                                running_loops_changed = running_loops.insert(loop_start_qobj);
                             }
                         }
                     }

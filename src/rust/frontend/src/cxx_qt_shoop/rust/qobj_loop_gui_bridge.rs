@@ -50,7 +50,6 @@ pub mod ffi {
         #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
         #[qproperty(QString, instance_identifier, READ, WRITE=set_instance_identifier, NOTIFY=instance_identifier_changed)]
         // Other properties
-        #[qproperty(*mut QObject, backend_loop_wrapper, READ=get_backend_loop_wrapper)]
         type LoopGui = super::LoopGuiRust;
 
         pub fn initialize_impl(self: Pin<&mut LoopGui>);
@@ -129,7 +128,7 @@ pub mod ffi {
         pub fn set_instance_identifier(self: Pin<&mut LoopGui>, instance_identifier: QString);
 
         #[qinvokable]
-        pub fn get_backend_loop_wrapper(self: Pin<&mut LoopGui>) -> *mut QObject;
+        pub fn get_backend_loop_wrapper(self: Pin<&mut LoopGui>) -> QVariant;
 
         #[qsignal]
         #[cxx_name = "backendChanged"]

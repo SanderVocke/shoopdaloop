@@ -16,6 +16,7 @@ use cxx_qt_lib_shoop::{
     connection_types, invokable,
     qobject::{ffi::qobject_move_to_thread, AsQObject},
     qsharedpointer_qobject::QSharedPointer_QObject,
+    qvariant_helpers::qsharedpointer_qobject_to_qvariant,
 };
 shoop_log_unit!("Frontend.FXChain");
 
@@ -231,12 +232,16 @@ impl FXChainGui {
         }
     }
 
-    pub unsafe fn get_backend_fx_chain(self: Pin<&mut FXChainGui>) -> *mut QObject {
-        match || -> Result<*mut QObject, anyhow::Error> {
+    pub unsafe fn get_backend_fx_chain(self: Pin<&mut FXChainGui>) -> QVariant {
+        match || -> Result<QVariant, anyhow::Error> {
             if self.backend_chain_wrapper.is_null() {
-                return Ok(std::ptr::null_mut());
+                return Ok(QVariant::default());
             } else {
-                return Ok(self.backend_chain_wrapper.data()?);
+                return Ok(qsharedpointer_qobject_to_qvariant(
+                    self.backend_chain_wrapper
+                        .as_ref()
+                        .ok_or(anyhow::anyhow!("Backend wrapper not set"))?,
+                )?);
             }
         }() {
             Ok(obj) => {
@@ -244,7 +249,7 @@ impl FXChainGui {
             }
             Err(e) => {
                 error!(self, "Could not get backend object: {e}");
-                return std::ptr::null_mut();
+                return QVariant::default();
             }
         }
     }

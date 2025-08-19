@@ -17,6 +17,7 @@ use cxx_qt_lib_shoop::qvariant_helpers::{
 };
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
+use std::backtrace::Backtrace;
 shoop_log_unit!("Frontend.Port");
 
 macro_rules! trace {
@@ -39,7 +40,10 @@ macro_rules! error {
 
 impl PortGui {
     pub fn initialize_impl(mut self: Pin<&mut PortGui>) {
-        debug!(self, "Initializing");
+        {
+            let self_ptr = unsafe { self.as_mut().get_unchecked_mut() as *mut Self };
+            debug!(self, "Initializing @ {self_ptr:?}");
+        }
 
         unsafe {
             let backend_port = make_raw_port_backend();
@@ -92,9 +96,9 @@ impl PortGui {
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_dummy_queue_audio_data(QList<double>)",
+                        "backend_dummy_queue_audio_data(QList<float>)",
                         backend_ref,
-                        "dummy_queue_audio_data(QList<double>)",
+                        "dummy_queue_audio_data(QList<float>)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
@@ -169,9 +173,9 @@ impl PortGui {
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_set_audio_gain(double)",
+                        "backend_set_audio_gain(float)",
                         backend_ref,
-                        "push_audio_gain(double)",
+                        "push_audio_gain(float)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
@@ -197,9 +201,9 @@ impl PortGui {
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_set_fx_chain(QObject*)",
+                        "backend_set_fx_chain(QVariant)",
                         backend_ref,
-                        "set_fx_chain(QObject*)",
+                        "set_fx_chain(QVariant)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
@@ -214,9 +218,9 @@ impl PortGui {
                     // Connections: backend object -> GUI
                     connect_or_report(
                         backend_ref,
-                        "state_changed(bool,QString,bool,bool,double,double,double,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)",
+                        "state_changed(bool,QString,bool,bool,float,float,float,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)",
                         self_ref,
-                        "backend_state_changed(bool,QString,bool,bool,double,double,double,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)",
+                        "backend_state_changed(bool,QString,bool,bool,float,float,float,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)",
                         connection_types::QUEUED_CONNECTION
                     );
                 }
@@ -234,9 +238,9 @@ impl PortGui {
         name: QString,
         muted: bool,
         passthrough_muted: bool,
-        audio_gain: f64,
-        audio_input_peak: f64,
-        audio_output_peak: f64,
+        audio_gain: f32,
+        audio_input_peak: f32,
+        audio_output_peak: f32,
         midi_n_input_events: i32,
         midi_n_output_events: i32,
         midi_n_input_notes_active: i32,
@@ -492,16 +496,16 @@ impl PortGui {
         unsafe {
             if fx_chain.is_null() {
                 trace!(self, "set backend fx chain -> {fx_chain:?}");
-                self.as_mut().backend_set_fx_chain(std::ptr::null_mut());
+                self.as_mut().backend_set_fx_chain(QVariant::default());
             } else {
-                let backend_chain: *mut QObject = invokable::invoke(
+                let backend_chain: QVariant = invokable::invoke(
                     &mut *fx_chain,
                     "get_backend_fx_chain()",
                     invokable::DIRECT_CONNECTION,
                     &(),
                 )
                 .unwrap();
-                trace!(self, "set backend fx chain -> {backend_chain:?}");
+                trace!(self, "set backend fx chain");
                 self.as_mut().backend_set_fx_chain(backend_chain);
             }
         }
@@ -571,10 +575,10 @@ impl PortGui {
         }
     }
 
-    pub fn push_audio_gain(self: Pin<&mut PortGui>, audio_gain: f64) {
+    pub fn push_audio_gain(self: Pin<&mut PortGui>, audio_gain: f32) {
         unsafe {
             debug!(self, "push gain -> {audio_gain}");
-            self.backend_set_audio_gain(audio_gain as f64);
+            self.backend_set_audio_gain(audio_gain as f32);
         }
     }
 
@@ -607,14 +611,14 @@ impl PortGui {
         }
     }
 
-    pub fn dummy_queue_audio_data(self: Pin<&mut PortGui>, audio_data: QList_f64) {
+    pub fn dummy_queue_audio_data(self: Pin<&mut PortGui>, audio_data: QList_f32) {
         unsafe {
             self.backend_dummy_queue_audio_data(audio_data);
         }
     }
 
-    pub fn dummy_dequeue_audio_data(self: Pin<&mut PortGui>, n: i32) -> QList_f64 {
-        match || -> Result<QList_f64, anyhow::Error> {
+    pub fn dummy_dequeue_audio_data(self: Pin<&mut PortGui>, n: i32) -> QList_f32 {
+        match || -> Result<QList_f32, anyhow::Error> {
             let backend_wrapper = self.backend_port_wrapper.data()?;
             unsafe {
                 Ok(invokable::invoke(

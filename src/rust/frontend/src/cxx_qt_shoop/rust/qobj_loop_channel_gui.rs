@@ -1,7 +1,7 @@
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_gui_bridge::ffi::*;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_gui_bridge::ffi::{
-    QList_QVariant, QObject, QVariant,
+    QList_QVariant, QObject, QVariant, QList_f32
 };
 use crate::engine_update_thread;
 use common::logging::macros::{
@@ -14,7 +14,7 @@ use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
-    qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
+    qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qsharedpointer_qobject
 };
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
@@ -119,9 +119,30 @@ impl LoopChannelGui {
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_push_audio_gain(double)",
+                        "backend_push_audio_gain(float)",
                         backend_ref,
-                        "push_audio_gain(double)",
+                        "push_audio_gain(float)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_set_channel_loop(QVariant)",
+                        backend_ref,
+                        "set_channel_loop(QVariant)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_load_audio_data(QList<float>)",
+                        backend_ref,
+                        "load_audio_data(QList<float>)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_load_midi_data(QList<QVariant>)",
+                        backend_ref,
+                        "load_midi_data(QList<QVariant>)",
                         connection_types::QUEUED_CONNECTION,
                     );
                 }
@@ -129,9 +150,9 @@ impl LoopChannelGui {
                     // Connections: backend object -> GUI
                     connect_or_report(
                         backend_ref,
-                        "state_changed(bool,::std::int32_t,::std::int32_t,::std::int32_t,QVariant,::std::int32_t,bool,double,double,::std::int32_t,::std::int32_t)",
+                        "state_changed(bool,::std::int32_t,::std::int32_t,::std::int32_t,QVariant,::std::int32_t,bool,float,float,::std::int32_t,::std::int32_t)",
                         self_ref,
-                        "backend_state_changed(bool,::std::int32_t,::std::int32_t,::std::int32_t,QVariant,::std::int32_t,bool,double,double,::std::int32_t,::std::int32_t)",
+                        "backend_state_changed(bool,::std::int32_t,::std::int32_t,::std::int32_t,QVariant,::std::int32_t,bool,float,float,::std::int32_t,::std::int32_t)",
                         connection_types::QUEUED_CONNECTION
                     );
                 }
@@ -200,7 +221,7 @@ impl LoopChannelGui {
         }
     }
 
-    pub fn push_audio_gain(self: Pin<&mut LoopChannelGui>, audio_gain: f64) {
+    pub fn push_audio_gain(self: Pin<&mut LoopChannelGui>, audio_gain: f32) {
         unsafe {
             self.backend_push_audio_gain(audio_gain);
         }
@@ -215,8 +236,8 @@ impl LoopChannelGui {
         played_back_sample: QVariant,
         n_preplay_samples: i32,
         data_dirty: bool,
-        audio_gain: f64,
-        output_peak: f64,
+        audio_gain: f32,
+        output_peak: f32,
         n_events_triggered: i32,
         n_notes_active: i32,
     ) {
@@ -250,7 +271,7 @@ impl LoopChannelGui {
         }
         if played_back_sample != self.last_played_sample {
             let value = QVariant::value::<i32>(&played_back_sample);
-            debug!(self, "last_played_sample -> {value:?}");
+            trace!(self, "last_played_sample -> {value:?}");
             self.as_mut().rust_mut().last_played_sample = played_back_sample.clone();
             unsafe {
                 self.as_mut().last_played_sample_changed(played_back_sample);
@@ -299,6 +320,38 @@ impl LoopChannelGui {
                 self.as_mut().midi_n_notes_active_changed(n_notes_active);
             }
         }
+    }
+
+    pub fn get_channel_loop(self: Pin<&mut LoopChannelGui>) -> *mut QObject {
+        self.channel_loop
+    }
+
+    pub fn set_channel_loop(mut self: Pin<&mut LoopChannelGui>, channel_loop: *mut QObject) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            unsafe {
+                let backend_loop: QVariant = invokable::invoke(
+                    &mut *channel_loop,
+                    "get_backend_loop_wrapper()",
+                    invokable::DIRECT_CONNECTION,
+                    &(),
+                )?;
+                self.as_mut().backend_set_channel_loop(backend_loop.clone());
+                if self.channel_loop != channel_loop {}
+                self.as_mut().rust_mut().channel_loop = channel_loop;
+                self.as_mut().channel_loop_changed(channel_loop);
+            }
+            Ok(())
+        }() {
+            error!(self, "Could not update channel loop: {e}");
+        }
+    }
+
+    pub fn load_audio_data(self: Pin<&mut LoopChannelGui>, data: QList_f32) {
+        unsafe { self.backend_load_audio_data(data); }
+    }
+
+    pub fn load_midi_data(self: Pin<&mut LoopChannelGui>, data: QList_QVariant) {
+        unsafe { self.backend_load_midi_data(data); }
     }
 }
 

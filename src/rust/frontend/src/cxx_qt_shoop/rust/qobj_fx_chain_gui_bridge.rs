@@ -11,6 +11,9 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+
+        include!("cxx-qt-lib/qvariant.h");
+        type QVariant = cxx_qt_lib::QVariant;
     }
 
     unsafe extern "RustQt" {
@@ -52,8 +55,9 @@ pub mod ffi {
             visible: bool,
         );
 
+        // QSharedPointer to backend fx chain
         #[qinvokable]
-        pub unsafe fn get_backend_fx_chain(self: Pin<&mut FXChainGui>) -> *mut QObject;
+        pub unsafe fn get_backend_fx_chain(self: Pin<&mut FXChainGui>) -> QVariant;
 
         #[qinvokable]
         pub fn push_active(self: Pin<&mut FXChainGui>, active: bool);
