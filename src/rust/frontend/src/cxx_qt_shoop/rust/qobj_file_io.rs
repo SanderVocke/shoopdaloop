@@ -6,10 +6,10 @@ use cxx_qt_lib_shoop::invokable::invoke;
 use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
-    qvariant_to_qlist_f32, qvariant_to_qobject_ptr, qvariant_to_qsharedpointer_qobject,
+    qvariant_to_qlist_f32, qvariant_to_qobject_ptr,
     qvariant_to_qvariantlist,
 };
-use sndfile::{SndFileIO, SndFileNDArrayIO};
+use sndfile::SndFileIO;
 shoop_log_unit!("Frontend.FileIO");
 
 use crate::cxx_qt_shoop::qobj_async_task_bridge::ffi::make_raw_async_task_with_parent;
@@ -19,7 +19,7 @@ use crate::cxx_qt_shoop::qobj_loop_channel_gui_bridge::LoopChannelGui;
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
 
 use dunce;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;

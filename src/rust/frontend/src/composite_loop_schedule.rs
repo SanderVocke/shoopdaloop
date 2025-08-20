@@ -1,7 +1,6 @@
 use anyhow;
 use backend_bindings::LoopMode;
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
-use cxx_qt_lib_shoop::qobject::QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Debug;

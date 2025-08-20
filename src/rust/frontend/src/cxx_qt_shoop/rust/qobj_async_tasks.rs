@@ -1,5 +1,4 @@
-use crate::cxx_qt_shoop::qobj_async_task_bridge::ffi::async_task_qobject_from_ref;
-use crate::cxx_qt_shoop::{qobj_async_task_bridge::AsyncTask, qobj_async_tasks_bridge::ffi::*};
+use crate::cxx_qt_shoop::qobj_async_tasks_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_async_tasks_bridge::AsyncTasksRust;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
@@ -9,7 +8,7 @@ use cxx_qt_lib_shoop::qtimer::QTimer;
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,
-    qobject::{qobject_property_bool, FromQObject},
+    qobject::qobject_property_bool,
 };
 use std::pin::Pin;
 use std::slice;

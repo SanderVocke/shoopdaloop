@@ -17,7 +17,6 @@ use cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
-use cxx_qt_lib_shoop::qvariant_helpers::qobject_ptr_to_qvariant;
 use cxx_qt_lib_shoop::qvariant_helpers::qsharedpointer_qobject_to_qvariant;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use std::pin::Pin;
@@ -454,7 +453,7 @@ impl LoopGui {
         self.as_mut().backend_set_sync_source(sync_source_out);
     }
 
-    pub fn get_backend_loop_wrapper(mut self: Pin<&mut LoopGui>) -> QVariant {
+    pub fn get_backend_loop_wrapper(self: Pin<&mut LoopGui>) -> QVariant {
         qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap()).unwrap()
     }
 }

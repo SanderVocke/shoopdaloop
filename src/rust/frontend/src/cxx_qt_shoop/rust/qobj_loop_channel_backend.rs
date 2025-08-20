@@ -4,12 +4,11 @@ use crate::cxx_qt_shoop::qobj_port_backend_bridge::PortBackend;
 use crate::{
     any_backend_channel::AnyBackendChannel, cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend,
 };
-use backend_bindings::{ChannelMode, MidiEvent, PortConnectability, PortDataType, PortDirection};
+use backend_bindings::{ChannelMode, PortDataType};
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QList, QMap};
 use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
@@ -19,7 +18,7 @@ use cxx_qt_lib_shoop::{
     qvariant_helpers::qvariant_to_qsharedpointer_qobject,
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     pin::Pin,
 };
 shoop_log_unit!("Frontend.LoopChannel");
@@ -43,7 +42,7 @@ macro_rules! error {
 }
 
 impl LoopChannelBackend {
-    pub fn initialize_impl(mut self: Pin<&mut LoopChannelBackend>) {}
+    pub fn initialize_impl(self: Pin<&mut LoopChannelBackend>) {}
 
     pub fn update(mut self: Pin<&mut LoopChannelBackend>) {
         if self.maybe_backend_channel.is_none() {

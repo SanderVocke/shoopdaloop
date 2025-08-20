@@ -304,12 +304,12 @@ impl Invokable<(), (i32, i32, i32)> for ffi::QObject {
     }
 }
 
-impl Invokable<(), (ffi::QList_f32)> for ffi::QObject {
+impl Invokable<(), ffi::QList_f32> for ffi::QObject {
     fn invoke_fn_qobj(
         &mut self,
         method: &str,
         connection_type: u32,
-        arg: &(ffi::QList_f32),
+        arg: &ffi::QList_f32,
     ) -> Result<(), Exception> {
         unsafe {
             ffi::invoke_noreturn_qlistf32(

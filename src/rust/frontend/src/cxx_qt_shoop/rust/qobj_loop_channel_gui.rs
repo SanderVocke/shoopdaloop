@@ -9,16 +9,14 @@ use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QList, QMap};
+use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
     qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
-    qvariant_to_qsharedpointer_qobject, qweakpointer_qobject_to_qvariant,
 };
-use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
 shoop_log_unit!("Frontend.LoopChannel");

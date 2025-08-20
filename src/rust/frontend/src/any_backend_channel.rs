@@ -3,7 +3,6 @@ use backend_bindings::{
     MidiEvent, MidiPort,
 };
 use common::logging::macros::*;
-use std::{any::Any, collections::HashMap};
 shoop_log_unit!("Frontend.AnyChannel");
 pub enum AnyBackendChannel {
     Audio(AudioChannel),
