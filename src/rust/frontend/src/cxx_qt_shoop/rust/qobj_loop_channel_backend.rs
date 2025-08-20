@@ -557,7 +557,10 @@ impl LoopChannelBackend {
                 .iter()
                 .map(
                     |port_qvariant| -> Result<cxx::UniquePtr<QWeakPointer_QObject>, anyhow::Error> {
-                        let strong = qvariant_to_qsharedpointer_qobject(port_qvariant)?;
+                        let strong = qvariant_to_qsharedpointer_qobject(port_qvariant)
+                            .map_err(|e| { debug!(self, "could not convert to shared: {e}"); e})?;
+                        let addr = strong.data();
+                        debug!(self, "got shared ptr: {addr:?}");
                         let weak = QWeakPointer_QObject::from_strong(&strong);
                         Ok(weak)
                     },

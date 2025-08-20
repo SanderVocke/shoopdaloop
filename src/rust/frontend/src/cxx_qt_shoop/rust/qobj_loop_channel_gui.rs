@@ -1,7 +1,8 @@
+use crate::cxx_qt_shoop::qobj_port_gui_bridge::PortGui;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_gui_bridge::ffi::*;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_gui_bridge::ffi::{
-    QList_QVariant, QObject, QVariant, QList_f32
+    QList_QVariant, QList_f32, QObject, QVariant,
 };
 use crate::engine_update_thread;
 use common::logging::macros::{
@@ -14,8 +15,10 @@ use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
-    qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qsharedpointer_qobject
+    qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
+    qvariant_to_qsharedpointer_qobject, qweakpointer_qobject_to_qvariant,
 };
+use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
 shoop_log_unit!("Frontend.LoopChannel");
@@ -192,7 +195,23 @@ impl LoopChannelGui {
 
     pub fn set_ports_to_connect(mut self: Pin<&mut LoopChannelGui>, ports: QList_QVariant) {
         unsafe {
-            self.as_mut().backend_set_ports_to_connect(ports.clone());
+            // We are getting a list of QObjects. For the back-end side
+            // we want to create shared pointers to the back-end wrapper
+            // objects instead.
+            let mut shared_ptrs: QList_QVariant = QList::default();
+            ports.iter().for_each(|variant| {
+                if let Ok(obj) = qvariant_to_qobject_ptr(&variant) {
+                    if let Ok(chan) = PortGui::from_qobject_mut_ptr(obj) {
+                        shared_ptrs.append(
+                            qsharedpointer_qobject_to_qvariant(
+                                &chan.backend_port_wrapper.as_ref().unwrap(),
+                            )
+                            .unwrap(),
+                        );
+                    }
+                }
+            });
+            self.as_mut().backend_set_ports_to_connect(shared_ptrs);
         }
         if ports != self.ports_to_connect {
             let mut rust_mut = self.as_mut().rust_mut();
@@ -347,11 +366,15 @@ impl LoopChannelGui {
     }
 
     pub fn load_audio_data(self: Pin<&mut LoopChannelGui>, data: QList_f32) {
-        unsafe { self.backend_load_audio_data(data); }
+        unsafe {
+            self.backend_load_audio_data(data);
+        }
     }
 
     pub fn load_midi_data(self: Pin<&mut LoopChannelGui>, data: QList_QVariant) {
-        unsafe { self.backend_load_midi_data(data); }
+        unsafe {
+            self.backend_load_midi_data(data);
+        }
     }
 }
 
