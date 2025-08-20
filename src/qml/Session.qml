@@ -750,7 +750,7 @@ Item {
 
                     height: 60
                     width: height / sourceSize.height * sourceSize.width
-                    source: "file:///" + ShoopFileIO.get_resource_directory().replace("/\\/g", "/") + '/logo-small.png'
+                    source: "file:///" + global_args.resource_dir.replace("/\\/g", "/") + '/logo-small.png'
                     smooth: true
                 }
 

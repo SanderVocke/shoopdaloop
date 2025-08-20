@@ -69,6 +69,10 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
         developer_mode: cli_args.developer_options.developer,
         quit_after: cli_args.developer_options.quit_after,
         monkey_tester: cli_args.developer_options.monkey_tester,
+        lua_dir: config.lua_dir.clone(),
+        qml_dir: config.qml_dir.clone(),
+        resource_dir: config.resource_dir.clone(),
+        schemas_dir: config.schemas_dir.clone(),
     };
     GLOBAL_QML_SETTINGS.set(global_qml_settings).unwrap();
 
