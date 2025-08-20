@@ -253,6 +253,12 @@ pub mod ffi {
 
         #[rust_name = "loop_gui_qobject_from_ref"]
         fn qobjectFromRef(obj: &LoopGui) -> &QObject;
+
+        #[rust_name = "from_qobject_ref_loop_gui"]
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const LoopGui);
+
+        #[rust_name = "from_qobject_mut_loop_gui"]
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut LoopGui);
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)> for LoopGui {}
@@ -302,6 +308,22 @@ impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for LoopGui {
     }
     unsafe fn ref_qquickitem_ptr(&self) -> *const QQuickItem {
         qquickitem_from_ref_loop(self) as *const QQuickItem
+    }
+}
+
+impl cxx_qt_lib_shoop::qobject::FromQObject for LoopGui {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+        let mut output: *const Self = std::ptr::null();
+        from_qobject_ref_loop_gui(obj, &mut output as *mut *const Self);
+        output
+    }
+
+    unsafe fn ptr_from_qobject_mut(
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+    ) -> *mut Self {
+        let mut output: *mut Self = std::ptr::null_mut();
+        from_qobject_mut_loop_gui(obj, &mut output as *mut *mut Self);
+        output
     }
 }
 

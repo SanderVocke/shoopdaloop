@@ -49,15 +49,32 @@ pub mod ffi {
         #[rust_name = "async_tasks_qobject_from_ref"]
         fn qobjectFromRef(obj: &AsyncTasks) -> &QObject;
     }
+
+    impl cxx_qt::Constructor<()> for AsyncTasks {}
 }
 
-use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib::QVariant;
+use cxx_qt_lib_shoop::{qobject::AsQObject, qtimer::QTimer};
 pub use ffi::AsyncTasks;
 
-#[derive(Default)]
 pub struct AsyncTasksRust {
     pub n_tracking: u32,
     pub n_done : u32,
+    pub timer: *mut QTimer,
+    pub maybe_qml_callable: QVariant,
+    pub delete_when_done: bool,
+}
+
+impl Default for AsyncTasksRust {
+    fn default() -> Self {
+        Self {
+            n_tracking: 0,
+            n_done: 0,
+            timer: std::ptr::null_mut(),
+            maybe_qml_callable: QVariant::default(),
+            delete_when_done: false,
+        }
+    }
 }
 
 impl AsQObject for ffi::AsyncTasks {
@@ -67,6 +84,30 @@ impl AsQObject for ffi::AsyncTasks {
 
     unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
         ffi::async_tasks_qobject_from_ref(self) as *const ffi::QObject
+    }
+}
+
+impl cxx_qt::Constructor<()> for AsyncTasks {
+    type BaseArguments = (); // Will be passed to the base class constructor
+    type InitializeArguments = (); // Will be passed to the "initialize" function
+    type NewArguments = (); // Will be passed to the "new" function
+
+    fn route_arguments(
+        _args: (),
+    ) -> (
+        Self::NewArguments,
+        Self::BaseArguments,
+        Self::InitializeArguments,
+    ) {
+        ((), (), ())
+    }
+
+    fn new(_args: ()) -> AsyncTasksRust {
+        AsyncTasksRust::default()
+    }
+
+    fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
+        AsyncTasks::initialize_impl(self);
     }
 }
 

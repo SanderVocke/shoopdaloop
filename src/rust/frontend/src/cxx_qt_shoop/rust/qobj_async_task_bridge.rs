@@ -16,8 +16,21 @@ pub mod ffi {
         #[qinvokable]
         pub fn notify_done(self: Pin<&mut AsyncTask>);
 
+        // After execution is finished, execute the given callable,
+        // then self-delete.
+        // Meant to be called from QML (QJSValue).
         #[qinvokable]
         pub fn then(self: Pin<&mut AsyncTask>, func: QVariant);
+
+        // After execution is finished, self-delete.
+        #[qinvokable]
+        pub fn then_delete(self: Pin<&mut AsyncTask>);
+
+        // If then or then_delete is not called on the AsyncTask, it
+        // will start a timer on completion and generate an error message.
+        // one of these methods needs to be called for lifetime management.
+        #[qinvokable]
+        pub fn not_deleted_error(self: Pin<&mut AsyncTask>);
 
         #[qsignal]
         pub unsafe fn active_changed(self: Pin<&mut AsyncTask>, active: bool);
@@ -48,21 +61,33 @@ pub mod ffi {
 
         #[rust_name = "async_task_qobject_from_ref"]
         fn qobjectFromRef(obj: &AsyncTask) -> &QObject;
+
+        include!("cxx-qt-lib-shoop/make_raw.h");
+        #[rust_name = "make_raw_async_task_with_parent"]
+        unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut AsyncTask;
     }
+
+    impl cxx_qt::Constructor<(*mut QObject,)> for AsyncTask {}
 }
 
-use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::{qobject::AsQObject, qtimer::QTimer};
 pub use ffi::AsyncTask;
 use ffi::*;
 
 pub struct AsyncTaskRust {
     pub active: bool,
+    pub timer: *mut QTimer,
+    pub maybe_qml_callable: QVariant,
+    pub delete_when_done: bool,
 }
 
 impl Default for AsyncTaskRust {
     fn default() -> Self {
         Self {
             active: false,
+            timer: std::ptr::null_mut(),
+            maybe_qml_callable: QVariant::default(),
+            delete_when_done: false,
         }
     }
 }
@@ -90,5 +115,29 @@ impl cxx_qt_lib_shoop::qobject::FromQObject for AsyncTask {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_async_task(obj, &mut output as *mut *mut Self);
         output
+    }
+}
+
+impl cxx_qt::Constructor<(*mut QObject,)> for AsyncTask {
+    type BaseArguments = (*mut QObject,); // Will be passed to the base class constructor
+    type InitializeArguments = (); // Will be passed to the "initialize" function
+    type NewArguments = (); // Will be passed to the "new" function
+
+    fn route_arguments(
+        args: (*mut QObject,),
+    ) -> (
+        Self::NewArguments,
+        Self::BaseArguments,
+        Self::InitializeArguments,
+    ) {
+        ((), args, ())
+    }
+
+    fn new(_args: ()) -> AsyncTaskRust {
+        AsyncTaskRust::default()
+    }
+
+    fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
+        AsyncTask::initialize_impl(self);
     }
 }

@@ -3,17 +3,26 @@ use common::logging::macros::*;
 use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
-use cxx_qt_lib_shoop::qvariant_helpers::{qvariant_to_qlist_f32, qvariant_to_qvariantlist};
+use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
+use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
+use cxx_qt_lib_shoop::qvariant_helpers::{
+    qvariant_to_qlist_f32, qvariant_to_qobject_ptr, qvariant_to_qsharedpointer_qobject,
+    qvariant_to_qvariantlist,
+};
 use sndfile::{SndFileIO, SndFileNDArrayIO};
 shoop_log_unit!("Frontend.FileIO");
 
+use crate::cxx_qt_shoop::qobj_async_task_bridge::ffi::make_raw_async_task_with_parent;
 use crate::cxx_qt_shoop::qobj_file_io_bridge::ffi::*;
 pub use crate::cxx_qt_shoop::qobj_file_io_bridge::FileIORust;
+use crate::cxx_qt_shoop::qobj_loop_channel_gui_bridge::LoopChannelGui;
+use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
 
 use dunce;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::thread;
 use std::time::Duration;
 
@@ -68,10 +77,10 @@ fn load_soundfile_to_channels_impl(
     filename: &Path,
     target_sample_rate: usize,
     maybe_target_data_length: Option<usize>,
-    channels_to_loop_channels: &HashMap<usize, HashSet<*mut QObject>>,
+    channels_to_loop_channels: &HashMap<usize, Vec<cxx::UniquePtr<QSharedPointer_QObject>>>,
     maybe_set_n_preplay_samples: Option<usize>,
     maybe_set_start_offset: Option<isize>,
-    maybe_update_loop_to_data_length: Option<*mut QObject>,
+    maybe_update_loop_to_data_length: Option<cxx::UniquePtr<QSharedPointer_QObject>>,
 ) {
     if let Err(e) = || -> Result<(), anyhow::Error> {
         let combined_data: Vec<f32>;
@@ -134,17 +143,18 @@ fn load_soundfile_to_channels_impl(
         channel_datas.iter().enumerate().try_for_each(
             |(idx, qlist)| -> Result<(), anyhow::Error> {
                 if let Some(target_channels) = channels_to_loop_channels.get(&idx) {
-                    for target_channel in target_channels {
+                    for target_channel in target_channels.iter() {
                         unsafe {
+                            let target_channel = target_channel.as_ref().unwrap().data().unwrap();
                             invoke::<_, (), _>(
-                                &mut **target_channel,
+                                &mut *target_channel,
                                 "load_audio_data(QList<float>)",
                                 connection_types::DIRECT_CONNECTION,
                                 &(*qlist),
                             )?;
                             if let Some(start_offset) = maybe_set_start_offset {
                                 invoke::<_, (), _>(
-                                    &mut **target_channel,
+                                    &mut *target_channel,
                                     "set_start_offset(::std::int32_t)",
                                     connection_types::DIRECT_CONNECTION,
                                     &(start_offset as i32),
@@ -152,7 +162,7 @@ fn load_soundfile_to_channels_impl(
                             }
                             if let Some(n_preplay) = maybe_set_n_preplay_samples {
                                 invoke::<_, (), _>(
-                                    &mut **target_channel,
+                                    &mut *target_channel,
                                     "set_n_preplay_samples(::std::int32_t)",
                                     connection_types::DIRECT_CONNECTION,
                                     &(n_preplay as i32),
@@ -168,6 +178,7 @@ fn load_soundfile_to_channels_impl(
 
         if let Some(loop_obj) = maybe_update_loop_to_data_length {
             unsafe {
+                let loop_obj = loop_obj.as_ref().unwrap().data().unwrap();
                 invoke::<_, (), _>(
                     &mut *loop_obj,
                     "queue_set_length(::std::int32_t)",
@@ -183,6 +194,60 @@ fn load_soundfile_to_channels_impl(
     }() {
         error!("Could not load sound file into channels: {e}");
     }
+}
+
+fn qvariant_loop_gui_to_loop_backend(
+    loop_gui: &QVariant,
+) -> Option<cxx::UniquePtr<QSharedPointer_QObject>> {
+    let maybe_loop_ptr: *mut QObject =
+        qvariant_to_qobject_ptr(loop_gui).unwrap_or(std::ptr::null_mut());
+
+    if !maybe_loop_ptr.is_null() {
+        match unsafe { LoopGui::from_qobject_mut_ptr(maybe_loop_ptr) } {
+            Ok(l) => Some(l.backend_loop_wrapper.copy().unwrap()),
+            Err(_) => None,
+        }
+    } else {
+        None
+    }
+}
+
+fn qlist_qvariant_channel_mapping_to_backend(
+    channels_to_loop_channels: &QList_QVariant,
+) -> HashMap<usize, Vec<cxx::UniquePtr<QSharedPointer_QObject>>> {
+    let mut chan_map: HashMap<usize, Vec<cxx::UniquePtr<QSharedPointer_QObject>>> =
+        HashMap::default();
+    for (idx, qvariant) in channels_to_loop_channels.iter().enumerate() {
+        chan_map.insert(idx, Vec::default());
+        match qvariant_to_qvariantlist(qvariant) {
+            Ok(qlist) => {
+                for chan_variant in qlist.iter() {
+                    match qvariant_to_qobject_ptr(chan_variant) {
+                        Ok(chan_ptr) => {
+                            match unsafe { LoopChannelGui::from_qobject_mut_ptr(chan_ptr) } {
+                                Ok(chan) => {
+                                    chan_map
+                                        .get_mut(&idx)
+                                        .unwrap()
+                                        .push(chan.backend_channel_wrapper.copy().unwrap());
+                                }
+                                Err(e) => {
+                                    error!("skipping channel map element: {e}");
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            error!("skipping channel map element: not a QObject");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!("skipping channel map element: not a QVariantList: {e}");
+            }
+        }
+    }
+    chan_map
 }
 
 #[allow(unreachable_code)]
@@ -476,7 +541,7 @@ impl FileIO {
             } else if let Ok(multi) = qvariant_to_qvariantlist(&data) {
                 let mut n_frames: Option<usize> = None;
                 let n_channels: usize = multi.len() as usize;
-                let mut qlists : Vec<QList_f32> = Vec::default();
+                let mut qlists: Vec<QList_f32> = Vec::default();
 
                 for variant in multi.iter() {
                     let qlist = qvariant_to_qlist_f32(&variant)
@@ -489,8 +554,7 @@ impl FileIO {
                     qlists.push(qlist);
                 }
 
-                let total_data_iter =
-                    qlists.iter().flat_map(|list| list.iter());
+                let total_data_iter = qlists.iter().flat_map(|list| list.iter());
 
                 save_data_to_soundfile_impl(
                     &filename,
@@ -511,7 +575,7 @@ impl FileIO {
     }
 
     pub fn save_channel_to_midi_async(
-        self: &FileIO,
+        self: Pin<&mut FileIO>,
         filename: QString,
         samplerate: i32,
         channel: *mut QObject,
@@ -529,7 +593,7 @@ impl FileIO {
     }
 
     pub fn load_midi_to_channels_async(
-        self: &FileIO,
+        self: Pin<&mut FileIO>,
         samplerate: i32,
         channels: QList_QVariant,
         maybe_set_n_preplay_samples: QVariant,
@@ -551,7 +615,7 @@ impl FileIO {
     }
 
     pub fn save_channels_to_soundfile_async(
-        self: &FileIO,
+        self: Pin<&mut FileIO>,
         filename: QString,
         samplerate: i32,
         channels: QList_QVariant,
@@ -569,7 +633,7 @@ impl FileIO {
     }
 
     pub fn load_soundfile_to_channels_async(
-        self: &FileIO,
+        mut self: Pin<&mut FileIO>,
         filename: QString,
         target_samplerate: i32,
         maybe_target_data_length: QVariant,
@@ -578,7 +642,33 @@ impl FileIO {
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
     ) -> *mut QObject {
-        todo!();
+        let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
+        let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
+
+        // Get shared pointers to back-end objects, which we can move to our
+        // other-thread function.
+        let maybe_loop = qvariant_loop_gui_to_loop_backend(&maybe_update_loop_to_data_length);
+        let chan_map = qlist_qvariant_channel_mapping_to_backend(&channels_to_loop_channels);
+
+        let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
+        pin_async_task
+            .as_mut()
+            .exec_concurrent_rust_then_finish(move || {
+                load_soundfile_to_channels_impl(
+                    &PathBuf::from(filename.to_string()),
+                    target_samplerate as usize,
+                    maybe_target_data_length.value::<i32>().map(|v| v as usize),
+                    &chan_map,
+                    maybe_set_n_preplay_samples
+                        .value::<i32>()
+                        .map(|v| v as usize),
+                    maybe_set_start_offset.value::<i32>().map(|v| v as isize),
+                    maybe_loop,
+                );
+                Ok(())
+            });
+
+        return unsafe { pin_async_task.pin_mut_qobject_ptr() };
     }
 
     pub fn load_soundfile_to_channels(
@@ -591,7 +681,22 @@ impl FileIO {
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
     ) {
-        todo!();
+        // Get shared pointers to back-end objects, which we can move to our
+        // other-thread function.
+        let maybe_loop = qvariant_loop_gui_to_loop_backend(&maybe_update_loop_to_data_length);
+        let chan_map = qlist_qvariant_channel_mapping_to_backend(&channels_to_loop_channels);
+
+        load_soundfile_to_channels_impl(
+            &PathBuf::from(filename.to_string()),
+            target_samplerate as usize,
+            maybe_target_data_length.value::<i32>().map(|v| v as usize),
+            &chan_map,
+            maybe_set_n_preplay_samples
+                .value::<i32>()
+                .map(|v| v as usize),
+            maybe_set_start_offset.value::<i32>().map(|v| v as isize),
+            maybe_loop,
+        );
     }
 
     pub fn get_soundfile_info(self: &FileIO, filename: QString) -> QMap_QString_QVariant {

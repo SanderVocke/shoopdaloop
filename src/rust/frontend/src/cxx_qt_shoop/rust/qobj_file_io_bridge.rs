@@ -1,4 +1,5 @@
 use common::logging::macros::*;
+use cxx_qt_lib_shoop::qobject::AsQObject;
 shoop_log_unit!("Frontend.FileIO");
 
 #[cxx_qt::bridge]
@@ -89,7 +90,7 @@ pub mod ffi {
         // returns an AsyncTask
         #[qinvokable]
         pub fn save_channel_to_midi_async(
-            self: &FileIO,
+            self: Pin<&mut FileIO>,
             filename: QString,
             samplerate: i32,
             channel: *mut QObject,
@@ -106,7 +107,7 @@ pub mod ffi {
         // returns an AsyncTask
         #[qinvokable]
         pub fn load_midi_to_channels_async(
-            self: &FileIO,
+            self: Pin<&mut FileIO>,
             samplerate: i32,
             channels: QList_QVariant,
             maybe_set_n_preplay_samples: QVariant,
@@ -127,7 +128,7 @@ pub mod ffi {
         // returns an AsyncTask
         #[qinvokable]
         pub fn save_channels_to_soundfile_async(
-            self: &FileIO,
+            self: Pin<&mut FileIO>,
             filename: QString,
             samplerate: i32,
             channels: QList_QVariant,
@@ -144,7 +145,7 @@ pub mod ffi {
         // returns an AsyncTask
         #[qinvokable]
         pub fn load_soundfile_to_channels_async(
-            self: &FileIO,
+            self: Pin<&mut FileIO>,
             filename: QString,
             target_samplerate: i32,
             maybe_target_data_length: QVariant,
@@ -189,8 +190,32 @@ pub mod ffi {
             version_minor: i64,
             type_name: &mut String,
         );
+
+        include!("cxx-qt-lib-shoop/qobject.h");
+
+        #[rust_name = "from_qobject_ref_file_io"]
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const FileIO);
+
+        #[rust_name = "from_qobject_mut_file_io"]
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut FileIO);
+
+        #[rust_name = "file_io_qobject_from_ptr"]
+        unsafe fn qobjectFromPtr(obj: *mut FileIO) -> *mut QObject;
+
+        #[rust_name = "file_io_qobject_from_ref"]
+        fn qobjectFromRef(obj: &FileIO) -> &QObject;
     }
 }
 
 #[derive(Default)]
 pub struct FileIORust {}
+
+impl AsQObject for ffi::FileIO {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+        ffi::file_io_qobject_from_ptr(self as *mut Self)
+    }
+
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
+        ffi::file_io_qobject_from_ref(self) as *const ffi::QObject
+    }
+}
