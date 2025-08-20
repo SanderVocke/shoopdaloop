@@ -32,9 +32,6 @@ impl GlobalQmlSettings {
             }
         }
 
-        let d = self.lua_dir.clone();
-        println!("{d}");
-
         iter::once((
             QString::from("backend_type"),
             QVariant::from(&(self.backend_type as i32)),

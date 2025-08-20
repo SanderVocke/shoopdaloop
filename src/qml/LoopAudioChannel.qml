@@ -81,8 +81,6 @@ LoopChannelGui {
     recording_started_at: 'recording_started_at' in descriptor ? descriptor.recording_started_at : null
     is_midi: false
 
-    onPorts_to_connect_changed: console.log(ports_to_connect)
-
     RegistryLookups {
         id: lookup_connected_ports
         registry: registries.objects_registry
