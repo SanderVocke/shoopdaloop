@@ -2,17 +2,25 @@ use crate::cxx_qt_shoop::qobj_async_task_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_async_task_bridge::AsyncTaskRust;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
+use cxx_qt_lib_shoop::qjsvalue::qvariant_call_as_callable_qjsvalue;
 use cxx_qt_lib_shoop::{connection_types, invokable::invoke, qobject::AsQObject, qtimer::QTimer};
 use std::{pin::Pin, slice};
 shoop_log_unit!("Frontend.AsyncTask");
 
 impl AsyncTask {
+    pub fn self_rust_ptr(&self) -> *const AsyncTaskRust {
+        unsafe { self.rust() as *const AsyncTaskRust }
+    }
+
     // To be called by users on the Rust side. Will execute the given closure
     // on a dedicated temporary thread, then notify the async task for follow-up.
     pub fn exec_concurrent_rust_then_finish<F>(mut self: Pin<&mut Self>, concurrent_fn: F)
     where
         F: FnOnce() -> Result<(), anyhow::Error> + Send + 'static,
     {
+        let self_ptr = self.self_rust_ptr();
+        debug!("{self_ptr:?}: start exec rust");
+
         struct SelfPtr {
             ptr: *mut QObject,
         }
@@ -39,6 +47,9 @@ impl AsyncTask {
     }
 
     pub fn notify_done(mut self: Pin<&mut AsyncTask>) {
+        let self_ptr = self.self_rust_ptr();
+        debug!("{self_ptr:?}: notify");
+
         if self.active {
             self.as_mut().rust_mut().active = false;
             unsafe {
@@ -51,6 +62,9 @@ impl AsyncTask {
     }
 
     pub fn done_impl(mut self: Pin<&mut AsyncTask>) {
+        let self_ptr = self.self_rust_ptr();
+        debug!("{self_ptr:?}: done impl");
+
         unsafe {
             let self_ptr = self.as_mut().pin_mut_qobject_ptr();
             let delete_self = || {
@@ -67,8 +81,9 @@ impl AsyncTask {
             if self.delete_when_done {
                 delete_self();
             } else if self.maybe_qml_callable.is_valid() {
-                // TODO: call the callable
-                todo!();
+                if let Err(e) = qvariant_call_as_callable_qjsvalue(&self.maybe_qml_callable) {
+                    error!("Could not call callable: {e}");
+                }
                 delete_self();
             } else {
                 // no post-actions set. Set a timer to create an error
@@ -120,5 +135,7 @@ impl Drop for AsyncTaskRust {
         if self.active {
             error!("dropped while still active!");
         }
+        let self_ptr = self as *const Self;
+        debug!("{self_ptr:?}: drop");
     }
 }

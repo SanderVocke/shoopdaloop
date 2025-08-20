@@ -9,6 +9,9 @@ mod ffi {
         include!("cxx-qt-lib-shoop/qobject.h");
         type QObject = crate::qobject::QObject;
 
+        include!("cxx-qt-lib-shoop/qjsvalue.h");
+        type QJSValue = crate::qjsvalue::QJSValue;
+
         include!("cxx-qt-lib/qlist.h");
         include!("cxx-qt-lib/qstring.h");
         include!("cxx-qt-lib/qmap.h");

@@ -268,12 +268,12 @@ ShoopTestFile {
                     // and play back in the exact same way. That means the state itself should be
                     // somehow saved. Test here that it works.
                     var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
-                    file_io.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
+                    ShoopFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
                     chan.clear()
                     testcase.wait_updated(session.backend)
                     testcase.wait_updated(session.backend)
                     verify_eq(chan.get_all_midi_data(), [], null, true)
-                    file_io.load_midi_to_channels(
+                    ShoopFileIO.load_midi_to_channels(
                                 filename,
                                 session.backend.get_sample_rate(),
                                 [chan],
@@ -352,12 +352,12 @@ ShoopTestFile {
 
                     // Save and re-load
                     var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
-                    file_io.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
+                    ShoopFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
                     chan.clear()
                     testcase.wait_updated(session.backend)
                     testcase.wait_updated(session.backend)
                     verify_eq(chan.get_all_midi_data(), [], null, true)
-                    file_io.load_midi_to_channels(
+                    ShoopFileIO.load_midi_to_channels(
                                 filename,
                                 session.backend.get_sample_rate(),
                                 [chan],

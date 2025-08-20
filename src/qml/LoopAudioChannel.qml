@@ -40,7 +40,7 @@ LoopChannelGui {
         if (do_save_data_files && data_length > 0) {
             var filename = obj_id + '.flac'
             var full_filename = data_files_dir + '/' + filename;
-            var task = file_io.save_channels_to_soundfile_async(full_filename, root.backend.get_sample_rate(), [root])
+            var task = ShoopFileIO.save_channels_to_soundfile_async(full_filename, root.backend.get_sample_rate(), [root])
             add_tasks_to.add_task(task)
             rval['data_file'] = filename
         }
@@ -49,7 +49,7 @@ LoopChannelGui {
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         if (has_data_file()) {
             add_tasks_to.add_task(
-                file_io.load_soundfile_to_channels_async(
+                ShoopFileIO.load_soundfile_to_channels_async(
                     data_files_dir + '/' + descriptor.data_file,
                     to_sample_rate,
                     descriptor.data_length,

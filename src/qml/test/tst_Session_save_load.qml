@@ -160,13 +160,13 @@ ShoopTestFile {
                     mt_midi_channels()[0].load_all_midi_data(midichan)
                     testcase.wait_updated(session.backend)
                     var filename = ShoopFileIO.generate_temporary_filename() + '.mid'
-                    file_io.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
+                    ShoopFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
 
                     mt_loop().clear()
                     testcase.wait_updated(session.backend)
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
 
-                    file_io.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)
+                    ShoopFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)
                     testcase.wait_updated(session.backend)
 
                     // Storing in MIDI files is not sample-accurate but should be quite close
@@ -188,13 +188,13 @@ ShoopTestFile {
                     mt_midi_channels()[0].load_all_midi_data(midichan)
                     testcase.wait_updated(session.backend)
                     var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
-                    file_io.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
+                    ShoopFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
 
                     mt_loop().clear()
                     testcase.wait_updated(session.backend)
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
 
-                    file_io.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)
+                    ShoopFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)
                     testcase.wait_updated(session.backend)
 
                     // Storing in MIDI files is not sample-accurate but should be quite close

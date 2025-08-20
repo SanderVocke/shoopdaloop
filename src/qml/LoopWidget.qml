@@ -1899,7 +1899,7 @@ Item {
             id: savedialog
             fileMode: FileDialog.SaveFile
             acceptLabel: 'Save'
-            nameFilters: Object.entries(file_io.get_soundfile_formats()).map((e) => {
+            nameFilters: Object.entries(ShoopFileIO.get_soundfile_formats()).map((e) => {
                 var extension = e[0]
                 var description = e[1].replace('(', '- ').replace(')', '')
                 return description + ' (*.' + extension + ')';
@@ -1915,8 +1915,8 @@ Item {
                 try {
                     var filename = UrlToFilename.qml_url_to_filename(file.toString());
                     var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                    var task = file_io.save_channels_to_soundfile_async(filename, samplerate, channels)
-                    task.when_finished(() => registries.state_registry.save_action_finished())
+                    var task = ShoopFileIO.save_channels_to_soundfile_async(filename, samplerate, channels)
+                    task.then(() => registries.state_registry.save_action_finished())
                 } catch (e) {
                     registries.state_registry.save_action_finished()
                     throw e;
@@ -1939,7 +1939,7 @@ Item {
                 close()
                 var filename = UrlToFilename.qml_url_to_filename(file.toString());
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                file_io.save_channel_to_midi_async(filename, samplerate, channel)
+                ShoopFileIO.save_channel_to_midi_async(filename, samplerate, channel)
             }
 
         }
@@ -1950,7 +1950,7 @@ Item {
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('
-                + Object.entries(file_io.get_soundfile_formats()).map((e) => '*.' + e[0].toLowerCase()).join(' ')
+                + Object.entries(ShoopFileIO.get_soundfile_formats()).map((e) => '*.' + e[0].toLowerCase()).join(' ')
                 + ')'
             ]
             onAccepted: {
@@ -1986,7 +1986,7 @@ Item {
             height: 400
 
             onFilenameChanged: {
-                var props = file_io.get_soundfile_info(filename)
+                var props = ShoopFileIO.get_soundfile_info(filename)
                 n_file_channels = props['channels']
                 file_sample_rate = props['samplerate']
             }
@@ -2031,9 +2031,9 @@ Item {
                         mapping[fidx].push(channels_to_load[cidx])
                         fidx = (fidx + 1) % n_file_channels
                     }
-                    var task = file_io.load_soundfile_to_channels_async(filename, samplerate, null,
+                    var task = ShoopFileIO.load_soundfile_to_channels_async(filename, samplerate, null,
                         mapping, 0, 0, root.maybe_backend_loop)
-                    task.when_finished( () => registries.state_registry.load_action_finished() )
+                    task.then( () => registries.state_registry.load_action_finished() )
                 } catch(e) {
                     registries.state_registry.load_action_finished()
                     throw e
@@ -2118,7 +2118,7 @@ Item {
             function doLoad(update_loop_length) {
                 root.create_backend_loop()
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                file_io.load_midi_to_channels_async(filename, samplerate, channels,
+                ShoopFileIO.load_midi_to_channels_async(filename, samplerate, channels,
                     0, 0, root.maybe_backend_loop)
             }
 

@@ -15,7 +15,7 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        let resource_dir = file_io.get_resource_directory();
+        let resource_dir = ShoopFileIO.get_resource_directory();
         let icon_dir = `${resource_dir}/iconset/icon_128x128.png`;
         ShoopGlobalUtils.set_window_icon_path(root, icon_dir)
         screen_grabber.add_window(root)

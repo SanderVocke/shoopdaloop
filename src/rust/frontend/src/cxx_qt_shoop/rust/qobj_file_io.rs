@@ -6,8 +6,8 @@ use cxx_qt_lib_shoop::invokable::invoke;
 use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
-    qvariant_to_qlist_f32, qvariant_to_qobject_ptr,
-    qvariant_to_qvariantlist,
+    qlist_f32_to_qvariant, qvariant_to_qlist_f32, qvariant_to_qobject_ptr,
+    qvariant_to_qvariantlist, qvariantlist_to_qvariant,
 };
 use sndfile::SndFileIO;
 shoop_log_unit!("Frontend.FileIO");
@@ -19,7 +19,7 @@ use crate::cxx_qt_shoop::qobj_loop_channel_gui_bridge::LoopChannelGui;
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
 
 use dunce;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -41,7 +41,7 @@ fn get_formats_for(filename: &Path) -> Option<(sndfile::MajorFormat, sndfile::Su
 fn save_data_to_soundfile_impl<'a>(
     filename: &Path,
     samplerate: usize,
-    data: impl Iterator<Item = &'a f32>, // inner = frame, outer = channel
+    data: impl Iterator<Item = &'a f32>, // inner = frame, outer = channels
     n_frames: usize,
     n_channels: usize,
 ) -> Result<(), anyhow::Error> {
@@ -71,6 +71,53 @@ fn save_data_to_soundfile_impl<'a>(
     .write_from_iter(reshaped.iter().map(|v| *v))
     .map_err(|e| anyhow::anyhow!("could not write sound file: {e:?}"))?;
     Ok(())
+}
+
+pub fn save_qlist_data_to_soundfile_impl(filename: QString, samplerate: i32, data: QVariant) {
+    if let Err(e) = || -> Result<(), anyhow::Error> {
+        let filename = PathBuf::from(filename.to_string());
+        if let Ok(mono) = qvariant_to_qlist_f32(&data) {
+            save_data_to_soundfile_impl(
+                &filename,
+                samplerate as usize,
+                mono.iter(),
+                mono.len() as usize,
+                1,
+            )?;
+        } else if let Ok(multi) = qvariant_to_qvariantlist(&data) {
+            let mut n_frames: Option<usize> = None;
+            let n_channels: usize = multi.len() as usize;
+            let mut qlists: Vec<QList_f32> = Vec::default();
+
+            for variant in multi.iter() {
+                let qlist = qvariant_to_qlist_f32(&variant)
+                    .map_err(|e| anyhow::anyhow!("Could not view data as f32 list: {e}"))?;
+                if n_frames.is_none() {
+                    n_frames = Some(qlist.len() as usize);
+                } else if qlist.len() as usize != n_frames.unwrap() {
+                    return Err(anyhow::anyhow!("Inconsistent data size across channels"));
+                }
+                qlists.push(qlist);
+            }
+
+            let total_data_iter = qlists.iter().flat_map(|list| list.iter());
+
+            save_data_to_soundfile_impl(
+                &filename,
+                samplerate as usize,
+                total_data_iter,
+                n_frames.unwrap(),
+                n_channels,
+            )?;
+        } else {
+            return Err(anyhow::anyhow!(
+                "Unsupported QVariant type for saving audio file."
+            ));
+        }
+        Ok(())
+    }() {
+        error!("Failed to save audio data: {e}");
+    }
 }
 
 fn load_soundfile_to_channels_impl(
@@ -155,7 +202,7 @@ fn load_soundfile_to_channels_impl(
                             if let Some(start_offset) = maybe_set_start_offset {
                                 invoke::<_, (), _>(
                                     &mut *target_channel,
-                                    "set_start_offset(::std::int32_t)",
+                                    "push_start_offset(::std::int32_t)",
                                     connection_types::DIRECT_CONNECTION,
                                     &(start_offset as i32),
                                 )?;
@@ -163,7 +210,7 @@ fn load_soundfile_to_channels_impl(
                             if let Some(n_preplay) = maybe_set_n_preplay_samples {
                                 invoke::<_, (), _>(
                                     &mut *target_channel,
-                                    "set_n_preplay_samples(::std::int32_t)",
+                                    "push_n_preplay_samples(::std::int32_t)",
                                     connection_types::DIRECT_CONNECTION,
                                     &(n_preplay as i32),
                                 )?;
@@ -181,7 +228,7 @@ fn load_soundfile_to_channels_impl(
                 let loop_obj = loop_obj.as_ref().unwrap().data().unwrap();
                 invoke::<_, (), _>(
                     &mut *loop_obj,
-                    "queue_set_length(::std::int32_t)",
+                    "set_length(::std::int32_t)",
                     connection_types::DIRECT_CONNECTION,
                     &(target_frames as i32),
                 )?;
@@ -218,29 +265,9 @@ fn qlist_qvariant_channel_mapping_to_backend(
     let mut chan_map: HashMap<usize, Vec<cxx::UniquePtr<QSharedPointer_QObject>>> =
         HashMap::default();
     for (idx, qvariant) in channels_to_loop_channels.iter().enumerate() {
-        chan_map.insert(idx, Vec::default());
         match qvariant_to_qvariantlist(qvariant) {
             Ok(qlist) => {
-                for chan_variant in qlist.iter() {
-                    match qvariant_to_qobject_ptr(chan_variant) {
-                        Ok(chan_ptr) => {
-                            match unsafe { LoopChannelGui::from_qobject_mut_ptr(chan_ptr) } {
-                                Ok(chan) => {
-                                    chan_map
-                                        .get_mut(&idx)
-                                        .unwrap()
-                                        .push(chan.backend_channel_wrapper.copy().unwrap());
-                                }
-                                Err(e) => {
-                                    error!("skipping channel map element: {e}");
-                                }
-                            }
-                        }
-                        Err(_) => {
-                            error!("skipping channel map element: not a QObject");
-                        }
-                    }
-                }
+                chan_map.insert(idx, qlist_qvariant_channels_to_backend(&qlist));
             }
             Err(e) => {
                 error!("skipping channel map element: not a QVariantList: {e}");
@@ -248,6 +275,30 @@ fn qlist_qvariant_channel_mapping_to_backend(
         }
     }
     chan_map
+}
+
+fn qlist_qvariant_channels_to_backend(
+    channels: &QList_QVariant,
+) -> Vec<cxx::UniquePtr<QSharedPointer_QObject>> {
+    let mut result: Vec<cxx::UniquePtr<QSharedPointer_QObject>> = Vec::default();
+
+    for chan_variant in channels.iter() {
+        match qvariant_to_qobject_ptr(chan_variant) {
+            Ok(chan_ptr) => match unsafe { LoopChannelGui::from_qobject_mut_ptr(chan_ptr) } {
+                Ok(chan) => {
+                    result.push(chan.backend_channel_wrapper.copy().unwrap());
+                }
+                Err(e) => {
+                    error!("skipping channel map element: {e}");
+                }
+            },
+            Err(_) => {
+                error!("skipping channel map element: not a QObject");
+            }
+        }
+    }
+
+    result
 }
 
 #[allow(unreachable_code)]
@@ -528,50 +579,7 @@ impl FileIO {
         samplerate: i32,
         data: QVariant,
     ) {
-        if let Err(e) = || -> Result<(), anyhow::Error> {
-            let filename = PathBuf::from(filename.to_string());
-            if let Ok(mono) = qvariant_to_qlist_f32(&data) {
-                save_data_to_soundfile_impl(
-                    &filename,
-                    samplerate as usize,
-                    mono.iter(),
-                    mono.len() as usize,
-                    1,
-                )?;
-            } else if let Ok(multi) = qvariant_to_qvariantlist(&data) {
-                let mut n_frames: Option<usize> = None;
-                let n_channels: usize = multi.len() as usize;
-                let mut qlists: Vec<QList_f32> = Vec::default();
-
-                for variant in multi.iter() {
-                    let qlist = qvariant_to_qlist_f32(&variant)
-                        .map_err(|e| anyhow::anyhow!("Could not view data as f32 list: {e}"))?;
-                    if n_frames.is_none() {
-                        n_frames = Some(qlist.len() as usize);
-                    } else if qlist.len() as usize != n_frames.unwrap() {
-                        return Err(anyhow::anyhow!("Inconsistent data size across channels"));
-                    }
-                    qlists.push(qlist);
-                }
-
-                let total_data_iter = qlists.iter().flat_map(|list| list.iter());
-
-                save_data_to_soundfile_impl(
-                    &filename,
-                    samplerate as usize,
-                    total_data_iter,
-                    n_frames.unwrap(),
-                    n_channels,
-                )?;
-            } else {
-                return Err(anyhow::anyhow!(
-                    "Unsupported QVariant type for saving audio file."
-                ));
-            }
-            Ok(())
-        }() {
-            error!("Failed to save audio data: {e}");
-        }
+        save_qlist_data_to_soundfile_impl(filename, samplerate, data);
     }
 
     pub fn save_channel_to_midi_async(
@@ -615,12 +623,43 @@ impl FileIO {
     }
 
     pub fn save_channels_to_soundfile_async(
-        self: Pin<&mut FileIO>,
+        mut self: Pin<&mut FileIO>,
         filename: QString,
         samplerate: i32,
         channels: QList_QVariant,
     ) -> *mut QObject {
-        todo!();
+        let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
+        let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
+
+        let mut qlists: QList_QVariant = QList::default();
+        for shared in qlist_qvariant_channels_to_backend(&channels).iter() {
+            let ptr = shared.as_ref().unwrap().data().unwrap();
+            unsafe {
+                match invoke(
+                    &mut *ptr,
+                    "get_audio_data()",
+                    connection_types::BLOCKING_QUEUED_CONNECTION,
+                    &(),
+                ) {
+                    Ok(data) => qlists.append(qlist_f32_to_qvariant(&data).unwrap()),
+                    Err(e) => {
+                        error!("Failed to get audio data - ignoring during save: {e}");
+                        qlists.append(QVariant::default())
+                    }
+                }
+            }
+        }
+        let variant = qvariantlist_to_qvariant(&qlists).unwrap();
+
+        let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
+        pin_async_task
+            .as_mut()
+            .exec_concurrent_rust_then_finish(move || {
+                save_qlist_data_to_soundfile_impl(filename, samplerate, variant);
+                Ok(())
+            });
+
+        return unsafe { pin_async_task.pin_mut_qobject_ptr() };
     }
 
     pub fn save_channels_to_soundfile(
@@ -629,7 +668,26 @@ impl FileIO {
         samplerate: i32,
         channels: QList_QVariant,
     ) {
-        todo!();
+        let mut qlists: QList_QVariant = QList::default();
+        for shared in qlist_qvariant_channels_to_backend(&channels).iter() {
+            let ptr = shared.as_ref().unwrap().data().unwrap();
+            unsafe {
+                match invoke(
+                    &mut *ptr,
+                    "get_audio_data()",
+                    connection_types::BLOCKING_QUEUED_CONNECTION,
+                    &(),
+                ) {
+                    Ok(data) => qlists.append(qlist_f32_to_qvariant(&data).unwrap()),
+                    Err(e) => {
+                        error!("Failed to get audio data - ignoring during save: {e}");
+                        qlists.append(QVariant::default())
+                    }
+                }
+            }
+        }
+        let variant = qvariantlist_to_qvariant(&qlists).unwrap();
+        save_qlist_data_to_soundfile_impl(filename, samplerate, variant);
     }
 
     pub fn load_soundfile_to_channels_async(

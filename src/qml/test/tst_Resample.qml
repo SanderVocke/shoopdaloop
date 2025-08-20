@@ -62,13 +62,13 @@ ShoopTestFile {
                     }
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.wav'
-                    file_io.save_data_to_soundfile(filename, 24000, [data])
+                    ShoopFileIO.save_data_to_soundfile(filename, 24000, [data])
 
                     testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
                     testcase.wait_updated(session.backend)
 
-                    file_io.load_soundfile_to_channels_async(filename, 48000, null,
+                    ShoopFileIO.load_soundfile_to_channels(filename, 48000, null,
                         [[channel()]], null, null, null)
 
                     testcase.wait_updated(session.backend)
@@ -92,13 +92,13 @@ ShoopTestFile {
                     }
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.wav'
-                    file_io.save_data_to_soundfile(filename, 24000, [data])
+                    ShoopFileIO.save_data_to_soundfile(filename, 24000, [data])
 
                     testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
                     testcase.wait_updated(session.backend)
 
-                    file_io.load_soundfile_to_channels_async(filename, 48000, 13000,
+                    ShoopFileIO.load_soundfile_to_channels(filename, 48000, 13000,
                         [[channel()]], null, null, null)
 
                     testcase.wait_updated(session.backend)
@@ -124,14 +124,14 @@ ShoopTestFile {
                     let _data = [data, data]
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.wav'
-                    file_io.save_data_to_soundfile(filename, 24000, _data)
+                    ShoopFileIO.save_data_to_soundfile(filename, 24000, _data)
 
                     testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
                     testcase.wait_updated(session.backend)
 
                     verify_eq(loop2_channels().length, 2)
-                    file_io.load_soundfile_to_channels_async(filename, 48000, 13000,
+                    ShoopFileIO.load_soundfile_to_channels(filename, 48000, 13000,
                         [[loop2_channels()[0]], [loop2_channels()[1]]], null, null, null)
 
                     testcase.wait_updated(session.backend)

@@ -84,7 +84,7 @@ pub struct AsyncTaskRust {
 impl Default for AsyncTaskRust {
     fn default() -> Self {
         Self {
-            active: false,
+            active: true,
             timer: std::ptr::null_mut(),
             maybe_qml_callable: QVariant::default(),
             delete_when_done: false,
