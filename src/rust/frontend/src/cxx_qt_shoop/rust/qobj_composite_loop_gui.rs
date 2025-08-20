@@ -54,28 +54,29 @@ macro_rules! error {
 fn replace_by_backend_objects(
     schedule: &CompositeLoopSchedule<*mut QObject>,
 ) -> Result<CompositeLoopSchedule<cxx::UniquePtr<QWeakPointer_QObject>>, anyhow::Error> {
-    let get_backend_obj = |object: *mut QObject| -> Result<cxx::UniquePtr<QWeakPointer_QObject>, anyhow::Error> {
-        unsafe {
-            match invoke::<QObject, QVariant, ()>(
-                &mut *object,
-                "get_backend_loop_wrapper()",
-                connection_types::DIRECT_CONNECTION,
-                &(),
-            ) {
-                Ok(backend_loop) => {
-                    if backend_loop.is_null() {
-                        return Err(anyhow::anyhow!("Backend loop in schedule is null"));
+    let get_backend_obj =
+        |object: *mut QObject| -> Result<cxx::UniquePtr<QWeakPointer_QObject>, anyhow::Error> {
+            unsafe {
+                match invoke::<QObject, QVariant, ()>(
+                    &mut *object,
+                    "get_backend_loop_wrapper()",
+                    connection_types::DIRECT_CONNECTION,
+                    &(),
+                ) {
+                    Ok(backend_loop) => {
+                        if backend_loop.is_null() {
+                            return Err(anyhow::anyhow!("Backend loop in schedule is null"));
+                        }
+                        let shared = qvariant_to_qsharedpointer_qobject(&backend_loop)?;
+                        let weak = QWeakPointer_QObject::from_strong(&shared);
+                        return Ok(weak);
                     }
-                    let shared = qvariant_to_qsharedpointer_qobject(&backend_loop)?;
-                    let weak = QWeakPointer_QObject::from_strong(&shared);
-                    return Ok(weak);
-                }
-                Err(e) => {
-                    return Err(anyhow::anyhow!("Unable to get backend loop: {e}"));
+                    Err(e) => {
+                        return Err(anyhow::anyhow!("Unable to get backend loop: {e}"));
+                    }
                 }
             }
-        }
-    };
+        };
 
     let mut rval = CompositeLoopSchedule::default();
 
@@ -83,15 +84,21 @@ fn replace_by_backend_objects(
         let mut new_events = CompositeLoopIterationEvents::default();
         for (object, mode) in events.loops_start.iter() {
             let backend_loop = get_backend_obj(object.obj.as_qobject_ref() as *mut QObject)?;
-            new_events.loops_start.insert(LoopReference{ obj: backend_loop }, *mode);
+            new_events
+                .loops_start
+                .insert(LoopReference { obj: backend_loop }, *mode);
         }
         for object in events.loops_end.iter() {
             let backend_loop = get_backend_obj(object.obj.as_qobject_ref() as *mut QObject)?;
-            new_events.loops_end.insert(LoopReference{ obj: backend_loop });
+            new_events
+                .loops_end
+                .insert(LoopReference { obj: backend_loop });
         }
         for object in events.loops_ignored.iter() {
             let backend_loop = get_backend_obj(object.obj.as_qobject_ref() as *mut QObject)?;
-            new_events.loops_ignored.insert(LoopReference{ obj: backend_loop });
+            new_events
+                .loops_ignored
+                .insert(LoopReference { obj: backend_loop });
         }
         rval.data.insert(*key, new_events);
     }

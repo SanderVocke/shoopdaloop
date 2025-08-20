@@ -16,8 +16,8 @@ use cxx_qt_lib_shoop::qvariant_helpers::{
     qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
 };
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
-use std::pin::Pin;
 use std::backtrace::Backtrace;
+use std::pin::Pin;
 shoop_log_unit!("Frontend.Port");
 
 macro_rules! trace {

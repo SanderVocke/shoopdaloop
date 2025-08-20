@@ -259,7 +259,7 @@ impl PortBackend {
                     .min_n_ringbuffer_samples
                     .ok_or(anyhow::anyhow!("min_n_ringbuffer_samples not set"))?;
                 let backend = BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)?;
-                
+
                 let port = AnyBackendPort::new_driver_port(
                     port_type.clone(),
                     backend

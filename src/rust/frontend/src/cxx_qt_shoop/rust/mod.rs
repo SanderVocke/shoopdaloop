@@ -6,6 +6,10 @@ pub mod fn_window_icons;
 
 pub mod qobj_application;
 pub mod qobj_application_bridge;
+pub mod qobj_async_task;
+pub mod qobj_async_task_bridge;
+pub mod qobj_async_tasks;
+pub mod qobj_async_tasks_bridge;
 pub mod qobj_autoconnect;
 pub mod qobj_autoconnect_bridge;
 pub mod qobj_backend_wrapper;

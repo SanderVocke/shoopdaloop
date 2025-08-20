@@ -2,7 +2,8 @@ use crate::{
     composite_loop_schedule::CompositeLoopSchedule,
     cxx_qt_shoop::qobj_composite_loop_backend_bridge::ffi::*,
     loop_helpers::transition_backend_loops,
-    loop_mode_helpers::{is_recording_mode, is_running_mode}, references_qobject::ReferencesQObject,
+    loop_mode_helpers::{is_recording_mode, is_running_mode},
+    references_qobject::ReferencesQObject,
 };
 use backend_bindings::LoopMode;
 use common::logging::macros::{

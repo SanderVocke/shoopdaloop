@@ -4,16 +4,19 @@ use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::qobject::QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::hash::Hash;
 use std::fmt::Debug;
+use std::hash::Hash;
 
 use crate::references_qobject::ReferencesQObject;
 
 type QVariantMap = QMap<QMapPair_QString_QVariant>;
 type QVariantList = QList<QVariant>;
 
-pub struct LoopReference<T> where T : ReferencesQObject {
-    pub obj : T,
+pub struct LoopReference<T>
+where
+    T: ReferencesQObject,
+{
+    pub obj: T,
 }
 
 impl<T: ReferencesQObject> Hash for LoopReference<T> {
@@ -32,7 +35,9 @@ impl<T: ReferencesQObject> Eq for LoopReference<T> {}
 
 impl<T: ReferencesQObject> Clone for LoopReference<T> {
     fn clone(&self) -> Self {
-        Self { obj : self.obj.copy() }
+        Self {
+            obj: self.obj.copy(),
+        }
     }
 }
 
@@ -41,8 +46,9 @@ impl<T: ReferencesQObject> Debug for LoopReference<T> {
         self.obj.as_qobject_ref().fmt(f)
     }
 }
-pub struct CompositeLoopIterationEvents<T> 
-where T: ReferencesQObject
+pub struct CompositeLoopIterationEvents<T>
+where
+    T: ReferencesQObject,
 {
     pub loops_start: HashMap<LoopReference<T>, Option<LoopMode>>,
     pub loops_end: HashSet<LoopReference<T>>,
@@ -51,19 +57,29 @@ where T: ReferencesQObject
 
 impl<T: ReferencesQObject> Default for CompositeLoopIterationEvents<T> {
     fn default() -> Self {
-        Self { loops_start: HashMap::default(), loops_end: HashSet::default(), loops_ignored: HashSet::default() }
+        Self {
+            loops_start: HashMap::default(),
+            loops_end: HashSet::default(),
+            loops_ignored: HashSet::default(),
+        }
     }
 }
 
 impl<T: ReferencesQObject> Clone for CompositeLoopIterationEvents<T> {
     fn clone(&self) -> Self {
-        Self { loops_start: self.loops_start.clone(), loops_end: self.loops_end.clone(), loops_ignored: self.loops_ignored.clone() }
+        Self {
+            loops_start: self.loops_start.clone(),
+            loops_end: self.loops_end.clone(),
+            loops_ignored: self.loops_ignored.clone(),
+        }
     }
 }
 
 impl<T: ReferencesQObject> PartialEq for CompositeLoopIterationEvents<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.loops_start == other.loops_start && self.loops_end == other.loops_end && self.loops_ignored == other.loops_ignored
+        self.loops_start == other.loops_start
+            && self.loops_end == other.loops_end
+            && self.loops_ignored == other.loops_ignored
     }
 }
 
@@ -81,19 +97,25 @@ impl<T: ReferencesQObject> Debug for CompositeLoopIterationEvents<T> {
 pub type CompositeLoopIteration = i32;
 
 pub struct CompositeLoopSchedule<T>
-where T: ReferencesQObject {
+where
+    T: ReferencesQObject,
+{
     pub data: BTreeMap<CompositeLoopIteration, CompositeLoopIterationEvents<T>>,
 }
 
 impl<T: ReferencesQObject> Default for CompositeLoopSchedule<T> {
     fn default() -> Self {
-        Self { data: BTreeMap::default() }
+        Self {
+            data: BTreeMap::default(),
+        }
     }
 }
 
 impl<T: ReferencesQObject> Clone for CompositeLoopSchedule<T> {
     fn clone(&self) -> Self {
-        Self { data: self.data.clone() }
+        Self {
+            data: self.data.clone(),
+        }
     }
 }
 
@@ -169,7 +191,9 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
                     let loop_mode = entry
                         .get(1)
                         .ok_or(anyhow::anyhow!("No loop mode entry in schedule elem"))?;
-                    let loop_start = LoopReference::<T>{ obj: T::from_qvariant(&loop_start).unwrap() };
+                    let loop_start = LoopReference::<T> {
+                        obj: T::from_qvariant(&loop_start).unwrap(),
+                    };
                     let loop_mode: Option<LoopMode> = match loop_mode.value::<i32>() {
                         Some(mode) => Some(LoopMode::try_from(mode)?),
                         None => None,
@@ -188,7 +212,9 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
             Some(loops_end) => {
                 let loops_end = qvariant_to_qvariantlist(&loops_end)?;
                 for entry in loops_end.iter() {
-                    let object = LoopReference::<T>{ obj: T::from_qvariant(&entry).unwrap() };
+                    let object = LoopReference::<T> {
+                        obj: T::from_qvariant(&entry).unwrap(),
+                    };
                     result.loops_end.insert(object);
                 }
             }
@@ -199,7 +225,9 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
             Some(loops_ignored) => {
                 let loops_ignored = qvariant_to_qvariantlist(&loops_ignored)?;
                 for entry in loops_ignored.iter() {
-                    let object = LoopReference::<T>{ obj: T::from_qvariant(&entry).unwrap() };
+                    let object = LoopReference::<T> {
+                        obj: T::from_qvariant(&entry).unwrap(),
+                    };
                     result.loops_ignored.insert(object);
                 }
             }

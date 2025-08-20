@@ -376,6 +376,14 @@ impl LoopChannelGui {
             self.backend_load_midi_data(data);
         }
     }
+
+    pub fn get_audio_data(self: &LoopChannelGui) -> QList_f32 {
+        todo!();
+    }
+
+    pub fn get_midi_data(self: &LoopChannelGui) -> QList_QVariant {
+        todo!();
+    }
 }
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {

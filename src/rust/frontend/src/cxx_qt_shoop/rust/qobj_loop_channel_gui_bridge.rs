@@ -90,6 +90,12 @@ pub mod ffi {
         pub fn load_midi_data(self: Pin<&mut LoopChannelGui>, data: QList_QVariant);
 
         #[qinvokable]
+        pub fn get_audio_data(self: &LoopChannelGui) -> QList_f32;
+
+        #[qinvokable]
+        pub fn get_midi_data(self: &LoopChannelGui) -> QList_QVariant;
+
+        #[qinvokable]
         pub fn backend_state_changed(
             self: Pin<&mut LoopChannelGui>,
             initialized: bool,
@@ -208,16 +214,10 @@ pub mod ffi {
         );
 
         #[qsignal]
-        pub unsafe fn backend_load_audio_data(
-            self: Pin<&mut LoopChannelGui>,
-            data: QList_f32,
-        );
+        pub unsafe fn backend_load_audio_data(self: Pin<&mut LoopChannelGui>, data: QList_f32);
 
         #[qsignal]
-        pub unsafe fn backend_load_midi_data(
-            self: Pin<&mut LoopChannelGui>,
-            data: QList_QVariant,
-        );
+        pub unsafe fn backend_load_midi_data(self: Pin<&mut LoopChannelGui>, data: QList_QVariant);
     }
 
     unsafe extern "C++" {

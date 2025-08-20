@@ -552,8 +552,9 @@ impl LoopChannelBackend {
         ports_to_connect: QList_QVariant,
     ) {
         self.as_mut().maybe_initialize_backend();
-        if let Err(e) = || -> Result<(), anyhow::Error> {
-            let weak_ptrs: Vec<cxx::UniquePtr<QWeakPointer_QObject>> = ports_to_connect
+        if let Err(e) =
+            || -> Result<(), anyhow::Error> {
+                let weak_ptrs: Vec<cxx::UniquePtr<QWeakPointer_QObject>> = ports_to_connect
                 .iter()
                 .map(
                     |port_qvariant| -> Result<cxx::UniquePtr<QWeakPointer_QObject>, anyhow::Error> {
@@ -567,13 +568,14 @@ impl LoopChannelBackend {
                 )
                 .collect::<Result<Vec<cxx::UniquePtr<QWeakPointer_QObject>>, anyhow::Error>>()?;
 
-            let amount = weak_ptrs.len();
-            debug!(self, "ports to connect -> amount {amount}");
+                let amount = weak_ptrs.len();
+                debug!(self, "ports to connect -> amount {amount}");
 
-            self.as_mut().rust_mut().ports_to_connect = weak_ptrs;
-            self.as_mut().update_port_connections_impl();
-            Ok(())
-        }() {
+                self.as_mut().rust_mut().ports_to_connect = weak_ptrs;
+                self.as_mut().update_port_connections_impl();
+                Ok(())
+            }()
+        {
             error!(self, "Could not set ports to connect: {e}");
         }
     }

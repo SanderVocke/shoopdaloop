@@ -1,7 +1,16 @@
 use cxx_qt_lib::QVariant;
-use cxx_qt_lib_shoop::{qobject::QObject, qsharedpointer_qobject::QSharedPointer_QObject, qvariant_helpers::{qobject_ptr_to_qvariant, qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qsharedpointer_qobject, qvariant_to_qweakpointer_qobject, qweakpointer_qobject_to_qvariant}, qweakpointer_qobject::QWeakPointer_QObject};
+use cxx_qt_lib_shoop::{
+    qobject::QObject,
+    qsharedpointer_qobject::QSharedPointer_QObject,
+    qvariant_helpers::{
+        qobject_ptr_to_qvariant, qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
+        qvariant_to_qsharedpointer_qobject, qvariant_to_qweakpointer_qobject,
+        qweakpointer_qobject_to_qvariant,
+    },
+    qweakpointer_qobject::QWeakPointer_QObject,
+};
 
-pub trait ReferencesQObject : Sized {
+pub trait ReferencesQObject: Sized {
     fn as_qobject_ptr(&mut self) -> *mut QObject;
 
     fn as_qobject_ref(&self) -> *const QObject;
@@ -29,11 +38,11 @@ impl ReferencesQObject for *mut QObject {
     fn copy(&self) -> Self {
         self.clone()
     }
-    
+
     fn to_qvariant(&self) -> Result<QVariant, anyhow::Error> {
         Ok(qobject_ptr_to_qvariant(self)?)
     }
-    
+
     fn from_qvariant(qvariant: &QVariant) -> Result<Self, anyhow::Error> {
         Ok(qvariant_to_qobject_ptr(qvariant)?)
     }
@@ -54,11 +63,13 @@ impl ReferencesQObject for cxx::UniquePtr<QSharedPointer_QObject> {
             None => cxx::UniquePtr::null(),
         }
     }
-    
+
     fn to_qvariant(&self) -> Result<QVariant, anyhow::Error> {
-        Ok(qsharedpointer_qobject_to_qvariant(self.as_ref().ok_or(anyhow::anyhow!("empty unique ptr"))?)?)
+        Ok(qsharedpointer_qobject_to_qvariant(
+            self.as_ref().ok_or(anyhow::anyhow!("empty unique ptr"))?,
+        )?)
     }
-    
+
     fn from_qvariant(qvariant: &QVariant) -> Result<Self, anyhow::Error> {
         Ok(qvariant_to_qsharedpointer_qobject(qvariant)?)
     }
@@ -91,11 +102,13 @@ impl ReferencesQObject for cxx::UniquePtr<QWeakPointer_QObject> {
             None => cxx::UniquePtr::null(),
         }
     }
-    
+
     fn to_qvariant(&self) -> Result<QVariant, anyhow::Error> {
-        Ok(qweakpointer_qobject_to_qvariant(self.as_ref().ok_or(anyhow::anyhow!("empty unique ptr"))?)?)
+        Ok(qweakpointer_qobject_to_qvariant(
+            self.as_ref().ok_or(anyhow::anyhow!("empty unique ptr"))?,
+        )?)
     }
-    
+
     fn from_qvariant(qvariant: &QVariant) -> Result<Self, anyhow::Error> {
         Ok(qvariant_to_qweakpointer_qobject(qvariant)?)
     }

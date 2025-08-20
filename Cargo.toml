@@ -42,6 +42,8 @@ walkdir = "2.5"
 indexmap = "2.5"
 clap = { version = "4.5", features = ["derive"] }
 quick-xml = { version = "0.38", features = ["serialize"] }
+sndfile = { version = "0.1", features = ["ndarray_features"] }
+ndarray = "0.13"
 
 # [patch.crates-io]
 # cxx-qt =  { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt" }

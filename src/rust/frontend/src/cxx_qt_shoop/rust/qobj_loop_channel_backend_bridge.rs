@@ -75,7 +75,10 @@ pub mod ffi {
         pub fn push_start_offset(self: Pin<&mut LoopChannelBackend>, start_offset: i32);
 
         #[qinvokable]
-        pub fn set_ports_to_connect(self: Pin<&mut LoopChannelBackend>, ports_to_connect: QList_QVariant);
+        pub fn set_ports_to_connect(
+            self: Pin<&mut LoopChannelBackend>,
+            ports_to_connect: QList_QVariant,
+        );
 
         #[qinvokable]
         pub fn load_audio_data(self: Pin<&mut LoopChannelBackend>, data: QList_f32);
