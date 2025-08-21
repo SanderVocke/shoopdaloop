@@ -1015,11 +1015,11 @@ impl PortBackend {
                 Ok(ptr) => {
                     return ptr;
                 }
-                Err(e) => {
+                Err(_) => {
                     return std::ptr::null_mut();
                 }
             },
-            Err(e) => {
+            Err(_) => {
                 return std::ptr::null_mut();
             }
         }

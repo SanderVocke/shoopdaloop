@@ -22,11 +22,11 @@ use crate::smf::{parse_smf, to_smf};
 
 use dunce;
 use std::collections::HashMap;
+use std::env;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::thread;
 use std::time::Duration;
-use std::env;
 
 pub fn register_qml_singleton(module_name: &str, type_name: &str) {
     let mut mdl = String::from(module_name);

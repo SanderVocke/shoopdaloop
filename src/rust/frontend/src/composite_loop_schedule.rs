@@ -88,7 +88,7 @@ impl<T: ReferencesQObject> Debug for CompositeLoopIterationEvents<T> {
             .field("loops_start", &self.loops_start)
             .field("loops_end", &self.loops_end)
             .field("loops_ignored", &self.loops_ignored)
-            .finish();
+            .finish()?;
         Ok(())
     }
 }
@@ -128,7 +128,7 @@ impl<T: ReferencesQObject> Debug for CompositeLoopSchedule<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CompositeLoopSchedule")
             .field("data", &self.data)
-            .finish();
+            .finish()?;
         Ok(())
     }
 }

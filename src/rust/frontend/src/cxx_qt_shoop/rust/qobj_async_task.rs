@@ -9,7 +9,7 @@ shoop_log_unit!("Frontend.AsyncTask");
 
 impl AsyncTask {
     pub fn self_rust_ptr(&self) -> *const AsyncTaskRust {
-        unsafe { self.rust() as *const AsyncTaskRust }
+        self.rust() as *const AsyncTaskRust
     }
 
     pub fn finish_dummy(self: Pin<&mut Self>) {
