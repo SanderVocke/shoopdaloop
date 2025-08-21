@@ -9,7 +9,7 @@ use cxx_qt_lib_shoop::qvariant_helpers::{
     qlist_f32_to_qvariant, qvariant_to_qlist_f32, qvariant_to_qobject_ptr,
     qvariant_to_qvariantlist, qvariantlist_to_qvariant,
 };
-use sndfile::{get_supported_major_format_dict, SndFileIO};
+use sndfile::{default_subtype, get_supported_major_format_dict, SndFileIO};
 shoop_log_unit!("Frontend.FileIO");
 
 use crate::cxx_qt_shoop::qobj_async_task_bridge::ffi::make_raw_async_task_with_parent;
@@ -20,11 +20,11 @@ use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
 
 use dunce;
 use std::collections::{HashMap, HashSet};
-use std::{env, result};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::thread;
 use std::time::Duration;
+use std::{env, result};
 
 pub fn register_qml_singleton(module_name: &str, type_name: &str) {
     let mut mdl = String::from(module_name);
@@ -35,7 +35,24 @@ pub fn register_qml_singleton(module_name: &str, type_name: &str) {
 }
 
 fn get_formats_for(filename: &Path) -> Option<(sndfile::MajorFormat, sndfile::SubtypeFormat)> {
-    todo!();
+    match filename.file_name() {
+        Some(filename) => match filename.to_string_lossy().split(".").last() {
+            Some(extension) => {
+                let extension = extension.to_lowercase();
+                for (major,info) in get_supported_major_format_dict().iter() {
+                    if extension == info.extension.to_lowercase() {
+                        match default_subtype(*major) {
+                            Some(subtype) => { return Some((*major, subtype)); },
+                            None => { return None; }
+                        }
+                    }
+                }
+                None
+            }
+            None => None,
+        },
+        None => None,
+    }
 }
 
 fn save_data_to_soundfile_impl<'a>(
@@ -758,9 +775,9 @@ impl FileIO {
     }
 
     pub fn get_soundfile_info(self: &FileIO, filename: QString) -> QMap_QString_QVariant {
-        match sndfile::OpenOptions::ReadOnly(sndfile::ReadOptions::Auto).from_path(
-            &PathBuf::from(filename.to_string()),
-        ) {
+        match sndfile::OpenOptions::ReadOnly(sndfile::ReadOptions::Auto)
+            .from_path(&PathBuf::from(filename.to_string()))
+        {
             Ok(mut sound_file) => {
                 let mut result: QMap_QString_QVariant = QMap::default();
                 result.insert(
@@ -776,7 +793,7 @@ impl FileIO {
                     QVariant::from(&(sound_file.len().unwrap() as i32)),
                 );
                 result
-            },
+            }
             Err(e) => {
                 error!("could not open sound file for getting info: {e:?}");
                 QMap::default()
@@ -785,9 +802,12 @@ impl FileIO {
     }
 
     pub fn get_soundfile_formats(self: &FileIO) -> QMap_QString_QVariant {
-        let mut result : QMap_QString_QVariant = QMap::default();
+        let mut result: QMap_QString_QVariant = QMap::default();
         get_supported_major_format_dict().iter().for_each(|(_, v)| {
-            result.insert(QString::from(&v.extension), QVariant::from(&QString::from(&v.name)));
+            result.insert(
+                QString::from(&v.extension),
+                QVariant::from(&QString::from(&v.name)),
+            );
         });
         result
     }

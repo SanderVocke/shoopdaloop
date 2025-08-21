@@ -31,6 +31,9 @@
       "name": "boost-stacktrace"
     },
     {
+      "name": "libsndfile"
+    },
+    {
       "name": "catch2"
     },
     {
