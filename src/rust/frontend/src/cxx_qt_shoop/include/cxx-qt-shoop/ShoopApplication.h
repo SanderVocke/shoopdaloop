@@ -1,5 +1,5 @@
 #pragma once
-#include <QtGui/QGuiApplication>
+#include <QtWidgets/QApplication>
 #include <QtQuick/QQuickWindow>
 #include <QtGui/QIcon>
 
@@ -13,7 +13,7 @@ inline char **dummy_argv() {
     return (char**) &app_name;
 }
 
-class ShoopApplication : public QGuiApplication {
+class ShoopApplication : public QApplication {
     public:
-    ShoopApplication(QObject *parent = nullptr) : QGuiApplication(dummy_argc(), dummy_argv()) { (void) parent; }
+    ShoopApplication(QObject *parent = nullptr) : QApplication(dummy_argc(), dummy_argv()) { (void) parent; }
 };

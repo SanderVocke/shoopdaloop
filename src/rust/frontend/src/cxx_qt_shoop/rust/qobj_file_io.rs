@@ -1,6 +1,6 @@
 use backend_bindings::MultichannelAudio;
 use common::logging::macros::*;
-use cxx_qt_lib::QList;
+use cxx_qt_lib::{QList, QMap};
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
 use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
@@ -9,7 +9,7 @@ use cxx_qt_lib_shoop::qvariant_helpers::{
     qlist_f32_to_qvariant, qvariant_to_qlist_f32, qvariant_to_qobject_ptr,
     qvariant_to_qvariantlist, qvariantlist_to_qvariant,
 };
-use sndfile::SndFileIO;
+use sndfile::{get_supported_major_format_dict, SndFileIO};
 shoop_log_unit!("Frontend.FileIO");
 
 use crate::cxx_qt_shoop::qobj_async_task_bridge::ffi::make_raw_async_task_with_parent;
@@ -20,7 +20,7 @@ use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
 
 use dunce;
 use std::collections::{HashMap, HashSet};
-use std::env;
+use std::{env, result};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::thread;
@@ -758,11 +758,38 @@ impl FileIO {
     }
 
     pub fn get_soundfile_info(self: &FileIO, filename: QString) -> QMap_QString_QVariant {
-        todo!();
+        match sndfile::OpenOptions::ReadOnly(sndfile::ReadOptions::Auto).from_path(
+            &PathBuf::from(filename.to_string()),
+        ) {
+            Ok(mut sound_file) => {
+                let mut result: QMap_QString_QVariant = QMap::default();
+                result.insert(
+                    QString::from("channels"),
+                    QVariant::from(&(sound_file.get_channels() as i32)),
+                );
+                result.insert(
+                    QString::from("samplerate"),
+                    QVariant::from(&(sound_file.get_samplerate() as i32)),
+                );
+                result.insert(
+                    QString::from("frames"),
+                    QVariant::from(&(sound_file.len().unwrap() as i32)),
+                );
+                result
+            },
+            Err(e) => {
+                error!("could not open sound file for getting info: {e:?}");
+                QMap::default()
+            }
+        }
     }
 
     pub fn get_soundfile_formats(self: &FileIO) -> QMap_QString_QVariant {
-        todo!();
+        let mut result : QMap_QString_QVariant = QMap::default();
+        get_supported_major_format_dict().iter().for_each(|(_, v)| {
+            result.insert(QString::from(&v.extension), QVariant::from(&QString::from(&v.name)));
+        });
+        result
     }
 }
 
