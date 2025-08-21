@@ -138,7 +138,7 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
         let mut loops_start: QVariantList = QList::default();
         for (loop_start, loop_mode) in self.loops_start.iter() {
             let mut entry: QVariantList = QList::default();
-            entry.append(loop_start.obj.to_qvariant().unwrap());
+            entry.append(loop_start.obj.to_qvariant().unwrap_or(QVariant::default()));
             let mode: QVariant = match loop_mode {
                 Some(mode) => {
                     let mode = mode.clone() as isize as i32;
@@ -155,7 +155,7 @@ impl<T: ReferencesQObject> CompositeLoopIterationEvents<T> {
         let mut loops_end: QVariantList = QList::default();
         let mut loops_ignored: QVariantList = QList::default();
         for loop_obj in self.loops_end.iter() {
-            loops_end.append(loop_obj.obj.to_qvariant().unwrap());
+            loops_end.append(loop_obj.obj.to_qvariant().unwrap_or(QVariant::default()));
         }
         for loop_obj in self.loops_ignored.iter() {
             loops_ignored.append(loop_obj.obj.to_qvariant().unwrap());

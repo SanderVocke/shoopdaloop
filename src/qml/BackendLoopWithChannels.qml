@@ -22,7 +22,7 @@ Loop {
         // To manually trigger
         dummy_trigger_recalc_display_peaks;
 
-        return audio_channels.map(c => c.output_peak)
+        return audio_channels.map(c => c.audio_output_peak)
     }
 
     property bool dummy_trigger_recalc_display_midi_events_triggered: false

@@ -77,6 +77,9 @@ pub mod ffi {
         pub unsafe fn set_backend(self: Pin<&mut CompositeLoopGui>, backend: *mut QObject);
 
         #[qinvokable]
+        pub fn update_backend_schedule(self: Pin<&mut CompositeLoopGui>);
+
+        #[qinvokable]
         pub unsafe fn set_schedule(
             self: Pin<&mut CompositeLoopGui>,
             schedule: QMap_QString_QVariant,

@@ -96,6 +96,9 @@ pub mod ffi {
         pub fn get_midi_data(self: &LoopChannelGui) -> QList_QVariant;
 
         #[qinvokable]
+        pub fn reset_state_tracking(self: Pin<&mut LoopChannelGui>);
+
+        #[qinvokable]
         pub fn backend_state_changed(
             self: Pin<&mut LoopChannelGui>,
             initialized: bool,
@@ -185,6 +188,9 @@ pub mod ffi {
 
         #[qsignal]
         pub unsafe fn backend_set_is_midi(self: Pin<&mut LoopChannelGui>, is_midi: bool);
+
+        #[qsignal]
+        pub unsafe fn backend_reset_state_tracking(self: Pin<&mut LoopChannelGui>);
 
         #[qsignal]
         pub unsafe fn backend_set_ports_to_connect(

@@ -20,6 +20,7 @@ use cxx_qt_lib_shoop::qvariant_helpers::qsharedpointer_qobject_to_qvariant;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qsharedpointer_qobject;
 use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
+use std::collections::HashSet;
 use std::pin::Pin;
 shoop_log_unit!("Frontend.CompositeLoop");
 
@@ -51,21 +52,33 @@ macro_rules! error {
     };
 }
 
+#[derive(Default)]
+struct ReplaceByBackendResult {
+    replaced_schedule: CompositeLoopSchedule<cxx::UniquePtr<QWeakPointer_QObject>>,
+    loops_without_backend: HashSet<*mut QObject>,
+}
+
 fn replace_by_backend_objects(
     schedule: &CompositeLoopSchedule<*mut QObject>,
-) -> Result<CompositeLoopSchedule<cxx::UniquePtr<QWeakPointer_QObject>>, anyhow::Error> {
+) -> Result<ReplaceByBackendResult, anyhow::Error> {
     let get_backend_obj =
         |object: *mut QObject| -> Result<cxx::UniquePtr<QWeakPointer_QObject>, anyhow::Error> {
             unsafe {
                 match invoke::<QObject, QVariant, ()>(
                     &mut *object,
-                    "get_backend_loop_wrapper()",
+                    "get_backend_loop_shared_ptr()",
                     connection_types::DIRECT_CONNECTION,
                     &(),
                 ) {
                     Ok(backend_loop) => {
                         if backend_loop.is_null() {
-                            return Err(anyhow::anyhow!("Backend loop in schedule is null"));
+                            let loop_id =
+                                qobject_property_string(&mut *object, "instance_identifier")
+                                    .unwrap_or(QString::from("unknown"))
+                                    .to_string();
+                            return Err(anyhow::anyhow!(
+                                "Backend loop of loop {loop_id} in schedule is null"
+                            ));
                         }
                         let shared = qvariant_to_qsharedpointer_qobject(&backend_loop)?;
                         let weak = QWeakPointer_QObject::from_strong(&shared);
@@ -78,29 +91,47 @@ fn replace_by_backend_objects(
             }
         };
 
-    let mut rval = CompositeLoopSchedule::default();
+    let mut rval = ReplaceByBackendResult::default();
 
     for (key, events) in schedule.data.iter() {
         let mut new_events = CompositeLoopIterationEvents::default();
         for (object, mode) in events.loops_start.iter() {
-            let backend_loop = get_backend_obj(object.obj.as_qobject_ref() as *mut QObject)?;
-            new_events
-                .loops_start
-                .insert(LoopReference { obj: backend_loop }, *mode);
+            new_events.loops_start.insert(
+                LoopReference {
+                    obj: match get_backend_obj(object.obj.as_qobject_ref() as *mut QObject) {
+                        Ok(backend_loop) => backend_loop,
+                        Err(_) => {
+                            rval.loops_without_backend.insert(object.obj);
+                            cxx::UniquePtr::null()
+                        }
+                    },
+                },
+                *mode,
+            );
         }
         for object in events.loops_end.iter() {
-            let backend_loop = get_backend_obj(object.obj.as_qobject_ref() as *mut QObject)?;
-            new_events
-                .loops_end
-                .insert(LoopReference { obj: backend_loop });
+            new_events.loops_end.insert(LoopReference {
+                obj: match get_backend_obj(object.obj.as_qobject_ref() as *mut QObject) {
+                    Ok(backend_loop) => backend_loop,
+                    Err(_) => {
+                        rval.loops_without_backend.insert(object.obj);
+                        cxx::UniquePtr::null()
+                    }
+                },
+            });
         }
         for object in events.loops_ignored.iter() {
-            let backend_loop = get_backend_obj(object.obj.as_qobject_ref() as *mut QObject)?;
-            new_events
-                .loops_ignored
-                .insert(LoopReference { obj: backend_loop });
+            new_events.loops_ignored.insert(LoopReference {
+                obj: match get_backend_obj(object.obj.as_qobject_ref() as *mut QObject) {
+                    Ok(backend_loop) => backend_loop,
+                    Err(_) => {
+                        rval.loops_without_backend.insert(object.obj);
+                        cxx::UniquePtr::null()
+                    }
+                },
+            });
         }
-        rval.data.insert(*key, new_events);
+        rval.replaced_schedule.data.insert(*key, new_events);
     }
 
     Ok(rval)
@@ -379,15 +410,14 @@ impl CompositeLoopGui {
     }
 
     pub unsafe fn set_sync_source(mut self: Pin<&mut Self>, sync_source: *mut QObject) {
-        debug!(self, "sync source -> {:?}", sync_source);
         let changed = self.as_mut().rust_mut().sync_source != sync_source;
         self.as_mut().rust_mut().sync_source = sync_source;
 
         if changed {
+            debug!(self, "sync source -> {:?}", sync_source);
             self.as_mut().sync_source_changed(sync_source);
+            self.update_backend_sync_source();
         }
-
-        self.update_backend_sync_source();
     }
 
     pub unsafe fn set_backend(mut self: Pin<&mut Self>, backend: *mut QObject) {
@@ -400,23 +430,58 @@ impl CompositeLoopGui {
         }
     }
 
-    pub unsafe fn set_schedule(mut self: Pin<&mut Self>, schedule: QMap_QString_QVariant) {
+    pub fn update_backend_schedule(mut self: Pin<&mut CompositeLoopGui>) {
+        let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
+        match replace_by_backend_objects(&self.schedule) {
+            Ok(replace_result) => {
+                if replace_result.loops_without_backend.len() > 0 {
+                    debug!(
+                        self,
+                        "loops {:?} do not have a backend object yet. Deferring a schedule update.",
+                        replace_result
+                            .loops_without_backend
+                            .iter()
+                            .map(|l| unsafe {
+                                qobject_property_string(&mut **l, "instance_identifier")
+                                    .unwrap_or(QString::from("unknown"))
+                                    .to_string()
+                            })
+                            .collect::<Vec<String>>()
+                    );
+                    for l in replace_result.loops_without_backend.iter() {
+                        unsafe {
+                            connect_or_report(
+                                &**l,
+                                "initializedChanged(bool)",
+                                &*self_qobj,
+                                "update_backend_schedule()",
+                                connection_types::QUEUED_CONNECTION,
+                            );
+                        }
+                    }
+                } else {
+                    debug!(self, "all back-end loops for schedule found.");
+                }
+
+                let backend_schedule = replace_result.replaced_schedule.to_qvariantmap();
+                self.as_mut().backend_set_schedule(backend_schedule);
+            }
+            Err(e) => {
+                error!(self, "Could not get backend schedule: {e:?}");
+            }
+        }
+    }
+
+    pub unsafe fn set_schedule(mut self: Pin<&mut Self>, variant_schedule: QMap_QString_QVariant) {
         let self_mut = self.as_mut();
         let mut rust_mut = self_mut.rust_mut();
-        match CompositeLoopSchedule::from_qvariantmap(&schedule) {
+        match CompositeLoopSchedule::from_qvariantmap(&variant_schedule) {
             Ok(schedule) => {
                 let changed = rust_mut.schedule != schedule;
                 if changed {
-                    match replace_by_backend_objects(&schedule) {
-                        Ok(backend_schedule) => {
-                            let backend_schedule = backend_schedule.to_qvariantmap();
-                            rust_mut.schedule = schedule;
-                            self.backend_set_schedule(backend_schedule);
-                        }
-                        Err(e) => {
-                            error!(self, "Could not get backend schedule: {e:?}");
-                        }
-                    }
+                    rust_mut.schedule = schedule;
+                    self.as_mut().update_backend_schedule();
+                    self.as_mut().schedule_changed(variant_schedule);
                 }
             }
             Err(err) => {

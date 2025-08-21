@@ -146,6 +146,13 @@ impl LoopChannelGui {
                         "load_midi_data(QList<QVariant>)",
                         connection_types::QUEUED_CONNECTION,
                     );
+                    connect_or_report(
+                        self_ref,
+                        "backend_reset_state_tracking()",
+                        backend_ref,
+                        "reset_state_tracking()",
+                        connection_types::QUEUED_CONNECTION,
+                    );
                 }
                 {
                     // Connections: backend object -> GUI
@@ -418,6 +425,12 @@ impl LoopChannelGui {
                     QList::default()
                 }
             }
+        }
+    }
+
+    pub fn reset_state_tracking(self: Pin<&mut LoopChannelGui>) {
+        unsafe {
+            self.backend_reset_state_tracking();
         }
     }
 }

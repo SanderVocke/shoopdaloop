@@ -201,7 +201,7 @@ fn save_channel_midi_data_impl(
             let amount = msgs.len();
             info!("Saved MIDI channel ({amount} messages) to SMF {filename:?}");
         } else {
-            todo!();
+            error!("regular midi saving not implemented");
         }
 
         Ok(())
@@ -237,7 +237,7 @@ fn load_midi_to_channels_impl<'a>(
             messages.append(&mut parsed.recorded_msgs);
             total_n_frames = parsed.n_frames;
         } else {
-            todo!();
+            error!("regular midi loading not implemented");
         }
 
         let mut messages_qlist: QList_QVariant = QList::default();

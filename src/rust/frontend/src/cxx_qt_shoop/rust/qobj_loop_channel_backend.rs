@@ -664,4 +664,10 @@ impl LoopChannelBackend {
     pub fn get_data_length(self: Pin<&mut LoopChannelBackend>) -> i32 {
         self.prev_state.length as i32
     }
+
+    pub fn reset_state_tracking(self: Pin<&mut LoopChannelBackend>) {
+        if let Some(channel) = self.maybe_backend_channel.as_ref() {
+            channel.midi_reset_state_tracking();
+        }
+    }
 }

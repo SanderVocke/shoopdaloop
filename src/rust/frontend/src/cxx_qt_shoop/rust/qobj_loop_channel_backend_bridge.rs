@@ -99,6 +99,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn update_port_connections(self: Pin<&mut LoopChannelBackend>);
 
+        #[qinvokable]
+        pub fn reset_state_tracking(self: Pin<&mut LoopChannelBackend>);
+
         #[qsignal]
         pub unsafe fn state_changed(
             self: Pin<&mut LoopChannelBackend>,
