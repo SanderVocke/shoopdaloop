@@ -60,13 +60,13 @@ class FetchChannelData(ShoopQQuickItem):
     @channel.setter
     def channel(self, l):
         if l != self._channel:
-            if self._channel and self._channel.isValid():
+            if self._channel:
                 self._channel.disconnect(self)
-            if self._loop and self._loop.isValid():
+            if self._loop:
                 self._loop.disconnect(self)
                 self._loop = None
             self._channel = l
-            if self._channel and self._channel.isValid():
+            if self._channel:
                 self._loop = self._channel.loop
                 self._channel.loopChanged.connect(self.set_loop)
                 self._channel.dataDirtyChanged.connect(self.set_dirty)

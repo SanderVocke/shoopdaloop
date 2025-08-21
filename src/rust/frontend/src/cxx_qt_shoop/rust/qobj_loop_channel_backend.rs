@@ -180,6 +180,7 @@ impl LoopChannelBackend {
 
             if initialize_condition {
                 unsafe {
+                    debug!(self, "Initializing back-end");
                     let channel_loop =
                         LoopBackend::from_qobject_ref_ptr(channel_loop.as_ref().unwrap().data()?)?;
                     let channel_loop = channel_loop
