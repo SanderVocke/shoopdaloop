@@ -214,7 +214,7 @@ Item {
         var observer = create_task_observer()
         var session_filename = tempdir + '/session.json'
 
-        observer.onDoneChanged.connect(() => {
+        observer.finished.connect(() => {
             try {
                 // TODO make this step asynchronous
                 if (!ShoopFileIO.make_tarfile(filename, tempdir)) {
@@ -229,9 +229,12 @@ Item {
 
         // TODO make this step asynchronous
         var descriptor = actual_session_descriptor(true, tempdir, observer)
+
         if(!ShoopFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
             throw new Error(`Failed to write session file ${session_filename}`)
         }
+
+        observer.start()
     }
 
     function reload() {
@@ -314,19 +317,21 @@ Item {
             registries.state_registry.load_action_started()
 
             let finish_fn = () => {
+                var observer = create_task_observer()
                 root.logger.debug("Queueing load tasks")
-                queue_load_tasks(tempdir, incoming_sample_rate, our_sample_rate, tasks)
 
-                tasks.then(() => {
+                observer.finished.connect(() => {
                     try {
                         ShoopFileIO.delete_recursive(tempdir)
                     } finally {
                         root.logger.info("Session loaded from: " + filename)
                         registries.state_registry.load_action_finished()
-                        tasks.parent = null
-                        tasks.deleteLater()
                     }
                 })
+
+                queue_load_tasks(tempdir, incoming_sample_rate, our_sample_rate, observer)
+
+                observer.start()
             }
 
             function connectOnce(sig, slot) {

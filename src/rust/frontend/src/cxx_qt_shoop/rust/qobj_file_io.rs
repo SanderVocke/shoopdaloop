@@ -839,21 +839,24 @@ impl FileIO {
                         &PathBuf::from(filename.to_string()),
                         samplerate as usize,
                         backend_channels.iter(),
-                        match maybe_set_n_preplay_samples.is_valid() {
-                            true => {
+                        match maybe_set_n_preplay_samples.is_null() {
+                            false => {
                                 Some(QVariant::value::<i32>(&maybe_set_n_preplay_samples).ok_or(
-                                    anyhow::anyhow!("n_preplay_samples not convertible to i32"),
+                                    anyhow::anyhow!(
+                                        "n_preplay_samples not convertible to i32, type is {}",
+                                        qvariant_type_name(&maybe_set_n_preplay_samples)?
+                                    ),
                                 )? as usize)
                             }
-                            false => None,
+                            true => None,
                         },
-                        match maybe_set_start_offset.is_valid() {
-                            true => Some(
+                        match !maybe_set_start_offset.is_null() {
+                            false => Some(
                                 QVariant::value::<i32>(&maybe_set_start_offset)
                                     .ok_or(anyhow::anyhow!("start offset not convertible to i32"))?
                                     as isize,
                             ),
-                            false => None,
+                            true => None,
                         },
                         maybe_loop,
                     );
@@ -887,21 +890,22 @@ impl FileIO {
                 &PathBuf::from(filename.to_string()),
                 samplerate as usize,
                 backend_channels.iter(),
-                match maybe_set_n_preplay_samples.is_valid() {
-                    true => Some(
-                        QVariant::value::<i32>(&maybe_set_n_preplay_samples)
-                            .ok_or(anyhow::anyhow!("n_preplay_samples not convertible to i32"))?
-                            as usize,
-                    ),
-                    false => None,
+                match maybe_set_n_preplay_samples.is_null() {
+                    false => Some(QVariant::value::<i32>(&maybe_set_n_preplay_samples).ok_or(
+                        anyhow::anyhow!(
+                            "n_preplay_samples not convertible to i32, type is {}",
+                            qvariant_type_name(&maybe_set_n_preplay_samples)?
+                        ),
+                    )? as usize),
+                    true => None,
                 },
-                match maybe_set_start_offset.is_valid() {
-                    true => Some(
+                match maybe_set_start_offset.is_null() {
+                    false => Some(
                         QVariant::value::<i32>(&maybe_set_start_offset)
                             .ok_or(anyhow::anyhow!("start offset not convertible to i32"))?
                             as isize,
                     ),
-                    false => None,
+                    true => None,
                 },
                 maybe_loop,
             );

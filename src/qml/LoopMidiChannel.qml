@@ -40,6 +40,7 @@ LoopChannelGui {
             var filename = obj_id + '.smf'
             var full_filename = data_files_dir + '/' + filename;
             var task = ShoopFileIO.save_channel_to_midi_async(full_filename, root.backend.get_sample_rate(), root)
+            task.then_delete()
             add_tasks_to.add_task(task)
             rval['data_file'] = filename
         }
@@ -64,12 +65,19 @@ LoopChannelGui {
         return Object.keys(descriptor).includes("data_file")
     }
 
+    function get_recorded_midi_msgs() {
+        return get_midi_data().filter((msg) => msg.time >= 0)
+    }
+
     property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
     onInitial_modeChanged: push_mode(initial_mode)
     ports_to_connect: lookup_connected_ports.objects
     property var recording_fx_chain_state_id: ('recording_fx_chain_state_id' in descriptor) ? descriptor.recording_fx_chain_state_id : null
     recording_started_at: 'recording_started_at' in descriptor ? descriptor.recording_started_at : null
     is_midi: true
+
+    function load_data(data) { load_midi_data(data) }
+    function get_data() { return get_midi_data() }
 
     RegistryLookups {
         id: lookup_connected_ports

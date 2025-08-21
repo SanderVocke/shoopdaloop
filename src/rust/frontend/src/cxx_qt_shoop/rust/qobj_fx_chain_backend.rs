@@ -51,9 +51,13 @@ impl FXChainBackend {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let chain = self.backend_chain_wrapper.as_ref().unwrap();
             let prev_state = self.prev_state.clone();
-            let new_state = chain
-                .get_state()
-                .ok_or(anyhow::anyhow!("Could not get FX chain state"))?;
+            let new_state = match chain.get_state() {
+                Some(state) => state,
+                None => {
+                    debug!(self, "Skipping update: could not get FX chain state");
+                    prev_state.clone()
+                }
+            };
 
             {
                 let mut rust_mut = self.as_mut().rust_mut();

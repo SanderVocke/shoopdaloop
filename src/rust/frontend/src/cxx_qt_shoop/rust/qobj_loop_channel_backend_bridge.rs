@@ -96,6 +96,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn get_data_length(self: Pin<&mut LoopChannelBackend>) -> i32;
 
+        #[qinvokable]
+        pub fn update_port_connections(self: Pin<&mut LoopChannelBackend>);
+
         #[qsignal]
         pub unsafe fn state_changed(
             self: Pin<&mut LoopChannelBackend>,

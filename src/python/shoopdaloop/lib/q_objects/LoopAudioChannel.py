@@ -81,7 +81,7 @@ class LoopAudioChannel(LoopChannel):
         return self._backend_obj.get_data()
 
     @ShoopSlot(result=list, thread_protection=ThreadProtectionType.AnyThread)
-    def get_data_list(self):
+    def get_data(self):
         raw = self.get_data_naive()
         return [float(x) for x in raw.data]
 

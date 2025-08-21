@@ -53,7 +53,13 @@ impl PortBackend {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let port = self.maybe_backend_port.as_ref().unwrap();
             let prev_state = self.prev_state.clone();
-            let new_state = port.get_state()?;
+            let new_state = match port.get_state() {
+                Ok(state) => state,
+                Err(e) => {
+                    debug!(self, "Skipping update: {e}");
+                    prev_state.clone()
+                }
+            };
 
             {
                 let mut rust_mut = self.as_mut().rust_mut();

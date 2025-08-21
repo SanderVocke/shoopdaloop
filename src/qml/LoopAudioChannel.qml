@@ -41,6 +41,7 @@ LoopChannelGui {
             var filename = obj_id + '.flac'
             var full_filename = data_files_dir + '/' + filename;
             var task = ShoopFileIO.save_channels_to_soundfile_async(full_filename, root.backend.get_sample_rate(), [root])
+            task.then_delete()
             add_tasks_to.add_task(task)
             rval['data_file'] = filename
         }
@@ -70,6 +71,9 @@ LoopChannelGui {
     function push_gain(gain) {
         push_audio_gain(gain)
     }
+
+    function load_data(data) { load_audio_data(data) }
+    function get_data() { return get_audio_data() }
 
     readonly property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
     readonly property real initial_gain : ('gain' in descriptor) ? descriptor.gain : 1.0

@@ -65,7 +65,7 @@ pub fn qvariant_to_python<'py>(
     py: Python<'py>,
     value: &cxx_qt_lib::QVariant,
 ) -> PyResult<Bound<'py, PyAny>> {
-    if !value.is_valid() {
+    if value.is_null() {
         return Ok(py.None().bind(py).to_owned());
     }
 

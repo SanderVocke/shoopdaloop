@@ -144,8 +144,8 @@ ShoopTestFile {
                     let out1 = output_port_1.dummy_dequeue_audio_data(4)
                     let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let chans = lut.get_audio_output_channels()
-                    let loop1 = chans[0].get_data_list()
-                    let loop2 = chans[1].get_data_list()
+                    let loop1 = chans[0].get_data()
+                    let loop2 = chans[1].get_data()
 
                     verify_eq(out1, [0, 0, 0, 0])
                     verify_eq(out2, [0, 0, 0, 0])
@@ -216,8 +216,8 @@ ShoopTestFile {
                     let out1 = output_port_1.dummy_dequeue_audio_data(4)
                     let out2 = output_port_2.dummy_dequeue_audio_data(4)
                     let chans = lut.get_audio_output_channels()
-                    let loop1 = chans[0].get_data_list()
-                    let loop2 = chans[1].get_data_list()
+                    let loop1 = chans[0].get_data()
+                    let loop2 = chans[1].get_data()
 
                     verify_eq(out1, [1, 2, 3, 4])
                     verify_eq(out2, [4, 3, 2, 1])
@@ -291,8 +291,8 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_audio_data(4)
                     let out2 = output_port_2.dummy_dequeue_audio_data(4)
-                    let loop1 = chans[0].get_data_list()
-                    let loop2 = chans[1].get_data_list()
+                    let loop1 = chans[0].get_data()
+                    let loop2 = chans[1].get_data()
 
                     verify_eq(out1, [5, 6, 7, 8])
                     verify_eq(out2, [8, 7, 6, 5])
@@ -367,8 +367,8 @@ ShoopTestFile {
 
                     let out1 = output_port_1.dummy_dequeue_audio_data(4)
                     let out2 = output_port_2.dummy_dequeue_audio_data(4)
-                    let loop1 = chans[0].get_data_list()
-                    let loop2 = chans[1].get_data_list()
+                    let loop1 = chans[0].get_data()
+                    let loop2 = chans[1].get_data()
 
                     verify_eq(out1, [6, 8, 10, 12])
                     verify_eq(out2, [12, 10, 8, 6])

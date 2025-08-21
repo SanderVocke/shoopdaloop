@@ -51,7 +51,13 @@ impl LoopChannelBackend {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let channel = self.maybe_backend_channel.as_ref().unwrap();
             let prev_state = self.prev_state.clone();
-            let new_state = channel.get_state()?;
+            let new_state = match channel.get_state() {
+                Ok(state) => state,
+                Err(e) => {
+                    debug!(self, "Skipping update: {e}");
+                    prev_state.clone()
+                }
+            };
 
             {
                 let mut rust_mut = self.as_mut().rust_mut();
@@ -320,6 +326,10 @@ impl LoopChannelBackend {
             },
             None => std::ptr::null_mut(),
         }
+    }
+
+    pub fn update_port_connections(self: Pin<&mut LoopChannelBackend>) {
+        self.update_port_connections_impl();
     }
 
     pub fn update_port_connections_impl(mut self: Pin<&mut LoopChannelBackend>) {
@@ -603,9 +613,10 @@ impl LoopChannelBackend {
         if self.maybe_backend_channel.is_none() {
             error!(self, "could not load MIDI data: not yet initialized");
         }
-        let mut conversion_error : Option<anyhow::Error> = None;
-        let vec: Vec<MidiEvent> = data.iter().map(|v| {
-            match MidiEvent::from_qvariant(&v) {
+        let mut conversion_error: Option<anyhow::Error> = None;
+        let vec: Vec<MidiEvent> = data
+            .iter()
+            .map(|v| match MidiEvent::from_qvariant(&v) {
                 Ok(event) => event,
                 Err(e) => {
                     conversion_error = Some(e);
@@ -614,8 +625,8 @@ impl LoopChannelBackend {
                         data: Vec::default(),
                     }
                 }
-            }
-        }).collect();
+            })
+            .collect();
         self.maybe_backend_channel
             .as_ref()
             .unwrap()
@@ -626,8 +637,12 @@ impl LoopChannelBackend {
         if self.maybe_backend_channel.is_none() {
             error!(self, "could not get audio data: not yet initialized");
         }
-        let mut rval : QList_f32 = QList::default();
-        let vec = self.maybe_backend_channel.as_ref().unwrap().audio_get_data();
+        let mut rval: QList_f32 = QList::default();
+        let vec = self
+            .maybe_backend_channel
+            .as_ref()
+            .unwrap()
+            .audio_get_data();
         rval.reserve(vec.len() as isize);
         vec.iter().for_each(|v| rval.append(*v));
         debug!(self, "extracted {} frames of audio data", rval.len());
@@ -638,7 +653,7 @@ impl LoopChannelBackend {
         if self.maybe_backend_channel.is_none() {
             error!(self, "could not get MIDI data: not yet initialized");
         }
-        let mut rval : QList_QVariant = QList::default();
+        let mut rval: QList_QVariant = QList::default();
         let vec = self.maybe_backend_channel.as_ref().unwrap().midi_get_data();
         rval.reserve(vec.len() as isize);
         vec.iter().for_each(|v| rval.append(v.to_qvariant()));

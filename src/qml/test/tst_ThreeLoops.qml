@@ -892,7 +892,7 @@ ShoopTestFile {
                     verify_true(first_loop().length > 0)
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
-                    let data = first_loop_audio_chan().get_data_list().slice(-500)
+                    let data = first_loop_audio_chan().get_data().slice(-500)
                     verify_markers_at(data, [data.length - 1])
                 },
 
@@ -915,7 +915,7 @@ ShoopTestFile {
                     verify_true(first_loop().length > 0)
                     verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
-                    let data = first_loop_audio_chan().get_data_list().slice(-500)
+                    let data = first_loop_audio_chan().get_data().slice(-500)
                     verify_markers_at(data, [data.length - 1])
                 },
 
@@ -993,7 +993,7 @@ ShoopTestFile {
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().length, 200)
                     let start_offset = first_loop_audio_chan().start_offset
-                    let data = first_loop_audio_chan().get_data_list().slice(start_offset)
+                    let data = first_loop_audio_chan().get_data().slice(start_offset)
                     verify_markers_at(data, [25, 175])
                 },
 
@@ -1044,7 +1044,7 @@ ShoopTestFile {
                     verify_eq(first_loop().length, 200)
                     verify_eq(first_loop().position, 50)
                     let start_offset = first_loop_audio_chan().start_offset
-                    let data = first_loop_audio_chan().get_data_list().slice(start_offset)
+                    let data = first_loop_audio_chan().get_data().slice(start_offset)
                     verify_markers_at(data, [25, 110])
                 },
 
@@ -1094,7 +1094,7 @@ ShoopTestFile {
                     verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
                     verify_eq(first_loop().length, 150)
                     let start_offset = first_loop_audio_chan().start_offset
-                    let data = first_loop_audio_chan().get_data_list().slice(start_offset)
+                    let data = first_loop_audio_chan().get_data().slice(start_offset)
                     verify_markers_at(data, [1, 110])
 
                     // Perform the transition
@@ -1148,7 +1148,7 @@ ShoopTestFile {
                     verify_eq(first_loop().length, 300)
                     verify_eq(first_loop().position, 150)
                     let start_offset = first_loop_audio_chan().start_offset
-                    let data = first_loop_audio_chan().get_data_list().slice(start_offset)
+                    let data = first_loop_audio_chan().get_data().slice(start_offset)
                     verify_markers_at(data, [1, 150, 299])
                 },
 

@@ -89,7 +89,7 @@ impl AsyncTask {
 
             if self.delete_when_done {
                 delete_self();
-            } else if self.maybe_qml_callable.is_valid() {
+            } else if !self.maybe_qml_callable.is_null() {
                 if let Err(e) = qvariant_call_as_callable_qjsvalue(&self.maybe_qml_callable) {
                     error!("Could not call callable: {e}");
                 }
