@@ -132,6 +132,14 @@ mod ffi {
             connection_type: u32,
         ) -> Result<QList_QVariant>;
 
+        #[rust_name = "invoke_noreturn_qlistqvariant"]
+        unsafe fn invoke_one_arg(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+            arg1: QList_QVariant,
+        ) -> Result<()>;
+
         #[rust_name = "invoke_qlistqvariant_qstring_i32_i32"]
         unsafe fn invoke_three_args_with_return(
             obj: *mut QObject,
@@ -322,7 +330,6 @@ impl Invokable<(), ffi::QList_f32> for ffi::QObject {
     }
 }
 
-
 impl Invokable<(), (ffi::QList_QVariant, i32, i32, i32)> for ffi::QObject {
     fn invoke_fn_qobj(
         &mut self,
@@ -412,6 +419,24 @@ impl Invokable<QList<QVariant>, ()> for ffi::QObject {
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
+            )
+        }
+    }
+}
+
+impl Invokable<(), ffi::QList_QVariant> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: &str,
+        connection_type: u32,
+        arg: &ffi::QList_QVariant,
+    ) -> Result<(), Exception> {
+        unsafe {
+            ffi::invoke_noreturn_qlistqvariant(
+                self as *mut ffi::QObject,
+                method.to_string(),
+                connection_type,
+                arg.clone(),
             )
         }
     }

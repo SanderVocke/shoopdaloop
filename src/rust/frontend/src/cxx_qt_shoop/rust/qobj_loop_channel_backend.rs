@@ -1,14 +1,16 @@
 use crate::any_backend_port::AnyBackendPort;
 use crate::cxx_qt_shoop::qobj_loop_channel_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_port_backend_bridge::PortBackend;
+use crate::midi_event_helpers::MidiEventToQVariant;
 use crate::{
     any_backend_channel::AnyBackendChannel, cxx_qt_shoop::qobj_loop_backend_bridge::LoopBackend,
 };
-use backend_bindings::{ChannelMode, PortDataType};
+use backend_bindings::{ChannelMode, MidiEvent, PortDataType};
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
 use cxx_qt::CxxQtType;
+use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
@@ -17,10 +19,7 @@ use cxx_qt_lib_shoop::{
     qsharedpointer_qobject::QSharedPointer_QObject,
     qvariant_helpers::qvariant_to_qsharedpointer_qobject,
 };
-use std::{
-    collections::HashSet,
-    pin::Pin,
-};
+use std::{collections::HashSet, pin::Pin};
 shoop_log_unit!("Frontend.LoopChannel");
 
 macro_rules! trace {
@@ -601,6 +600,47 @@ impl LoopChannelBackend {
     }
 
     pub fn load_midi_data(self: Pin<&mut LoopChannelBackend>, data: QList_QVariant) {
-        todo!();
+        if self.maybe_backend_channel.is_none() {
+            error!(self, "could not load MIDI data: not yet initialized");
+        }
+        let mut conversion_error : Option<anyhow::Error> = None;
+        let vec: Vec<MidiEvent> = data.iter().map(|v| {
+            match MidiEvent::from_qvariant(&v) {
+                Ok(event) => event,
+                Err(e) => {
+                    conversion_error = Some(e);
+                    MidiEvent {
+                        time: 0,
+                        data: Vec::default(),
+                    }
+                }
+            }
+        }).collect();
+        self.maybe_backend_channel
+            .as_ref()
+            .unwrap()
+            .midi_load_data(&vec);
+    }
+
+    pub fn get_audio_data(self: Pin<&mut LoopChannelBackend>) -> QList_f32 {
+        if self.maybe_backend_channel.is_none() {
+            error!(self, "could not get audio data: not yet initialized");
+        }
+        let mut rval : QList_f32 = QList::default();
+        let vec = self.maybe_backend_channel.as_ref().unwrap().audio_get_data();
+        rval.reserve(vec.len() as isize);
+        vec.iter().for_each(|v| rval.append(*v));
+        rval
+    }
+
+    pub fn get_midi_data(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant {
+        if self.maybe_backend_channel.is_none() {
+            error!(self, "could not get MIDI data: not yet initialized");
+        }
+        let mut rval : QList_QVariant = QList::default();
+        let vec = self.maybe_backend_channel.as_ref().unwrap().midi_get_data();
+        rval.reserve(vec.len() as isize);
+        vec.iter().for_each(|v| rval.append(v.to_qvariant()));
+        rval
     }
 }

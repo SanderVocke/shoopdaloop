@@ -46,3 +46,6 @@ pub mod midi_event_helpers;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod references_qobject;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod smf;

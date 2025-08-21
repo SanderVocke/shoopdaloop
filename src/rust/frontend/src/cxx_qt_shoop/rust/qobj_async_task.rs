@@ -12,6 +12,12 @@ impl AsyncTask {
         unsafe { self.rust() as *const AsyncTaskRust }
     }
 
+    pub fn finish_dummy(self: Pin<&mut Self>) {
+        let self_ptr = self.self_rust_ptr();
+        debug!("{self_ptr:?}: finish dummy");
+        self.notify_done();
+    }
+
     // To be called by users on the Rust side. Will execute the given closure
     // on a dedicated temporary thread, then notify the async task for follow-up.
     pub fn exec_concurrent_rust_then_finish<F>(mut self: Pin<&mut Self>, concurrent_fn: F)

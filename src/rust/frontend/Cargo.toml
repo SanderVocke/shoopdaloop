@@ -31,8 +31,8 @@ once_cell = { workspace = true }
 serde_json = { workspace = true }
 quick-xml = { workspace = true, features = ["serialize"] }
 serde = { workspace = true }
-sndfile = { workspace = true, features = ["ndarray_features"] }
-ndarray = { workspace = true }
+sndfile = { workspace = true }
+json = { workspace = true }
 
 [build-dependencies]
 macros = { path = "../macros" }

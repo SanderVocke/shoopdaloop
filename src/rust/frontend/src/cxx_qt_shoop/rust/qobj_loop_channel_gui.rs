@@ -376,11 +376,49 @@ impl LoopChannelGui {
     }
 
     pub fn get_audio_data(self: &LoopChannelGui) -> QList_f32 {
-        todo!();
+        unsafe {
+            let backend_ptr = self
+                .backend_channel_wrapper
+                .as_ref()
+                .unwrap()
+                .data()
+                .unwrap();
+            match invokable::invoke::<_, QList_f32, _>(
+                &mut *backend_ptr,
+                "get_audio_data()",
+                connection_types::BLOCKING_QUEUED_CONNECTION,
+                &(),
+            ) {
+                Ok(data) => data,
+                Err(e) => {
+                    error!(self, "Could not get audio data: {e}");
+                    QList::default()
+                }
+            }
+        }
     }
 
     pub fn get_midi_data(self: &LoopChannelGui) -> QList_QVariant {
-        todo!();
+        unsafe {
+            let backend_ptr = self
+                .backend_channel_wrapper
+                .as_ref()
+                .unwrap()
+                .data()
+                .unwrap();
+            match invokable::invoke::<_, QList_QVariant, _>(
+                &mut *backend_ptr,
+                "get_midi_data()",
+                connection_types::BLOCKING_QUEUED_CONNECTION,
+                &(),
+            ) {
+                Ok(data) => data,
+                Err(e) => {
+                    error!(self, "Could not get midi data: {e}");
+                    QList::default()
+                }
+            }
+        }
     }
 }
 

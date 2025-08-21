@@ -16,6 +16,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn notify_done(self: Pin<&mut AsyncTask>);
 
+        #[qinvokable]
+        pub fn finish_dummy(self: Pin<&mut AsyncTask>);
+
         // After execution is finished, execute the given callable,
         // then self-delete.
         // Meant to be called from QML (QJSValue).

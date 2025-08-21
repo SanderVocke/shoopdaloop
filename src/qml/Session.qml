@@ -207,7 +207,7 @@ Item {
             throw new Error(`Failed to write session file ${session_filename}`)
         }
 
-        tasks.when_finished(() => {
+        tasks.then(() => {
             try {
                 // TODO make this step asynchronous
                 if (!ShoopFileIO.make_tarfile(filename, tempdir)) {
@@ -216,9 +216,7 @@ Item {
                 root.logger.info("Session written to: " + filename)
             } finally {
                 registries.state_registry.save_action_finished()
-                //ShoopFileIO.delete_recursive(tempdir)
-                tasks.parent = null
-                tasks.destroy(30)
+                ShoopFileIO.delete_recursive(tempdir)
             }
         })
     }

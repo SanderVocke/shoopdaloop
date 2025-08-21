@@ -1,9 +1,9 @@
-use backend_bindings::MultichannelAudio;
+use backend_bindings::{MidiEvent, MultichannelAudio};
 use common::logging::macros::*;
 use cxx_qt_lib::{QList, QMap};
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
-use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
+use cxx_qt_lib_shoop::qobject::{qobject_property_int, AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
     qlist_f32_to_qvariant, qvariant_to_qlist_f32, qvariant_to_qobject_ptr,
@@ -17,6 +17,8 @@ use crate::cxx_qt_shoop::qobj_file_io_bridge::ffi::*;
 pub use crate::cxx_qt_shoop::qobj_file_io_bridge::FileIORust;
 use crate::cxx_qt_shoop::qobj_loop_channel_gui_bridge::LoopChannelGui;
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
+use crate::midi_event_helpers::MidiEventToQVariant;
+use crate::smf::{parse_smf, to_smf};
 
 use dunce;
 use std::collections::{HashMap, HashSet};
@@ -35,22 +37,23 @@ pub fn register_qml_singleton(module_name: &str, type_name: &str) {
 }
 
 fn get_formats_for(filename: &Path) -> Option<(sndfile::MajorFormat, sndfile::SubtypeFormat)> {
-    match filename.file_name() {
-        Some(filename) => match filename.to_string_lossy().split(".").last() {
-            Some(extension) => {
-                let extension = extension.to_lowercase();
-                for (major,info) in get_supported_major_format_dict().iter() {
-                    if extension == info.extension.to_lowercase() {
-                        match default_subtype(*major) {
-                            Some(subtype) => { return Some((*major, subtype)); },
-                            None => { return None; }
+    match filename.extension() {
+        Some(extension) => {
+            let extension = extension.to_string_lossy().to_lowercase();
+            for (major, info) in get_supported_major_format_dict().iter() {
+                if extension == info.extension.to_lowercase() {
+                    match default_subtype(*major) {
+                        Some(subtype) => {
+                            return Some((*major, subtype));
+                        }
+                        None => {
+                            return None;
                         }
                     }
                 }
-                None
             }
-            None => None,
-        },
+            None
+        }
         None => None,
     }
 }
@@ -134,6 +137,144 @@ pub fn save_qlist_data_to_soundfile_impl(filename: QString, samplerate: i32, dat
         Ok(())
     }() {
         error!("Failed to save audio data: {e}");
+    }
+}
+
+fn save_channel_midi_data_impl(
+    filename: &Path,
+    samplerate: usize,
+    channel: &cxx::UniquePtr<QSharedPointer_QObject>,
+) {
+    if let Err(e) = || -> Result<(), anyhow::Error> {
+        let chan_qobj = channel.as_ref().unwrap().data().unwrap();
+        let mut conversion_error: Option<anyhow::Error> = None;
+        let msgs: Vec<MidiEvent> = unsafe {
+            invoke::<_, QList_QVariant, _>(
+                &mut *chan_qobj,
+                "get_midi_data()",
+                connection_types::BLOCKING_QUEUED_CONNECTION,
+                &(),
+            )?
+            .iter()
+            .map(|variant| match MidiEvent::from_qvariant(variant) {
+                Ok(msg) => msg,
+                Err(e) => {
+                    conversion_error = Some(e);
+                    MidiEvent {
+                        data: Vec::default(),
+                        time: 0,
+                    }
+                }
+            })
+            .collect()
+        };
+        if let Some(e) = conversion_error {
+            return Err(anyhow::anyhow!(
+                "Error converting MIDI from QVariant, aborting save. Last error: {e}"
+            ));
+        }
+        let total_length = unsafe { qobject_property_int(&*chan_qobj, "data_length")? };
+
+        let extension = filename
+            .extension()
+            .ok_or(anyhow::anyhow!("Could not get file extension"))?
+            .to_string_lossy()
+            .to_lowercase();
+        if extension == "smf" {
+            let smf = to_smf(msgs.iter(), total_length as usize, samplerate);
+            std::fs::write(filename, &smf)?;
+            info!("Saved MIDI channel to SMF {filename:?}");
+        } else {
+            todo!();
+        }
+
+        Ok(())
+    }() {
+        error!("Unable to save {filename:?}: {e}");
+    }
+}
+
+fn load_midi_to_channels_impl<'a>(
+    filename: &Path,
+    target_sample_rate: usize,
+    channels: impl Iterator<Item = &'a cxx::UniquePtr<QSharedPointer_QObject>>,
+    maybe_set_n_preplay_samples: Option<usize>,
+    maybe_set_start_offset: Option<isize>,
+    maybe_update_loop_to_data_length: Option<cxx::UniquePtr<QSharedPointer_QObject>>,
+) {
+    if let Err(e) = || -> Result<(), anyhow::Error> {
+        let extension = filename.extension().ok_or(anyhow::anyhow!(
+            "Could not determine filename extension for {filename:?}"
+        ))?;
+        let mut messages: Vec<MidiEvent> = Vec::default();
+        let mut total_n_frames: usize = 0;
+
+        if extension.to_string_lossy().to_lowercase() == "smf" {
+            let smf_str = std::fs::read_to_string(filename)?;
+            let mut parsed = parse_smf(&smf_str, target_sample_rate)?;
+            for data in parsed.state_msgs {
+                messages.push(MidiEvent {
+                    time: -1,
+                    data: data,
+                });
+            }
+            messages.append(&mut parsed.recorded_msgs);
+            total_n_frames = parsed.n_frames;
+        } else {
+            todo!();
+        }
+
+        let mut messages_qlist: QList_QVariant = QList::default();
+        for msg in messages.iter() {
+            let variant = msg.to_qvariant();
+            messages_qlist.append(variant);
+        }
+
+        for channel in channels {
+            unsafe {
+                let channel = channel.data()?;
+                invoke::<_, (), _>(
+                    &mut *channel,
+                    "load_midi_data(QList<QVariant>)",
+                    connection_types::BLOCKING_QUEUED_CONNECTION,
+                    &messages_qlist,
+                )?;
+                if let Some(start_offset) = maybe_set_start_offset {
+                    invoke::<_, (), _>(
+                        &mut *channel,
+                        "push_start_offset(::std::int32_t)",
+                        connection_types::QUEUED_CONNECTION,
+                        &(start_offset as i32),
+                    )?;
+                }
+                if let Some(n_preplay) = maybe_set_n_preplay_samples {
+                    invoke::<_, (), _>(
+                        &mut *channel,
+                        "push_n_preplay_samples(::std::int32_t)",
+                        connection_types::QUEUED_CONNECTION,
+                        &(n_preplay as i32),
+                    )?;
+                }
+            }
+        }
+
+        if let Some(loop_obj) = maybe_update_loop_to_data_length {
+            let loop_qobj = loop_obj.as_ref().unwrap().data()?;
+            unsafe {
+                invoke::<_, (), _>(
+                    &mut *loop_qobj,
+                    "set_length(::std::int32_t)",
+                    connection_types::QUEUED_CONNECTION,
+                    &(total_n_frames as i32),
+                )?;
+            }
+        }
+
+        info!("Loaded MIDI from {filename:?} into channel(s)");
+
+        Ok(())
+    }() {
+        error!("Failed to load MIDI data into channels: {e}");
     }
 }
 
@@ -600,12 +741,37 @@ impl FileIO {
     }
 
     pub fn save_channel_to_midi_async(
-        self: Pin<&mut FileIO>,
+        mut self: Pin<&mut FileIO>,
         filename: QString,
         samplerate: i32,
         channel: *mut QObject,
     ) -> *mut QObject {
-        todo!();
+        let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
+        let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
+        let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
+
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let channel_gui = unsafe { LoopChannelGui::from_qobject_mut_ptr(channel)? };
+            let channel_backend = channel_gui
+                .backend_channel_wrapper
+                .as_ref()
+                .unwrap()
+                .copy()
+                .unwrap();
+            pin_async_task.as_mut().exec_concurrent_rust_then_finish(
+                move || -> Result<(), anyhow::Error> {
+                    let filename = PathBuf::from(filename.to_string());
+                    save_channel_midi_data_impl(&filename, samplerate as usize, &channel_backend);
+                    Ok(())
+                },
+            );
+            Ok(())
+        }() {
+            error!("Failed to save channel MIDI: {e}");
+            pin_async_task.as_mut().finish_dummy();
+        }
+
+        return unsafe { pin_async_task.pin_mut_qobject_ptr() };
     }
 
     pub fn save_channel_to_midi(
@@ -614,29 +780,116 @@ impl FileIO {
         samplerate: i32,
         channel: *mut QObject,
     ) {
-        todo!();
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let channel_gui = unsafe { LoopChannelGui::from_qobject_mut_ptr(channel)? };
+            let channel_backend = channel_gui
+                .backend_channel_wrapper
+                .as_ref()
+                .unwrap()
+                .copy()
+                .unwrap();
+            let filename = PathBuf::from(filename.to_string());
+            save_channel_midi_data_impl(&filename, samplerate as usize, &channel_backend);
+            Ok(())
+        }() {
+            error!("Failed to save channel MIDI: {e}");
+        }
     }
 
     pub fn load_midi_to_channels_async(
-        self: Pin<&mut FileIO>,
+        mut self: Pin<&mut FileIO>,
+        filename: QString,
         samplerate: i32,
         channels: QList_QVariant,
         maybe_set_n_preplay_samples: QVariant,
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
     ) -> *mut QObject {
-        todo!();
+        let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
+        let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
+        let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
+
+        let backend_channels: Vec<cxx::UniquePtr<QSharedPointer_QObject>> =
+            qlist_qvariant_channels_to_backend(&channels);
+        let maybe_loop = qvariant_loop_gui_to_loop_backend(&maybe_update_loop_to_data_length);
+
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            pin_async_task.as_mut().exec_concurrent_rust_then_finish(
+                move || -> Result<(), anyhow::Error> {
+                    load_midi_to_channels_impl(
+                        &PathBuf::from(filename.to_string()),
+                        samplerate as usize,
+                        backend_channels.iter(),
+                        match maybe_set_n_preplay_samples.is_valid() {
+                            true => {
+                                Some(QVariant::value::<i32>(&maybe_set_n_preplay_samples).ok_or(
+                                    anyhow::anyhow!("n_preplay_samples not convertible to i32"),
+                                )? as usize)
+                            }
+                            false => None,
+                        },
+                        match maybe_set_start_offset.is_valid() {
+                            true => Some(
+                                QVariant::value::<i32>(&maybe_set_start_offset)
+                                    .ok_or(anyhow::anyhow!("start offset not convertible to i32"))?
+                                    as isize,
+                            ),
+                            false => None,
+                        },
+                        maybe_loop,
+                    );
+                    Ok(())
+                },
+            );
+            Ok(())
+        }() {
+            error!("Failed to load channels MIDI: {e}");
+            pin_async_task.as_mut().finish_dummy();
+        }
+
+        return unsafe { pin_async_task.pin_mut_qobject_ptr() };
     }
 
     pub fn load_midi_to_channels(
         self: &FileIO,
+        filename: QString,
         samplerate: i32,
         channels: QList_QVariant,
         maybe_set_n_preplay_samples: QVariant,
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
     ) {
-        todo!();
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let backend_channels: Vec<cxx::UniquePtr<QSharedPointer_QObject>> =
+                qlist_qvariant_channels_to_backend(&channels);
+            let maybe_loop = qvariant_loop_gui_to_loop_backend(&maybe_update_loop_to_data_length);
+
+            load_midi_to_channels_impl(
+                &PathBuf::from(filename.to_string()),
+                samplerate as usize,
+                backend_channels.iter(),
+                match maybe_set_n_preplay_samples.is_valid() {
+                    true => Some(
+                        QVariant::value::<i32>(&maybe_set_n_preplay_samples)
+                            .ok_or(anyhow::anyhow!("n_preplay_samples not convertible to i32"))?
+                            as usize,
+                    ),
+                    false => None,
+                },
+                match maybe_set_start_offset.is_valid() {
+                    true => Some(
+                        QVariant::value::<i32>(&maybe_set_start_offset)
+                            .ok_or(anyhow::anyhow!("start offset not convertible to i32"))?
+                            as isize,
+                    ),
+                    false => None,
+                },
+                maybe_loop,
+            );
+            Ok(())
+        }() {
+            error!("Could not load MIDI to channels: {e}")
+        }
     }
 
     pub fn save_channels_to_soundfile_async(

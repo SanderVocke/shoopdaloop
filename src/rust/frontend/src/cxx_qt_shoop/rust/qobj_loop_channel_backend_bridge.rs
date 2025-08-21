@@ -86,6 +86,12 @@ pub mod ffi {
         #[qinvokable]
         pub fn load_midi_data(self: Pin<&mut LoopChannelBackend>, data: QList_QVariant);
 
+        #[qinvokable]
+        pub fn get_audio_data(self: Pin<&mut LoopChannelBackend>) -> QList_f32;
+
+        #[qinvokable]
+        pub fn get_midi_data(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant;
+
         #[qsignal]
         pub unsafe fn state_changed(
             self: Pin<&mut LoopChannelBackend>,

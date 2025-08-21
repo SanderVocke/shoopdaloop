@@ -108,6 +108,7 @@ pub mod ffi {
         #[qinvokable]
         pub fn load_midi_to_channels_async(
             self: Pin<&mut FileIO>,
+            filename: QString,
             samplerate: i32,
             channels: QList_QVariant,
             maybe_set_n_preplay_samples: QVariant,
@@ -118,6 +119,7 @@ pub mod ffi {
         #[qinvokable]
         pub fn load_midi_to_channels(
             self: &FileIO,
+            filename: QString,
             samplerate: i32,
             channels: QList_QVariant,
             maybe_set_n_preplay_samples: QVariant,

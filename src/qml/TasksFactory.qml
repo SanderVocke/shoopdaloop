@@ -4,9 +4,9 @@ Item {
     function create_tasks_obj(parent) {
         return Qt.createQmlObject(`
             import QtQuick 6.6
-            import ShoopDaLoop.PythonTasks
+            import ShoopDaLoop.Rust
 
-            PythonTasks {
+            AsyncTasks {
             }
             `,
             parent
@@ -16,9 +16,9 @@ Item {
      function create_task_obj(parent) {
         return Qt.createQmlObject(`
             import QtQuick 6.6
-            import ShoopDaLoop.PythonTask
+            import ShoopDaLoop.Rust
 
-            PythonTask {
+            AsyncTask {
             }
             `,
             parent

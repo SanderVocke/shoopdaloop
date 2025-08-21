@@ -3,12 +3,11 @@ use crate::cxx_qt_shoop::qobj_async_tasks_bridge::AsyncTasksRust;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::invokable::invoke;
+use cxx_qt_lib_shoop::qjsvalue::qvariant_call_as_callable_qjsvalue;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qtimer::QTimer;
 use cxx_qt_lib_shoop::{
-    connect::connect_or_report,
-    connection_types,
-    qobject::qobject_property_bool,
+    connect::connect_or_report, connection_types, qobject::qobject_property_bool,
 };
 use std::pin::Pin;
 use std::slice;
@@ -86,8 +85,9 @@ impl AsyncTasks {
             if self.delete_when_done {
                 delete_self();
             } else if self.maybe_qml_callable.is_valid() {
-                // TODO: call the callable
-                todo!();
+                if let Err(e) = qvariant_call_as_callable_qjsvalue(&self.maybe_qml_callable) {
+                    error!("Could not call QML callback: {e}")
+                }
                 delete_self();
             } else {
                 // no post-actions set. Set a timer to create an error

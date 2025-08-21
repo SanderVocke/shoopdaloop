@@ -59,7 +59,7 @@ pub use ffi::AsyncTasks;
 
 pub struct AsyncTasksRust {
     pub n_tracking: u32,
-    pub n_done : u32,
+    pub n_done: u32,
     pub timer: *mut QTimer,
     pub maybe_qml_callable: QVariant,
     pub delete_when_done: bool,
@@ -110,4 +110,3 @@ impl cxx_qt::Constructor<()> for AsyncTasks {
         AsyncTasks::initialize_impl(self);
     }
 }
-
