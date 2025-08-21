@@ -34,6 +34,7 @@ pub mod ffi {
         #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
         // Other properties
         #[qproperty(*mut QObject, channel_loop, READ=get_channel_loop, NOTIFY=channel_loop_changed)]
+        #[qproperty(i32, data_length, READ=get_data_length, NOTIFY=data_length_changed)]
         type LoopChannelBackend = super::LoopChannelBackendRust;
 
         pub fn initialize_impl(self: Pin<&mut LoopChannelBackend>);
@@ -91,6 +92,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn get_midi_data(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant;
+
+        #[qinvokable]
+        pub fn get_data_length(self: Pin<&mut LoopChannelBackend>) -> i32;
 
         #[qsignal]
         pub unsafe fn state_changed(

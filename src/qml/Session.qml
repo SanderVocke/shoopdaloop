@@ -187,7 +187,20 @@ Item {
         return null
     }
 
-    TasksFactory { id: tasks_factory }
+    Component {
+        id: task_observer_factory
+        TaskObserver {}
+    }
+
+    function create_task_observer() {
+        if (task_observer_factory.status == Component.Error) {
+            throw new Error("Session: Failed to load factory: " + task_observer_factory.errorString())
+        } else if (task_observer_factory.status != Component.Ready) {
+            throw new Error("Session: Factory not ready: " + task_observer_factory.status.toString())
+        } else {
+            return task_observer_factory.createObject(root, {})
+        }
+    }
 
     function save_session(filename) {
         root.logger.debug(`saving session to: ${filename}`)
@@ -198,16 +211,10 @@ Item {
         if (tempdir == null) {
             throw new Error("Failed to create temporary folder")
         }
-        var tasks = tasks_factory.create_tasks_obj(root)
+        var observer = create_task_observer()
         var session_filename = tempdir + '/session.json'
 
-        // TODO make this step asynchronous
-        var descriptor = actual_session_descriptor(true, tempdir, tasks)
-        if(!ShoopFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
-            throw new Error(`Failed to write session file ${session_filename}`)
-        }
-
-        tasks.then(() => {
+        observer.onDoneChanged.connect(() => {
             try {
                 // TODO make this step asynchronous
                 if (!ShoopFileIO.make_tarfile(filename, tempdir)) {
@@ -219,6 +226,12 @@ Item {
                 ShoopFileIO.delete_recursive(tempdir)
             }
         })
+
+        // TODO make this step asynchronous
+        var descriptor = actual_session_descriptor(true, tempdir, observer)
+        if(!ShoopFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
+            throw new Error(`Failed to write session file ${session_filename}`)
+        }
     }
 
     function reload() {
@@ -270,8 +283,6 @@ Item {
         var tempdir = ShoopFileIO.create_temporary_folder()
 
         try {
-            var tasks = tasks_factory.create_tasks_obj(root)
-
             ShoopFileIO.extract_tarfile(filename, tempdir)
             root.logger.debug(`Extracted files: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`)
 
@@ -306,7 +317,7 @@ Item {
                 root.logger.debug("Queueing load tasks")
                 queue_load_tasks(tempdir, incoming_sample_rate, our_sample_rate, tasks)
 
-                tasks.when_finished(() => {
+                tasks.then(() => {
                     try {
                         ShoopFileIO.delete_recursive(tempdir)
                     } finally {

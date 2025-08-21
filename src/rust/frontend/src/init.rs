@@ -24,6 +24,7 @@ fn register_qml_types_and_singletons() {
     qobj_port_gui::register_qml_type(&mdl, "PortGui");
     qobj_fx_chain_gui::register_qml_type(&mdl, "FXChainGui");
     qobj_loop_channel_gui::register_qml_type(&mdl, "LoopChannelGui");
+    qobj_async_task::register_qml_type(&mdl, "AsyncTask");
 }
 
 fn register_metatypes() {}

@@ -386,7 +386,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_all_midi_data(midichan)
+                    midi_channel().load_midi_data(midichan)
                     lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
@@ -479,7 +479,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_all_midi_data(midichan)
+                    midi_channel().load_midi_data(midichan)
                     lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
@@ -581,7 +581,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_all_midi_data(midichan)
+                    midi_channel().load_midi_data(midichan)
                     lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
@@ -686,7 +686,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_all_midi_data(midichan)
+                    midi_channel().load_midi_data(midichan)
                     lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
@@ -792,7 +792,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_all_midi_data(midichan)
+                    midi_channel().load_midi_data(midichan)
                     lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
@@ -897,7 +897,7 @@ ShoopTestFile {
                     let midichan = [
                         { 'time': 1, 'data': [0x90, 70,  70]  }
                     ]
-                    midi_channel().load_all_midi_data(midichan)
+                    midi_channel().load_midi_data(midichan)
                     lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)

@@ -15,7 +15,7 @@ impl AsyncTask {
     pub fn finish_dummy(self: Pin<&mut Self>) {
         let self_ptr = self.self_rust_ptr();
         debug!("{self_ptr:?}: finish dummy");
-        self.notify_done();
+        self.notify_done(true);
     }
 
     // To be called by users on the Rust side. Will execute the given closure
@@ -38,24 +38,27 @@ impl AsyncTask {
 
         let _ = std::thread::spawn(move || unsafe {
             let ptr = self_ptr;
+            let mut success = true;
             if let Err(e) = concurrent_fn() {
                 error!("Could not finish async task: {e}");
+                success = false;
             }
             if let Err(e) = invoke::<_, (), _>(
                 &mut *ptr.ptr,
-                "notify_done()",
+                "notify_done(bool)",
                 connection_types::BLOCKING_QUEUED_CONNECTION,
-                &(),
+                &(success),
             ) {
                 error!("Failed to notify after async task: {e}");
             }
         });
     }
 
-    pub fn notify_done(mut self: Pin<&mut AsyncTask>) {
+    pub fn notify_done(mut self: Pin<&mut AsyncTask>, success: bool) {
         let self_ptr = self.self_rust_ptr();
-        debug!("{self_ptr:?}: notify");
+        debug!("{self_ptr:?}: notify done (success: {success})");
 
+        self.as_mut().rust_mut().success = success;
         if self.active {
             self.as_mut().rust_mut().active = false;
             unsafe {
@@ -127,6 +130,7 @@ impl AsyncTask {
 
     pub fn initialize_impl(mut self: Pin<&mut AsyncTask>) {
         let self_ptr = unsafe { self.as_mut().pin_mut_qobject_ptr() };
+        debug!("{:?}: created", self.as_mut().self_rust_ptr());
         let timer = unsafe { cxx_qt_lib_shoop::qtimer::make_raw_with_parent(self_ptr) };
         self.as_mut().rust_mut().timer = timer;
     }
@@ -143,5 +147,13 @@ impl Drop for AsyncTaskRust {
         }
         let self_ptr = self as *const Self;
         debug!("{self_ptr:?}: drop");
+    }
+}
+
+pub fn register_qml_type(module_name: &str, type_name: &str) {
+    let mut mdl = String::from(module_name);
+    let mut tp = String::from(type_name);
+    unsafe {
+        register_qml_type_async_task(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp);
     }
 }

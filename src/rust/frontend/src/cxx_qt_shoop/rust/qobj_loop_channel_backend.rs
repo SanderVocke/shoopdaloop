@@ -645,4 +645,8 @@ impl LoopChannelBackend {
         debug!(self, "extracted {} msgs of MIDI data", rval.len());
         rval
     }
+
+    pub fn get_data_length(self: Pin<&mut LoopChannelBackend>) -> i32 {
+        self.prev_state.length as i32
+    }
 }

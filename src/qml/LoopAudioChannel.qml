@@ -31,7 +31,7 @@ LoopChannelGui {
             'data_length': data_length,
             'start_offset': start_offset,
             'n_preplay_samples': n_preplay_samples,
-            'gain': gain,
+            'gain': audio_gain,
             'connected_port_ids': initialized ? connected_ports.map((c) => c.obj_id) : descriptor.connected_port_ids
         }
         if (recording_started_at) { rval['recording_started_at'] = recording_started_at }

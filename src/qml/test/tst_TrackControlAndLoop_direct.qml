@@ -317,7 +317,7 @@ ShoopTestFile {
                     tut_control().monitor = false
                     tut_control().mute = false
                     let chan = lut.get_midi_output_channels()[0]
-                    chan.load_all_midi_data(loop)
+                    chan.load_midi_data(loop)
                     lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
@@ -398,7 +398,7 @@ ShoopTestFile {
                     tut_control().monitor = true
                     tut_control().mute = false
                     let chan = lut.get_midi_output_channels()[0]
-                    chan.load_all_midi_data(loop)
+                    chan.load_midi_data(loop)
                     lut.queue_set_length(4)
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)

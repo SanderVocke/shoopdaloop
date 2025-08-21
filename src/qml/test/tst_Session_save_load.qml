@@ -157,7 +157,7 @@ ShoopTestFile {
                         { 'time': 101, 'data': [0x90, 70,  70]  },
                         { 'time': 201, 'data': [0x80, 60,  60]  }
                     ]
-                    mt_midi_channels()[0].load_all_midi_data(midichan)
+                    mt_midi_channels()[0].load_midi_data(midichan)
                     testcase.wait_updated(session.backend)
                     var filename = ShoopFileIO.generate_temporary_filename() + '.mid'
                     ShoopFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
@@ -185,7 +185,7 @@ ShoopTestFile {
                         { 'time': 101, 'data': [0x90, 70,  70]  },
                         { 'time': 201, 'data': [0x80, 60,  60]  }
                     ]
-                    mt_midi_channels()[0].load_all_midi_data(midichan)
+                    mt_midi_channels()[0].load_midi_data(midichan)
                     testcase.wait_updated(session.backend)
                     var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
                     ShoopFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
@@ -213,7 +213,7 @@ ShoopTestFile {
                         { 'time': 101, 'data': [0x90, 70,  70]  },
                         { 'time': 201, 'data': [0x80, 60,  60]  }
                     ]
-                    mt_midi_channels()[0].load_all_midi_data(midichan)
+                    mt_midi_channels()[0].load_midi_data(midichan)
                     dt_loop_channels()[0].load_data([0.1, 0.2, 0.3, 0.4])
                     dt_loop_channels()[1].load_data([0.4, 0.3, 0.2, 0.1])
                     dwt_dry_loop_channels()[0].load_data([0.5, 0.6, 0.7, 0.8])
@@ -275,7 +275,7 @@ ShoopTestFile {
                         { 'time': 120, 'data': [0x80, 60,  60]  }
                     ]
 
-                    mt_midi_channels()[0].load_all_midi_data(midichan)
+                    mt_midi_channels()[0].load_midi_data(midichan)
                     let _data = [0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0] // 12 samples

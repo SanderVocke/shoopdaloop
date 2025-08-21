@@ -125,6 +125,14 @@ mod ffi {
             arg1: QList_f32,
         ) -> Result<()>;
 
+        #[rust_name = "invoke_noreturn_bool"]
+        unsafe fn invoke_one_arg(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+            arg1: bool,
+        ) -> Result<()>;
+
         #[rust_name = "invoke_qlistqvariant_noargs"]
         unsafe fn invoke_with_return(
             obj: *mut QObject,
@@ -325,6 +333,24 @@ impl Invokable<(), ffi::QList_f32> for ffi::QObject {
                 method.to_string(),
                 connection_type,
                 arg.clone(),
+            )
+        }
+    }
+}
+
+impl Invokable<(), bool> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: &str,
+        connection_type: u32,
+        arg: &bool,
+    ) -> Result<(), Exception> {
+        unsafe {
+            ffi::invoke_noreturn_bool(
+                self as *mut ffi::QObject,
+                method.to_string(),
+                connection_type,
+                *arg,
             )
         }
     }

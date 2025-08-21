@@ -11,10 +11,11 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[qproperty(bool, active, READ, NOTIFY=active_changed)]
+        #[qproperty(bool, success, READ, WRITE, NOTIFY)]
         type AsyncTask = super::AsyncTaskRust;
 
         #[qinvokable]
-        pub fn notify_done(self: Pin<&mut AsyncTask>);
+        pub fn notify_done(self: Pin<&mut AsyncTask>, success: bool);
 
         #[qinvokable]
         pub fn finish_dummy(self: Pin<&mut AsyncTask>);
@@ -79,6 +80,7 @@ use ffi::*;
 
 pub struct AsyncTaskRust {
     pub active: bool,
+    pub success: bool,
     pub timer: *mut QTimer,
     pub maybe_qml_callable: QVariant,
     pub delete_when_done: bool,
@@ -88,6 +90,7 @@ impl Default for AsyncTaskRust {
     fn default() -> Self {
         Self {
             active: true,
+            success: false,
             timer: std::ptr::null_mut(),
             maybe_qml_callable: QVariant::default(),
             delete_when_done: false,
