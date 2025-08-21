@@ -1,4 +1,3 @@
-use cxx::UniquePtr;
 use cxx_qt;
 
 #[cxx_qt::bridge]
