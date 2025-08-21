@@ -49,6 +49,7 @@ pub mod ffi {
         #[qproperty(*mut QObject, channel_loop, READ=get_channel_loop, WRITE=set_channel_loop, NOTIFY=channel_loop_changed)]
         // Other properties
         #[qproperty(QVariant, recording_started_at, READ, WRITE, NOTIFY)]
+        #[qproperty(QString, instance_identifier, READ, WRITE=set_instance_identifier, NOTIFY=instance_identifier_changed)]
         type LoopChannelGui = super::LoopChannelGuiRust;
 
         pub fn initialize_impl(self: Pin<&mut LoopChannelGui>);
@@ -97,6 +98,12 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn reset_state_tracking(self: Pin<&mut LoopChannelGui>);
+
+        #[qinvokable]
+        pub fn set_instance_identifier(
+            self: Pin<&mut LoopChannelGui>,
+            instance_identifier: QString,
+        );
 
         #[qinvokable]
         pub fn backend_state_changed(
@@ -178,6 +185,12 @@ pub mod ffi {
         pub unsafe fn channel_loop_changed(
             self: Pin<&mut LoopChannelGui>,
             channel_loop: *mut QObject,
+        );
+
+        #[qsignal]
+        pub unsafe fn instance_identifier_changed(
+            self: Pin<&mut LoopChannelGui>,
+            instance_identifier: QString,
         );
 
         #[qsignal]
@@ -284,6 +297,7 @@ pub struct LoopChannelGuiRust {
     pub channel_loop: *mut QObject,
     // Other
     pub backend_channel_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
+    pub instance_identifier: QString,
 }
 
 impl Default for LoopChannelGuiRust {
@@ -307,6 +321,7 @@ impl Default for LoopChannelGuiRust {
             ports_to_connect: QList::default(),
             backend_channel_wrapper: cxx::UniquePtr::null(),
             channel_loop: std::ptr::null_mut(),
+            instance_identifier: QString::from("unknown"),
         }
     }
 }

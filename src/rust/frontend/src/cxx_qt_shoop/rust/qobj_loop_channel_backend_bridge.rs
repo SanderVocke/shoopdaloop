@@ -35,6 +35,7 @@ pub mod ffi {
         // Other properties
         #[qproperty(*mut QObject, channel_loop, READ=get_channel_loop, NOTIFY=channel_loop_changed)]
         #[qproperty(i32, data_length, READ=get_data_length, NOTIFY=data_length_changed)]
+        #[qproperty(QString, instance_identifier, READ, NOTIFY=instance_identifier_changed)]
         type LoopChannelBackend = super::LoopChannelBackendRust;
 
         pub fn initialize_impl(self: Pin<&mut LoopChannelBackend>);
@@ -101,6 +102,12 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn reset_state_tracking(self: Pin<&mut LoopChannelBackend>);
+
+        #[qinvokable]
+        pub fn set_instance_identifier(
+            self: Pin<&mut LoopChannelBackend>,
+            instance_identifier: QString,
+        );
 
         #[qsignal]
         pub unsafe fn state_changed(
@@ -177,6 +184,12 @@ pub mod ffi {
             self: Pin<&mut LoopChannelBackend>,
             n_notes_active: i32,
         );
+
+        #[qsignal]
+        pub unsafe fn instance_identifier_changed(
+            self: Pin<&mut LoopChannelBackend>,
+            instance_identifier: QString,
+        );
     }
 
     unsafe extern "C++" {
@@ -218,6 +231,7 @@ pub struct LoopChannelBackendRust {
     pub channel_loop: Option<cxx::UniquePtr<QWeakPointer_QObject>>,
     pub ports_to_connect: Vec<cxx::UniquePtr<QWeakPointer_QObject>>,
     pub ports_connected: Vec<cxx::UniquePtr<QWeakPointer_QObject>>,
+    pub instance_identifier: QString,
 }
 
 impl Default for LoopChannelBackendRust {
@@ -231,6 +245,7 @@ impl Default for LoopChannelBackendRust {
             channel_loop: None,
             ports_to_connect: Vec::new(),
             ports_connected: Vec::new(),
+            instance_identifier: QString::from("unknown"),
         }
     }
 }

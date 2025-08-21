@@ -13,6 +13,7 @@ LoopChannelGui {
 
     property var descriptor : null
     readonly property string obj_id : descriptor.id
+    instance_identifier: obj_id
 
     readonly property string object_schema : 'channel.1'
     SchemaCheck {

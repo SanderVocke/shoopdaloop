@@ -2,7 +2,7 @@ use crate::cxx_qt_shoop::qobj_port_gui_bridge::PortGui;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_gui_bridge::ffi::*;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_gui_bridge::ffi::{
-    QList_QVariant, QList_f32, QObject, QVariant,
+    QList_QVariant, QList_f32, QObject, QString, QVariant,
 };
 use crate::engine_update_thread;
 use common::logging::macros::{
@@ -41,8 +41,7 @@ macro_rules! error {
 
 impl LoopChannelGui {
     pub fn display_name(self: &Self) -> String {
-        // TODO
-        String::from("unknown")
+        self.instance_identifier.to_string()
     }
 
     pub fn initialize_impl(mut self: Pin<&mut LoopChannelGui>) {
@@ -151,6 +150,13 @@ impl LoopChannelGui {
                         "backend_reset_state_tracking()",
                         backend_ref,
                         "reset_state_tracking()",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "instance_identifier_changed(QString)",
+                        backend_ref,
+                        "set_instance_identifier(QString)",
                         connection_types::QUEUED_CONNECTION,
                     );
                 }
@@ -431,6 +437,22 @@ impl LoopChannelGui {
     pub fn reset_state_tracking(self: Pin<&mut LoopChannelGui>) {
         unsafe {
             self.backend_reset_state_tracking();
+        }
+    }
+
+    pub fn set_instance_identifier(
+        mut self: Pin<&mut LoopChannelGui>,
+        instance_identifier: QString,
+    ) {
+        debug!(self, "instance identifier -> {:?}", instance_identifier);
+        let changed = self.as_mut().rust_mut().instance_identifier != instance_identifier;
+        self.as_mut().rust_mut().instance_identifier = instance_identifier.clone();
+
+        if changed {
+            unsafe {
+                self.as_mut()
+                    .instance_identifier_changed(instance_identifier);
+            }
         }
     }
 }

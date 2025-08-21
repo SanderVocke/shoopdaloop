@@ -134,8 +134,7 @@ impl LoopChannelBackend {
     }
 
     pub fn display_name(self: &LoopChannelBackend) -> String {
-        // TODO
-        "unknown".to_string()
+        self.instance_identifier.to_string()
     }
 
     pub fn maybe_initialize_backend(mut self: Pin<&mut LoopChannelBackend>) -> bool {
@@ -264,6 +263,22 @@ impl LoopChannelBackend {
             }
         }
         self.as_mut().maybe_initialize_backend();
+    }
+
+    pub fn set_instance_identifier(
+        mut self: Pin<&mut LoopChannelBackend>,
+        instance_identifier: QString,
+    ) {
+        debug!(
+            self,
+            "set instance identifier -> {:?}", &instance_identifier
+        );
+        let mut rust_mut = self.as_mut().rust_mut();
+        rust_mut.instance_identifier = instance_identifier.clone();
+        unsafe {
+            self.as_mut()
+                .instance_identifier_changed(instance_identifier);
+        }
     }
 
     pub fn set_is_midi(mut self: Pin<&mut LoopChannelBackend>, is_midi: bool) {
