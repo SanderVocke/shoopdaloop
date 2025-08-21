@@ -7,7 +7,7 @@ use cxx_qt_lib_shoop::qobject::{qobject_property_int, AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
     qlist_f32_to_qvariant, qvariant_to_qlist_f32, qvariant_to_qobject_ptr,
-    qvariant_to_qvariantlist, qvariantlist_to_qvariant,
+    qvariant_to_qvariantlist, qvariant_type_name, qvariantlist_to_qvariant,
 };
 use sndfile::{default_subtype, get_supported_major_format_dict, SndFileIO};
 shoop_log_unit!("Frontend.FileIO");
@@ -90,44 +90,59 @@ fn save_data_to_soundfile_impl<'a>(
     .map_err(|e| anyhow::anyhow!("could not open sound file: {e:?}"))?
     .write_from_iter(reshaped.iter().map(|v| *v))
     .map_err(|e| anyhow::anyhow!("could not write sound file: {e:?}"))?;
+
+    info!("Saved {n_frames} frames of audio to {filename:?}");
+
     Ok(())
 }
 
 pub fn save_qlist_data_to_soundfile_impl(filename: QString, samplerate: i32, data: QVariant) {
     if let Err(e) = || -> Result<(), anyhow::Error> {
         let filename = PathBuf::from(filename.to_string());
-        if let Ok(mono) = qvariant_to_qlist_f32(&data) {
+        let typename = qvariant_type_name(&data)?;
+        debug!("Saving QList data with typename: {}", typename);
+        if typename == "QVariantList" {
+            if let Ok(multi) = qvariant_to_qvariantlist(&data) {
+                let mut n_frames: Option<usize> = None;
+                let n_channels: usize = multi.len() as usize;
+                let mut qlists: Vec<QList_f32> = Vec::default();
+
+                for (idx, variant) in multi.iter().enumerate() {
+                    let qlist = qvariant_to_qlist_f32(&variant)
+                        .map_err(|e| anyhow::anyhow!("Could not view data as f32 list: {e}"))?;
+                    debug!(
+                        "QList sublist # {} is a QList<f32> of {} frames",
+                        idx,
+                        qlist.len()
+                    );
+                    if n_frames.is_none() {
+                        n_frames = Some(qlist.len() as usize);
+                    } else if qlist.len() as usize != n_frames.unwrap() {
+                        return Err(anyhow::anyhow!("Inconsistent data size across channels"));
+                    }
+                    qlists.push(qlist);
+                }
+
+                let total_data_iter = qlists.iter().flat_map(|list| list.iter());
+
+                save_data_to_soundfile_impl(
+                    &filename,
+                    samplerate as usize,
+                    total_data_iter,
+                    n_frames.unwrap(),
+                    n_channels,
+                )?;
+            } else {
+                return Err(anyhow::anyhow!("Failed to extract QVariantList"));
+            }
+        } else if let Ok(mono) = qvariant_to_qlist_f32(&data) {
+            debug!("QList data is a QList<f32> of {} frames", mono.len());
             save_data_to_soundfile_impl(
                 &filename,
                 samplerate as usize,
                 mono.iter(),
                 mono.len() as usize,
                 1,
-            )?;
-        } else if let Ok(multi) = qvariant_to_qvariantlist(&data) {
-            let mut n_frames: Option<usize> = None;
-            let n_channels: usize = multi.len() as usize;
-            let mut qlists: Vec<QList_f32> = Vec::default();
-
-            for variant in multi.iter() {
-                let qlist = qvariant_to_qlist_f32(&variant)
-                    .map_err(|e| anyhow::anyhow!("Could not view data as f32 list: {e}"))?;
-                if n_frames.is_none() {
-                    n_frames = Some(qlist.len() as usize);
-                } else if qlist.len() as usize != n_frames.unwrap() {
-                    return Err(anyhow::anyhow!("Inconsistent data size across channels"));
-                }
-                qlists.push(qlist);
-            }
-
-            let total_data_iter = qlists.iter().flat_map(|list| list.iter());
-
-            save_data_to_soundfile_impl(
-                &filename,
-                samplerate as usize,
-                total_data_iter,
-                n_frames.unwrap(),
-                n_channels,
             )?;
         } else {
             return Err(anyhow::anyhow!(
@@ -183,7 +198,8 @@ fn save_channel_midi_data_impl(
         if extension == "smf" {
             let smf = to_smf(msgs.iter(), total_length as usize, samplerate);
             std::fs::write(filename, &smf)?;
-            info!("Saved MIDI channel to SMF {filename:?}");
+            let amount = msgs.len();
+            info!("Saved MIDI channel ({amount} messages) to SMF {filename:?}");
         } else {
             todo!();
         }
@@ -270,7 +286,10 @@ fn load_midi_to_channels_impl<'a>(
             }
         }
 
-        info!("Loaded MIDI from {filename:?} into channel(s)");
+        info!(
+            "Loaded MIDI ({} messages) from {filename:?} into channel(s)",
+            messages_qlist.len()
+        );
 
         Ok(())
     }() {
@@ -905,13 +924,16 @@ impl FileIO {
         for shared in qlist_qvariant_channels_to_backend(&channels).iter() {
             let ptr = shared.as_ref().unwrap().data().unwrap();
             unsafe {
-                match invoke(
+                match invoke::<_, QList_f32, _>(
                     &mut *ptr,
                     "get_audio_data()",
                     connection_types::BLOCKING_QUEUED_CONNECTION,
                     &(),
                 ) {
-                    Ok(data) => qlists.append(qlist_f32_to_qvariant(&data).unwrap()),
+                    Ok(data) => {
+                        debug!("channel yielded {} frames of audio data", data.len());
+                        qlists.append(qlist_f32_to_qvariant(&data).unwrap())
+                    }
                     Err(e) => {
                         error!("Failed to get audio data - ignoring during save: {e}");
                         qlists.append(QVariant::default())

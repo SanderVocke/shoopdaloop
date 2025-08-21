@@ -630,6 +630,7 @@ impl LoopChannelBackend {
         let vec = self.maybe_backend_channel.as_ref().unwrap().audio_get_data();
         rval.reserve(vec.len() as isize);
         vec.iter().for_each(|v| rval.append(*v));
+        debug!(self, "extracted {} frames of audio data", rval.len());
         rval
     }
 
@@ -641,6 +642,7 @@ impl LoopChannelBackend {
         let vec = self.maybe_backend_channel.as_ref().unwrap().midi_get_data();
         rval.reserve(vec.len() as isize);
         vec.iter().for_each(|v| rval.append(v.to_qvariant()));
+        debug!(self, "extracted {} msgs of MIDI data", rval.len());
         rval
     }
 }
