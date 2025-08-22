@@ -23,6 +23,8 @@ Item {
     property int n_preplay_samples : channel ? channel.n_preplay_samples : 0
     property int start_offset : channel ? channel.start_offset : 0
 
+    onSamples_per_pixelChanged: console.log("n: ", samples_per_pixel)
+
     function snap_sample_to_grid(sample_idx) {
         var interval = minor_grid_lines_interval ? minor_grid_lines_interval : major_grid_lines_interval
         if (interval != undefined) {
@@ -220,11 +222,11 @@ Item {
 
             function set_input_data(data) { input_data = data }
 
-            function update() {
+            function update(force) {
                 if (running_fetch_task) {
                     root.logger.debug("fetch task still running, skip update")
                 }
-                if (root.channel.data_dirty) {
+                if (root.fetch_active && (force || root.channel.data_dirty)) {
                     root.logger.debug("starting fetch")
                     running_fetch_task = root.channel.get_data_async_and_send_to(
                         render,
@@ -245,7 +247,7 @@ Item {
                 interval: 200
                 running: false
                 repeat: false
-                onTriggered: render.update()
+                onTriggered: render.update(false)
             }
 
             Connections {
@@ -255,7 +257,14 @@ Item {
                 }
             }
 
-            Component.onCompleted: update()
+            Connections {
+                target: root
+                function onFetch_activeChanged() {
+                    if (root.fetch_active) { render.update(true) }
+                }
+            }
+
+            Component.onCompleted: update(true)
 
             Label {
                 anchors {

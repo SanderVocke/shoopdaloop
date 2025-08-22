@@ -143,7 +143,11 @@ impl Default for FXChainBackendRust {
             title: None,
             chain_type: None,
             backend_chain_wrapper: None,
-            prev_state: FXChainState::default(),
+            prev_state: FXChainState {
+                ready: 0,
+                active: 1,
+                visible: 0,
+            },
         }
     }
 }

@@ -1042,6 +1042,8 @@ shoopdaloop_audio_port_t *open_internal_audio_port (shoop_backend_session_t *bac
     auto port = shoop_make_shared<InternalAudioPort<audio_sample_t>>(
       std::string(name_hint),
       _backend->m_buffer_size,
+      ShoopPortConnectability_Internal,
+      ShoopPortConnectability_Internal,
       min_always_on_ringbuffer_samples > 0 ? _backend->audio_buffer_pool : nullptr
     );
     if (min_always_on_ringbuffer_samples > 0) {

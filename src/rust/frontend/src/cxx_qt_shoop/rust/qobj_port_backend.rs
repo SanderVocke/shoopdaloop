@@ -15,7 +15,7 @@ use cxx_qt_lib::{QList, QMap};
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,
-    qobject::{qobject_property_bool, AsQObject, FromQObject},
+    qobject::{qobject_property_bool, qobject_property_string, AsQObject, FromQObject},
     qsharedpointer_qobject::QSharedPointer_QObject,
     qvariant_helpers::qvariant_to_qsharedpointer_qobject,
     qweakpointer_qobject::QWeakPointer_QObject,
@@ -191,6 +191,14 @@ impl PortBackend {
                     .port_type
                     .ok_or(anyhow::anyhow!("port data type (is_midi) not set"))?
                     == PortDataType::Midi;
+
+                debug!(
+                    self,
+                    "initialize as {} {} port {} of FX chain",
+                    if is_midi { "MIDI" } else { "audio" },
+                    if is_input { "input " } else { "output " },
+                    idx
+                );
                 let port: AnyBackendPort =
                     if is_input {
                         if is_midi {
@@ -222,10 +230,10 @@ impl PortBackend {
                 let state = &self.prev_state;
                 debug!(self, "Push deferred state: {state:?}");
                 port.push_state(state)?;
-                self.as_mut().update_internal_port_connections_impl();
-
                 let mut rust_mut = self.as_mut().rust_mut();
                 rust_mut.maybe_backend_port = Some(port);
+
+                self.as_mut().update_internal_port_connections_impl();
 
                 debug!(self, "Initialized as internal-facing port");
                 self.as_mut().update();
@@ -750,6 +758,12 @@ impl PortBackend {
                 }
                 return Ok(());
             }
+            let other_name = unsafe {
+                qobject_property_string(&mut *other_port, "name")
+                    .unwrap_or(QString::from("unknown"))
+                    .to_string()
+            };
+            debug!(self, "connect internal to {other_name}");
             self.maybe_backend_port
                 .as_ref()
                 .ok_or(anyhow::anyhow!("not initialized"))?
@@ -779,6 +793,7 @@ impl PortBackend {
 
     pub fn update_internal_port_connections_impl(mut self: Pin<&mut PortBackend>) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
+            debug!(self, "update internal port connections");
             let connections = self.internal_port_connections.clone();
             connections.iter().try_for_each(
                 |other_internal_port| -> Result<(), anyhow::Error> {
@@ -791,7 +806,15 @@ impl PortBackend {
                     let other_initialized =
                         unsafe { qobject_property_bool(&*other_internal_port, "initialized")? };
                     if !other_initialized {
-                        debug!(self, "skip connection: other port not initialized");
+                        let other_iid = unsafe {
+                            qobject_property_string(&*other_internal_port, "name")
+                                .unwrap_or(QString::from("unknown"))
+                                .to_string()
+                        };
+                        debug!(
+                            self,
+                            "skip connection: other port '{other_iid}' not initialized"
+                        );
                         let self_qobj: *mut QObject =
                             unsafe { self.as_mut().pin_mut_qobject_ptr() };
                         unsafe {

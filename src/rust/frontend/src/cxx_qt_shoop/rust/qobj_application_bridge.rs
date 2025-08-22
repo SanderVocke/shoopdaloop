@@ -95,7 +95,7 @@ pub mod ffi {
     }
 }
 
-use crate::cxx_qt_shoop::qobj_qmlengine_bridge::ffi::QmlEngine;
+use crate::cxx_qt_shoop::qobj_qmlengine::QmlEngine;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 pub use ffi::Application;
 

@@ -252,7 +252,7 @@ shoop_shared_ptr<GraphFXChain> BackendSession::create_fx_chain(shoop_fx_chain_ty
                         out_buf_1[i] = in_1[i] / 2.0f;
                         out_buf_2[i] = in_2[i] / 2.0f;
                     }
-
+                    
                     if (should_log<log_level_debug_trace>()) {
                         log<log_level_debug_trace>("FX output port 1: {}", out_buf_1);
                         log<log_level_debug_trace>("FX output port 2: {}", out_buf_2);

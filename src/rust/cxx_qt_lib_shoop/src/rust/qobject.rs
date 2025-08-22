@@ -75,7 +75,7 @@ pub mod ffi {
         unsafe fn qobjectSetProperty(
             obj: *mut QObject,
             property: String,
-            value: &QList_QVariant
+            value: &QList_QVariant,
         ) -> Result<()>;
 
         #[rust_name = "qobject_find_child"]

@@ -74,7 +74,10 @@ LoopChannelGui {
     }
 
     function load_data(data) { load_audio_data(data) }
-    function get_data() { return get_audio_data() }
+    function get_data() { 
+        let rval = get_audio_data()
+        return rval
+    }
 
     readonly property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
     readonly property real initial_gain : ('gain' in descriptor) ? descriptor.gain : 1.0

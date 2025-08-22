@@ -51,14 +51,8 @@ pub fn shoop_rust_set_crash_json_tag(tag: &str, json: &str) {
 }
 
 #[pyfunction]
-pub fn shoop_rust_make_qml_application_engine(parent: u64) -> u64 {
-    let parent_obj = parent as *mut cxx_qt_lib_shoop::qobject::QObject;
-    let engine =
-        frontend::cxx_qt_shoop::type_shoopqmlapplicationengine::make_shoop_qml_application_engine(
-            parent_obj,
-        )
-        .unwrap();
-    engine as usize as u64
+pub fn shoop_rust_make_qml_application_engine(_parent: u64) -> u64 {
+    todo!();
 }
 
 #[pyfunction]

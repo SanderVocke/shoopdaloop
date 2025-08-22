@@ -6,6 +6,10 @@
 #include <stdexcept>
 #include <QString>
 #include <QVariant>
+#include <QThread>
+#include <QPointer>
+#include <rust/cxx.h>
+#include <iostream>
 class ShoopQmlEngine : public QQmlApplicationEngine {
     Q_OBJECT
 
@@ -60,4 +64,36 @@ public slots:
     }
 };
 
+// Note: not thread-safe
+extern QPointer<ShoopQmlEngine> g_registered_qml_engine;
+
 Q_DECLARE_METATYPE(ShoopQmlEngine *)
+
+inline ShoopQmlEngine* getRegisteredQmlEngine() {
+    return g_registered_qml_engine.data();
+}
+
+inline ::rust::String getQmlEngineStackTrace(ShoopQmlEngine &engine) {
+    if(engine.thread() != QThread::currentThread()) {
+        // Can only retrieve the stack if on the same thread.
+        return ::rust::String("unknown (JS engine not on querying thread)\n");
+    }
+
+    engine.throwError(QString("Crash handler stack retrieval helper error"));
+    auto err = engine.catchError();
+    if (err.isUndefined()) {
+        return ::rust::String("unknown (couldn't catch helper error)\n");
+    }
+
+    auto stack = err.property("stack");
+    if (stack.isUndefined()) {
+        return ::rust::String("unknown (stack is undefined)\n");
+    }
+
+    auto stack_str = stack.toString() + "\n";
+    return ::rust::String(stack_str.toStdString());
+}
+
+inline void registerQmlEngine(ShoopQmlEngine* engine) {
+    g_registered_qml_engine = engine;
+}

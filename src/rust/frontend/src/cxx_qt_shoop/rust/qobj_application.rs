@@ -2,6 +2,7 @@ use crate::cxx_qt_shoop::fn_qml_debugging;
 use crate::cxx_qt_shoop::qobj_application_bridge::ffi::*;
 pub use crate::cxx_qt_shoop::qobj_application_bridge::Application;
 use crate::cxx_qt_shoop::qobj_application_bridge::ApplicationStartupSettings;
+use crate::cxx_qt_shoop::qobj_qmlengine::register_qml_engine;
 use crate::cxx_qt_shoop::qobj_qmlengine_bridge::QmlEngine;
 use crate::engine_update_thread;
 use anyhow;
@@ -84,6 +85,7 @@ impl Application {
             let mut rust_mut = self.as_mut().rust_mut();
             if rust_mut.qml_engine.is_null() {
                 rust_mut.qml_engine = QmlEngine::make_raw(self_qobj);
+                register_qml_engine(rust_mut.qml_engine);
             }
             qml_engine = rust_mut.qml_engine;
         }

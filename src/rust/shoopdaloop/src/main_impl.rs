@@ -1,4 +1,5 @@
 use config::config::ShoopConfig;
+use frontend::cxx_qt_shoop::qobj_qmlengine::{get_qml_engine_stack, get_registered_qml_engine};
 use std::env;
 use std::path::{Path, PathBuf};
 
@@ -10,24 +11,22 @@ shoop_log_unit!("Main");
 
 fn crash_info_callback_impl() -> Result<Vec<crashhandling::AdditionalCrashAttachment>, anyhow::Error>
 {
-    let maybe_qml_engine =
-        frontend::cxx_qt_shoop::type_shoopqmlapplicationengine::get_registered_qml_engine()?;
-    let mut qml_stack: String = "".to_string();
+    let maybe_qml_engine = unsafe { get_registered_qml_engine()? };
     if !maybe_qml_engine.is_null() {
         unsafe {
+            println!("GET STACK");
             let maybe_qml_engine = std::pin::Pin::new_unchecked(&mut *maybe_qml_engine);
-            qml_stack =
-                frontend::cxx_qt_shoop::type_shoopqmlapplicationengine::get_qml_engine_stack_trace(
-                    maybe_qml_engine,
-                );
+            let qml_stack = get_qml_engine_stack(maybe_qml_engine);
+            println!("stack: {qml_stack}");
+            let info = crashhandling::AdditionalCrashAttachment {
+                id: "qml_stack".to_string(),
+                contents: qml_stack,
+            };
+            Ok(vec![info])
         }
+    } else {
+        Ok(vec![])
     }
-    let info = crashhandling::AdditionalCrashAttachment {
-        id: "qml_stack".to_string(),
-        contents: qml_stack,
-    };
-
-    Ok(vec![info])
 }
 
 fn crash_info_callback() -> Vec<crashhandling::AdditionalCrashAttachment> {

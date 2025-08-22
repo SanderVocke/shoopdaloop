@@ -14,8 +14,10 @@
 template <typename SampleT>
 InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
                                               uint32_t n_frames,
+                                              unsigned input_connectability,
+                                              unsigned output_connectability,
                                               shoop_shared_ptr<typename AudioPort<SampleT>::BufferPool> buffer_pool)
-    : AudioPort<SampleT>(buffer_pool), m_name(name), m_buffer(n_frames) {}
+    : AudioPort<SampleT>(buffer_pool), m_name(name), m_buffer(n_frames), m_input_connectability(input_connectability), m_output_connectability(output_connectability) {}
 
 template <typename SampleT>
 SampleT *InternalAudioPort<SampleT>::PROC_get_buffer(uint32_t n_frames) {
@@ -70,12 +72,12 @@ void InternalAudioPort<SampleT>::PROC_process(uint32_t nframes) {
 
 template <typename SampleT>
 unsigned InternalAudioPort<SampleT>::input_connectability() const {
-    return ShoopPortConnectability_Internal;
+    return m_input_connectability;
 }
 
 template <typename SampleT>
 unsigned InternalAudioPort<SampleT>::output_connectability() const {
-    return ShoopPortConnectability_Internal;
+    return m_output_connectability;
 }
 
 template class InternalAudioPort<float>;

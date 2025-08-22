@@ -7,6 +7,8 @@ template<typename SampleT>
 class InternalAudioPort : public AudioPort<SampleT> {
     std::string m_name = "";
     std::vector<SampleT> m_buffer;
+    unsigned m_input_connectability = 0;
+    unsigned m_output_connectability = 0;
 
 public:
     // Note that the port direction for internal ports are defined w.r.t. ShoopDaLoop.
@@ -15,6 +17,8 @@ public:
     InternalAudioPort(
         std::string name,
         uint32_t n_frames,
+        unsigned input_connectability,
+        unsigned output_connectability,
         shoop_shared_ptr<typename AudioPort<SampleT>::BufferPool> maybe_ringbuffer_buffer_pool
     );
     

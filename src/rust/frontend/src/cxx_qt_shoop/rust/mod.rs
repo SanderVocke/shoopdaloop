@@ -56,6 +56,5 @@ pub mod qobj_update_thread;
 pub mod qobj_update_thread_bridge;
 
 pub mod type_external_port_descriptor;
-pub mod type_shoopqmlapplicationengine;
 
 pub mod test;

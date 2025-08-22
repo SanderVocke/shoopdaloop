@@ -1,5 +1,5 @@
-use crate::cxx_qt_shoop::qobj_qmlengine_bridge::ffi::*;
 pub use crate::cxx_qt_shoop::qobj_qmlengine_bridge::QmlEngine;
+use crate::cxx_qt_shoop::qobj_qmlengine_bridge::{self, ffi::*};
 use crate::engine_update_thread;
 use anyhow;
 use common::util::PATH_LIST_SEPARATOR;
@@ -98,4 +98,25 @@ impl QmlEngine {
         self.as_mut().collect_garbage();
         self.as_mut().close_root();
     }
+}
+
+pub unsafe fn register_qml_engine(engine: *mut QmlEngine) {
+    let qobj = std::pin::Pin::new_unchecked(&mut *engine).pin_mut_qobject_ptr();
+    let shoop_eng = qobject_to_shoop_qml_engine_ptr(qobj);
+    qobj_qmlengine_bridge::ffi::register_qml_engine(shoop_eng);
+}
+
+pub unsafe fn get_registered_qml_engine() -> Result<*mut QmlEngine, anyhow::Error> {
+    let eng = qobj_qmlengine_bridge::ffi::get_registered_qml_engine()?;
+    let qobj = shoop_qml_engine_to_qobject_ptr(eng);
+    Ok(qobject_to_qml_engine_ptr(qobj))
+}
+
+pub unsafe fn get_qml_engine_stack(engine: Pin<&mut QmlEngine>) -> String {
+    let qobj = engine.pin_mut_qobject_ptr();
+    let shoop_eng = qobject_to_shoop_qml_engine_ptr(qobj);
+    println!("shoop eng: {shoop_eng:?}");
+    qobj_qmlengine_bridge::ffi::get_qml_engine_stack_trace(std::pin::Pin::new_unchecked(
+        &mut *shoop_eng,
+    ))
 }

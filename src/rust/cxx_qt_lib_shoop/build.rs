@@ -31,7 +31,6 @@ fn main() {
         .file("src/rust/qweakpointer_qobject.rs")
         .cc_builder(|cc| {
             cc.include("src/include");
-            cc.file("src/cxx/qqmlengine_helpers.cpp");
         })
         .build();
 }

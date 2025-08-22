@@ -364,17 +364,21 @@ impl LoopChannelBackend {
                     match port {
                         AnyBackendPort::Audio(audio_port) => match action {
                             Action::Connect => {
+                                raw_debug!("Connect audio to output");
                                 channel.audio_connect_output(audio_port);
                             }
                             Action::Disconnect => {
+                                raw_debug!("Disonnect audio from output");
                                 channel.audio_disconnect(audio_port);
                             }
                         },
                         AnyBackendPort::Midi(midi_port) => match action {
                             Action::Connect => {
+                                raw_debug!("Connect MIDI to output");
                                 channel.midi_connect_output(midi_port);
                             }
                             Action::Disconnect => {
+                                raw_debug!("Disonnect MIDI from output");
                                 channel.midi_disconnect(midi_port);
                             }
                         },
@@ -385,17 +389,21 @@ impl LoopChannelBackend {
                     match port {
                         AnyBackendPort::Audio(audio_port) => match action {
                             Action::Connect => {
+                                raw_debug!("Connect audio to input");
                                 channel.audio_connect_input(audio_port);
                             }
                             Action::Disconnect => {
+                                raw_debug!("Disconnect audio from input");
                                 channel.audio_disconnect(audio_port);
                             }
                         },
                         AnyBackendPort::Midi(midi_port) => match action {
                             Action::Connect => {
+                                raw_debug!("Connect MIDI to input");
                                 channel.midi_connect_input(midi_port);
                             }
                             Action::Disconnect => {
+                                raw_debug!("Disconnect MIDI from input");
                                 channel.midi_disconnect(midi_port);
                             }
                         },
@@ -690,16 +698,16 @@ impl LoopChannelBackend {
     pub fn get_data(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant {
         match self.data_type {
             Some(PortDataType::Audio) => {
-                let mut variantlist : QList_QVariant = QList::default();
+                let mut variantlist: QList_QVariant = QList::default();
                 let data = self.get_audio_data();
                 for elem in data.iter() {
                     variantlist.append(QVariant::from(elem));
                 }
                 return variantlist;
-            },
+            }
             Some(PortDataType::Midi) => {
                 return self.get_midi_data();
-            },
+            }
             _ => {
                 error!(self, "Cannot get data: no data type found");
                 return QList::default();

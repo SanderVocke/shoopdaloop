@@ -14,9 +14,7 @@ use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
-use cxx_qt_lib_shoop::qobject::{
-    AsQObject, FromQObject,
-};
+use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
     qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr, qvariantlist_to_qvariant,
