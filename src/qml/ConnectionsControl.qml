@@ -4,7 +4,7 @@ import QtQuick.Controls.Material 6.6
 import QtQuick.Layouts 6.6
 import ShoopDaLoop.PythonLogger
 
-Dialog {
+Item {
     property var audio_in_ports: []
     property var audio_out_ports: []
     property var audio_send_ports: []
@@ -16,12 +16,6 @@ Dialog {
     readonly property PythonLogger logger : PythonLogger { name:"Frontend.ConnectionsDialog" }
 
     id: root
-    modal: true
-    standardButtons: Dialog.Close
-
-    width: Overlay.overlay ? Overlay.overlay.width - 50 : 800
-    height: Overlay.overlay ? Overlay.overlay.height - 50 : 500
-    anchors.centerIn: Overlay.overlay
 
     property var contents: ({
         'Audio in': root.audio_in_ports,

@@ -528,7 +528,7 @@ Item {
 
                             ShoopMenuItem {
                                 text: "Connections..."
-                                onClicked: { connectionsdialog.open() }
+                                onClicked: { connections_window.visible = true }
                             }
 
                             ShoopMenuItem {
@@ -728,8 +728,8 @@ Item {
         }
     }
 
-    ConnectionsDialog {
-        id: connectionsdialog
+    ConnectionsWindow {
+        id: connections_window
         title: root.name + " Connections"
 
         audio_in_ports : root.audio_in_ports

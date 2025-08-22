@@ -506,7 +506,7 @@ Item {
             onSaveSession: (filename) => root.save_session(filename)
             onProcessThreadSegfault: session_backend.segfault_on_process_thread()
             onProcessThreadAbort: session_backend.abort_on_process_thread()
-            onOpenConnections: connections_dialog.open()
+            onOpenConnections: connections_window.visible = true
         }
 
         Item {
@@ -546,9 +546,8 @@ Item {
 
             initial_track_descriptors: root.main_track_descriptors
 
-            ConnectionsDialog {
-                id: connections_dialog
-                title: "All Connections"
+            ConnectionsWindow {
+                id: connections_window
 
                 function flatten(arr) {
                     return arr.reduce((acc, current) => {

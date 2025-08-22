@@ -19,7 +19,6 @@ from .q_objects.LoopAudioChannel import LoopAudioChannel
 from .q_objects.LoopMidiChannel import LoopMidiChannel
 from .q_objects.ClickTrackGenerator import ClickTrackGenerator
 from .q_objects.FetchChannelData import FetchChannelData
-from .q_objects.FileIO import FileIO
 from .q_objects.KeyModifiers import KeyModifiers
 from .q_objects.ApplicationMetadata import ApplicationMetadata
 from .q_objects.Logger import Logger
@@ -79,7 +78,6 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(LoopMidiChannel, 'LoopMidiChannel')
     register_qml_class(ClickTrackGenerator, 'ClickTrackGenerator')
     register_qml_class(FetchChannelData, 'FetchChannelData')
-    register_qml_class(FileIO, 'FileIO')
     register_qml_class(KeyModifiers, 'KeyModifiers')
     register_qml_class(ApplicationMetadata, 'ApplicationMetadata')
     register_qml_class(Logger, 'Logger')
@@ -116,7 +114,6 @@ def create_and_populate_root_context(engine):
     registries = registries_comp.create()
 
     items = {
-        'file_io': FileIO(parent=engine),
         'click_track_generator': ClickTrackGenerator(parent=engine),
         'key_modifiers': KeyModifiers(parent=engine),
         'app_metadata': ApplicationMetadata(parent=engine),
