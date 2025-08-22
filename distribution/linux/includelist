@@ -92,6 +92,7 @@
 */libshiboken6*.so*
 */libshoopdaloop_backend.so*
 */libSM*.so*
+*/libsndfile*.so*
 */libsord*.so*
 */libsqlite3*
 */libsratom*.so*
