@@ -20,3 +20,4 @@
 */brotlidec.dll
 */brotlicommon.dll
 */zlib*.dll
+*/sndfile*.dll
