@@ -100,6 +100,17 @@ pub mod ffi {
         pub fn reset_state_tracking(self: Pin<&mut LoopChannelGui>);
 
         #[qinvokable]
+        pub fn clear_data_dirty(self: Pin<&mut LoopChannelGui>);
+
+        // Returns an AsyncTask
+        #[qinvokable]
+        pub fn get_data_async_and_send_to(
+            self: Pin<&mut LoopChannelGui>,
+            send_to_object: *mut QObject,
+            method_signature: QString,
+        ) -> *mut QObject;
+
+        #[qinvokable]
         pub fn set_instance_identifier(
             self: Pin<&mut LoopChannelGui>,
             instance_identifier: QString,
@@ -237,6 +248,9 @@ pub mod ffi {
 
         #[qsignal]
         pub unsafe fn backend_load_midi_data(self: Pin<&mut LoopChannelGui>, data: QList_QVariant);
+
+        #[qsignal]
+        pub unsafe fn backend_clear_data_dirty(self: Pin<&mut LoopChannelGui>);
     }
 
     unsafe extern "C++" {

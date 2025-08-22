@@ -33,7 +33,7 @@ class RenderMidiSequence(ShoopQQuickPaintedItem):
         if isinstance(v, QJSValue):
             v = v.toVariant()
         logger.trace(lambda: "messages changed (have {})".format(len(v)))
-        self._messages = (v.data if v else [])
+        self._messages = (v if v else [])
         self.messagesChanged.emit(self._messages)
         self.parse()
         

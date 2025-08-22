@@ -15,6 +15,9 @@ pub mod ffi {
         type QVariant = cxx_qt_lib::QVariant;
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
 
+        include!("cxx-qt-lib/qlist.h");
+        type QList_QVariant = cxx_qt_lib::QList<QVariant>;
+
         #[rust_name = "qobject_set_parent"]
         unsafe fn qobjectSetParent(item: *mut QObject, parent: *mut QObject) -> Result<()>;
 
@@ -66,6 +69,13 @@ pub mod ffi {
             obj: *mut QObject,
             property: String,
             value: &bool,
+        ) -> Result<()>;
+
+        #[rust_name = "qobject_set_property_qvariantlist"]
+        unsafe fn qobjectSetProperty(
+            obj: *mut QObject,
+            property: String,
+            value: &QList_QVariant
         ) -> Result<()>;
 
         #[rust_name = "qobject_find_child"]
@@ -221,6 +231,13 @@ pub unsafe fn qobject_set_property_bool(
     value: &bool,
 ) -> Result<(), cxx::Exception> {
     ffi::qobject_set_property_bool(obj, property.to_string(), value)
+}
+pub unsafe fn qobject_set_property_qvariantlist(
+    obj: *mut QObject,
+    property: &str,
+    value: &QList_QVariant,
+) -> Result<(), cxx::Exception> {
+    ffi::qobject_set_property_qvariantlist(obj, property.to_string(), value)
 }
 pub unsafe fn qobject_find_child(
     obj: *mut QObject,

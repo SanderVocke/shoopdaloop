@@ -40,7 +40,7 @@ impl AsyncTask {
             let ptr = self_ptr;
             let mut success = true;
             if let Err(e) = concurrent_fn() {
-                error!("Could not finish async task: {e}");
+                error!("async task failed: {e}");
                 success = false;
             }
             if let Err(e) = invoke::<_, (), _>(

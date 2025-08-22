@@ -70,7 +70,7 @@ impl ffi::RenderAudioWaveform {
         lines.clear();
         trace!(
             "  - {} line slots, {} samples",
-            lines.len(),
+            n_lines,
             level.data.len()
         );
         for i in 0..n_lines {

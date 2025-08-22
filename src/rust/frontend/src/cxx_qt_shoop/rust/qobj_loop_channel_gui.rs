@@ -1,3 +1,4 @@
+use crate::cxx_qt_shoop::qobj_async_task_bridge::ffi::make_raw_async_task_with_parent;
 use crate::cxx_qt_shoop::qobj_port_gui_bridge::PortGui;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_gui_bridge::ffi::*;
@@ -12,10 +13,13 @@ use cxx_qt::CxxQtType;
 use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
-use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
+use cxx_qt_lib_shoop::invokable::invoke;
+use cxx_qt_lib_shoop::qobject::{
+    AsQObject, FromQObject,
+};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
-    qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
+    qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr, qvariantlist_to_qvariant,
 };
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
@@ -150,6 +154,13 @@ impl LoopChannelGui {
                         "backend_reset_state_tracking()",
                         backend_ref,
                         "reset_state_tracking()",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
+                        "backend_clear_data_dirty()",
+                        backend_ref,
+                        "clear_data_dirty()",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
@@ -453,6 +464,76 @@ impl LoopChannelGui {
                 self.as_mut()
                     .instance_identifier_changed(instance_identifier);
             }
+        }
+    }
+
+    pub fn get_data_async_and_send_to(
+        mut self: Pin<&mut LoopChannelGui>,
+        send_to_object: *mut QObject,
+        method_signature: QString,
+    ) -> *mut QObject {
+        let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
+        let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
+        let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
+
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            if send_to_object.is_null() {
+                return Err(anyhow::anyhow!("target object is null"));
+            }
+            let channel_backend = self
+                .as_mut()
+                .backend_channel_wrapper
+                .as_ref()
+                .unwrap()
+                .copy()
+                .unwrap();
+
+            let addr = send_to_object as usize;
+
+            pin_async_task.as_mut().exec_concurrent_rust_then_finish(
+                move || -> Result<(), anyhow::Error> {
+                    let backend_channel_qobj = channel_backend
+                        .as_ref()
+                        .ok_or(anyhow::anyhow!("could not get backend channel"))?
+                        .data()?;
+                    if backend_channel_qobj.is_null() {
+                        return Err(anyhow::anyhow!("backend channel is null"));
+                    }
+
+                    let data = qvariantlist_to_qvariant(unsafe {
+                        &invoke::<_, QList_QVariant, _>(
+                            &mut *backend_channel_qobj,
+                            "get_data()",
+                            connection_types::DIRECT_CONNECTION,
+                            &(),
+                        )?
+                    })?;
+
+                    unsafe {
+                        let send_to_object = addr as *mut QObject;
+                        invoke::<_, (), _>(
+                            &mut *send_to_object,
+                            method_signature.to_string().as_str(),
+                            connection_types::BLOCKING_QUEUED_CONNECTION,
+                            &(data),
+                        )?;
+                    }
+
+                    Ok(())
+                },
+            );
+            Ok(())
+        }() {
+            error!(self, "Failed to get data asynchronously: {e}");
+            pin_async_task.as_mut().finish_dummy();
+        }
+
+        return unsafe { pin_async_task.pin_mut_qobject_ptr() };
+    }
+
+    pub fn clear_data_dirty(self: Pin<&mut LoopChannelGui>) {
+        unsafe {
+            self.backend_clear_data_dirty();
         }
     }
 }

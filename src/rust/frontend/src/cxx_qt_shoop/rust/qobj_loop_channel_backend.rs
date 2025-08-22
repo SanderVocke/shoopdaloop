@@ -686,4 +686,30 @@ impl LoopChannelBackend {
             channel.midi_reset_state_tracking();
         }
     }
+
+    pub fn get_data(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant {
+        match self.data_type {
+            Some(PortDataType::Audio) => {
+                let mut variantlist : QList_QVariant = QList::default();
+                let data = self.get_audio_data();
+                for elem in data.iter() {
+                    variantlist.append(QVariant::from(elem));
+                }
+                return variantlist;
+            },
+            Some(PortDataType::Midi) => {
+                return self.get_midi_data();
+            },
+            _ => {
+                error!(self, "Cannot get data: no data type found");
+                return QList::default();
+            }
+        }
+    }
+
+    pub fn clear_data_dirty(self: Pin<&mut LoopChannelBackend>) {
+        if let Some(chan) = self.maybe_backend_channel.as_ref() {
+            chan.clear_data_dirty();
+        }
+    }
 }

@@ -1,21 +1,23 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonFetchChannelData
+import ShoopDaLoop.PythonLogger
 
 import 'js/mode_helpers.js' as ModeHelpers
 
 Item {
     id: root
     property var channel
-    property alias fetch_active: fetcher.active
+    property bool fetch_active: false
     property real samples_per_pixel: 1.0
     property int samples_offset: 0.0
     property int loop_length: 0
     readonly property int n_samples_shown: width * samples_per_pixel
-    readonly property int n_samples: fetcher && fetcher.channel_data ? channel.data_length : 0
+    readonly property int n_samples: render.input_data ? channel.data_length : 0
     property real major_grid_lines_interval
     property real minor_grid_lines_interval
+
+    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.ChannelDataRenderer" }
 
     property var played_back_sample : channel ? channel.played_back_sample : 0
     property int n_preplay_samples : channel ? channel.n_preplay_samples : 0
@@ -207,10 +209,6 @@ Item {
 
         RenderChannelData {
             id: render
-            input_data:
-                fetcher && fetcher.channel_data && root.visible ?
-                    (fetcher.channel_float_data ? fetcher.channel_float_data : fetcher.channel_data)
-                    : null
             channel: root.channel
             samples_per_bin: root.samples_per_pixel
             samples_offset: root.samples_offset
@@ -218,11 +216,46 @@ Item {
             height: root.height
             clip: true
 
-            // Will repeatedly fetch channel data when changed.
-            PythonFetchChannelData {
-                id: fetcher
-                channel: root.channel
+            property var running_fetch_task: null
+
+            function set_input_data(data) { input_data = data }
+
+            function update() {
+                if (running_fetch_task) {
+                    root.logger.debug("fetch task still running, skip update")
+                }
+                if (root.channel.data_dirty) {
+                    root.logger.debug("starting fetch")
+                    running_fetch_task = root.channel.get_data_async_and_send_to(
+                        render,
+                        "set_input_data(QVariant)"
+                    );
+                    running_fetch_task.then(() => {
+                        root.logger.debug(`done fetching, success: ${running_fetch_task.success}`)
+                        root.channel.clear_data_dirty()
+                        fetch_timer.start()
+                    })
+                } else {
+                    root.logger.debug("data not dirty, no fetch")
+                }
             }
+
+            Timer {
+                id: fetch_timer
+                interval: 200
+                running: false
+                repeat: false
+                onTriggered: render.update()
+            }
+
+            Connections {
+                target: root.channel
+                function onData_dirty_changed() {
+                    fetch_timer.start()
+                }
+            }
+
+            Component.onCompleted: update()
 
             Label {
                 anchors {

@@ -95,6 +95,9 @@ pub mod ffi {
         pub fn get_midi_data(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant;
 
         #[qinvokable]
+        pub fn get_data(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant;
+
+        #[qinvokable]
         pub fn get_data_length(self: Pin<&mut LoopChannelBackend>) -> i32;
 
         #[qinvokable]
@@ -102,6 +105,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn reset_state_tracking(self: Pin<&mut LoopChannelBackend>);
+
+        #[qinvokable]
+        pub fn clear_data_dirty(self: Pin<&mut LoopChannelBackend>);
 
         #[qinvokable]
         pub fn set_instance_identifier(
