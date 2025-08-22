@@ -98,7 +98,7 @@ Item {
 
                 Instantiator {
                     model : {
-                        return global_args.developer ? [true] : []
+                        return global_args.developer_mode ? [true] : []
                     }
                     delegate: Menu {
                         title: "Developer"

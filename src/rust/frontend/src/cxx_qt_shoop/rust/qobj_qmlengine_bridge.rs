@@ -83,6 +83,12 @@ pub mod ffi {
         #[rust_name = "get_qml_engine_stack_trace"]
         unsafe fn getQmlEngineStackTrace(engine: Pin<&mut ShoopQmlEngine>) -> String;
 
+        #[rust_name = "set_cpp_ownership"]
+        unsafe fn setCppOwnership(object: *mut QObject);
+
+        #[rust_name = "set_javascript_ownership"]
+        unsafe fn setJavascriptOwnership(object: *mut QObject);
+
         include!("cxx-qt-lib-shoop/cast_ptr.h");
         #[rust_name = "qobject_to_qml_engine_ptr"]
         unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut QmlEngine;

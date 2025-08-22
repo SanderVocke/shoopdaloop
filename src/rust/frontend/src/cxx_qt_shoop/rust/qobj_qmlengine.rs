@@ -115,7 +115,6 @@ pub unsafe fn get_registered_qml_engine() -> Result<*mut QmlEngine, anyhow::Erro
 pub unsafe fn get_qml_engine_stack(engine: Pin<&mut QmlEngine>) -> String {
     let qobj = engine.pin_mut_qobject_ptr();
     let shoop_eng = qobject_to_shoop_qml_engine_ptr(qobj);
-    println!("shoop eng: {shoop_eng:?}");
     qobj_qmlengine_bridge::ffi::get_qml_engine_stack_trace(std::pin::Pin::new_unchecked(
         &mut *shoop_eng,
     ))

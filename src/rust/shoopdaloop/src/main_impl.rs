@@ -14,10 +14,8 @@ fn crash_info_callback_impl() -> Result<Vec<crashhandling::AdditionalCrashAttach
     let maybe_qml_engine = unsafe { get_registered_qml_engine()? };
     if !maybe_qml_engine.is_null() {
         unsafe {
-            println!("GET STACK");
             let maybe_qml_engine = std::pin::Pin::new_unchecked(&mut *maybe_qml_engine);
             let qml_stack = get_qml_engine_stack(maybe_qml_engine);
-            println!("stack: {qml_stack}");
             let info = crashhandling::AdditionalCrashAttachment {
                 id: "qml_stack".to_string(),
                 contents: qml_stack,

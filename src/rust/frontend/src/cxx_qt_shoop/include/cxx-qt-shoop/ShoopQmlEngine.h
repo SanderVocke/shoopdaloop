@@ -97,3 +97,11 @@ inline ::rust::String getQmlEngineStackTrace(ShoopQmlEngine &engine) {
 inline void registerQmlEngine(ShoopQmlEngine* engine) {
     g_registered_qml_engine = engine;
 }
+
+inline void setCppOwnership(QObject * object) {
+    QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);
+}
+
+inline void setJavascriptOwnership(QObject *object) {
+    QQmlEngine::setObjectOwnership(object, QQmlEngine::JavaScriptOwnership);
+}

@@ -768,6 +768,7 @@ impl FileIO {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
         let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
+        pin_async_task.as_mut().set_cpp_ownership();
 
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let channel_gui = unsafe { LoopChannelGui::from_qobject_mut_ptr(channel)? };
@@ -827,6 +828,7 @@ impl FileIO {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
         let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
+        pin_async_task.as_mut().set_cpp_ownership();
 
         let backend_channels: Vec<cxx::UniquePtr<QSharedPointer_QObject>> =
             qlist_qvariant_channels_to_backend(&channels);
@@ -923,6 +925,8 @@ impl FileIO {
     ) -> *mut QObject {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
+        let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
+        pin_async_task.as_mut().set_cpp_ownership();
 
         let mut qlists: QList_QVariant = QList::default();
         for shared in qlist_qvariant_channels_to_backend(&channels).iter() {
@@ -947,7 +951,6 @@ impl FileIO {
         }
         let variant = qvariantlist_to_qvariant(&qlists).unwrap();
 
-        let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
         pin_async_task
             .as_mut()
             .exec_concurrent_rust_then_finish(move || {
@@ -998,13 +1001,14 @@ impl FileIO {
     ) -> *mut QObject {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
+        let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
+        pin_async_task.as_mut().set_cpp_ownership();
 
         // Get shared pointers to back-end objects, which we can move to our
         // other-thread function.
         let maybe_loop = qvariant_loop_gui_to_loop_backend(&maybe_update_loop_to_data_length);
         let chan_map = qlist_qvariant_channel_mapping_to_backend(&channels_to_loop_channels);
 
-        let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
         pin_async_task
             .as_mut()
             .exec_concurrent_rust_then_finish(move || {

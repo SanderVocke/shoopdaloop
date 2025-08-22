@@ -7,6 +7,12 @@ import './testfilename.js' as TestFilename
 import '..'
 
 ShoopTestFile {
+
+    QtObject {
+        id: data_convert
+        property list<double> data: []
+    }
+
     TestSession {
         id: session
 
@@ -62,7 +68,14 @@ ShoopTestFile {
                     }
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.wav'
-                    ShoopFileIO.save_data_to_soundfile(filename, 24000, [data])
+                    
+                    // Jump through some hoops to avoid getting a QJSValue to
+                    // the file I/O. Loading via the channel forces the data type.
+                    channel().load_data(data)
+                    testcase.wait_updated(session.backend)
+                    ShoopFileIO.save_channels_to_soundfile(filename, 24000, [channel()])
+                    testcase.wait_updated(session.backend)
+                    channel().load_data([])
 
                     testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
@@ -92,7 +105,14 @@ ShoopTestFile {
                     }
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.wav'
-                    ShoopFileIO.save_data_to_soundfile(filename, 24000, [data])
+
+                    // Jump through some hoops to avoid getting a QJSValue to
+                    // the file I/O. Loading via the channel forces the data type.
+                    channel().load_data(data)
+                    testcase.wait_updated(session.backend)
+                    ShoopFileIO.save_channels_to_soundfile(filename, 24000, [channel()])
+                    testcase.wait_updated(session.backend)
+                    channel().load_data([])
 
                     testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
@@ -121,10 +141,18 @@ ShoopTestFile {
                     for (var i=0; i<data.length; i++) {
                         data[i] = Math.sin(i / data.length * 100)
                     }
-                    let _data = [data, data]
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.wav'
-                    ShoopFileIO.save_data_to_soundfile(filename, 24000, _data)
+                    
+                    // Jump through some hoops to avoid getting a QJSValue to
+                    // the file I/O. Loading via the channel forces the data type.
+                    loop2_channels()[0].load_data(data)
+                    loop2_channels()[1].load_data(data)
+                    testcase.wait_updated(session.backend)
+                    ShoopFileIO.save_channels_to_soundfile(filename, 24000, loop2_channels())
+                    testcase.wait_updated(session.backend)
+                    loop2_channels()[0].load_data([])
+                    loop2_channels()[1].load_data([])
 
                     testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)

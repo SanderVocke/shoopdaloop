@@ -23,8 +23,6 @@ Item {
     property int n_preplay_samples : channel ? channel.n_preplay_samples : 0
     property int start_offset : channel ? channel.start_offset : 0
 
-    onSamples_per_pixelChanged: console.log("n: ", samples_per_pixel)
-
     function snap_sample_to_grid(sample_idx) {
         var interval = minor_grid_lines_interval ? minor_grid_lines_interval : major_grid_lines_interval
         if (interval != undefined) {
@@ -223,16 +221,16 @@ Item {
             function set_input_data(data) { input_data = data }
 
             function update(force) {
-                if (running_fetch_task) {
+                if (render.running_fetch_task) {
                     root.logger.debug("fetch task still running, skip update")
                 }
                 if (root.fetch_active && (force || root.channel.data_dirty)) {
                     root.logger.debug("starting fetch")
-                    running_fetch_task = root.channel.get_data_async_and_send_to(
+                    render.running_fetch_task = root.channel.get_data_async_and_send_to(
                         render,
                         "set_input_data(QVariant)"
                     );
-                    running_fetch_task.then(() => {
+                    render.running_fetch_task.then(() => {
                         root.logger.debug(`done fetching, success: ${running_fetch_task.success}`)
                         root.channel.clear_data_dirty()
                         fetch_timer.start()

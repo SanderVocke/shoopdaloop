@@ -1,5 +1,6 @@
 use crate::cxx_qt_shoop::qobj_async_task_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_async_task_bridge::AsyncTaskRust;
+use crate::cxx_qt_shoop::qobj_qmlengine_bridge::ffi::set_cpp_ownership;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::qjsvalue::qvariant_call_as_callable_qjsvalue;
@@ -117,6 +118,8 @@ impl AsyncTask {
     pub fn then_delete(mut self: Pin<&mut AsyncTask>) {
         self.as_mut().rust_mut().delete_when_done = true;
         if !self.active {
+            let self_ptr = self.self_rust_ptr();
+            debug!("{self_ptr:?}: already done when then_delete() called - finishing.");
             self.done_impl();
         }
     }
@@ -124,6 +127,8 @@ impl AsyncTask {
     pub fn then(mut self: Pin<&mut AsyncTask>, func: QVariant) {
         self.as_mut().rust_mut().maybe_qml_callable = func;
         if !self.active {
+            let self_ptr = self.self_rust_ptr();
+            debug!("{self_ptr:?}: already done when then(...) called - finishing.");
             self.done_impl();
         }
     }
@@ -137,6 +142,12 @@ impl AsyncTask {
 
     pub fn not_deleted_error(self: Pin<&mut AsyncTask>) {
         error!("timeout expired after completion, no follow-up registered")
+    }
+
+    pub fn set_cpp_ownership(self: Pin<&mut AsyncTask>) {
+        unsafe {
+            set_cpp_ownership(self.pin_mut_qobject_ptr());
+        }
     }
 }
 

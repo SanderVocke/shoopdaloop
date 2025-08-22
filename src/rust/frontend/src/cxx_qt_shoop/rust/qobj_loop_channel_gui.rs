@@ -473,6 +473,7 @@ impl LoopChannelGui {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
         let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
+        pin_async_task.as_mut().set_cpp_ownership();
 
         if let Err(e) = || -> Result<(), anyhow::Error> {
             if send_to_object.is_null() {
