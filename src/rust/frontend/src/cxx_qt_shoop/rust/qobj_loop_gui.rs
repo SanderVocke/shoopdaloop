@@ -444,9 +444,15 @@ impl LoopGui {
                 let loop_gui_ptr: *mut LoopGui = qobject_to_loop_ptr(sync_source_in);
                 let backend_loop_ptr: &cxx::UniquePtr<QSharedPointer_QObject> =
                     &loop_gui_ptr.as_ref().unwrap().backend_loop_wrapper;
-                sync_source_out =
-                    qsharedpointer_qobject_to_qvariant(&backend_loop_ptr.as_ref().unwrap())
-                        .unwrap();
+                match backend_loop_ptr.as_ref() {
+                    Some(r) => {
+                        match qsharedpointer_qobject_to_qvariant(r) {
+                            Ok(variant) => { sync_source_out = variant; },
+                            Err(_) => { sync_source_out = QVariant::default(); },
+                        }
+                    },
+                    None => { sync_source_out = QVariant::default(); },
+                }
             }
         }
 
@@ -454,15 +460,12 @@ impl LoopGui {
     }
 
     pub fn get_backend_loop_wrapper(self: Pin<&mut LoopGui>) -> QVariant {
-        match self
-                .backend_loop_wrapper
-                .as_ref() {
-                    Some(r) => {
-                        match qsharedpointer_qobject_to_qvariant(r) {
-                    Ok(variant) => variant,
-                    Err(_) => QVariant::default(),
-                }
-            }, None => {},
+        match self.backend_loop_wrapper.as_ref() {
+            Some(r) => match qsharedpointer_qobject_to_qvariant(r) {
+                Ok(variant) => variant,
+                Err(_) => QVariant::default(),
+            },
+            None => QVariant::default(),
         }
     }
 }
