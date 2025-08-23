@@ -54,6 +54,7 @@ pub mod ffi {
         #[qproperty(bool, is_internal, READ=get_is_internal, WRITE=set_is_internal, NOTIFY=is_internal_changed)]
         #[qproperty(QList_QVariant, internal_port_connections, READ, WRITE=set_internal_port_connections, NOTIFY=internal_port_connections_changed)]
         #[qproperty(i32, min_n_ringbuffer_samples, READ=get_min_n_ringbuffer_samples, WRITE=set_min_n_ringbuffer_samples, NOTIFY=min_n_ringbuffer_samples_changed)]
+        #[qproperty(*mut QObject, frontend_object, READ=get_frontend_object, WRITE=set_frontend_object, NOTIFY)]
         // Other properties
         type PortBackend = super::PortBackendRust;
 
@@ -79,6 +80,9 @@ pub mod ffi {
         pub fn get_midi_n_input_notes_active(self: &PortBackend) -> i32;
         #[qinvokable]
         pub fn get_midi_n_output_notes_active(self: &PortBackend) -> i32;
+
+        #[qinvokable]
+        pub fn get_frontend_object(self: Pin<&mut PortBackend>) -> *mut QObject;
 
         #[qinvokable]
         pub fn connect_external_port(self: Pin<&mut PortBackend>, name: QString);
@@ -121,6 +125,12 @@ pub mod ffi {
         pub fn set_internal_port_connections(
             self: Pin<&mut PortBackend>,
             internal_port_connections: QList_QVariant,
+        );
+
+        #[qinvokable]
+        pub fn set_frontend_object(
+            self: Pin<&mut PortBackend>,
+            frontend_object: *mut QObject,
         );
 
         #[qinvokable]
@@ -345,6 +355,7 @@ pub struct PortBackendRust {
     pub initialized: bool,
     pub backend: *mut QObject,
     pub internal_port_connections: QList_QVariant,
+    pub frontend_object: *mut QObject,
 
     // Other fields
     pub maybe_backend_port: Option<AnyBackendPort>,
@@ -377,6 +388,7 @@ impl Default for PortBackendRust {
             prev_state: AnyBackendPortState::default(),
             min_n_ringbuffer_samples: None,
             internally_connected_ports: HashSet::default(),
+            frontend_object: std::ptr::null_mut()
         }
     }
 }

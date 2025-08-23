@@ -237,14 +237,21 @@ Item {
         observer.start()
     }
 
-    function reload() {
-        root.logger.debug("Reloading session")
+    function unload_session() {
+        root.logger.debug("Unloading session")
         registries.state_registry.clear([
             'sync_active'
         ])
         registries.objects_registry.clear()
-        tracks_widget.reload()
-        sync_loop_loader.reload()
+        tracks_widget.unload()
+        sync_loop_loader.unload()
+        root.logger.debug("Session unloaded")
+    }
+
+    function load_current_session() {
+        root.logger.debug("Reloading session")
+        tracks_widget.load()
+        sync_loop_loader.load()
     }
 
     function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
@@ -286,6 +293,8 @@ Item {
         var tempdir = ShoopFileIO.create_temporary_folder()
 
         try {
+            root.unload_session()
+
             ShoopFileIO.extract_tarfile(filename, tempdir)
             root.logger.debug(`Extracted files: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`)
 
@@ -313,7 +322,7 @@ Item {
             }
 
             root.initial_descriptor = descriptor
-            reload()
+            root.load_current_session()
             registries.state_registry.load_action_started()
 
             let finish_fn = () => {
@@ -669,20 +678,25 @@ Item {
                 property bool loaded: false
                 property var initial_descriptor : null
 
-                function initialize() {
-                    if (track_widget) {
-                        track_widget.qml_close()
-                    }
-                    active = false
-                    loaded = false
+                Component.onCompleted: { 
+                    unload()
+                    load()
+                }
+
+                function load() {
+                    root.logger.debug("sync loop: loading session")
                     initial_descriptor = root.sync_loop_track_descriptor
                     active = Qt.binding(() => {
                         return initial_descriptor != null
                     })
                 }
 
-                Component.onCompleted: { initialize() }
-                function reload() { initialize() }
+                function unload() {
+                    root.logger.debug("sync loop: unloading session")
+                    active = false
+                    loaded = false
+                    initial_descriptor = null
+                }
 
                 property var track_widget: item ?
                     item.track_widget : undefined

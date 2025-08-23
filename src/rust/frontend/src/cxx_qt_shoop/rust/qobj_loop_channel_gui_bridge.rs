@@ -132,6 +132,12 @@ pub mod ffi {
             n_notes_active: i32,
         );
 
+        #[qinvokable]
+        pub fn backend_connected_ports_changed(
+            self: Pin<&mut LoopChannelGui>,
+            ports: QList_QVariant,
+        );
+
         #[qsignal]
         pub unsafe fn backend_changed(self: Pin<&mut LoopChannelGui>, backend: *mut QObject);
 

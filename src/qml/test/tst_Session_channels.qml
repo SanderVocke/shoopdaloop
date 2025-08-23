@@ -65,6 +65,7 @@ ShoopTestFile {
                               _actual['track_groups'][g]['tracks'][t]['width']
                         }
                     }
+                    verify_eq(_actual, ori)
 
                     verify_true(loop())
                     verify_true('channels' in session.initial_descriptor['track_groups'][0]['tracks'][0]['loops'][0])

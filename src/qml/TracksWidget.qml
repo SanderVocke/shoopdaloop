@@ -120,11 +120,16 @@ FocusReleasingScrollView {
         }
     }
 
-    function initialize() {
+    function unload() {
+        root.logger.debug("unloading session")
         loaded = false
         root.clear_tracks()
-        var _n_loaded = 0
+    }
+
+    function load() {
+        root.logger.debug("loading session")
         // Instantiate initial tracks
+        var _n_loaded = 0
         root.initial_track_descriptors.forEach(desc => {
             var track = root.add_track({
                 initial_descriptor: desc,
@@ -135,8 +140,10 @@ FocusReleasingScrollView {
         loaded = Qt.binding(() => { return n_loaded >= tracks.length })
     }
 
-    Component.onCompleted: initialize()
-    function reload() { initialize() }
+    Component.onCompleted: {
+        unload()
+        load()
+    }
 
     FocusReleasingScrollView {
         id: tracks_view

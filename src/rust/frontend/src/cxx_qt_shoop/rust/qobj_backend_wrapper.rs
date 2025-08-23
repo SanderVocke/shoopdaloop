@@ -167,6 +167,10 @@ impl BackendWrapper {
             debug!("ready");
         }
 
+        // FIXME
+        error!("qobj_port_gui (get data async) and async task use unsafe pointer-sending methods!");
+        error!("use QPointer for all frontend pointers returned from backend wrappers!");
+
         Ok(())
     }
 

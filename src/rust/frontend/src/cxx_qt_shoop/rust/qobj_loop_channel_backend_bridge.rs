@@ -29,9 +29,11 @@ pub mod ffi {
         #[qobject]
         // Backend -> Frontend properties
         #[qproperty(bool, initialized, READ=get_initialized, NOTIFY=initialized_changed)]
+        #[qproperty(QList_QVariant, connected_ports, READ=get_connected_ports, NOTIFY=connected_ports_changed)] // QWeakPointers
         // Frontend -> Backend properties
         #[qproperty(bool, is_midi, READ=get_is_midi, WRITE=set_is_midi, NOTIFY=is_midi_changed)]
         #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
+        #[qproperty(*mut QObject, frontend_object, READ=get_frontend_object, WRITE=set_frontend_object, NOTIFY)]
         // Other properties
         #[qproperty(*mut QObject, channel_loop, READ=get_channel_loop, NOTIFY=channel_loop_changed)]
         #[qproperty(i32, data_length, READ=get_data_length, NOTIFY=data_length_changed)]
@@ -110,10 +112,22 @@ pub mod ffi {
         pub fn clear_data_dirty(self: Pin<&mut LoopChannelBackend>);
 
         #[qinvokable]
+        pub fn get_connected_ports(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant; // Weak pointers
+
+        #[qinvokable]
         pub fn set_instance_identifier(
             self: Pin<&mut LoopChannelBackend>,
             instance_identifier: QString,
         );
+
+        #[qinvokable]
+        pub fn set_frontend_object(
+            self: Pin<&mut LoopChannelBackend>,
+            frontend_object: *mut QObject,
+        );
+
+        #[qinvokable]
+        pub fn get_frontend_object(self: Pin<&mut LoopChannelBackend>) -> *mut QObject;
 
         #[qsignal]
         pub unsafe fn state_changed(
@@ -154,6 +168,12 @@ pub mod ffi {
 
         #[qsignal]
         pub unsafe fn start_offset_changed(self: Pin<&mut LoopChannelBackend>, start_offset: i32);
+
+        #[qsignal]
+        pub unsafe fn connected_ports_changed(
+            self: Pin<&mut LoopChannelBackend>,
+            connected_ports: QList_QVariant,
+        );
 
         #[qsignal]
         pub unsafe fn last_played_sample_changed(
@@ -229,6 +249,7 @@ pub struct LoopChannelBackendRust {
     // Properties
     pub initialized: bool,
     pub backend: *mut QObject,
+    pub frontend_object: *mut QObject,
 
     // Other fields
     pub maybe_backend_channel: Option<AnyBackendChannel>,
@@ -252,6 +273,7 @@ impl Default for LoopChannelBackendRust {
             ports_to_connect: Vec::new(),
             ports_connected: Vec::new(),
             instance_identifier: QString::from("unknown"),
+            frontend_object: std::ptr::null_mut(),
         }
     }
 }

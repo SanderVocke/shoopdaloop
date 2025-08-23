@@ -10,6 +10,7 @@ use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QList, QMap};
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
+use cxx_qt_lib_shoop::invokable::invoke;
 use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
@@ -47,9 +48,19 @@ impl PortGui {
         unsafe {
             let backend_port = make_raw_port_backend();
             let backend_port_qobj = port_backend_qobject_from_ptr(backend_port);
+            let self_qobj = self.as_mut().pin_mut_qobject_ptr();
+
             qobject_move_to_thread(
                 backend_port_qobj,
                 engine_update_thread::get_engine_update_thread().thread,
+            )
+            .unwrap();
+
+            invoke::<_, (), _>(
+                &mut *backend_port_qobj,
+                "set_frontend_object(QObject*)",
+                connection_types::QUEUED_CONNECTION,
+                &(self_qobj),
             )
             .unwrap();
 

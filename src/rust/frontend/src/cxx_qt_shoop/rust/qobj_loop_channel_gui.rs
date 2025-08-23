@@ -17,7 +17,8 @@ use cxx_qt_lib_shoop::invokable::invoke;
 use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
-    qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr, qvariantlist_to_qvariant,
+    qobject_ptr_to_qvariant, qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
+    qvariant_to_qweakpointer_qobject, qvariantlist_to_qvariant,
 };
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
@@ -52,9 +53,19 @@ impl LoopChannelGui {
         unsafe {
             let backend_channel = make_raw_loop_channel_backend();
             let backend_channel_qobj = loop_channel_backend_qobject_from_ptr(backend_channel);
+            let self_qobj = self.as_mut().pin_mut_qobject_ptr();
+
             qobject_move_to_thread(
                 backend_channel_qobj,
                 engine_update_thread::get_engine_update_thread().thread,
+            )
+            .unwrap();
+
+            invoke::<_, (), _>(
+                &mut *backend_channel_qobj,
+                "set_frontend_object(QObject*)",
+                connection_types::QUEUED_CONNECTION,
+                &(self_qobj),
             )
             .unwrap();
 
@@ -177,6 +188,13 @@ impl LoopChannelGui {
                         self_ref,
                         "backend_state_changed(bool,::std::int32_t,::std::int32_t,::std::int32_t,QVariant,::std::int32_t,bool,float,float,::std::int32_t,::std::int32_t)",
                         connection_types::QUEUED_CONNECTION
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "connected_ports_changed(QList_QVariant)",
+                        self_ref,
+                        "backend_connected_ports_changed(QList_QVariant)",
+                        connection_types::QUEUED_CONNECTION,
                     );
                 }
 
@@ -533,6 +551,44 @@ impl LoopChannelGui {
     pub fn clear_data_dirty(self: Pin<&mut LoopChannelGui>) {
         unsafe {
             self.backend_clear_data_dirty();
+        }
+    }
+
+    pub fn backend_connected_ports_changed(
+        mut self: Pin<&mut LoopChannelGui>,
+        weak_ports: QList_QVariant,
+    ) {
+        let mut frontend_ports: QList_QVariant = QList::default();
+        for weak in weak_ports.iter() {
+            match qvariant_to_qweakpointer_qobject(weak) {
+                Ok(weak) => {
+                    if let Ok(strong) = weak.to_strong() {
+                        let raw = strong.as_ref().unwrap().data().unwrap();
+                        match unsafe {
+                            invoke::<_, *mut QObject, _>(
+                                &mut *raw,
+                                "get_frontend_object()",
+                                connection_types::BLOCKING_QUEUED_CONNECTION,
+                                &(),
+                            )
+                        } {
+                            Ok(obj) => frontend_ports.append(
+                                qobject_ptr_to_qvariant(&obj).unwrap_or(QVariant::default()),
+                            ),
+                            Err(e) => {
+                                debug!(self, "connected port is not a QObject: {e}");
+                            }
+                        };
+                    }
+                }
+                Err(e) => {
+                    error!(self, "connected port is not a weak pointer: {e}");
+                }
+            }
+        }
+        self.as_mut().rust_mut().connected_ports = frontend_ports.clone();
+        unsafe {
+            self.as_mut().connected_ports_changed(frontend_ports);
         }
     }
 }

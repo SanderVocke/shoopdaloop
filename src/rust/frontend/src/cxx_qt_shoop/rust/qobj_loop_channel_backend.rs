@@ -11,6 +11,7 @@ use common::logging::macros::{
 };
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QList;
+use cxx_qt_lib_shoop::qvariant_helpers::qweakpointer_qobject_to_qvariant;
 use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 use cxx_qt_lib_shoop::{
     connect::connect_or_report,
@@ -543,6 +544,13 @@ impl LoopChannelBackend {
                 .map(|(strong, _)| QWeakPointer_QObject::from_strong(strong))
                 .collect();
 
+            // Signal the change
+            let connected_port_variants = self.as_mut().get_connected_ports(); // converts to QVariants
+            unsafe {
+                self.as_mut()
+                    .connected_ports_changed(connected_port_variants);
+            }
+
             Ok(())
         }() {
             error!(self, "Could not update port connections: {e}");
@@ -719,5 +727,34 @@ impl LoopChannelBackend {
         if let Some(chan) = self.maybe_backend_channel.as_ref() {
             chan.clear_data_dirty();
         }
+    }
+
+    pub fn get_connected_ports(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant {
+        let mut rval: QList_QVariant = QList::default();
+        self.ports_connected
+            .iter()
+            .for_each(|weak| match qweakpointer_qobject_to_qvariant(weak) {
+                Ok(weak_variant) => rval.append(weak_variant),
+                Err(e) => {
+                    debug!(
+                        self,
+                        "Could not convert connected weak pointer to QVariant: {e}"
+                    );
+                }
+            });
+        rval
+    }
+
+    pub fn set_frontend_object(
+        mut self: Pin<&mut LoopChannelBackend>,
+        frontend_object: *mut QObject,
+    ) {
+        let mut rust_mut = self.as_mut().rust_mut();
+        rust_mut.frontend_object = frontend_object;
+        self.as_mut().frontend_object_changed();
+    }
+
+    pub fn get_frontend_object(self: Pin<&mut LoopChannelBackend>) -> *mut QObject {
+        self.frontend_object
     }
 }

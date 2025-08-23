@@ -454,7 +454,15 @@ impl LoopGui {
     }
 
     pub fn get_backend_loop_wrapper(self: Pin<&mut LoopGui>) -> QVariant {
-        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap()).unwrap()
+        match qsharedpointer_qobject_to_qvariant(
+            &self
+                .backend_loop_wrapper
+                .as_ref()
+                .unwrap_or(&cxx::UniquePtr::null()),
+        ) {
+            Ok(variant) => variant,
+            Err(_) => QVariant::default(),
+        }
     }
 }
 

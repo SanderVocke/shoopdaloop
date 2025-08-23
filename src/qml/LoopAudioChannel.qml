@@ -35,6 +35,9 @@ LoopChannelGui {
             'gain': audio_gain,
             'connected_port_ids': initialized ? connected_ports.map((c) => c.obj_id) : descriptor.connected_port_ids
         }
+
+        console.log(initialized, connected_ports)
+
         if (recording_started_at) { rval['recording_started_at'] = recording_started_at }
         if (recording_fx_chain_state_id) { rval['recording_fx_chain_state_id'] = recording_fx_chain_state_id }
 
@@ -93,6 +96,9 @@ LoopChannelGui {
         id: lookup_connected_ports
         registry: registries.objects_registry
         keys: descriptor.connected_port_ids
+
+        onKeysChanged: console.log("lookup:", keys)
+        onObjectsChanged: console.log("objects:", objects)
     }
 
     RegisterInRegistry {
