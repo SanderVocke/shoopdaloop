@@ -162,8 +162,8 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     verify_approx(other_loop().last_pushed_gain, 0.5)
                     verify_approx(other_loop().last_pushed_stereo_balance, 1.0)
-                    verify_approx(other_loop().audio_channels[0].gain, 0.0)
-                    verify_approx(other_loop().audio_channels[1].gain, 0.5)
+                    verify_approx(other_loop().audio_channels[0].audio_gain, 0.0)
+                    verify_approx(other_loop().audio_channels[1].audio_gain, 0.5)
                 }
             })
         }

@@ -389,27 +389,31 @@ Item {
         // - gain not supported on MIDI
         // - Send should always have the original recorded gain of the dry signal.
         // Also, gain + balance together make up the channel gains in stereo mode.
-        if (root.is_stereo && root.maybe_backend_loop) {
-            root.logger.debug(`push stereo gain: ${gain}`)
-            var lr = get_stereo_audio_output_channels()
-            var gains = Stereo.individual_gains(gain, last_pushed_stereo_balance)
-            lr[0].push_gain(gains[0])
-            lr[1].push_gain(gains[1])
-        } else {
-            root.logger.debug(`push homogenous gain: ${gain}`)
-            get_audio_output_channels().forEach(c => c.push_gain(gain))
+        if (root.maybe_backend_loop) {
+            if (root.is_stereo) {
+                root.logger.debug(`push stereo gain: ${gain}`)
+                var lr = get_stereo_audio_output_channels()
+                var gains = Stereo.individual_gains(gain, last_pushed_stereo_balance)
+                lr[0].push_gain(gains[0])
+                lr[1].push_gain(gains[1])
+            } else {
+                root.logger.debug(`push homogenous gain: ${gain}`)
+                get_audio_output_channels().forEach(c => c.push_gain(gain))
+            }
         }
 
         last_pushed_gain = gain
     }
 
     function push_stereo_balance(balance) {
-        if (root.is_stereo && root.maybe_backend_loop) {
-            root.logger.debug(`push balance: ${balance}`)
-            var lr = get_stereo_audio_output_channels()
-            var gains = Stereo.individual_gains(last_pushed_gain, balance)
-            lr[0].push_gain(gains[0])
-            lr[1].push_gain(gains[1])
+        if (root.maybe_backend_loop) {
+            if (root.is_stereo) {
+                root.logger.debug(`push balance: ${balance}`)
+                var lr = get_stereo_audio_output_channels()
+                var gains = Stereo.individual_gains(last_pushed_gain, balance)
+                lr[0].push_gain(gains[0])
+                lr[1].push_gain(gains[1])
+            }
         }
         last_pushed_stereo_balance = balance
     }

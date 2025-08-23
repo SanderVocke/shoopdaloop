@@ -268,18 +268,21 @@ impl LoopChannelGui {
 
     pub fn push_start_offset(self: Pin<&mut LoopChannelGui>, start_offset: i32) {
         unsafe {
+            trace!(self, "push start offset: {start_offset}");
             self.backend_push_start_offset(start_offset);
         }
     }
 
     pub fn push_n_preplay_samples(self: Pin<&mut LoopChannelGui>, n_preplay_samples: i32) {
         unsafe {
+            trace!(self, "push n preplay samples: {n_preplay_samples}");
             self.backend_push_n_preplay_samples(n_preplay_samples);
         }
     }
 
     pub fn push_audio_gain(self: Pin<&mut LoopChannelGui>, audio_gain: f32) {
         unsafe {
+            trace!(self, "push audio gain: {audio_gain}");
             self.backend_push_audio_gain(audio_gain);
         }
     }

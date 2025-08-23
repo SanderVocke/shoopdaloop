@@ -560,6 +560,7 @@ impl LoopChannelBackend {
     pub fn push_mode(mut self: Pin<&mut LoopChannelBackend>, mode: i32) {
         self.as_mut().maybe_initialize_backend();
         if let Some(chan) = self.maybe_backend_channel.as_ref() {
+            trace!(self, "push mode: {mode}");
             chan.set_mode(ChannelMode::try_from(mode).unwrap());
         } else {
             debug!(self, "mode (deferred) -> {mode}");
@@ -570,6 +571,7 @@ impl LoopChannelBackend {
     pub fn push_audio_gain(mut self: Pin<&mut LoopChannelBackend>, audio_gain: f32) {
         self.as_mut().maybe_initialize_backend();
         if let Some(chan) = self.maybe_backend_channel.as_ref() {
+            trace!(self, "push audio gain: {audio_gain}");
             chan.audio_set_gain(audio_gain as f32);
         } else {
             debug!(self, "gain (deferred) -> {audio_gain}");
