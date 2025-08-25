@@ -445,13 +445,17 @@ impl LoopGui {
                 let backend_loop_ptr: &cxx::UniquePtr<QSharedPointer_QObject> =
                     &loop_gui_ptr.as_ref().unwrap().backend_loop_wrapper;
                 match backend_loop_ptr.as_ref() {
-                    Some(r) => {
-                        match qsharedpointer_qobject_to_qvariant(r) {
-                            Ok(variant) => { sync_source_out = variant; },
-                            Err(_) => { sync_source_out = QVariant::default(); },
+                    Some(r) => match qsharedpointer_qobject_to_qvariant(r) {
+                        Ok(variant) => {
+                            sync_source_out = variant;
+                        }
+                        Err(_) => {
+                            sync_source_out = QVariant::default();
                         }
                     },
-                    None => { sync_source_out = QVariant::default(); },
+                    None => {
+                        sync_source_out = QVariant::default();
+                    }
                 }
             }
         }

@@ -111,13 +111,13 @@ For copying, see LICENSE.txt.
 
 This project is only made possible due to many libraries and tools, including but not limited to:
 
-   - Qt and Qt for Python;
+   - Rust;
+   - Qt;
+   - cxx-qt;
+   - libsndfile;
    - JACK audio;
-   - mido;
    - numpy;
    - scipy;
-   - soundfile;
-   - (lib-)samplerate;
    - boost::ut;
    - qoverage, coverage for QML / Python code coverage, resp.;
    - many others (see submodules and dependencies)

@@ -1080,10 +1080,7 @@ impl PortBackend {
         self.is_internal.unwrap_or(false)
     }
 
-    pub fn set_frontend_object(
-        mut self: Pin<&mut PortBackend>,
-        frontend_object: *mut QObject,
-    ) {
+    pub fn set_frontend_object(mut self: Pin<&mut PortBackend>, frontend_object: *mut QObject) {
         let mut rust_mut = self.as_mut().rust_mut();
         rust_mut.frontend_object = frontend_object;
         self.as_mut().frontend_object_changed();

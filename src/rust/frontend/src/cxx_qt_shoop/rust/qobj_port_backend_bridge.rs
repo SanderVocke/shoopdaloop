@@ -128,10 +128,7 @@ pub mod ffi {
         );
 
         #[qinvokable]
-        pub fn set_frontend_object(
-            self: Pin<&mut PortBackend>,
-            frontend_object: *mut QObject,
-        );
+        pub fn set_frontend_object(self: Pin<&mut PortBackend>, frontend_object: *mut QObject);
 
         #[qinvokable]
         pub fn update_internal_port_connections(self: Pin<&mut PortBackend>);
@@ -388,7 +385,7 @@ impl Default for PortBackendRust {
             prev_state: AnyBackendPortState::default(),
             min_n_ringbuffer_samples: None,
             internally_connected_ports: HashSet::default(),
-            frontend_object: std::ptr::null_mut()
+            frontend_object: std::ptr::null_mut(),
         }
     }
 }

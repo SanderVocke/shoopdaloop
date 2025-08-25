@@ -764,6 +764,9 @@ impl LoopChannelBackend {
         if self.maybe_backend_channel.is_none() {
             error!(self, "could not clear: not yet initialized");
         }
-        self.maybe_backend_channel.as_ref().unwrap().clear(length as u32);
+        self.maybe_backend_channel
+            .as_ref()
+            .unwrap()
+            .clear(length as u32);
     }
 }

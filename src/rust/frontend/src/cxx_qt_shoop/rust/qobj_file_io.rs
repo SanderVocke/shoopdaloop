@@ -18,6 +18,7 @@ pub use crate::cxx_qt_shoop::qobj_file_io_bridge::FileIORust;
 use crate::cxx_qt_shoop::qobj_loop_channel_gui_bridge::LoopChannelGui;
 use crate::cxx_qt_shoop::qobj_loop_gui_bridge::LoopGui;
 use crate::midi_event_helpers::MidiEventToQVariant;
+use crate::midi_io;
 use crate::smf::{parse_smf, to_smf};
 
 use dunce;
@@ -201,7 +202,16 @@ fn save_channel_midi_data_impl(
             let amount = msgs.len();
             info!("Saved MIDI channel ({amount} messages) to SMF {filename:?}");
         } else {
-            error!("regular midi saving not implemented");
+            midi_io::save_to_standard_midi(
+                filename,
+                msgs.iter(),
+                total_length as usize,
+                samplerate,
+            )?;
+            info!(
+                "Saved MIDI channel ({} messages) to standard MIDI file {filename:?}",
+                msgs.len()
+            );
         }
 
         Ok(())
@@ -237,7 +247,7 @@ fn load_midi_to_channels_impl<'a>(
             messages.append(&mut parsed.recorded_msgs);
             total_n_frames = parsed.n_frames;
         } else {
-            error!("regular midi loading not implemented");
+            messages = midi_io::load_standard_midi(filename, target_sample_rate)?;
         }
 
         let mut messages_qlist: QList_QVariant = QList::default();

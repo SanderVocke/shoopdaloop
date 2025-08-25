@@ -20,6 +20,7 @@ dependencies = [
   "lupa==2.4",
   "appdirs==1.4.4",
   "sounddevice==0.5.0",
+  "soundfile==0.13",
   "pywin32 ; platform_system == \"Windows\"",
 ]
 
