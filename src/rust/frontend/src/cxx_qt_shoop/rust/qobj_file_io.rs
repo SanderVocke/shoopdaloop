@@ -152,7 +152,7 @@ pub fn save_qlist_data_to_soundfile_impl(filename: QString, samplerate: i32, dat
         }
         Ok(())
     }() {
-        error!("Failed to save audio data: {e}");
+        error!("Failed to save audio data to {filename:?}: {e}");
     }
 }
 
@@ -323,12 +323,12 @@ fn load_soundfile_to_channels_impl(
         {
             let mut sound_file = sndfile::OpenOptions::ReadOnly(sndfile::ReadOptions::Auto)
                 .from_path(filename)
-                .map_err(|e| anyhow::anyhow!("could not open sound file for reading: {e:?}"))?;
+                .map_err(|_| anyhow::anyhow!("could not open {filename:?} for reading"))?;
             n_channels = sound_file.get_channels();
             file_sample_rate = sound_file.get_samplerate();
             combined_data = sound_file
                 .read_all_to_vec()
-                .map_err(|e| anyhow::anyhow!("could not read data from sound file: {e:?}"))?;
+                .map_err(|_| anyhow::anyhow!("could not read data from sound file {filename:?}"))?;
         }
         if n_channels == 0 {
             return Err(anyhow::anyhow!("got 0-channel audio"));

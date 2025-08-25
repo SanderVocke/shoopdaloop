@@ -40,9 +40,18 @@ LoopChannelGui {
         if (do_save_data_files && !root.empty) {
             var filename = obj_id + '.smf'
             var full_filename = data_files_dir + '/' + filename;
-            var task = ShoopFileIO.save_channel_to_midi_async(full_filename, root.backend.get_sample_rate(), root)
-            task.then_delete()
-            add_tasks_to.add_task(task)
+
+            var create_task = () => {
+                var task = ShoopFileIO.save_channel_to_midi_async(full_filename, root.backend.get_sample_rate(), root)
+                task.then_delete()
+                return task
+            }
+
+            if (add_tasks_to) {
+                add_tasks_to.add_task(create_task())
+            } else {
+                registries.state_registry.set_active_io_task_fn(create_task)
+            }
             rval['data_file'] = filename
         }
         return rval
@@ -50,8 +59,9 @@ LoopChannelGui {
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         const conversion_factor = to_sample_rate / from_sample_rate
         if (has_data_file()) {
-            add_tasks_to.add_task(
-                ShoopFileIO.load_midi_to_channels_async(
+
+            var create_task = () => {
+                var task = ShoopFileIO.load_midi_to_channels_async(
                     data_files_dir + '/' + descriptor.data_file,
                     to_sample_rate,
                     [root],
@@ -59,7 +69,15 @@ LoopChannelGui {
                     descriptor.start_offset,
                     null
                     )
-            )
+                task.then_delete()
+                return task
+            }
+
+            if (add_tasks_to) {
+                add_tasks_to.add_task(create_task())
+            } else {
+                registries.state_registry.set_active_io_task_fn(create_task)
+            }
         }
     }
     function has_data_file() {

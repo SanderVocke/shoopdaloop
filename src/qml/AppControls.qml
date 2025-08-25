@@ -19,8 +19,6 @@ Item {
     signal processThreadAbort()
     signal openConnections()
 
-    property bool loading_session : false
-    property bool saving_session : false
     property alias sync_active : sync_active_button.sync_active
     property alias solo_active : solo_active_button.solo_active
     property alias play_after_record_active : play_after_record_active_button.play_after_record_active

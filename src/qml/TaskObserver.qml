@@ -1,11 +1,12 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 
-QtObject {
+Item {
     id: root
     property var tasks: []
 
     property bool done: false
+    readonly property bool active: !done
     property bool success: false
 
     property bool done_internal: false
@@ -13,28 +14,33 @@ QtObject {
 
     readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TaskObserver" }
 
-    signal finished()
+    signal finished(bool success)
+
+    ExecuteNextCycle {
+        id: trigger_finished
+        onExecute: finished(root.success)
+    }
 
     onDoneChanged: {
         if (done) {
-            finished()
+            trigger_finished.trigger()
         }
     }
 
     function update() {
-        var done = true;
-        var success = true;
+        var local_done = true;
+        var local_success = true;
         for (var i=0; i<tasks.length; i++) {
             if (tasks[i].active) {
-                done = false;
+                local_done = false;
                 break;
             } else if (!tasks[i].success) {
-                success = false;
+                local_success = false;
             }
         }
-        root.logger.trace(`updated. success: ${success}, done: ${done}`)
-        root.success_internal = success
-        root.done_internal = done
+        root.logger.trace(`updated. success: ${local_success}, done: ${local_done}`)
+        root.success_internal = local_success
+        root.done_internal = local_done
     }
 
     function start() {

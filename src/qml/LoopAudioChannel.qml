@@ -41,18 +41,26 @@ LoopChannelGui {
 
         if (do_save_data_files && data_length > 0) {
             var filename = obj_id + '.flac'
-            var full_filename = data_files_dir + '/' + filename;
-            var task = ShoopFileIO.save_channels_to_soundfile_async(full_filename, root.backend.get_sample_rate(), [root])
-            task.then_delete()
-            add_tasks_to.add_task(task)
+            var full_filename = data_files_dir + '/' + filename
+            var create_task = () => {
+                var task = ShoopFileIO.save_channels_to_soundfile_async(full_filename, root.backend.get_sample_rate(), [root])
+                task.then_delete()
+                return task
+            }
+
+            if (add_tasks_to) {
+                if (add_tasks_to) { add_tasks_to.add_task(create_task()) }
+            } else {
+                registries.state_registry.set_active_io_task_fn(create_task)
+            }
             rval['data_file'] = filename
         }
         return rval
     }
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         if (has_data_file()) {
-            add_tasks_to.add_task(
-                ShoopFileIO.load_soundfile_to_channels_async(
+            var create_task = () => {
+                var task = ShoopFileIO.load_soundfile_to_channels_async(
                     data_files_dir + '/' + descriptor.data_file,
                     to_sample_rate,
                     descriptor.data_length,
@@ -60,7 +68,15 @@ LoopChannelGui {
                     descriptor.n_preplay_samples,
                     descriptor.start_offset,
                     null)
-            )
+                task.then_delete()
+                return task
+            }
+
+            if (add_tasks_to) {
+                add_tasks_to.add_task(create_task())
+            } else {
+                registries.state_registry.set_active_io_task_fn(create_task)
+            }
         }
     }
     function has_data_file() {

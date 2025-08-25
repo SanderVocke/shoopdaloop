@@ -125,30 +125,18 @@ Item {
         id: validator
     }
 
-    readonly property bool saving : registries.state_registry.n_saving_actions_active > 0
-    readonly property bool loading : registries.state_registry.n_loading_actions_active > 0
-    readonly property bool doing_io : saving || loading
+    readonly property bool doing_io : registries.state_registry.active_io_task !== null
     readonly property var backend : session_backend
     property alias control_interface: control_interface
 
     Popup {
-        visible: saving
+        visible: doing_io
         modal: true
         anchors.centerIn: parent
         parent: Overlay.overlay
         Text {
             color: Material.foreground
-            text: "Saving..."
-        }
-    }
-    Popup {
-        visible: loading
-        modal: true
-        anchors.centerIn: parent
-        parent: Overlay.overlay
-        Text {
-            color: Material.foreground
-            text: "Loading..."
+            text: "I/O active..."
         }
     }
 
@@ -204,37 +192,40 @@ Item {
 
     function save_session(filename) {
         root.logger.debug(`saving session to: ${filename}`)
-        registries.state_registry.reset_saving_loading()
-        registries.state_registry.save_action_started()
         var tempdir = ShoopFileIO.create_temporary_folder()
-        root.logger.trace(`Temporary folder: ${tempdir}`)
+        root.logger.trace(`Created temporary folder: ${tempdir}`)
         if (tempdir == null) {
             throw new Error("Failed to create temporary folder")
         }
-        var observer = create_task_observer()
         var session_filename = tempdir + '/session.json'
+        registries.state_registry.set_active_io_task_fn(() => {
+            var observer = create_task_observer()
 
-        observer.finished.connect(() => {
-            try {
-                // TODO make this step asynchronous
-                if (!ShoopFileIO.make_tarfile(filename, tempdir)) {
-                    throw new Error(`Failed to create tarfile ${filename}`)
+            observer.finished.connect((success) => {
+                if (success) {
+                    try {
+                        // TODO make this step asynchronous
+                        if (!ShoopFileIO.make_tarfile(filename, tempdir)) {
+                            throw new Error(`Failed to create tarfile ${filename}`)
+                        }
+                        root.logger.info("Session written to: " + filename)
+                    } finally {
+                        ShoopFileIO.delete_recursive(tempdir)
+                    }
+                } else {
+                    root.logger.error("Writing session failed.")
                 }
-                root.logger.info("Session written to: " + filename)
-            } finally {
-                registries.state_registry.save_action_finished()
-                ShoopFileIO.delete_recursive(tempdir)
+            })
+
+            // TODO make this step asynchronous
+            var descriptor = actual_session_descriptor(true, tempdir, observer)
+            if(!ShoopFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
+                throw new Error(`Failed to write session file ${session_filename}`)
             }
+            observer.start()
+
+            return observer
         })
-
-        // TODO make this step asynchronous
-        var descriptor = actual_session_descriptor(true, tempdir, observer)
-
-        if(!ShoopFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
-            throw new Error(`Failed to write session file ${session_filename}`)
-        }
-
-        observer.start()
     }
 
     function unload_session() {
@@ -249,7 +240,7 @@ Item {
     }
 
     function load_current_session() {
-        root.logger.debug("Reloading session")
+        root.logger.debug("Reloading session metadata")
         tracks_widget.load()
         sync_loop_loader.load()
     }
@@ -288,15 +279,13 @@ Item {
 
     function load_session(filename, ignore_resample_warning=false) {
         root.logger.debug(`loading session: ${filename}`)
-        registries.state_registry.reset_saving_loading()
-        registries.state_registry.load_action_started()
         var tempdir = ShoopFileIO.create_temporary_folder()
 
         try {
             root.unload_session()
 
             ShoopFileIO.extract_tarfile(filename, tempdir)
-            root.logger.debug(`Extracted files: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`)
+            root.logger.debug(`Extracted files to ${tempdir}: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`)
 
             var session_filename = tempdir + '/session.json'
             var session_file_contents = ShoopFileIO.read_file(session_filename)
@@ -312,7 +301,6 @@ Item {
                 confirm_sample_rate_convert_dialog.session_filename = filename
                 confirm_sample_rate_convert_dialog.from = incoming_sample_rate
                 confirm_sample_rate_convert_dialog.to = our_sample_rate
-                registries.state_registry.load_action_finished()
                 confirm_sample_rate_convert_dialog.open()
                 return;
             }
@@ -323,24 +311,31 @@ Item {
 
             root.initial_descriptor = descriptor
             root.load_current_session()
-            registries.state_registry.load_action_started()
 
             let finish_fn = () => {
-                var observer = create_task_observer()
-                root.logger.debug("Queueing load tasks")
+                registries.state_registry.set_active_io_task_fn(() => {
+                    var observer = create_task_observer()
 
-                observer.finished.connect(() => {
-                    try {
-                        ShoopFileIO.delete_recursive(tempdir)
-                    } finally {
-                        root.logger.info("Session loaded from: " + filename)
-                        registries.state_registry.load_action_finished()
-                    }
+                    root.logger.debug("Queueing load tasks")
+
+                    observer.finished.connect((success) => {
+                        if (success) {
+                            try {
+                                console.log("TODO ME")
+                                //ShoopFileIO.delete_recursive(tempdir)
+                            } finally {
+                                root.logger.info("Session loaded from: " + filename)
+                            }
+                        } else {
+                            root.logger.error("Loading session failed")
+                        }
+                    })
+
+                    queue_load_tasks(tempdir, incoming_sample_rate, our_sample_rate, observer)
+
+                    observer.start()
+                    return observer
                 })
-
-                queue_load_tasks(tempdir, incoming_sample_rate, our_sample_rate, observer)
-
-                observer.start()
             }
 
             function connectOnce(sig, slot) {
@@ -508,9 +503,6 @@ Item {
 
             height: 40
 
-            loading_session: root.loading
-            saving_session: root.saving
-
             onLoadSession: (filename) => root.load_session(filename)
             onSaveSession: (filename) => root.save_session(filename)
             onProcessThreadSegfault: session_backend.segfault_on_process_thread()
@@ -566,13 +558,13 @@ Item {
 
                 property var tracks: [sync_loop_loader.track_widget].concat(tracks_widget.tracks)
 
-                audio_in_ports : flatten(tracks.map(t => t.audio_in_ports))
-                audio_out_ports : flatten(tracks.map(t => t.audio_out_ports))
-                audio_send_ports: flatten(tracks.map(t => t.audio_send_ports))
-                audio_return_ports: flatten(tracks.map(t => t.audio_return_ports))
-                midi_in_ports : flatten(tracks.map(t => t.midi_in_ports))
-                midi_out_ports : flatten(tracks.map(t => t.midi_out_ports))
-                midi_send_ports: flatten(tracks.map(t => t.midi_send_ports))
+                audio_in_ports : flatten(tracks ? tracks.map(t => t ? t.audio_in_ports : []) : [])
+                audio_out_ports : flatten(tracks ? tracks.map(t => t ? t.audio_out_ports : []) : [])
+                audio_send_ports: flatten(tracks ? tracks.map(t => t ? t.audio_send_ports : []) : [])
+                audio_return_ports: flatten(tracks ? tracks.map(t => t ? t.audio_return_ports : []) : [])
+                midi_in_ports : flatten(tracks ? tracks.map(t => t ? t.midi_in_ports : []) : [])
+                midi_out_ports : flatten(tracks ? tracks.map(t => t ? t.midi_out_ports : []) : [])
+                midi_send_ports: flatten(tracks ? tracks.map(t => t ? t.midi_send_ports : []) : [])
             }
         }
 

@@ -14,3 +14,18 @@ inline void callQVariantAsCallableQJSValue(QVariant const& v) {
     auto result = qjsvalue.call();
     (void) result;
 }
+
+inline void callQVariantAsCallableQJSValueBoolArg(QVariant const& v, bool arg) {
+    QList<QJSValue> args;
+    args.append(QJSValue(arg));
+
+    if (!v.canConvert<QJSValue>()) {
+        throw std::runtime_error("not convertible to QJSValue");
+    }
+    auto qjsvalue = v.value<QJSValue>();
+    if (!qjsvalue.isCallable()) {
+        throw std::runtime_error("not callable");
+    }
+    auto result = qjsvalue.call(args);
+    (void) result;
+}

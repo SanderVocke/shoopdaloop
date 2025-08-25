@@ -1915,14 +1915,21 @@ Item {
                     return;
                 }
                 close()
-                registries.state_registry.save_action_started()
                 try {
                     var filename = UrlToFilename.qml_url_to_filename(file.toString());
                     var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                    var task = ShoopFileIO.save_channels_to_soundfile_async(filename, samplerate, channels)
-                    task.then(() => registries.state_registry.save_action_finished())
+
+                    var create_task = () => {
+                        var task = ShoopFileIO.save_channels_to_soundfile_async(filename, samplerate, channels)
+                        task.then((success) => {
+                            if (!success) {
+                                root.logger.error("saving channels to sound file failed")
+                            }
+                        })
+                        return task;
+                    }
+                    registries.state_registry.set_active_io_task_fn(create_task)
                 } catch (e) {
-                    registries.state_registry.save_action_finished()
                     throw e;
                 }
             }
@@ -2023,7 +2030,6 @@ Item {
                     root.logger.error("Cannot load: loop not loaded")
                     return;
                 }
-                registries.state_registry.load_action_started()
                 try {
                     close()
                     var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
@@ -2035,11 +2041,18 @@ Item {
                         mapping[fidx].push(channels_to_load[cidx])
                         fidx = (fidx + 1) % n_file_channels
                     }
-                    var task = ShoopFileIO.load_soundfile_to_channels_async(filename, samplerate, null,
-                        mapping, 0, 0, root.maybe_backend_loop)
-                    task.then( () => registries.state_registry.load_action_finished() )
+                    var create_task = () => {
+                        var task = ShoopFileIO.load_soundfile_to_channels_async(filename, samplerate, null,
+                            mapping, 0, 0, root.maybe_backend_loop)
+                        task.then((success) => {
+                            if (!success) {
+                                root.logger.error("loading soundfile to channels failed")
+                            }
+                        })
+                        return task
+                    }
+                    registries.state_registry.set_active_io_task(create_task)
                 } catch(e) {
-                    registries.state_registry.load_action_finished()
                     throw e
                 }
             }

@@ -78,14 +78,14 @@ ShoopTestFile {
                     channel().load_data([])
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
+                    testcase.wait_condition(() => registries.state_registry.active_io_task == null)
                     testcase.wait_updated(session.backend)
 
                     ShoopFileIO.load_soundfile_to_channels(filename, 48000, null,
                         [[channel()]], null, null, null)
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.n_loading_actions_active == 0)
+                    testcase.wait_condition(() => registries.state_registry.active_io_task == null)
                     testcase.wait_updated(session.backend)
 
                     let loaded = channel().get_data()
@@ -115,14 +115,14 @@ ShoopTestFile {
                     channel().load_data([])
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
+                    testcase.wait_condition(() => registries.state_registry.active_io_task == null)
                     testcase.wait_updated(session.backend)
 
                     ShoopFileIO.load_soundfile_to_channels(filename, 48000, 13000,
                         [[channel()]], null, null, null)
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.n_loading_actions_active == 0)
+                    testcase.wait_condition(() => registries.state_registry.active_io_task == null)
                     testcase.wait_updated(session.backend)
 
                     let loaded = channel().get_data()

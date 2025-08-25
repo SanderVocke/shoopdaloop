@@ -230,10 +230,14 @@ Item {
                         render,
                         "set_input_data(QVariant)"
                     );
-                    render.running_fetch_task.then(() => {
-                        root.logger.debug(`done fetching, success: ${running_fetch_task.success}`)
-                        root.channel.clear_data_dirty()
-                        fetch_timer.start()
+                    render.running_fetch_task.then((success) => {
+                        if (success) {
+                            root.logger.debug(`done fetching, success: ${running_fetch_task.success}`)
+                            root.channel.clear_data_dirty()
+                            fetch_timer.start()
+                        } else {
+                            root.logger.error(`data fetch failed`)
+                        }
                     })
                 } else {
                     root.logger.debug("data not dirty, no fetch")

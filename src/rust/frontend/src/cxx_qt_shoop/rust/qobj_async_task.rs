@@ -3,7 +3,7 @@ use crate::cxx_qt_shoop::qobj_async_task_bridge::AsyncTaskRust;
 use crate::cxx_qt_shoop::qobj_qmlengine_bridge::ffi::set_cpp_ownership;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
-use cxx_qt_lib_shoop::qjsvalue::qvariant_call_as_callable_qjsvalue;
+use cxx_qt_lib_shoop::qjsvalue::qvariant_call_as_callable_qjsvalue_bool_arg;
 use cxx_qt_lib_shoop::{connection_types, invokable::invoke, qobject::AsQObject, qtimer::QTimer};
 use std::{pin::Pin, slice};
 shoop_log_unit!("Frontend.AsyncTask");
@@ -91,13 +91,18 @@ impl AsyncTask {
             if self.delete_when_done {
                 delete_self();
             } else if !self.maybe_qml_callable.is_null() {
-                if let Err(e) = qvariant_call_as_callable_qjsvalue(&self.maybe_qml_callable) {
+                if let Err(e) = qvariant_call_as_callable_qjsvalue_bool_arg(
+                    &self.maybe_qml_callable,
+                    self.success,
+                ) {
                     error!("Could not call callable: {e}");
                 }
                 delete_self();
             } else {
                 // no post-actions set. Set a timer to create an error
                 // if this remains the case
+                let self_ptr = self.self_rust_ptr();
+                trace!("{self_ptr:?} Done, but no post-action set yet");
                 let self_qobj = self.as_mut().pin_mut_qobject_ptr();
                 let timer_mut_ref = &mut *self.timer;
                 let timer_slice = slice::from_raw_parts_mut(timer_mut_ref, 1);
@@ -117,8 +122,9 @@ impl AsyncTask {
 
     pub fn then_delete(mut self: Pin<&mut AsyncTask>) {
         self.as_mut().rust_mut().delete_when_done = true;
+        let self_ptr = self.self_rust_ptr();
+        trace!("{self_ptr:?} then_delete");
         if !self.active {
-            let self_ptr = self.self_rust_ptr();
             debug!("{self_ptr:?}: already done when then_delete() called - finishing.");
             self.done_impl();
         }
@@ -126,8 +132,9 @@ impl AsyncTask {
 
     pub fn then(mut self: Pin<&mut AsyncTask>, func: QVariant) {
         self.as_mut().rust_mut().maybe_qml_callable = func;
+        let self_ptr = self.self_rust_ptr();
+        trace!("{self_ptr:?} then callable");
         if !self.active {
-            let self_ptr = self.self_rust_ptr();
             debug!("{self_ptr:?}: already done when then(...) called - finishing.");
             self.done_impl();
         }

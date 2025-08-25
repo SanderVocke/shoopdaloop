@@ -239,7 +239,7 @@ PythonTestCase {
     }
 
     function wait_session_io_done() {
-        wait_condition(() => registries.state_registry.n_saving_actions_active == 0 && registries.state_registry.n_loading_actions_active == 0, 2000, "Session I/O not finished in time")
+        wait_condition(() => registries.state_registry.active_io_task == null, 2000, "Session I/O not finished in time")
     }
 
     function connectOnce(sig, slot) {
