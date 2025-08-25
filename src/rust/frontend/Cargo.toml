@@ -33,6 +33,7 @@ quick-xml = { workspace = true, features = ["serialize"] }
 serde = { workspace = true }
 sndfile = { workspace = true }
 json = { workspace = true }
+midly = { workspace = true }
 
 [build-dependencies]
 macros = { path = "../macros" }

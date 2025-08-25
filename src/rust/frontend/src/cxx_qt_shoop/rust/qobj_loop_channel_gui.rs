@@ -174,6 +174,13 @@ impl LoopChannelGui {
                     );
                     connect_or_report(
                         self_ref,
+                        "backend_clear(::std::int32_t)",
+                        backend_ref,
+                        "clear(::std::int32_t)",
+                        connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        self_ref,
                         "instance_identifier_changed(QString)",
                         backend_ref,
                         "set_instance_identifier(QString)",
@@ -593,6 +600,10 @@ impl LoopChannelGui {
         unsafe {
             self.as_mut().connected_ports_changed(frontend_ports);
         }
+    }
+
+    pub fn clear(self: Pin<&mut LoopChannelGui>, length: i32) {
+        self.backend_clear(length);
     }
 }
 

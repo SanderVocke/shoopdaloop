@@ -102,6 +102,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn clear_data_dirty(self: Pin<&mut LoopChannelGui>);
 
+        #[qinvokable]
+        pub fn clear(self: Pin<&mut LoopChannelGui>, length: i32);
+
         // Returns an AsyncTask
         #[qinvokable]
         pub fn get_data_async_and_send_to(
@@ -257,6 +260,9 @@ pub mod ffi {
 
         #[qsignal]
         pub unsafe fn backend_clear_data_dirty(self: Pin<&mut LoopChannelGui>);
+
+        #[qsignal]
+        pub fn backend_clear(self: Pin<&mut LoopChannelGui>, length: i32);
     }
 
     unsafe extern "C++" {

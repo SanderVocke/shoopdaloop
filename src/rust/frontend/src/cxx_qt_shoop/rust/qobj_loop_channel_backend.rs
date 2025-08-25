@@ -759,4 +759,11 @@ impl LoopChannelBackend {
     pub fn get_frontend_object(self: Pin<&mut LoopChannelBackend>) -> *mut QObject {
         self.frontend_object
     }
+
+    pub fn clear(self: Pin<&mut LoopChannelBackend>, length: i32) {
+        if self.maybe_backend_channel.is_none() {
+            error!(self, "could not clear: not yet initialized");
+        }
+        self.maybe_backend_channel.as_ref().unwrap().clear(length as u32);
+    }
 }

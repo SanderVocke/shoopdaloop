@@ -129,6 +129,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn get_frontend_object(self: Pin<&mut LoopChannelBackend>) -> *mut QObject;
 
+        #[qinvokable]
+        pub fn clear(self: Pin<&mut LoopChannelBackend>, length: i32);
+
         #[qsignal]
         pub unsafe fn state_changed(
             self: Pin<&mut LoopChannelBackend>,

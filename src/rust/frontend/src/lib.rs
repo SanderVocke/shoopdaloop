@@ -49,3 +49,6 @@ pub mod references_qobject;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod smf;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod midi_io;

@@ -1,6 +1,9 @@
 use backend_bindings::MidiEvent;
 use json;
 
+// TODO: very confusing name. This was meant as "simple MIDI format", a MIDI
+// file format that just uses JSON to save timestamped midi messages for
+// ShoopDaLoop. not to be confused with "standard MIDI format".
 pub type Smf = String;
 
 pub fn to_smf<'a>(

@@ -269,10 +269,10 @@ ShoopTestFile {
                     // somehow saved. Test here that it works.
                     var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
                     ShoopFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
-                    chan.clear()
+                    chan.clear(0)
                     testcase.wait_updated(session.backend)
                     testcase.wait_updated(session.backend)
-                    verify_eq(chan.get_all_midi_data(), [], null, true)
+                    verify_eq(chan.get_data(), [], null, true)
                     ShoopFileIO.load_midi_to_channels(
                                 filename,
                                 session.backend.get_sample_rate(),
@@ -353,10 +353,10 @@ ShoopTestFile {
                     // Save and re-load
                     var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
                     ShoopFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
-                    chan.clear()
+                    chan.clear(0)
                     testcase.wait_updated(session.backend)
                     testcase.wait_updated(session.backend)
-                    verify_eq(chan.get_all_midi_data(), [], null, true)
+                    verify_eq(chan.get_data(), [], null, true)
                     ShoopFileIO.load_midi_to_channels(
                                 filename,
                                 session.backend.get_sample_rate(),
