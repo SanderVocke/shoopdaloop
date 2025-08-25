@@ -2051,7 +2051,7 @@ Item {
                         })
                         return task
                     }
-                    registries.state_registry.set_active_io_task(create_task)
+                    registries.state_registry.set_active_io_task_fn(create_task)
                 } catch(e) {
                     throw e
                 }
