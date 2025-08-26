@@ -10,7 +10,9 @@ use cxx_qt_lib_shoop::qobject::ffi::qobject_register_qml_singleton_instance;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qvariant_helpers::qobject_ptr_to_qvariant;
 use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationStartupSettings};
-use frontend::cxx_qt_shoop::qobj_qmlengine::QmlEngine;
+use frontend::cxx_qt_shoop::qobj_qmlengine::{
+    get_qml_engine_stack, get_registered_qml_engine, QmlEngine,
+};
 use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
 use glob::glob;
 use once_cell::sync::OnceCell;
@@ -28,6 +30,34 @@ static GLOBAL_QML_SETTINGS: OnceCell<GlobalQmlSettings> = OnceCell::new();
 
 thread_local! {
 static TEST_RUNNER: OnceCell<*mut TestFileRunner> = OnceCell::new();
+}
+
+fn crash_info_callback_impl() -> Result<Vec<crashhandling::AdditionalCrashAttachment>, anyhow::Error>
+{
+    let maybe_qml_engine = unsafe { get_registered_qml_engine()? };
+    if !maybe_qml_engine.is_null() {
+        unsafe {
+            let maybe_qml_engine = std::pin::Pin::new_unchecked(&mut *maybe_qml_engine);
+            let qml_stack = get_qml_engine_stack(maybe_qml_engine);
+            let info = crashhandling::AdditionalCrashAttachment {
+                id: "qml_stack".to_string(),
+                contents: qml_stack,
+            };
+            Ok(vec![info])
+        }
+    } else {
+        Ok(vec![])
+    }
+}
+
+fn crash_info_callback() -> Vec<crashhandling::AdditionalCrashAttachment> {
+    match crash_info_callback_impl() {
+        Ok(r) => return r,
+        Err(e) => {
+            error!("Could not gather additional crash info: {e}");
+        }
+    }
+    return Vec::new();
 }
 
 fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Error> {
@@ -277,7 +307,31 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
 
     // Get and parse the command-line arguments
     let args: Vec<String> = env::args().collect();
-    let cli_args = crate::cli_args::parse_arguments(args.iter());
+    let is_crashhandling_server = args.iter().any(|arg| arg == "--crash-handling-server");
+    let cli_args = if is_crashhandling_server {
+        None
+    } else {
+        Some(crate::cli_args::parse_arguments(args.iter()))
+    };
+
+    if !(cli_args.is_some()
+        && cli_args
+            .as_ref()
+            .unwrap()
+            .developer_options
+            .no_crash_handling)
+    {
+        crashhandling::init_crashhandling(
+            std::env::args().any(|arg| arg == "--crash-handling-server"),
+            "--crash-handling-server",
+            Some(crash_info_callback),
+        );
+        let args: Vec<String> = std::env::args().collect();
+        crashhandling::set_crash_json_extra("cmdline", serde_json::json!(args.join(" ")));
+        crashhandling::set_crash_json_tag("shoop_phase", "startup".into());
+        crashhandling::registered_threads::register_thread("gui");
+    }
+    let cli_args = cli_args.unwrap();
 
     if cli_args.print_backends {
         println!("Available backends:\n");

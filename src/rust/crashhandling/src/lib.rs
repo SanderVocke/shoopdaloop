@@ -53,7 +53,8 @@ pub fn init_crashhandling(
 pub fn set_crash_json_partial(partial_json: JsonValue) {
     let handle = CLIENTSIDE_HANDLE.get_or_init(|| None);
     if handle.is_none() {
-        error!("set_metadata called, but no crash handling client active");
+        debug!("set_metadata called, but no crash handling client active");
+        return;
     }
 
     let handle = handle.as_ref().unwrap();
