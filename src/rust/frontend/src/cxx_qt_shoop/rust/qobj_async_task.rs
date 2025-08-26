@@ -3,7 +3,9 @@ use crate::cxx_qt_shoop::qobj_async_task_bridge::AsyncTaskRust;
 use crate::cxx_qt_shoop::qobj_qmlengine_bridge::ffi::set_cpp_ownership;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
+use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::qjsvalue::qvariant_call_as_callable_qjsvalue_bool_arg;
+use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::{connection_types, invokable::invoke, qobject::AsQObject, qtimer::QTimer};
 use std::{pin::Pin, slice};
 shoop_log_unit!("Frontend.AsyncTask");
@@ -21,38 +23,47 @@ impl AsyncTask {
 
     // To be called by users on the Rust side. Will execute the given closure
     // on a dedicated temporary thread, then notify the async task for follow-up.
-    pub fn exec_concurrent_rust_then_finish<F>(mut self: Pin<&mut Self>, concurrent_fn: F)
+    pub fn exec_concurrent_rust_then_finish<F>(self: Pin<&mut Self>, concurrent_fn: F)
     where
         F: FnOnce() -> Result<(), anyhow::Error> + Send + 'static,
     {
         let self_ptr = self.self_rust_ptr();
         debug!("{self_ptr:?}: start exec rust");
 
-        struct SelfPtr {
-            ptr: *mut QObject,
-        }
-        unsafe impl Send for SelfPtr {}
+        unsafe {
+            let notifier = make_raw_async_task_notifier();
+            let notifier = async_task_notifier_to_qobject(notifier);
+            let notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier).unwrap();
+            let self_ptr_formatted = format!("{self_ptr:?}");
 
-        let self_ptr = SelfPtr {
-            ptr: unsafe { self.as_mut().pin_mut_qobject_ptr() },
-        };
-
-        let _ = std::thread::spawn(move || unsafe {
-            let ptr = self_ptr;
-            let mut success = true;
-            if let Err(e) = concurrent_fn() {
-                error!("async task failed: {e}");
-                success = false;
-            }
-            if let Err(e) = invoke::<_, (), _>(
-                &mut *ptr.ptr,
+            connect_or_report(
+                &*notifier,
                 "notify_done(bool)",
-                connection_types::BLOCKING_QUEUED_CONNECTION,
-                &(success),
-            ) {
-                error!("Failed to notify after async task: {e}");
-            }
-        });
+                &*self,
+                "notify_done(bool)",
+                connection_types::DIRECT_CONNECTION,
+            );
+
+            let _ = std::thread::spawn(move || {
+                let mut success = true;
+                let shared = notifier_shared;
+
+                debug!("{self_ptr_formatted}: start work in concurrent thread");
+                if let Err(e) = concurrent_fn() {
+                    error!("async task failed: {e}");
+                    success = false;
+                }
+                debug!("{self_ptr_formatted}: invoke done");
+                if let Err(e) = invoke::<_, (), _>(
+                    &mut *shared.data().unwrap(),
+                    "notify_done(bool)",
+                    connection_types::BLOCKING_QUEUED_CONNECTION,
+                    &(success),
+                ) {
+                    error!("Failed to notify after async task: {e}");
+                }
+            });
+        }
     }
 
     pub fn notify_done(mut self: Pin<&mut AsyncTask>, success: bool) {

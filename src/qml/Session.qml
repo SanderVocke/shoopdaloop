@@ -321,8 +321,7 @@ Item {
                     observer.finished.connect((success) => {
                         if (success) {
                             try {
-                                console.log("TODO ME")
-                                //ShoopFileIO.delete_recursive(tempdir)
+                                ShoopFileIO.delete_recursive(tempdir)
                             } finally {
                                 root.logger.info("Session loaded from: " + filename)
                             }

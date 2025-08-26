@@ -265,6 +265,38 @@ pub mod ffi {
         pub fn backend_clear(self: Pin<&mut LoopChannelGui>, length: i32);
     }
 
+    unsafe extern "RustQt" {
+        #[qobject]
+        type ChannelGetDataNotifier = super::ChannelGetDataNotifierRust;
+
+        #[qsignal]
+        pub unsafe fn notify_done(self: Pin<&mut ChannelGetDataNotifier>, data: QVariant);
+    }
+
+    unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
+
+        #[rust_name = "from_qobject_ref_channel_get_data_notifier"]
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const ChannelGetDataNotifier);
+
+        #[rust_name = "from_qobject_mut_channel_get_data_notifier"]
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut ChannelGetDataNotifier);
+
+        #[rust_name = "channel_get_data_notifier_qobject_from_ptr"]
+        unsafe fn qobjectFromPtr(obj: *mut ChannelGetDataNotifier) -> *mut QObject;
+
+        #[rust_name = "channel_get_data_notifier_qobject_from_ref"]
+        fn qobjectFromRef(obj: &ChannelGetDataNotifier) -> &QObject;
+
+        include!("cxx-qt-lib-shoop/make_raw.h");
+        #[rust_name = "make_raw_channel_get_data_notifier"]
+        unsafe fn make_raw() -> *mut ChannelGetDataNotifier;
+
+        include!("cxx-qt-lib-shoop/cast_ptr.h");
+        #[rust_name = "channel_get_data_notifier_to_qobject"]
+        unsafe fn cast_ptr(obj: *mut ChannelGetDataNotifier) -> *mut QObject;
+    }
+
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
 
@@ -301,6 +333,9 @@ use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::{qquickitem::IsQQuickItem, qsharedpointer_qobject::QSharedPointer_QObject};
 pub use ffi::LoopChannelGui;
 use ffi::*;
+
+#[derive(Default)]
+pub struct ChannelGetDataNotifierRust {}
 
 pub struct LoopChannelGuiRust {
     // Properties

@@ -515,7 +515,20 @@ impl LoopChannelGui {
                 .copy()
                 .unwrap();
 
-            let addr = send_to_object as usize;
+            let notifier_shared;
+            unsafe {
+                let notifier = make_raw_channel_get_data_notifier();
+                let notifier = channel_get_data_notifier_to_qobject(notifier);
+                notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier).unwrap();
+
+                connect_or_report(
+                    &*notifier,
+                    "notify_done(QVariant)",
+                    &*send_to_object,
+                    method_signature.to_string().as_str(),
+                    connection_types::QUEUED_CONNECTION,
+                );
+            }
 
             pin_async_task.as_mut().exec_concurrent_rust_then_finish(
                 move || -> Result<(), anyhow::Error> {
@@ -527,24 +540,27 @@ impl LoopChannelGui {
                         return Err(anyhow::anyhow!("backend channel is null"));
                     }
 
+                    raw_error!("get data start");
                     let data = qvariantlist_to_qvariant(unsafe {
                         &invoke::<_, QList_QVariant, _>(
                             &mut *backend_channel_qobj,
                             "get_data()",
-                            connection_types::DIRECT_CONNECTION,
+                            connection_types::BLOCKING_QUEUED_CONNECTION,
                             &(),
                         )?
                     })?;
+                    raw_error!("get data done");
 
+                    let shared = notifier_shared;
                     unsafe {
-                        let send_to_object = addr as *mut QObject;
                         invoke::<_, (), _>(
-                            &mut *send_to_object,
-                            method_signature.to_string().as_str(),
-                            connection_types::BLOCKING_QUEUED_CONNECTION,
+                            &mut *shared.as_ref().unwrap().data().unwrap(),
+                            "notify_done(QVariant)",
+                            connection_types::DIRECT_CONNECTION,
                             &(data),
                         )?;
                     }
+                    raw_error!("invoke notifier done");
 
                     Ok(())
                 },

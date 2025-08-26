@@ -40,6 +40,14 @@ pub mod ffi {
         pub unsafe fn active_changed(self: Pin<&mut AsyncTask>, active: bool);
     }
 
+    unsafe extern "RustQt" {
+        #[qobject]
+        type AsyncTaskNotifier = super::AsyncTaskNotifierRust;
+
+        #[qsignal]
+        pub unsafe fn notify_done(self: Pin<&mut AsyncTaskNotifier>, success: bool);
+    }
+
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/register_qml_type.h");
 
@@ -71,12 +79,39 @@ pub mod ffi {
         unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut AsyncTask;
     }
 
+    unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
+
+        #[rust_name = "from_qobject_ref_async_task_notifier"]
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const AsyncTaskNotifier);
+
+        #[rust_name = "from_qobject_mut_async_task_notifier"]
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut AsyncTaskNotifier);
+
+        #[rust_name = "async_task_notifier_qobject_from_ptr"]
+        unsafe fn qobjectFromPtr(obj: *mut AsyncTaskNotifier) -> *mut QObject;
+
+        #[rust_name = "async_task_notifier_qobject_from_ref"]
+        fn qobjectFromRef(obj: &AsyncTaskNotifier) -> &QObject;
+
+        include!("cxx-qt-lib-shoop/make_raw.h");
+        #[rust_name = "make_raw_async_task_notifier"]
+        unsafe fn make_raw() -> *mut AsyncTaskNotifier;
+
+        include!("cxx-qt-lib-shoop/cast_ptr.h");
+        #[rust_name = "async_task_notifier_to_qobject"]
+        unsafe fn cast_ptr(obj: *mut AsyncTaskNotifier) -> *mut QObject;
+    }
+
     impl cxx_qt::Constructor<(*mut QObject,)> for AsyncTask {}
 }
 
 use cxx_qt_lib_shoop::{qobject::AsQObject, qtimer::QTimer};
 pub use ffi::AsyncTask;
 use ffi::*;
+
+#[derive(Default)]
+pub struct AsyncTaskNotifierRust {}
 
 pub struct AsyncTaskRust {
     pub active: bool,
@@ -120,6 +155,32 @@ impl cxx_qt_lib_shoop::qobject::FromQObject for AsyncTask {
     ) -> *mut Self {
         let mut output: *mut Self = std::ptr::null_mut();
         from_qobject_mut_async_task(obj, &mut output as *mut *mut Self);
+        output
+    }
+}
+
+impl AsQObject for ffi::AsyncTaskNotifier {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+        ffi::async_task_notifier_qobject_from_ptr(self as *mut Self)
+    }
+
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
+        ffi::async_task_notifier_qobject_from_ref(self) as *const ffi::QObject
+    }
+}
+
+impl cxx_qt_lib_shoop::qobject::FromQObject for AsyncTaskNotifier {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+        let mut output: *const Self = std::ptr::null();
+        from_qobject_ref_async_task_notifier(obj, &mut output as *mut *const Self);
+        output
+    }
+
+    unsafe fn ptr_from_qobject_mut(
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+    ) -> *mut Self {
+        let mut output: *mut Self = std::ptr::null_mut();
+        from_qobject_mut_async_task_notifier(obj, &mut output as *mut *mut Self);
         output
     }
 }
