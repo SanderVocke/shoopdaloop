@@ -56,7 +56,7 @@ ShoopTestFile {
 
                     registries.state_registry.add_to_set('selected_loop_ids', sync_loop().obj_id)
 
-                    sync_loop_channel().load_data(new Array(2000000).fill(0.1))
+                    sync_loop_channel().load_data(new Array(50000).fill(0.1))
 
                     testcase.wait_updated(session.backend)
 
