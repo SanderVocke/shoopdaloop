@@ -82,10 +82,12 @@ PortGui {
         object: root
     }
 
-    function qml_close() {
+    function unload() {
         reg_entry.close()
         close()
+        destroy()
     }
+
     property var name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
     min_n_ringbuffer_samples: descriptor.min_n_ringbuffer_samples

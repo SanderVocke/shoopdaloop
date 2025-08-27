@@ -114,8 +114,9 @@ LoopChannelGui {
     Component.onCompleted: {
         push_mode(initial_mode)
     }
-    function qml_close() {
+    function unload() {
         reg_entry.close()
         close()
+        destroy()
     }
 }

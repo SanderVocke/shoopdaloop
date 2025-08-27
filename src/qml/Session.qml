@@ -125,7 +125,7 @@ Item {
         id: validator
     }
 
-    readonly property bool doing_io : registries.state_registry.active_io_task !== null
+    readonly property bool doing_io : registries.state_registry.io_active
     readonly property var backend : session_backend
     property alias control_interface: control_interface
 
@@ -199,6 +199,8 @@ Item {
         }
         var session_filename = tempdir + '/session.json'
         registries.state_registry.set_active_io_task_fn(() => {
+            registries.state_registry.set_force_io_active(true)
+
             var observer = create_task_observer()
 
             observer.finished.connect((success) => {
@@ -215,9 +217,11 @@ Item {
                 } else {
                     root.logger.error("Writing session failed.")
                 }
+                registries.state_registry.set_force_io_active(false)
             })
 
             // TODO make this step asynchronous
+            console.log("first channel in session save:", tracks_widget.tracks[0].loops[0].maybe_backend_loop.channels[0])
             var descriptor = actual_session_descriptor(true, tempdir, observer)
             if(!ShoopFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
                 throw new Error(`Failed to write session file ${session_filename}`)
@@ -275,6 +279,12 @@ Item {
             root.logger.debug("Loading session on startup: " + filename)
             auto_session_loader.trigger()
         }
+    }
+
+    QtObject {
+        id: is_loaded_as_task_interface
+        property bool active: !root.loaded
+        property bool success: true
     }
 
     function load_session(filename, ignore_resample_warning=false) {
@@ -335,6 +345,7 @@ Item {
                     observer.start()
                     return observer
                 })
+                registries.state_registry.set_force_io_active(false)
             }
 
             function connectOnce(sig, slot) {
@@ -345,6 +356,7 @@ Item {
                 sig.connect(f)
             }
 
+            registries.state_registry.set_force_io_active(true)
             if(root.loaded) { finish_fn() }
             else {
                 connectOnce(root.loadedChanged, finish_fn)

@@ -23,6 +23,7 @@ Item {
 
     onDoneChanged: {
         if (done) {
+            root.logger.debug(`finished. success: ${root.success_internal}`)
             trigger_finished.trigger()
         }
     }
@@ -34,7 +35,9 @@ Item {
             if (tasks[i].active) {
                 local_done = false;
                 break;
-            } else if (!tasks[i].success) {
+            } else if (tasks[i] !== undefined && tasks[i] !== null && !tasks[i].success) {
+                console.log(i, tasks[i].active, tasks[i].success, tasks[i].bla)
+                console.log(tasks[i])
                 local_success = false;
             }
         }

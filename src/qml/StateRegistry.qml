@@ -34,6 +34,20 @@ Registry {
     }
 
     RegistryLookup {
+        id: lookup_force_io_active
+        registry: root
+        key: 'force_io_active'
+    }
+    readonly property bool force_io_active : lookup_force_io_active.object != null ? lookup_force_io_active.object : false
+    function set_force_io_active(active) {
+        my_logger.debug(`Force IO busy active: ${active}`)
+        replace('force_io_active', active)
+    }
+
+    readonly property bool io_active: force_io_active || active_io_task
+    onIo_activeChanged: my_logger.debug(`io_active -> ${io_active}`)
+
+    RegistryLookup {
         id: lookup_active_io_task
         registry: root
         key: 'active_io_task'

@@ -111,12 +111,12 @@ Item {
         ports.forEach((port) => port.queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to))
     }
 
-    function qml_close() {
-        root.logger.debug(`QML close ${root.name}`)
+    function unload() {
+        root.logger.debug(`Unload ${root.name}`)
         reg_entry.close()
-        ports.forEach(p => p.qml_close())
+        ports.forEach(p => p.unload())
         for(var i=0; i<loops.length; i++) {
-            loops[i].qml_close();
+            loops[i].unload();
         }
     }
 

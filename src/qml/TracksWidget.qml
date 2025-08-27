@@ -81,13 +81,13 @@ FocusReleasingScrollView {
         for(var i=0; i<root.tracks.length; i++) {
             if (root.tracks[i] != track) { new_tracks.push(root.tracks[i]) }
         }
-        track.qml_close()
+        track.unload()
         root.tracks = new_tracks
     }
 
     function clear_tracks() {
         for(var i=0; i<root.tracks.length; i++) {
-            root.tracks[i].qml_close()
+            root.tracks[i].unload()
         }
         root.tracks = []
     }

@@ -73,19 +73,23 @@ ShoopTestFile {
                     // the file I/O. Loading via the channel forces the data type.
                     channel().load_data(data)
                     testcase.wait_updated(session.backend)
-                    ShoopFileIO.save_channels_to_soundfile(filename, 24000, [channel()])
+                    if (!ShoopFileIO.save_channels_to_soundfile(filename, 24000, [channel()])) {
+                        testcase.fail("Failed to save channels to soundfile")
+                    }
                     testcase.wait_updated(session.backend)
                     channel().load_data([])
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.active_io_task == null)
+                    testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
 
-                    ShoopFileIO.load_soundfile_to_channels(filename, 48000, null,
-                        [[channel()]], null, null, null)
+                    if (!ShoopFileIO.load_soundfile_to_channels(filename, 48000, null,
+                        [[channel()]], null, null, null)) {
+                            testcase.fail("Failed to load soundfile to channels");
+                        }
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.active_io_task == null)
+                    testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
 
                     let loaded = channel().get_data()
@@ -110,19 +114,23 @@ ShoopTestFile {
                     // the file I/O. Loading via the channel forces the data type.
                     channel().load_data(data)
                     testcase.wait_updated(session.backend)
-                    ShoopFileIO.save_channels_to_soundfile(filename, 24000, [channel()])
+                    if (!ShoopFileIO.save_channels_to_soundfile(filename, 24000, [channel()]))  {
+                        testcase.fail("Failed to save channels to soundfile")
+                    }
                     testcase.wait_updated(session.backend)
                     channel().load_data([])
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.active_io_task == null)
+                    testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
 
-                    ShoopFileIO.load_soundfile_to_channels(filename, 48000, 13000,
-                        [[channel()]], null, null, null)
+                    if (!ShoopFileIO.load_soundfile_to_channels(filename, 48000, 13000,
+                        [[channel()]], null, null, null)) {
+                            testcase.fail("Failed to load soundfile to channels");
+                        }
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.active_io_task == null)
+                    testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
 
                     let loaded = channel().get_data()
@@ -149,7 +157,9 @@ ShoopTestFile {
                     loop2_channels()[0].load_data(data)
                     loop2_channels()[1].load_data(data)
                     testcase.wait_updated(session.backend)
-                    ShoopFileIO.save_channels_to_soundfile(filename, 24000, loop2_channels())
+                    if (!ShoopFileIO.save_channels_to_soundfile(filename, 24000, loop2_channels()))  {
+                        testcase.fail("Failed to save channels to soundfile")
+                    }
                     testcase.wait_updated(session.backend)
                     loop2_channels()[0].load_data([])
                     loop2_channels()[1].load_data([])
@@ -159,8 +169,10 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     verify_eq(loop2_channels().length, 2)
-                    ShoopFileIO.load_soundfile_to_channels(filename, 48000, 13000,
-                        [[loop2_channels()[0]], [loop2_channels()[1]]], null, null, null)
+                    if (!ShoopFileIO.load_soundfile_to_channels(filename, 48000, 13000,
+                        [[loop2_channels()[0]], [loop2_channels()[1]]], null, null, null)) {
+                            testcase.fail("Failed to load soundfile to channels");
+                        }
 
                     testcase.wait_updated(session.backend)
                     testcase.wait_condition(() => registries.state_registry.n_loading_actions_active == 0)

@@ -85,7 +85,7 @@ pub mod ffi {
             filename: QString,
             samplerate: i32,
             data: QVariant,
-        );
+        ) -> bool;
 
         // returns an AsyncTask
         #[qinvokable]
@@ -102,7 +102,7 @@ pub mod ffi {
             filename: QString,
             samplerate: i32,
             channel: *mut QObject,
-        );
+        ) -> bool;
 
         // returns an AsyncTask
         #[qinvokable]
@@ -125,7 +125,7 @@ pub mod ffi {
             maybe_set_n_preplay_samples: QVariant,
             maybe_set_start_offset: QVariant,
             maybe_update_loop_to_data_length: QVariant,
-        );
+        ) -> bool;
 
         // returns an AsyncTask
         #[qinvokable]
@@ -142,7 +142,7 @@ pub mod ffi {
             filename: QString,
             samplerate: i32,
             channels: QList_QVariant,
-        );
+        ) -> bool;
 
         // returns an AsyncTask
         #[qinvokable]
@@ -167,7 +167,7 @@ pub mod ffi {
             maybe_set_n_preplay_samples: QVariant,
             maybe_set_start_offset: QVariant,
             maybe_update_loop_to_data_length: QVariant,
-        );
+        ) -> bool;
 
         #[qinvokable]
         pub fn get_soundfile_info(self: &FileIO, filename: QString) -> QMap_QString_QVariant;

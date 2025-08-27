@@ -53,7 +53,7 @@ Loop {
         queue_set_length(initial_descriptor.length)
     }
     Component.onDestruction: {
-        qml_close()
+        unload()
     }
 
     function is_all_empty() {

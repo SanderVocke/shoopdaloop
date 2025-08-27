@@ -67,7 +67,7 @@ FXChainGui {
         }
     }
 
-    function qml_close() {
+    function unload() {
         reg_entry.close()
         close()
     }

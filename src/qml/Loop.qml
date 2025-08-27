@@ -53,10 +53,11 @@ LoopGui {
         prev_mode = mode
     }
 
-    function qml_close() {
-        get_audio_channels().forEach(c => c.qml_close())
-        get_midi_channels().forEach(c => c.qml_close())
+    function unload() {
+        get_audio_channels().forEach(c => c.unload())
+        get_midi_channels().forEach(c => c.unload())
         close()
+        destroy()
     }
 
     property var initial_descriptor: null

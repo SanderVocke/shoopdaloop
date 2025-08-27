@@ -53,7 +53,7 @@ impl AsyncTask {
                     error!("async task failed: {e}");
                     success = false;
                 }
-                debug!("{self_ptr_formatted}: invoke done");
+                debug!("{self_ptr_formatted}: work done, callback - success {success}");
                 if let Err(e) = invoke::<_, (), _>(
                     &mut *shared.data().unwrap(),
                     "notify_done(bool)",

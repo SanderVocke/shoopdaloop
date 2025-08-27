@@ -302,19 +302,19 @@ Item {
         if(maybe_loop) {
             maybe_loop.clear(length);
             if (maybe_composite_loop) {
-                maybe_loop.qml_close()
+                maybe_loop.unload()
                 maybe_loop.destroy(30)
                 maybe_loop.parent = null
                 maybe_loop = null
             }
         }
     }
-    function qml_close() {
+    function unload() {
         obj_reg_entry.close()
         sync_reg_entry.close()
         if (maybe_loop) {
-            maybe_loop.qml_close()
-            maybe_loop.destroy(30)
+            maybe_loop.unload()
+            maybe_loop.destroy()
             maybe_loop.parent = null
             maybe_loop = null
         }
@@ -517,7 +517,7 @@ Item {
         if (maybe_backend_loop) {
             if (!is_sync && maybe_backend_loop.is_all_empty()) {
                 // Empty backend loop can be converted to composite loop.
-                maybe_loop.qml_close()
+                maybe_loop.unload()
                 maybe_loop.destroy(30)
                 maybe_loop.parent = null
                 maybe_loop = null

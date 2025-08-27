@@ -116,6 +116,27 @@ ShoopTestFile {
                 return r
             }
 
+            function clear_all(s=session) {
+                dt_loop_channels()[0].clear(0)
+                dt_loop_channels()[1].clear(0)
+                mt_midi_channels()[0].clear(0)
+                dwt_dry_loop_channels()[0].clear(0)
+                dwt_dry_loop_channels()[1].clear(0)
+                dwt_wet_loop_channels()[0].clear(0)
+                dwt_wet_loop_channels()[1].clear(0)
+                dt_loop().clear(0)
+                mt_loop().clear(0)
+                dwt_loop().clear(0)
+                testcase.wait_updated(session.backend)
+                verify_eq(dt_loop_channels()[0].data_length, 0)
+                verify_eq(dt_loop_channels()[1].data_length, 0)
+                verify_eq(mt_midi_channels()[0].data_length, 0)
+                verify_eq(dwt_dry_loop_channels()[0].data_length, 0)
+                verify_eq(dwt_dry_loop_channels()[1].data_length, 0)
+                verify_eq(dwt_wet_loop_channels()[0].data_length, 0)
+                verify_eq(dwt_wet_loop_channels()[1].data_length, 0)
+            }
+
             RegistryLookup {
                 id: lookup_input_port_1
                 registry: registries.objects_registry
@@ -151,7 +172,10 @@ ShoopTestFile {
             test_fns: ({
 
                 "test_save_load_non_sample_accurate_midi": () => {
+                    clear_all()
                     check_backend()
+
+                    console.log("first channel in test: ", dt_loop_channels()[0])
 
                     let midichan = [
                         { 'time': 101, 'data': [0x90, 70,  70]  },
@@ -160,13 +184,17 @@ ShoopTestFile {
                     mt_midi_channels()[0].load_midi_data(midichan)
                     testcase.wait_updated(session.backend)
                     var filename = ShoopFileIO.generate_temporary_filename() + '.mid'
-                    ShoopFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
+                    if (!ShoopFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])) {
+                        testcase.fail("Could not save channel MIDI");
+                    }
 
                     mt_loop().clear()
                     testcase.wait_updated(session.backend)
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
 
-                    ShoopFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)
+                    if (!ShoopFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null))  {
+                        testcase.fail("Could not load MIDI to channels.")
+                    }
                     testcase.wait_updated(session.backend)
 
                     // Storing in MIDI files is not sample-accurate but should be quite close
@@ -179,7 +207,10 @@ ShoopTestFile {
                 },
 
                 "test_save_load_sample_accurate_midi": () => {
+                    clear_all()
                     check_backend()
+
+                    console.log("first channel in test: ", dt_loop_channels()[0])
 
                     let midichan = [
                         { 'time': 101, 'data': [0x90, 70,  70]  },
@@ -188,13 +219,17 @@ ShoopTestFile {
                     mt_midi_channels()[0].load_midi_data(midichan)
                     testcase.wait_updated(session.backend)
                     var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
-                    ShoopFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
+                    if (!ShoopFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])) {
+                        testcase.fail("Could not save channel MIDI");
+                    }
 
                     mt_loop().clear()
                     testcase.wait_updated(session.backend)
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
 
-                    ShoopFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)
+                    if (!ShoopFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)) {
+                        testcase.fail("Could not load MIDI to channels.")
+                    }
                     testcase.wait_updated(session.backend)
 
                     // Storing in MIDI files is not sample-accurate but should be quite close
@@ -207,7 +242,10 @@ ShoopTestFile {
                 },
 
                 "test_save_load_session_audio_and_midi": () => {
+                    clear_all()
                     check_backend()
+
+                    console.log("first channel in test: ", dt_loop_channels()[0])
 
                     let midichan = [
                         { 'time': 101, 'data': [0x90, 70,  70]  },
@@ -263,7 +301,11 @@ ShoopTestFile {
                 },
 
                 "test_save_load_session_audio_and_midi_resampled": () => {
+                    clear_all()
                     check_backend()
+                    
+                    console.log("first channel in test: ", dt_loop_channels()[0])
+
                     verify(other_session.backend && other_session.backend.ready, "resampled backend not initialized")
 
                     let midichan = [
@@ -327,7 +369,10 @@ ShoopTestFile {
                 },
 
                 "test_save_load_track_controls": () => {
+                    clear_all()
                     check_backend()
+
+                    console.log("first channel in test: ", dt_loop_channels()[0])
 
                     mt().control_widget.mute = true
                     mt().control_widget.monitor = true

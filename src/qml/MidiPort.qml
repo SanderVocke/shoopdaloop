@@ -72,9 +72,10 @@ PortGui {
         object: root
     }
 
-    function qml_close() {
+    function unload() {
         reg_entry.close()
         close()
+        destroy()
     }
 
     property var name_parts : descriptor.name_parts

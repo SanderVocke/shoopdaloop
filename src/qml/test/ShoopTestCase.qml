@@ -239,7 +239,9 @@ PythonTestCase {
     }
 
     function wait_session_io_done() {
-        wait_condition(() => registries.state_registry.active_io_task == null, 2000, "Session I/O not finished in time")
+        root.logger.debug("Start wait session IO done")
+        wait_condition(() => !registries.state_registry.io_active, 2000, "Session I/O not finished in time")
+        root.logger.debug("Session IO done.")
     }
 
     function connectOnce(sig, slot) {
@@ -329,6 +331,7 @@ PythonTestCase {
                     'time': 0.0
                 }
                 if (!should_skip(key)) {
+                    logger.info(`\n\n`)
                     logger.info(`running ${fullname}`)
                     var start = new Date()
                     test_fns[key]()
