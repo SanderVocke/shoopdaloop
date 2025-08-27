@@ -21,6 +21,10 @@ pub mod ffi {
         type QList_f32 = cxx_qt_lib::QList<f32>;
         type QList_QString = cxx_qt_lib::QList<cxx_qt_lib::QString>;
 
+        include!("cxx-qt-lib/qvector.h");
+        type QVector_QVariant = cxx_qt_lib::QVector<cxx_qt_lib::QVariant>;
+        type QVector_f32 = cxx_qt_lib::QVector<f32>;
+
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
     }
@@ -85,16 +89,16 @@ pub mod ffi {
         pub fn set_channel_loop(self: Pin<&mut LoopChannelGui>, channel_loop: *mut QObject);
 
         #[qinvokable]
-        pub fn load_audio_data(self: Pin<&mut LoopChannelGui>, data: QList_f32);
+        pub fn load_audio_data(self: Pin<&mut LoopChannelGui>, data: QVector_f32);
 
         #[qinvokable]
-        pub fn load_midi_data(self: Pin<&mut LoopChannelGui>, data: QList_QVariant);
+        pub fn load_midi_data(self: Pin<&mut LoopChannelGui>, data: QVector_QVariant);
 
         #[qinvokable]
-        pub fn get_audio_data(self: &LoopChannelGui) -> QList_f32;
+        pub fn get_audio_data(self: &LoopChannelGui) -> QVector_f32;
 
         #[qinvokable]
-        pub fn get_midi_data(self: &LoopChannelGui) -> QList_QVariant;
+        pub fn get_midi_data(self: &LoopChannelGui) -> QVector_QVariant;
 
         #[qinvokable]
         pub fn reset_state_tracking(self: Pin<&mut LoopChannelGui>);
@@ -105,7 +109,10 @@ pub mod ffi {
         #[qinvokable]
         pub fn clear(self: Pin<&mut LoopChannelGui>, length: i32);
 
-        // Returns an AsyncTask
+        // Returns an AsyncTask.
+        // The passed object will be invoked on the given method signature,
+        // which should accept a QVariant.
+        // The QVariant will contain a QVector<QVariant>.
         #[qinvokable]
         pub fn get_data_async_and_send_to(
             self: Pin<&mut LoopChannelGui>,
@@ -253,10 +260,13 @@ pub mod ffi {
         );
 
         #[qsignal]
-        pub unsafe fn backend_load_audio_data(self: Pin<&mut LoopChannelGui>, data: QList_f32);
+        pub unsafe fn backend_load_audio_data(self: Pin<&mut LoopChannelGui>, data: QVector_f32);
 
         #[qsignal]
-        pub unsafe fn backend_load_midi_data(self: Pin<&mut LoopChannelGui>, data: QList_QVariant);
+        pub unsafe fn backend_load_midi_data(
+            self: Pin<&mut LoopChannelGui>,
+            data: QVector_QVariant,
+        );
 
         #[qsignal]
         pub unsafe fn backend_clear_data_dirty(self: Pin<&mut LoopChannelGui>);

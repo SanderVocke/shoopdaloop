@@ -11,7 +11,7 @@ pub struct AudioPowerPyramidData {
 
 pub fn create_audio_power_pyramid<It>(input_data: It, n_levels: usize) -> AudioPowerPyramidData
 where
-    It: Iterator<Item = f64>,
+    It: Iterator<Item = f32>,
 {
     let mut current_level_power: Vec<f32> = input_data
         .map(|v| {

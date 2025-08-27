@@ -256,14 +256,6 @@ impl LoopGui {
         result
     }
 
-    pub fn get_audio_channels(self: Pin<&mut LoopGui>) -> QList<QVariant> {
-        self.get_children_with_object_name("LoopAudioChannel")
-    }
-
-    pub fn get_midi_channels(self: Pin<&mut LoopGui>) -> QList<QVariant> {
-        self.get_children_with_object_name("LoopMidiChannel")
-    }
-
     pub fn transition_multiple(
         self: Pin<&mut LoopGui>,
         loops: QList_QVariant,

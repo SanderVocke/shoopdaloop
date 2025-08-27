@@ -30,6 +30,10 @@ mod ffi {
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
         type QList_QString = cxx_qt_lib::QList<cxx_qt_lib::QString>;
         type QList_f32 = cxx_qt_lib::QList<f32>;
+
+        include!("cxx-qt-lib/qvector.h");
+        type QVector_QVariant = cxx_qt_lib::QVector<cxx_qt_lib::QVariant>;
+        type QVector_f32 = cxx_qt_lib::QVector<f32>;
     }
 
     // Below, add bridge definitions for all combinations of return values and arguments used
@@ -103,6 +107,20 @@ mod ffi {
             connection_type: u32,
         ) -> Result<bool>;
 
+        #[rust_name = "invoke_qvector_f32_noargs"]
+        unsafe fn invoke_with_return(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+        ) -> Result<QVector_f32>;
+
+        #[rust_name = "invoke_qvector_qvariant_noargs"]
+        unsafe fn invoke_with_return(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+        ) -> Result<QVector_QVariant>;
+
         #[rust_name = "invoke_qvariant_noargs"]
         unsafe fn invoke_with_return(
             obj: *mut QObject,
@@ -162,6 +180,22 @@ mod ffi {
             method: String,
             connection_type: u32,
             arg1: QList_QVariant,
+        ) -> Result<()>;
+
+        #[rust_name = "invoke_noreturn_qvectorf32"]
+        unsafe fn invoke_one_arg(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+            arg1: QVector_f32,
+        ) -> Result<()>;
+
+        #[rust_name = "invoke_noreturn_qvectorqvariant"]
+        unsafe fn invoke_one_arg(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+            arg1: QVector_QVariant,
         ) -> Result<()>;
 
         #[rust_name = "invoke_qlistqvariant_qstring_i32_i32"]
@@ -273,6 +307,40 @@ impl Invokable<bool, ()> for ffi::QObject {
     ) -> Result<bool, Exception> {
         unsafe {
             ffi::invoke_bool_noargs(
+                self as *mut ffi::QObject,
+                method.to_string(),
+                connection_type,
+            )
+        }
+    }
+}
+
+impl Invokable<ffi::QVector_f32, ()> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: &str,
+        connection_type: u32,
+        _args: &(),
+    ) -> Result<ffi::QVector_f32, Exception> {
+        unsafe {
+            ffi::invoke_qvector_f32_noargs(
+                self as *mut ffi::QObject,
+                method.to_string(),
+                connection_type,
+            )
+        }
+    }
+}
+
+impl Invokable<ffi::QVector_QVariant, ()> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: &str,
+        connection_type: u32,
+        _args: &(),
+    ) -> Result<ffi::QVector_QVariant, Exception> {
+        unsafe {
+            ffi::invoke_qvector_qvariant_noargs(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,
@@ -399,6 +467,42 @@ impl Invokable<(), QVariant> for ffi::QObject {
     ) -> Result<(), Exception> {
         unsafe {
             ffi::invoke_noreturn_qvariant(
+                self as *mut ffi::QObject,
+                method.to_string(),
+                connection_type,
+                arg.clone(),
+            )
+        }
+    }
+}
+
+impl Invokable<(), ffi::QVector_QVariant> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: &str,
+        connection_type: u32,
+        arg: &ffi::QVector_QVariant,
+    ) -> Result<(), Exception> {
+        unsafe {
+            ffi::invoke_noreturn_qvectorqvariant(
+                self as *mut ffi::QObject,
+                method.to_string(),
+                connection_type,
+                arg.clone(),
+            )
+        }
+    }
+}
+
+impl Invokable<(), ffi::QVector_f32> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: &str,
+        connection_type: u32,
+        arg: &ffi::QVector_f32,
+    ) -> Result<(), Exception> {
+        unsafe {
+            ffi::invoke_noreturn_qvectorf32(
                 self as *mut ffi::QObject,
                 method.to_string(),
                 connection_type,

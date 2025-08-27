@@ -331,8 +331,7 @@ PythonTestCase {
                     'time': 0.0
                 }
                 if (!should_skip(key)) {
-                    logger.info(`\n\n`)
-                    logger.info(`running ${fullname}`)
+                    logger.info(`~~~~ running ${fullname} ~~~~`)
                     var start = new Date()
                     test_fns[key]()
                     var end = new Date()

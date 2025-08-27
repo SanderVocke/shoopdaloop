@@ -16,6 +16,10 @@ pub mod ffi {
         type QList_f32 = cxx_qt_lib::QList<f32>;
         type QList_QVariant = cxx_qt_lib::QList<QVariant>;
 
+        include!("cxx-qt-lib/qvector.h");
+        type QVector_f32 = cxx_qt_lib::QVector<f32>;
+        type QVector_QVariant = cxx_qt_lib::QVector<QVariant>;
+
         include!("cxx-qt-lib-shoop/qobject.h");
         type QObject = cxx_qt_lib_shoop::qobject::QObject;
 

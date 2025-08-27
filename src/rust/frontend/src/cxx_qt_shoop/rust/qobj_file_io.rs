@@ -1,13 +1,13 @@
 use backend_bindings::{MidiEvent, MultichannelAudio};
 use common::logging::macros::*;
-use cxx_qt_lib::{QList, QMap};
+use cxx_qt_lib::{QList, QMap, QVector};
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
 use cxx_qt_lib_shoop::qobject::{qobject_property_int, AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
-    qlist_f32_to_qvariant, qvariant_to_qlist_f32, qvariant_to_qobject_ptr,
-    qvariant_to_qvariantlist, qvariant_type_name, qvariantlist_to_qvariant,
+    qlist_f32_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qvariantlist,
+    qvariant_to_qvector_f32, qvariant_type_name, qvariantlist_to_qvariant,
 };
 use sndfile::{default_subtype, get_supported_major_format_dict, SndFileIO};
 shoop_log_unit!("Frontend.FileIO");
@@ -109,13 +109,13 @@ pub fn save_qlist_data_to_soundfile_impl(
         if let Ok(multi) = qvariant_to_qvariantlist(&data) {
             let mut n_frames: Option<usize> = None;
             let n_channels: usize = multi.len() as usize;
-            let mut qlists: Vec<QList_f32> = Vec::default();
+            let mut qlists: Vec<QVector_f32> = Vec::default();
 
             for (idx, variant) in multi.iter().enumerate() {
-                let qlist = qvariant_to_qlist_f32(&variant)
-                    .map_err(|e| anyhow::anyhow!("Could not view data as f32 list: {e}"))?;
+                let qlist = qvariant_to_qvector_f32(&variant)
+                    .map_err(|e| anyhow::anyhow!("Could not view data as f32 vector: {e}"))?;
                 debug!(
-                    "QList sublist # {} is a QList<f32> of {} frames",
+                    "QList sublist # {} is a QVector<f32> of {} frames",
                     idx,
                     qlist.len()
                 );
@@ -139,8 +139,8 @@ pub fn save_qlist_data_to_soundfile_impl(
         } else {
             return Err(anyhow::anyhow!("Failed to extract QVariantList"));
         }
-    } else if let Ok(mono) = qvariant_to_qlist_f32(&data) {
-        debug!("QList data is a QList<f32> of {} frames", mono.len());
+    } else if let Ok(mono) = qvariant_to_qvector_f32(&data) {
+        debug!("Data is a QVector<f32> of {} frames", mono.len());
         save_data_to_soundfile_impl(
             &filename,
             samplerate as usize,
@@ -165,7 +165,7 @@ fn save_channel_midi_data_impl(
     let chan_qobj = channel.as_ref().unwrap().data().unwrap();
     let mut conversion_error: Option<anyhow::Error> = None;
     let msgs: Vec<MidiEvent> = unsafe {
-        invoke::<_, QList_QVariant, _>(
+        invoke::<_, QVector_QVariant, _>(
             &mut *chan_qobj,
             "get_midi_data()",
             connection_types::BLOCKING_QUEUED_CONNECTION,
@@ -241,7 +241,7 @@ fn load_midi_to_channels_impl<'a>(
         messages = midi_io::load_standard_midi(filename, target_sample_rate)?;
     }
 
-    let mut messages_qlist: QList_QVariant = QList::default();
+    let mut messages_qlist: QVector_QVariant = QVector::default();
     for msg in messages.iter() {
         let variant = msg.to_qvariant();
         messages_qlist.append(variant);
@@ -252,7 +252,7 @@ fn load_midi_to_channels_impl<'a>(
             let channel = channel.data()?;
             invoke::<_, (), _>(
                 &mut *channel,
-                "load_midi_data(QList<QVariant>)",
+                "load_midi_data(QVector<QVariant>)",
                 connection_types::BLOCKING_QUEUED_CONNECTION,
                 &messages_qlist,
             )?;
@@ -982,7 +982,7 @@ impl FileIO {
                 ) {
                     Ok(data) => {
                         qlists.append(qlist_f32_to_qvariant(&data).unwrap());
-                    },
+                    }
                     Err(e) => {
                         error!("Failed to get audio data - ignoring during save: {e}");
                         qlists.append(QVariant::default());

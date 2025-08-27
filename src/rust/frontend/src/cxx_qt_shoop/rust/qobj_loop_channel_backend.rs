@@ -10,7 +10,7 @@ use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::QList;
+use cxx_qt_lib::{QList, QVector};
 use cxx_qt_lib_shoop::qvariant_helpers::qweakpointer_qobject_to_qvariant;
 use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 use cxx_qt_lib_shoop::{
@@ -632,7 +632,7 @@ impl LoopChannelBackend {
         }
     }
 
-    pub fn load_audio_data(self: Pin<&mut LoopChannelBackend>, data: QList_f32) {
+    pub fn load_audio_data(self: Pin<&mut LoopChannelBackend>, data: QVector_f32) {
         if self.maybe_backend_channel.is_none() {
             error!(self, "could not load audio data: not yet initialized");
         }
@@ -643,7 +643,7 @@ impl LoopChannelBackend {
             .audio_load_data(&vec);
     }
 
-    pub fn load_midi_data(self: Pin<&mut LoopChannelBackend>, data: QList_QVariant) {
+    pub fn load_midi_data(self: Pin<&mut LoopChannelBackend>, data: QVector_QVariant) {
         if self.maybe_backend_channel.is_none() {
             error!(self, "could not load MIDI data: not yet initialized");
         }
@@ -667,11 +667,11 @@ impl LoopChannelBackend {
             .midi_load_data(&vec);
     }
 
-    pub fn get_audio_data(self: Pin<&mut LoopChannelBackend>) -> QList_f32 {
+    pub fn get_audio_data(self: Pin<&mut LoopChannelBackend>) -> QVector_f32 {
         if self.maybe_backend_channel.is_none() {
             error!(self, "could not get audio data: not yet initialized");
         }
-        let mut rval: QList_f32 = QList::default();
+        let mut rval: QVector_f32 = QVector::default();
         let vec = self
             .maybe_backend_channel
             .as_ref()
@@ -683,11 +683,11 @@ impl LoopChannelBackend {
         rval
     }
 
-    pub fn get_midi_data(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant {
+    pub fn get_midi_data(self: Pin<&mut LoopChannelBackend>) -> QVector_QVariant {
         if self.maybe_backend_channel.is_none() {
             error!(self, "could not get MIDI data: not yet initialized");
         }
-        let mut rval: QList_QVariant = QList::default();
+        let mut rval: QVector_QVariant = QVector::default();
         let vec = self.maybe_backend_channel.as_ref().unwrap().midi_get_data();
         rval.reserve(vec.len() as isize);
         vec.iter().for_each(|v| rval.append(v.to_qvariant()));
@@ -705,10 +705,10 @@ impl LoopChannelBackend {
         }
     }
 
-    pub fn get_data(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant {
+    pub fn get_data(self: Pin<&mut LoopChannelBackend>) -> QVector_QVariant {
         match self.data_type {
             Some(PortDataType::Audio) => {
-                let mut variantlist: QList_QVariant = QList::default();
+                let mut variantlist: QVector_QVariant = QVector::default();
                 let data = self.get_audio_data();
                 for elem in data.iter() {
                     variantlist.append(QVariant::from(elem));
@@ -720,7 +720,7 @@ impl LoopChannelBackend {
             }
             _ => {
                 error!(self, "Cannot get data: no data type found");
-                return QList::default();
+                return QVector::default();
             }
         }
     }

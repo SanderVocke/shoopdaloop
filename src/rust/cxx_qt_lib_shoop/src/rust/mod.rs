@@ -10,6 +10,7 @@ pub mod qqmlerror;
 pub mod qqmlerrorlist;
 pub mod qquickitem;
 pub mod qsharedpointer_qobject;
+pub mod qsharedpointer_qvector_f32;
 pub mod qsignalspy;
 pub mod qthread;
 pub mod qtimer;

@@ -55,7 +55,7 @@ ShoopTestFile {
             }
 
             function midi_channel() {
-                return lut.get_midi_channels()[0]
+                return lut.midi_channels[0]
             }
 
             function tut_control() {
@@ -136,7 +136,7 @@ ShoopTestFile {
                 loopwidget.transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                 testcase.wait_updated(session.backend)
                 loopwidget.clear(0)
-                loopwidget.get_midi_channels().forEach((m) => m.reset_state_tracking())
+                loopwidget.midi_channels.forEach((m) => m.reset_state_tracking())
             }
 
             function reset() {

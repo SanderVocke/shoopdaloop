@@ -21,6 +21,11 @@ pub mod ffi {
         type QList_f32 = cxx_qt_lib::QList<f32>;
         type QList_QString = cxx_qt_lib::QList<cxx_qt_lib::QString>;
 
+        include!("cxx-qt-lib/qvector.h");
+        type QVector_QVariant = cxx_qt_lib::QVector<cxx_qt_lib::QVariant>;
+        type QVector_f32 = cxx_qt_lib::QVector<f32>;
+        type QVector_QString = cxx_qt_lib::QVector<cxx_qt_lib::QString>;
+
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
     }
@@ -85,19 +90,19 @@ pub mod ffi {
         );
 
         #[qinvokable]
-        pub fn load_audio_data(self: Pin<&mut LoopChannelBackend>, data: QList_f32);
+        pub fn load_audio_data(self: Pin<&mut LoopChannelBackend>, data: QVector_f32);
 
         #[qinvokable]
-        pub fn load_midi_data(self: Pin<&mut LoopChannelBackend>, data: QList_QVariant);
+        pub fn load_midi_data(self: Pin<&mut LoopChannelBackend>, data: QVector_QVariant);
 
         #[qinvokable]
-        pub fn get_audio_data(self: Pin<&mut LoopChannelBackend>) -> QList_f32;
+        pub fn get_audio_data(self: Pin<&mut LoopChannelBackend>) -> QVector_f32;
 
         #[qinvokable]
-        pub fn get_midi_data(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant;
+        pub fn get_midi_data(self: Pin<&mut LoopChannelBackend>) -> QVector_QVariant;
 
         #[qinvokable]
-        pub fn get_data(self: Pin<&mut LoopChannelBackend>) -> QList_QVariant;
+        pub fn get_data(self: Pin<&mut LoopChannelBackend>) -> QVector_QVariant;
 
         #[qinvokable]
         pub fn get_data_length(self: Pin<&mut LoopChannelBackend>) -> i32;

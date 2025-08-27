@@ -221,7 +221,6 @@ Item {
             })
 
             // TODO make this step asynchronous
-            console.log("first channel in session save:", tracks_widget.tracks[0].loops[0].maybe_backend_loop.channels[0])
             var descriptor = actual_session_descriptor(true, tempdir, observer)
             if(!ShoopFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
                 throw new Error(`Failed to write session file ${session_filename}`)
@@ -250,6 +249,7 @@ Item {
     }
 
     function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
+        root.logger.debug(`Queue load tasks for main tracks`)
         tracks_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
         if (sync_loop_loader.track_widget) {
             root.logger.debug(`Queue load tasks for sync track`)
@@ -338,6 +338,7 @@ Item {
                         } else {
                             root.logger.error("Loading session failed")
                         }
+
                     })
 
                     queue_load_tasks(tempdir, incoming_sample_rate, our_sample_rate, observer)

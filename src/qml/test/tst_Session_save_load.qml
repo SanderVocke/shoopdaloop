@@ -92,26 +92,27 @@ ShoopTestFile {
 
             function dt_loop_channels(s=session) {
                 if (!dt_loop(s)) return []
-                var r = dt_loop(s).get_audio_output_channels()
+                //var r = dt_loop(s).audio_channels
+                var r = dt_loop(s).maybe_backend_loop.get_channels()
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
             }
 
             function mt_midi_channels(s=session) {
                 if (!mt_loop(s)) return null
-                return mt_loop(s).get_midi_channels()
+                return mt_loop(s).midi_channels
             }
 
             function dwt_dry_loop_channels(s=session) {
                 if (!dwt_loop(s)) return []
-                var r = dwt_loop(s).get_audio_channels().filter(c => c.obj_id.match(/.*_dry_.*/))
+                var r = dwt_loop(s).audio_channels.filter(c => c.obj_id.match(/.*_dry_.*/))
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
             }
 
             function dwt_wet_loop_channels(s=session) {
                 if (!dwt_loop(s)) return []
-                var r = dwt_loop(s).get_audio_channels().filter(c => c.obj_id.match(/.*_wet_.*/))
+                var r = dwt_loop(s).audio_channels.filter(c => c.obj_id.match(/.*_wet_.*/))
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
             }
@@ -175,8 +176,6 @@ ShoopTestFile {
                     clear_all()
                     check_backend()
 
-                    console.log("first channel in test: ", dt_loop_channels()[0])
-
                     let midichan = [
                         { 'time': 101, 'data': [0x90, 70,  70]  },
                         { 'time': 201, 'data': [0x80, 60,  60]  }
@@ -210,8 +209,6 @@ ShoopTestFile {
                     clear_all()
                     check_backend()
 
-                    console.log("first channel in test: ", dt_loop_channels()[0])
-
                     let midichan = [
                         { 'time': 101, 'data': [0x90, 70,  70]  },
                         { 'time': 201, 'data': [0x80, 60,  60]  }
@@ -244,8 +241,6 @@ ShoopTestFile {
                 "test_save_load_session_audio_and_midi": () => {
                     clear_all()
                     check_backend()
-
-                    console.log("first channel in test: ", dt_loop_channels()[0])
 
                     let midichan = [
                         { 'time': 101, 'data': [0x90, 70,  70]  },
@@ -304,8 +299,6 @@ ShoopTestFile {
                     clear_all()
                     check_backend()
                     
-                    console.log("first channel in test: ", dt_loop_channels()[0])
-
                     verify(other_session.backend && other_session.backend.ready, "resampled backend not initialized")
 
                     let midichan = [
@@ -371,8 +364,6 @@ ShoopTestFile {
                 "test_save_load_track_controls": () => {
                     clear_all()
                     check_backend()
-
-                    console.log("first channel in test: ", dt_loop_channels()[0])
 
                     mt().control_widget.mute = true
                     mt().control_widget.monitor = true

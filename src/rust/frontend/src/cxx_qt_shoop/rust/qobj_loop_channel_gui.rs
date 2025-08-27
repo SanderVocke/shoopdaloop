@@ -3,14 +3,14 @@ use crate::cxx_qt_shoop::qobj_port_gui_bridge::PortGui;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_backend_bridge::ffi::*;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_gui_bridge::ffi::*;
 use crate::cxx_qt_shoop::rust::qobj_loop_channel_gui_bridge::ffi::{
-    QList_QVariant, QList_f32, QObject, QString, QVariant,
+    QList_QVariant, QObject, QString, QVariant, QVector_QVariant, QVector_f32,
 };
 use crate::engine_update_thread;
 use common::logging::macros::{
     debug as raw_debug, error as raw_error, shoop_log_unit, trace as raw_trace,
 };
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::QList;
+use cxx_qt_lib::{QList, QVector};
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
@@ -18,7 +18,7 @@ use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
     qobject_ptr_to_qvariant, qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
-    qvariant_to_qweakpointer_qobject, qvariantlist_to_qvariant,
+    qvariant_to_qweakpointer_qobject, qvector_qvariant_to_qvariant,
 };
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
@@ -146,16 +146,16 @@ impl LoopChannelGui {
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_load_audio_data(QList<float>)",
+                        "backend_load_audio_data(QVector<float>)",
                         backend_ref,
-                        "load_audio_data(QList<float>)",
+                        "load_audio_data(QVector<float>)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_load_midi_data(QList<QVariant>)",
+                        "backend_load_midi_data(QVector<QVariant>)",
                         backend_ref,
-                        "load_midi_data(QList<QVariant>)",
+                        "load_midi_data(QVector<QVariant>)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
@@ -413,19 +413,19 @@ impl LoopChannelGui {
         }
     }
 
-    pub fn load_audio_data(self: Pin<&mut LoopChannelGui>, data: QList_f32) {
+    pub fn load_audio_data(self: Pin<&mut LoopChannelGui>, data: QVector_f32) {
         unsafe {
             self.backend_load_audio_data(data);
         }
     }
 
-    pub fn load_midi_data(self: Pin<&mut LoopChannelGui>, data: QList_QVariant) {
+    pub fn load_midi_data(self: Pin<&mut LoopChannelGui>, data: QVector_QVariant) {
         unsafe {
             self.backend_load_midi_data(data);
         }
     }
 
-    pub fn get_audio_data(self: &LoopChannelGui) -> QList_f32 {
+    pub fn get_audio_data(self: &LoopChannelGui) -> QVector_f32 {
         unsafe {
             let backend_ptr = self
                 .backend_channel_wrapper
@@ -433,7 +433,7 @@ impl LoopChannelGui {
                 .unwrap()
                 .data()
                 .unwrap();
-            match invokable::invoke::<_, QList_f32, _>(
+            match invokable::invoke::<_, QVector_f32, _>(
                 &mut *backend_ptr,
                 "get_audio_data()",
                 connection_types::BLOCKING_QUEUED_CONNECTION,
@@ -442,13 +442,13 @@ impl LoopChannelGui {
                 Ok(data) => data,
                 Err(e) => {
                     error!(self, "Could not get audio data: {e}");
-                    QList::default()
+                    QVector::default()
                 }
             }
         }
     }
 
-    pub fn get_midi_data(self: &LoopChannelGui) -> QList_QVariant {
+    pub fn get_midi_data(self: &LoopChannelGui) -> QVector_QVariant {
         unsafe {
             let backend_ptr = self
                 .backend_channel_wrapper
@@ -456,7 +456,7 @@ impl LoopChannelGui {
                 .unwrap()
                 .data()
                 .unwrap();
-            match invokable::invoke::<_, QList_QVariant, _>(
+            match invokable::invoke::<_, QVector_QVariant, _>(
                 &mut *backend_ptr,
                 "get_midi_data()",
                 connection_types::BLOCKING_QUEUED_CONNECTION,
@@ -465,7 +465,7 @@ impl LoopChannelGui {
                 Ok(data) => data,
                 Err(e) => {
                     error!(self, "Could not get midi data: {e}");
-                    QList::default()
+                    QVector::default()
                 }
             }
         }
@@ -540,16 +540,15 @@ impl LoopChannelGui {
                         return Err(anyhow::anyhow!("backend channel is null"));
                     }
 
-                    raw_error!("get data start");
-                    let data = qvariantlist_to_qvariant(unsafe {
-                        &invoke::<_, QList_QVariant, _>(
+                    let data = unsafe {
+                        invoke::<_, QVector_QVariant, _>(
                             &mut *backend_channel_qobj,
                             "get_data()",
                             connection_types::BLOCKING_QUEUED_CONNECTION,
                             &(),
                         )?
-                    })?;
-                    raw_error!("get data done");
+                    };
+                    let data = qvector_qvariant_to_qvariant(&data)?;
 
                     let shared = notifier_shared;
                     unsafe {
@@ -560,7 +559,6 @@ impl LoopChannelGui {
                             &(data),
                         )?;
                     }
-                    raw_error!("invoke notifier done");
 
                     Ok(())
                 },

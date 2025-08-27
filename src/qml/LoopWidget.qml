@@ -85,7 +85,7 @@ Item {
         }
 
         if (maybe_backend_loop) {
-            rval['channels'] = maybe_backend_loop.channels.map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
+            rval['channels'] = maybe_backend_loop.get_channels().map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         } else {
             rval['channels'] = initial_descriptor.channels
             if (maybe_composite_loop) {
@@ -303,7 +303,7 @@ Item {
             maybe_loop.clear(length);
             if (maybe_composite_loop) {
                 maybe_loop.unload()
-                maybe_loop.destroy(30)
+                maybe_loop.destroy()
                 maybe_loop.parent = null
                 maybe_loop = null
             }
@@ -352,11 +352,11 @@ Item {
     }
 
     function get_audio_channels() {
-        return maybe_loop ? maybe_loop.get_audio_channels() : []
+        return maybe_loop ? maybe_loop.audio_channels : []
     }
 
     function get_midi_channels() {
-        return maybe_loop ? maybe_loop.get_midi_channels() : []
+        return maybe_loop ? maybe_loop.midi_channels : []
     }
 
     function get_audio_output_channels() {
@@ -518,7 +518,7 @@ Item {
             if (!is_sync && maybe_backend_loop.is_all_empty()) {
                 // Empty backend loop can be converted to composite loop.
                 maybe_loop.unload()
-                maybe_loop.destroy(30)
+                maybe_loop.destroy(0)
                 maybe_loop.parent = null
                 maybe_loop = null
             } else {
