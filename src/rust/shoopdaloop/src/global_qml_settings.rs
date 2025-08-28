@@ -14,6 +14,7 @@ pub struct GlobalQmlSettings {
     pub lua_dir: String,
     pub resource_dir: String,
     pub schemas_dir: String,
+    pub version_string: String,
 }
 
 impl GlobalQmlSettings {

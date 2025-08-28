@@ -17,7 +17,6 @@ pkg_version = shoop_version
 
 from .q_objects.ClickTrackGenerator import ClickTrackGenerator
 from .q_objects.KeyModifiers import KeyModifiers
-from .q_objects.ApplicationMetadata import ApplicationMetadata
 from .q_objects.Logger import Logger
 from .q_objects.ControlHandler import ControlHandler
 from .q_objects.LuaEngine import LuaEngine
@@ -26,7 +25,6 @@ from .q_objects.ControlInterface import ControlInterface
 from .q_objects.MidiControlPort import MidiControlPort
 from .q_objects.SettingsIO import SettingsIO
 from .q_objects.TestScreenGrabber import TestScreenGrabber
-from .q_objects.TestCase import TestCase
 
 from .logging import Logger as BareLogger
 from .js_constants import create_js_constants
@@ -72,7 +70,6 @@ def register_shoopdaloop_qml_classes():
     # Register Python classes
     register_qml_class(ClickTrackGenerator, 'ClickTrackGenerator')
     register_qml_class(KeyModifiers, 'KeyModifiers')
-    register_qml_class(ApplicationMetadata, 'ApplicationMetadata')
     register_qml_class(Logger, 'Logger')
     register_qml_class(LuaEngine, 'LuaEngine')
     register_qml_class(DictTreeModelFactory, 'DictTreeModelFactory')
@@ -81,7 +78,6 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(MidiControlPort, 'MidiControlPort')
     register_qml_class(SettingsIO, 'SettingsIO')
     register_qml_class(TestScreenGrabber, 'TestScreenGrabber')
-    register_qml_class(TestCase, 'TestCase')
 
     qmlRegisterSingletonType("ShoopConstants", 1, 0, "ShoopConstants", create_constants_instance)
     install_qt_message_handler()
@@ -108,7 +104,6 @@ def create_and_populate_root_context(engine):
     items = {
         'click_track_generator': ClickTrackGenerator(parent=engine),
         'key_modifiers': KeyModifiers(parent=engine),
-        'app_metadata': ApplicationMetadata(parent=engine),
         'default_logger': Logger(),
         'tree_model_factory': DictTreeModelFactory(parent=engine),
         # 'global_args': global_args,
@@ -122,8 +117,6 @@ def create_and_populate_root_context(engine):
     #         items[key] = item
 
     items['default_logger'].name = 'Frontend.Qml'
-
-    items['app_metadata'].version_string = pkg_version
 
     for key, item in items.items():
         engine.rootContext().setContextProperty(key, item)

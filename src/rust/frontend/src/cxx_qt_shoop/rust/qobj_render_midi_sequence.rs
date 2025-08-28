@@ -127,7 +127,11 @@ impl RenderMidiSequence {
 impl cxx_qt::Initialize for RenderMidiSequence {
     fn initialize(mut self: Pin<&mut Self>) {
         self.as_mut().on_width_changed(|s| s.update()).release();
-        self.as_mut().on_samples_offset_changed(|s| s.update()).release();
-        self.as_mut().on_samples_per_bin_changed(|s| s.update()).release();
+        self.as_mut()
+            .on_samples_offset_changed(|s| s.update())
+            .release();
+        self.as_mut()
+            .on_samples_per_bin_changed(|s| s.update())
+            .release();
     }
 }

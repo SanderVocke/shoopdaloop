@@ -43,7 +43,7 @@ ShoopTestFile {
             direct_track.ports.filter(p => p.output_connectability.includes('external')).forEach(p => p.muted = true)
             midi_track.ports.filter(p => p.input_connectability.includes('external')).forEach(p => p.passthrough_muted = false)
             midi_track.ports.filter(p => p.output_connectability.includes('external')).forEach(p => p.muted = false)
-            let desc = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [direct_track, midi_track])
+            let desc = GenerateSession.generate_default_session(global_args.version_string, null, true, 1, 1, [direct_track, midi_track])
             testcase.logger.debug("session descriptor: " + JSON.stringify(desc, null, 2))
             return desc
         }

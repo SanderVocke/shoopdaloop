@@ -103,6 +103,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
         qml_dir: config.qml_dir.clone(),
         resource_dir: config.resource_dir.clone(),
         schemas_dir: config.schemas_dir.clone(),
+        version_string: config._version.clone(),
     };
     GLOBAL_QML_SETTINGS.set(global_qml_settings).unwrap();
 

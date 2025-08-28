@@ -16,7 +16,7 @@ ShoopApplicationWindow {
 
     Session {
         anchors.fill: parent
-        initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, null, true)
+        initial_descriptor: GenerateSession.generate_default_session(global_args.version_string, null, true)
         settings_io_enabled: true
 
         onLoadedChanged: {

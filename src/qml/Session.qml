@@ -21,7 +21,7 @@ Item {
     // of loops, tracks, etc.) to match the loaded descriptor.
     // The descriptor may not be directly modified and is only used at initialization.
     // The actual descriptor can be retrieved with actual_session_descriptor().
-    property var initial_descriptor : GenerateSession.generate_session(app_metadata.version_string, null, [], [], [], [])
+    property var initial_descriptor : GenerateSession.generate_session(global_args.version_string, null, [], [], [], [])
     property var backend_type : global_args.backend_type
     property int backend_update_interval_ms : 30
 
@@ -108,7 +108,7 @@ Item {
         ]
 
         return GenerateSession.generate_session(
-            app_metadata.version_string,
+            global_args.version_string,
             session_backend.get_sample_rate(),
             track_groups,
             [],
@@ -792,7 +792,7 @@ Item {
                         horizontalCenter: logo.horizontalCenter
                         topMargin: 6
                     }
-                    text: 'ShoopDaLoop v' + app_metadata.version_string
+                    text: 'ShoopDaLoop v' + global_args.version_string
                     onLinkActivated: Qt.openUrlExternally(link)
                     color: Material.foreground
                     font.pixelSize: 12

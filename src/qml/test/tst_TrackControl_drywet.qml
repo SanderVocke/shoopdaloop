@@ -26,7 +26,7 @@ ShoopTestFile {
                 false,
                 "test2x2x1"
                 )
-            let base = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [track])
+            let base = GenerateSession.generate_default_session(global_args.version_string, null, true, 1, 1, [track])
             testcase.logger.debug("session descriptor: " + JSON.stringify(base, null, 2))
             return base
         }
