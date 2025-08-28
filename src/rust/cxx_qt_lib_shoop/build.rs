@@ -26,6 +26,7 @@ fn main() {
         .file("src/rust/qsignalspy.rs")
         .file("src/rust/qsharedpointer_qobject.rs")
         .file("src/rust/qsharedpointer_qvector_f32.rs")
+        .file("src/rust/qsharedpointer_qvector_qvariant.rs")
         .file("src/rust/qthread.rs")
         .file("src/rust/qtimer.rs")
         .file("src/rust/qvariant_helpers.rs")

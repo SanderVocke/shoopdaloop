@@ -112,7 +112,7 @@ pub mod ffi {
         // Returns an AsyncTask.
         // The passed object will be invoked on the given method signature,
         // which should accept a QVariant.
-        // The QVariant will contain a QVector<QVariant>.
+        // The QVariant will contain a QSharedPointer<QVector<QVariant>>.
         #[qinvokable]
         pub fn get_data_async_and_send_to(
             self: Pin<&mut LoopChannelGui>,

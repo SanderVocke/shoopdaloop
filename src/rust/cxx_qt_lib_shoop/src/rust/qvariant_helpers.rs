@@ -26,6 +26,10 @@ mod ffi {
         include!("cxx-qt-lib-shoop/qsharedpointer_qobject.h");
         type QSharedPointer_QObject = crate::qsharedpointer_qobject::QSharedPointer_QObject;
 
+        include!("cxx-qt-lib-shoop/qsharedpointer_qvector_qvariant.h");
+        type QSharedPointer_QVector_QVariant =
+            crate::qsharedpointer_qvector_qvariant::QSharedPointer_QVector_QVariant;
+
         include!("cxx-qt-lib-shoop/qweakpointer_qobject.h");
         type QWeakPointer_QObject = crate::qweakpointer_qobject::QWeakPointer_QObject;
 
@@ -151,6 +155,21 @@ mod ffi {
 
         #[rust_name = "qsharedpointer_qobject_to_qvariant"]
         unsafe fn asQVariant(obj: &QSharedPointer_QObject) -> Result<QVariant>;
+
+        #[rust_name = "qvariant_convertible_to_qsharedpointer_qvector_qvariant"]
+        unsafe fn qvariantConvertibleTo(
+            obj: &QVariant,
+            example: *mut QSharedPointer_QVector_QVariant,
+        ) -> Result<bool>;
+
+        #[rust_name = "qvariant_to_qsharedpointer_qvector_qvariant"]
+        unsafe fn qvariantAsUniquePtr(
+            variant: &QVariant,
+            example: *mut QSharedPointer_QVector_QVariant,
+        ) -> Result<UniquePtr<QSharedPointer_QVector_QVariant>>;
+
+        #[rust_name = "qsharedpointer_qvector_qvariant_to_qvariant"]
+        unsafe fn asQVariant(obj: &QSharedPointer_QVector_QVariant) -> Result<QVariant>;
 
         #[rust_name = "qvariant_convertible_to_qweakpointer_qobject"]
         unsafe fn qvariantConvertibleTo(
@@ -284,6 +303,26 @@ pub fn qsharedpointer_qobject_to_qvariant(
     obj: &QSharedPointer_QObject,
 ) -> Result<QVariant, cxx::Exception> {
     unsafe { ffi::qsharedpointer_qobject_to_qvariant(obj) }
+}
+
+pub fn qvariant_convertible_to_qsharedpointer_qvector_qvariant(
+    obj: &QVariant,
+) -> Result<bool, cxx::Exception> {
+    unsafe {
+        ffi::qvariant_convertible_to_qsharedpointer_qvector_qvariant(obj, std::ptr::null_mut())
+    }
+}
+
+pub fn qvariant_to_qsharedpointer_qvector_qvariant(
+    obj: &QVariant,
+) -> Result<cxx::UniquePtr<QSharedPointer_QVector_QVariant>, cxx::Exception> {
+    unsafe { ffi::qvariant_to_qsharedpointer_qvector_qvariant(obj, std::ptr::null_mut()) }
+}
+
+pub fn qsharedpointer_qvector_qvariant_to_qvariant(
+    obj: &QSharedPointer_QVector_QVariant,
+) -> Result<QVariant, cxx::Exception> {
+    unsafe { ffi::qsharedpointer_qvector_qvariant_to_qvariant(obj) }
 }
 
 pub fn qvariant_convertible_to_qweakpointer_qobject(

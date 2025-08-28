@@ -13,7 +13,7 @@ Item {
     property int samples_offset: 0.0
     property int loop_length: 0
     readonly property int n_samples_shown: width * samples_per_pixel
-    readonly property int n_samples: render.input_data ? channel.data_length : 0
+    readonly property int n_samples: render.have_data ? channel.data_length : 0
     property real major_grid_lines_interval
     property real minor_grid_lines_interval
 
@@ -56,6 +56,8 @@ Item {
             color: Material.background
             border.color: 'grey'
             border.width: 1
+
+            z : -10
 
             DragHandler {
                 id: drag_handler
@@ -216,19 +218,20 @@ Item {
             height: root.height
             clip: true
 
-            property var running_fetch_task: null
 
-            function set_input_data(data) { input_data = data }
+            visible: false
+
+            property var running_fetch_task: null
 
             function update(force) {
                 if (render.running_fetch_task) {
                     root.logger.debug("fetch task still running, skip update")
                 }
-                if (root.fetch_active && (force || root.channel.data_dirty)) {
-                    root.logger.debug("starting fetch")
+                if (root.fetch_active && (force || root.channel.data_dirty) && render.send_data_to) {
+                    root.logger.debug(`starting fetch towards ${render.send_data_to}`)
                     render.running_fetch_task = root.channel.get_data_async_and_send_to(
-                        render,
-                        "set_input_data(QVariant)"
+                        render.send_data_to,
+                        "setInput_data(QVariant)"
                     );
                     render.running_fetch_task.then((success) => {
                         if (success) {

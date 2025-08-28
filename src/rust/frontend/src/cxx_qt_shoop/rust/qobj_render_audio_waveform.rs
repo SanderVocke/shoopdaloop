@@ -1,4 +1,7 @@
 use common::logging::macros::*;
+use cxx_qt_lib_shoop::qvariant_helpers::{
+    qvariant_to_qsharedpointer_qvector_qvariant, qvariant_type_name,
+};
 shoop_log_unit!("Frontend.RenderAudioWaveform");
 
 use crate::audio_power_pyramid;
@@ -19,18 +22,41 @@ pub fn register_qml_type(module_name: &str, type_name: &str) {
 }
 
 impl ffi::RenderAudioWaveform {
-    pub fn preprocess(self: Pin<&mut Self>) {
-        {
-            let s: &RenderAudioWaveformRust = self.rust();
-            let mut p = s.pyramid.lock().unwrap();
-            debug!(
-                "Preprocessing input data with {} values",
-                s.input_data.len()
-            );
-            *p =
-                audio_power_pyramid::create_audio_power_pyramid(s.input_data.iter().copied(), 2048);
+    fn preprocess_from_iter(self: Pin<&mut Self>, iter: impl Iterator<Item = f32>) {
+        let mut p = self.pyramid.lock().unwrap();
+        *p = audio_power_pyramid::create_audio_power_pyramid(iter, 2048);
+        debug!("Created pyramid with {} levels", p.levels.len());
+    }
+
+    pub fn preprocess(mut self: Pin<&mut Self>) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            if let Ok(shared) = qvariant_to_qsharedpointer_qvector_qvariant(&self.input_data) {
+                unsafe {
+                    let vector = shared
+                        .data()?
+                        .as_ref()
+                        .ok_or(anyhow::anyhow!("Could not dereference QVector pointer"))?;
+                    debug!("Preprocessing input data - {} elements", vector.len());
+                    self.as_mut().preprocess_from_iter(
+                        vector.iter().map(|v| v.value::<f32>().unwrap_or(0.0)),
+                    );
+                }
+            } else {
+                return Err(anyhow::anyhow!(
+                    "Unsupported input data type: {}",
+                    qvariant_type_name(&self.input_data)?
+                ));
+            }
+
+            Ok(())
+        }() {
+            error!("Could not preprocess input data: {e}")
         }
-        self.update();
+    }
+
+    pub unsafe fn get_have_data(self: Pin<&mut RenderAudioWaveform>) -> bool {
+        let pyramid = self.pyramid.lock().unwrap();
+        pyramid.levels.len() > 0
     }
 
     pub unsafe fn paint(self: Pin<&mut Self>, painter: *mut ffi::QPainter) {

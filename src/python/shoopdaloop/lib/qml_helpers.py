@@ -26,7 +26,6 @@ from .q_objects.ControlInterface import ControlInterface
 from .q_objects.MidiControlPort import MidiControlPort
 from .q_objects.SettingsIO import SettingsIO
 from .q_objects.TestScreenGrabber import TestScreenGrabber
-from .q_objects.RenderMidiSequence import RenderMidiSequence
 from .q_objects.TestCase import TestCase
 
 from .logging import Logger as BareLogger
@@ -82,7 +81,6 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(MidiControlPort, 'MidiControlPort')
     register_qml_class(SettingsIO, 'SettingsIO')
     register_qml_class(TestScreenGrabber, 'TestScreenGrabber')
-    register_qml_class(RenderMidiSequence, 'RenderMidiSequence')
     register_qml_class(TestCase, 'TestCase')
 
     qmlRegisterSingletonType("ShoopConstants", 1, 0, "ShoopConstants", create_constants_instance)
