@@ -46,6 +46,7 @@ sndfile = { version = "0.1" }
 json = "0.12"
 midly = "0.5"
 directories = "6.0"
+mlua = { version = "0.11", features = ["lua54"] }
 
 # [patch.crates-io]F
 # cxx-qt =  { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt" }
