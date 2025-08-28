@@ -1,0 +1,13 @@
+[package]
+name = "midi_processing"
+edition = "2021"
+
+[lib]
+
+[dependencies]
+common = { path = "../common" }
+backend_bindings = { path = "../backend_bindings" }
+
+[features]
+# Dummy build to build dependencies only
+prebuild = ["common/prebuild", "backend_bindings/prebuild"]

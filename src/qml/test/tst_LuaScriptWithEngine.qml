@@ -18,7 +18,7 @@ ShoopTestFile {
                 false,
                 "tut"
             )
-            let _session = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [track])
+            let _session = GenerateSession.generate_default_session(global_args.version_string, null, true, 1, 1, [track])
             return _session
         }
 

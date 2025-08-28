@@ -16,9 +16,11 @@ use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
 use cxx_qt_lib_shoop::qobject::{AsQObject, FromQObject};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
+use cxx_qt_lib_shoop::qsharedpointer_qvector_qvariant::QSharedPointer_QVector_QVariant;
 use cxx_qt_lib_shoop::qvariant_helpers::{
-    qobject_ptr_to_qvariant, qsharedpointer_qobject_to_qvariant, qvariant_to_qobject_ptr,
-    qvariant_to_qweakpointer_qobject, qvector_qvariant_to_qvariant,
+    qobject_ptr_to_qvariant, qsharedpointer_qobject_to_qvariant,
+    qsharedpointer_qvector_qvariant_to_qvariant, qvariant_to_qobject_ptr,
+    qvariant_to_qweakpointer_qobject,
 };
 use cxx_qt_lib_shoop::{invokable, qobject::ffi::qobject_move_to_thread};
 use std::pin::Pin;
@@ -548,7 +550,11 @@ impl LoopChannelGui {
                             &(),
                         )?
                     };
-                    let data = qvector_qvariant_to_qvariant(&data)?;
+
+                    // Move onto the heap
+                    let on_heap = Box::into_raw(Box::<QVector_QVariant>::new(data));
+                    let shared = QSharedPointer_QVector_QVariant::from_ptr(on_heap).unwrap();
+                    let variant = qsharedpointer_qvector_qvariant_to_qvariant(&shared)?;
 
                     let shared = notifier_shared;
                     unsafe {
@@ -556,7 +562,7 @@ impl LoopChannelGui {
                             &mut *shared.as_ref().unwrap().data().unwrap(),
                             "notify_done(QVariant)",
                             connection_types::DIRECT_CONNECTION,
-                            &(data),
+                            &(variant),
                         )?;
                     }
 

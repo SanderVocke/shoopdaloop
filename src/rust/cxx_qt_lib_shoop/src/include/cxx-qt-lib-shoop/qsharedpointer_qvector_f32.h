@@ -5,7 +5,7 @@
 
 using QSharedPointer_QVector_f32 = QSharedPointer<QVector<float>>;
 
-inline std::unique_ptr<QSharedPointer_QVector_f32> qSharedPointerQVectorf32FromPtrDeleteLater(QVector<float> *ptr) {
+inline std::unique_ptr<QSharedPointer_QVector_f32> qSharedPointerQVectorf32FromPtr(QVector<float> *ptr) {
     return std::make_unique<QSharedPointer_QVector_f32>(ptr);
 }
 

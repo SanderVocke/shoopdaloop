@@ -1,7 +1,6 @@
 import QtQuick 6.6
 
 import ShoopDaLoop.PythonLogger
-import ShoopDaLoop.PythonTestCase
 import ShoopDaLoop.Rust
 
 import ShoopConstants
@@ -9,9 +8,8 @@ import './testDeepEqual.js' as TestDeepEqual
 import '../js/type_checks.js' as TypeChecks
 import '..'
 
-PythonTestCase {
+Item {
     id: root
-    name : 'UnnamedTestCase'
     property string filename : 'UnknownTestFile'
     property var logger : PythonLogger { name: `Frontend.Qml.ShoopTestCase` }
 
@@ -24,6 +22,10 @@ PythonTestCase {
     property bool when: true
     property bool _internal_triggered: false
     property bool registered: false
+
+    property string name: 'UnnamedTestCase'
+    property bool skip: false
+
     onWhenChanged: update_next_cycle.trigger()
 
     function update_trigger() {
@@ -366,5 +368,4 @@ PythonTestCase {
             logger.info(`----------     ${filename}::${casename}: ${status.toUpperCase()}`)
         }
     }
-    onRun_signal: run()
 }

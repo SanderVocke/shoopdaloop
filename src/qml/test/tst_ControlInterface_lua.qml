@@ -15,7 +15,7 @@ ShoopTestFile {
             var extra_track_1 = GenerateSession.generate_default_track("Other1", 2, 'other1', false, 'other1_loop', 0, 0, 2, false, false, false, undefined)
             var extra_track_2 = GenerateSession.generate_default_track("Other2", 2, 'other2', false, 'other2_loop', 0, 0, 2, false, false, false, undefined)
             return GenerateSession.generate_default_session(
-                app_metadata.version_string,
+                global_args.version_string,
                 null,
                 true, 1, 1, [extra_track_1, extra_track_2]
             )

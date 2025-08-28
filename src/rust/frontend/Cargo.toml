@@ -15,6 +15,7 @@ config = { path = "../config" }
 shoop_py_wrapped_objects = { path = "../shoop_py_wrapped_objects" }
 cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
 shoop_py_backend = { path = "../shoop_py_backend"}
+midi_processing = { path = "../midi_processing" }
 
 cxx = { workspace = true }
 tempfile = { workspace = true }
@@ -48,5 +49,6 @@ prebuild = ["macros/prebuild",
             "shoop_py_wrapped_objects/prebuild",
             "crashhandling/prebuild",
             "config/prebuild",
-            "cxx_qt_lib_shoop/prebuild"]
+            "cxx_qt_lib_shoop/prebuild",
+            "midi_processing/prebuild"]
 

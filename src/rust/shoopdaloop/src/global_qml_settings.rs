@@ -14,6 +14,7 @@ pub struct GlobalQmlSettings {
     pub lua_dir: String,
     pub resource_dir: String,
     pub schemas_dir: String,
+    pub version_string: String,
 }
 
 impl GlobalQmlSettings {
@@ -71,6 +72,10 @@ impl GlobalQmlSettings {
         .chain(iter::once((
             QString::from("schemas_dir"),
             QVariant::from(&QString::from(&self.schemas_dir)),
+        )))
+        .chain(iter::once((
+            QString::from("version_string"),
+            QVariant::from(&QString::from(&self.version_string)),
         )))
     }
 

@@ -68,7 +68,7 @@ ShoopTestFile {
             drywet_track.loops[1]['composition'] = {
                 'playlists': []
             }
-            let desc = GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [direct_track, drywet_track, midi_track])
+            let desc = GenerateSession.generate_default_session(global_args.version_string, null, true, 1, 1, [direct_track, drywet_track, midi_track])
             testcase.logger.debug("session descriptor: " + JSON.stringify(desc, null, 2))
             return desc
         }
@@ -428,6 +428,6 @@ ShoopTestFile {
         driver_setting_overrides: {
             "sample_rate": 32000
         }
-        initial_descriptor: GenerateSession.generate_default_session(app_metadata.version_string, null, true, 1, 1, [])
+        initial_descriptor: GenerateSession.generate_default_session(global_args.version_string, null, true, 1, 1, [])
     }
 }
