@@ -70,13 +70,13 @@ Dialog {
 
             logger.debug("Saving settings.")
             validate()
-            settings_io.save_settings(to_dict(), null)
+            ShoopSettingsIO.save_settings(to_dict(), null)
         }
 
         function load() {
             if (io_enabled) {
                 logger.debug("Loading settings.")
-                let loaded_settings = settings_io.load_settings(null)
+                let loaded_settings = ShoopSettingsIO.load_settings(null)
                 if (loaded_settings != null) { from_dict(loaded_settings) }
             }
 

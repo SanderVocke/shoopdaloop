@@ -21,7 +21,6 @@ from .q_objects.LuaEngine import LuaEngine
 from .q_objects.DictTreeModel import DictTreeModelFactory
 from .q_objects.ControlInterface import ControlInterface
 from .q_objects.MidiControlPort import MidiControlPort
-from .q_objects.SettingsIO import SettingsIO
 from .q_objects.TestScreenGrabber import TestScreenGrabber
 
 from .logging import Logger as BareLogger
@@ -72,7 +71,6 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(ControlHandler, 'ControlHandler')
     register_qml_class(ControlInterface, 'ControlInterface')
     register_qml_class(MidiControlPort, 'MidiControlPort')
-    register_qml_class(SettingsIO, 'SettingsIO')
     register_qml_class(TestScreenGrabber, 'TestScreenGrabber')
 
     qmlRegisterSingletonType("ShoopConstants", 1, 0, "ShoopConstants", create_constants_instance)
@@ -100,7 +98,6 @@ def create_and_populate_root_context(engine):
     items = {
         'default_logger': Logger(),
         'tree_model_factory': DictTreeModelFactory(parent=engine),
-        'settings_io': SettingsIO(parent=engine),
         'registries': registries,
         'screen_grabber': TestScreenGrabber(weak_engine=weakref.ref(engine), parent=engine)
     }

@@ -15,6 +15,7 @@ fn register_qml_types_and_singletons() {
     qobj_global_utils::register_qml_singleton(&mdl, "ShoopGlobalUtils");
     qobj_key_modifiers::register_qml_singleton(&mdl, "ShoopKeyModifiers");
     qobj_click_track_generator::register_qml_singleton(&mdl, "ShoopClickTrackGenerator");
+    qobj_settings_io::register_qml_singleton(&mdl, "ShoopSettingsIO");
 
     // Types
     qobj_dummy_process_helper::register_qml_type(&mdl, "ShoopDummyProcessHelper");

@@ -22,6 +22,15 @@ mod ffi {
         #[rust_name = "qmetatype_id_int"]
         unsafe fn meta_type_id(v: *mut i32) -> i32;
 
+        #[rust_name = "qmetatype_id_int64"]
+        unsafe fn meta_type_id(v: *mut i64) -> i32;
+
+        #[rust_name = "qmetatype_id_uint"]
+        unsafe fn meta_type_id(v: *mut u32) -> i32;
+
+        #[rust_name = "qmetatype_id_uint64"]
+        unsafe fn meta_type_id(v: *mut u64) -> i32;
+
         #[rust_name = "qmetatype_id_qstring"]
         unsafe fn meta_type_id(v: *mut QString) -> i32;
 
@@ -56,6 +65,12 @@ use once_cell::sync::Lazy;
 
 static QMETATYPE_ID_INT: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_int(std::ptr::null_mut()) });
+static QMETATYPE_ID_INT64: Lazy<i32> =
+    Lazy::new(|| unsafe { ffi::qmetatype_id_int64(std::ptr::null_mut()) });
+static QMETATYPE_ID_UINT: Lazy<i32> =
+    Lazy::new(|| unsafe { ffi::qmetatype_id_uint(std::ptr::null_mut()) });
+static QMETATYPE_ID_UINT64: Lazy<i32> =
+    Lazy::new(|| unsafe { ffi::qmetatype_id_uint64(std::ptr::null_mut()) });
 static QMETATYPE_ID_QSTRING: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_qstring(std::ptr::null_mut()) });
 static QMETATYPE_ID_BOOL: Lazy<i32> =
@@ -77,6 +92,15 @@ static QMETATYPE_ID_QJSVALUE: Lazy<i32> =
 
 pub fn qmetatype_id_int() -> i32 {
     *Lazy::force(&QMETATYPE_ID_INT)
+}
+pub fn qmetatype_id_int64() -> i32 {
+    *Lazy::force(&QMETATYPE_ID_INT64)
+}
+pub fn qmetatype_id_uint() -> i32 {
+    *Lazy::force(&QMETATYPE_ID_UINT)
+}
+pub fn qmetatype_id_uint64() -> i32 {
+    *Lazy::force(&QMETATYPE_ID_UINT64)
 }
 pub fn qmetatype_id_qstring() -> i32 {
     *Lazy::force(&QMETATYPE_ID_QSTRING)

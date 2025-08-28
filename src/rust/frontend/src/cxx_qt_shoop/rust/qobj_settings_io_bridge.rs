@@ -16,10 +16,14 @@ pub mod ffi {
         type SettingsIO = super::SettingsIORust;
 
         #[qinvokable]
-        pub fn save_settings(self: &SettingsIO, settings: QMap_QString_QVariant, override_filename: QVariant);
+        pub fn save_settings(
+            self: &SettingsIO,
+            settings: QMap_QString_QVariant,
+            override_filename: QVariant,
+        );
 
         #[qinvokable]
-        pub fn load_settings(self: &SettingsIO, override_filename: QVariant) -> QMap_QString_QVariant;
+        pub fn load_settings(self: &SettingsIO, override_filename: QVariant) -> QVariant;
     }
 
     unsafe extern "C++" {
@@ -41,12 +45,10 @@ pub mod ffi {
     }
 }
 
-pub struct SettingsIORust {
-}
+pub struct SettingsIORust {}
 
 impl Default for SettingsIORust {
     fn default() -> Self {
-        Self {
-        }
+        Self {}
     }
 }
