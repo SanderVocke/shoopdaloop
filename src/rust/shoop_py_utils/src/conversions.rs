@@ -1,4 +1,4 @@
-use cxx_qt_lib;
+use cxx_qt_lib::{self, QVariant};
 use cxx_qt_lib_shoop::qmetatype_helpers::*;
 use cxx_qt_lib_shoop::qvariant_helpers::{qvariant_type_id, qvariant_type_name};
 use pyo3::exceptions::PyException;

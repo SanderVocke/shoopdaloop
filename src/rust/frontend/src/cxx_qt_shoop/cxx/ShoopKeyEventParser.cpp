@@ -5,7 +5,7 @@ ShoopKeyEventParser::ShoopKeyEventParser(QObject* parent) : QObject(parent) {}
 
 bool ShoopKeyEventParser::eventFilter(QObject *obj, QEvent *event)
 {
-    if (event->type() == QEvent::KeyPress) {
+    if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
         QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
         if(keyEvent) {
             if(keyEvent->type() == QEvent::KeyPress && keyEvent->key() == Qt::Key_Shift) {

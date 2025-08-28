@@ -15,7 +15,6 @@ import platform
 from shoop_config import shoop_version, shoop_qml_dir
 pkg_version = shoop_version
 
-from .q_objects.ClickTrackGenerator import ClickTrackGenerator
 from .q_objects.Logger import Logger
 from .q_objects.ControlHandler import ControlHandler
 from .q_objects.LuaEngine import LuaEngine
@@ -67,7 +66,6 @@ def create_constants_instance(engine):
 
 def register_shoopdaloop_qml_classes():
     # Register Python classes
-    register_qml_class(ClickTrackGenerator, 'ClickTrackGenerator')
     register_qml_class(Logger, 'Logger')
     register_qml_class(LuaEngine, 'LuaEngine')
     register_qml_class(DictTreeModelFactory, 'DictTreeModelFactory')
@@ -100,18 +98,12 @@ def create_and_populate_root_context(engine):
     registries = registries_comp.create()
 
     items = {
-        'click_track_generator': ClickTrackGenerator(parent=engine),
         'default_logger': Logger(),
         'tree_model_factory': DictTreeModelFactory(parent=engine),
-        # 'global_args': global_args,
         'settings_io': SettingsIO(parent=engine),
         'registries': registries,
         'screen_grabber': TestScreenGrabber(weak_engine=weakref.ref(engine), parent=engine)
     }
-
-    # if additional_items:
-    #     for key, item in additional_items.items():
-    #         items[key] = item
 
     items['default_logger'].name = 'Frontend.Qml'
 

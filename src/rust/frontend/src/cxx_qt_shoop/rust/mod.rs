@@ -12,6 +12,8 @@ pub mod qobj_autoconnect;
 pub mod qobj_autoconnect_bridge;
 pub mod qobj_backend_wrapper;
 pub mod qobj_backend_wrapper_bridge;
+pub mod qobj_click_track_generator;
+pub mod qobj_click_track_generator_bridge;
 pub mod qobj_composite_loop_backend;
 pub mod qobj_composite_loop_backend_bridge;
 pub mod qobj_composite_loop_gui;
@@ -56,6 +58,8 @@ pub mod qobj_render_midi_sequence;
 pub mod qobj_render_midi_sequence_bridge;
 pub mod qobj_schema_validator;
 pub mod qobj_schema_validator_bridge;
+pub mod qobj_settings_io;
+pub mod qobj_settings_io_bridge;
 pub mod qobj_update_thread;
 pub mod qobj_update_thread_bridge;
 
