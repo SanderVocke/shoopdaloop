@@ -1,12 +1,17 @@
-import ShoopDaLoop.PythonAudioPort
+import ShoopDaLoop.Rust
+import ShoopDaLoop.PythonLogger
 import QtQuick 6.6
 
 import ShoopConstants
 
-PythonAudioPort {
+PortGui {
     id: root
     property var descriptor : null
     property bool loaded : initialized
+    property var logger : PythonLogger {
+        name: "Frontend.Qml.AudioPort"
+        instanceIdentifier: root.obj_id
+    }
 
     RequireBackend {}
 
@@ -36,7 +41,7 @@ PythonAudioPort {
             'type': descriptor.type,
             'input_connectability': descriptor.input_connectability,
             'output_connectability': descriptor.output_connectability,
-            'gain': gain,
+            'gain': audio_gain,
             'muted': muted,
             'passthrough_muted': passthrough_muted,
             'internal_port_connections': descriptor.internal_port_connections,
@@ -46,8 +51,17 @@ PythonAudioPort {
     }
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {}
 
-    Component.onCompleted: try_make_connections(descriptor.external_port_connections)
-    onInitializedChanged: try_make_connections(descriptor.external_port_connections)
+    Component.onCompleted: {
+        root.logger.trace("onCompleted for AudioPort. descriptor: " + JSON.stringify(descriptor, null, 2))
+        push_all()
+    }
+    
+    function push_all() {
+        push_muted(descriptor.muted)
+        push_passthrough_muted(descriptor.passthrough_muted)
+        push_audio_gain(descriptor.gain)
+        try_make_connections(descriptor.external_port_connections)
+    }
 
     RegistryLookups {
         id: lookup_internal_port_connections
@@ -68,14 +82,20 @@ PythonAudioPort {
         object: root
     }
 
-    function qml_close() {
+    function unload() {
         reg_entry.close()
         close()
+        destroy()
     }
+
     property var name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
-    gain : descriptor.gain
-    muted : descriptor.muted
-    passthrough_muted: descriptor.passthrough_muted
-    n_ringbuffer_samples: descriptor.min_n_ringbuffer_samples
+    min_n_ringbuffer_samples: descriptor.min_n_ringbuffer_samples
+    maybe_fx_chain: null
+    fx_chain_port_idx: 0
+    is_midi: false
+
+    onAudio_gain_changed: { root.logger.debug("gain -> " + root.audio_gain) }
+    onMutedChanged: { root.logger.debug("muted -> " + root.muted) }
+    onPassthrough_mutedChanged: { root.logger.debug("passthrough muted -> " + root.passthrough_muted) }
 }

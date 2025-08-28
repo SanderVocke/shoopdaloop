@@ -9,3 +9,9 @@ integer_enum! {
         Wet = ffi::shoop_channel_mode_t_ChannelMode_Wet,
     }
 }
+
+impl Default for ChannelMode {
+    fn default() -> Self {
+        ChannelMode::Disabled
+    }
+}

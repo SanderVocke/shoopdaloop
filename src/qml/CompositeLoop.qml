@@ -390,7 +390,7 @@ Item {
         }
     }
 
-    function qml_close() {}
+    function unload() {}
 
     function clear() {
         playlists_in = []

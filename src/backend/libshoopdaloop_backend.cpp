@@ -1042,6 +1042,8 @@ shoopdaloop_audio_port_t *open_internal_audio_port (shoop_backend_session_t *bac
     auto port = shoop_make_shared<InternalAudioPort<audio_sample_t>>(
       std::string(name_hint),
       _backend->m_buffer_size,
+      ShoopPortConnectability_Internal,
+      ShoopPortConnectability_Internal,
       min_always_on_ringbuffer_samples > 0 ? _backend->audio_buffer_pool : nullptr
     );
     if (min_always_on_ringbuffer_samples > 0) {
@@ -1773,7 +1775,11 @@ shoopdaloop_audio_port_t *fx_chain_audio_input_port(shoopdaloop_fx_chain_t *chai
   return api_impl<shoopdaloop_audio_port_t*>("fx_chain_audio_input_port", [&]() -> shoopdaloop_audio_port_t* {
     auto _chain = internal_fx_chain(chain);
     if (!_chain) { return nullptr; }
-    auto port = _chain->audio_input_ports()[idx];
+    auto ports = _chain->audio_input_ports();
+    if (idx >= ports.size()) {
+       return nullptr;
+    }
+    auto port = ports[idx];
     return external_audio_port(port);
   }, nullptr);
 }
@@ -1800,7 +1806,11 @@ shoopdaloop_audio_port_t *fx_chain_audio_output_port(shoopdaloop_fx_chain_t *cha
   return api_impl<shoopdaloop_audio_port_t*>("fx_chain_audio_output_port", [&]() -> shoopdaloop_audio_port_t* {
     auto _chain = internal_fx_chain(chain);
     if (!_chain) { return nullptr; }
-    auto port = _chain->audio_output_ports()[idx];
+    auto ports = _chain->audio_output_ports();
+    if (idx >= ports.size()) {
+       return nullptr;
+    }
+    auto port = ports[idx];
     return external_audio_port(port);
   }, nullptr);
 }
@@ -1809,7 +1819,11 @@ shoopdaloop_midi_port_t *fx_chain_midi_input_port(shoopdaloop_fx_chain_t *chain,
   return api_impl<shoopdaloop_midi_port_t*>("fx_chain_midi_input_port", [&]() -> shoopdaloop_midi_port_t* {
     auto _chain = internal_fx_chain(chain);
     if (!_chain) { return nullptr; }
-    auto port = _chain->midi_input_ports()[idx];
+    auto ports = _chain->midi_input_ports();
+    if (idx >= ports.size()) {
+       return nullptr;
+    }
+    auto port = ports[idx];
     return external_midi_port(port);
   }, nullptr);
 }

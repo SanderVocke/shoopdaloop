@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import QtTest 1.0
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -110,7 +109,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
 
                     // Process 6 frames (record)
                     session.backend.dummy_request_controlled_frames(2)
@@ -130,7 +129,7 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -165,7 +164,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
 
                     // Process 6 frames (prerecord then record)
                     session.backend.dummy_request_controlled_frames(6)
@@ -181,7 +180,7 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -223,7 +222,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
 
                     // Process 40 frames (prerecord then record)
                     session.backend.dummy_request_controlled_frames(40)
@@ -238,7 +237,7 @@ ShoopTestFile {
                     // Process 40 frames (play back twice)
                     session.backend.dummy_request_controlled_frames(40)
                     session.backend.dummy_run_requested_frames()
-                    let out = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -269,25 +268,29 @@ ShoopTestFile {
                     // and play back in the exact same way. That means the state itself should be
                     // somehow saved. Test here that it works.
                     var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
-                    file_io.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
-                    chan.clear()
+                    if (!ShoopFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)) {
+                        testcase.fail("Could not save channel MIDI");
+                    }
+                    chan.clear(0)
                     testcase.wait_updated(session.backend)
                     testcase.wait_updated(session.backend)
-                    verify_eq(chan.get_all_midi_data(), [], null, true)
-                    file_io.load_midi_to_channels(
+                    verify_eq(chan.get_data(), [], null, true)
+                    if (!ShoopFileIO.load_midi_to_channels(
                                 filename,
                                 session.backend.get_sample_rate(),
                                 [chan],
                                 0,
                                 20,
-                                false)
+                                false)) {
+                                    testcase.fail("Could not load MIDI to channels.")
+                                }
 
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     midi_output_port.dummy_request_data(40)
                     session.backend.dummy_request_controlled_frames(40)
                     session.backend.dummy_run_requested_frames()
-                    out = midi_output_port.dummy_dequeue_data()
+                    out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     // Verify same as before
                     verify_eq(chan.get_recorded_midi_msgs(), input, null, true)
@@ -309,7 +312,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(input)
+                    midi_input_port.dummy_queue_midi_msgs(input)
 
                     // Process 6 frames (nothing, then record)
                     session.backend.dummy_request_controlled_frames(2)
@@ -329,7 +332,7 @@ ShoopTestFile {
                     // Process 4 frames (play back)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
-                    let out = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -353,25 +356,29 @@ ShoopTestFile {
 
                     // Save and re-load
                     var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
-                    file_io.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)
-                    chan.clear()
+                    if (!ShoopFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)) {
+                        testcase.fail("Could not save channel MIDI");
+                    }
+                    chan.clear(0)
                     testcase.wait_updated(session.backend)
                     testcase.wait_updated(session.backend)
-                    verify_eq(chan.get_all_midi_data(), [], null, true)
-                    file_io.load_midi_to_channels(
+                    verify_eq(chan.get_data(), [], null, true)
+                    if (!ShoopFileIO.load_midi_to_channels(
                                 filename,
                                 session.backend.get_sample_rate(),
                                 [chan],
                                 0,
                                 0,
-                                false)
+                                false))  {
+                                    testcase.fail("Could not load MIDI to channels.")
+                                }
 
                     lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
-                    out = midi_output_port.dummy_dequeue_data()
+                    out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     // Verify same as before
                     verify_eq(out, expect, null, true)

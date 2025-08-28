@@ -20,3 +20,11 @@
 */brotlidec.dll
 */brotlicommon.dll
 */zlib*.dll
+*/sndfile*.dll
+*/vorbisenc.dll
+*/FLAC.dll
+*/opus.dll
+*/mpg123.dll
+*/libmp3lame.DLL
+*/vorbis.dll
+*/ogg.dll

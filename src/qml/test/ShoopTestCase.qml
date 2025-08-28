@@ -1,5 +1,5 @@
 import QtQuick 6.6
-import QtTest 1.0
+
 import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.PythonTestCase
 import ShoopDaLoop.Rust
@@ -239,7 +239,9 @@ PythonTestCase {
     }
 
     function wait_session_io_done() {
-        wait_condition(() => registries.state_registry.n_saving_actions_active == 0 && registries.state_registry.n_loading_actions_active == 0, 2000, "Session I/O not finished in time")
+        root.logger.debug("Start wait session IO done")
+        wait_condition(() => !registries.state_registry.io_active, 2000, "Session I/O not finished in time")
+        root.logger.debug("Session IO done.")
     }
 
     function connectOnce(sig, slot) {
@@ -329,7 +331,7 @@ PythonTestCase {
                     'time': 0.0
                 }
                 if (!should_skip(key)) {
-                    logger.info(`running ${fullname}`)
+                    logger.info(`~~~~ running ${fullname} ~~~~`)
                     var start = new Date()
                     test_fns[key]()
                     var end = new Date()

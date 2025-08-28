@@ -97,6 +97,10 @@ pub struct DeveloperOptions {
         help_heading = "Developer options"
     )]
     pub max_backend_refresh_interval_ms: u32,
+
+    // Disables the crash handler.
+    #[clap(long = "no-crash-handling", help_heading = "Developer options")]
+    pub no_crash_handling: bool,
 }
 
 /// Developer options group.

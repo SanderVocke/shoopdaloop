@@ -443,7 +443,7 @@ Column {
             text: 'with mask'
         }
 
-        TextField {
+        ShoopTextField {
             id: vert
             height: 30
             width: 80
@@ -462,7 +462,7 @@ Column {
             text: 'equals'
         }
 
-        TextField {
+        ShoopTextField {
             anchors.verticalCenter: vert.verticalCenter
             height: vert.height
             width: 80

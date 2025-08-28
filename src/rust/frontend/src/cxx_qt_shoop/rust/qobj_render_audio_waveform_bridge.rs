@@ -27,6 +27,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qvector.h");
         type QVector_QLineF = cxx_qt_lib::QVector<cxx_qt_lib::QLineF>;
+        type QVector_f32 = cxx_qt_lib::QVector<f32>;
 
         include!("cxx-qt-lib/qpainter.h");
         type QPainter = cxx_qt_lib::QPainter;
@@ -41,7 +42,7 @@ pub mod ffi {
         #[base = QQuickPaintedItem]
         #[qproperty(i64, samples_offset)]
         #[qproperty(f64, samples_per_bin)]
-        #[qproperty(QList_f64, input_data)]
+        #[qproperty(QVector_f32, input_data)]
         type RenderAudioWaveform = super::RenderAudioWaveformRust;
 
         #[qinvokable]
@@ -94,7 +95,7 @@ pub struct RenderAudioWaveformRust {
     pub pyramid: Mutex<audio_power_pyramid::AudioPowerPyramidData>,
     pub samples_offset: i64,
     pub samples_per_bin: f64,
-    pub input_data: QList_f64,
+    pub input_data: QVector_f32,
 }
 
 impl Default for RenderAudioWaveformRust {
@@ -103,7 +104,7 @@ impl Default for RenderAudioWaveformRust {
             pyramid: audio_power_pyramid::AudioPowerPyramidData::default().into(),
             samples_offset: 0,
             samples_per_bin: 1_f64,
-            input_data: QList_f64::default(),
+            input_data: QVector_f32::default(),
         }
     }
 }

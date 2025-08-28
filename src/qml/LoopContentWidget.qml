@@ -34,12 +34,12 @@ Item {
                         break;
                     case LoopContentWidget.Tool.SetStartOffsetAll:
                     case LoopContentWidget.Tool.SetStartOffsetSingle:
-                        channel.set_start_offset(s);
+                        channel.push_start_offset(s);
                         break;
                     case LoopContentWidget.Tool.SetPreplaySamplesAll:
                     case LoopContentWidget.Tool.SetPreplaySamplesSingle:
                         var n = Math.max(0, channel.start_offset - s)
-                        channel.set_n_preplay_samples(n)
+                        channel.push_n_preplay_samples(n)
                         break;
                     case LoopContentWidget.Tool.SetEnd:
                         var len = s - channel.start_offset

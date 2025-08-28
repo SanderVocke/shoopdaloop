@@ -89,14 +89,17 @@ impl AudioPort {
         unsafe { PortConnectability::from_ffi(ffi::get_audio_port_output_connectability(obj)) }
     }
 
-    pub fn get_state(&self) -> AudioPortState {
+    pub fn get_state(&self) -> Result<AudioPortState, anyhow::Error> {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
         unsafe {
             let state = ffi::get_audio_port_state(obj);
+            if state.is_null() {
+                return Err(anyhow::anyhow!("Failed to get audio port state"));
+            }
             let rval = AudioPortState::from_ffi(&*state);
             ffi::destroy_audio_port_state_info(state);
-            rval
+            Ok(rval)
         }
     }
 

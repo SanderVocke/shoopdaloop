@@ -1,11 +1,10 @@
-use crate::cxx_qt_shoop::qobj_signature_backend_wrapper::constants;
 use crate::engine_update_thread;
 use crate::profiling_report::profiling_report_to_qvariantmap;
 use backend_bindings::*;
 use cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 use cxx_qt_lib_shoop::qobject::{qobject_thread, AsQObject};
 use cxx_qt_lib_shoop::qquickitem::{qquickitem_to_qobject_mut, AsQQuickItem};
-use cxx_qt_lib_shoop::qvariant_qvariantmap::qvariantmap_as_qvariant;
+use cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant;
 use cxx_qt_lib_shoop::{connect, connection_types};
 use std::pin::Pin;
 use std::sync::OnceLock;
@@ -22,7 +21,7 @@ use cxx_qt::{ConnectionType, CxxQtType};
 unsafe extern "C" fn register_process_thread() {
     static ONCE_LOCK: OnceLock<()> = OnceLock::new();
     ONCE_LOCK.get_or_init(|| {
-        crashhandling::registered_threads::register_thread("audio".to_string());
+        crashhandling::registered_threads::register_thread("audio");
     });
 }
 
@@ -147,9 +146,9 @@ impl BackendWrapper {
 
             connect::connect_or_report(
                 &*engine_update_thread_obj,
-                "update()".to_string(),
+                "update()",
                 &*obj_qobject,
-                String::from(constants::INVOKABLE_UPDATE_ON_OTHER_THREAD),
+                "update_on_other_thread()",
                 connection_types::DIRECT_CONNECTION,
             );
         }
@@ -165,7 +164,11 @@ impl BackendWrapper {
                 )
                 .release();
             self.as_mut().set_ready(true);
+            debug!("ready");
         }
+
+        // FIXME
+        error!("use QPointer for all frontend pointers returned from backend wrappers!");
 
         Ok(())
     }
@@ -528,7 +531,7 @@ impl BackendWrapper {
         if let Some(session) = &self.session {
             let report = session.get_profiling_report();
             let report_variant = profiling_report_to_qvariantmap(&report);
-            qvariantmap_as_qvariant(&report_variant)
+            qvariantmap_to_qvariant(&report_variant)
                 .expect("could not convert qvariantmap to qvariant")
         } else {
             error!("get_profiling_report called on a BackendWrapper with no session");
@@ -711,10 +714,6 @@ impl BackendWrapper {
             .unwrap()
             .create_fx_chain(chain_type.try_into().unwrap(), title)
             .unwrap()
-    }
-
-    pub fn from_qobject_ptr(obj: *mut QObject) -> *mut BackendWrapper {
-        unsafe { qobject_ptr_to_backend_ptr(obj) }
     }
 }
 

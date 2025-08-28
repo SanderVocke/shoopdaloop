@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import QtTest 1.0
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -8,6 +7,12 @@ import './testfilename.js' as TestFilename
 import '..'
 
 ShoopTestFile {
+
+    QtObject {
+        id: data_convert
+        property list<double> data: []
+    }
+
     TestSession {
         id: session
 
@@ -63,20 +68,31 @@ ShoopTestFile {
                     }
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.wav'
-                    file_io.save_data_to_soundfile(filename, 24000, [data])
+                    
+                    // Jump through some hoops to avoid getting a QJSValue to
+                    // the file I/O. Loading via the channel forces the data type.
+                    channel().load_data(data)
+                    testcase.wait_updated(session.backend)
+                    if (!ShoopFileIO.save_channels_to_soundfile(filename, 24000, [channel()])) {
+                        testcase.fail("Failed to save channels to soundfile")
+                    }
+                    testcase.wait_updated(session.backend)
+                    channel().load_data([])
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
+                    testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
 
-                    file_io.load_soundfile_to_channels_async(filename, 48000, null,
-                        [[channel()]], null, null, null)
+                    if (!ShoopFileIO.load_soundfile_to_channels(filename, 48000, null,
+                        [[channel()]], null, null, null)) {
+                            testcase.fail("Failed to load soundfile to channels");
+                        }
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.n_loading_actions_active == 0)
+                    testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
 
-                    let loaded = channel().get_data_list()
+                    let loaded = channel().get_data()
                     verify_eq(loaded.length, 12000)
 
                     let ori_power = calculateSignalPowerInvariant(data)
@@ -93,20 +109,31 @@ ShoopTestFile {
                     }
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.wav'
-                    file_io.save_data_to_soundfile(filename, 24000, [data])
+
+                    // Jump through some hoops to avoid getting a QJSValue to
+                    // the file I/O. Loading via the channel forces the data type.
+                    channel().load_data(data)
+                    testcase.wait_updated(session.backend)
+                    if (!ShoopFileIO.save_channels_to_soundfile(filename, 24000, [channel()]))  {
+                        testcase.fail("Failed to save channels to soundfile")
+                    }
+                    testcase.wait_updated(session.backend)
+                    channel().load_data([])
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
+                    testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
 
-                    file_io.load_soundfile_to_channels_async(filename, 48000, 13000,
-                        [[channel()]], null, null, null)
+                    if (!ShoopFileIO.load_soundfile_to_channels(filename, 48000, 13000,
+                        [[channel()]], null, null, null)) {
+                            testcase.fail("Failed to load soundfile to channels");
+                        }
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.n_loading_actions_active == 0)
+                    testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
 
-                    let loaded = channel().get_data_list()
+                    let loaded = channel().get_data()
                     verify_eq(loaded.length, 13000)
 
                     let ori_power = calculateSignalPowerInvariant(data)
@@ -122,24 +149,36 @@ ShoopTestFile {
                     for (var i=0; i<data.length; i++) {
                         data[i] = Math.sin(i / data.length * 100)
                     }
-                    let _data = [data, data]
 
                     var filename = ShoopFileIO.generate_temporary_filename() + '.wav'
-                    file_io.save_data_to_soundfile(filename, 24000, _data)
+                    
+                    // Jump through some hoops to avoid getting a QJSValue to
+                    // the file I/O. Loading via the channel forces the data type.
+                    loop2_channels()[0].load_data(data)
+                    loop2_channels()[1].load_data(data)
+                    testcase.wait_updated(session.backend)
+                    if (!ShoopFileIO.save_channels_to_soundfile(filename, 24000, loop2_channels()))  {
+                        testcase.fail("Failed to save channels to soundfile")
+                    }
+                    testcase.wait_updated(session.backend)
+                    loop2_channels()[0].load_data([])
+                    loop2_channels()[1].load_data([])
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.n_saving_actions_active == 0)
+                    testcase.wait_condition(() => registries.state_registry.io_active == false)
                     testcase.wait_updated(session.backend)
 
                     verify_eq(loop2_channels().length, 2)
-                    file_io.load_soundfile_to_channels_async(filename, 48000, 13000,
-                        [[loop2_channels()[0]], [loop2_channels()[1]]], null, null, null)
+                    if (!ShoopFileIO.load_soundfile_to_channels(filename, 48000, 13000,
+                        [[loop2_channels()[0]], [loop2_channels()[1]]], null, null, null)) {
+                            testcase.fail("Failed to load soundfile to channels");
+                        }
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.n_loading_actions_active == 0)
+                    testcase.wait_condition(() => registries.state_registry.io_active == false)
                     testcase.wait_updated(session.backend)
 
-                    let datas = loop2_channels().map(m => m.get_data_list())
+                    let datas = loop2_channels().map(m => m.get_data())
                     verify_eq(datas[0].length, 13000)
                     verify_eq(datas[1].length, 13000)
 

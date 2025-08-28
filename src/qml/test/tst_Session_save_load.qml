@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import QtTest 1.0
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -93,28 +92,50 @@ ShoopTestFile {
 
             function dt_loop_channels(s=session) {
                 if (!dt_loop(s)) return []
-                var r = dt_loop(s).get_audio_output_channels()
+                //var r = dt_loop(s).audio_channels
+                var r = dt_loop(s).maybe_backend_loop.get_channels()
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
             }
 
             function mt_midi_channels(s=session) {
                 if (!mt_loop(s)) return null
-                return mt_loop(s).get_midi_channels()
+                return mt_loop(s).midi_channels
             }
 
             function dwt_dry_loop_channels(s=session) {
                 if (!dwt_loop(s)) return []
-                var r = dwt_loop(s).get_audio_channels().filter(c => c.obj_id.match(/.*_dry_.*/))
+                var r = dwt_loop(s).audio_channels.filter(c => c.obj_id.match(/.*_dry_.*/))
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
             }
 
             function dwt_wet_loop_channels(s=session) {
                 if (!dwt_loop(s)) return []
-                var r = dwt_loop(s).get_audio_channels().filter(c => c.obj_id.match(/.*_wet_.*/))
+                var r = dwt_loop(s).audio_channels.filter(c => c.obj_id.match(/.*_wet_.*/))
                 r.sort((a,b) => a.obj_id.localeCompare(b.obj_id))
                 return r
+            }
+
+            function clear_all(s=session) {
+                dt_loop_channels()[0].clear(0)
+                dt_loop_channels()[1].clear(0)
+                mt_midi_channels()[0].clear(0)
+                dwt_dry_loop_channels()[0].clear(0)
+                dwt_dry_loop_channels()[1].clear(0)
+                dwt_wet_loop_channels()[0].clear(0)
+                dwt_wet_loop_channels()[1].clear(0)
+                dt_loop().clear(0)
+                mt_loop().clear(0)
+                dwt_loop().clear(0)
+                testcase.wait_updated(session.backend)
+                verify_eq(dt_loop_channels()[0].data_length, 0)
+                verify_eq(dt_loop_channels()[1].data_length, 0)
+                verify_eq(mt_midi_channels()[0].data_length, 0)
+                verify_eq(dwt_dry_loop_channels()[0].data_length, 0)
+                verify_eq(dwt_dry_loop_channels()[1].data_length, 0)
+                verify_eq(dwt_wet_loop_channels()[0].data_length, 0)
+                verify_eq(dwt_wet_loop_channels()[1].data_length, 0)
             }
 
             RegistryLookup {
@@ -152,22 +173,27 @@ ShoopTestFile {
             test_fns: ({
 
                 "test_save_load_non_sample_accurate_midi": () => {
+                    clear_all()
                     check_backend()
 
                     let midichan = [
                         { 'time': 101, 'data': [0x90, 70,  70]  },
                         { 'time': 201, 'data': [0x80, 60,  60]  }
                     ]
-                    mt_midi_channels()[0].load_all_midi_data(midichan)
+                    mt_midi_channels()[0].load_midi_data(midichan)
                     testcase.wait_updated(session.backend)
                     var filename = ShoopFileIO.generate_temporary_filename() + '.mid'
-                    file_io.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
+                    if (!ShoopFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])) {
+                        testcase.fail("Could not save channel MIDI");
+                    }
 
                     mt_loop().clear()
                     testcase.wait_updated(session.backend)
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
 
-                    file_io.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)
+                    if (!ShoopFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null))  {
+                        testcase.fail("Could not load MIDI to channels.")
+                    }
                     testcase.wait_updated(session.backend)
 
                     // Storing in MIDI files is not sample-accurate but should be quite close
@@ -180,22 +206,27 @@ ShoopTestFile {
                 },
 
                 "test_save_load_sample_accurate_midi": () => {
+                    clear_all()
                     check_backend()
 
                     let midichan = [
                         { 'time': 101, 'data': [0x90, 70,  70]  },
                         { 'time': 201, 'data': [0x80, 60,  60]  }
                     ]
-                    mt_midi_channels()[0].load_all_midi_data(midichan)
+                    mt_midi_channels()[0].load_midi_data(midichan)
                     testcase.wait_updated(session.backend)
                     var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
-                    file_io.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])
+                    if (!ShoopFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])) {
+                        testcase.fail("Could not save channel MIDI");
+                    }
 
                     mt_loop().clear()
                     testcase.wait_updated(session.backend)
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
 
-                    file_io.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)
+                    if (!ShoopFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)) {
+                        testcase.fail("Could not load MIDI to channels.")
+                    }
                     testcase.wait_updated(session.backend)
 
                     // Storing in MIDI files is not sample-accurate but should be quite close
@@ -208,13 +239,14 @@ ShoopTestFile {
                 },
 
                 "test_save_load_session_audio_and_midi": () => {
+                    clear_all()
                     check_backend()
 
                     let midichan = [
                         { 'time': 101, 'data': [0x90, 70,  70]  },
                         { 'time': 201, 'data': [0x80, 60,  60]  }
                     ]
-                    mt_midi_channels()[0].load_all_midi_data(midichan)
+                    mt_midi_channels()[0].load_midi_data(midichan)
                     dt_loop_channels()[0].load_data([0.1, 0.2, 0.3, 0.4])
                     dt_loop_channels()[1].load_data([0.4, 0.3, 0.2, 0.1])
                     dwt_dry_loop_channels()[0].load_data([0.5, 0.6, 0.7, 0.8])
@@ -222,10 +254,10 @@ ShoopTestFile {
                     dwt_wet_loop_channels()[0].load_data([0.9, 0.10, 0.11, 0.12])
                     dwt_wet_loop_channels()[1].load_data([0.12, 0.11, 0.10, 0.9])
                     dt_loop().queue_set_length(2)
-                    dt_loop_channels()[0].set_n_preplay_samples(1)
-                    dt_loop_channels()[0].set_start_offset(2)
-                    dt_loop_channels()[1].set_n_preplay_samples(1)
-                    dt_loop_channels()[1].set_start_offset(2)
+                    dt_loop_channels()[0].push_n_preplay_samples(1)
+                    dt_loop_channels()[0].push_start_offset(2)
+                    dt_loop_channels()[1].push_n_preplay_samples(1)
+                    dt_loop_channels()[1].push_start_offset(2)
                     dwt_loop().queue_set_length(4)
                     testcase.wait_updated(session.backend)
 
@@ -238,13 +270,13 @@ ShoopTestFile {
                     mt_loop().clear()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(dt_loop_channels()[0].get_data_list(), [])
-                    verify_eq(dt_loop_channels()[1].get_data_list(), [])
+                    verify_eq(dt_loop_channels()[0].get_data(), [])
+                    verify_eq(dt_loop_channels()[1].get_data(), [])
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
-                    verify_eq(dwt_dry_loop_channels()[0].get_data_list(), [])
-                    verify_eq(dwt_dry_loop_channels()[1].get_data_list(), [])
-                    verify_eq(dwt_wet_loop_channels()[0].get_data_list(), [])
-                    verify_eq(dwt_wet_loop_channels()[1].get_data_list(), [])
+                    verify_eq(dwt_dry_loop_channels()[0].get_data(), [])
+                    verify_eq(dwt_dry_loop_channels()[1].get_data(), [])
+                    verify_eq(dwt_wet_loop_channels()[0].get_data(), [])
+                    verify_eq(dwt_wet_loop_channels()[1].get_data(), [])
 
                     session.load_session(filename)
                     testcase.wait_session_loaded(session)
@@ -254,17 +286,19 @@ ShoopTestFile {
                     verify_true(dwt_loop_2().maybe_composite_loop)
                     verify_eq(dt_loop_2().maybe_composite_loop.all_loops, new Set([dt_loop(), dwt_loop()]))
                     verify_eq(dwt_loop_2().maybe_composite_loop.all_loops, new Set())
-                    verify_approx(dt_loop_channels()[0].get_data_list(), [0.1, 0.2, 0.3, 0.4])
-                    verify_approx(dt_loop_channels()[1].get_data_list(), [0.4, 0.3, 0.2, 0.1])
-                    verify_approx(dwt_dry_loop_channels()[0].get_data_list(), [0.5, 0.6, 0.7, 0.8])
-                    verify_approx(dwt_dry_loop_channels()[1].get_data_list(), [0.8, 0.7, 0.6, 0.5])
-                    verify_approx(dwt_wet_loop_channels()[0].get_data_list(), [0.9, 0.10, 0.11, 0.12])
-                    verify_approx(dwt_wet_loop_channels()[1].get_data_list(), [0.12, 0.11, 0.10, 0.9])
+                    verify_approx(dt_loop_channels()[0].get_data(), [0.1, 0.2, 0.3, 0.4])
+                    verify_approx(dt_loop_channels()[1].get_data(), [0.4, 0.3, 0.2, 0.1])
+                    verify_approx(dwt_dry_loop_channels()[0].get_data(), [0.5, 0.6, 0.7, 0.8])
+                    verify_approx(dwt_dry_loop_channels()[1].get_data(), [0.8, 0.7, 0.6, 0.5])
+                    verify_approx(dwt_wet_loop_channels()[0].get_data(), [0.9, 0.10, 0.11, 0.12])
+                    verify_approx(dwt_wet_loop_channels()[1].get_data(), [0.12, 0.11, 0.10, 0.9])
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), midichan)
                 },
 
                 "test_save_load_session_audio_and_midi_resampled": () => {
+                    clear_all()
                     check_backend()
+                    
                     verify(other_session.backend && other_session.backend.ready, "resampled backend not initialized")
 
                     let midichan = [
@@ -276,7 +310,7 @@ ShoopTestFile {
                         { 'time': 120, 'data': [0x80, 60,  60]  }
                     ]
 
-                    mt_midi_channels()[0].load_all_midi_data(midichan)
+                    mt_midi_channels()[0].load_midi_data(midichan)
                     let _data = [0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0] // 12 samples
@@ -287,10 +321,10 @@ ShoopTestFile {
                     dwt_wet_loop_channels()[0].load_data(_data)
                     dwt_wet_loop_channels()[1].load_data(_data)
                     dt_loop().queue_set_length(6)
-                    dt_loop_channels()[0].set_n_preplay_samples(4)
-                    dt_loop_channels()[0].set_start_offset(4)
-                    dt_loop_channels()[1].set_n_preplay_samples(12)
-                    dt_loop_channels()[1].set_start_offset(12)
+                    dt_loop_channels()[0].push_n_preplay_samples(4)
+                    dt_loop_channels()[0].push_start_offset(4)
+                    dt_loop_channels()[1].push_n_preplay_samples(12)
+                    dt_loop_channels()[1].push_start_offset(12)
                     dwt_loop().queue_set_length(12)
                     testcase.wait_updated(session.backend)
 
@@ -328,6 +362,7 @@ ShoopTestFile {
                 },
 
                 "test_save_load_track_controls": () => {
+                    clear_all()
                     check_backend()
 
                     mt().control_widget.mute = true

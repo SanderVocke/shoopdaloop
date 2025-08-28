@@ -1,9 +1,9 @@
-import ShoopDaLoop.PythonMidiPort
+import ShoopDaLoop.Rust
 import QtQuick 6.6
 
 import ShoopConstants
 
-PythonMidiPort {
+PortGui {
     id: root
     property var descriptor : null
     property bool loaded : initialized
@@ -45,8 +45,13 @@ PythonMidiPort {
     }
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {}
 
-    Component.onCompleted: try_make_connections(descriptor.external_port_connections)
-    onInitializedChanged: try_make_connections(descriptor.external_port_connections)
+    Component.onCompleted: push_all()
+
+    function push_all() {
+        push_muted(descriptor.muted)
+        push_passthrough_muted(descriptor.passthrough_muted)
+        try_make_connections(descriptor.external_port_connections)
+    }
 
     RegistryLookups {
         id: lookup_internal_port_connections
@@ -67,14 +72,16 @@ PythonMidiPort {
         object: root
     }
 
-    function qml_close() {
+    function unload() {
         reg_entry.close()
         close()
+        destroy()
     }
 
     property var name_parts : descriptor.name_parts
     name_hint : name_parts.join('')
-    muted: descriptor.muted
-    passthrough_muted: descriptor.passthrough_muted
-    n_ringbuffer_samples: descriptor.min_n_ringbuffer_samples
+    min_n_ringbuffer_samples: descriptor.min_n_ringbuffer_samples
+    maybe_fx_chain: null
+    fx_chain_port_idx: 0
+    is_midi: true
 }

@@ -68,8 +68,9 @@ impl MidiPort {
     }
 
     fn get_state(&self) -> PyResult<MidiPortState> {
-        let state = self.obj.get_state();
-        Ok(MidiPortState::new(state))
+        Ok(MidiPortState::new(self.obj.get_state().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyException, _>(e.to_string())
+        })?))
     }
 
     fn set_muted(&self, muted: bool) -> PyResult<()> {

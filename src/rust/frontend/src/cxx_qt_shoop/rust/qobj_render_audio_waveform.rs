@@ -69,8 +69,8 @@ impl ffi::RenderAudioWaveform {
         lines.reserve(n_lines as isize);
         lines.clear();
         trace!(
-            "  - {} line slots, {} samples",
-            lines.len(),
+            "paint: {} line slots, {} samples",
+            n_lines,
             level.data.len()
         );
         for i in 0..n_lines {

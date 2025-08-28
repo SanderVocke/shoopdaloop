@@ -42,8 +42,11 @@ walkdir = "2.5"
 indexmap = "2.5"
 clap = { version = "4.5", features = ["derive"] }
 quick-xml = { version = "0.38", features = ["serialize"] }
+sndfile = { version = "0.1" }
+json = "0.12"
+midly = "0.5"
 
-# [patch.crates-io]
+# [patch.crates-io]F
 # cxx-qt =  { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt" }
 # qt-build-utils = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "qt-build-utils" }
 # cxx-qt-build = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt-build" }

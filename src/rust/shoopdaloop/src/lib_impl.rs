@@ -8,9 +8,11 @@ use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_register_qml_singleton_instance;
 use cxx_qt_lib_shoop::qobject::AsQObject;
-use cxx_qt_lib_shoop::qvariant_qobject::qobject_ptr_to_qvariant;
+use cxx_qt_lib_shoop::qvariant_helpers::qobject_ptr_to_qvariant;
 use frontend::cxx_qt_shoop::qobj_application_bridge::{Application, ApplicationStartupSettings};
-use frontend::cxx_qt_shoop::qobj_qmlengine::QmlEngine;
+use frontend::cxx_qt_shoop::qobj_qmlengine::{
+    get_qml_engine_stack, get_registered_qml_engine, QmlEngine,
+};
 use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
 use glob::glob;
 use once_cell::sync::OnceCell;
@@ -28,6 +30,34 @@ static GLOBAL_QML_SETTINGS: OnceCell<GlobalQmlSettings> = OnceCell::new();
 
 thread_local! {
 static TEST_RUNNER: OnceCell<*mut TestFileRunner> = OnceCell::new();
+}
+
+fn crash_info_callback_impl() -> Result<Vec<crashhandling::AdditionalCrashAttachment>, anyhow::Error>
+{
+    let maybe_qml_engine = unsafe { get_registered_qml_engine()? };
+    if !maybe_qml_engine.is_null() {
+        unsafe {
+            let maybe_qml_engine = std::pin::Pin::new_unchecked(&mut *maybe_qml_engine);
+            let qml_stack = get_qml_engine_stack(maybe_qml_engine);
+            let info = crashhandling::AdditionalCrashAttachment {
+                id: "qml_stack".to_string(),
+                contents: qml_stack,
+            };
+            Ok(vec![info])
+        }
+    } else {
+        Ok(vec![])
+    }
+}
+
+fn crash_info_callback() -> Vec<crashhandling::AdditionalCrashAttachment> {
+    match crash_info_callback_impl() {
+        Ok(r) => return r,
+        Err(e) => {
+            error!("Could not gather additional crash info: {e}");
+        }
+    }
+    return Vec::new();
 }
 
 fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Error> {
@@ -69,6 +99,10 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
         developer_mode: cli_args.developer_options.developer,
         quit_after: cli_args.developer_options.quit_after,
         monkey_tester: cli_args.developer_options.monkey_tester,
+        lua_dir: config.lua_dir.clone(),
+        qml_dir: config.qml_dir.clone(),
+        resource_dir: config.resource_dir.clone(),
+        schemas_dir: config.schemas_dir.clone(),
     };
     GLOBAL_QML_SETTINGS.set(global_qml_settings).unwrap();
 
@@ -106,16 +140,16 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                     // Connect to application slots
                     connect_or_report(
                         &*testrunner_qobj,
-                        "reload_qml(QString)".to_string(),
+                        "reload_qml(QString)",
                         &*app_qobj,
-                        "reload_qml(QString)".to_string(),
+                        "reload_qml(QString)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         &*testrunner_qobj,
-                        "unload_qml()".to_string(),
+                        "unload_qml()",
                         &*app_qobj,
-                        "unload_qml()".to_string(),
+                        "unload_qml()",
                         connection_types::QUEUED_CONNECTION,
                     );
 
@@ -143,7 +177,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                 let global_args: &GlobalQmlSettings = GLOBAL_QML_SETTINGS.get().unwrap();
                 let global_args = global_args.as_qvariantmap();
                 let global_args =
-                    cxx_qt_lib_shoop::qvariant_qvariantmap::qvariantmap_as_qvariant(&global_args)
+                    cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant(&global_args)
                         .unwrap();
                 unsafe {
                     qml_engine
@@ -156,7 +190,7 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                         if let Some(runner) = c.get() {
                             let mut runner_pin = std::pin::Pin::new_unchecked(&mut **runner);
                             let runner_qobj = runner_pin.as_mut().pin_mut_qobject_ptr();
-                            let runner_qvariant = qobject_ptr_to_qvariant(runner_qobj);
+                            let runner_qvariant = qobject_ptr_to_qvariant(&runner_qobj).unwrap();
                             qml_engine.as_mut().set_root_context_property(
                                 &QString::from("shoop_test_file_runner"),
                                 &runner_qvariant,
@@ -164,9 +198,9 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                             let qml_engine_qobj = qml_engine.as_mut().pin_mut_qobject_ptr();
                             connect_or_report(
                                 &*qml_engine_qobj,
-                                "destroyed(QObject*)".to_string(),
+                                "destroyed(QObject*)",
                                 &*runner_qobj,
-                                "on_qml_engine_destroyed()".to_string(),
+                                "on_qml_engine_destroyed()",
                                 connection_types::QUEUED_CONNECTION,
                             );
                         }
@@ -216,9 +250,9 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                             let testrunner_qobj = testrunner.as_mut().pin_mut_qobject_ptr();
                             connect_or_report(
                                 &*testrunner_qobj,
-                                "done(::std::int32_t)".to_string(),
+                                "done(::std::int32_t)",
                                 &*app_qobj,
-                                "rust_exit(::std::int32_t)".to_string(),
+                                "rust_exit(::std::int32_t)",
                                 connection_types::QUEUED_CONNECTION,
                             );
                         }
@@ -273,7 +307,31 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
 
     // Get and parse the command-line arguments
     let args: Vec<String> = env::args().collect();
-    let cli_args = crate::cli_args::parse_arguments(args.iter());
+    let is_crashhandling_server = args.iter().any(|arg| arg == "--crash-handling-server");
+    let cli_args = if is_crashhandling_server {
+        None
+    } else {
+        Some(crate::cli_args::parse_arguments(args.iter()))
+    };
+
+    if !(cli_args.is_some()
+        && cli_args
+            .as_ref()
+            .unwrap()
+            .developer_options
+            .no_crash_handling)
+    {
+        crashhandling::init_crashhandling(
+            std::env::args().any(|arg| arg == "--crash-handling-server"),
+            "--crash-handling-server",
+            Some(crash_info_callback),
+        );
+        let args: Vec<String> = std::env::args().collect();
+        crashhandling::set_crash_json_extra("cmdline", serde_json::json!(args.join(" ")));
+        crashhandling::set_crash_json_tag("shoop_phase", "startup".into());
+        crashhandling::registered_threads::register_thread("gui");
+    }
+    let cli_args = cli_args.unwrap();
 
     if cli_args.print_backends {
         println!("Available backends:\n");

@@ -40,3 +40,6 @@ impl QSharedPointer_QObject {
         unsafe { ffi::qsharedpointer_qobject_data(self) }
     }
 }
+
+unsafe impl Send for QSharedPointer_QObject {}
+unsafe impl Sync for QSharedPointer_QObject {}

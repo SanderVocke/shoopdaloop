@@ -1,10 +1,10 @@
-import ShoopDaLoop.PythonLoopMidiChannel
+import ShoopDaLoop.Rust
 import QtQuick 6.6
 
 import ShoopConstants
 import 'js/schema_conversions.js' as Conversions
 
-PythonLoopMidiChannel {
+LoopChannelGui {
     id: root
     objectName: "LoopMidiChannel"
 
@@ -13,6 +13,7 @@ PythonLoopMidiChannel {
     property var descriptor : null
 
     readonly property string obj_id : descriptor.id
+    instance_identifier: obj_id
 
     readonly property string object_schema : 'channel.1'
     SchemaCheck {
@@ -39,8 +40,18 @@ PythonLoopMidiChannel {
         if (do_save_data_files && !root.empty) {
             var filename = obj_id + '.smf'
             var full_filename = data_files_dir + '/' + filename;
-            var task = file_io.save_channel_to_midi_async(full_filename, root.backend.get_sample_rate(), root)
-            add_tasks_to.add_task(task)
+
+            var create_task = () => {
+                var task = ShoopFileIO.save_channel_to_midi_async(full_filename, root.backend.get_sample_rate(), root)
+                task.then_delete()
+                return task
+            }
+
+            if (add_tasks_to) {
+                add_tasks_to.add_task(create_task())
+            } else {
+                registries.state_registry.set_active_io_task_fn(create_task)
+            }
             rval['data_file'] = filename
         }
         return rval
@@ -48,8 +59,9 @@ PythonLoopMidiChannel {
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         const conversion_factor = to_sample_rate / from_sample_rate
         if (has_data_file()) {
-            add_tasks_to.add_task(
-                file_io.load_midi_to_channels_async(
+
+            var create_task = () => {
+                var task = ShoopFileIO.load_midi_to_channels_async(
                     data_files_dir + '/' + descriptor.data_file,
                     to_sample_rate,
                     [root],
@@ -57,18 +69,34 @@ PythonLoopMidiChannel {
                     descriptor.start_offset,
                     null
                     )
-            )
+                task.then_delete()
+                return task
+            }
+
+            if (add_tasks_to) {
+                add_tasks_to.add_task(create_task())
+            } else {
+                registries.state_registry.set_active_io_task_fn(create_task)
+            }
         }
     }
     function has_data_file() {
         return Object.keys(descriptor).includes("data_file")
     }
 
+    function get_recorded_midi_msgs() {
+        return get_midi_data().filter((msg) => msg.time >= 0)
+    }
+
     property int initial_mode : Conversions.parse_channel_mode(descriptor.mode)
-    onInitial_modeChanged: set_mode(initial_mode)
-    ports: lookup_connected_ports.objects
+    onInitial_modeChanged: push_mode(initial_mode)
+    ports_to_connect: lookup_connected_ports.objects
     property var recording_fx_chain_state_id: ('recording_fx_chain_state_id' in descriptor) ? descriptor.recording_fx_chain_state_id : null
     recording_started_at: 'recording_started_at' in descriptor ? descriptor.recording_started_at : null
+    is_midi: true
+
+    function load_data(data) { load_midi_data(data) }
+    function get_data() { return get_midi_data() }
 
     RegistryLookups {
         id: lookup_connected_ports
@@ -83,17 +111,12 @@ PythonLoopMidiChannel {
         object: root
     }
 
-    onLoopChanged: initialize()
-    Connections {
-        target: loop
-        function onInitializedChanged() { root.initialize() }
-    }
     Component.onCompleted: {
-        set_mode(initial_mode)
-        initialize()
+        push_mode(initial_mode)
     }
-    function qml_close() {
+    function unload() {
         reg_entry.close()
         close()
+        destroy()
     }
 }

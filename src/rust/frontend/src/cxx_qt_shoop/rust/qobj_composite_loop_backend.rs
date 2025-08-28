@@ -3,6 +3,7 @@ use crate::{
     cxx_qt_shoop::qobj_composite_loop_backend_bridge::ffi::*,
     loop_helpers::transition_backend_loops,
     loop_mode_helpers::{is_recording_mode, is_running_mode},
+    references_qobject::ReferencesQObject,
 };
 use backend_bindings::LoopMode;
 use common::logging::macros::{
@@ -13,11 +14,8 @@ use cxx_qt_lib_shoop::{
     connect::connect_or_report,
     connection_types,
     invokable::invoke,
-    qobject::{
-        ffi::{qobject_property_int, qobject_property_qobject, qobject_property_string},
-        qobject_has_property, AsQObject,
-    },
-    qvariant_qobject::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
+    qobject::{self, qobject_has_property, AsQObject},
+    qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr},
 };
 use std::{
     cmp::{max, min},
@@ -29,34 +27,34 @@ shoop_log_unit!("Frontend.CompositeLoop");
 #[allow(unused_macros)]
 macro_rules! trace {
     ($self:ident, $($arg:tt)*) => {
-        raw_trace!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_trace!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*))
     };
 }
 
 #[allow(unused_macros)]
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
-        raw_debug!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_debug!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*))
     };
 }
 
 #[allow(unused_macros)]
 macro_rules! warn {
     ($self:ident, $($arg:tt)*) => {
-        raw_warn!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_warn!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*))
     };
 }
 
 #[allow(unused_macros)]
 macro_rules! error {
     ($self:ident, $($arg:tt)*) => {
-        raw_error!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_error!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*))
     };
 }
 
 fn get_loop_iid(l: &*mut QObject) -> String {
     unsafe {
-        match qobject_property_string(&**l, "instance_identifier".to_string()) {
+        match qobject::qobject_property_string(&**l, "instance_identifier") {
             Ok(iid) => {
                 return iid.to_string();
             }
@@ -161,13 +159,13 @@ impl CompositeLoopBackend {
                 let mut n_cycles = 1;
 
                 unsafe {
-                    if qobject_has_property(&**loop_obj, "sync_source".to_string())? {
+                    if qobject_has_property(&**loop_obj, "sync_source")? {
                         let sync_source =
-                            qobject_property_qobject(&**loop_obj, "sync_source".to_string())?;
-                        let loop_length = qobject_property_int(&**loop_obj, "length".to_string())?;
+                            qobject::qobject_property_qobject(&**loop_obj, "sync_source")?;
+                        let loop_length = qobject::qobject_property_int(&**loop_obj, "length")?;
                         let sync_source_length =
-                            qobject_property_int(&*sync_source, "length".to_string())?;
-                        n_cycles = (loop_length as f64 / sync_source_length as f64).ceil() as i32;
+                            qobject::qobject_property_int(&*sync_source, "length")?;
+                        n_cycles = (loop_length as f32 / sync_source_length as f32).ceil() as i32;
                     }
 
                     let sync_to_immediate_cycle: Option<i32> = match mode {
@@ -181,7 +179,7 @@ impl CompositeLoopBackend {
                     let sync_to_immediate_cycle = sync_to_immediate_cycle.unwrap_or(-1);
                     invoke(
                         &mut **loop_obj,
-                        "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        "transition(::std::int32_t,::std::int32_t,::std::int32_t)",
                         connection_types::DIRECT_CONNECTION,
                         &(*mode as isize as i32, -1 as i32, sync_to_immediate_cycle),
                     )?;
@@ -408,7 +406,7 @@ impl CompositeLoopBackend {
                     // We will instead do that transition after all grabs are done.
                     invoke(
                         &mut *g.loop_obj,
-                        "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)".to_string(),
+                        "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)",
                         connection_types::DIRECT_CONNECTION,
                         &(
                             QVariant::from(&g.reverse_start),
@@ -438,10 +436,10 @@ impl CompositeLoopBackend {
         let mut result: HashSet<*mut QObject> = HashSet::new();
         for (_, events) in self.schedule.data.iter() {
             for (l, _mode) in events.loops_start.iter() {
-                result.insert(*l);
+                result.insert(l.obj.as_qobject_ref() as *mut QObject);
             }
             for l in events.loops_end.iter().chain(events.loops_ignored.iter()) {
-                result.insert(*l);
+                result.insert(l.obj.as_qobject_ref() as *mut QObject);
             }
         }
         result
@@ -466,23 +464,23 @@ impl CompositeLoopBackend {
             if !rust_mut.sync_source.is_null() {
                 connect_or_report(
                     &*sync_source,
-                    "positionChanged(::std::int32_t,::std::int32_t)".to_string(),
+                    "positionChanged(::std::int32_t,::std::int32_t)",
                     &*self_qobj,
-                    "update_sync_position()".to_string(),
+                    "update_sync_position()",
                     connection_types::DIRECT_CONNECTION,
                 );
                 connect_or_report(
                     &*sync_source,
-                    "lengthChanged(::std::int32_t,::std::int32_t)".to_string(),
+                    "lengthChanged(::std::int32_t,::std::int32_t)",
                     &*self_qobj,
-                    "update_sync_length()".to_string(),
+                    "update_sync_length()",
                     connection_types::DIRECT_CONNECTION,
                 );
                 connect_or_report(
                     &*sync_source,
-                    "cycled(::std::int32_t)".to_string(),
+                    "cycled(::std::int32_t)",
                     &*self_qobj,
-                    "handle_sync_loop_trigger(::std::int32_t)".to_string(),
+                    "handle_sync_loop_trigger(::std::int32_t)",
                     connection_types::DIRECT_CONNECTION,
                 );
                 self.as_mut().update_sync_position();
@@ -497,7 +495,7 @@ impl CompositeLoopBackend {
         let mut v = 0;
         unsafe {
             if !self.sync_source.is_null() {
-                match qobject_property_int(&*self.sync_source, "position".to_string()) {
+                match qobject::qobject_property_int(&*self.sync_source, "position") {
                     Ok(pos) => {
                         v = pos;
                     }
@@ -523,7 +521,7 @@ impl CompositeLoopBackend {
         let mut v = 0;
         unsafe {
             if !self.sync_source.is_null() {
-                match qobject_property_int(&*self.sync_source, "length".to_string()) {
+                match qobject::qobject_property_int(&*self.sync_source, "length") {
                     Ok(l) => {
                         v = l;
                     }
@@ -571,7 +569,7 @@ impl CompositeLoopBackend {
                 for loop_obj in self.as_mut().all_loops().iter() {
                     invoke::<QObject, (), i32>(
                         &mut **loop_obj,
-                        "dependent_will_handle_sync_loop_cycle(::std::int32_t)".to_string(),
+                        "dependent_will_handle_sync_loop_cycle(::std::int32_t)",
                         connection_types::DIRECT_CONNECTION,
                         &(cycle_nr),
                     )?;
@@ -792,7 +790,7 @@ impl CompositeLoopBackend {
                         trace!(self, "Queue transition {loop_iid} to {mode:?}");
                         invoke(
                             &mut *loop_obj,
-                            "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                            "transition(::std::int32_t,::std::int32_t,::std::int32_t)",
                             connection_types::QUEUED_CONNECTION,
                             &(mode as isize as i32, 0, -1),
                         )?;
@@ -850,30 +848,29 @@ impl CompositeLoopBackend {
                     .as_mut()
                     .running_loops
                     .iter()
-                    .map(|variant| {
-                        qvariant_to_qobject_ptr(variant)
-                            .ok_or(anyhow::anyhow!("Could not convert QVariant to object"))
-                    })
+                    .map(|variant| qvariant_to_qobject_ptr(variant))
                     .collect::<Result<HashSet<_>, _>>()?;
                 let mut running_loops_changed = false;
 
                 // Handle any loop that needs to end this iteration.
                 for loop_end in loops_end.iter() {
-                    let loop_iid = get_loop_iid(loop_end);
+                    let loop_end = loop_end.obj.as_qobject_ref() as *mut QObject;
+                    let loop_iid = get_loop_iid(&loop_end);
                     debug!(self, "loop end: {loop_iid}");
                     self.as_mut().do_trigger(
-                        *loop_end,
+                        loop_end,
                         LoopMode::Stopped,
                         trigger_callback.as_mut(),
                     );
-                    running_loops_changed = running_loops.remove(loop_end);
+                    running_loops_changed = running_loops.remove(&loop_end);
                 }
 
                 if is_running_mode(mode) {
                     // Our new mode will be a running mode. Apply it to
                     // loops that start this iteration.
                     for (loop_start, maybe_explicit_mode) in loops_start.iter() {
-                        let loop_iid = get_loop_iid(loop_start);
+                        let loop_start_qobj = loop_start.obj.as_qobject_ref() as *mut QObject;
+                        let loop_iid = get_loop_iid(&loop_start_qobj);
                         if let Some(explicit_mode) = maybe_explicit_mode {
                             // Explicit mode, just apply it as scheduled
                             debug!(
@@ -881,11 +878,11 @@ impl CompositeLoopBackend {
                                 "loop start (explicit mode {explicit_mode:?}): {loop_iid}"
                             );
                             self.as_mut().do_trigger(
-                                *loop_start,
+                                loop_start_qobj,
                                 *explicit_mode,
                                 trigger_callback.as_mut(),
                             );
-                            running_loops_changed = running_loops.insert(*loop_start);
+                            running_loops_changed = running_loops.insert(loop_start_qobj);
                         } else {
                             // Implicit mode, set it based on our own
                             let implicit_mode = mode;
@@ -919,21 +916,21 @@ impl CompositeLoopBackend {
                                 // We have already recorded this loop.
                                 debug!(self, "Not re-recording {loop_iid}, stopping instead");
                                 self.as_mut().do_trigger(
-                                    *loop_start,
+                                    loop_start_qobj,
                                     LoopMode::Stopped,
                                     trigger_callback.as_mut(),
                                 );
-                                running_loops_changed = running_loops.remove(loop_start);
+                                running_loops_changed = running_loops.remove(&loop_start_qobj);
                             } else {
                                 // Implicit mode, apply it
-                                let loop_iid = get_loop_iid(loop_start);
+                                let loop_iid = get_loop_iid(&loop_start_qobj);
                                 debug!(self, "generate loop start (implicit mode {implicit_mode:?}): {loop_iid}");
                                 self.as_mut().do_trigger(
-                                    *loop_start,
+                                    loop_start_qobj,
                                     implicit_mode,
                                     trigger_callback.as_mut(),
                                 );
-                                running_loops_changed = running_loops.insert(*loop_start);
+                                running_loops_changed = running_loops.insert(loop_start_qobj);
                             }
                         }
                     }
@@ -942,7 +939,7 @@ impl CompositeLoopBackend {
                 if running_loops_changed {
                     let mut new_running_loops: QList_QVariant = QList_QVariant::default();
                     for l in running_loops.iter() {
-                        let loop_variant = qobject_ptr_to_qvariant(*l);
+                        let loop_variant = qobject_ptr_to_qvariant(l)?;
                         new_running_loops.append(loop_variant);
                     }
                     let mut rust_mut = self.as_mut().rust_mut();

@@ -9,6 +9,7 @@ use backend_bindings::AudioChannel;
 use backend_bindings::MidiChannel;
 use common::logging::macros::{debug as raw_debug, shoop_log_unit, trace as raw_trace};
 use cxx_qt::CxxQtType;
+use cxx_qt_lib::{QList, QString, QVariant};
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::qobject::ffi::qobject_move_to_thread;
@@ -16,31 +17,29 @@ use cxx_qt_lib_shoop::qobject::ffi::qobject_object_name;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qquickitem::AsQQuickItem;
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
-use cxx_qt_lib_shoop::qvariant_qobject::qvariant_to_qobject_ptr;
-use cxx_qt_lib_shoop::qvariant_qsharedpointer_qobject::qsharedpointer_qobject_to_qvariant;
-
-use cxx_qt_lib::{QList, QString, QVariant};
+use cxx_qt_lib_shoop::qvariant_helpers::qsharedpointer_qobject_to_qvariant;
+use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use std::pin::Pin;
 shoop_log_unit!("Frontend.Loop");
 
 #[allow(unused_macros)]
 macro_rules! trace {
     ($self:ident, $($arg:tt)*) => {
-        raw_trace!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_trace!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*))
     };
 }
 
 #[allow(unused_macros)]
 macro_rules! debug {
     ($self:ident, $($arg:tt)*) => {
-        raw_debug!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_debug!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*))
     };
 }
 
 #[allow(unused_macros)]
 macro_rules! error {
     ($self:ident, $($arg:tt)*) => {
-        raw_error!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*));
+        raw_error!("[{}] {}", $self.instance_identifier().to_string(), format!($($arg)*))
     };
 }
 
@@ -49,17 +48,6 @@ impl LoopGui {
         debug!(self, "Initializing");
 
         unsafe {
-            // let backend_qobj : *mut QObject;
-            // {
-            //     let rust_mut = self.as_mut().rust_mut();
-            //     backend_qobj = rust_mut.backend;
-            // }
-            // let backend_ptr : *mut BackendWrapper = BackendWrapper::from_qobject_ptr(backend_qobj);
-            // let backend_thread = (*backend_ptr).get_backend_thread();
-
-            // if backend_qobj.is_null() {
-            //     raw_error!("Failed to convert backend QObject to backend pointer");
-            // } else {
             let backend_loop = make_raw_loop_backend();
             let backend_loop_qobj = loop_backend_qobject_from_ptr(backend_loop);
             qobject_move_to_thread(
@@ -85,87 +73,75 @@ impl LoopGui {
                     // Connections : update thread -> backend object
                     connect_or_report(
                         backend_thread_wrapper,
-                        "update()".to_string(),
+                        "update()",
                         backend_ref,
-                        "update()".to_string(),
+                        "update()",
                         connection_types::DIRECT_CONNECTION,
-                    );
-                }
-                {
-                    // Connections : backend object -> GUI
-                    connect_or_report(
-                        backend_ref,
-                        "stateChanged(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                        self_ref,
-                        "on_backend_state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
-                        connection_types::QUEUED_CONNECTION
                     );
                 }
                 {
                     // Connections : GUI -> backend object
                     connect_or_report(
                         self_ref,
-                        "backend_set_position(::std::int32_t)".to_string(),
+                        "backend_set_position(::std::int32_t)",
                         backend_ref,
-                        "set_position(::std::int32_t)".to_string(),
+                        "set_position(::std::int32_t)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_set_length(::std::int32_t)".to_string(),
+                        "backend_set_length(::std::int32_t)",
                         backend_ref,
-                        "set_length(::std::int32_t)".to_string(),
+                        "set_length(::std::int32_t)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_clear(::std::int32_t)".to_string(),
+                        "backend_clear(::std::int32_t)",
                         backend_ref,
-                        "clear(::std::int32_t)".to_string(),
+                        "clear(::std::int32_t)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_transition(::std::int32_t,::std::int32_t,::std::int32_t)"
-                            .to_string(),
+                        "backend_transition(::std::int32_t,::std::int32_t,::std::int32_t)",
                         backend_ref,
-                        "transition(::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        "transition(::std::int32_t,::std::int32_t,::std::int32_t)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)"
-                            .to_string(),
+                        "backend_adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)",
                         backend_ref,
-                        "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)".to_string(),
+                        "adopt_ringbuffers(QVariant,QVariant,QVariant,::std::int32_t)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        "backend_transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)",
                         backend_ref,
-                        "transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)".to_string(),
+                        "transition_multiple(QList_QVariant,::std::int32_t,::std::int32_t,::std::int32_t)",
                         connection_types::QUEUED_CONNECTION
                     );
                     connect_or_report(
                         self_ref,
-                        "backendChanged(QObject*)".to_string(),
+                        "backendChanged(QObject*)",
                         backend_ref,
-                        "set_backend(QObject*)".to_string(),
+                        "set_backend(QObject*)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,
-                        "instanceIdentifierChanged(QString)".to_string(),
+                        "instanceIdentifierChanged(QString)",
                         backend_ref,
-                        "set_instance_identifier(QString)".to_string(),
+                        "set_instance_identifier(QString)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_set_sync_source(QVariant)".to_string(),
+                        "backend_set_sync_source(QVariant)",
                         backend_ref,
-                        "set_sync_source(QVariant)".to_string(),
+                        "set_sync_source(QVariant)",
                         connection_types::QUEUED_CONNECTION,
                     );
                 }
@@ -174,10 +150,17 @@ impl LoopGui {
                     // Connections : backend object -> GUI
                     connect_or_report(
                         backend_ref,
-                        "initializedChanged(bool)".to_string(),
+                        "initializedChanged(bool)",
                         self_ref,
-                        "set_initialized(bool)".to_string(),
+                        "set_initialized(bool)",
                         connection_types::QUEUED_CONNECTION,
+                    );
+                    connect_or_report(
+                        backend_ref,
+                        "stateChanged(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)",
+                        self_ref,
+                        "on_backend_state_changed(::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t,::std::int32_t)",
+                        connection_types::QUEUED_CONNECTION
                     );
                 }
             }
@@ -273,14 +256,6 @@ impl LoopGui {
         result
     }
 
-    pub fn get_audio_channels(self: Pin<&mut LoopGui>) -> QList<QVariant> {
-        self.get_children_with_object_name("LoopAudioChannel")
-    }
-
-    pub fn get_midi_channels(self: Pin<&mut LoopGui>) -> QList<QVariant> {
-        self.get_children_with_object_name("LoopMidiChannel")
-    }
-
     pub fn transition_multiple(
         self: Pin<&mut LoopGui>,
         loops: QList_QVariant,
@@ -297,6 +272,8 @@ impl LoopGui {
             maybe_to_sync_at_cycle
         );
 
+        // Get handles to the backend loops in terms of QSharedPointers, which will ensure
+        // they don't go out of scope while our transition is queued in the event loop.
         let backend_loop_handles = get_backend_loop_handles_variant_list(&loops).unwrap();
         self.backend_transition_multiple(
             backend_loop_handles,
@@ -307,7 +284,7 @@ impl LoopGui {
     }
 
     pub fn get_backend_loop_shared_ptr(self: Pin<&mut LoopGui>) -> QVariant {
-        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap())
+        qsharedpointer_qobject_to_qvariant(&self.backend_loop_wrapper.as_ref().unwrap()).unwrap()
     }
 
     pub fn transition(
@@ -459,20 +436,33 @@ impl LoopGui {
                 let loop_gui_ptr: *mut LoopGui = qobject_to_loop_ptr(sync_source_in);
                 let backend_loop_ptr: &cxx::UniquePtr<QSharedPointer_QObject> =
                     &loop_gui_ptr.as_ref().unwrap().backend_loop_wrapper;
-                sync_source_out =
-                    qsharedpointer_qobject_to_qvariant(&backend_loop_ptr.as_ref().unwrap());
+                match backend_loop_ptr.as_ref() {
+                    Some(r) => match qsharedpointer_qobject_to_qvariant(r) {
+                        Ok(variant) => {
+                            sync_source_out = variant;
+                        }
+                        Err(_) => {
+                            sync_source_out = QVariant::default();
+                        }
+                    },
+                    None => {
+                        sync_source_out = QVariant::default();
+                    }
+                }
             }
         }
 
         self.as_mut().backend_set_sync_source(sync_source_out);
     }
 
-    pub fn get_backend_loop_wrapper(mut self: Pin<&mut LoopGui>) -> *mut QObject {
-        let wrapper = &self.as_mut().backend_loop_wrapper;
-        if wrapper.is_null() {
-            return std::ptr::null_mut();
+    pub fn get_backend_loop_wrapper(self: Pin<&mut LoopGui>) -> QVariant {
+        match self.backend_loop_wrapper.as_ref() {
+            Some(r) => match qsharedpointer_qobject_to_qvariant(r) {
+                Ok(variant) => variant,
+                Err(_) => QVariant::default(),
+            },
+            None => QVariant::default(),
         }
-        wrapper.data().expect("Could not access backend loop")
     }
 }
 

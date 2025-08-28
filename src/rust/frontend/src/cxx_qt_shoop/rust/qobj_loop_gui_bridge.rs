@@ -3,28 +3,6 @@ use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 
 shoop_log_unit!("Frontend.Loop");
 
-pub mod constants {
-    pub const PROP_BACKEND: &str = "backend";
-    pub const PROP_INITIALIZED: &str = "initialized";
-    pub const PROP_MODE: &str = "mode";
-    pub const PROP_LENGTH: &str = "length";
-    pub const PROP_POSITION: &str = "position";
-    pub const PROP_NEXT_MODE: &str = "nextMode";
-    pub const PROP_NEXT_TRANSITION_DELAY: &str = "nextTransitionDelay";
-    pub const PROP_SYNC_SOURCE: &str = "syncSource";
-    pub const PROP_DISPLAY_PEAKS: &str = "displayPeaks";
-    pub const PROP_DISPLAY_MIDI_NOTES_ACTIVE: &str = "displayMidiNotesActive";
-    pub const PROP_DISPLAY_MIDI_EVENTS_TRIGGERED: &str = "displayMidiEventsTriggered";
-    pub const PROP_INSTANCE_IDENTIFIER: &str = "instanceIdentifier";
-
-    pub const SIGNAL_CYCLED: &str = "cycled()";
-    pub const SIGNAL_CYCLED_UNSAFE: &str = "cycledUnsafe()";
-
-    pub const INVOKABLE_UPDATE: &str = "update()";
-    pub const INVOKABLE_TRANSITION: &str =
-        "transition(::std::int32_t,::std::int32_t,::std::int32_t)";
-}
-
 #[cxx_qt::bridge]
 pub mod ffi {
 
@@ -66,16 +44,12 @@ pub mod ffi {
         #[qproperty(i32, position, READ, NOTIFY=position_changed)]
         #[qproperty(i32, next_mode, READ, NOTIFY=next_mode_changed)]
         #[qproperty(i32, next_transition_delay, READ, NOTIFY=next_transition_delay_changed)]
-        #[qproperty(QList_f32, display_peaks, READ, NOTIFY)]
-        #[qproperty(i32, display_midi_notes_active, READ, NOTIFY)]
-        #[qproperty(i32, display_midi_events_triggered, READ, NOTIFY)]
         #[qproperty(i32, cycle_nr, READ, NOTIFY)]
         // Frontend -> Backend properties
         #[qproperty(*mut QObject, backend, READ, WRITE=set_backend, NOTIFY=backend_changed)]
         #[qproperty(*mut QObject, sync_source, READ, WRITE=set_sync_source, NOTIFY=sync_source_changed)]
         #[qproperty(QString, instance_identifier, READ, WRITE=set_instance_identifier, NOTIFY=instance_identifier_changed)]
         // Other properties
-        #[qproperty(*mut QObject, backend_loop_wrapper, READ=get_backend_loop_wrapper)]
         type LoopGui = super::LoopGuiRust;
 
         pub fn initialize_impl(self: Pin<&mut LoopGui>);
@@ -85,12 +59,6 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn queue_set_position(self: Pin<&mut LoopGui>, position: i32);
-
-        #[qinvokable]
-        pub fn get_audio_channels(self: Pin<&mut LoopGui>) -> QList_QVariant;
-
-        #[qinvokable]
-        pub fn get_midi_channels(self: Pin<&mut LoopGui>) -> QList_QVariant;
 
         #[qinvokable]
         pub fn transition_multiple(
@@ -154,7 +122,7 @@ pub mod ffi {
         pub fn set_instance_identifier(self: Pin<&mut LoopGui>, instance_identifier: QString);
 
         #[qinvokable]
-        pub fn get_backend_loop_wrapper(self: Pin<&mut LoopGui>) -> *mut QObject;
+        pub fn get_backend_loop_wrapper(self: Pin<&mut LoopGui>) -> QVariant;
 
         #[qsignal]
         #[cxx_name = "backendChanged"]
@@ -279,6 +247,12 @@ pub mod ffi {
 
         #[rust_name = "loop_gui_qobject_from_ref"]
         fn qobjectFromRef(obj: &LoopGui) -> &QObject;
+
+        #[rust_name = "from_qobject_ref_loop_gui"]
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const LoopGui);
+
+        #[rust_name = "from_qobject_mut_loop_gui"]
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut LoopGui);
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)> for LoopGui {}
@@ -299,9 +273,6 @@ pub struct LoopGuiRust {
     pub next_mode: i32,
     pub next_transition_delay: i32,
     pub sync_source: *mut QObject,
-    pub display_peaks: ffi::QList_f32,
-    pub display_midi_notes_active: i32,
-    pub display_midi_events_triggered: i32,
     pub instance_identifier: QString,
     pub cycle_nr: i32,
     pub backend_loop_wrapper: cxx::UniquePtr<QSharedPointer_QObject>,
@@ -318,9 +289,6 @@ impl Default for LoopGuiRust {
             next_mode: 0,
             next_transition_delay: 0,
             sync_source: std::ptr::null_mut(),
-            display_peaks: ffi::QList_f32::default(),
-            display_midi_notes_active: 0,
-            display_midi_events_triggered: 0,
             instance_identifier: QString::from("unknown"),
             cycle_nr: 0,
             backend_loop_wrapper: cxx::UniquePtr::null(),
@@ -334,6 +302,22 @@ impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for LoopGui {
     }
     unsafe fn ref_qquickitem_ptr(&self) -> *const QQuickItem {
         qquickitem_from_ref_loop(self) as *const QQuickItem
+    }
+}
+
+impl cxx_qt_lib_shoop::qobject::FromQObject for LoopGui {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+        let mut output: *const Self = std::ptr::null();
+        from_qobject_ref_loop_gui(obj, &mut output as *mut *const Self);
+        output
+    }
+
+    unsafe fn ptr_from_qobject_mut(
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+    ) -> *mut Self {
+        let mut output: *mut Self = std::ptr::null_mut();
+        from_qobject_mut_loop_gui(obj, &mut output as *mut *mut Self);
+        output
     }
 }
 

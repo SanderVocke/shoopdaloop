@@ -112,7 +112,7 @@ Column {
                         anchors.verticalCenter: edit_filters_button.verticalCenter
                     }
 
-                    TextField {
+                    ShoopTextField {
                         height: 30
                         enabled: false
                         text: rule_descriptor.description
@@ -186,7 +186,7 @@ Column {
                     anchors.verticalCenter: condition_field.verticalCenter
                 }
 
-                TextField {
+                ShoopTextField {
                     id: condition_field
                     height: 30
                     placeholderText: 'custom condition expression'
@@ -270,7 +270,7 @@ Column {
                     anchors.verticalCenter: custom_action_script_field.verticalCenter
                 }
 
-                TextField {
+                ShoopTextField {
                     id: custom_action_script_field
                     height: 30
                     placeholderText: 'custom action script'
@@ -321,7 +321,7 @@ Column {
                         }
                     }
 
-                    TextField {
+                    ShoopTextField {
                         id: input_script_field
                         visible: (input_combo.currentText === 'custom...') ||
                                  (!input.hasOwnProperty('presets')) ||

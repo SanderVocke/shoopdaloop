@@ -2,7 +2,6 @@ use common::logging::macros::*;
 use cxx_qt::CxxQtType;
 shoop_log_unit!("Frontend.AutoConnect");
 
-pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::constants::*;
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::make_raw_autoconnect as make_raw;
 pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::make_unique_autoconnect as make_unique;
 use crate::cxx_qt_shoop::qobj_autoconnect_bridge::ffi::*;
@@ -10,10 +9,9 @@ pub use crate::cxx_qt_shoop::qobj_autoconnect_bridge::AutoConnect;
 use crate::cxx_qt_shoop::qobj_autoconnect_bridge::*;
 use cxx_qt_lib_shoop::invokable;
 
+use crate::cxx_qt_shoop::fn_qlist_helpers;
+use crate::cxx_qt_shoop::fn_qvariantmap_helpers;
 use crate::cxx_qt_shoop::type_external_port_descriptor::ExternalPortDescriptor;
-use crate::cxx_qt_shoop::{
-    fn_qlist_helpers, fn_qvariantmap_helpers, qobj_signature_backend_wrapper, qobj_signature_port,
-};
 use anyhow::Context;
 use backend_bindings::{PortDataType, PortDirection};
 use cxx_qt_lib_shoop::qobject::AsQObject;
@@ -22,7 +20,6 @@ use cxx_qt_lib_shoop::{qobject, qtimer};
 use regex::Regex;
 use std::pin::Pin;
 
-use super::qobj_find_parent_item;
 use std::slice;
 
 impl AutoConnect {
@@ -65,11 +62,9 @@ impl AutoConnect {
             finder.as_mut().set_parent_item(obj_qquickitem);
             cxx_qt_lib_shoop::connect::connect(
                 finder_qobj.as_mut().unwrap(),
-                String::from(
-                    qobj_find_parent_item::SIGNAL_FOUNDITEMWITHTRUECHECKEDPROPERTY_CHANGED,
-                ),
+                "found_item_with_true_checked_propertyChanged()",
                 obj_qobject.as_mut().unwrap(),
-                String::from(constants::INVOKABLE_UPDATE),
+                "update()",
                 cxx_qt_lib_shoop::connection_types::DIRECT_CONNECTION,
             )?;
             finder.as_mut().rescan();
@@ -81,9 +76,7 @@ impl AutoConnect {
         let mut timer: Pin<&mut QTimer> = Pin::new_unchecked(&mut timer_slice[0]);
         timer.as_mut().set_interval(1000);
         timer.as_mut().set_single_shot(false);
-        timer
-            .as_mut()
-            .connect_timeout(obj_qobject, String::from(constants::INVOKABLE_UPDATE))?;
+        timer.as_mut().connect_timeout(obj_qobject, "update()")?;
         timer.as_mut().start();
 
         Ok(())
@@ -118,40 +111,33 @@ impl AutoConnect {
         }
 
         unsafe {
-            let q_connections_state: QMap_QString_QVariant =
-                qobj_signature_port::invoke_determine_connections_state(
-                    internal_port.as_mut().unwrap(),
-                    invokable::DIRECT_CONNECTION,
-                )?;
+            let q_connections_state: QMap_QString_QVariant = invokable::invoke(
+                internal_port.as_mut().unwrap(),
+                "determine_connections_state()",
+                invokable::DIRECT_CONNECTION,
+                &(),
+            )?;
             let connections_state =
                 fn_qvariantmap_helpers::try_as_hashmap_convertto::<bool>(&q_connections_state)?;
             debug!("Got connections state: {:?}", connections_state);
 
-            let my_data_type: PortDataType = qobject::qobject_property_int(
-                &*internal_port,
-                String::from(qobj_signature_port::constants::PROP_DATA_TYPE),
-            )
-            .map_err(|err| anyhow::anyhow!(err))
-            .and_then(|o| PortDataType::try_from(o))?;
-            let my_direction: PortDirection = qobject::qobject_property_int(
-                &*internal_port,
-                String::from(qobj_signature_port::constants::PROP_DIRECTION),
-            )
-            .map_err(|err| anyhow::anyhow!(err))
-            .and_then(|o| PortDirection::try_from(o))?;
-            let my_name: String = qobject::qobject_property_string(
-                &*internal_port,
-                String::from(qobj_signature_port::constants::PROP_NAME),
-            )
-            .and_then(|o| Ok(o.to_string()))?;
-            let my_port_initialized: bool = qobject::qobject_property_bool(
-                &*internal_port,
-                String::from(qobj_signature_port::constants::PROP_INITIALIZED),
-            )?;
-            let q_external_ports: QList_QVariant =
-                qobj_signature_backend_wrapper::invoke_find_external_ports(
-                    backend.as_mut().unwrap(),
-                    invokable::DIRECT_CONNECTION,
+            let my_data_type: PortDataType =
+                qobject::qobject_property_int(&*internal_port, "data_type")
+                    .map_err(|err| anyhow::anyhow!(err))
+                    .and_then(|o| PortDataType::try_from(o))?;
+            let my_direction: PortDirection =
+                qobject::qobject_property_int(&*internal_port, "direction")
+                    .map_err(|err| anyhow::anyhow!(err))
+                    .and_then(|o| PortDirection::try_from(o))?;
+            let my_name: String = qobject::qobject_property_string(&*internal_port, "name")
+                .and_then(|o| Ok(o.to_string()))?;
+            let my_port_initialized: bool =
+                qobject::qobject_property_bool(&*internal_port, "initialized")?;
+            let q_external_ports: QList_QVariant = invokable::invoke(
+                backend.as_mut().unwrap(),
+                "find_external_ports(QString,int,int)",
+                invokable::DIRECT_CONNECTION,
+                &(
                     self.as_mut().connect_to_port_regex().clone(),
                     if my_direction == PortDirection::Input {
                         PortDirection::Output as i32
@@ -159,8 +145,9 @@ impl AutoConnect {
                         PortDirection::Input as i32
                     },
                     my_data_type as i32,
-                )
-                .map_err(|err| anyhow::anyhow!(err))?;
+                ),
+            )
+            .map_err(|err| anyhow::anyhow!(err))?;
             let external_candidates =
                 fn_qlist_helpers::try_as_list_into::<ExternalPortDescriptor>(&q_external_ports)?;
             debug!("Queried for external ports: {:?}", external_candidates);
@@ -176,10 +163,11 @@ impl AutoConnect {
 
                 if !is_connected && is_match && my_port_initialized {
                     debug!("{} auto-connecting to {}", my_name, candidate.name);
-                    let result: Result<bool, _> = qobj_signature_port::invoke_connect_external_port(
+                    let result: Result<bool, _> = invokable::invoke(
                         internal_port.as_mut().unwrap(),
+                        "connect_external_port(QString)",
                         invokable::DIRECT_CONNECTION,
-                        QString::from(&candidate.name),
+                        &(QString::from(&candidate.name)),
                     );
                     let result: Result<(), _> = match result {
                         Ok(o) => {
@@ -312,14 +300,12 @@ mod tests {
             let port_connection_made_spy: *mut QSignalSpy;
             {
                 let obj_ptr = obj.as_ref().unwrap().ref_qobject_ptr();
-                autoconnect_connected_spy = cxx_qt_lib_shoop::qsignalspy::make_raw(
-                    obj_ptr,
-                    String::from(constants::SIGNAL_CONNECTED),
-                )
-                .expect("Couldn't create spy");
+                autoconnect_connected_spy =
+                    cxx_qt_lib_shoop::qsignalspy::make_raw(obj_ptr, String::from("connected()"))
+                        .expect("Couldn't create spy");
                 port_connection_made_spy = cxx_qt_lib_shoop::qsignalspy::make_raw(
                     port_ptr,
-                    String::from(qobj_test_port::SIGNAL_EXTERNAL_CONNECTION_MADE),
+                    String::from("external_connection_made(QString)"),
                 )
                 .expect("Couldn't create spy");
             }
@@ -392,14 +378,12 @@ mod tests {
             let port_connection_made_spy: *mut QSignalSpy;
             {
                 let obj_ptr = obj.as_ref().unwrap().ref_qobject_ptr();
-                autoconnect_connected_spy = cxx_qt_lib_shoop::qsignalspy::make_raw(
-                    obj_ptr,
-                    String::from(constants::SIGNAL_CONNECTED),
-                )
-                .expect("Couldn't create spy");
+                autoconnect_connected_spy =
+                    cxx_qt_lib_shoop::qsignalspy::make_raw(obj_ptr, String::from("connected()"))
+                        .expect("Couldn't create spy");
                 port_connection_made_spy = cxx_qt_lib_shoop::qsignalspy::make_raw(
                     port_ptr,
-                    String::from(qobj_test_port::SIGNAL_EXTERNAL_CONNECTION_MADE),
+                    String::from("external_connection_made(QString)"),
                 )
                 .expect("Couldn't create spy");
             }
@@ -472,14 +456,12 @@ mod tests {
             let port_connection_made_spy: *mut QSignalSpy;
             {
                 let obj_ptr = obj.as_ref().unwrap().ref_qobject_ptr();
-                autoconnect_connected_spy = cxx_qt_lib_shoop::qsignalspy::make_raw(
-                    obj_ptr,
-                    String::from(constants::SIGNAL_CONNECTED),
-                )
-                .expect("Couldn't create spy");
+                autoconnect_connected_spy =
+                    cxx_qt_lib_shoop::qsignalspy::make_raw(obj_ptr, String::from("connected()"))
+                        .expect("Couldn't create spy");
                 port_connection_made_spy = cxx_qt_lib_shoop::qsignalspy::make_raw(
                     port_ptr,
-                    String::from(qobj_test_port::SIGNAL_EXTERNAL_CONNECTION_MADE),
+                    String::from("external_connection_made(QString)"),
                 )
                 .expect("Couldn't create spy");
             }
@@ -552,14 +534,12 @@ mod tests {
             let port_connection_made_spy: *mut QSignalSpy;
             {
                 let obj_ptr = obj.as_ref().unwrap().ref_qobject_ptr();
-                autoconnect_connected_spy = cxx_qt_lib_shoop::qsignalspy::make_raw(
-                    obj_ptr,
-                    String::from(constants::SIGNAL_CONNECTED),
-                )
-                .expect("Couldn't create spy");
+                autoconnect_connected_spy =
+                    cxx_qt_lib_shoop::qsignalspy::make_raw(obj_ptr, String::from("connected()"))
+                        .expect("Couldn't create spy");
                 port_connection_made_spy = cxx_qt_lib_shoop::qsignalspy::make_raw(
                     port_ptr,
-                    String::from(qobj_test_port::SIGNAL_EXTERNAL_CONNECTION_MADE),
+                    String::from("external_connection_made(QString)"),
                 )
                 .expect("Couldn't create spy");
             }
@@ -620,14 +600,12 @@ mod tests {
             let port_connection_made_spy: *mut QSignalSpy;
             {
                 let obj_ptr = obj.as_ref().unwrap().ref_qobject_ptr();
-                autoconnect_connected_spy = cxx_qt_lib_shoop::qsignalspy::make_raw(
-                    obj_ptr,
-                    String::from(constants::SIGNAL_CONNECTED),
-                )
-                .expect("Couldn't create spy");
+                autoconnect_connected_spy =
+                    cxx_qt_lib_shoop::qsignalspy::make_raw(obj_ptr, String::from("connected()"))
+                        .expect("Couldn't create spy");
                 port_connection_made_spy = cxx_qt_lib_shoop::qsignalspy::make_raw(
                     port_ptr,
-                    String::from(qobj_test_port::SIGNAL_EXTERNAL_CONNECTION_MADE),
+                    String::from("external_connection_made(QString)"),
                 )
                 .expect("Couldn't create spy");
             }

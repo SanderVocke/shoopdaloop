@@ -85,7 +85,7 @@ Item {
         }
 
         if (maybe_backend_loop) {
-            rval['channels'] = maybe_backend_loop.channels.map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
+            rval['channels'] = maybe_backend_loop.get_channels().map((c) => c.actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to))
         } else {
             rval['channels'] = initial_descriptor.channels
             if (maybe_composite_loop) {
@@ -302,19 +302,19 @@ Item {
         if(maybe_loop) {
             maybe_loop.clear(length);
             if (maybe_composite_loop) {
-                maybe_loop.qml_close()
-                maybe_loop.destroy(30)
+                maybe_loop.unload()
+                maybe_loop.destroy()
                 maybe_loop.parent = null
                 maybe_loop = null
             }
         }
     }
-    function qml_close() {
+    function unload() {
         obj_reg_entry.close()
         sync_reg_entry.close()
         if (maybe_loop) {
-            maybe_loop.qml_close()
-            maybe_loop.destroy(30)
+            maybe_loop.unload()
+            maybe_loop.destroy()
             maybe_loop.parent = null
             maybe_loop = null
         }
@@ -352,11 +352,11 @@ Item {
     }
 
     function get_audio_channels() {
-        return maybe_loop ? maybe_loop.get_audio_channels() : []
+        return maybe_loop ? maybe_loop.audio_channels : []
     }
 
     function get_midi_channels() {
-        return maybe_loop ? maybe_loop.get_midi_channels() : []
+        return maybe_loop ? maybe_loop.midi_channels : []
     }
 
     function get_audio_output_channels() {
@@ -389,27 +389,31 @@ Item {
         // - gain not supported on MIDI
         // - Send should always have the original recorded gain of the dry signal.
         // Also, gain + balance together make up the channel gains in stereo mode.
-        if (root.is_stereo && root.maybe_backend_loop) {
-            root.logger.debug(`push stereo gain: ${gain}`)
-            var lr = get_stereo_audio_output_channels()
-            var gains = Stereo.individual_gains(gain, last_pushed_stereo_balance)
-            lr[0].set_gain(gains[0])
-            lr[1].set_gain(gains[1])
-        } else {
-            root.logger.debug(`push homogenous gain: ${gain}`)
-            get_audio_output_channels().forEach(c => c.set_gain(gain))
+        if (root.maybe_backend_loop) {
+            if (root.is_stereo) {
+                root.logger.debug(`push stereo gain: ${gain}`)
+                var lr = get_stereo_audio_output_channels()
+                var gains = Stereo.individual_gains(gain, last_pushed_stereo_balance)
+                lr[0].push_gain(gains[0])
+                lr[1].push_gain(gains[1])
+            } else {
+                root.logger.debug(`push homogenous gain: ${gain}`)
+                get_audio_output_channels().forEach(c => c.push_gain(gain))
+            }
         }
 
         last_pushed_gain = gain
     }
 
     function push_stereo_balance(balance) {
-        if (root.is_stereo && root.maybe_backend_loop) {
-            root.logger.debug(`push balance: ${balance}`)
-            var lr = get_stereo_audio_output_channels()
-            var gains = Stereo.individual_gains(last_pushed_gain, balance)
-            lr[0].set_gain(gains[0])
-            lr[1].set_gain(gains[1])
+        if (root.maybe_backend_loop) {
+            if (root.is_stereo) {
+                root.logger.debug(`push balance: ${balance}`)
+                var lr = get_stereo_audio_output_channels()
+                var gains = Stereo.individual_gains(last_pushed_gain, balance)
+                lr[0].push_gain(gains[0])
+                lr[1].push_gain(gains[1])
+            }
         }
         last_pushed_stereo_balance = balance
     }
@@ -513,8 +517,8 @@ Item {
         if (maybe_backend_loop) {
             if (!is_sync && maybe_backend_loop.is_all_empty()) {
                 // Empty backend loop can be converted to composite loop.
-                maybe_loop.qml_close()
-                maybe_loop.destroy(30)
+                maybe_loop.unload()
+                maybe_loop.destroy(0)
                 maybe_loop.parent = null
                 maybe_loop = null
             } else {
@@ -1899,7 +1903,7 @@ Item {
             id: savedialog
             fileMode: FileDialog.SaveFile
             acceptLabel: 'Save'
-            nameFilters: Object.entries(file_io.get_soundfile_formats()).map((e) => {
+            nameFilters: Object.entries(ShoopFileIO.get_soundfile_formats()).map((e) => {
                 var extension = e[0]
                 var description = e[1].replace('(', '- ').replace(')', '')
                 return description + ' (*.' + extension + ')';
@@ -1911,14 +1915,21 @@ Item {
                     return;
                 }
                 close()
-                registries.state_registry.save_action_started()
                 try {
                     var filename = UrlToFilename.qml_url_to_filename(file.toString());
                     var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                    var task = file_io.save_channels_to_soundfile_async(filename, samplerate, channels)
-                    task.when_finished(() => registries.state_registry.save_action_finished())
+
+                    var create_task = () => {
+                        var task = ShoopFileIO.save_channels_to_soundfile_async(filename, samplerate, channels)
+                        task.then((success) => {
+                            if (!success) {
+                                root.logger.error("saving channels to sound file failed")
+                            }
+                        })
+                        return task;
+                    }
+                    registries.state_registry.set_active_io_task_fn(create_task)
                 } catch (e) {
-                    registries.state_registry.save_action_finished()
                     throw e;
                 }
             }
@@ -1939,7 +1950,7 @@ Item {
                 close()
                 var filename = UrlToFilename.qml_url_to_filename(file.toString());
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                file_io.save_channel_to_midi_async(filename, samplerate, channel)
+                ShoopFileIO.save_channel_to_midi_async(filename, samplerate, channel)
             }
 
         }
@@ -1950,7 +1961,7 @@ Item {
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('
-                + Object.entries(file_io.get_soundfile_formats()).map((e) => '*.' + e[0].toLowerCase()).join(' ')
+                + Object.entries(ShoopFileIO.get_soundfile_formats()).map((e) => '*.' + e[0].toLowerCase()).join(' ')
                 + ')'
             ]
             onAccepted: {
@@ -1986,7 +1997,7 @@ Item {
             height: 400
 
             onFilenameChanged: {
-                var props = file_io.get_soundfile_info(filename)
+                var props = ShoopFileIO.get_soundfile_info(filename)
                 n_file_channels = props['channels']
                 file_sample_rate = props['samplerate']
             }
@@ -2019,7 +2030,6 @@ Item {
                     root.logger.error("Cannot load: loop not loaded")
                     return;
                 }
-                registries.state_registry.load_action_started()
                 try {
                     close()
                     var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
@@ -2031,11 +2041,18 @@ Item {
                         mapping[fidx].push(channels_to_load[cidx])
                         fidx = (fidx + 1) % n_file_channels
                     }
-                    var task = file_io.load_soundfile_to_channels_async(filename, samplerate, null,
-                        mapping, 0, 0, root.maybe_backend_loop)
-                    task.when_finished( () => registries.state_registry.load_action_finished() )
+                    var create_task = () => {
+                        var task = ShoopFileIO.load_soundfile_to_channels_async(filename, samplerate, null,
+                            mapping, 0, 0, root.maybe_backend_loop)
+                        task.then((success) => {
+                            if (!success) {
+                                root.logger.error("loading soundfile to channels failed")
+                            }
+                        })
+                        return task
+                    }
+                    registries.state_registry.set_active_io_task_fn(create_task)
                 } catch(e) {
-                    registries.state_registry.load_action_finished()
                     throw e
                 }
             }
@@ -2118,7 +2135,7 @@ Item {
             function doLoad(update_loop_length) {
                 root.create_backend_loop()
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                file_io.load_midi_to_channels_async(filename, samplerate, channels,
+                ShoopFileIO.load_midi_to_channels_async(filename, samplerate, channels,
                     0, 0, root.maybe_backend_loop)
             }
 

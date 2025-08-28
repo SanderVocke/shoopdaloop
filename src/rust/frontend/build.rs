@@ -17,6 +17,7 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/fn_window_icons.rs")
         .file("src/cxx_qt_shoop/rust/qobj_application_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_autoconnect_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_async_task_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_backend_wrapper_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_composite_loop_backend_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_composite_loop_gui_bridge.rs")
@@ -24,10 +25,16 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/qobj_dummy_process_helper_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_file_io_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_find_parent_item_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_fx_chain_backend_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_fx_chain_gui_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_global_utils_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_loop_backend_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_loop_gui_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_loop_channel_backend_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_loop_channel_gui_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_os_utils_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_port_backend_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_port_gui_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_qmlengine_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_release_focus_notifier_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_render_audio_waveform_bridge.rs")
@@ -37,7 +44,6 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/test/qobj_test_backend_wrapper_bridge.rs")
         .file("src/cxx_qt_shoop/rust/test/qobj_test_port_bridge.rs")
         .file("src/cxx_qt_shoop/rust/test/qobj_test_file_runner_bridge.rs")
-        .file("src/cxx_qt_shoop/rust/type_shoopqmlapplicationengine.rs")
         .cc_builder(|cc| {
             cc.include("src/cxx_qt_shoop/include");
             cc.include("../cxx_qt_lib_shoop/src/include");

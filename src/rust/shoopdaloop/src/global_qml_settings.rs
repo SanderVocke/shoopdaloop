@@ -10,6 +10,10 @@ pub struct GlobalQmlSettings {
     pub developer_mode: bool,
     pub quit_after: Option<i32>,
     pub monkey_tester: bool,
+    pub qml_dir: String,
+    pub lua_dir: String,
+    pub resource_dir: String,
+    pub schemas_dir: String,
 }
 
 impl GlobalQmlSettings {
@@ -51,6 +55,22 @@ impl GlobalQmlSettings {
         .chain(iter::once((
             QString::from("monkey_tester"),
             QVariant::from(&self.monkey_tester),
+        )))
+        .chain(iter::once((
+            QString::from("qml_dir"),
+            QVariant::from(&QString::from(&self.qml_dir)),
+        )))
+        .chain(iter::once((
+            QString::from("lua_dir"),
+            QVariant::from(&QString::from(&self.lua_dir)),
+        )))
+        .chain(iter::once((
+            QString::from("resource_dir"),
+            QVariant::from(&QString::from(&self.resource_dir)),
+        )))
+        .chain(iter::once((
+            QString::from("schemas_dir"),
+            QVariant::from(&QString::from(&self.schemas_dir)),
         )))
     }
 

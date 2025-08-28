@@ -1,33 +1,6 @@
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.TestPort");
 
-pub mod constants {
-    use crate::cxx_qt_shoop::qobj_signature_port;
-
-    pub const INVOKABLE_DETERMINE_CONNECTIONS_STATE: &str =
-        qobj_signature_port::constants::INVOKABLE_DETERMINE_CONNECTIONS_STATE;
-
-    pub const PROP_DATA_TYPE: &str = qobj_signature_port::constants::PROP_DATA_TYPE;
-    pub const SIGNAL_DATA_TYPE_CHANGED: &str =
-        qobj_signature_port::constants::SIGNAL_DATA_TYPE_CHANGED;
-
-    pub const PROP_DIRECTION: &str = qobj_signature_port::constants::PROP_DIRECTION;
-    pub const SIGNAL_DIRECTION_CHANGED: &str =
-        qobj_signature_port::constants::SIGNAL_DIRECTION_CHANGED;
-
-    pub const PROP_NAME: &str = qobj_signature_port::constants::PROP_NAME;
-    pub const SIGNAL_NAME_CHANGED: &str = qobj_signature_port::constants::SIGNAL_NAME_CHANGED;
-
-    pub const PROP_INITIALIZED: &str = qobj_signature_port::constants::PROP_INITIALIZED;
-    pub const SIGNAL_INITIALIZED_CHANGED: &str =
-        qobj_signature_port::constants::SIGNAL_INITIALIZED_CHANGED;
-
-    pub const PROP_CONNECTIONS_STATE: &str = "connections_state";
-    pub const SIGNAL_CONNECTIONS_STATE_CHANGED: &str = "connections_stateChanged()";
-
-    pub const SIGNAL_EXTERNAL_CONNECTION_MADE: &str = "external_connection_made(QString)";
-}
-
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {

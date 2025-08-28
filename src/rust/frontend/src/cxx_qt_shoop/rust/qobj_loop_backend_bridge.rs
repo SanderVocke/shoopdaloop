@@ -3,13 +3,6 @@ use common::logging::macros::*;
 
 shoop_log_unit!("Frontend.Loop");
 
-pub mod constants {
-    pub const SIGNAL_CYCLED: &str = "cycled()";
-
-    pub const INVOKABLE_UPDATE: &str = "update()";
-    pub const INVOKABLE_TRANSITION: &str =
-        "transition(::std::int32_t,::std::int32_t,::std::int32_t)";
-}
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
@@ -215,6 +208,12 @@ pub mod ffi {
         #[rust_name = "loop_backend_qobject_from_ref"]
         fn qobjectFromRef(obj: &LoopBackend) -> &QObject;
 
+        #[rust_name = "from_qobject_ref_loop_backend"]
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const LoopBackend);
+
+        #[rust_name = "from_qobject_mut_loop_backend"]
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut LoopBackend);
+
         include!("cxx-qt-lib-shoop/make_raw.h");
         #[rust_name = "make_raw_loop_backend"]
         unsafe fn make_raw() -> *mut LoopBackend;
@@ -234,6 +233,22 @@ impl AsQObject for LoopBackend {
 
     unsafe fn ref_qobject_ptr(&self) -> *const QObject {
         ffi::loop_backend_qobject_from_ref(self) as *const QObject
+    }
+}
+
+impl cxx_qt_lib_shoop::qobject::FromQObject for LoopBackend {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+        let mut output: *const Self = std::ptr::null();
+        from_qobject_ref_loop_backend(obj, &mut output as *mut *const Self);
+        output
+    }
+
+    unsafe fn ptr_from_qobject_mut(
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+    ) -> *mut Self {
+        let mut output: *mut Self = std::ptr::null_mut();
+        from_qobject_mut_loop_backend(obj, &mut output as *mut *mut Self);
+        output
     }
 }
 

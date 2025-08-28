@@ -6,6 +6,8 @@ pub mod fn_window_icons;
 
 pub mod qobj_application;
 pub mod qobj_application_bridge;
+pub mod qobj_async_task;
+pub mod qobj_async_task_bridge;
 pub mod qobj_autoconnect;
 pub mod qobj_autoconnect_bridge;
 pub mod qobj_backend_wrapper;
@@ -22,14 +24,26 @@ pub mod qobj_file_io;
 pub mod qobj_file_io_bridge;
 pub mod qobj_find_parent_item;
 pub mod qobj_find_parent_item_bridge;
+pub mod qobj_fx_chain_backend;
+pub mod qobj_fx_chain_backend_bridge;
+pub mod qobj_fx_chain_gui;
+pub mod qobj_fx_chain_gui_bridge;
 pub mod qobj_global_utils;
 pub mod qobj_global_utils_bridge;
 pub mod qobj_loop_backend;
 pub mod qobj_loop_backend_bridge;
+pub mod qobj_loop_channel_backend;
+pub mod qobj_loop_channel_backend_bridge;
+pub mod qobj_loop_channel_gui;
+pub mod qobj_loop_channel_gui_bridge;
 pub mod qobj_loop_gui;
 pub mod qobj_loop_gui_bridge;
 pub mod qobj_os_utils;
 pub mod qobj_os_utils_bridge;
+pub mod qobj_port_backend;
+pub mod qobj_port_backend_bridge;
+pub mod qobj_port_gui;
+pub mod qobj_port_gui_bridge;
 pub mod qobj_qmlengine;
 pub mod qobj_qmlengine_bridge;
 pub mod qobj_release_focus_notifier;
@@ -41,10 +55,6 @@ pub mod qobj_schema_validator_bridge;
 pub mod qobj_update_thread;
 pub mod qobj_update_thread_bridge;
 
-pub mod qobj_signature_backend_wrapper;
-pub mod qobj_signature_port;
-
 pub mod type_external_port_descriptor;
-pub mod type_shoopqmlapplicationengine;
 
 pub mod test;

@@ -258,6 +258,7 @@ pub mod ffi {
 }
 
 use backend_bindings::LoopMode;
+use cxx_qt_lib_shoop::qweakpointer_qobject::QWeakPointer_QObject;
 pub use ffi::make_raw_composite_loop_backend;
 pub use ffi::CompositeLoopBackend;
 use ffi::*;
@@ -321,7 +322,7 @@ pub struct CompositeLoopBackendRust {
     pub frontend_loop: *mut QObject,
 
     // Others
-    pub schedule: CompositeLoopSchedule,
+    pub schedule: CompositeLoopSchedule<cxx::UniquePtr<QWeakPointer_QObject>>,
     pub last_handled_sync_cycle: Option<i32>,
 }
 

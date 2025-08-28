@@ -111,12 +111,12 @@ Item {
         ports.forEach((port) => port.queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to))
     }
 
-    function qml_close() {
-        root.logger.debug(`QML close ${root.name}`)
+    function unload() {
+        root.logger.debug(`Unload ${root.name}`)
         reg_entry.close()
-        ports.forEach(p => p.qml_close())
+        ports.forEach(p => p.unload())
         for(var i=0; i<loops.length; i++) {
-            loops[i].qml_close();
+            loops[i].unload();
         }
     }
 
@@ -528,7 +528,7 @@ Item {
 
                             ShoopMenuItem {
                                 text: "Connections..."
-                                onClicked: { connectionsdialog.open() }
+                                onClicked: { connections_window.visible = true }
                             }
 
                             ShoopMenuItem {
@@ -614,7 +614,7 @@ Item {
                             }
                         }
 
-                        onClicked: { if (root.maybe_fx_chain != undefined) { root.maybe_fx_chain.set_ui_visible(!root.maybe_fx_chain.ui_visible) } }
+                        onClicked: { if (root.maybe_fx_chain != undefined) { root.maybe_fx_chain.push_ui_visible(!root.maybe_fx_chain.ui_visible) } }
                     }
 
                 }
@@ -728,8 +728,8 @@ Item {
         }
     }
 
-    ConnectionsDialog {
-        id: connectionsdialog
+    ConnectionsWindow {
+        id: connections_window
         title: root.name + " Connections"
 
         audio_in_ports : root.audio_in_ports

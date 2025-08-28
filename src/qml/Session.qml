@@ -125,30 +125,18 @@ Item {
         id: validator
     }
 
-    readonly property bool saving : registries.state_registry.n_saving_actions_active > 0
-    readonly property bool loading : registries.state_registry.n_loading_actions_active > 0
-    readonly property bool doing_io : saving || loading
+    readonly property bool doing_io : registries.state_registry.io_active
     readonly property var backend : session_backend
     property alias control_interface: control_interface
 
     Popup {
-        visible: saving
+        visible: doing_io
         modal: true
         anchors.centerIn: parent
         parent: Overlay.overlay
         Text {
             color: Material.foreground
-            text: "Saving..."
-        }
-    }
-    Popup {
-        visible: loading
-        modal: true
-        anchors.centerIn: parent
-        parent: Overlay.overlay
-        Text {
-            color: Material.foreground
-            text: "Loading..."
+            text: "I/O active..."
         }
     }
 
@@ -187,53 +175,81 @@ Item {
         return null
     }
 
-    TasksFactory { id: tasks_factory }
+    Component {
+        id: task_observer_factory
+        TaskObserver {}
+    }
+
+    function create_task_observer() {
+        if (task_observer_factory.status == Component.Error) {
+            throw new Error("Session: Failed to load factory: " + task_observer_factory.errorString())
+        } else if (task_observer_factory.status != Component.Ready) {
+            throw new Error("Session: Factory not ready: " + task_observer_factory.status.toString())
+        } else {
+            return task_observer_factory.createObject(root, {})
+        }
+    }
 
     function save_session(filename) {
         root.logger.debug(`saving session to: ${filename}`)
-        registries.state_registry.reset_saving_loading()
-        registries.state_registry.save_action_started()
         var tempdir = ShoopFileIO.create_temporary_folder()
-        root.logger.trace(`Temporary folder: ${tempdir}`)
+        root.logger.trace(`Created temporary folder: ${tempdir}`)
         if (tempdir == null) {
             throw new Error("Failed to create temporary folder")
         }
-        var tasks = tasks_factory.create_tasks_obj(root)
         var session_filename = tempdir + '/session.json'
+        registries.state_registry.set_active_io_task_fn(() => {
+            registries.state_registry.set_force_io_active(true)
 
-        // TODO make this step asynchronous
-        var descriptor = actual_session_descriptor(true, tempdir, tasks)
-        if(!ShoopFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
-            throw new Error(`Failed to write session file ${session_filename}`)
-        }
+            var observer = create_task_observer()
 
-        tasks.when_finished(() => {
-            try {
-                // TODO make this step asynchronous
-                if (!ShoopFileIO.make_tarfile(filename, tempdir)) {
-                    throw new Error(`Failed to create tarfile ${filename}`)
+            observer.finished.connect((success) => {
+                if (success) {
+                    try {
+                        // TODO make this step asynchronous
+                        if (!ShoopFileIO.make_tarfile(filename, tempdir)) {
+                            throw new Error(`Failed to create tarfile ${filename}`)
+                        }
+                        root.logger.info("Session written to: " + filename)
+                    } finally {
+                        ShoopFileIO.delete_recursive(tempdir)
+                    }
+                } else {
+                    root.logger.error("Writing session failed.")
                 }
-                root.logger.info("Session written to: " + filename)
-            } finally {
-                registries.state_registry.save_action_finished()
-                ShoopFileIO.delete_recursive(tempdir)
-                tasks.parent = null
-                tasks.destroy(30)
+                registries.state_registry.set_force_io_active(false)
+            })
+
+            // TODO make this step asynchronous
+            var descriptor = actual_session_descriptor(true, tempdir, observer)
+            if(!ShoopFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
+                throw new Error(`Failed to write session file ${session_filename}`)
             }
+            observer.start()
+
+            return observer
         })
     }
 
-    function reload() {
-        root.logger.debug("Reloading session")
+    function unload_session() {
+        root.logger.debug("Unloading session")
         registries.state_registry.clear([
             'sync_active'
         ])
         registries.objects_registry.clear()
-        tracks_widget.reload()
-        sync_loop_loader.reload()
+        tracks_widget.unload()
+        sync_loop_loader.unload()
+        root.logger.debug("Session unloaded")
+    }
+
+    function load_current_session() {
+        root.logger.debug("Reloading session metadata")
+        tracks_widget.load()
+        sync_loop_loader.load()
     }
 
     function queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to) {
+        root.logger.debug(`Queue load tasks for main tracks`)
         tracks_widget.queue_load_tasks(data_files_directory, from_sample_rate, to_sample_rate, add_tasks_to)
         if (sync_loop_loader.track_widget) {
             root.logger.debug(`Queue load tasks for sync track`)
@@ -265,17 +281,21 @@ Item {
         }
     }
 
+    QtObject {
+        id: is_loaded_as_task_interface
+        property bool active: !root.loaded
+        property bool success: true
+    }
+
     function load_session(filename, ignore_resample_warning=false) {
         root.logger.debug(`loading session: ${filename}`)
-        registries.state_registry.reset_saving_loading()
-        registries.state_registry.load_action_started()
         var tempdir = ShoopFileIO.create_temporary_folder()
 
         try {
-            var tasks = tasks_factory.create_tasks_obj(root)
+            root.unload_session()
 
             ShoopFileIO.extract_tarfile(filename, tempdir)
-            root.logger.debug(`Extracted files: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`)
+            root.logger.debug(`Extracted files to ${tempdir}: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`)
 
             var session_filename = tempdir + '/session.json'
             var session_file_contents = ShoopFileIO.read_file(session_filename)
@@ -291,7 +311,6 @@ Item {
                 confirm_sample_rate_convert_dialog.session_filename = filename
                 confirm_sample_rate_convert_dialog.from = incoming_sample_rate
                 confirm_sample_rate_convert_dialog.to = our_sample_rate
-                registries.state_registry.load_action_finished()
                 confirm_sample_rate_convert_dialog.open()
                 return;
             }
@@ -301,23 +320,33 @@ Item {
             }
 
             root.initial_descriptor = descriptor
-            reload()
-            registries.state_registry.load_action_started()
+            root.load_current_session()
 
             let finish_fn = () => {
-                root.logger.debug("Queueing load tasks")
-                queue_load_tasks(tempdir, incoming_sample_rate, our_sample_rate, tasks)
+                registries.state_registry.set_active_io_task_fn(() => {
+                    var observer = create_task_observer()
 
-                tasks.when_finished(() => {
-                    try {
-                        ShoopFileIO.delete_recursive(tempdir)
-                    } finally {
-                        root.logger.info("Session loaded from: " + filename)
-                        registries.state_registry.load_action_finished()
-                        tasks.parent = null
-                        tasks.deleteLater()
-                    }
+                    root.logger.debug("Queueing load tasks")
+
+                    observer.finished.connect((success) => {
+                        if (success) {
+                            try {
+                                ShoopFileIO.delete_recursive(tempdir)
+                            } finally {
+                                root.logger.info("Session loaded from: " + filename)
+                            }
+                        } else {
+                            root.logger.error("Loading session failed")
+                        }
+
+                    })
+
+                    queue_load_tasks(tempdir, incoming_sample_rate, our_sample_rate, observer)
+
+                    observer.start()
+                    return observer
                 })
+                registries.state_registry.set_force_io_active(false)
             }
 
             function connectOnce(sig, slot) {
@@ -328,6 +357,7 @@ Item {
                 sig.connect(f)
             }
 
+            registries.state_registry.set_force_io_active(true)
             if(root.loaded) { finish_fn() }
             else {
                 connectOnce(root.loadedChanged, finish_fn)
@@ -485,14 +515,11 @@ Item {
 
             height: 40
 
-            loading_session: root.loading
-            saving_session: root.saving
-
             onLoadSession: (filename) => root.load_session(filename)
             onSaveSession: (filename) => root.save_session(filename)
             onProcessThreadSegfault: session_backend.segfault_on_process_thread()
             onProcessThreadAbort: session_backend.abort_on_process_thread()
-            onOpenConnections: connections_dialog.open()
+            onOpenConnections: connections_window.visible = true
         }
 
         Item {
@@ -532,9 +559,8 @@ Item {
 
             initial_track_descriptors: root.main_track_descriptors
 
-            ConnectionsDialog {
-                id: connections_dialog
-                title: "All Connections"
+            ConnectionsWindow {
+                id: connections_window
 
                 function flatten(arr) {
                     return arr.reduce((acc, current) => {
@@ -544,13 +570,13 @@ Item {
 
                 property var tracks: [sync_loop_loader.track_widget].concat(tracks_widget.tracks)
 
-                audio_in_ports : flatten(tracks.map(t => t.audio_in_ports))
-                audio_out_ports : flatten(tracks.map(t => t.audio_out_ports))
-                audio_send_ports: flatten(tracks.map(t => t.audio_send_ports))
-                audio_return_ports: flatten(tracks.map(t => t.audio_return_ports))
-                midi_in_ports : flatten(tracks.map(t => t.midi_in_ports))
-                midi_out_ports : flatten(tracks.map(t => t.midi_out_ports))
-                midi_send_ports: flatten(tracks.map(t => t.midi_send_ports))
+                audio_in_ports : flatten(tracks ? tracks.map(t => t ? t.audio_in_ports : []) : [])
+                audio_out_ports : flatten(tracks ? tracks.map(t => t ? t.audio_out_ports : []) : [])
+                audio_send_ports: flatten(tracks ? tracks.map(t => t ? t.audio_send_ports : []) : [])
+                audio_return_ports: flatten(tracks ? tracks.map(t => t ? t.audio_return_ports : []) : [])
+                midi_in_ports : flatten(tracks ? tracks.map(t => t ? t.midi_in_ports : []) : [])
+                midi_out_ports : flatten(tracks ? tracks.map(t => t ? t.midi_out_ports : []) : [])
+                midi_send_ports: flatten(tracks ? tracks.map(t => t ? t.midi_send_ports : []) : [])
             }
         }
 
@@ -656,18 +682,25 @@ Item {
                 property bool loaded: false
                 property var initial_descriptor : null
 
-                function initialize() {
-                    if (track_widget) {
-                        track_widget.qml_close()
-                    }
-                    active = false
-                    loaded = false
-                    initial_descriptor = root.sync_loop_track_descriptor
-                    active = Qt.binding(() => initial_descriptor != null)
+                Component.onCompleted: { 
+                    unload()
+                    load()
                 }
 
-                Component.onCompleted: { initialize() }
-                function reload() { initialize() }
+                function load() {
+                    root.logger.debug("sync loop: loading session")
+                    initial_descriptor = root.sync_loop_track_descriptor
+                    active = Qt.binding(() => {
+                        return initial_descriptor != null
+                    })
+                }
+
+                function unload() {
+                    root.logger.debug("sync loop: unloading session")
+                    active = false
+                    loaded = false
+                    initial_descriptor = null
+                }
 
                 property var track_widget: item ?
                     item.track_widget : undefined
@@ -748,7 +781,7 @@ Item {
 
                     height: 60
                     width: height / sourceSize.height * sourceSize.width
-                    source: "file:///" + file_io.get_resource_directory().replace("/\\/g", "/") + '/logo-small.png'
+                    source: "file:///" + global_args.resource_dir.replace("/\\/g", "/") + '/logo-small.png'
                     smooth: true
                 }
 

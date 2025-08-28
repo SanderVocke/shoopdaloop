@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import QtTest 1.0
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -180,7 +179,8 @@ ShoopTestFile {
                         }
 
                         // Insert the marker
-                        audio_in().dummy_queue_data([0.51])
+                        audio_in().dummy_queue_audio_data([0.51])
+                        testcase.wait_updated(session.backend)
                         session.backend.dummy_request_controlled_frames(1)
                         session.backend.dummy_run_requested_frames()
                         sent += 1
@@ -1451,8 +1451,8 @@ ShoopTestFile {
 
                     let c1 = l0().get_audio_channels()[0]
                     let c2 = l1().get_audio_channels()[0]
-                    let l1_data = c1.get_data_list().slice(c1.start_offset, c1.start_offset+100)
-                    let l2_data = c2.get_data_list().slice(c2.start_offset, c2.start_offset+100)
+                    let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+100)
+                    let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
                     verify_markers_at(l1_data, [50, 51])
                     verify_markers_at(l2_data, [80, 99])
                 },
@@ -1506,8 +1506,8 @@ ShoopTestFile {
 
                     let c1 = l0().get_audio_channels()[0]
                     let c2 = l1().get_audio_channels()[0]
-                    let l1_data = c1.get_data_list().slice(c1.start_offset, c1.start_offset+200)
-                    let l2_data = c2.get_data_list().slice(c2.start_offset, c2.start_offset+100)
+                    let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+200)
+                    let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
                     verify_markers_at(l1_data, [55, 150, 151])
                     verify_markers_at(l2_data, [80, 99])
                 },
@@ -1561,8 +1561,8 @@ ShoopTestFile {
 
                     let c1 = l0().get_audio_channels()[0]
                     let c2 = l1().get_audio_channels()[0]
-                    let l1_data = c1.get_data_list().slice(c1.start_offset, c1.start_offset+100)
-                    let l2_data = c2.get_data_list().slice(c2.start_offset, c2.start_offset+100)
+                    let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+100)
+                    let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
                     verify_markers_at(l1_data, [50, 51])
                     verify_markers_at(l2_data, [80, 99])
                 },
@@ -1622,8 +1622,8 @@ ShoopTestFile {
                     {
                         let c1 = l0().get_audio_channels()[0]
                         let c2 = l1().get_audio_channels()[0]
-                        let l1_data = c1.get_data_list().slice(c1.start_offset, c1.start_offset+100)
-                        let l2_data = c2.get_data_list().slice(c2.start_offset, c2.start_offset+100)
+                        let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+100)
+                        let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
                         verify_markers_at(l1_data, [80, 99])
                         verify_markers_at(l2_data, [2])
                         verify_eq(l1().mode, ShoopConstants.LoopMode.Recording)
@@ -1647,8 +1647,8 @@ ShoopTestFile {
                     {
                         let c1 = l0().get_audio_channels()[0]
                         let c2 = l1().get_audio_channels()[0]
-                        let l1_data = c1.get_data_list().slice(c1.start_offset, c1.start_offset+100)
-                        let l2_data = c2.get_data_list().slice(c2.start_offset, c2.start_offset+100)
+                        let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+100)
+                        let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
                         verify_markers_at(l1_data, [80, 99])
                         verify_markers_at(l2_data, [2, 50])
                     }
@@ -1704,8 +1704,8 @@ ShoopTestFile {
                     {
                         let c1 = l0().get_audio_channels()[0]
                         let c2 = l1().get_audio_channels()[0]
-                        let l1_data = c1.get_data_list().slice(c1.start_offset, c1.start_offset+100)
-                        let l2_data = c2.get_data_list().slice(c2.start_offset, c2.start_offset+100)
+                        let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+100)
+                        let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
                         verify_markers_at(l1_data, [80, 99])
                         verify_markers_at(l2_data, [2])
                     }
@@ -1725,8 +1725,8 @@ ShoopTestFile {
                     {
                         let c1 = l0().get_audio_channels()[0]
                         let c2 = l1().get_audio_channels()[0]
-                        let l1_data = c1.get_data_list().slice(c1.start_offset, c1.start_offset+100)
-                        let l2_data = c2.get_data_list().slice(c2.start_offset, c2.start_offset+100)
+                        let l1_data = c1.get_data().slice(c1.start_offset, c1.start_offset+100)
+                        let l2_data = c2.get_data().slice(c2.start_offset, c2.start_offset+100)
                         verify_markers_at(l1_data, [80, 99])
                         verify_markers_at(l2_data, [2, 50])
                     }

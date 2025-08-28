@@ -125,7 +125,7 @@ ShoopApplicationWindow {
                     active: object.object_schema.match(/audioport.[0-9]/)
                     sourceComponent: ItemRow {
                         label: "gain:"
-                        Label { text: object.gain.toString() }
+                        Label { text: object.audio_gain.toString() }
                     }
                 }
 
@@ -241,7 +241,7 @@ ShoopApplicationWindow {
                     active: object.descriptor.type == "audio"
                     sourceComponent: ItemRow {
                         label: "gain:"
-                        Label { text: object.gain.toString() }
+                        Label { text: object.audio_gain.toString() }
                     }
                 }
 

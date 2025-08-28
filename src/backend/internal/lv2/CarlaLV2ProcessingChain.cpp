@@ -283,7 +283,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             m_audio_in_lilv_ports.push_back(p);
             m_audio_in_port_indices.push_back(lilv_port_get_index(m_plugin, p));
             auto internal = shoop_make_shared<_InternalAudioPort>(
-                sym, m_internal_buffers_size, nullptr);
+                sym, m_internal_buffers_size, ShoopPortConnectability_Internal, 0, nullptr);
             m_input_audio_ports.push_back(internal);
         }
         for (auto const &sym : audio_out_port_symbols) {
@@ -299,7 +299,7 @@ CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
             // This port gets a buffer pool to create a ringbuffer, because other downstream
             // channels may want to grab it
             auto internal = shoop_make_shared<_InternalAudioPort>(
-                sym, m_internal_buffers_size, maybe_buffer_pool);
+                sym, m_internal_buffers_size, 0, ShoopPortConnectability_Internal, maybe_buffer_pool);
             m_output_audio_ports.push_back(internal);
         }
         for (auto const &sym : midi_in_port_symbols) {

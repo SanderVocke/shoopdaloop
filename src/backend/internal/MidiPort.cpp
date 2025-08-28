@@ -18,7 +18,12 @@ MidiWriteableBufferInterface *MidiPort::PROC_maybe_get_send_out_buffer (uint32_t
 
 PortDataType MidiPort::type() const { return PortDataType::Midi; }
 
-void MidiPort::set_muted(bool muted) { ma_muted = muted; }
+void MidiPort::set_muted(bool muted) { 
+    if (muted != ma_muted.load()) {
+        log<log_level_debug>("muted -> {}", muted);
+    }
+    ma_muted = muted;
+}
 
 bool MidiPort::get_muted() const { return ma_muted; }
 

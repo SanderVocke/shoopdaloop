@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import QtTest 1.0
 
 import './testDeepEqual.js' as TestDeepEqual
 import ShoopConstants
@@ -132,15 +131,16 @@ ShoopTestFile {
                     tut_control().mute = false
                     testcase.wait_updated(session.backend)
 
-                    audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
+                    audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = audio_output_port_1.dummy_dequeue_data(4)
-                    let out2 = audio_output_port_2.dummy_dequeue_data(4)
+                    let out1 = audio_output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = audio_output_port_2.dummy_dequeue_audio_data(4)
 
                     verify_eq(out1.map(o => Math.round(o)), [1, 2, 3, 4])
                     verify_eq(out2.map(o => Math.round(o)), [4, 3, 2, 1])
@@ -168,7 +168,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(msgs)
+                    midi_input_port.dummy_queue_midi_msgs(msgs)
                     midi_output_port.dummy_request_data(8)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
@@ -176,7 +176,7 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -192,15 +192,16 @@ ShoopTestFile {
                     tut_control().input_gain_dB = 6.0
                     testcase.wait_updated(session.backend)
 
-                    audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
+                    audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = audio_output_port_1.dummy_dequeue_data(4)
-                    let out2 = audio_output_port_2.dummy_dequeue_data(4)
+                    let out1 = audio_output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = audio_output_port_2.dummy_dequeue_audio_data(4)
 
                     verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
                     verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
@@ -215,15 +216,16 @@ ShoopTestFile {
                     tut_control().gain_dB = 6.0
                     testcase.wait_updated(session.backend)
 
-                    audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
+                    audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = audio_output_port_1.dummy_dequeue_data(4)
-                    let out2 = audio_output_port_2.dummy_dequeue_data(4)
+                    let out1 = audio_output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = audio_output_port_2.dummy_dequeue_audio_data(4)
 
                     verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
                     verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
@@ -239,15 +241,16 @@ ShoopTestFile {
                     tut_control().gain_dB = 6.0
                     testcase.wait_updated(session.backend)
 
-                    audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
+                    audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = audio_output_port_1.dummy_dequeue_data(4)
-                    let out2 = audio_output_port_2.dummy_dequeue_data(4)
+                    let out1 = audio_output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = audio_output_port_2.dummy_dequeue_audio_data(4)
 
                     verify_eq(out1.map(o => Math.round(o)), [2, 4, 6, 8])
                     verify_eq(out2.map(o => Math.round(o)), [0, 0, 0, 0])
@@ -263,15 +266,16 @@ ShoopTestFile {
                     tut_control().gain_dB = 6.0
                     testcase.wait_updated(session.backend)
 
-                    audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
+                    audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = audio_output_port_1.dummy_dequeue_data(4)
-                    let out2 = audio_output_port_2.dummy_dequeue_data(4)
+                    let out1 = audio_output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = audio_output_port_2.dummy_dequeue_audio_data(4)
 
                     verify_eq(out1.map(o => Math.round(o)), [0, 0, 0, 0])
                     verify_eq(out2.map(o => Math.round(o)), [8, 6, 4, 2])
@@ -285,15 +289,16 @@ ShoopTestFile {
                     tut_control().mute = false
                     testcase.wait_updated(session.backend)
 
-                    audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
+                    audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = audio_output_port_1.dummy_dequeue_data(4)
-                    let out2 = audio_output_port_2.dummy_dequeue_data(4)
+                    let out1 = audio_output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = audio_output_port_2.dummy_dequeue_audio_data(4)
 
                     verify_eq(out1, [0, 0, 0, 0])
                     verify_eq(out2, [0, 0, 0, 0])
@@ -316,17 +321,17 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(msgs)
+                    midi_input_port.dummy_queue_midi_msgs(msgs)
                     midi_output_port.dummy_request_data(8)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out2 = midi_output_port.dummy_dequeue_data()
+                    let out2 = midi_output_port.dummy_dequeue_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
@@ -342,15 +347,16 @@ ShoopTestFile {
                     tut_control().mute = true
                     testcase.wait_updated(session.backend)
 
-                    audio_input_port_1.dummy_queue_data([1, 2, 3, 4])
-                    audio_input_port_2.dummy_queue_data([4, 3, 2, 1])
+                    audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
+                    audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
+                    testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out1 = audio_output_port_1.dummy_dequeue_data(4)
-                    let out2 = audio_output_port_2.dummy_dequeue_data(4)
+                    let out1 = audio_output_port_1.dummy_dequeue_audio_data(4)
+                    let out2 = audio_output_port_2.dummy_dequeue_audio_data(4)
 
                     verify_eq(out1, [0, 0, 0, 0])
                     verify_eq(out2, [0, 0, 0, 0])
@@ -373,7 +379,7 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
-                    midi_input_port.dummy_queue_msgs(msgs)
+                    midi_input_port.dummy_queue_midi_msgs(msgs)
                     midi_output_port.dummy_request_data(8)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
@@ -381,7 +387,7 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
-                    let out = midi_output_port.dummy_dequeue_data()
+                    let out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()

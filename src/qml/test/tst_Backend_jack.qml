@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import QtTest 1.0
 
 import ShoopConstants
 import './testfilename.js' as TestFilename

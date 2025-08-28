@@ -92,6 +92,7 @@
 */libshiboken6*.so*
 */libshoopdaloop_backend.so*
 */libSM*.so*
+*/libsndfile*.so*
 */libsord*.so*
 */libsqlite3*
 */libsratom*.so*
@@ -114,3 +115,10 @@
 */libzita-resampler.so*
 */libzix*.so*
 */libzstd.so*
+*/libvorbisenc.so*
+*/libFLAC.so*
+*/libopus.so*
+*/libmpg123.so*
+*/libmp3lame.so*
+*/libvorbis.so*
+*/libogg.so*

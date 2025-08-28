@@ -6,40 +6,59 @@ Registry {
 
     property PythonLogger my_logger : PythonLogger { name: "Frontend.Qml.StateRegistry" }
 
-    function save_action_started() {
-        my_logger.debug("Save action started")
-        mutate('n_saving_actions_active', (n) => { return n + 1 })
-    }
-    function save_action_finished() {
-        my_logger.debug("Save action finished")
-        mutate('n_saving_actions_active', (n) => { return n - 1 })
-    }
-    function load_action_started() {
-        my_logger.debug("Load action started")
-        mutate('n_loading_actions_active', (n) => { return n + 1 })
-    }
-    function load_action_finished() {
-        my_logger.debug("Load action finished")
-        mutate('n_loading_actions_active', (n) => { return n - 1 })
+    function update_active_io() {
+        if (root.active_io_task && !root.active_io_task.active) {
+            my_logger.debug("IO task finished")
+            replace('active_io_task', null)
         }
-    function reset_saving_loading() {
-        my_logger.debug("Resetting saving and loading actions")
-        replace('n_loading_actions_active', 0)
-        replace('n_saving_actions_active', 0)
+    }
+    function set_active_io_task_fn(create_task_fn) {
+        if (root.active_io_task) {
+            my_logger.error("Already have an I/O task active.")
+            return null
+        }
+        var task = create_task_fn()
+        my_logger.debug(`Setting active IO task: ${task}. Active: ${task.active}`)
+        if (task.active) {
+            replace('active_io_task', task)
+        } else {
+            my_logger.debug("IO task was already finished")
+            replace('active_io_task', null)
+        }
+        update_active_io()
+        return task;
+    }
+    function reset_active_io() {
+        my_logger.debug("Resetting IO task status")
+        replace('active_io_task', null)
     }
 
     RegistryLookup {
-        id: lookup_saving
+        id: lookup_force_io_active
         registry: root
-        key: 'n_saving_actions_active'
+        key: 'force_io_active'
     }
+    readonly property bool force_io_active : lookup_force_io_active.object != null ? lookup_force_io_active.object : false
+    function set_force_io_active(active) {
+        my_logger.debug(`Force IO busy active: ${active}`)
+        replace('force_io_active', active)
+    }
+
+    readonly property bool io_active: force_io_active || active_io_task
+    onIo_activeChanged: my_logger.debug(`io_active -> ${io_active}`)
+
     RegistryLookup {
-        id: lookup_loading
+        id: lookup_active_io_task
         registry: root
-        key: 'n_loading_actions_active'
+        key: 'active_io_task'
     }
-    property alias n_saving_actions_active : lookup_saving.object
-    property alias n_loading_actions_active : lookup_loading.object
+    property alias active_io_task : lookup_active_io_task.object
+    Connections {
+        target: root.active_io_task
+        function onActiveChanged() {
+            root.update_active_io()
+        }
+    }
 
     RegistryLookup {
         id: lookup_sync_loop
@@ -130,12 +149,10 @@ Registry {
     }
     function untarget_loop() { set_targeted_loop(null) }
     onTargeted_loopChanged: my_logger.debug(`Targeted loop: ${targeted_loop}`)
-
-    onN_saving_actions_activeChanged: my_logger.debug('N saving actions active: ' + n_saving_actions_active)
-    onN_loading_actions_activeChanged: my_logger.debug('N loading actions active: ' + n_loading_actions_active)
+    onActive_io_taskChanged: my_logger.debug('active IO task: ' + active_io_task)
 
     function reset() {
-        reset_saving_loading()
+        reset_active_io()
         set_details_open(false)
         set_apply_n_cycles(0)
         set_sync_active(true)
