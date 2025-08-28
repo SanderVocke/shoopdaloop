@@ -73,6 +73,10 @@ impl GlobalQmlSettings {
             QString::from("schemas_dir"),
             QVariant::from(&QString::from(&self.schemas_dir)),
         )))
+        .chain(iter::once((
+            QString::from("version_string"),
+            QVariant::from(&QString::from(&self.version_string)),
+        )))
     }
 
     pub fn as_qvariantmap(self: &Self) -> QMap<QMapPair_QString_QVariant> {
