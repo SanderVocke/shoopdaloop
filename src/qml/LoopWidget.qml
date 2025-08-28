@@ -931,11 +931,11 @@ Item {
                         muted: false
                         empty: !statusrect.loop || statusrect.loop.length == 0
                         onDoubleClicked: (event) => {
-                                if (!key_modifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
+                                if (!ShoopKeyModifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
                             }
                         onClicked: (event) => {
                             if (event.button === Qt.LeftButton) {
-                                if (key_modifiers.alt_pressed) {
+                                if (ShoopKeyModifiers.alt_pressed) {
                                     if (root.selected_loops.size == 1) {
                                         let selected = Array.from(root.selected_loops)[0]
                                         if (selected != root) {
@@ -943,7 +943,7 @@ Item {
                                             if (selected.maybe_composite_loop) {
                                                 // Add the selected loop to the currently selected composite loop.
                                                 // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
-                                                if (key_modifiers.control_pressed) {
+                                                if (ShoopKeyModifiers.control_pressed) {
                                                     selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, undefined)
                                                 } else {
                                                     selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, 0)
@@ -952,7 +952,7 @@ Item {
                                         }
                                     }
                                 } else if (root.targeted) { root.untarget(); root.deselect() }
-                                else { root.toggle_selected(!key_modifiers.control_pressed) }
+                                else { root.toggle_selected(!ShoopKeyModifiers.control_pressed) }
                             }
                             else if (event.button === Qt.RightButton) { context_menu_loader.popup() }
                         }

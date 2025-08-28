@@ -17,6 +17,7 @@ cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
 shoop_py_backend = { path = "../shoop_py_backend"}
 midi_processing = { path = "../midi_processing" }
 
+directories = { workspace = true }
 cxx = { workspace = true }
 tempfile = { workspace = true }
 tar = { workspace = true }

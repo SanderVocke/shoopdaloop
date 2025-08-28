@@ -1,4 +1,4 @@
-use cxx_qt_lib;
+use cxx_qt_lib::{self, QVariant};
 use cxx_qt_lib_shoop::qmetatype_helpers::*;
 use cxx_qt_lib_shoop::qvariant_helpers::{qvariant_type_id, qvariant_type_name};
 use pyo3::exceptions::PyException;
@@ -27,7 +27,7 @@ pub fn qvariantmap_to_python<'py>(
 
 pub fn qvariantlist_to_python<'py>(
     py: Python<'py>,
-    value: &cxx_qt_lib::QList<cxx_qt_lib::QVariant>,
+    value: &cxx_qt_lib::QList<QVariant>,
 ) -> PyResult<Bound<'py, PyList>> {
     let mut vec: Vec<Bound<'py, PyAny>> = Vec::new();
     value
@@ -70,11 +70,39 @@ pub fn qvariant_to_python<'py>(
     }
 
     let type_id = qvariant_type_id(value).unwrap();
+    let type_name = qvariant_type_name(value).unwrap();
 
     match type_id {
         _v if _v == qmetatype_id_int() => {
             return Ok(value
+                .value::<i32>()
+                .unwrap()
+                .into_pyobject(py)
+                .unwrap()
+                .as_any()
+                .to_owned());
+        }
+        _v if _v == qmetatype_id_int64() || type_name == "qlonglong" => {
+            return Ok(value
                 .value::<i64>()
+                .unwrap()
+                .into_pyobject(py)
+                .unwrap()
+                .as_any()
+                .to_owned());
+        }
+        _v if _v == qmetatype_id_uint() => {
+            return Ok(value
+                .value::<u32>()
+                .unwrap()
+                .into_pyobject(py)
+                .unwrap()
+                .as_any()
+                .to_owned());
+        }
+        _v if _v == qmetatype_id_uint64() => {
+            return Ok(value
+                .value::<u64>()
                 .unwrap()
                 .into_pyobject(py)
                 .unwrap()
