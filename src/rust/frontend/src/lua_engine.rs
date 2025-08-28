@@ -7,6 +7,7 @@ shoop_log_unit!("Frontend.LuaEngine");
 pub struct LuaEngine {
     lua: mlua::Lua,
     preloaded_libs: HashMap<String, String>,
+    run_sandboxed: Option<mlua::Function>,
 }
 
 impl Default for LuaEngine {
@@ -14,6 +15,7 @@ impl Default for LuaEngine {
         Self {
             lua: mlua::Lua::new(),
             preloaded_libs: HashMap::new(),
+            run_sandboxed: None,
         }
     }
 }
@@ -96,16 +98,30 @@ impl LuaEngine {
         todo!();
     }
 
-    pub fn execute_builtin_script(&mut self, script_subpath : &str, sandboxed: bool) -> Result<(), anyhow::Error> {
+    pub fn execute_builtin_script(
+        &mut self,
+        script_subpath: &str,
+        sandboxed: bool,
+    ) -> Result<(), anyhow::Error> {
         todo!();
     }
 
     pub fn prepare_sandbox(&mut self) -> Result<(), anyhow::Error> {
         self.execute_builtin_script("system/sandbox.lua", false)?;
+        let globals = self.lua.globals();
+        self.run_sandboxed = Some(
+            globals
+                .get("__shoop_run_sandboxed")
+                .map_err(|e| anyhow::anyhow!("failed to get __shoop_run_sandboxed: {e}"))?,
+        );
         todo!();
     }
 
-    pub fn initialize(&mut self, builtin_lib_dir: &Path, builtin_script_dir: &Path) -> Result<(), anyhow::Error> {
+    pub fn initialize(
+        &mut self,
+        builtin_lib_dir: &Path,
+        builtin_script_dir: &Path,
+    ) -> Result<(), anyhow::Error> {
         debug!("Initializing engine");
         self.register_print_functions()?;
         self.preload_libs(builtin_lib_dir)?;
