@@ -19,6 +19,7 @@ ApplicationWindow {
         let icon_dir = `${resource_dir}/iconset/icon_128x128.png`;
         ShoopGlobalUtils.set_window_icon_path(root, icon_dir)
         screen_grabber.add_window(root)
+        ShoopKeyModifiers.install()
     }
     Component.onDestruction: {
         screen_grabber.remove_window(root)

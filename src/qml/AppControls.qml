@@ -378,7 +378,7 @@ Item {
             width: 30
             onClicked: state = !state
 
-            property bool inverted : key_modifiers.alt_pressed
+            property bool inverted : ShoopKeyModifiers.alt_pressed
             property bool state : true
             property bool play_after_record_active : inverted ? !state : state
 
@@ -420,7 +420,7 @@ Item {
             width: 30
             onClicked: state = !state
 
-            property bool inverted : key_modifiers.control_pressed
+            property bool inverted : ShoopKeyModifiers.control_pressed
             property bool state : true
             property bool sync_active : inverted ? !state : state
 
@@ -444,7 +444,7 @@ Item {
             width: 30
             onClicked: state = !state
 
-            property bool inverted : key_modifiers.shift_pressed
+            property bool inverted : ShoopKeyModifiers.shift_pressed
             property bool state : false
             property bool solo_active : inverted ? !state : state
 

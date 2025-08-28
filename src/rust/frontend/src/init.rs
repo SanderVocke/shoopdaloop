@@ -13,6 +13,7 @@ fn register_qml_types_and_singletons() {
     qobj_crash_handling::register_qml_singleton(&mdl, "ShoopCrashHandling");
     qobj_schema_validator::register_qml_singleton(&mdl, "ShoopSchemaValidator");
     qobj_global_utils::register_qml_singleton(&mdl, "ShoopGlobalUtils");
+    qobj_key_modifiers::register_qml_singleton(&mdl, "ShoopKeyModifiers");
 
     // Types
     qobj_dummy_process_helper::register_qml_type(&mdl, "ShoopDummyProcessHelper");
