@@ -114,7 +114,6 @@ impl LuaEngine {
                 .get("__shoop_run_sandboxed")
                 .map_err(|e| anyhow::anyhow!("failed to get __shoop_run_sandboxed: {e}"))?,
         );
-        todo!();
     }
 
     pub fn initialize(
@@ -125,6 +124,11 @@ impl LuaEngine {
         debug!("Initializing engine");
         self.register_print_functions()?;
         self.preload_libs(builtin_lib_dir)?;
+
+        self.lua.load("package.path = package.path .. \";\" .. __shoop_builtin_libs_path")
+            .set_name("extend package path")
+            .exec()?;
+
 
         todo!();
     }
