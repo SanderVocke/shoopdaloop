@@ -54,6 +54,10 @@
       "name": "zita-resampler"
     },
     {
+      "name": "lua",
+      "version>=": "5.4.8"
+    },
+    {
       "name": "qtgraphs",
       "version>=": "6.8.3"
     },
