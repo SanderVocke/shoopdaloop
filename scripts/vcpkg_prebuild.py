@@ -299,6 +299,9 @@ def generate_env(args, env, is_debug):
     for key, value in qmake_env.items():
         print(f"using extra qmake env: {qmake_env}")
         build_env[key] = value
+
+    # Find Lua
+    build_env["LUA_LIB_NAME"] = "lua"
     
     return build_env
     

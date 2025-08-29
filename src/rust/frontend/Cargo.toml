@@ -36,6 +36,7 @@ serde = { workspace = true }
 sndfile = { workspace = true }
 json = { workspace = true }
 midly = { workspace = true }
+mlua = { workspace = true }
 
 [build-dependencies]
 macros = { path = "../macros" }
