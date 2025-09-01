@@ -57,4 +57,7 @@ pub mod midi_io;
 pub mod lua_engine;
 
 #[cfg(not(feature = "prebuild"))]
-pub mod lua_engine_callbacks;
+pub mod lua_callback;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod lua_qobject_callback;

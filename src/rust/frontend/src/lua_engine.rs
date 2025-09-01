@@ -6,7 +6,15 @@ use std::{
 
 use common::logging::macros::*;
 use mlua;
+
+use crate::lua_callback::LuaCallback;
 shoop_log_unit!("Frontend.LuaEngine");
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum LuaScope {
+    Sandboxed,
+    Global,
+}
 
 pub struct LuaEngineImpl {
     weak_self: Weak<RefCell<LuaEngineImpl>>,
@@ -260,23 +268,91 @@ impl LuaEngineImpl {
         self.register_print_functions()?;
         self.prepare_sandbox()?;
 
-        // let lua = self.lua.borrow();
+        Ok(())
+    }
 
-        // let globals = lua.globals();
-        // globals
-        //     .set(
-        //         "__shoop_builtin_libs_path",
-        //         format!(
-        //             "{}/?.lua",
-        //             builtin_lib_dir.to_str().unwrap().replace("\\", "\\\\")
-        //         ),
-        //     )
-        //     .map_err(|e| anyhow::anyhow!("Could not set libs path: {e}"))?;
-        // lua.load("package.path = package.path .. \";\" .. __shoop_builtin_libs_path")
-        //     .set_name("extend package path")
-        //     .exec()
-        //     .map_err(|e| anyhow::anyhow!("Could not extend package path: {e}"))?;
+    fn create_callback_fn(
+        &mut self,
+        name: &str,
+        callback: &Rc<Box<dyn LuaCallback>>,
+    ) -> Result<mlua::Function, anyhow::Error> {
+        let weak = Rc::downgrade(callback);
+        let name = name.to_string();
+        let weak_self = self.weak_self.clone();
+        self.lua
+            .create_function(
+                move |_, (multi,): (mlua::MultiValue,)| -> Result<mlua::Value, mlua::Error> {
+                    match || -> Result<mlua::Value, anyhow::Error> {
+                        let strong_cb = weak
+                            .upgrade()
+                            .ok_or(anyhow::anyhow!("callback went out of scope"))?;
+                        let strong_self = weak_self
+                            .upgrade()
+                            .ok_or(anyhow::anyhow!("lua went out of scope"))?;
+                        let strong_self = strong_self.borrow();
+                        strong_cb.call(&strong_self.lua, multi)
+                    }() {
+                        Ok(result) => Ok(result),
+                        Err(e) => {
+                            error!("Could not call callback '{}': {e}", name);
+                            Ok(mlua::Value::default())
+                        }
+                    }
+                },
+            )
+            .map_err(|e| anyhow::anyhow!("Could not create callback function: {e}"))
+    }
 
+    pub fn register_callback(
+        &mut self,
+        name: &str,
+        scope: LuaScope,
+        callback: &Rc<Box<dyn LuaCallback>>,
+    ) -> Result<(), anyhow::Error> {
+        let call = self.create_callback_fn(name, callback)?;
+        match scope {
+            LuaScope::Global => {
+                self.lua
+                    .globals()
+                    .set(name, call)
+                    .map_err(|e| anyhow::anyhow!("Unable to set global callback: {e}"))?;
+            }
+            LuaScope::Sandboxed => {
+                self.set_toplevel(name, call)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn register_callbacks_module<'a>(
+        &mut self,
+        name: &str,
+        scope: LuaScope,
+        callbacks: impl Iterator<Item = (&'a str, &'a Rc<Box<dyn LuaCallback>>)>,
+    ) -> Result<(), anyhow::Error> {
+        let module = self
+            .lua
+            .create_table()
+            .map_err(|e| anyhow::anyhow!("Could not create table: {e}"))?;
+
+        for (name, callback) in callbacks {
+            let callback = self.create_callback_fn(name, callback)?;
+            module
+                .set(name, callback)
+                .map_err(|e| anyhow::anyhow!("Could not set module callback {name}: {e}"))?;
+        }
+
+        match scope {
+            LuaScope::Global => {
+                self.lua
+                    .globals()
+                    .set(name, module)
+                    .map_err(|e| anyhow::anyhow!("Unable to set global callback: {e}"))?;
+            }
+            LuaScope::Sandboxed => {
+                self.set_toplevel(name, module)?;
+            }
+        }
         Ok(())
     }
 }
@@ -333,6 +409,28 @@ impl LuaEngine {
         self.lua
             .borrow_mut()
             .initialize(get_builtin_script_fn, builtin_libs)
+    }
+
+    pub fn register_callback(
+        &mut self,
+        name: &str,
+        scope: LuaScope,
+        callback: &Rc<Box<dyn LuaCallback>>,
+    ) -> Result<(), anyhow::Error> {
+        self.lua
+            .borrow_mut()
+            .register_callback(name, scope, callback)
+    }
+
+    pub fn register_callbacks_module<'a>(
+        &mut self,
+        name: &str,
+        scope: LuaScope,
+        callbacks: impl Iterator<Item = (&'a str, &'a Rc<Box<dyn LuaCallback>>)>,
+    ) -> Result<(), anyhow::Error> {
+        self.lua
+            .borrow_mut()
+            .register_callbacks_module(name, scope, callbacks)
     }
 }
 
@@ -411,6 +509,196 @@ return test_hello_world()
             eng.evaluate::<String>("return test_hello_world()", None, true)
                 .unwrap(),
             "hello world"
+        );
+    }
+
+    #[test]
+    fn test_callback_sandboxed() {
+        struct TestCallback {}
+        impl LuaCallback for TestCallback {
+            fn call(
+                &self,
+                _: &mlua::Lua,
+                args: mlua::MultiValue,
+            ) -> Result<mlua::Value, anyhow::Error> {
+                if args.len() != 2 {
+                    return Err(anyhow::anyhow!("Incorrect amount of args"));
+                }
+                let a = args.front().unwrap().as_i64().unwrap();
+                let b = args.back().unwrap().as_i64().unwrap();
+                Ok(mlua::Value::Integer(a + b))
+            }
+        }
+
+        let cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(TestCallback {}));
+
+        let mut eng = LuaEngine::default();
+        eng.initialize(testing_builtins, HashMap::default())
+            .unwrap();
+        eng.register_callback("my_test_add", LuaScope::Sandboxed, &cb)
+            .unwrap();
+
+        assert_eq!(
+            eng.evaluate::<i64>("return my_test_add(1, 2)", None, true)
+                .unwrap(),
+            3
+        );
+    }
+
+    #[test]
+    fn test_callback_unsandboxed() {
+        struct TestCallback {}
+        impl LuaCallback for TestCallback {
+            fn call(
+                &self,
+                _: &mlua::Lua,
+                args: mlua::MultiValue,
+            ) -> Result<mlua::Value, anyhow::Error> {
+                if args.len() != 2 {
+                    return Err(anyhow::anyhow!("Incorrect amount of args"));
+                }
+                let a = args.front().unwrap().as_i64().unwrap();
+                let b = args.back().unwrap().as_i64().unwrap();
+                Ok(mlua::Value::Integer(a + b))
+            }
+        }
+
+        let cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(TestCallback {}));
+
+        let mut eng = LuaEngine::default();
+        eng.initialize(testing_builtins, HashMap::default())
+            .unwrap();
+        eng.register_callback("my_test_add", LuaScope::Global, &cb)
+            .unwrap();
+
+        assert_eq!(
+            eng.evaluate::<i64>("return my_test_add(1, 2)", None, false)
+                .unwrap(),
+            3
+        );
+    }
+
+    #[test]
+    fn test_callbacks_module_sandboxed() {
+        struct TestAddCallback {}
+        impl LuaCallback for TestAddCallback {
+            fn call(
+                &self,
+                _: &mlua::Lua,
+                args: mlua::MultiValue,
+            ) -> Result<mlua::Value, anyhow::Error> {
+                if args.len() != 2 {
+                    return Err(anyhow::anyhow!("Incorrect amount of args"));
+                }
+                let a = args.front().unwrap().as_i64().unwrap();
+                let b = args.back().unwrap().as_i64().unwrap();
+                Ok(mlua::Value::Integer(a + b))
+            }
+        }
+        struct TestSubtractCallback {}
+        impl LuaCallback for TestSubtractCallback {
+            fn call(
+                &self,
+                _: &mlua::Lua,
+                args: mlua::MultiValue,
+            ) -> Result<mlua::Value, anyhow::Error> {
+                if args.len() != 2 {
+                    return Err(anyhow::anyhow!("Incorrect amount of args"));
+                }
+                let a = args.front().unwrap().as_i64().unwrap();
+                let b = args.back().unwrap().as_i64().unwrap();
+                Ok(mlua::Value::Integer(a - b))
+            }
+        }
+
+        let add_cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(TestAddCallback {}));
+        let sub_cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(TestSubtractCallback {}));
+
+        let mut module: HashMap<String, Rc<Box<dyn LuaCallback>>> = HashMap::new();
+        module.insert("add".to_string(), add_cb);
+        module.insert("sub".to_string(), sub_cb);
+
+        let mut eng = LuaEngine::default();
+        eng.initialize(testing_builtins, HashMap::default())
+            .unwrap();
+        eng.register_callbacks_module(
+            "testmodule",
+            LuaScope::Sandboxed,
+            module.iter().map(|(name, cb)| (name.as_str(), cb)),
+        )
+        .unwrap();
+
+        assert_eq!(
+            eng.evaluate::<i64>("return testmodule.add(1, 2)", None, true)
+                .unwrap(),
+            3
+        );
+        assert_eq!(
+            eng.evaluate::<i64>("return testmodule.sub(1, 2)", None, true)
+                .unwrap(),
+            -1
+        );
+    }
+
+    #[test]
+    fn test_callbacks_module_unsandboxed() {
+        struct TestAddCallback {}
+        impl LuaCallback for TestAddCallback {
+            fn call(
+                &self,
+                _: &mlua::Lua,
+                args: mlua::MultiValue,
+            ) -> Result<mlua::Value, anyhow::Error> {
+                if args.len() != 2 {
+                    return Err(anyhow::anyhow!("Incorrect amount of args"));
+                }
+                let a = args.front().unwrap().as_i64().unwrap();
+                let b = args.back().unwrap().as_i64().unwrap();
+                Ok(mlua::Value::Integer(a + b))
+            }
+        }
+        struct TestSubtractCallback {}
+        impl LuaCallback for TestSubtractCallback {
+            fn call(
+                &self,
+                _: &mlua::Lua,
+                args: mlua::MultiValue,
+            ) -> Result<mlua::Value, anyhow::Error> {
+                if args.len() != 2 {
+                    return Err(anyhow::anyhow!("Incorrect amount of args"));
+                }
+                let a = args.front().unwrap().as_i64().unwrap();
+                let b = args.back().unwrap().as_i64().unwrap();
+                Ok(mlua::Value::Integer(a - b))
+            }
+        }
+
+        let add_cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(TestAddCallback {}));
+        let sub_cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(TestSubtractCallback {}));
+
+        let mut module: HashMap<String, Rc<Box<dyn LuaCallback>>> = HashMap::new();
+        module.insert("add".to_string(), add_cb);
+        module.insert("sub".to_string(), sub_cb);
+
+        let mut eng = LuaEngine::default();
+        eng.initialize(testing_builtins, HashMap::default())
+            .unwrap();
+        eng.register_callbacks_module(
+            "testmodule",
+            LuaScope::Global,
+            module.iter().map(|(name, cb)| (name.as_str(), cb)),
+        )
+        .unwrap();
+
+        assert_eq!(
+            eng.evaluate::<i64>("return testmodule.add(1, 2)", None, false)
+                .unwrap(),
+            3
+        );
+        assert_eq!(
+            eng.evaluate::<i64>("return testmodule.sub(1, 2)", None, false)
+                .unwrap(),
+            -1
         );
     }
 }
