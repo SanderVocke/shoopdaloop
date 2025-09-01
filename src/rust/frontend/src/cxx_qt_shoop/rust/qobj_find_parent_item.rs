@@ -158,7 +158,7 @@ impl FindParentItem {
 
 #[cfg(test)]
 mod tests {
-    use crate::cxx_qt_shoop::test::qobj_generic_test_item;
+    use crate::cxx_qt_shoop::test::qobj_generic_test_item::GenericTestItem;
     use cxx_qt_lib::QString;
     use cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
 
@@ -186,7 +186,7 @@ mod tests {
         let mut obj = make_unique();
 
         unsafe {
-            let mut parent = qobj_generic_test_item::make_unique();
+            let mut parent = GenericTestItem::make_unique();
             let parent_ptr = parent.as_mut().unwrap().pin_mut_qquickitem_ptr();
             obj.as_mut().unwrap().set_parent_item(parent_ptr);
 
@@ -204,7 +204,7 @@ mod tests {
         obj.as_mut().unwrap().set_find_predicate(Box::new(|_| true));
 
         unsafe {
-            let mut parent = qobj_generic_test_item::make_unique();
+            let mut parent = GenericTestItem::make_unique();
             let parent_ptr = parent.as_mut().unwrap().pin_mut_qquickitem_ptr();
             obj.as_mut().unwrap().set_parent_item(parent_ptr);
 
@@ -219,9 +219,9 @@ mod tests {
     #[test]
     fn test_nested_parent_by_ptr() {
         unsafe {
-            let mut parent = qobj_generic_test_item::make_unique();
+            let mut parent = GenericTestItem::make_unique();
             let parent_ptr = parent.as_mut().unwrap().pin_mut_qquickitem_ptr();
-            let mut parent_parent = qobj_generic_test_item::make_unique();
+            let mut parent_parent = GenericTestItem::make_unique();
             let parent_parent_ptr = parent_parent.as_mut().unwrap().pin_mut_qquickitem_ptr();
             parent.as_mut().unwrap().set_parent_item(parent_parent_ptr);
 
@@ -245,7 +245,7 @@ mod tests {
         obj.as_mut().unwrap().set_find_predicate(Box::new(|_| true));
 
         unsafe {
-            let mut parent = qobj_generic_test_item::make_unique();
+            let mut parent = GenericTestItem::make_unique();
             let parent_ptr = parent.as_mut().unwrap().pin_mut_qquickitem_ptr();
 
             obj.as_mut()
@@ -267,7 +267,7 @@ mod tests {
         obj.as_mut().unwrap().set_find_predicate(Box::new(|_| true));
 
         unsafe {
-            let mut parent = qobj_generic_test_item::make_unique();
+            let mut parent = GenericTestItem::make_unique();
             let parent_ptr = parent.as_mut().unwrap().pin_mut_qquickitem_ptr();
             parent.as_mut().unwrap().set_bool_prop(true);
 
@@ -290,7 +290,7 @@ mod tests {
         obj.as_mut().unwrap().set_find_predicate(Box::new(|_| true));
 
         unsafe {
-            let mut parent = qobj_generic_test_item::make_unique();
+            let mut parent = GenericTestItem::make_unique();
             let parent_ptr = parent.as_mut().unwrap().pin_mut_qquickitem_ptr();
 
             obj.as_mut()

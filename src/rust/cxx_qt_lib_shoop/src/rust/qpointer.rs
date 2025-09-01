@@ -5,7 +5,7 @@ mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qpointer.h");
         type QPointerQObject;
-        type QObject;
+        type QObject = crate::qobject::QObject;
 
         include!("cxx-qt-lib/qvariant.h");
         type QVariant = cxx_qt_lib::QVariant;
