@@ -8,39 +8,32 @@ use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::qpointer::qpointer_from_qobject;
 use cxx_qt_lib_shoop::{qobject::FromQObject, qpointer::qpointer_to_qobject};
 use std::boxed::Box;
+use std::cell::RefCell;
 use std::pin::Pin;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 shoop_log_unit!("Frontend.SessionControlHandler");
 
 impl SessionControlHandlerLuaTarget {
     pub fn install_on_lua_engine(&self, engine: *mut QObject) {
+        struct SessionControlCallback {
+            weak_target : Weak<RefCell<SessionControlHandlerLuaTarget>>,
+            callable : Box<dyn Fn(&SessionControlHandlerLuaTarget, mlua::MultiValue) -> Result<mlua::Value, anyhow::Error>>,
+        }
 
-        // Macro for creating a boxed callback which is ready for registering in a
-        // Lua engine. Each callback comes with its own struct implementation.
-        macro_rules! create_callback {
-            ($name:ident, $callback:expr) => {
-                || -> Rc<Box<dyn LuaCallback>> {
-                    struct $name {}
-                    impl LuaCallback for $name {
-                        fn call(
-                            &self,
-                            _: &mlua::Lua,
-                            args: mlua::MultiValue,
-                        ) -> Result<mlua::Value, anyhow::Error> {
-                            $callback(args)
-                        }
-                    }
-                    let cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new($name {}));
-                    cb
-                }()
-            };
+        impl LuaCallback for SessionControlCallback {
+            fn call(&self, lua: &mlua::Lua, args: mlua::MultiValue) -> Result<mlua::Value, anyhow::Error> {
+                let strong_self = self.weak_target.upgrade().ok_or(anyhow::anyhow!("Session control target went out of scope"))?;
+                let strong_self = strong_self.borrow();
+                (self.callable)(&strong_self, args)
+            }
         }
 
         if let Err(e) = || -> Result<(), anyhow::Error> {
-            let engine = unsafe { LuaEngine::from_qobject_mut_ptr(engine)? };
-            let wrapped_engine = engine
+            let mut engine = unsafe { LuaEngine::from_qobject_mut_ptr(engine)? };
+            let mut engine_rust = engine.as_mut().rust_mut();
+            let mut wrapped_engine = engine_rust
                 .engine
-                .as_ref()
+                .as_mut()
                 .ok_or(anyhow::anyhow!("Wrapped engine not initialized"))?;
 
             let mut lua_module: mlua::Table = wrapped_engine
@@ -50,13 +43,31 @@ impl SessionControlHandlerLuaTarget {
                 .create_table()
                 .map_err(|e| anyhow::anyhow!("Could not create table: {e}"))?;
 
-            let loop_count =
-                create_callback!(LoopCountCallback, |args: mlua::MultiValue| -> Result<
-                    mlua::Value,
-                    anyhow::Error,
-                > {
-                    todo!();
-                });
+            // Macro for adding a callback method to the module repeatedly.
+            macro_rules! add_callback {
+                ($name: expr, $callback: expr) => {
+                    {
+                        let weak_clone = self.weak_self.clone();
+                        let callback = SessionControlCallback {
+                            weak_target: weak_clone,
+                            callable: Box::new($callback),
+                        };
+                        let callback_rc : Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(callback));
+                        let callback_lua = wrapped_engine.create_callback_fn($name, &callback_rc)?;
+                        lua_module
+                            .set($name, callback_lua)
+                            .map_err(|e| anyhow::anyhow!("Could not set module callback {}: {e}", $name))?;
+                    }
+                }
+            }
+
+            // @shoop_lua_fn_docstring.start
+            // shoop_control.loop_count(loop_selector) -> int
+            // Count the amount of loops given by the selector.
+            // @shoop_lua_fn_docstring.end
+            add_callback!("loop_count", |_,_| {
+                todo!();
+            });
 
             todo!();
         }() {
