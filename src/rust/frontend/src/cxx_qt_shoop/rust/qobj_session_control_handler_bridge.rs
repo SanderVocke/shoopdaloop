@@ -16,8 +16,10 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
-        #[qproperty(*mut QObject, qml_impl_item)]
         type SessionControlHandler = super::SessionControlHandlerRust;
+
+        #[qinvokable]
+        pub fn install_on_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject);
     }
 
     unsafe extern "C++" {
@@ -34,16 +36,19 @@ pub mod ffi {
     }
 }
 
+use std::collections::BTreeMap;
+
+use cxx_qt_lib_shoop::qpointer::QPointerQObject;
 use ffi::*;
 
 pub struct SessionControlHandlerRust {
-    qml_impl_item: *mut QObject,
+    pub loop_references: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>>,
 }
 
 impl Default for SessionControlHandlerRust {
     fn default() -> Self {
         Self {
-            qml_impl_item: std::ptr::null_mut(),
+            loop_references: BTreeMap::default(),
         }
     }
 }

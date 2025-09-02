@@ -4,6 +4,9 @@ pub mod ffi {
         include!("cxx-qt-lib-shoop/qquickitem.h");
         type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
 
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
@@ -41,6 +44,22 @@ pub mod ffi {
          include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_lua_engine"]
         fn make_unique() -> UniquePtr<LuaEngine>;
+
+        include!("cxx-qt-lib-shoop/qquickitem.h");
+
+        #[rust_name = "qquickitem_from_ref_lua_engine"]
+        unsafe fn qquickitemFromRef(obj: &LuaEngine) -> &QQuickItem;
+
+        #[rust_name = "qquickitem_from_ptr_lua_engine"]
+        unsafe fn qquickitemFromPtr(obj: *mut LuaEngine) -> *mut QQuickItem;
+
+        include!("cxx-qt-lib-shoop/qobject.h");
+
+        #[rust_name = "from_qobject_ref_lua_engine"]
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const LuaEngine);
+
+        #[rust_name = "from_qobject_mut_lua_engine"]
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut LuaEngine);
 
         include!("cxx-qt-lib-shoop/register_qml_type.h");
         #[rust_name = "register_qml_type_lua_engine"]
@@ -121,3 +140,30 @@ impl cxx_qt::Constructor<()> for LuaEngine {
         LuaEngine::initialize_impl(self);
     }
 }
+
+impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for LuaEngine {
+    unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {
+        qquickitem_from_ptr_lua_engine(self as *mut Self)
+    }
+    unsafe fn ref_qquickitem_ptr(&self) -> *const QQuickItem {
+        qquickitem_from_ref_lua_engine(self) as *const QQuickItem
+    }
+}
+
+impl cxx_qt_lib_shoop::qobject::FromQObject for LuaEngine {
+    unsafe fn ptr_from_qobject_ref(obj: &cxx_qt_lib_shoop::qobject::QObject) -> *const Self {
+        let mut output: *const Self = std::ptr::null();
+        from_qobject_ref_lua_engine(obj, &mut output as *mut *const Self);
+        output
+    }
+
+    unsafe fn ptr_from_qobject_mut(
+        obj: std::pin::Pin<&mut cxx_qt_lib_shoop::qobject::QObject>,
+    ) -> *mut Self {
+        let mut output: *mut Self = std::ptr::null_mut();
+        from_qobject_mut_lua_engine(obj, &mut output as *mut *mut Self);
+        output
+    }
+}
+
+impl cxx_qt_lib_shoop::qquickitem::IsQQuickItem for LuaEngine {}
