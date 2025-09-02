@@ -41,7 +41,7 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-         include!("cxx-qt-lib-shoop/make_unique.h");
+        include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_lua_engine"]
         fn make_unique() -> UniquePtr<LuaEngine>;
 
@@ -87,9 +87,7 @@ pub struct LuaEngineRust {
 
 impl Default for LuaEngineRust {
     fn default() -> Self {
-        Self {
-            engine: None,
-        }
+        Self { engine: None }
     }
 }
 

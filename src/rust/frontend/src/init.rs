@@ -40,7 +40,7 @@ fn register_qml_types_and_singletons() {
 fn register_metatypes() {}
 
 #[no_mangle]
-pub extern "C" fn init(config : &ShoopConfig) {
+pub extern "C" fn init(config: &ShoopConfig) {
     debug!("Initializing rust metatypes, types and singletons");
     GLOBAL_CONFIG.set(config.clone()).unwrap();
     register_metatypes();

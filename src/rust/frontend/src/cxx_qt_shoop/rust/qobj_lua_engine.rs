@@ -32,12 +32,14 @@ impl LuaEngine {
                 Ok(contents)
             };
 
-            let mut libs : HashMap<String, String> = HashMap::default();
+            let mut libs: HashMap<String, String> = HashMap::default();
             for file in glob::glob(&format!("{}/lib/*.lua", lua_dir))
                 .map_err(|e| anyhow::anyhow!("Could not glob for Lua libs: {e}"))?
             {
                 let file = file?;
-                let name = file.file_stem().ok_or(anyhow::anyhow!("No stem for {file:?}"))?;
+                let name = file
+                    .file_stem()
+                    .ok_or(anyhow::anyhow!("No stem for {file:?}"))?;
                 let contents = std::fs::read_to_string(&file)?;
                 libs.insert(name.to_string_lossy().to_string(), contents);
             }

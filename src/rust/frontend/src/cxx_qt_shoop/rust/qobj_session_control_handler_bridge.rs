@@ -36,19 +36,31 @@ pub mod ffi {
     }
 }
 
-use std::collections::BTreeMap;
+use std::{cell::RefCell, collections::BTreeMap, rc::{Rc, Weak}};
 
 use cxx_qt_lib_shoop::qpointer::QPointerQObject;
 use ffi::*;
 
-pub struct SessionControlHandlerRust {
+pub struct SessionControlHandlerLuaTarget {
     pub loop_references: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>>,
+    pub weak_self: Weak<RefCell<SessionControlHandlerLuaTarget>>,
+}
+
+pub struct SessionControlHandlerRust {
+    pub lua_target: Rc<RefCell<SessionControlHandlerLuaTarget>>,
 }
 
 impl Default for SessionControlHandlerRust {
     fn default() -> Self {
+        let target = Rc::new(RefCell::new(SessionControlHandlerLuaTarget {
+                loop_references: BTreeMap::new(),
+                weak_self: std::rc::Weak::new(),
+            }));
+        let weak = Rc::downgrade(&target);
+        target.borrow_mut().weak_self = weak;
+
         Self {
-            loop_references: BTreeMap::default(),
+            lua_target: target
         }
     }
 }

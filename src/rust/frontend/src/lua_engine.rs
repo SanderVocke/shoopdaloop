@@ -271,7 +271,7 @@ impl LuaEngineImpl {
         Ok(())
     }
 
-    fn create_callback_fn(
+    pub fn create_callback_fn(
         &mut self,
         name: &str,
         callback: &Rc<Box<dyn LuaCallback>>,
@@ -431,6 +431,14 @@ impl LuaEngine {
         self.lua
             .borrow_mut()
             .register_callbacks_module(name, scope, callbacks)
+    }
+
+    pub fn create_callback_fn(
+        &mut self,
+        name: &str,
+        callback: &Rc<Box<dyn LuaCallback>>,
+    ) -> Result<mlua::Function, anyhow::Error> {
+        self.lua.borrow_mut().create_callback_fn(name, callback)
     }
 }
 
