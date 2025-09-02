@@ -12,14 +12,27 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qmap.h");
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
+
+        include!("cxx-qt-lib/qlist.h");
+        type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
     }
 
     unsafe extern "RustQt" {
         #[qobject]
+        #[qproperty(QList_QVariant, loop_references, READ=get_loop_references, WRITE=set_loop_references)]
         type SessionControlHandler = super::SessionControlHandlerRust;
 
         #[qinvokable]
         pub fn install_on_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject);
+
+        #[qinvokable]
+        pub fn set_loop_references(
+            self: Pin<&mut SessionControlHandler>,
+            loop_references: QList_QVariant,
+        );
+
+        #[qinvokable]
+        pub fn get_loop_references(self: &SessionControlHandler) -> QList_QVariant;
     }
 
     unsafe extern "C++" {
@@ -36,14 +49,17 @@ pub mod ffi {
     }
 }
 
-use std::{cell::RefCell, collections::BTreeMap, rc::{Rc, Weak}};
+use std::{cell::RefCell, collections::{BTreeMap, HashSet}, rc::{Rc, Weak}};
 
 use cxx_qt_lib_shoop::qpointer::QPointerQObject;
 use ffi::*;
 
+use crate::{lua_callback::LuaCallback, lua_engine::LuaEngineImpl};
+
 pub struct SessionControlHandlerLuaTarget {
     pub loop_references: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>>,
     pub weak_self: Weak<RefCell<SessionControlHandlerLuaTarget>>,
+    pub callbacks: Vec<Rc<Box<dyn LuaCallback>>>,
 }
 
 pub struct SessionControlHandlerRust {
@@ -55,6 +71,7 @@ impl Default for SessionControlHandlerRust {
         let target = Rc::new(RefCell::new(SessionControlHandlerLuaTarget {
                 loop_references: BTreeMap::new(),
                 weak_self: std::rc::Weak::new(),
+                callbacks: Vec::default(),
             }));
         let weak = Rc::downgrade(&target);
         target.borrow_mut().weak_self = weak;

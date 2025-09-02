@@ -6,7 +6,7 @@ import ShoopDaLoop.Rust
 import './testfilename.js' as TestFilename
 
 ShoopTestFile {
-    LuaEngine {
+    ShoopLuaEngine {
         id: engine
     }
 

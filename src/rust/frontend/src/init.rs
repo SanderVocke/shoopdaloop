@@ -33,8 +33,8 @@ fn register_qml_types_and_singletons() {
     qobj_fx_chain_gui::register_qml_type(&mdl, "FXChainGui");
     qobj_loop_channel_gui::register_qml_type(&mdl, "LoopChannelGui");
     qobj_async_task::register_qml_type(&mdl, "AsyncTask");
-    qobj_lua_engine::register_qml_type(&mdl, "LuaEngine");
-    qobj_session_control_handler::register_qml_type(&mdl, "SessionControlHandler");
+    qobj_lua_engine::register_qml_type(&mdl, "ShoopLuaEngine");
+    qobj_session_control_handler::register_qml_type(&mdl, "ShoopSessionControlHandler");
 }
 
 fn register_metatypes() {}
