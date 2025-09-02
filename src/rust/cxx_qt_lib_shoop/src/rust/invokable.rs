@@ -815,7 +815,7 @@ impl QObjectOrConvertible for crate::qobject::QObject {
     fn qobject_mut(&mut self) -> *mut ffi::QObject {
         self as *mut ffi::QObject
     }
-    
+
     fn qobject_ref(&self) -> *const ffi::QObject {
         self as *const ffi::QObject
     }

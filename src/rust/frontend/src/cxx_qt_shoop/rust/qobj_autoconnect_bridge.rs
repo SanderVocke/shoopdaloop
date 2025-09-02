@@ -150,7 +150,7 @@ impl cxx_qt::Constructor<(*mut QQuickItem,)> for AutoConnect {
         AutoConnectRust::default()
     }
 
-    fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
+    fn initialize(self: std::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
         AutoConnect::initialize_impl(self);
     }
 }
@@ -174,7 +174,7 @@ impl cxx_qt::Constructor<()> for AutoConnect {
         AutoConnectRust::default()
     }
 
-    fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
+    fn initialize(self: std::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
         AutoConnect::initialize_impl(self);
     }
 }

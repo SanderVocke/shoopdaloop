@@ -4,7 +4,7 @@ mod objects;
 
 pub fn create_py_module<'py>(py: Python<'py>) -> Result<Bound<'py, PyModule>, PyErr> {
     let m = PyModule::new(py, "shoop_rust")?;
-    m.add_function(wrap_pyfunction!(init::shoop_rust_init, &m)?)?;
+    // m.add_function(wrap_pyfunction!(init::shoop_rust_init, &m)?)?;
     // m.add_function(wrap_pyfunction!(
     //     init::shoop_rust_init_engine_update_thread,
     //     &m

@@ -61,3 +61,6 @@ pub mod lua_callback;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod lua_qobject_callback;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod lua_conversions;

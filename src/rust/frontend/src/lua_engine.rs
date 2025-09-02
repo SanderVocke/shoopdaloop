@@ -18,7 +18,7 @@ pub enum LuaScope {
 
 pub struct LuaEngineImpl {
     weak_self: Weak<RefCell<LuaEngineImpl>>,
-    lua: mlua::Lua,
+    pub lua: mlua::Lua,
     preloaded_libs: HashMap<String, String>,
     run_sandboxed: Option<mlua::Function>,
     require: Option<mlua::Function>,
@@ -26,7 +26,7 @@ pub struct LuaEngineImpl {
 }
 
 pub struct LuaEngine {
-    lua: Rc<RefCell<LuaEngineImpl>>,
+    pub lua: Rc<RefCell<LuaEngineImpl>>,
 }
 
 impl Default for LuaEngine {

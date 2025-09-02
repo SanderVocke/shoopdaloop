@@ -1,5 +1,9 @@
 use common::logging::macros::*;
+use config::config::ShoopConfig;
+use once_cell::sync::OnceCell;
 shoop_log_unit!("Main");
+
+pub static GLOBAL_CONFIG: OnceCell<ShoopConfig> = OnceCell::new();
 
 fn register_qml_types_and_singletons() {
     use crate::cxx_qt_shoop::*;
@@ -36,8 +40,9 @@ fn register_qml_types_and_singletons() {
 fn register_metatypes() {}
 
 #[no_mangle]
-pub extern "C" fn init() {
+pub extern "C" fn init(config : &ShoopConfig) {
     debug!("Initializing rust metatypes, types and singletons");
+    GLOBAL_CONFIG.set(config.clone()).unwrap();
     register_metatypes();
     register_qml_types_and_singletons();
     crate::engine_update_thread::init();

@@ -7,7 +7,7 @@ use toml;
 use common::logging::macros::*;
 shoop_log_unit!("Main");
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ShoopConfig {
     pub _version: String,
     pub _description: String,

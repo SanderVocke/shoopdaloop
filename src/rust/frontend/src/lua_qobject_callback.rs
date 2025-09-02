@@ -7,7 +7,10 @@ use cxx_qt_lib_shoop::{
 };
 use mlua;
 
-use crate::lua_callback::LuaCallback;
+use crate::{
+    lua_callback::LuaCallback,
+    lua_conversions::{FromLuaMultiExtended, IntoLuaExtended},
+};
 
 pub trait LuaQObjectCallbackTarget {
     fn lua_qobject_target(&self) -> Result<*mut QObject, anyhow::Error>;
@@ -33,26 +36,6 @@ where
     connection_type: u32,
     phantom_args: PhantomData<Args>,
     phantom_return: PhantomData<R>,
-}
-
-pub trait IntoLuaExtended {
-    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value>;
-}
-
-impl<T: mlua::IntoLua> IntoLuaExtended for T {
-    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
-        T::into_lua(self, lua)
-    }
-}
-
-pub trait FromLuaMultiExtended: Sized {
-    fn from_lua_multi(value: mlua::MultiValue, lua: &mlua::Lua) -> mlua::Result<Self>;
-}
-
-impl<T: mlua::FromLuaMulti> FromLuaMultiExtended for T {
-    fn from_lua_multi(value: mlua::MultiValue, lua: &mlua::Lua) -> mlua::Result<Self> {
-        T::from_lua_multi(value, lua)
-    }
 }
 
 impl<Args: FromLuaMultiExtended, R: IntoLuaExtended, Q: LuaQObjectCallbackTarget> LuaCallback
@@ -134,7 +117,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            eng.evaluate::<i32>("return qobj_add(1, 2)", None, true).unwrap(),
+            eng.evaluate::<i32>("return qobj_add(1, 2)", None, true)
+                .unwrap(),
             3
         );
     }

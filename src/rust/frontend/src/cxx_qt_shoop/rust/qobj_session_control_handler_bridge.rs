@@ -37,13 +37,13 @@ pub mod ffi {
 use ffi::*;
 
 pub struct SessionControlHandlerRust {
-    qml_impl_item : *mut QObject,
+    qml_impl_item: *mut QObject,
 }
 
 impl Default for SessionControlHandlerRust {
     fn default() -> Self {
         Self {
-            qml_impl_item : std::ptr::null_mut(),
+            qml_impl_item: std::ptr::null_mut(),
         }
     }
 }
