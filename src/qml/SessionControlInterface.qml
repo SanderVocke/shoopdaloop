@@ -117,7 +117,7 @@ LuaControlInterface {
     }
 
     // Loop interface overrides
-    function loop_count_override(loop_selector) {
+    function loop_count_override(loop_selector) { //DONE
         return select_loops(loop_selector).filter(l => l != null).length
     }
     function loop_get_all_override() {
@@ -170,7 +170,7 @@ LuaControlInterface {
         return select_loops(loop_selector).map(l => l.last_pushed_gain)
     }
     function loop_get_gain_fader_override(loop_selector) {
-        return select_loops(loop_selector).map(l => l.get_gain_fader())
+        return select_loops(loop_selector).map(l => l.gain_fader)
     }
     function loop_get_balance_override(loop_selector) {
         return select_loops(loop_selector).map(l => l.last_pushed_stereo_balance)

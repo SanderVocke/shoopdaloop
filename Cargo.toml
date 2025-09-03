@@ -30,9 +30,6 @@ once_cell = "1.21"
 cxx = "1.0"
 tar = "0.4"
 dunce = "1.0"
-#cxx-qt = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt" }
-#cxx-qt-lib = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt-lib" }
-#cxx-qt-build = { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt-build" }
 cxx-qt = "0.7.2"
 cxx-qt-lib = { version = "0.7.2", features = ["full"] }
 cxx-qt-build = "0.7.2"
@@ -47,6 +44,7 @@ json = "0.12"
 midly = "0.5"
 directories = "6.0"
 mlua = { version = "0.11", features = ["lua54"] }
+itertools = "0.14"
 
 # [patch.crates-io]F
 # cxx-qt =  { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt" }

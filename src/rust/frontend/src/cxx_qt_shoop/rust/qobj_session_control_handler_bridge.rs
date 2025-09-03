@@ -20,6 +20,8 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[qproperty(QList_QVariant, loop_references)]
+        #[qproperty(QList_QVariant, selected_loops, READ=get_selected_loops, WRITE=set_selected_loops)]
+        #[qproperty(QVariant, targeted_loop, READ=get_targeted_loop, WRITE=set_targeted_loop)]
         type SessionControlHandler = super::SessionControlHandlerRust;
 
         #[qinvokable]
@@ -27,6 +29,18 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn update_structured_loop_references(self: Pin<&mut SessionControlHandler>);
+
+        #[qinvokable]
+        pub fn set_selected_loops(self: Pin<&mut SessionControlHandler>, loops: QList_QVariant);
+
+        #[qinvokable]
+        pub fn set_targeted_loop(self: Pin<&mut SessionControlHandler>, maybe_loop: QVariant);
+
+        #[qinvokable]
+        pub fn get_selected_loops(self: Pin<&mut SessionControlHandler>) -> QList_QVariant;
+
+        #[qinvokable]
+        pub fn get_targeted_loop(self: Pin<&mut SessionControlHandler>) -> QVariant;
     }
 
     unsafe extern "C++" {
@@ -54,7 +68,7 @@ pub mod ffi {
     impl cxx_qt::Constructor<(), NewArguments = ()> for SessionControlHandler {}
 }
 
-use std::{cell::RefCell, collections::{BTreeMap, HashSet}, rc::{Rc, Weak}};
+use std::{cell::RefCell, collections::{BTreeMap, BTreeSet, HashSet}, rc::{Rc, Weak}};
 
 use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::{qobject::AsQObject, qpointer::QPointerQObject};
@@ -66,6 +80,8 @@ pub struct SessionControlHandlerLuaTarget {
     pub structured_loop_references: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>>,
     pub weak_self: Weak<RefCell<SessionControlHandlerLuaTarget>>,
     pub callbacks: Vec<Rc<Box<dyn LuaCallback>>>,
+    pub selected_loops: BTreeSet<*mut QObject>,
+    pub maybe_targeted_loop: Option<*mut QObject>,
 }
 
 pub struct SessionControlHandlerRust {
@@ -79,6 +95,8 @@ impl Default for SessionControlHandlerRust {
                 structured_loop_references: BTreeMap::new(),
                 weak_self: std::rc::Weak::new(),
                 callbacks: Vec::default(),
+                selected_loops: BTreeSet::default(),
+                maybe_targeted_loop: None,
             }));
         let weak = Rc::downgrade(&target);
         target.borrow_mut().weak_self = weak;

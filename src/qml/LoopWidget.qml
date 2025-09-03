@@ -377,9 +377,7 @@ Item {
     function set_gain_fader(value) {
         statusrect.gain_dial.set_as_range_fraction(value)
     }
-    function get_gain_fader() {
-        return statusrect.gain_dial.position
-    }
+    readonly property real gain_fader : statusrect.gain_dial.position
 
     property real last_pushed_gain: initial_gain
     property real last_pushed_stereo_balance: initial_stereo_balance ? initial_stereo_balance : 0.0

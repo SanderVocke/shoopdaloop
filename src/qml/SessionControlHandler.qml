@@ -10,6 +10,8 @@ ShoopRustSessionControlHandler {
     property var logger : PythonLogger { name: "Frontend.Qml.SessionControlHandler" }
 
     loop_references : session.loops
+    selected_loops: session.selected_loops
+    targeted_loop: registries.state_registry.targeted_loop
 
     function update_engine() {
         if (root.lua_engine && !root.installed_on.includes(lua_engine)) {
