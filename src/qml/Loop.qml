@@ -4,7 +4,7 @@ import QtQuick 6.6
 
 import ShoopConstants
 
-LoopGui {
+ShoopRustLoopGui {
     id: root
     property bool loaded : initialized
 

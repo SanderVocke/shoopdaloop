@@ -116,21 +116,21 @@ Item {
                         ShoopMenuItem {
                             text: "Test thread panic (UI thread)"
                             onClicked: {
-                                ShoopOSUtils.cause_panic()
+                                ShoopRustOSUtils.cause_panic()
                             }
                         }
 
                         ShoopMenuItem {
                             text: "Test segfault (UI thread)"
                             onClicked: {
-                                ShoopOSUtils.cause_segfault()
+                                ShoopRustOSUtils.cause_segfault()
                             }
                         }
 
                         ShoopMenuItem {
                             text: "Test abort (UI thread)"
                             onClicked: {
-                                ShoopOSUtils.cause_abort()
+                                ShoopRustOSUtils.cause_abort()
                             }
                         }
 
@@ -378,7 +378,7 @@ Item {
             width: 30
             onClicked: state = !state
 
-            property bool inverted : ShoopKeyModifiers.alt_pressed
+            property bool inverted : ShoopRustKeyModifiers.alt_pressed
             property bool state : true
             property bool play_after_record_active : inverted ? !state : state
 
@@ -420,7 +420,7 @@ Item {
             width: 30
             onClicked: state = !state
 
-            property bool inverted : ShoopKeyModifiers.control_pressed
+            property bool inverted : ShoopRustKeyModifiers.control_pressed
             property bool state : true
             property bool sync_active : inverted ? !state : state
 
@@ -444,7 +444,7 @@ Item {
             width: 30
             onClicked: state = !state
 
-            property bool inverted : ShoopKeyModifiers.shift_pressed
+            property bool inverted : ShoopRustKeyModifiers.shift_pressed
             property bool state : false
             property bool solo_active : inverted ? !state : state
 
@@ -472,7 +472,7 @@ Item {
 
             editable: true
             valueFromText: function(text, locale) {
-                ShoopReleaseFocusNotifier.notify()
+                ShoopRustReleaseFocusNotifier.notify()
                 return Number.fromLocaleString(locale, text);
             }
 

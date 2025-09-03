@@ -142,7 +142,7 @@ ShoopTestFile {
                 process_helper.start()
             }
 
-            ShoopDummyProcessHelper {
+            ShoopRustDummyProcessHelper {
                 id: process_helper
                 backend: session.backend
 
@@ -706,7 +706,7 @@ ShoopTestFile {
                     // while the loops continue in the background.
                     let d = 1000 * process_helper.total_duration * 2 // * 2 for overrun
                     logger.debug(`Starting freeze of ${d} ms`)
-                    ShoopFileIO.wait_blocking(d)
+                    ShoopRustFileIO.wait_blocking(d)
                     logger.debug('Freeze done')
                     process_helper.wait()
 

@@ -19,7 +19,7 @@ Item {
     property bool is_audio : root.channel && root.channel.descriptor.type == "audio"
     property bool is_midi : root.channel && root.channel.descriptor.type == "midi"
 
-    ShoopRenderAudioWaveform {
+    ShoopRustRenderAudioWaveform {
         id: render_audio
 
         samples_per_bin: root.samples_per_bin
@@ -28,7 +28,7 @@ Item {
         height: root.height
     }
 
-    ShoopRenderMidiSequence {
+    ShoopRustRenderMidiSequence {
         id: render_midi
         
         samples_per_bin: root.samples_per_bin

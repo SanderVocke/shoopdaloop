@@ -124,7 +124,7 @@ Item {
             let chosen_action = pick_random(actions_distribution, (a) => action_possible(a))
             root.logger.debug(`Main action: ${chosen_action}`)
 
-            ShoopCrashHandling.set_json_tag("shoop_action", `monkey test (${chosen_action})`)
+            ShoopRustCrashHandling.set_json_tag("shoop_action", `monkey test (${chosen_action})`)
 
             if (chosen_action == 'add_track') { add_track(); }
             else if (chosen_action == 'add_loop') { add_loop(); }
@@ -260,6 +260,6 @@ Item {
     }
 
     Component.onDestruction: {
-        ShoopCrashHandling.set_json_tag("shoop_action", "monkey test (finished)")
+        ShoopRustCrashHandling.set_json_tag("shoop_action", "monkey test (finished)")
     }
 }

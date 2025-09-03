@@ -4,7 +4,7 @@ import QtQuick 6.6
 
 import ShoopConstants
 
-FXChainGui {
+ShoopRustFXChainGui {
     id: root
     property bool loaded : (initialized &&
                             audio_input_ports_mapper.loaded &&

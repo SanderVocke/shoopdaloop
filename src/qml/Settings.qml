@@ -18,7 +18,7 @@ QtObject {
     function validate() {
         let dict = to_dict()
         let schema = `${schema_name}.${current_version}`
-        let result = ShoopSchemaValidator.validate_schema(dict, `${name} settings`, schema, true)
+        let result = ShoopRustSchemaValidator.validate_schema(dict, `${name} settings`, schema, true)
         return result
     }
 

@@ -15,6 +15,6 @@ QtObject {
     
     function maybe_check() {
         if (!enabled) { return; }
-        ShoopSchemaValidator.validate_schema(descriptor, object_description, schema, true)
+        ShoopRustSchemaValidator.validate_schema(descriptor, object_description, schema, true)
     }
 }

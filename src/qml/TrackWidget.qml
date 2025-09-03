@@ -156,13 +156,6 @@ Item {
         }
     }
 
-    function update_loop_port_connections() {
-        for(var i=0; i<root.loops.length; i++) {
-            var loop = root.loops[i]
-
-        }
-    }
-
     // Draggy rect for moving the track
     Rectangle {
         id: track_mover
@@ -489,7 +482,7 @@ Item {
                         text: root.name
                         onEditingFinished: () => {
                                             focus = false
-                                            ShoopReleaseFocusNotifier.notify()
+                                            ShoopRustReleaseFocusNotifier.notify()
                                             root.name = text
                                         }
                     }

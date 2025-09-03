@@ -7,8 +7,14 @@ use crate::lua_engine::LuaEngineImpl;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QList;
+use cxx_qt_lib_shoop::connect::{connect, connect_or_report};
+use cxx_qt_lib_shoop::connection_types;
+use cxx_qt_lib_shoop::qobject::{qobject_property_int, AsQObject};
 use cxx_qt_lib_shoop::qpointer::{qpointer_from_qobject, QPointerQObject};
-use cxx_qt_lib_shoop::qvariant_helpers::{qobject_ptr_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qvariantlist, qvariantlist_to_qvariant};
+use cxx_qt_lib_shoop::qvariant_helpers::{
+    qobject_ptr_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qvariantlist, qvariant_type_name,
+    qvariantlist_to_qvariant,
+};
 use cxx_qt_lib_shoop::{qobject::FromQObject, qpointer::qpointer_to_qobject};
 use mlua::FromLua;
 use std::boxed::Box;
@@ -165,7 +171,7 @@ impl SessionControlHandlerLuaTarget {
     }
 
     fn select_loop_by_coords(&self, x: i64, y: i64) -> Option<*mut QObject> {
-        self.loop_references
+        self.structured_loop_references
             .get(&(x, y))
             .map(|r| unsafe {
                 match r.as_ref() {
@@ -218,55 +224,66 @@ impl SessionControlHandlerLuaTarget {
 }
 
 impl SessionControlHandler {
+    pub fn initialize_impl(mut self: Pin<&mut SessionControlHandler>) {
+        unsafe {
+            let self_qobj = self.as_mut().pin_mut_qobject_ptr();
+            connect_or_report(
+                &*self_qobj,
+                "loop_referencesChanged()",
+                &*self_qobj,
+                "update_structured_loop_references()",
+                connection_types::AUTO_CONNECTION,
+            );
+        }
+    }
+
     pub fn install_on_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject) {
         self.lua_target.borrow_mut().install_on_lua_engine(engine);
     }
 
-    pub fn set_loop_references(
-        self: Pin<&mut SessionControlHandler>,
-        loop_references: QList_QVariant,
-    ) {
+    pub fn update_structured_loop_references(mut self: Pin<&mut SessionControlHandler>) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let mut result: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>> =
                 BTreeMap::default();
 
-            for (x, outer) in loop_references.iter().enumerate() {
-                let list = qvariant_to_qvariantlist(&outer)?;
-                for (y, l) in list.iter().enumerate() {
-                    let qobject = qvariant_to_qobject_ptr(&l)?;
-                    result.insert((x as i64, y as i64), unsafe {
-                        qpointer_from_qobject(qobject)
-                    });
+            let self_qobj: *mut QObject = unsafe { self.as_mut().pin_mut_qobject_ptr() };
+
+            for loop_variant in self.loop_references.iter() {
+                let loop_qobj = qvariant_to_qobject_ptr(&loop_variant)?;
+                if loop_qobj.is_null() {
+                    continue;
+                }
+                let track_idx = unsafe { qobject_property_int(&*loop_qobj, "track_idx")? };
+                let idx_in_track = unsafe { qobject_property_int(&*loop_qobj, "idx_in_track")? };
+                result.insert((track_idx as i64, idx_in_track as i64), unsafe {
+                    qpointer_from_qobject(loop_qobj)
+                });
+
+                unsafe {
+                    let _ = connect(
+                        &*loop_qobj,
+                        "track_idxChanged()",
+                        &*self_qobj,
+                        "update_structured_loop_references()",
+                        connection_types::AUTO_CONNECTION | connection_types::UNIQUE_CONNECTION,
+                    );
+                    let _ = connect(
+                        &*loop_qobj,
+                        "idx_in_trackChanged()",
+                        &*self_qobj,
+                        "update_structured_loop_references()",
+                        connection_types::AUTO_CONNECTION | connection_types::UNIQUE_CONNECTION,
+                    );
                 }
             }
 
-            self.lua_target.borrow_mut().loop_references = result;
+            trace!("loop references: {:?}", result.keys());
+            self.lua_target.borrow_mut().structured_loop_references = result;
 
             Ok(())
         }() {
             error!("Could not set loop references: {e}");
         }
-    }
-
-    pub fn get_loop_references(self: &SessionControlHandler) -> QList_QVariant {
-        let mut vec : Vec<Vec<*mut QObject>> = Vec::default();
-        
-        for ((x, y), qpointer) in self.lua_target.borrow().loop_references.iter() {
-            vec.resize(std::cmp::max(vec.len(), *x as usize + 1), Vec::default());
-            vec[*x as usize].resize(std::cmp::max(vec[*x as usize].len(), *y as usize + 1), std::ptr::null_mut());
-            vec[*x as usize][*y as usize] = unsafe { qpointer_to_qobject(qpointer.as_ref().unwrap()) };
-        }
-
-        let mut result : QList_QVariant = QList::default();
-        for sublist in vec {
-            let mut q_sublist : QList_QVariant = QList::default();
-            for qobject in sublist {
-                q_sublist.append(qobject_ptr_to_qvariant(&qobject).unwrap_or(QVariant::default()));
-            }
-            result.append(qvariantlist_to_qvariant(&q_sublist).unwrap_or(QVariant::default()));
-        }
-
-        result
     }
 }
 

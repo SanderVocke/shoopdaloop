@@ -26,14 +26,14 @@ Dialog {
     property alias num_secondary_per_primary_text: secondary_clicks_per_primary_field.text
     property alias alternate_delay_percent_text: alternate_delay_percent_field.text
     property var possible_primary_clicks: {
-        if(ShoopClickTrackGenerator) {
-            return ShoopClickTrackGenerator.get_possible_clicks()
+        if(ShoopRustClickTrackGenerator) {
+            return ShoopRustClickTrackGenerator.get_possible_clicks()
         }
         return []
     }
     property var possible_secondary_clicks: {
-        if(ShoopClickTrackGenerator) {
-            return ['None'].concat(ShoopClickTrackGenerator.get_possible_clicks());
+        if(ShoopRustClickTrackGenerator) {
+            return ['None'].concat(ShoopRustClickTrackGenerator.get_possible_clicks());
         }
         return []
     }
@@ -55,12 +55,12 @@ Dialog {
             }
 
             return {
-                'filename': ShoopClickTrackGenerator.generate_audio(clicks, bpm, n_beats, alternate_delay_percent),
+                'filename': ShoopRustClickTrackGenerator.generate_audio(clicks, bpm, n_beats, alternate_delay_percent),
                 'kind': 'audio'
             }
         } else if (kind_combo.currentValue == 'Midi') {
             return {
-                'filename': ShoopClickTrackGenerator.generate_midi(
+                'filename': ShoopRustClickTrackGenerator.generate_midi(
                         [click_note],
                         [0],
                         [127],
@@ -222,7 +222,7 @@ Dialog {
                            if (out.kind != 'audio') {
                                 throw new Error("Preview only supported for audio click tracks")
                            }
-                           ShoopClickTrackGenerator.preview(out.filename)
+                           ShoopRustClickTrackGenerator.preview(out.filename)
                        }
         }
     }

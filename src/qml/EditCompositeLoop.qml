@@ -920,7 +920,7 @@ Item {
                                                 top: parent.top
                                                 bottom: parent.bottom
                                             }
-                                            width: ShoopKeyModifiers.control_pressed ? parent.width : 20
+                                            width: ShoopRustKeyModifiers.control_pressed ? parent.width : 20
 
                                             // for debugging
                                             //color: 'red'
@@ -962,13 +962,13 @@ Item {
                                             MouseArea {
                                                 id: right_drag_area
                                                 anchors.fill: parent
-                                                cursorShape: ShoopKeyModifiers.control_pressed ? Qt.DragCopyCursor : Qt.SizeHorCursor
+                                                cursorShape: ShoopRustKeyModifiers.control_pressed ? Qt.DragCopyCursor : Qt.SizeHorCursor
 
                                                 onReleased: {
                                                     if (drag.active) {
                                                         let new_n = right_resize_preview.dragged_cycle
                                                         if (new_n >= 1) {
-                                                            if (ShoopKeyModifiers.control_pressed) {
+                                                            if (ShoopRustKeyModifiers.control_pressed) {
                                                                 // Duplicate loop
                                                                 let length = mapped_item.end_iteration - mapped_item.start_iteration
                                                                 let n_copies = Math.ceil((new_n - length) / length)

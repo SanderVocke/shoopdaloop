@@ -70,13 +70,13 @@ Dialog {
 
             logger.debug("Saving settings.")
             validate()
-            ShoopSettingsIO.save_settings(to_dict(), null)
+            ShoopRustSettingsIO.save_settings(to_dict(), null)
         }
 
         function load() {
             if (io_enabled) {
                 logger.debug("Loading settings.")
-                let loaded_settings = ShoopSettingsIO.load_settings(null)
+                let loaded_settings = ShoopRustSettingsIO.load_settings(null)
                 if (loaded_settings != null) { from_dict(loaded_settings) }
             }
 
@@ -362,10 +362,10 @@ Dialog {
 
         Component.onCompleted: {
             let builtins_dir = global_args.lua_dir + '/builtins'
-            let builtins = ShoopFileIO.glob(builtins_dir + '/**/*.lua')
+            let builtins = ShoopRustFileIO.glob(builtins_dir + '/**/*.lua')
             let default_run = ['keyboard.lua']
             for (let builtin of builtins) {
-                let builtin_name = ShoopFileIO.basename(builtin)
+                let builtin_name = ShoopRustFileIO.basename(builtin)
                 var found = false
                 for (let script of contents.known_scripts) {
                     if (script.path_or_filename == builtin || script.path_or_filename == builtin_name) {
@@ -403,18 +403,18 @@ Dialog {
         property alias script_manager: lookup_script_manager.object
 
         function builtins_path() {
-            return ShoopFileIO.realpath(global_args.lua_dir + '/builtins')
+            return ShoopRustFileIO.realpath(global_args.lua_dir + '/builtins')
         }
 
         function full_path(script_name) {
             var fullpath = script_name
-            if (!ShoopFileIO.is_absolute(fullpath)) {
+            if (!ShoopRustFileIO.is_absolute(fullpath)) {
                 fullpath = builtins_path() + '/' + fullpath
             }
-            if (!ShoopFileIO.exists(fullpath)) {
+            if (!ShoopRustFileIO.exists(fullpath)) {
                 return null
             }
-            return ShoopFileIO.realpath(fullpath)
+            return ShoopRustFileIO.realpath(fullpath)
         }
 
         function status(script_name) {
@@ -541,7 +541,7 @@ Dialog {
                             Label {
                                 property var mapped_item
                                 property int index
-                                text: ShoopFileIO.basename(mapped_item.path_or_filename)
+                                text: ShoopRustFileIO.basename(mapped_item.path_or_filename)
                             }
                         }
 
@@ -644,7 +644,7 @@ Dialog {
                                     }
                                     onClicked: {
                                         var window = script_doc_dialog_factory.createObject(root.parent, {
-                                            script_name: ShoopFileIO.basename(mapped_item.path_or_filename),
+                                            script_name: ShoopRustFileIO.basename(mapped_item.path_or_filename),
                                             docstring: maybe_docstring,
                                             visible: true
                                         })

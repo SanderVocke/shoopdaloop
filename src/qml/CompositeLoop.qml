@@ -44,7 +44,7 @@ Item {
     property alias rust_loop : rust_loop
     property alias backend : rust_loop.backend
 
-    CompositeLoopGui {
+    ShoopRustCompositeLoopGui {
         id: rust_loop
         sync_source: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
         schedule: root.schedule

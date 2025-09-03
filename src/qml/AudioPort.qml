@@ -4,7 +4,7 @@ import QtQuick 6.6
 
 import ShoopConstants
 
-PortGui {
+ShoopRustPortGui {
     id: root
     property var descriptor : null
     property bool loaded : initialized

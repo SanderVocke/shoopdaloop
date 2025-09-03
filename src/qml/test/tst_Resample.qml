@@ -67,13 +67,13 @@ ShoopTestFile {
                         data[i] = Math.sin(i / data.length * 100)
                     }
 
-                    var filename = ShoopFileIO.generate_temporary_filename() + '.wav'
+                    var filename = ShoopRustFileIO.generate_temporary_filename() + '.wav'
                     
                     // Jump through some hoops to avoid getting a QJSValue to
                     // the file I/O. Loading via the channel forces the data type.
                     channel().load_data(data)
                     testcase.wait_updated(session.backend)
-                    if (!ShoopFileIO.save_channels_to_soundfile(filename, 24000, [channel()])) {
+                    if (!ShoopRustFileIO.save_channels_to_soundfile(filename, 24000, [channel()])) {
                         testcase.fail("Failed to save channels to soundfile")
                     }
                     testcase.wait_updated(session.backend)
@@ -83,7 +83,7 @@ ShoopTestFile {
                     testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
 
-                    if (!ShoopFileIO.load_soundfile_to_channels(filename, 48000, null,
+                    if (!ShoopRustFileIO.load_soundfile_to_channels(filename, 48000, null,
                         [[channel()]], null, null, null)) {
                             testcase.fail("Failed to load soundfile to channels");
                         }
@@ -108,13 +108,13 @@ ShoopTestFile {
                         data[i] = Math.sin(i / data.length * 100)
                     }
 
-                    var filename = ShoopFileIO.generate_temporary_filename() + '.wav'
+                    var filename = ShoopRustFileIO.generate_temporary_filename() + '.wav'
 
                     // Jump through some hoops to avoid getting a QJSValue to
                     // the file I/O. Loading via the channel forces the data type.
                     channel().load_data(data)
                     testcase.wait_updated(session.backend)
-                    if (!ShoopFileIO.save_channels_to_soundfile(filename, 24000, [channel()]))  {
+                    if (!ShoopRustFileIO.save_channels_to_soundfile(filename, 24000, [channel()]))  {
                         testcase.fail("Failed to save channels to soundfile")
                     }
                     testcase.wait_updated(session.backend)
@@ -124,7 +124,7 @@ ShoopTestFile {
                     testcase.wait_session_io_done()
                     testcase.wait_updated(session.backend)
 
-                    if (!ShoopFileIO.load_soundfile_to_channels(filename, 48000, 13000,
+                    if (!ShoopRustFileIO.load_soundfile_to_channels(filename, 48000, 13000,
                         [[channel()]], null, null, null)) {
                             testcase.fail("Failed to load soundfile to channels");
                         }
@@ -150,14 +150,14 @@ ShoopTestFile {
                         data[i] = Math.sin(i / data.length * 100)
                     }
 
-                    var filename = ShoopFileIO.generate_temporary_filename() + '.wav'
+                    var filename = ShoopRustFileIO.generate_temporary_filename() + '.wav'
                     
                     // Jump through some hoops to avoid getting a QJSValue to
                     // the file I/O. Loading via the channel forces the data type.
                     loop2_channels()[0].load_data(data)
                     loop2_channels()[1].load_data(data)
                     testcase.wait_updated(session.backend)
-                    if (!ShoopFileIO.save_channels_to_soundfile(filename, 24000, loop2_channels()))  {
+                    if (!ShoopRustFileIO.save_channels_to_soundfile(filename, 24000, loop2_channels()))  {
                         testcase.fail("Failed to save channels to soundfile")
                     }
                     testcase.wait_updated(session.backend)
@@ -169,7 +169,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     verify_eq(loop2_channels().length, 2)
-                    if (!ShoopFileIO.load_soundfile_to_channels(filename, 48000, 13000,
+                    if (!ShoopRustFileIO.load_soundfile_to_channels(filename, 48000, 13000,
                         [[loop2_channels()[0]], [loop2_channels()[1]]], null, null, null)) {
                             testcase.fail("Failed to load soundfile to channels");
                         }

@@ -22,29 +22,14 @@ ShoopTestFile {
             )
         }
 
-        ShoopLuaEngine {
+        ShoopRustLuaEngine {
             id: lua_engine
-            // ready: false
-            // function update() {
-            //     if (session.control_interface && session.control_interface.ready) {
-            //         create_lua_qobject_interface_as_global('__shoop_control_interface', session.control_interface)
-            //         ready = true
-            //     }
-            // }
-            // Component.onCompleted: update()
-            // Component.onDestruction: session.control_interface.unregister_lua_engine(lua_engine)
         }
-        // Connections {
-        //     target: session
-        //     function onControl_interfaceChanged() { lua_engine.update() }
-        // }
 
-        ShoopSessionControlHandler {
+        SessionControlHandler {
             id: handler
-
-            Component.onCompleted: {
-                handler.install_on_lua_engine(lua_engine)
-            }
+            lua_engine: lua_engine
+            session: session
         }
 
         ShoopSessionTestCase {

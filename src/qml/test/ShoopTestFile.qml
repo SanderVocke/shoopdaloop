@@ -21,10 +21,10 @@ Window {
     }
 
     Component.onCompleted: {
-        ShoopCrashHandling.set_json_tag("shoop_phase", "runtime")
+        ShoopRustCrashHandling.set_json_tag("shoop_phase", "runtime")
         
     }
     Component.onDestruction: {
-        ShoopCrashHandling.set_json_tag("shoop_phase", "quit")
+        ShoopRustCrashHandling.set_json_tag("shoop_phase", "quit")
     }
 }

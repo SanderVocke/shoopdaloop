@@ -182,8 +182,8 @@ ShoopTestFile {
                     ]
                     mt_midi_channels()[0].load_midi_data(midichan)
                     testcase.wait_updated(session.backend)
-                    var filename = ShoopFileIO.generate_temporary_filename() + '.mid'
-                    if (!ShoopFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])) {
+                    var filename = ShoopRustFileIO.generate_temporary_filename() + '.mid'
+                    if (!ShoopRustFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])) {
                         testcase.fail("Could not save channel MIDI");
                     }
 
@@ -191,7 +191,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
 
-                    if (!ShoopFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null))  {
+                    if (!ShoopRustFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null))  {
                         testcase.fail("Could not load MIDI to channels.")
                     }
                     testcase.wait_updated(session.backend)
@@ -215,8 +215,8 @@ ShoopTestFile {
                     ]
                     mt_midi_channels()[0].load_midi_data(midichan)
                     testcase.wait_updated(session.backend)
-                    var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
-                    if (!ShoopFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])) {
+                    var filename = ShoopRustFileIO.generate_temporary_filename() + '.smf'
+                    if (!ShoopRustFileIO.save_channel_to_midi(filename, 48000, mt_midi_channels()[0])) {
                         testcase.fail("Could not save channel MIDI");
                     }
 
@@ -224,7 +224,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
 
-                    if (!ShoopFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)) {
+                    if (!ShoopRustFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)) {
                         testcase.fail("Could not load MIDI to channels.")
                     }
                     testcase.wait_updated(session.backend)
@@ -261,7 +261,7 @@ ShoopTestFile {
                     dwt_loop().queue_set_length(4)
                     testcase.wait_updated(session.backend)
 
-                    var filename = ShoopFileIO.generate_temporary_filename() + '.shl'
+                    var filename = ShoopRustFileIO.generate_temporary_filename() + '.shl'
                     session.save_session(filename)
 
                     testcase.wait_session_io_done()
@@ -328,7 +328,7 @@ ShoopTestFile {
                     dwt_loop().queue_set_length(12)
                     testcase.wait_updated(session.backend)
 
-                    var filename = ShoopFileIO.generate_temporary_filename() + '.shl'
+                    var filename = ShoopRustFileIO.generate_temporary_filename() + '.shl'
                     session.save_session(filename)
 
                     testcase.wait_session_io_done()
@@ -382,7 +382,7 @@ ShoopTestFile {
                     verify_approx(dwt().control_widget.last_pushed_gain, 0.4)
                     verify_approx(dwt().control_widget.last_pushed_out_stereo_balance, 0.8)
 
-                    var filename = ShoopFileIO.generate_temporary_filename() + '.shl'
+                    var filename = ShoopRustFileIO.generate_temporary_filename() + '.shl'
                     session.save_session(filename)
 
                     testcase.wait_session_io_done()

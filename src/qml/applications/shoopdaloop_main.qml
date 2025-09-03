@@ -21,7 +21,7 @@ ShoopApplicationWindow {
 
         onLoadedChanged: {
             if (loaded) {
-                ShoopCrashHandling.set_json_tag("shoop_phase", "runtime")
+                ShoopRustCrashHandling.set_json_tag("shoop_phase", "runtime")
             }
         }
     }

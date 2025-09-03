@@ -192,7 +192,7 @@ Item {
 
     function save_session(filename) {
         root.logger.debug(`saving session to: ${filename}`)
-        var tempdir = ShoopFileIO.create_temporary_folder()
+        var tempdir = ShoopRustFileIO.create_temporary_folder()
         root.logger.trace(`Created temporary folder: ${tempdir}`)
         if (tempdir == null) {
             throw new Error("Failed to create temporary folder")
@@ -207,12 +207,12 @@ Item {
                 if (success) {
                     try {
                         // TODO make this step asynchronous
-                        if (!ShoopFileIO.make_tarfile(filename, tempdir)) {
+                        if (!ShoopRustFileIO.make_tarfile(filename, tempdir)) {
                             throw new Error(`Failed to create tarfile ${filename}`)
                         }
                         root.logger.info("Session written to: " + filename)
                     } finally {
-                        ShoopFileIO.delete_recursive(tempdir)
+                        ShoopRustFileIO.delete_recursive(tempdir)
                     }
                 } else {
                     root.logger.error("Writing session failed.")
@@ -222,7 +222,7 @@ Item {
 
             // TODO make this step asynchronous
             var descriptor = actual_session_descriptor(true, tempdir, observer)
-            if(!ShoopFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
+            if(!ShoopRustFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
                 throw new Error(`Failed to write session file ${session_filename}`)
             }
             observer.start()
@@ -289,21 +289,21 @@ Item {
 
     function load_session(filename, ignore_resample_warning=false) {
         root.logger.debug(`loading session: ${filename}`)
-        var tempdir = ShoopFileIO.create_temporary_folder()
+        var tempdir = ShoopRustFileIO.create_temporary_folder()
 
         try {
             root.unload_session()
 
-            ShoopFileIO.extract_tarfile(filename, tempdir)
-            root.logger.debug(`Extracted files to ${tempdir}: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`)
+            ShoopRustFileIO.extract_tarfile(filename, tempdir)
+            root.logger.debug(`Extracted files to ${tempdir}: ${JSON.stringify(ShoopRustFileIO.glob(tempdir + '/*'), null, 2)}`)
 
             var session_filename = tempdir + '/session.json'
-            var session_file_contents = ShoopFileIO.read_file(session_filename)
+            var session_file_contents = ShoopRustFileIO.read_file(session_filename)
             var descriptor = JSON.parse(session_file_contents)
             let our_sample_rate = session_backend.get_sample_rate()
             let incoming_sample_rate = descriptor.sample_rate
 
-            if (!ShoopSchemaValidator.validate_schema(descriptor, "Session object", validator.schema, false)) {
+            if (!ShoopRustSchemaValidator.validate_schema(descriptor, "Session object", validator.schema, false)) {
                 return;
             }
 
@@ -331,7 +331,7 @@ Item {
                     observer.finished.connect((success) => {
                         if (success) {
                             try {
-                                ShoopFileIO.delete_recursive(tempdir)
+                                ShoopRustFileIO.delete_recursive(tempdir)
                             } finally {
                                 root.logger.info("Session loaded from: " + filename)
                             }
@@ -363,7 +363,7 @@ Item {
                 connectOnce(root.loadedChanged, finish_fn)
             }
         } catch(e) {
-            ShoopFileIO.delete_recursive(tempdir)
+            ShoopRustFileIO.delete_recursive(tempdir)
             throw e;
         }
     }
@@ -445,7 +445,7 @@ Item {
 
         onClicked: forceActiveFocus()
         Connections {
-            target: ShoopReleaseFocusNotifier
+            target: ShoopRustReleaseFocusNotifier
             function onFocus_released() {
                 session_focus_item.forceActiveFocus()
             }

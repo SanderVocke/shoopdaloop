@@ -931,11 +931,11 @@ Item {
                         muted: false
                         empty: !statusrect.loop || statusrect.loop.length == 0
                         onDoubleClicked: (event) => {
-                                if (!ShoopKeyModifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
+                                if (!ShoopRustKeyModifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
                             }
                         onClicked: (event) => {
                             if (event.button === Qt.LeftButton) {
-                                if (ShoopKeyModifiers.alt_pressed) {
+                                if (ShoopRustKeyModifiers.alt_pressed) {
                                     if (root.selected_loops.size == 1) {
                                         let selected = Array.from(root.selected_loops)[0]
                                         if (selected != root) {
@@ -943,7 +943,7 @@ Item {
                                             if (selected.maybe_composite_loop) {
                                                 // Add the selected loop to the currently selected composite loop.
                                                 // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
-                                                if (ShoopKeyModifiers.control_pressed) {
+                                                if (ShoopRustKeyModifiers.control_pressed) {
                                                     selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, undefined)
                                                 } else {
                                                     selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, 0)
@@ -952,7 +952,7 @@ Item {
                                         }
                                     }
                                 } else if (root.targeted) { root.untarget(); root.deselect() }
-                                else { root.toggle_selected(!ShoopKeyModifiers.control_pressed) }
+                                else { root.toggle_selected(!ShoopRustKeyModifiers.control_pressed) }
                             }
                             else if (event.button === Qt.RightButton) { context_menu_loader.popup() }
                         }
@@ -1753,7 +1753,7 @@ Item {
                         onEditingFinished: {
                             root.name = text
                             focus = false
-                            ShoopReleaseFocusNotifier.notify()
+                            ShoopRustReleaseFocusNotifier.notify()
                         }
                     }
                 }
@@ -1903,7 +1903,7 @@ Item {
             id: savedialog
             fileMode: FileDialog.SaveFile
             acceptLabel: 'Save'
-            nameFilters: Object.entries(ShoopFileIO.get_soundfile_formats()).map((e) => {
+            nameFilters: Object.entries(ShoopRustFileIO.get_soundfile_formats()).map((e) => {
                 var extension = e[0]
                 var description = e[1].replace('(', '- ').replace(')', '')
                 return description + ' (*.' + extension + ')';
@@ -1920,7 +1920,7 @@ Item {
                     var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
 
                     var create_task = () => {
-                        var task = ShoopFileIO.save_channels_to_soundfile_async(filename, samplerate, channels)
+                        var task = ShoopRustFileIO.save_channels_to_soundfile_async(filename, samplerate, channels)
                         task.then((success) => {
                             if (!success) {
                                 root.logger.error("saving channels to sound file failed")
@@ -1950,7 +1950,7 @@ Item {
                 close()
                 var filename = UrlToFilename.qml_url_to_filename(file.toString());
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                ShoopFileIO.save_channel_to_midi_async(filename, samplerate, channel)
+                ShoopRustFileIO.save_channel_to_midi_async(filename, samplerate, channel)
             }
 
         }
@@ -1961,7 +1961,7 @@ Item {
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('
-                + Object.entries(ShoopFileIO.get_soundfile_formats()).map((e) => '*.' + e[0].toLowerCase()).join(' ')
+                + Object.entries(ShoopRustFileIO.get_soundfile_formats()).map((e) => '*.' + e[0].toLowerCase()).join(' ')
                 + ')'
             ]
             onAccepted: {
@@ -1997,7 +1997,7 @@ Item {
             height: 400
 
             onFilenameChanged: {
-                var props = ShoopFileIO.get_soundfile_info(filename)
+                var props = ShoopRustFileIO.get_soundfile_info(filename)
                 n_file_channels = props['channels']
                 file_sample_rate = props['samplerate']
             }
@@ -2042,7 +2042,7 @@ Item {
                         fidx = (fidx + 1) % n_file_channels
                     }
                     var create_task = () => {
-                        var task = ShoopFileIO.load_soundfile_to_channels_async(filename, samplerate, null,
+                        var task = ShoopRustFileIO.load_soundfile_to_channels_async(filename, samplerate, null,
                             mapping, 0, 0, root.maybe_backend_loop)
                         task.then((success) => {
                             if (!success) {
@@ -2135,7 +2135,7 @@ Item {
             function doLoad(update_loop_length) {
                 root.create_backend_loop()
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                ShoopFileIO.load_midi_to_channels_async(filename, samplerate, channels,
+                ShoopRustFileIO.load_midi_to_channels_async(filename, samplerate, channels,
                     0, 0, root.maybe_backend_loop)
             }
 

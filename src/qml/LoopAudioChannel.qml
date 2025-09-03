@@ -5,7 +5,7 @@ import ShoopDaLoop.PythonLogger
 import 'js/schema_conversions.js' as Conversions
 import ShoopConstants
 
-LoopChannelGui {
+ShoopRustLoopChannelGui {
     id: root
     objectName: "LoopAudioChannel"
 
@@ -43,7 +43,7 @@ LoopChannelGui {
             var filename = obj_id + '.flac'
             var full_filename = data_files_dir + '/' + filename
             var create_task = () => {
-                var task = ShoopFileIO.save_channels_to_soundfile_async(full_filename, root.backend.get_sample_rate(), [root])
+                var task = ShoopRustFileIO.save_channels_to_soundfile_async(full_filename, root.backend.get_sample_rate(), [root])
                 task.then_delete()
                 return task
             }
@@ -60,7 +60,7 @@ LoopChannelGui {
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         if (has_data_file()) {
             var create_task = () => {
-                var task = ShoopFileIO.load_soundfile_to_channels_async(
+                var task = ShoopRustFileIO.load_soundfile_to_channels_async(
                     data_files_dir + '/' + descriptor.data_file,
                     to_sample_rate,
                     descriptor.data_length,
