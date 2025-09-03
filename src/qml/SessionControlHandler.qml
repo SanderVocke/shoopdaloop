@@ -4,13 +4,23 @@ import ShoopDaLoop.Rust
 
 ShoopRustSessionControlHandler {
     id: root
-    property var session : null
     property var lua_engine : null
     property var installed_on : []
     property var logger : PythonLogger { name: "Frontend.Qml.SessionControlHandler" }
 
     loop_references : session.loops
-    selected_loops: session.selected_loops
+    selected_loops: {
+        // Sort by coordinates to get stable results
+        var result = Array.from(session.selected_loops)
+        result.sort(function(a,b) {
+            if (a.track_idx < b.track_idx) { return -1 }
+            else if (a.track_idx > b.track_idx) { return 1 }
+            else {
+                return a.idx_in_track - b.idx_in_track
+            }
+        })
+        return result
+    }
     targeted_loop: registries.state_registry.targeted_loop
 
     function update_engine() {

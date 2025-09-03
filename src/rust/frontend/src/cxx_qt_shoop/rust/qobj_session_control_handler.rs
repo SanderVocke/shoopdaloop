@@ -515,7 +515,7 @@ impl SessionControlHandlerLuaTarget {
             invoke::<_, (), _>(
                 &mut *l,
                 "trigger_mode_button(QVariant)",
-                connection_types::AUTO_CONNECTION,
+                connection_types::QUEUED_CONNECTION,
                 &(QVariant::from(&mode)),
             )
         })?;
@@ -541,7 +541,7 @@ impl SessionControlHandlerLuaTarget {
             invoke::<_, (), _>(
                 &mut *l,
                 "on_grab_clicked()",
-                connection_types::AUTO_CONNECTION,
+                connection_types::QUEUED_CONNECTION,
                 &(),
             )
         })?;
@@ -664,7 +664,7 @@ impl SessionControlHandlerLuaTarget {
             invoke::<_, (), _>(
                 &mut *l,
                 "push_gain(QVariant)",
-                connection_types::AUTO_CONNECTION,
+                connection_types::QUEUED_CONNECTION,
                 &(QVariant::from(&gain)),
             )
         })?;
@@ -696,7 +696,7 @@ impl SessionControlHandlerLuaTarget {
             invoke::<_, (), _>(
                 &mut *l,
                 "set_gain_fader(QVariant)",
-                connection_types::AUTO_CONNECTION,
+                connection_types::QUEUED_CONNECTION,
                 &(QVariant::from(&gain)),
             )
         })?;
@@ -728,7 +728,7 @@ impl SessionControlHandlerLuaTarget {
             invoke::<_, (), _>(
                 &mut *l,
                 "push_stereo_balance(QVariant)",
-                connection_types::AUTO_CONNECTION,
+                connection_types::QUEUED_CONNECTION,
                 &(QVariant::from(&balance)),
             )
         })?;
@@ -756,14 +756,20 @@ impl SessionControlHandlerLuaTarget {
                 return Err(anyhow::anyhow!("arg 2 is not a boolean"));
             }
         };
-        self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
+        let mut loops: QList_QVariant = QList::default();
+        self.select_loops(lua, selector)?.for_each(|l| {
+            loops.append(qobject_ptr_to_qvariant(&l).unwrap_or(QVariant::default()));
+        });
+
+        unsafe {
             invoke::<_, (), _>(
-                &mut *l,
-                "select(QVariant)",
-                connection_types::AUTO_CONNECTION,
-                &(QVariant::from(&clear)),
-            )
-        })?;
+                &mut *self.session,
+                "select_loops(QVariant,QVariant)",
+                connection_types::QUEUED_CONNECTION,
+                &(qvariantlist_to_qvariant(&loops)?, QVariant::from(&clear)),
+            )?;
+        }
+
         Ok(mlua::Value::Nil)
     }
 
@@ -786,9 +792,15 @@ impl SessionControlHandlerLuaTarget {
         let l = self
             .select_loops(lua, selector)?
             .nth(0)
-            .ok_or(anyhow::anyhow!("No loop found to target"))?;
+            .unwrap_or(std::ptr::null_mut());
+
         unsafe {
-            invoke::<_, (), _>(&mut *l, "target()", connection_types::AUTO_CONNECTION, &())?;
+            invoke::<_, (), _>(
+                &mut *self.session,
+                "target_loop(QVariant)",
+                connection_types::QUEUED_CONNECTION,
+                &(qobject_ptr_to_qvariant(&l).unwrap_or(QVariant::default())),
+            )?;
         }
         Ok(mlua::Value::Nil)
     }
@@ -808,13 +820,14 @@ impl SessionControlHandlerLuaTarget {
             return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let l = self
-            .select_loops(lua, selector)?
-            .nth(0)
-            .ok_or(anyhow::anyhow!("No loop found to clear"))?;
-        unsafe {
-            invoke::<_, (), _>(&mut *l, "clear()", connection_types::AUTO_CONNECTION, &())?;
-        }
+        self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
+            invoke::<_, (), _>(
+                &mut *l,
+                "clear(QVariant,QVariant)",
+                connection_types::QUEUED_CONNECTION,
+                &(QVariant::from(&0), QVariant::from(&false)),
+            )
+        })?;
         Ok(mlua::Value::Nil)
     }
 
@@ -833,7 +846,12 @@ impl SessionControlHandlerLuaTarget {
             return Err(anyhow::anyhow!("Expected 0 arguments, got {}", args.len()));
         }
         self.all_loops_iter()?.try_for_each(|l| unsafe {
-            invoke::<_, (), _>(&mut *l, "clear()", connection_types::AUTO_CONNECTION, &())
+            invoke::<_, (), _>(
+                &mut *l,
+                "clear(QVariant,QVariant)",
+                connection_types::QUEUED_CONNECTION,
+                &(QVariant::from(&0), QVariant::from(&false)),
+            )
         })?;
         Ok(mlua::Value::Nil)
     }
@@ -860,7 +878,7 @@ impl SessionControlHandlerLuaTarget {
             invoke::<_, (), _>(
                 &mut *l,
                 "untarget()",
-                connection_types::AUTO_CONNECTION,
+                connection_types::QUEUED_CONNECTION,
                 &(),
             )?;
         }
@@ -890,7 +908,7 @@ impl SessionControlHandlerLuaTarget {
             invoke::<_, (), _>(
                 &mut *l,
                 "toggle_selected(QVariant)",
-                connection_types::AUTO_CONNECTION,
+                connection_types::QUEUED_CONNECTION,
                 &(QVariant::from(&false)),
             )?;
         }
@@ -921,7 +939,7 @@ impl SessionControlHandlerLuaTarget {
             invoke::<_, (), _>(
                 &mut *l,
                 "toggle_targeted()",
-                connection_types::AUTO_CONNECTION,
+                connection_types::QUEUED_CONNECTION,
                 &(),
             )?;
         }
@@ -1091,22 +1109,27 @@ impl SessionControlHandler {
     }
 
     pub fn set_selected_loops(self: Pin<&mut SessionControlHandler>, loops: QList_QVariant) {
-        let mut converted: BTreeSet<*mut QObject> = BTreeSet::default();
+        let mut converted: Vec<*mut QObject> = Vec::default();
         for variant in loops.iter() {
             let qobj = qvariant_to_qobject_ptr(variant).unwrap_or(std::ptr::null_mut());
             if !qobj.is_null() {
-                converted.insert(qobj);
+                converted.push(qobj);
             }
         }
+        trace!("selected loops: {:?}", converted);
         self.lua_target.borrow_mut().selected_loops = converted;
+        self.selected_loops_changed();
     }
 
     pub fn set_targeted_loop(self: Pin<&mut SessionControlHandler>, maybe_loop: QVariant) {
         let qobj = qvariant_to_qobject_ptr(&maybe_loop).unwrap_or(std::ptr::null_mut());
-        self.lua_target.borrow_mut().maybe_targeted_loop = match qobj.is_null() {
+        let value = match qobj.is_null() {
             true => None,
             false => Some(qobj),
         };
+        trace!("targeted loop: {:?}", value);
+        self.lua_target.borrow_mut().maybe_targeted_loop = value;
+        self.targeted_loop_changed();
     }
 
     pub fn get_selected_loops(self: Pin<&mut SessionControlHandler>) -> QList_QVariant {
@@ -1126,6 +1149,15 @@ impl SessionControlHandler {
                 .unwrap_or(std::ptr::null_mut()),
         )
         .unwrap_or(QVariant::default())
+    }
+
+    pub fn set_session(self: Pin<&mut SessionControlHandler>, session: *mut QObject) {
+        self.lua_target.borrow_mut().session = session;
+        self.session_changed();
+    }
+
+    pub fn get_session(self: Pin<&mut SessionControlHandler>) -> *mut QObject {
+        self.lua_target.borrow().session
     }
 }
 

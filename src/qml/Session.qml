@@ -370,6 +370,14 @@ Item {
 
     SelectedLoops { id: selected_loops_lookup }
     property alias selected_loops: selected_loops_lookup.loops
+    function select_loops(loops, clear=false) {
+        var selection = new Set(loops.map(l => l.obj_id))
+        selection.delete(null)
+        if (!clear && session.selected_loops) {
+            root.selected_loops.forEach((l) => { selection.add(l.obj_id) })
+        }
+        registries.state_registry.replace('selected_loop_ids', selection)
+    }
 
     RegistryLookup {
         id: targeted_loop_lookup
@@ -377,6 +385,9 @@ Item {
         key: 'targeted_loop'
     }
     property alias targeted_loop : targeted_loop_lookup.object
+    function target_loop(loop) {
+        registries.state_registry.set_targeted_loop(loop)
+    }
 
     RegisterInRegistry {
         registry: registries.state_registry

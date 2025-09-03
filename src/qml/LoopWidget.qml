@@ -319,7 +319,6 @@ Item {
             maybe_loop = null
         }
     }
-
     function select(clear = false) {
         untarget()
         if (!clear) {

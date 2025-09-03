@@ -20,8 +20,9 @@ pub mod ffi {
     unsafe extern "RustQt" {
         #[qobject]
         #[qproperty(QList_QVariant, loop_references)]
-        #[qproperty(QList_QVariant, selected_loops, READ=get_selected_loops, WRITE=set_selected_loops)]
-        #[qproperty(QVariant, targeted_loop, READ=get_targeted_loop, WRITE=set_targeted_loop)]
+        #[qproperty(QList_QVariant, selected_loops, READ=get_selected_loops, WRITE=set_selected_loops, NOTIFY=selected_loops_changed)]
+        #[qproperty(QVariant, targeted_loop, READ=get_targeted_loop, WRITE=set_targeted_loop, NOTIFY=targeted_loop_changed)]
+        #[qproperty(*mut QObject, session, READ=get_session, WRITE=set_session, NOTIFY=session_changed)]
         type SessionControlHandler = super::SessionControlHandlerRust;
 
         #[qinvokable]
@@ -41,6 +42,21 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn get_targeted_loop(self: Pin<&mut SessionControlHandler>) -> QVariant;
+
+        #[qinvokable]
+        pub fn set_session(self: Pin<&mut SessionControlHandler>, session: *mut QObject);
+
+        #[qinvokable]
+        pub fn get_session(self: Pin<&mut SessionControlHandler>) -> *mut QObject;
+
+        #[qsignal]
+        pub fn session_changed(self: Pin<&mut SessionControlHandler>);
+
+        #[qsignal]
+        pub fn selected_loops_changed(self: Pin<&mut SessionControlHandler>);
+
+        #[qsignal]
+        pub fn targeted_loop_changed(self: Pin<&mut SessionControlHandler>);
     }
 
     unsafe extern "C++" {
@@ -64,11 +80,18 @@ pub mod ffi {
         fn qobjectFromRef(obj: &SessionControlHandler) -> &QObject;
     }
 
-    impl cxx_qt::Constructor<(*mut QObject,), NewArguments = (*mut QObject,)> for SessionControlHandler {}
+    impl cxx_qt::Constructor<(*mut QObject,), NewArguments = (*mut QObject,)>
+        for SessionControlHandler
+    {
+    }
     impl cxx_qt::Constructor<(), NewArguments = ()> for SessionControlHandler {}
 }
 
-use std::{cell::RefCell, collections::{BTreeMap, BTreeSet, HashSet}, rc::{Rc, Weak}};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet, HashSet},
+    rc::{Rc, Weak},
+};
 
 use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::{qobject::AsQObject, qpointer::QPointerQObject};
@@ -80,8 +103,9 @@ pub struct SessionControlHandlerLuaTarget {
     pub structured_loop_references: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>>,
     pub weak_self: Weak<RefCell<SessionControlHandlerLuaTarget>>,
     pub callbacks: Vec<Rc<Box<dyn LuaCallback>>>,
-    pub selected_loops: BTreeSet<*mut QObject>,
+    pub selected_loops: Vec<*mut QObject>,
     pub maybe_targeted_loop: Option<*mut QObject>,
+    pub session: *mut QObject,
 }
 
 pub struct SessionControlHandlerRust {
@@ -92,18 +116,19 @@ pub struct SessionControlHandlerRust {
 impl Default for SessionControlHandlerRust {
     fn default() -> Self {
         let target = Rc::new(RefCell::new(SessionControlHandlerLuaTarget {
-                structured_loop_references: BTreeMap::new(),
-                weak_self: std::rc::Weak::new(),
-                callbacks: Vec::default(),
-                selected_loops: BTreeSet::default(),
-                maybe_targeted_loop: None,
-            }));
+            structured_loop_references: BTreeMap::new(),
+            weak_self: std::rc::Weak::new(),
+            callbacks: Vec::default(),
+            selected_loops: Vec::default(),
+            maybe_targeted_loop: None,
+            session: std::ptr::null_mut(),
+        }));
         let weak = Rc::downgrade(&target);
         target.borrow_mut().weak_self = weak;
 
         Self {
             loop_references: QList::default(),
-            lua_target: target
+            lua_target: target,
         }
     }
 }
