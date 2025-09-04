@@ -15,6 +15,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib/qlist.h");
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
+        type QList_i32 = cxx_qt_lib::QList<i32>;
     }
 
     unsafe extern "RustQt" {
@@ -64,6 +65,15 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn get_global_state_registry(self: Pin<&mut SessionControlHandler>) -> *mut QObject;
+
+        #[qinvokable]
+        pub fn on_loop_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant);
+
+        #[qinvokable]
+        pub fn on_global_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant);
+
+        #[qinvokable]
+        pub fn on_key_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant);
 
         #[qsignal]
         pub fn session_changed(self: Pin<&mut SessionControlHandler>);
@@ -118,11 +128,19 @@ use ffi::*;
 
 use crate::lua_callback::LuaCallback;
 
+#[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
+pub enum RustToLuaCallbackType {
+    OnLoopEvent,
+    OnGlobalEvent,
+    OnKeyEvent
+}
+
 pub struct SessionControlHandlerLuaTarget {
     pub structured_loop_widget_references: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>>,
     pub structured_track_control_widget_references: BTreeMap<i64, cxx::UniquePtr<QPointerQObject>>,
     pub weak_self: Weak<RefCell<SessionControlHandlerLuaTarget>>,
-    pub callbacks: Vec<Rc<Box<dyn LuaCallback>>>,
+    pub callbacks_lua_to_rust: Vec<Rc<Box<dyn LuaCallback>>>,
+    pub callbacks_rust_to_lua: Rc<RefCell<BTreeMap<RustToLuaCallbackType, Vec<mlua::Function>>>>,
     pub selected_loops: Vec<*mut QObject>,
     pub maybe_targeted_loop: Option<*mut QObject>,
     pub session: *mut QObject,
@@ -141,7 +159,12 @@ impl Default for SessionControlHandlerRust {
             structured_loop_widget_references: BTreeMap::new(),
             structured_track_control_widget_references: BTreeMap::new(),
             weak_self: std::rc::Weak::new(),
-            callbacks: Vec::default(),
+            callbacks_lua_to_rust: Vec::default(),
+            callbacks_rust_to_lua: Rc::new(RefCell::new(BTreeMap::from([
+                (RustToLuaCallbackType::OnLoopEvent, Vec::default()),
+                (RustToLuaCallbackType::OnGlobalEvent, Vec::default()),
+                (RustToLuaCallbackType::OnKeyEvent, Vec::default()),
+            ]))),
             selected_loops: Vec::default(),
             maybe_targeted_loop: None,
             session: std::ptr::null_mut(),

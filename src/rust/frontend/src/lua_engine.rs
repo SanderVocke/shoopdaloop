@@ -18,7 +18,7 @@ pub enum LuaScope {
 
 pub struct LuaEngineImpl {
     weak_self: Weak<RefCell<LuaEngineImpl>>,
-    pub lua: mlua::Lua,
+    pub lua: Rc<mlua::Lua>,
     preloaded_libs: HashMap<String, String>,
     run_sandboxed: Option<mlua::Function>,
     require: Option<mlua::Function>,
@@ -34,7 +34,7 @@ impl Default for LuaEngine {
         let rval = Self {
             lua: Rc::new(RefCell::new(LuaEngineImpl {
                 weak_self: Weak::new(),
-                lua: mlua::Lua::new(),
+                lua: Rc::new(mlua::Lua::new()),
                 preloaded_libs: HashMap::default(),
                 run_sandboxed: None,
                 require: None,
@@ -526,7 +526,7 @@ return test_hello_world()
         impl LuaCallback for TestCallback {
             fn call(
                 &self,
-                _: &mlua::Lua,
+                _: &Rc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
@@ -559,7 +559,7 @@ return test_hello_world()
         impl LuaCallback for TestCallback {
             fn call(
                 &self,
-                _: &mlua::Lua,
+                _: &Rc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
@@ -592,7 +592,7 @@ return test_hello_world()
         impl LuaCallback for TestAddCallback {
             fn call(
                 &self,
-                _: &mlua::Lua,
+                _: &Rc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
@@ -607,7 +607,7 @@ return test_hello_world()
         impl LuaCallback for TestSubtractCallback {
             fn call(
                 &self,
-                _: &mlua::Lua,
+                _: &Rc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
@@ -654,7 +654,7 @@ return test_hello_world()
         impl LuaCallback for TestAddCallback {
             fn call(
                 &self,
-                _: &mlua::Lua,
+                _: &Rc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
@@ -669,7 +669,7 @@ return test_hello_world()
         impl LuaCallback for TestSubtractCallback {
             fn call(
                 &self,
-                _: &mlua::Lua,
+                _: &Rc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {

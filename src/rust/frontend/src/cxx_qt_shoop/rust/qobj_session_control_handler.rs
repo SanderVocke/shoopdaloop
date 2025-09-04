@@ -1,4 +1,6 @@
-use crate::cxx_qt_shoop::qobj_session_control_handler_bridge::SessionControlHandlerLuaTarget;
+use crate::cxx_qt_shoop::qobj_session_control_handler_bridge::{
+    RustToLuaCallbackType, SessionControlHandlerLuaTarget,
+};
 use crate::cxx_qt_shoop::{
     qobj_lua_engine_bridge::ffi::LuaEngine, qobj_session_control_handler_bridge::ffi::*,
 };
@@ -159,11 +161,10 @@ impl SessionControlHandlerLuaTarget {
     pub fn install_on_lua_engine(&mut self, engine: *mut QObject) {
         struct SessionControlCallback {
             weak_target: Weak<RefCell<SessionControlHandlerLuaTarget>>,
-            weak_engine: Weak<RefCell<LuaEngineImpl>>,
             callable: Box<
                 dyn Fn(
                     &SessionControlHandlerLuaTarget,
-                    &mlua::Lua,
+                    &Rc<mlua::Lua>,
                     mlua::MultiValue,
                 ) -> Result<mlua::Value, anyhow::Error>,
             >,
@@ -172,7 +173,7 @@ impl SessionControlHandlerLuaTarget {
         impl LuaCallback for SessionControlCallback {
             fn call(
                 &self,
-                _lua: &mlua::Lua,
+                lua: &Rc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 let strong_self = self
@@ -180,12 +181,7 @@ impl SessionControlHandlerLuaTarget {
                     .upgrade()
                     .ok_or(anyhow::anyhow!("Session control target went out of scope"))?;
                 let strong_self = strong_self.borrow();
-                let strong_engine = self
-                    .weak_engine
-                    .upgrade()
-                    .ok_or(anyhow::anyhow!("Lua engine went out of scope"))?;
-                let strong_engine = strong_engine.borrow();
-                (self.callable)(&strong_self, &strong_engine.lua, args)
+                (self.callable)(&strong_self, lua, args)
             }
         }
 
@@ -241,7 +237,6 @@ impl SessionControlHandlerLuaTarget {
                 ($name: expr, $callback: expr) => {{
                     let weak_clone = self.weak_self.clone();
                     let callback = SessionControlCallback {
-                        weak_engine: Rc::downgrade(&wrapped_engine.lua),
                         weak_target: weak_clone,
                         callable: Box::new($callback),
                     };
@@ -250,7 +245,7 @@ impl SessionControlHandlerLuaTarget {
                     lua_module.set($name, callback_lua).map_err(|e| {
                         anyhow::anyhow!("Could not set module callback {}: {e}", $name)
                     })?;
-                    self.callbacks.push(callback_rc);
+                    self.callbacks_lua_to_rust.push(callback_rc);
                 }};
             }
 
@@ -264,6 +259,7 @@ impl SessionControlHandlerLuaTarget {
                 };
             }
 
+            // loop API
             add_self_callback!(loop_count);
             add_self_callback!(loop_get_all);
             add_self_callback!(loop_get_which_selected);
@@ -295,6 +291,7 @@ impl SessionControlHandlerLuaTarget {
             add_self_callback!(loop_adopt_ringbuffers);
             add_self_callback!(loop_compose_add_to_end);
 
+            // track API
             add_self_callback!(track_get_gain);
             add_self_callback!(track_get_balance);
             add_self_callback!(track_get_gain_fader);
@@ -310,6 +307,7 @@ impl SessionControlHandlerLuaTarget {
             add_self_callback!(track_set_input_gain);
             add_self_callback!(track_set_input_gain_fader);
 
+            // global control API
             add_self_callback!(set_apply_n_cycles);
             add_self_callback!(get_apply_n_cycles);
             add_self_callback!(set_solo);
@@ -320,6 +318,9 @@ impl SessionControlHandlerLuaTarget {
             add_self_callback!(get_play_after_record);
             add_self_callback!(set_default_recording_action);
             add_self_callback!(get_default_recording_action);
+
+            // event API
+            add_self_callback!(register_loop_event_cb);
 
             wrapped_engine.set_toplevel("__shoop_control", lua_module)?;
 
@@ -1982,6 +1983,37 @@ impl SessionControlHandlerLuaTarget {
         }
     }
 
+    /*
+    @shoop_lua_fn_docstring.start
+    shoop_control.register_loop_event_cb(callback)
+    Register a callback for loop events. See loop_callback for details.
+    @shoop_lua_fn_docstring.end
+    */
+    fn register_loop_event_cb(
+        &self,
+        lua: &Rc<mlua::Lua>,
+        args: mlua::MultiValue,
+    ) -> Result<mlua::Value, anyhow::Error> {
+        if args.len() != 1 {
+            return Err(anyhow::anyhow!("Expected 1 arguments, got {}", args.len()));
+        }
+        let callback = args.get(0).unwrap_or(&mlua::Value::Nil);
+        if let mlua::Value::Function(function) = callback {
+            if let Some(vec) = self
+                .callbacks_rust_to_lua
+                .borrow_mut()
+                .get_mut(&RustToLuaCallbackType::OnLoopEvent)
+            {
+                vec.push(function.clone());
+                Ok(mlua::Value::Nil)
+            } else {
+                return Err(anyhow::anyhow!("Could not get callbacks for loop event"));
+            }
+        } else {
+            return Err(anyhow::anyhow!("Passed argument is not a function"));
+        }
+    }
+
     fn select_loop_by_coords(&self, x: i64, y: i64) -> Option<*mut QObject> {
         self.structured_loop_widget_references
             .get(&(x, y))
@@ -2281,6 +2313,36 @@ impl SessionControlHandler {
 
     pub fn get_global_state_registry(self: Pin<&mut SessionControlHandler>) -> *mut QObject {
         self.lua_target.borrow_mut().global_state_registry
+    }
+
+    pub fn on_loop_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            for registered_cb in self
+                .lua_target
+                .borrow()
+                .callbacks_rust_to_lua
+                .borrow()
+                .get(&RustToLuaCallbackType::OnLoopEvent)
+                .unwrap_or(&vec![])
+                .iter()
+            {
+                todo!();
+                // if let Err(e) = registered_cb.call(lua_event) {
+                //     error!("Could not call loop event callback: {e}");
+                // }
+            }
+            Ok(())
+        }() {
+            error!("Could not convert loop event: {e}");
+        }
+    }
+
+    pub fn on_global_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant) {
+        todo!();
+    }
+
+    pub fn on_key_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant) {
+        todo!();
     }
 }
 
