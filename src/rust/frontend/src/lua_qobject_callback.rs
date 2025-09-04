@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, rc::Rc};
 
 use cxx_qt_lib_shoop::{
     invokable::{invoke, Invokable},
@@ -43,7 +43,7 @@ impl<Args: FromLuaMultiExtended, R: IntoLuaExtended, Q: LuaQObjectCallbackTarget
 where
     QObject: Invokable<R, Args>,
 {
-    fn call(&self, lua: &mlua::Lua, args: mlua::MultiValue) -> Result<mlua::Value, anyhow::Error> {
+    fn call(&self, lua: &Rc<mlua::Lua>, args: mlua::MultiValue) -> Result<mlua::Value, anyhow::Error> {
         let args: Args = Args::from_lua_multi(args, lua)
             .map_err(|e| anyhow::anyhow!("Could not map args: {e}"))?;
 

@@ -1,7 +1,10 @@
 use std::{collections::HashMap, i64};
 
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
-use cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant;
+use cxx_qt_lib_shoop::{
+    qmetatype_helpers::*,
+    qvariant_helpers::{qvariant_type_id, qvariant_type_name, qvariantmap_to_qvariant},
+};
 use mlua::{self, FromLua};
 
 pub trait IntoLuaExtended {
@@ -60,6 +63,12 @@ impl FromLuaExtended for QString {
     }
 }
 
+impl IntoLuaExtended for QString {
+    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
+        self.to_string().into_lua(lua)
+    }
+}
+
 impl FromLuaExtended for QVariant {
     fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
         let type_name = value.type_name();
@@ -85,6 +94,48 @@ impl FromLuaExtended for QVariant {
                 from: type_name,
                 to: "QVariant".to_string(),
                 message: Some("Unsupported".to_string()),
+            }),
+        }
+    }
+}
+
+impl IntoLuaExtended for QVariant {
+    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
+        if self.is_null() {
+            return Ok(mlua::Value::Nil);
+        }
+
+        let type_id = qvariant_type_id(&self).unwrap();
+        let type_name = qvariant_type_name(&self).unwrap();
+
+        macro_rules! convert {
+            ($T:ty) => {
+                self.value::<$T>()
+                    .ok_or(mlua::Error::ToLuaConversionError {
+                        from: type_name.to_string(),
+                        to: "Lua val",
+                        message: Some("failed to get qvariant value".to_string()),
+                    })?
+                    .into_lua(lua)
+            };
+        }
+
+        match type_id {
+            _v if _v == qmetatype_id_int() => convert!(i64),
+            _v if _v == qmetatype_id_int64() || type_name == "qlonglong" => convert!(i64),
+            _v if _v == qmetatype_id_uint() => convert!(i64),
+            _v if _v == qmetatype_id_uint64() => convert!(i64),
+            _v if _v == qmetatype_id_qstring() => todo!(),
+            _v if _v == qmetatype_id_bool() => convert!(bool),
+            _v if _v == qmetatype_id_float() => convert!(f32),
+            _v if _v == qmetatype_id_double() => convert!(f64),
+            _v if _v == qmetatype_id_qvariantmap() => todo!(),
+            _v if _v == qmetatype_id_qvariantlist() => todo!(),
+            _v if _v == qmetatype_id_qstringlist() => todo!(),
+            _ => Err(mlua::Error::ToLuaConversionError {
+                from: type_name.to_string(),
+                to: "Lua val",
+                message: Some("unsupported".to_string()),
             }),
         }
     }
@@ -125,6 +176,17 @@ impl FromLuaExtended for QList<QVariant> {
     }
 }
 
+impl IntoLuaExtended for QList<QVariant> {
+    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
+        Ok(mlua::Value::Table(
+            lua.create_sequence_from(
+                self.iter()
+                    .map(|v| IntoLuaExtended::into_lua(v.clone(), lua).unwrap_or(mlua::Value::Nil)),
+            )?,
+        ))
+    }
+}
+
 impl FromLuaExtended for QMap<QMapPair_QString_QVariant> {
     fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
         let mut rval: QMap<QMapPair_QString_QVariant> = QMap::default();
@@ -147,5 +209,17 @@ impl FromLuaExtended for QMap<QMapPair_QString_QVariant> {
             })?;
 
         Ok(rval)
+    }
+}
+
+impl IntoLuaExtended for QMap<QMapPair_QString_QVariant> {
+    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
+        Ok(mlua::Value::Table(lua.create_table_from(
+            self.iter().map(|(k, v)| {
+                let key = IntoLuaExtended::into_lua(k.clone(), lua).unwrap_or(mlua::Value::Nil);
+                let value = IntoLuaExtended::into_lua(v.clone(), lua).unwrap_or(mlua::Value::Nil);
+                (key, value)
+            }),
+        )?))
     }
 }

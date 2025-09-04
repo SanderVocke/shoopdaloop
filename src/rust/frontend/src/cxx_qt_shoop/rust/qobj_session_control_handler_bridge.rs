@@ -135,12 +135,17 @@ pub enum RustToLuaCallbackType {
     OnKeyEvent
 }
 
+pub struct RustToLuaCallback {
+    pub callback : mlua::Function,
+    pub weak_lua : Weak<mlua::Lua>,
+}
+
 pub struct SessionControlHandlerLuaTarget {
     pub structured_loop_widget_references: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>>,
     pub structured_track_control_widget_references: BTreeMap<i64, cxx::UniquePtr<QPointerQObject>>,
     pub weak_self: Weak<RefCell<SessionControlHandlerLuaTarget>>,
     pub callbacks_lua_to_rust: Vec<Rc<Box<dyn LuaCallback>>>,
-    pub callbacks_rust_to_lua: Rc<RefCell<BTreeMap<RustToLuaCallbackType, Vec<mlua::Function>>>>,
+    pub callbacks_rust_to_lua: Rc<RefCell<BTreeMap<RustToLuaCallbackType, Vec<RustToLuaCallback>>>>,
     pub selected_loops: Vec<*mut QObject>,
     pub maybe_targeted_loop: Option<*mut QObject>,
     pub session: *mut QObject,

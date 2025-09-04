@@ -1,11 +1,11 @@
 use crate::cxx_qt_shoop::qobj_session_control_handler_bridge::{
-    RustToLuaCallbackType, SessionControlHandlerLuaTarget,
+    RustToLuaCallback, RustToLuaCallbackType, SessionControlHandlerLuaTarget,
 };
 use crate::cxx_qt_shoop::{
     qobj_lua_engine_bridge::ffi::LuaEngine, qobj_session_control_handler_bridge::ffi::*,
 };
 use crate::lua_callback::LuaCallback;
-use crate::lua_engine::LuaEngineImpl;
+use crate::lua_conversions::IntoLuaExtended;
 use backend_bindings::LoopMode;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
@@ -1978,7 +1978,7 @@ impl SessionControlHandlerLuaTarget {
         }
         unsafe {
             qobject_property_string(&mut *self.global_state_registry, "default_recording_action")
-                .map(|v| v.to_string().into_lua(lua).unwrap_or(mlua::Value::Nil))
+                .map(|v| IntoLua::into_lua(v.to_string(),lua).unwrap_or(mlua::Value::Nil))
                 .map_err(|e| anyhow::anyhow!("could not get state registry property: {e}"))
         }
     }
@@ -1997,14 +1997,17 @@ impl SessionControlHandlerLuaTarget {
         if args.len() != 1 {
             return Err(anyhow::anyhow!("Expected 1 arguments, got {}", args.len()));
         }
-        let callback = args.get(0).unwrap_or(&mlua::Value::Nil);
-        if let mlua::Value::Function(function) = callback {
+        let lua_fn = args.get(0).unwrap_or(&mlua::Value::Nil);
+        if let mlua::Value::Function(function) = lua_fn {
             if let Some(vec) = self
                 .callbacks_rust_to_lua
                 .borrow_mut()
                 .get_mut(&RustToLuaCallbackType::OnLoopEvent)
             {
-                vec.push(function.clone());
+                vec.push(RustToLuaCallback {
+                    callback: function.clone(),
+                    weak_lua: Rc::downgrade(lua),
+                });
                 Ok(mlua::Value::Nil)
             } else {
                 return Err(anyhow::anyhow!("Could not get callbacks for loop event"));
@@ -2315,6 +2318,15 @@ impl SessionControlHandler {
         self.lua_target.borrow_mut().global_state_registry
     }
 
+    /*
+    @shoop_lua_fn_docstring.start
+    type loop_callback
+    Loop event callback type. The callback takes an event argument, which is a table
+    with fields 'coords' (table [x,y]), 'mode' (mode), 'selected' (bool),
+    'targeted' (bool) and 'length' (int).
+    Coordinates map to the loop grid. Only the sync loop has a special location [-1,0].
+    @shoop_lua_fn_docstring.end
+    */
     pub fn on_loop_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             for registered_cb in self
@@ -2326,10 +2338,15 @@ impl SessionControlHandler {
                 .unwrap_or(&vec![])
                 .iter()
             {
-                todo!();
-                // if let Err(e) = registered_cb.call(lua_event) {
-                //     error!("Could not call loop event callback: {e}");
-                // }
+                if let Some(lock) = registered_cb.weak_lua.upgrade() {
+                    let event = event.clone().into_lua(&lock)
+                        .map_err(|e| anyhow::anyhow!("Could not convert loop event: {e}"))?;
+                    if let Err(e) = registered_cb.callback.call::<()>(event) {
+                        error!("Could not call loop event callback: {e}");
+                    }
+                } else {
+                    error!("Could not call loop event callback: lua engine went out of scope");
+                }
             }
             Ok(())
         }() {
@@ -2337,11 +2354,11 @@ impl SessionControlHandler {
         }
     }
 
-    pub fn on_global_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant) {
+    pub fn on_global_event(self: Pin<&mut SessionControlHandler>, _event: QMap_QString_QVariant) {
         todo!();
     }
 
-    pub fn on_key_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant) {
+    pub fn on_key_event(self: Pin<&mut SessionControlHandler>, _event: QMap_QString_QVariant) {
         todo!();
     }
 }
