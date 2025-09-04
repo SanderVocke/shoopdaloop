@@ -19,9 +19,11 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
-        #[qproperty(QList_QVariant, loop_references)]
+        #[qproperty(QList_QVariant, loop_widget_references)]
+        #[qproperty(QList_QVariant, track_control_widget_references)]
         #[qproperty(QList_QVariant, selected_loops, READ=get_selected_loops, WRITE=set_selected_loops, NOTIFY=selected_loops_changed)]
         #[qproperty(QVariant, targeted_loop, READ=get_targeted_loop, WRITE=set_targeted_loop, NOTIFY=targeted_loop_changed)]
+        #[qproperty(*mut QObject, global_state_registry, READ=get_global_state_registry, WRITE=set_global_state_registry, NOTIFY=global_state_registry_changed)]
         #[qproperty(*mut QObject, session, READ=get_session, WRITE=set_session, NOTIFY=session_changed)]
         type SessionControlHandler = super::SessionControlHandlerRust;
 
@@ -29,7 +31,12 @@ pub mod ffi {
         pub fn install_on_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject);
 
         #[qinvokable]
-        pub fn update_structured_loop_references(self: Pin<&mut SessionControlHandler>);
+        pub fn update_structured_loop_widget_references(self: Pin<&mut SessionControlHandler>);
+
+        #[qinvokable]
+        pub fn update_structured_track_control_widget_references(
+            self: Pin<&mut SessionControlHandler>,
+        );
 
         #[qinvokable]
         pub fn set_selected_loops(self: Pin<&mut SessionControlHandler>, loops: QList_QVariant);
@@ -49,6 +56,15 @@ pub mod ffi {
         #[qinvokable]
         pub fn get_session(self: Pin<&mut SessionControlHandler>) -> *mut QObject;
 
+        #[qinvokable]
+        pub fn set_global_state_registry(
+            self: Pin<&mut SessionControlHandler>,
+            registry: *mut QObject,
+        );
+
+        #[qinvokable]
+        pub fn get_global_state_registry(self: Pin<&mut SessionControlHandler>) -> *mut QObject;
+
         #[qsignal]
         pub fn session_changed(self: Pin<&mut SessionControlHandler>);
 
@@ -57,6 +73,9 @@ pub mod ffi {
 
         #[qsignal]
         pub fn targeted_loop_changed(self: Pin<&mut SessionControlHandler>);
+
+        #[qsignal]
+        pub fn global_state_registry_changed(self: Pin<&mut SessionControlHandler>);
     }
 
     unsafe extern "C++" {
@@ -100,34 +119,40 @@ use ffi::*;
 use crate::{lua_callback::LuaCallback, lua_engine::LuaEngineImpl};
 
 pub struct SessionControlHandlerLuaTarget {
-    pub structured_loop_references: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>>,
+    pub structured_loop_widget_references: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>>,
+    pub structured_track_control_widget_references: BTreeMap<i64, cxx::UniquePtr<QPointerQObject>>,
     pub weak_self: Weak<RefCell<SessionControlHandlerLuaTarget>>,
     pub callbacks: Vec<Rc<Box<dyn LuaCallback>>>,
     pub selected_loops: Vec<*mut QObject>,
     pub maybe_targeted_loop: Option<*mut QObject>,
     pub session: *mut QObject,
+    pub global_state_registry: *mut QObject,
 }
 
 pub struct SessionControlHandlerRust {
-    pub loop_references: QList_QVariant,
+    pub loop_widget_references: QList_QVariant,
+    pub track_control_widget_references: QList_QVariant,
     pub lua_target: Rc<RefCell<SessionControlHandlerLuaTarget>>,
 }
 
 impl Default for SessionControlHandlerRust {
     fn default() -> Self {
         let target = Rc::new(RefCell::new(SessionControlHandlerLuaTarget {
-            structured_loop_references: BTreeMap::new(),
+            structured_loop_widget_references: BTreeMap::new(),
+            structured_track_control_widget_references: BTreeMap::new(),
             weak_self: std::rc::Weak::new(),
             callbacks: Vec::default(),
             selected_loops: Vec::default(),
             maybe_targeted_loop: None,
             session: std::ptr::null_mut(),
+            global_state_registry: std::ptr::null_mut(),
         }));
         let weak = Rc::downgrade(&target);
         target.borrow_mut().weak_self = weak;
 
         Self {
-            loop_references: QList::default(),
+            loop_widget_references: QList::default(),
+            track_control_widget_references: QList::default(),
             lua_target: target,
         }
     }

@@ -8,7 +8,9 @@ ShoopRustSessionControlHandler {
     property var installed_on : []
     property var logger : PythonLogger { name: "Frontend.Qml.SessionControlHandler" }
 
-    loop_references : session.loops
+    loop_widget_references : session.loops
+    track_control_widget_references : session.tracks.map(t => t.control_widget)
+    global_state_registry: registries.state_registry
     selected_loops: {
         // Sort by coordinates to get stable results
         var result = Array.from(session.selected_loops)

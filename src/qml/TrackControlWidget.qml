@@ -13,6 +13,7 @@ Item {
 
     // Input properties
     property var initial_track_descriptor : null
+    property var track: null
 
     // UI-controlled properties
     property alias gain_dB: gain_fader.value
@@ -23,6 +24,8 @@ Item {
     property alias output_balance: output_balance_dial.value
     property real gain_fader_position: gain_fader.position
     property real input_fader_position: input_fader.position
+
+    readonly property int track_idx: track ? track.track_idx : -1
 
     property bool monitor : {
         // Initial setting
@@ -264,6 +267,12 @@ Item {
     function set_input_gain_fader(value) {
         input_fader.value = input_fader.valueAt(value)
         push_in_gains()
+    }
+    function set_monitor(monitor) {
+        root.monitor = monitor
+    }
+    function set_mute(mute) {
+        root.mute = mute
     }
     function convert_gain_to_linear(gain) {
         convert_gain.dB = gain

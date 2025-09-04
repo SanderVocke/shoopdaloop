@@ -308,20 +308,21 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.loop_get_balance({{0,0},{1,0}})', '{0.5, 1.0}')
                 },
 
-                // 'test_loop_transition': () => {
-                //     check_backend()
-                //     clear()
+                'test_loop_transition': () => {
+                    check_backend()
+                    clear()
 
-                //     verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
-                //     do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, shoop_control.constants.Loop_DontWaitForSync, shoop_control.constants.Loop_DontAlignToSyncImmediately)')
-                //     testcase.wait_updated(session.backend)
-                //     verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
-                //     verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Stopped)
-                //     do_execute('shoop_control.loop_transition({0,1}, shoop_control.constants.LoopMode_Recording, shoop_control.constants.Loop_DontWaitForSync, shoop_control.constants.Loop_DontAlignToSyncImmediately)')
-                //     testcase.wait_updated(session.backend)
-                //     verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
-                //     verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Recording)
-                // },
+                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
+                    do_execute('shoop_control.loop_transition({0,0}, shoop_control.constants.LoopMode_Recording, shoop_control.constants.Loop_DontWaitForSync, shoop_control.constants.Loop_DontAlignToSyncImmediately)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Stopped)
+
+                    do_execute('shoop_control.loop_transition({0,1}, shoop_control.constants.LoopMode_Recording, shoop_control.constants.Loop_DontWaitForSync, shoop_control.constants.Loop_DontAlignToSyncImmediately)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(loop_at(0,1).mode, ShoopConstants.LoopMode.Recording)
+                },
 
                 'test_loop_trigger': () => {
                     check_backend()
@@ -331,16 +332,107 @@ ShoopTestFile {
                     do_execute('shoop_control.loop_trigger({0,0}, shoop_control.constants.LoopMode_Recording)')
                     testcase.wait_updated(session.backend)
                     verify_eq(loop_at(0,0).next_mode, ShoopConstants.LoopMode.Recording)
-                    verify_eq(loop_at(0,1).next_mode_delay, null)
                 },
 
-                // TODO: harder to test because this requires loops to
-                // trigger each other
-                // 'test_loop_record_n'
+                'test_loop_record_n': () => {
+                    check_backend()
+                    clear()
 
-                // TODO: harder to test because this requires loops to
-                // trigger each other
-                // 'test_loop_record_with_targeted'
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+
+                    session.backend.dummy_request_controlled_frames(50)
+                    session.backend.dummy_run_requested_frames()
+
+                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
+
+                    loop_at(-1, 0).queue_set_length(100);
+                    loop_at(-1, 0).transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+
+                    do_execute('shoop_control.loop_record_n({0,0}, 3, 2)')
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(loop_at(0,0).next_mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(loop_at(0,0).next_transition_delay, 2)
+
+                    session.backend.dummy_request_controlled_frames(300)
+                    session.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(loop_at(0,0).next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(loop_at(0,0).next_transition_delay, 2)
+                },
+
+                'test_loop_record_with_targeted': () => {
+                    check_backend()
+                    clear()
+
+                    session.backend.dummy_enter_controlled_mode()
+                    testcase.wait_controlled_mode(session.backend)
+
+                    session.backend.dummy_request_controlled_frames(50)
+                    session.backend.dummy_run_requested_frames()
+
+                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Stopped)
+
+                    loop_at(-1, 0).queue_set_length(100);
+                    loop_at(0, 1).queue_set_length(300);
+                    loop_at(-1, 0).transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+
+                    session.backend.dummy_request_controlled_frames(50)
+                    session.backend.dummy_run_requested_frames()
+
+                    loop_at(0, 1).transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
+                    session.target_loop(loop_at(0, 1))
+
+                    session.backend.dummy_request_controlled_frames(100)
+                    session.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(loop_at(0,1).position, 50)
+
+                    do_execute('shoop_control.loop_record_with_targeted({0,0})')
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(loop_at(0,0).next_mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(loop_at(0,0).next_transition_delay, 2)
+
+                    session.backend.dummy_request_controlled_frames(300)
+                    session.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(session.backend)
+
+                    verify_eq(loop_at(0,0).mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(loop_at(0,0).next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(loop_at(0,0).next_transition_delay, 2)
+                },
+
+                'test_loop_compose_add_to_end': () => {
+                    check_backend()
+                    clear()
+
+                    loop_at(-1, 0).queue_set_length(100)
+                    loop_at(0, 1).queue_set_length(100)
+                    loop_at(0, 0).queue_set_length(200)
+                    verify_eq(loop_at(1, 0).maybe_composite_loop, null)
+                    testcase.wait_updated(session.backend)
+                    
+                    do_execute('shoop_control.loop_compose_add_to_end({1, 0}, {0, 0}, false)')
+                    testcase.wait_updated(session.backend)
+                    verify_true(loop_at(1,0).maybe_composite_loop)
+                    verify_eq(loop_at(1,0).length, 200)
+
+                    do_execute('shoop_control.loop_compose_add_to_end({1, 0}, {0, 1}, false)')
+                    testcase.wait_updated(session.backend)
+                    verify_true(loop_at(1,0).maybe_composite_loop)
+                    verify_eq(loop_at(1,0).length, 300)
+
+                    do_execute('shoop_control.loop_compose_add_to_end({1, 0}, {0, 1}, true)')
+                    testcase.wait_updated(session.backend)
+                    verify_true(loop_at(1,0).maybe_composite_loop)
+                    verify_eq(loop_at(1,0).length, 300)
+                },
 
                 'test_loop_select': () => {
                     check_backend()
@@ -470,19 +562,19 @@ ShoopTestFile {
                     verify_loop_cleared(loop_at(-1,0))
                 },
 
-                // 'test_loop_adopt_ringbuffers': () => {
-                //     check_backend()
-                //     clear()
+                'test_loop_adopt_ringbuffers': () => {
+                    check_backend()
+                    clear()
 
-                //     loop_at(-1, 0).queue_set_length(100) // Sync
-                //     testcase.wait_updated(session.backend)
+                    loop_at(-1, 0).queue_set_length(100) // Sync
+                    testcase.wait_updated(session.backend)
 
-                //     do_execute('shoop_control.loop_adopt_ringbuffers({0, 0}, 2, 2, 0, 0)')
-                //     testcase.wait_updated(session.backend)
+                    do_execute('shoop_control.loop_adopt_ringbuffers({0, 0}, 2, 2, 0, 0)')
+                    testcase.wait_updated(session.backend)
 
-                //     // Just a sanity check that the correct length was applied
-                //     verify_eq(loop_at(0, 0).length, 200)
-                // },
+                    // Just a sanity check that the correct length was applied
+                    verify_eq(loop_at(0, 0).length, 200)
+                },
 
                 'test_loop_trigger_grab': () => {
                     check_backend()
@@ -495,141 +587,178 @@ ShoopTestFile {
                     verify_eq(loop_at(0,0).length, 100)
                 },
 
-                // 'test_track_set_get_gain': () => {
-                //     check_backend()
-                //     clear()
+                'test_track_set_get_gain': () => {
+                    check_backend()
+                    clear()
 
-                //     do_execute('shoop_control.track_set_gain(0, 1.0)')
-                //     do_execute('shoop_control.track_set_gain(1, 1.0)')
-                //     verify_eq_lua('shoop_control.track_get_gain(0)', '{1.0}')
-                //     do_execute('shoop_control.track_set_gain(0, 0.5)')
-                //     verify_eq_lua('shoop_control.track_get_gain(0)', '{0.5}')
-                //     verify_eq_lua('shoop_control.track_get_gain({1,0})', '{1.0, 0.5}')
-                // },
+                    do_execute('shoop_control.track_set_gain(0, 1.0)')
+                    do_execute('shoop_control.track_set_gain(1, 1.0)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_gain(0)', '{1.0}')
+                    
+                    do_execute('shoop_control.track_set_gain(0, 0.5)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_gain(0)', '{0.5}')
+                    verify_eq_lua('shoop_control.track_get_gain({1,0})', '{1.0, 0.5}')
+                },
 
-                // 'test_track_set_get_gain_fader': () => {
-                //     check_backend()
-                //     clear()
+                'test_track_set_get_gain_fader': () => {
+                    check_backend()
+                    clear()
 
-                //     do_execute('shoop_control.track_set_gain_fader(0, 1.0)')
-                //     verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{1.0}')
-                //     do_execute('shoop_control.track_set_gain_fader(0, 0.5)')
-                //     verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{0.5}')
-                //     do_execute('shoop_control.track_set_gain_fader(0, 2.0)')
-                //     verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{1.0}')
-                //     do_execute('shoop_control.track_set_gain_fader(0, -1.0)')
-                //     verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{0.0}')
-                // },
+                    do_execute('shoop_control.track_set_gain_fader(0, 1.0)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{1.0}')
+                    
+                    do_execute('shoop_control.track_set_gain_fader(0, 0.5)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{0.5}')
+                    
+                    do_execute('shoop_control.track_set_gain_fader(0, 2.0)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{1.0}')
+                    
+                    do_execute('shoop_control.track_set_gain_fader(0, -1.0)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_gain_fader(0)', '{0.0}')
+                },
 
-                // 'test_track_set_get_input_gain': () => {
-                //     check_backend()
-                //     clear()
+                'test_track_set_get_input_gain': () => {
+                    check_backend()
+                    clear()
 
-                //     do_execute('shoop_control.track_set_input_gain(0, 1.0)')
-                //     do_execute('shoop_control.track_set_input_gain(1, 1.0)')
-                //     verify_eq_lua('shoop_control.track_get_input_gain(0)', '{1.0}')
-                //     do_execute('shoop_control.track_set_input_gain(0, 0.5)')
-                //     verify_eq_lua('shoop_control.track_get_input_gain(0)', '{0.5}')
-                //     verify_eq_lua('shoop_control.track_get_input_gain({1,0})', '{1.0, 0.5}')
-                // },
+                    do_execute('shoop_control.track_set_input_gain(0, 1.0)')
+                    do_execute('shoop_control.track_set_input_gain(1, 1.0)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_input_gain(0)', '{1.0}')
+                    
+                    do_execute('shoop_control.track_set_input_gain(0, 0.5)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_input_gain(0)', '{0.5}')
+                    verify_eq_lua('shoop_control.track_get_input_gain({1,0})', '{1.0, 0.5}')
+                },
 
-                // 'test_track_set_get_input_gain_fader': () => {
-                //     check_backend()
-                //     clear()
+                'test_track_set_get_input_gain_fader': () => {
+                    check_backend()
+                    clear()
 
-                //     do_execute('shoop_control.track_set_input_gain_fader(0, 1.0)')
-                //     verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{1.0}')
-                //     do_execute('shoop_control.track_set_input_gain_fader(0, 0.5)')
-                //     verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{0.5}')
-                //     do_execute('shoop_control.track_set_input_gain_fader(0, 2.0)')
-                //     verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{1.0}')
-                //     do_execute('shoop_control.track_set_input_gain_fader(0, -1.0)')
-                //     verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{0.0}')
-                // },
+                    do_execute('shoop_control.track_set_input_gain_fader(0, 1.0)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{1.0}')
+                    
+                    do_execute('shoop_control.track_set_input_gain_fader(0, 0.5)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{0.5}')
+                    
+                    do_execute('shoop_control.track_set_input_gain_fader(0, 2.0)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{1.0}')
+                    
+                    do_execute('shoop_control.track_set_input_gain_fader(0, -1.0)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_input_gain_fader(0)', '{0.0}')
+                },
 
-                // 'test_track_set_get_balance': () => {
-                //     check_backend()
-                //     clear()
+                'test_track_set_get_balance': () => {
+                    check_backend()
+                    clear()
 
-                //     do_execute('shoop_control.track_set_balance(0, 1.0)')
-                //     verify_eq_lua('shoop_control.track_get_balance(0)', '{1.0}')
-                //     do_execute('shoop_control.track_set_balance(0, -1.0)')
-                //     verify_eq_lua('shoop_control.track_get_balance(0)', '{-1.0}')
-                // },
+                    do_execute('shoop_control.track_set_balance(0, 1.0)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_balance(0)', '{1.0}')
+                    
+                    do_execute('shoop_control.track_set_balance(0, -1.0)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_balance(0)', '{-1.0}')
+                },
 
-                // 'test_track_set_get_muted': () => {
-                //     check_backend()
-                //     clear()
+                'test_track_set_get_muted': () => {
+                    check_backend()
+                    clear()
 
-                //     do_execute('shoop_control.track_set_muted(0, true)')
-                //     do_execute('shoop_control.track_set_muted(1, true)')
-                //     verify_eq_lua('shoop_control.track_get_muted(0)', '{true}')
-                //     verify_eq_lua('shoop_control.track_get_muted({1,0})', '{true, true}')
-                //     do_execute('shoop_control.track_set_muted(0, false)')
-                //     verify_eq_lua('shoop_control.track_get_muted(0)', '{false}')
-                //     verify_eq_lua('shoop_control.track_get_muted({1,0})', '{true, false}')
-                // },
+                    do_execute('shoop_control.track_set_muted(0, true)')
+                    do_execute('shoop_control.track_set_muted(1, true)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_muted(0)', '{true}')
+                    verify_eq_lua('shoop_control.track_get_muted({1,0})', '{true, true}')
+                    
+                    do_execute('shoop_control.track_set_muted(0, false)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_muted(0)', '{false}')
+                    verify_eq_lua('shoop_control.track_get_muted({1,0})', '{true, false}')
+                },
 
-                // 'test_track_set_get_input_muted': () => {
-                //     check_backend()
-                //     clear()
+                'test_track_set_get_input_muted': () => {
+                    check_backend()
+                    clear()
 
-                //     do_execute('shoop_control.track_set_input_muted(0, true)')
-                //     do_execute('shoop_control.track_set_input_muted(1, true)')
-                //     verify_eq_lua('shoop_control.track_get_input_muted(0)', '{true}')
-                //     verify_eq_lua('shoop_control.track_get_input_muted({1,0})', '{true, true}')
-                //     do_execute('shoop_control.track_set_input_muted(0, false)')
-                //     verify_eq_lua('shoop_control.track_get_input_muted(0)', '{false}')
-                //     verify_eq_lua('shoop_control.track_get_input_muted({1,0})', '{true, false}')
-                // },
+                    do_execute('shoop_control.track_set_input_muted(0, true)')
+                    do_execute('shoop_control.track_set_input_muted(1, true)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_input_muted(0)', '{true}')
+                    verify_eq_lua('shoop_control.track_get_input_muted({1,0})', '{true, true}')
+                    
+                    do_execute('shoop_control.track_set_input_muted(0, false)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('shoop_control.track_get_input_muted(0)', '{false}')
+                    verify_eq_lua('shoop_control.track_get_input_muted({1,0})', '{true, false}')
+                },
 
-                // 'test_set_get_apply_n_cycles': () => {
-                //     check_backend()
-                //     clear()
+                'test_set_get_apply_n_cycles': () => {
+                    check_backend()
+                    clear()
 
-                //     registries.state_registry.set_apply_n_cycles(0)
+                    registries.state_registry.set_apply_n_cycles(0)
 
-                //     verify_eq_lua('shoop_control.get_apply_n_cycles()', '0')
-                //     do_execute('shoop_control.set_apply_n_cycles(4)')
-                //     verify_eq(registries.state_registry.apply_n_cycles, 4)
-                //     verify_eq_lua('shoop_control.get_apply_n_cycles()', '4')
-                // },
+                    verify_eq_lua('shoop_control.get_apply_n_cycles()', '0')
 
-                // 'test_set_get_solo': () => {
-                //     check_backend()
-                //     clear()
+                    do_execute('shoop_control.set_apply_n_cycles(4)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(registries.state_registry.apply_n_cycles, 4)
+                    verify_eq_lua('shoop_control.get_apply_n_cycles()', '4')
+                },
 
-                //     registries.state_registry.set_solo_active(false)
+                'test_set_get_solo': () => {
+                    check_backend()
+                    clear()
 
-                //     verify_eq_lua('shoop_control.get_solo()', 'false')
-                //     do_execute('shoop_control.set_solo(true)')
-                //     verify_eq(registries.state_registry.solo_active, true)
-                //     verify_eq_lua('shoop_control.get_solo()', 'true')
-                // },
+                    registries.state_registry.set_solo_active(false)
 
-                // 'test_set_get_sync_active': () => {
-                //     check_backend()
-                //     clear()
+                    verify_eq_lua('shoop_control.get_solo()', 'false')
 
-                //     registries.state_registry.set_sync_active(false)
+                    do_execute('shoop_control.set_solo(true)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(registries.state_registry.solo_active, true)
+                    verify_eq_lua('shoop_control.get_solo()', 'true')
+                },
 
-                //     verify_eq_lua('shoop_control.get_sync_active()', 'false')
-                //     do_execute('shoop_control.set_sync_active(true)')
-                //     verify_eq(registries.state_registry.sync_active, true)
-                //     verify_eq_lua('shoop_control.get_sync_active()', 'true')
-                // },
+                'test_set_get_sync_active': () => {
+                    check_backend()
+                    clear()
 
-                // 'test_set_get_play_after_record': () => {
-                //     check_backend()
-                //     clear()
+                    registries.state_registry.set_sync_active(false)
 
-                //     registries.state_registry.set_play_after_record_active(false)
+                    verify_eq_lua('shoop_control.get_sync_active()', 'false')
+                    
+                    do_execute('shoop_control.set_sync_active(true)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(registries.state_registry.sync_active, true)
+                    verify_eq_lua('shoop_control.get_sync_active()', 'true')
+                },
 
-                //     verify_eq_lua('shoop_control.get_play_after_record()', 'false')
-                //     do_execute('shoop_control.set_play_after_record(true)')
-                //     verify_eq(registries.state_registry.play_after_record_active, true)
-                //     verify_eq_lua('shoop_control.get_play_after_record()', 'true')
-                // },
+                'test_set_get_play_after_record': () => {
+                    check_backend()
+                    clear()
+
+                    registries.state_registry.set_play_after_record_active(false)
+
+                    verify_eq_lua('shoop_control.get_play_after_record()', 'false')
+                    
+                    do_execute('shoop_control.set_play_after_record(true)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(registries.state_registry.play_after_record_active, true)
+                    verify_eq_lua('shoop_control.get_play_after_record()', 'true')
+                },
 
                 // 'test_callback_loop_mode_event': () => {
                 //     check_backend()

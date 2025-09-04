@@ -650,6 +650,11 @@ Item {
         statusrect.loop.transition(prev_mode, delay + n, ShoopConstants.DontAlignToSyncImmediately)
     }
 
+    function compose_add_to_end(subloop, do_parallel) {
+        if (!maybe_composite_loop) { create_composite_loop() }
+        maybe_composite_loop.add_loop(subloop, 0, registries.state_registry.apply_n_cycles, do_parallel ? undefined : 0)
+    }
+
     property bool initialized : maybe_loop ? (maybe_loop.initialized ? true : false) : false
     property var channels: (maybe_loop && maybe_loop.channels) ? maybe_loop.channels : []
     property var audio_channels : (maybe_loop && maybe_loop.audio_channels) ? maybe_loop.audio_channels : []

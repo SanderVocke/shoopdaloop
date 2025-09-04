@@ -266,6 +266,7 @@ FocusReleasingScrollView {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.horizontalCenter: parent.horizontalCenter
                     initial_track_descriptor: a_track.mapped_item.initial_descriptor
+                    track: a_track.mapped_item
                 }
             }
         }

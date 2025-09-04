@@ -93,6 +93,8 @@ Item {
         test_screen_grab_trigger.trigger()
     }
 
+    property var tracks: [sync_track, ...tracks_widget.tracks]
+
     property bool settings_io_enabled: false
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
@@ -757,6 +759,7 @@ Item {
                         }
 
                         initial_track_descriptor: root.sync_loop_track_descriptor
+                        track: sync_loop_widget
                     }
                 }
             }
