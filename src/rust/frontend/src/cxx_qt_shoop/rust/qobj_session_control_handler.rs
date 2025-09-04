@@ -17,15 +17,14 @@ use cxx_qt_lib_shoop::qobject::{
 };
 use cxx_qt_lib_shoop::qpointer::{qpointer_from_qobject, QPointerQObject};
 use cxx_qt_lib_shoop::qvariant_helpers::{
-    qobject_ptr_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qvariantlist, qvariant_type_name,
-    qvariantlist_to_qvariant,
+    qobject_ptr_to_qvariant, qvariant_to_qobject_ptr, qvariantlist_to_qvariant,
 };
 use cxx_qt_lib_shoop::{qobject::FromQObject, qpointer::qpointer_to_qobject};
 use itertools::Either;
 use mlua::{FromLua, IntoLua};
 use std::boxed::Box;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::BTreeMap;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
 shoop_log_unit!("Frontend.SessionControlHandler");
@@ -173,7 +172,7 @@ impl SessionControlHandlerLuaTarget {
         impl LuaCallback for SessionControlCallback {
             fn call(
                 &self,
-                lua: &mlua::Lua,
+                _lua: &mlua::Lua,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 let strong_self = self
@@ -1722,7 +1721,7 @@ impl SessionControlHandlerLuaTarget {
     */
     fn get_apply_n_cycles(
         &self,
-        lua: &mlua::Lua,
+        _lua: &mlua::Lua,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 0 {
@@ -1747,7 +1746,7 @@ impl SessionControlHandlerLuaTarget {
     */
     fn set_solo(
         &self,
-        lua: &mlua::Lua,
+        _lua: &mlua::Lua,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
@@ -1783,7 +1782,7 @@ impl SessionControlHandlerLuaTarget {
     */
     fn get_solo(
         &self,
-        lua: &mlua::Lua,
+        _lua: &mlua::Lua,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 0 {
@@ -1808,7 +1807,7 @@ impl SessionControlHandlerLuaTarget {
     */
     fn set_sync_active(
         &self,
-        lua: &mlua::Lua,
+        _lua: &mlua::Lua,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
@@ -1844,7 +1843,7 @@ impl SessionControlHandlerLuaTarget {
     */
     fn get_sync_active(
         &self,
-        lua: &mlua::Lua,
+        _lua: &mlua::Lua,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 0 {
@@ -1869,7 +1868,7 @@ impl SessionControlHandlerLuaTarget {
     */
     fn set_play_after_record(
         &self,
-        lua: &mlua::Lua,
+        _lua: &mlua::Lua,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
@@ -1905,7 +1904,7 @@ impl SessionControlHandlerLuaTarget {
     */
     fn get_play_after_record(
         &self,
-        lua: &mlua::Lua,
+        _lua: &mlua::Lua,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 0 {
@@ -1930,7 +1929,7 @@ impl SessionControlHandlerLuaTarget {
     */
     fn set_default_recording_action(
         &self,
-        lua: &mlua::Lua,
+        _lua: &mlua::Lua,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
@@ -2022,7 +2021,7 @@ impl SessionControlHandlerLuaTarget {
 
     fn select_loops<'a>(
         &'a self,
-        lua: &mlua::Lua,
+        _lua: &mlua::Lua,
         selector: &mlua::Value,
     ) -> Result<impl Iterator<Item = *mut QObject> + 'a, anyhow::Error> {
         match selector {
@@ -2075,14 +2074,14 @@ impl SessionControlHandlerLuaTarget {
 
     fn select_tracks<'a>(
         &'a self,
-        lua: &mlua::Lua,
+        _lua: &mlua::Lua,
         selector: &mlua::Value,
     ) -> Result<impl Iterator<Item = *mut QObject> + 'a, anyhow::Error> {
         match selector {
             mlua::Value::Integer(idx) => Ok(Either::Left(Either::Left(
                 self.select_tracks_by_indices(std::iter::once(*idx)),
             ))),
-            mlua::Value::Table(table) => {
+            mlua::Value::Table(_) => {
                 if let Some(indices) = as_track_indices(selector) {
                     Ok(Either::Left(Either::Right(
                         self.select_tracks_by_indices(indices.into_iter()),
@@ -2274,7 +2273,7 @@ impl SessionControlHandler {
         registry: *mut QObject,
     ) {
         let current = self.lua_target.borrow().global_state_registry;
-        if (current != registry) {
+        if current != registry {
             self.lua_target.borrow_mut().global_state_registry = registry;
             self.global_state_registry_changed();
         }

@@ -1,9 +1,6 @@
-use std::{
-    collections::{hash_map, HashMap},
-    i64,
-};
+use std::{collections::HashMap, i64};
 
-use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant, QVariantValue};
+use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::qvariant_helpers::qvariantmap_to_qvariant;
 use mlua::{self, FromLua};
 

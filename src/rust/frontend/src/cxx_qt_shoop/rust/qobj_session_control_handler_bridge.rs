@@ -108,7 +108,7 @@ pub mod ffi {
 
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::BTreeMap,
     rc::{Rc, Weak},
 };
 
@@ -116,7 +116,7 @@ use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::{qobject::AsQObject, qpointer::QPointerQObject};
 use ffi::*;
 
-use crate::{lua_callback::LuaCallback, lua_engine::LuaEngineImpl};
+use crate::lua_callback::LuaCallback;
 
 pub struct SessionControlHandlerLuaTarget {
     pub structured_loop_widget_references: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>>,

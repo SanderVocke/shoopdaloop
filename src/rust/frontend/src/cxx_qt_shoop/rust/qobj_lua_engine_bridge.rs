@@ -76,8 +76,6 @@ pub mod ffi {
     impl cxx_qt::Constructor<(), NewArguments = ()> for LuaEngine {}
 }
 
-use std::collections::HashMap;
-
 use crate::lua_engine::LuaEngine as WrappedLuaEngine;
 use ffi::*;
 
