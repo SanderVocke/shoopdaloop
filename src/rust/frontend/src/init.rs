@@ -36,6 +36,7 @@ fn register_qml_types_and_singletons() {
     qobj_async_task::register_qml_type(&mdl, "ShoopRustAsyncTask");
     qobj_lua_engine::register_qml_type(&mdl, "ShoopRustLuaEngine");
     qobj_session_control_handler::register_qml_type(&mdl, "ShoopRustSessionControlHandler");
+    qobj_midi_control_port::register_qml_type(&mdl, "ShoopRustMidiControlPort");
 }
 
 fn register_metatypes() {}

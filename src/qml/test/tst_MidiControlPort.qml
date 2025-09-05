@@ -11,22 +11,20 @@ ShoopTestFile {
         backend_type: ShoopRustConstants.AudioDriverType.Dummy
         driver_setting_overrides: ({})
 
-        MidiControlPort {
+        ShoopRustMidiControlPort {
             backend: backend
             id: midi_control_port_in
             name_hint: "control_in"
             direction: ShoopRustConstants.PortDirection.Input
-            lua_engine: null
             autoconnect_regexes: []
             may_open: true
         }
 
-        MidiControlPort {
+        ShoopRustMidiControlPort {
             backend: backend
             id: midi_control_port_out
             name_hint: "control_out"
             direction: ShoopRustConstants.PortDirection.Output
-            lua_engine: null
             autoconnect_regexes: []
             may_open: true
         }

@@ -73,6 +73,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn poll(self: Pin<&mut MidiControlPort>);
 
+        #[qinvokable]
+        pub fn maybe_initialize(self: Pin<&mut MidiControlPort>);
+
         #[qsignal]
         pub fn msg_received(self: Pin<&mut MidiControlPort>, msg: QList_u8);
 
@@ -81,19 +84,27 @@ pub mod ffi {
 
         #[qsignal]
         pub fn connected(self: Pin<&mut MidiControlPort>);
+
+        #[qinvokable]
+        pub fn send_detected_external_autoconnect_partner_while_closed(
+            self: Pin<&mut MidiControlPort>,
+        );
+
+        #[qinvokable]
+        pub fn send_connected(self: Pin<&mut MidiControlPort>);
     }
 
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/qquickitem.h");
 
-        #[rust_name = "qquickitem_from_ref_loop"]
+        #[rust_name = "qquickitem_from_ref_midi_control_port"]
         unsafe fn qquickitemFromRef(obj: &MidiControlPort) -> &QQuickItem;
 
-        #[rust_name = "qquickitem_from_ptr_loop"]
+        #[rust_name = "qquickitem_from_ptr_midi_control_port"]
         unsafe fn qquickitemFromPtr(obj: *mut MidiControlPort) -> *mut QQuickItem;
 
         include!("cxx-qt-lib-shoop/make_unique.h");
-        #[rust_name = "make_unique_loop"]
+        #[rust_name = "make_unique_midi_control_port"]
         fn make_unique() -> UniquePtr<MidiControlPort>;
 
         include!("cxx-qt-lib-shoop/make_raw.h");
@@ -101,11 +112,11 @@ pub mod ffi {
         fn make_raw() -> *mut MidiControlPort;
 
         include!("cxx-qt-lib-shoop/cast_ptr.h");
-        #[rust_name = "qobject_to_loop_ptr"]
+        #[rust_name = "qobject_to_midi_control_port_ptr"]
         unsafe fn cast_qobject_ptr(obj: *mut QObject) -> *mut MidiControlPort;
 
         include!("cxx-qt-lib-shoop/qobject_classname.h");
-        #[rust_name = "qobject_class_name_loop"]
+        #[rust_name = "qobject_class_name_midi_control_port"]
         fn qobject_class_name(obj: &MidiControlPort) -> Result<&str>;
 
         include!("cxx-qt-lib-shoop/register_qml_type.h");
@@ -191,10 +202,10 @@ impl Default for MidiControlPortRust {
 
 impl cxx_qt_lib_shoop::qquickitem::AsQQuickItem for MidiControlPort {
     unsafe fn mut_qquickitem_ptr(&mut self) -> *mut QQuickItem {
-        qquickitem_from_ptr_loop(self as *mut Self)
+        qquickitem_from_ptr_midi_control_port(self as *mut Self)
     }
     unsafe fn ref_qquickitem_ptr(&self) -> *const QQuickItem {
-        qquickitem_from_ref_loop(self) as *const QQuickItem
+        qquickitem_from_ref_midi_control_port(self) as *const QQuickItem
     }
 }
 
