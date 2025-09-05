@@ -11,13 +11,13 @@ use crate::midi_channel::MidiChannel;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
 pub enum LoopMode {
-    Unknown = ffi::shoop_loop_mode_t_LoopMode_Unknown,
-    Stopped = ffi::shoop_loop_mode_t_LoopMode_Stopped,
-    Playing = ffi::shoop_loop_mode_t_LoopMode_Playing,
-    Recording = ffi::shoop_loop_mode_t_LoopMode_Recording,
-    Replacing = ffi::shoop_loop_mode_t_LoopMode_Replacing,
-    PlayingDryThroughWet = ffi::shoop_loop_mode_t_LoopMode_PlayingDryThroughWet,
-    RecordingDryIntoWet = ffi::shoop_loop_mode_t_LoopMode_RecordingDryIntoWet,
+    Unknown = ffi::shoop_loop_mode_t_LoopMode_Unknown as i32,
+    Stopped = ffi::shoop_loop_mode_t_LoopMode_Stopped as i32,
+    Playing = ffi::shoop_loop_mode_t_LoopMode_Playing as i32,
+    Recording = ffi::shoop_loop_mode_t_LoopMode_Recording as i32,
+    Replacing = ffi::shoop_loop_mode_t_LoopMode_Replacing as i32,
+    PlayingDryThroughWet = ffi::shoop_loop_mode_t_LoopMode_PlayingDryThroughWet as i32,
+    RecordingDryIntoWet = ffi::shoop_loop_mode_t_LoopMode_RecordingDryIntoWet as i32,
 }
 
 pub struct LoopState {
@@ -66,11 +66,11 @@ impl LoopState {
     pub fn new(obj: &ffi::shoop_loop_state_info_t) -> Self {
         let has_next_mode = obj.maybe_next_mode != ffi::shoop_loop_mode_t_LoopMode_Unknown;
         return LoopState {
-            mode: LoopMode::try_from(obj.mode).unwrap(),
+            mode: LoopMode::try_from(obj.mode as i32).unwrap(),
             length: obj.length,
             position: obj.position,
             maybe_next_mode: match has_next_mode {
-                true => Some(LoopMode::try_from(obj.maybe_next_mode).unwrap()),
+                true => Some(LoopMode::try_from(obj.maybe_next_mode as i32).unwrap()),
                 false => None,
             },
             maybe_next_mode_delay: match has_next_mode {

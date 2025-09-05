@@ -1,0 +1,1 @@
+#include <QtCore/qnamespace.h>

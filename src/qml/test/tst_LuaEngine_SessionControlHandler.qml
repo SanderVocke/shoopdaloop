@@ -852,6 +852,24 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('most_recent_event.type', 'shoop_control.constants.KeyEventType_Pressed')
                     verify_eq_lua('most_recent_event.key', 'shoop_control.constants.Key_Space')
+                },
+
+                'test_callback_one_shot_timer': () => {
+                    check_backend()
+                    clear()
+
+                    do_execute(`
+                        my_var = 0
+                    `)
+                    verify_eq_lua('my_var', '0')
+
+                    do_execute(`
+                        shoop_control.register_one_shot_timer_cb(200, function()
+                            my_var = my_var + 1
+                        end)
+                    `)
+                    testcase.wait(500)
+                    verify_eq_lua('my_var', '1')
                 }
             })
         }

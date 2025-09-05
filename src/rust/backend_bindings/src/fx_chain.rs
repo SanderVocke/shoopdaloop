@@ -10,10 +10,10 @@ use crate::midi_port::MidiPort;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
 pub enum FXChainType {
-    CarlaRack = ffi::shoop_fx_chain_type_t_Carla_Rack,
-    CarlaPatchbay = ffi::shoop_fx_chain_type_t_Carla_Patchbay,
-    CarlaPatchbay16x = ffi::shoop_fx_chain_type_t_Carla_Patchbay_16x,
-    Test2x2x1 = ffi::shoop_fx_chain_type_t_Test2x2x1,
+    CarlaRack = ffi::shoop_fx_chain_type_t_Carla_Rack as i32,
+    CarlaPatchbay = ffi::shoop_fx_chain_type_t_Carla_Patchbay as i32,
+    CarlaPatchbay16x = ffi::shoop_fx_chain_type_t_Carla_Patchbay_16x as i32,
+    Test2x2x1 = ffi::shoop_fx_chain_type_t_Test2x2x1 as i32,
 }
 
 impl FXChainType {

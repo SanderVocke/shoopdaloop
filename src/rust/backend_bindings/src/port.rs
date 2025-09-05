@@ -5,9 +5,9 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
 pub enum PortDirection {
-    Input = ffi::shoop_port_direction_t_ShoopPortDirection_Input,
-    Output = ffi::shoop_port_direction_t_ShoopPortDirection_Output,
-    Any = ffi::shoop_port_direction_t_ShoopPortDirection_Any,
+    Input = ffi::shoop_port_direction_t_ShoopPortDirection_Input as i32,
+    Output = ffi::shoop_port_direction_t_ShoopPortDirection_Output as i32,
+    Any = ffi::shoop_port_direction_t_ShoopPortDirection_Any as i32,
 }
 
 pub struct ExternalPortDescriptor {
@@ -25,8 +25,8 @@ impl ExternalPortDescriptor {
                     .unwrap()
                     .to_string()
             },
-            direction: PortDirection::try_from(ffi_descriptor.direction).unwrap(),
-            data_type: PortDataType::try_from(ffi_descriptor.data_type).unwrap(),
+            direction: PortDirection::try_from(ffi_descriptor.direction as i32).unwrap(),
+            data_type: PortDataType::try_from(ffi_descriptor.data_type as i32).unwrap(),
         }
     }
 
@@ -43,17 +43,17 @@ impl ExternalPortDescriptor {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
 pub enum PortDataType {
-    Audio = ffi::shoop_port_data_type_t_ShoopPortDataType_Audio,
-    Midi = ffi::shoop_port_data_type_t_ShoopPortDataType_Midi,
-    Any = ffi::shoop_port_data_type_t_ShoopPortDataType_Any,
+    Audio = ffi::shoop_port_data_type_t_ShoopPortDataType_Audio as i32,
+    Midi = ffi::shoop_port_data_type_t_ShoopPortDataType_Midi as i32,
+    Any = ffi::shoop_port_data_type_t_ShoopPortDataType_Any as i32,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
 pub enum PortConnectabilityKind {
     None = 0,
-    Internal = ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal,
-    External = ffi::shoop_port_connectability_t_ShoopPortConnectability_External,
+    Internal = ffi::shoop_port_connectability_t_ShoopPortConnectability_Internal as i32,
+    External = ffi::shoop_port_connectability_t_ShoopPortConnectability_External as i32,
 }
 
 impl PortConnectabilityKind {

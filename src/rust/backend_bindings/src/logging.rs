@@ -7,12 +7,12 @@ use std::ffi::CString;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
 #[repr(i32)]
 pub enum LogLevel {
-    AlwaysTrace = ffi::shoop_log_level_t_log_level_always_trace,
-    DebugTrace = ffi::shoop_log_level_t_log_level_debug_trace,
-    Debug = ffi::shoop_log_level_t_log_level_debug,
-    Info = ffi::shoop_log_level_t_log_level_info,
-    Warn = ffi::shoop_log_level_t_log_level_warning,
-    Err = ffi::shoop_log_level_t_log_level_error,
+    AlwaysTrace = ffi::shoop_log_level_t_log_level_always_trace as i32,
+    DebugTrace = ffi::shoop_log_level_t_log_level_debug_trace as i32,
+    Debug = ffi::shoop_log_level_t_log_level_debug as i32,
+    Info = ffi::shoop_log_level_t_log_level_info as i32,
+    Warn = ffi::shoop_log_level_t_log_level_warning as i32,
+    Err = ffi::shoop_log_level_t_log_level_error as i32,
 }
 
 pub fn set_global_logging_level(level: &LogLevel) {

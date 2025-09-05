@@ -353,6 +353,7 @@ impl SessionControlHandlerLuaTarget {
             add_self_callback!(register_loop_event_cb);
             add_self_callback!(register_global_event_cb);
             add_self_callback!(register_keyboard_event_cb);
+            add_self_callback!(register_one_shot_timer_cb);
 
             wrapped_engine.set_toplevel("__shoop_control", lua_module)?;
 
@@ -2124,6 +2125,34 @@ impl SessionControlHandlerLuaTarget {
         }
     }
 
+    /*
+    @shoop_lua_fn_docstring.start
+    shoop_control.one_shot_timer_cb(callback, time_ms)
+    Register a callback to happen after the given amount of ms, once.
+    @shoop_lua_fn_docstring.end
+    */
+    fn register_one_shot_timer_cb(
+        &self,
+        lua: &Rc<mlua::Lua>,
+        args: mlua::MultiValue,
+    ) -> Result<mlua::Value, anyhow::Error> {
+        if args.len() != 2 {
+            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+        }
+        let time_ms = args.get(0).unwrap_or(&mlua::Value::Nil).as_integer()
+            .ok_or(anyhow::anyhow!("1st arg is not an integer"))?;
+        let lua_fn = args.get(1).unwrap_or(&mlua::Value::Nil).as_function()
+            .ok_or(anyhow::anyhow!("2nd arg is not a function"))?;
+        if time_ms < 0 {
+            return Err(anyhow::anyhow!("time may not be negative"));
+        }
+        TimedLuaCallback::create(time_ms as usize, RustToLuaCallback {
+            callback: lua_fn.clone(),
+            weak_lua: Rc::downgrade(lua),
+        });
+        Ok(mlua::Value::Nil)
+    }
+
     fn select_loop_by_coords(&self, x: i64, y: i64) -> Option<*mut QObject> {
         self.structured_loop_widget_references
             .get(&(x, y))
@@ -2521,12 +2550,6 @@ impl SessionControlHandler {
         }
     }
 
-    /*
-    @shoop_lua_fn_docstring.start
-    shoop_control.register_keyboard_event_cb(callback)
-    Register a callback for keyboard events. See keyboard_callback for details.
-    @shoop_lua_fn_docstring.end
-    */
     /*
     @shoop_lua_fn_docstring.start
     type keyboard_event_callback

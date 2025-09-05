@@ -560,7 +560,7 @@ end
 -- connects to the AKAI device via MIDI.
 local on_output_port_connected = function()
     print_debug("output port connected")
-    shoop_control.one_shot_timer_cb(reset, 1000)
+    shoop_control.register_one_shot_timer_cb(1000, reset)
 end
 
 -- We will register this callback to execute when a loop generates an event

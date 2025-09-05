@@ -19,7 +19,7 @@ pub struct AudioChannelState {
 impl AudioChannelState {
     pub fn new(obj: &ffi::shoop_audio_channel_state_info_t) -> Result<Self, anyhow::Error> {
         return Ok(AudioChannelState {
-            mode: ChannelMode::try_from(obj.mode)?,
+            mode: ChannelMode::try_from(obj.mode as i32)?,
             gain: obj.gain,
             output_peak: obj.output_peak,
             length: obj.length,
