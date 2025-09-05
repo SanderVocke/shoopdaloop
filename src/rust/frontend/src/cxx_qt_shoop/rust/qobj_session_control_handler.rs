@@ -18,6 +18,7 @@ use cxx_qt_lib_shoop::qobject::{
     AsQObject,
 };
 use cxx_qt_lib_shoop::qpointer::{qpointer_from_qobject, QPointerQObject};
+use cxx_qt_lib_shoop::qtimer::QTimer;
 use cxx_qt_lib_shoop::qvariant_helpers::{
     qobject_ptr_to_qvariant, qvariant_to_qobject_ptr, qvariantlist_to_qvariant,
 };
@@ -2574,6 +2575,57 @@ impl SessionControlHandler {
     ) -> bool {
         error!("unimplementd: engine_is_installed");
         return true;
+    }
+}
+
+impl TimedLuaCallback {
+    // Create a raw instance without a parent. It will configure
+    // the timer to call-back to itself, call Lua and self-destruct.
+    pub fn create(duration_ms: usize, callback: RustToLuaCallback) {
+        unsafe {
+            let obj: *mut TimedLuaCallback = make_raw_timed_lua_callback();
+            let mut obj_pin = std::pin::Pin::new_unchecked(&mut *obj);
+            let qobj = obj_pin.as_mut().pin_mut_qobject_ptr();
+
+            *obj_pin.callback.borrow_mut() = Some(callback);
+
+            let timer: *mut QTimer = QTimer::make_raw_with_parent(qobj);
+            let mut timer_pin = std::pin::Pin::new_unchecked(&mut *timer);
+            let timer_qobj = QTimer::qobject_from_ptr(timer_pin.as_mut());
+
+            connect_or_report(
+                &mut *timer_qobj,
+                "timeout()",
+                &mut *qobj,
+                "execute()",
+                connection_types::QUEUED_CONNECTION,
+            );
+
+            timer_pin.as_mut().set_interval(duration_ms as i32);
+            timer_pin.as_mut().set_single_shot(true);
+            timer_pin.as_mut().start();
+        }
+    }
+
+    pub fn execute(self: Pin<&mut TimedLuaCallback>) {
+        if let Some(cb) = self.callback.borrow().as_ref() {
+            if let Err(e) = cb.callback.call::<()>(()) {
+                error!("Failed to call timed Lua callback: {e}");
+            }
+        } else {
+            error!("Timed lua callback: no lua function set");
+        }
+        unsafe {
+            let qobj = self.pin_mut_qobject_ptr();
+            if let Err(e) = invoke::<_, (), _>(
+                &mut *qobj,
+                "deleteLater()",
+                connection_types::QUEUED_CONNECTION,
+                &(),
+            ) {
+                error!("Failed to delete timed Lua callback: {e}");
+            }
+        }
     }
 }
 

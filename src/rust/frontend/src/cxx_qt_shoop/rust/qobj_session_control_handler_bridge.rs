@@ -102,6 +102,14 @@ pub mod ffi {
         pub fn global_state_registry_changed(self: Pin<&mut SessionControlHandler>);
     }
 
+    unsafe extern "RustQt" {
+        #[qobject]
+        type TimedLuaCallback = super::TimedLuaCallbackRust;
+
+        #[qinvokable]
+        pub fn execute(self: Pin<&mut TimedLuaCallback>);
+    }
+
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/register_qml_type.h");
 
@@ -121,6 +129,20 @@ pub mod ffi {
 
         #[rust_name = "session_control_handler_qobject_from_ref"]
         fn qobjectFromRef(obj: &SessionControlHandler) -> &QObject;
+    }
+
+    unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/make_raw.h");
+        #[rust_name = "make_raw_timed_lua_callback"]
+        unsafe fn make_raw() -> *mut TimedLuaCallback;
+
+        include!("cxx-qt-lib-shoop/qobject.h");
+
+        #[rust_name = "timed_lua_callback_qobject_from_ptr"]
+        unsafe fn qobjectFromPtr(obj: *mut TimedLuaCallback) -> *mut QObject;
+
+        #[rust_name = "timed_lua_callback_qobject_from_ref"]
+        fn qobjectFromRef(obj: &TimedLuaCallback) -> &QObject;
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)>
@@ -200,6 +222,18 @@ impl Default for SessionControlHandlerRust {
     }
 }
 
+pub struct TimedLuaCallbackRust {
+    pub callback: RefCell<Option<RustToLuaCallback>>,
+}
+
+impl Default for TimedLuaCallbackRust {
+    fn default() -> Self {
+        Self {
+            callback: RefCell::new(None),
+        }
+    }
+}
+
 impl AsQObject for ffi::SessionControlHandler {
     unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
         ffi::session_control_handler_qobject_from_ptr(self as *mut Self)
@@ -207,6 +241,16 @@ impl AsQObject for ffi::SessionControlHandler {
 
     unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
         ffi::session_control_handler_qobject_from_ref(self) as *const ffi::QObject
+    }
+}
+
+impl AsQObject for ffi::TimedLuaCallback {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+        ffi::timed_lua_callback_qobject_from_ptr(self as *mut Self)
+    }
+
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
+        ffi::timed_lua_callback_qobject_from_ref(self) as *const ffi::QObject
     }
 }
 
