@@ -46,6 +46,8 @@ pub mod qobj_loop_gui;
 pub mod qobj_loop_gui_bridge;
 pub mod qobj_lua_engine;
 pub mod qobj_lua_engine_bridge;
+pub mod qobj_midi_control_port;
+pub mod qobj_midi_control_port_bridge;
 pub mod qobj_os_utils;
 pub mod qobj_os_utils_bridge;
 pub mod qobj_port_backend;

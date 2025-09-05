@@ -2139,17 +2139,26 @@ impl SessionControlHandlerLuaTarget {
         if args.len() != 2 {
             return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
         }
-        let time_ms = args.get(0).unwrap_or(&mlua::Value::Nil).as_integer()
+        let time_ms = args
+            .get(0)
+            .unwrap_or(&mlua::Value::Nil)
+            .as_integer()
             .ok_or(anyhow::anyhow!("1st arg is not an integer"))?;
-        let lua_fn = args.get(1).unwrap_or(&mlua::Value::Nil).as_function()
+        let lua_fn = args
+            .get(1)
+            .unwrap_or(&mlua::Value::Nil)
+            .as_function()
             .ok_or(anyhow::anyhow!("2nd arg is not a function"))?;
         if time_ms < 0 {
             return Err(anyhow::anyhow!("time may not be negative"));
         }
-        TimedLuaCallback::create(time_ms as usize, RustToLuaCallback {
-            callback: lua_fn.clone(),
-            weak_lua: Rc::downgrade(lua),
-        });
+        TimedLuaCallback::create(
+            time_ms as usize,
+            RustToLuaCallback {
+                callback: lua_fn.clone(),
+                weak_lua: Rc::downgrade(lua),
+            },
+        );
         Ok(mlua::Value::Nil)
     }
 
