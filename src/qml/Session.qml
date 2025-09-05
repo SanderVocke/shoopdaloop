@@ -93,6 +93,24 @@ Item {
         test_screen_grab_trigger.trigger()
     }
 
+    // Observe loop events
+    signal on_loop_change_event(var loop)
+    Repeater { 
+        model: root.loops
+        Item {
+            property var mapped_item: root.loops[index]
+            Connections {
+                target: mapped_item
+                function onModeChanged() { root.on_loop_change_event(mapped_item) }
+                function onLengthChanged() { root.on_loop_change_event(mapped_item) }
+                function onSelectedChanged() { root.on_loop_change_event(mapped_item) }
+                function onTargetedChanged() { root.on_loop_change_event(mapped_item) }
+                function onIdx_in_trackChanged() { root.on_loop_change_event(mapped_item) }
+                function onTrack_idxChanged() { root.on_loop_change_event(mapped_item) }
+            }
+        }
+    }
+
     property var tracks: [sync_track, ...tracks_widget.tracks]
 
     property bool settings_io_enabled: false

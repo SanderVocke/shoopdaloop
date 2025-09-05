@@ -760,36 +760,34 @@ ShoopTestFile {
                     verify_eq_lua('shoop_control.get_play_after_record()', 'true')
                 },
 
-                // 'test_callback_loop_mode_event': () => {
-                //     check_backend()
-                //     clear()
+                'test_callback_loop_mode_event': () => {
+                    check_backend()
+                    clear()
 
-                //     do_execute(`
-                //         most_recent_event = nil
-                //         most_recent_loop = nil
-                //         local function callback(loop, event)
-                //             most_recent_loop = loop
-                //             most_recent_event = event
-                //         end
-                //         shoop_control.register_loop_event_cb(callback)
-                //     `)
+                    do_execute(`
+                        most_recent_event = nil
+                        local function callback(event)
+                            most_recent_event = event
+                        end
+                        shoop_control.register_loop_event_cb(callback)
+                    `)
 
-                //     loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                //     testcase.wait_updated(session.backend)
-                //     verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Recording')
-                //     verify_eq_lua('most_recent_loop', '{0,0}')
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Recording')
+                    verify_eq_lua('most_recent_event.coords', '{0,0}')
 
-                //     loop_at(0,0).transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                //     testcase.wait_updated(session.backend)
-                //     verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Stopped')
-                //     verify_eq_lua('most_recent_loop', '{0,0}')
+                    loop_at(0,0).transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('most_recent_event.mode', 'shoop_control.constants.LoopMode_Stopped')
+                    verify_eq_lua('most_recent_event.coords', '{0,0}')
 
-                //     loop_at(-1,0).queue_set_length(100)
-                //     testcase.wait_updated(session.backend)
-                //     testcase.wait_updated(session.backend)
-                //     verify_eq_lua('most_recent_event.length', '100')
-                //     verify_eq_lua('most_recent_loop', '{-1,0}')
-                // }
+                    loop_at(-1,0).queue_set_length(100)
+                    testcase.wait_updated(session.backend)
+                    testcase.wait_updated(session.backend)
+                    verify_eq_lua('most_recent_event.length', '100')
+                    verify_eq_lua('most_recent_event.coords', '{-1,0}')
+                }
             })
         }
     }

@@ -1,6 +1,9 @@
 #[cxx_qt::bridge]
 pub mod ffi {
     unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qquickitem.h");
+        type QQuickItem = cxx_qt_lib_shoop::qquickitem::QQuickItem;
+
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
 
@@ -20,6 +23,8 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
+        #[qml_element]
+        #[base = QQuickItem]
         #[qproperty(QList_QVariant, loop_widget_references)]
         #[qproperty(QList_QVariant, track_control_widget_references)]
         #[qproperty(QList_QVariant, selected_loops, READ=get_selected_loops, WRITE=set_selected_loops, NOTIFY=selected_loops_changed)]
@@ -109,7 +114,7 @@ pub mod ffi {
         fn qobjectFromRef(obj: &SessionControlHandler) -> &QObject;
     }
 
-    impl cxx_qt::Constructor<(*mut QObject,), NewArguments = (*mut QObject,)>
+    impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)>
         for SessionControlHandler
     {
     }
@@ -196,13 +201,13 @@ impl AsQObject for ffi::SessionControlHandler {
     }
 }
 
-impl cxx_qt::Constructor<(*mut ffi::QObject,)> for ffi::SessionControlHandler {
-    type BaseArguments = (*mut ffi::QObject,); // Will be passed to the base class constructor
+impl cxx_qt::Constructor<(*mut ffi::QQuickItem,)> for ffi::SessionControlHandler {
+    type BaseArguments = (*mut ffi::QQuickItem,); // Will be passed to the base class constructor
     type InitializeArguments = (); // Will be passed to the "initialize" function
-    type NewArguments = (*mut ffi::QObject,); // Will be passed to the "new" function
+    type NewArguments = (*mut ffi::QQuickItem,); // Will be passed to the "new" function
 
     fn route_arguments(
-        args: (*mut ffi::QObject,),
+        args: (*mut ffi::QQuickItem,),
     ) -> (
         Self::NewArguments,
         Self::BaseArguments,
@@ -211,7 +216,7 @@ impl cxx_qt::Constructor<(*mut ffi::QObject,)> for ffi::SessionControlHandler {
         (args, args, ())
     }
 
-    fn new(_parent: (*mut ffi::QObject,)) -> SessionControlHandlerRust {
+    fn new(_parent: (*mut ffi::QQuickItem,)) -> SessionControlHandlerRust {
         SessionControlHandlerRust::default()
     }
 

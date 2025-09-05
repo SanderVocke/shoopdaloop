@@ -35,4 +35,22 @@ ShoopRustSessionControlHandler {
 
     Component.onCompleted: { update_engine() }
     onLua_engineChanged: { update_engine() }
+
+    // Register for loop events
+    function do_loop_event_callback(loop) {
+        let event = {
+            'coords': [loop.track_idx, loop.idx_in_track],
+            'mode': loop.mode,
+            'length': loop.length,
+            'selected': loop.selected,
+            'targeted': loop.targeted,
+        }
+        root.on_loop_event(event)
+    }
+    Connections {
+        target: session
+        function onOn_loop_change_event(loop) {
+            root.do_loop_event_callback(loop)
+        }
+    }
 }

@@ -566,8 +566,8 @@ end
 -- We will register this callback to execute when a loop generates an event
 -- from ShoopDaLoop. The event contains information such as the loop mode
 -- and length.
-local handle_loop_event = function(coords, event)
-    push_loop_color(coords, event)
+local handle_loop_event = function(event)
+    push_loop_color(event.coords, event)
 end
 
 -- Register the port-related callbacks
