@@ -20,7 +20,7 @@ pub enum FXChainType {
 impl FXChainType {
     #[new]
     fn py_new(value: u32) -> PyResult<Self> {
-        match backend_bindings::FXChainType::try_from(value) {
+        match backend_bindings::FXChainType::try_from(value as i32) {
             Ok(val) => Ok(FXChainType::try_from(val).unwrap()),
             Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Invalid FXChainType",

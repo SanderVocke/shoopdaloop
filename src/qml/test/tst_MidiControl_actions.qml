@@ -1,6 +1,5 @@
 import QtQuick 6.6
-
-import ShoopConstants
+import ShoopDaLoop.Rust
 import '../js/midi.js' as Midi
 import '../js/midi_control.js' as MidiControl
 import './testfilename.js' as TestFilename
@@ -106,7 +105,7 @@ ShoopTestFile {
                     ctl.handle_midi(Midi.create_noteOn(0, 2, 127), null)
 
                     verify_eq(itf.logged_calls, [
-                        [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], ShoopConstants.LoopMode.Stopped, 0, ShoopConstants.DontAlignToSyncImmediately ]
+                        [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], ShoopRustConstants.LoopMode.Stopped, 0, ShoopRustConstants.DontAlignToSyncImmediately ]
                     ])
                 },
 
@@ -115,7 +114,7 @@ ShoopTestFile {
                     ctl.handle_midi(Midi.create_noteOn(0, 3, 127), null)
 
                     verify_eq(itf.logged_calls, [
-                        [ 'loop_transition', [[0, 0], [2, 2]], ShoopConstants.LoopMode.Stopped, 0, ShoopConstants.DontAlignToSyncImmediately ]
+                        [ 'loop_transition', [[0, 0], [2, 2]], ShoopRustConstants.LoopMode.Stopped, 0, ShoopRustConstants.DontAlignToSyncImmediately ]
                     ])
                 },
 
@@ -124,7 +123,7 @@ ShoopTestFile {
                     ctl.handle_midi(Midi.create_noteOn(0, 4, 127), null)
 
                     verify_eq(itf.logged_calls, [
-                        [ 'loop_transition', [[1, 1]], ShoopConstants.LoopMode.Stopped, 0, ShoopConstants.DontAlignToSyncImmediately ]
+                        [ 'loop_transition', [[1, 1]], ShoopRustConstants.LoopMode.Stopped, 0, ShoopRustConstants.DontAlignToSyncImmediately ]
                     ])
                 },
 
@@ -140,7 +139,7 @@ ShoopTestFile {
                     ctl.handle_midi(Midi.create_noteOn(0, 6, 127), null)
 
                     verify_eq(itf.logged_calls, [
-                        [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], ShoopConstants.LoopMode.Stopped, 0, ShoopConstants.DontAlignToSyncImmediately ]
+                        [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], ShoopRustConstants.LoopMode.Stopped, 0, ShoopRustConstants.DontAlignToSyncImmediately ]
                     ])
                 }
             })

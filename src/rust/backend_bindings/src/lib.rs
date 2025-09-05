@@ -2,9 +2,6 @@
 mod ffi;
 
 #[cfg(not(feature = "prebuild"))]
-mod macros;
-
-#[cfg(not(feature = "prebuild"))]
 mod audio_channel;
 #[cfg(not(feature = "prebuild"))]
 pub use audio_channel::*;

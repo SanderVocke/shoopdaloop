@@ -1,17 +1,18 @@
 use crate::ffi;
-use crate::integer_enum;
 use anyhow;
+use enum_iterator::*;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::ffi::CString;
 
-integer_enum! {
-    pub enum LogLevel {
-        AlwaysTrace = ffi::shoop_log_level_t_log_level_always_trace,
-        DebugTrace = ffi::shoop_log_level_t_log_level_debug_trace,
-        Debug = ffi::shoop_log_level_t_log_level_debug,
-        Info = ffi::shoop_log_level_t_log_level_info,
-        Warn = ffi::shoop_log_level_t_log_level_warning,
-        Err = ffi::shoop_log_level_t_log_level_error,
-    }
+#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
+pub enum LogLevel {
+    AlwaysTrace = ffi::shoop_log_level_t_log_level_always_trace,
+    DebugTrace = ffi::shoop_log_level_t_log_level_debug_trace,
+    Debug = ffi::shoop_log_level_t_log_level_debug,
+    Info = ffi::shoop_log_level_t_log_level_info,
+    Warn = ffi::shoop_log_level_t_log_level_warning,
+    Err = ffi::shoop_log_level_t_log_level_error,
 }
 
 pub fn set_global_logging_level(level: &LogLevel) {

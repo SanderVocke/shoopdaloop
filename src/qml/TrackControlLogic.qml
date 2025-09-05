@@ -1,7 +1,6 @@
 import QtQuick 6.6
 import ShoopDaLoop.PythonLogger
-
-import ShoopConstants
+import ShoopDaLoop.Rust
 
 Item {
     property bool monitor
@@ -9,13 +8,13 @@ Item {
     property var unique_next_cycle_loop_modes : []
 
     readonly property bool any_loop_playing: {
-        return unique_loop_modes.includes(ShoopConstants.LoopMode.Playing)
+        return unique_loop_modes.includes(ShoopRustConstants.LoopMode.Playing)
     }
-    readonly property bool any_loop_playing_dry: unique_loop_modes.includes(ShoopConstants.LoopMode.PlayingDryThroughWet)
-    readonly property bool any_loop_recording: unique_loop_modes.includes(ShoopConstants.LoopMode.Recording) || unique_loop_modes.includes(ShoopConstants.LoopMode.Replacing)
-    readonly property bool any_loop_pre_recording: unique_next_cycle_loop_modes.includes(ShoopConstants.LoopMode.Recording) || unique_next_cycle_loop_modes.includes(ShoopConstants.LoopMode.Replacing)
-    readonly property bool any_loop_rerecording_dry: unique_loop_modes.includes(ShoopConstants.LoopMode.RecordingDryIntoWet)
-    readonly property bool any_loop_pre_rerecording_dry: unique_next_cycle_loop_modes.includes(ShoopConstants.LoopMode.RecordingDryIntoWet)
+    readonly property bool any_loop_playing_dry: unique_loop_modes.includes(ShoopRustConstants.LoopMode.PlayingDryThroughWet)
+    readonly property bool any_loop_recording: unique_loop_modes.includes(ShoopRustConstants.LoopMode.Recording) || unique_loop_modes.includes(ShoopRustConstants.LoopMode.Replacing)
+    readonly property bool any_loop_pre_recording: unique_next_cycle_loop_modes.includes(ShoopRustConstants.LoopMode.Recording) || unique_next_cycle_loop_modes.includes(ShoopRustConstants.LoopMode.Replacing)
+    readonly property bool any_loop_rerecording_dry: unique_loop_modes.includes(ShoopRustConstants.LoopMode.RecordingDryIntoWet)
+    readonly property bool any_loop_pre_rerecording_dry: unique_next_cycle_loop_modes.includes(ShoopRustConstants.LoopMode.RecordingDryIntoWet)
 
     // The properties above determine the readonlies below.
     // To understand why, please refer to "States And Connections"

@@ -1,7 +1,5 @@
 import ShoopDaLoop.Rust
 import QtQuick 6.6
-
-import ShoopConstants
 import 'js/schema_conversions.js' as Conversions
 
 ShoopRustLoopChannelGui {

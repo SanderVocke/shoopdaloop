@@ -25,7 +25,7 @@ pub enum LoopMode {
 impl LoopMode {
     #[new]
     fn py_new(value: u32) -> PyResult<Self> {
-        match backend_bindings::LoopMode::try_from(value) {
+        match backend_bindings::LoopMode::try_from(value as i32) {
             Ok(val) => Ok(LoopMode::try_from(val).unwrap()),
             Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Invalid LoopMode",

@@ -1,6 +1,5 @@
 import QtQuick 6.6
-
-import ShoopConstants
+import ShoopDaLoop.Rust
 import './testfilename.js' as TestFilename
 import '..'
 
@@ -9,8 +8,8 @@ ShoopTestFile {
         id: backend
         update_interval_ms: 10
         client_name_hint: 'shoop'
-        backend_type: backend_type_is_supported(ShoopConstants.AudioDriverType.JackTest) ?
-                      ShoopConstants.AudioDriverType.JackTest : ShoopConstants.AudioDriverType.Dummy
+        backend_type: backend_type_is_supported(ShoopRustConstants.AudioDriverType.JackTest) ?
+                      ShoopRustConstants.AudioDriverType.JackTest : ShoopRustConstants.AudioDriverType.Dummy
         driver_setting_overrides: ({})
 
     AudioPort {
@@ -96,7 +95,7 @@ ShoopTestFile {
             name: 'JackPorts'
             filename : TestFilename.test_filename()
 
-            property bool skip_no_jack : !backend.backend_type_is_supported(ShoopConstants.AudioDriverType.JackTest)
+            property bool skip_no_jack : !backend.backend_type_is_supported(ShoopRustConstants.AudioDriverType.JackTest)
             when: skip_no_jack || (audio_in.initialized && audio_out.initialized && midi_in.initialized && midi_out.initialized)
 
             test_fns: ({

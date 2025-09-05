@@ -3,9 +3,7 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import Qt.labs.platform as LabsPlatform
 import ShoopDaLoop.PythonLogger
-// import ShoopDaLoop.Rust
-
-import ShoopConstants
+import ShoopDaLoop.Rust
 
 import 'js/qml_url_to_filename.js' as UrlToFilename
 import 'js/delay.js' as Delay
@@ -208,12 +206,12 @@ Item {
             height: 40
             width: 30
             onClicked: {
-                var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.mode !== ShoopConstants.LoopMode.Stopped)
+                var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.mode !== ShoopRustConstants.LoopMode.Stopped)
                 if (loops.length > 0) {
                     loops[0].transition_loops(
                         loops,
-                        ShoopConstants.LoopMode.Stopped,
-                        root.sync_active ? 0 : ShoopConstants.DontWaitForSync)
+                        ShoopRustConstants.LoopMode.Stopped,
+                        root.sync_active ? 0 : ShoopRustConstants.DontWaitForSync)
                 }
             }
 

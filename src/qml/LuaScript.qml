@@ -13,7 +13,6 @@ Item {
     property var script_code: null // Set the script code directly
     property string script_name : '<unknown script>' // Set the script name directly
     property var script_path: null // By setting this, name and code will be auto-loaded
-    property bool catch_errors: true // If true, errors will be caught and logged, otherwise they will be thrown
 
     // Set internally
     property var accepted_script_code: null
@@ -47,7 +46,7 @@ Item {
 
     onAccepted_script_codeChanged: {
         logger.trace("Accepted code: " + accepted_script_code)
-        execute(accepted_script_code, true, script_name, catch_errors)
+        execute(accepted_script_code, true, script_name)
         ready = true
         ranScript()
     }
@@ -55,12 +54,12 @@ Item {
     function evaluate(expression, script=script_name) {
         if (!ready) return null;
         logger.trace("Evaluating expression: " + expression)
-        return lua_engine.evaluate(expression, script, true, catch_errors)
+        return lua_engine.evaluate(expression, script, true)
     }
 
     function execute(statement, force=false, script=script_name) {
         if (!ready && !force) return;
         logger.trace("Executing statement: " + statement)
-        lua_engine.execute(statement, script, true, catch_errors)
+        lua_engine.execute(statement, script, true)
     }
 }

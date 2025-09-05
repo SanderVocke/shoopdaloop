@@ -124,11 +124,15 @@ impl AutoConnect {
             let my_data_type: PortDataType =
                 qobject::qobject_property_int(&*internal_port, "data_type")
                     .map_err(|err| anyhow::anyhow!(err))
-                    .and_then(|o| PortDataType::try_from(o))?;
+                    .and_then(|o| {
+                        PortDataType::try_from(o as i32).map_err(|e| anyhow::anyhow!("{e}"))
+                    })?;
             let my_direction: PortDirection =
                 qobject::qobject_property_int(&*internal_port, "direction")
                     .map_err(|err| anyhow::anyhow!(err))
-                    .and_then(|o| PortDirection::try_from(o))?;
+                    .and_then(|o| {
+                        PortDirection::try_from(o as i32).map_err(|e| anyhow::anyhow!("{e}"))
+                    })?;
             let my_name: String = qobject::qobject_property_string(&*internal_port, "name")
                 .and_then(|o| Ok(o.to_string()))?;
             let my_port_initialized: bool =

@@ -3,7 +3,7 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Dialogs 6.6
 import ShoopDaLoop.PythonLogger
-import ShoopConstants
+import ShoopDaLoop.Rust
 
 import 'js/mode_helpers.js' as ModeHelpers
 import 'js/stereo.js' as Stereo
@@ -266,11 +266,11 @@ Item {
         }
     }
     function trigger_mode_button(mode) {
-        if (mode == ShoopConstants.LoopMode.Stopped) { root.on_stop_clicked() }
-        else if (mode == ShoopConstants.LoopMode.Playing) { root.on_play_clicked() }
-        else if (mode == ShoopConstants.LoopMode.PlayingDryThroughWet) { root.on_playdry_clicked() }
-        else if (mode == ShoopConstants.LoopMode.Recording) { root.on_record_clicked() }
-        else if (mode == ShoopConstants.LoopMode.RecordingDryIntoWet) { root.on_recordfx_clicked() }
+        if (mode == ShoopRustConstants.LoopMode.Stopped) { root.on_stop_clicked() }
+        else if (mode == ShoopRustConstants.LoopMode.Playing) { root.on_play_clicked() }
+        else if (mode == ShoopRustConstants.LoopMode.PlayingDryThroughWet) { root.on_playdry_clicked() }
+        else if (mode == ShoopRustConstants.LoopMode.Recording) { root.on_record_clicked() }
+        else if (mode == ShoopRustConstants.LoopMode.RecordingDryIntoWet) { root.on_recordfx_clicked() }
     }
 
     function selected_and_other_loops_in_track() {
@@ -294,7 +294,7 @@ Item {
     function transition_solo_in_track(mode, maybe_delay, maybe_align_to_sync_at) {
         let r = selected_and_other_loops_in_track()
         // Do the transitions
-        transition_loops(r[1], ShoopConstants.LoopMode.Stopped, maybe_delay, maybe_align_to_sync_at)
+        transition_loops(r[1], ShoopRustConstants.LoopMode.Stopped, maybe_delay, maybe_align_to_sync_at)
         transition_loops(r[0], mode, maybe_delay, maybe_align_to_sync_at)
     }
 
@@ -421,18 +421,18 @@ Item {
 
     function record_n(delay_start, n) {
         if (registries.state_registry.solo_active) {
-            root.transition_solo_in_track(ShoopConstants.LoopMode.Recording, delay_start, ShoopConstants.DontAlignToSyncImmediately)
+            root.transition_solo_in_track(ShoopRustConstants.LoopMode.Recording, delay_start, ShoopRustConstants.DontAlignToSyncImmediately)
             root.transition(
-                registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                registries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
                 delay_start + n,
-                ShoopConstants.DontAlignToSyncImmediately
+                ShoopRustConstants.DontAlignToSyncImmediately
             )
         } else {
-            root.transition(ShoopConstants.LoopMode.Recording, delay_start, ShoopConstants.DontAlignToSyncImmediately)
+            root.transition(ShoopRustConstants.LoopMode.Recording, delay_start, ShoopRustConstants.DontAlignToSyncImmediately)
             root.transition(
-                registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                registries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
                 delay_start + n,
-                ShoopConstants.DontAlignToSyncImmediately
+                ShoopRustConstants.DontAlignToSyncImmediately
             )
         }
     }
@@ -469,8 +469,8 @@ Item {
 
     readonly property int length : maybe_loop ? maybe_loop.length : 0
     readonly property int position : maybe_loop ? maybe_loop.position : 0
-    readonly property int mode : maybe_loop ? maybe_loop.mode : ShoopConstants.LoopMode.Stopped
-    readonly property int next_mode : maybe_loop ? maybe_loop.next_mode : ShoopConstants.LoopMode.Stopped
+    readonly property int mode : maybe_loop ? maybe_loop.mode : ShoopRustConstants.LoopMode.Stopped
+    readonly property int next_mode : maybe_loop ? maybe_loop.next_mode : ShoopRustConstants.LoopMode.Stopped
     readonly property int next_transition_delay : maybe_loop ? maybe_loop.next_transition_delay : -1
 
     Component {
@@ -542,38 +542,38 @@ Item {
 
     function on_play_clicked() {
         if (registries.state_registry.solo_active) {
-            root.transition_solo_in_track(ShoopConstants.LoopMode.Playing,
-                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-                ShoopConstants.DontAlignToSyncImmediately)
+            root.transition_solo_in_track(ShoopRustConstants.LoopMode.Playing,
+                root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+                ShoopRustConstants.DontAlignToSyncImmediately)
         } else {
-            root.transition(ShoopConstants.LoopMode.Playing,
-                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-                ShoopConstants.DontAlignToSyncImmediately)
+            root.transition(ShoopRustConstants.LoopMode.Playing,
+                root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+                ShoopRustConstants.DontAlignToSyncImmediately)
         }
     }
 
     function on_playdry_clicked() {
         if (registries.state_registry.solo_active) {
-            root.transition_solo_in_track(ShoopConstants.LoopMode.PlayingDryThroughWet,
-                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-                ShoopConstants.DontAlignToSyncImmediately)
+            root.transition_solo_in_track(ShoopRustConstants.LoopMode.PlayingDryThroughWet,
+                root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+                ShoopRustConstants.DontAlignToSyncImmediately)
         } else {
-            root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet,
-                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-                ShoopConstants.DontAlignToSyncImmediately)
+            root.transition(ShoopRustConstants.LoopMode.PlayingDryThroughWet,
+                root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+                ShoopRustConstants.DontAlignToSyncImmediately)
         }
     }
 
     function on_record_clicked() {
         if (root.record_kind == 'infinite' || root.maybe_composite_loop) {
             if (registries.state_registry.solo_active) {
-                root.transition_solo_in_track(ShoopConstants.LoopMode.Recording,
-                    root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-                    ShoopConstants.DontAlignToSyncImmediately)
+                root.transition_solo_in_track(ShoopRustConstants.LoopMode.Recording,
+                    root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+                    ShoopRustConstants.DontAlignToSyncImmediately)
             } else {
-                root.transition(ShoopConstants.LoopMode.Recording,
-                    root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-                    ShoopConstants.DontAlignToSyncImmediately)
+                root.transition(ShoopRustConstants.LoopMode.Recording,
+                    root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+                    ShoopRustConstants.DontAlignToSyncImmediately)
             }
         } else if (root.record_kind == 'with_targeted') {
             root.record_with_targeted();
@@ -595,7 +595,7 @@ Item {
             root.create_backend_loop()
         }
         if (root.sync_active) {
-            let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
+            let go_to_mode = registries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Unknown
             if (root.targeted_loop) {
                 // Grab and sync up with the running targeted loop
                 selection.forEach(l => l.adopt_ringbuffers(root.targeted_loop.current_cycle + root.targeted_loop.n_cycles, root.targeted_loop.n_cycles,
@@ -606,37 +606,37 @@ Item {
         } else {
             if (root.targeted_loop) {
                 // Grab current targeted loop content and record the rest
-                root.adopt_ringbuffers(null, root.targeted_loop.current_cycle + 1, root.targeted_loop.current_cycle, ShoopConstants.LoopMode.Recording)
+                root.adopt_ringbuffers(null, root.targeted_loop.current_cycle + 1, root.targeted_loop.current_cycle, ShoopRustConstants.LoopMode.Recording)
                 root.transition(
-                    registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                    registries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
                     root.delay_for_targeted,
-                    ShoopConstants.DontAlignToSyncImmediately
+                    ShoopRustConstants.DontAlignToSyncImmediately
                 )
             } else {
                 let goto_cycle =
                     root.maybe_composite_loop ?
                         root.maybe_composite_loop.n_cycles - 1 :
                         root.n_cycles_to_grab - 1
-                root.adopt_ringbuffers(null, root.n_cycles_to_grab, goto_cycle, ShoopConstants.LoopMode.Recording)
+                root.adopt_ringbuffers(null, root.n_cycles_to_grab, goto_cycle, ShoopRustConstants.LoopMode.Recording)
                 root.transition(
-                    registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                    registries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
                     0,
-                    ShoopConstants.DontAlignToSyncImmediately
+                    ShoopRustConstants.DontAlignToSyncImmediately
                 )
             }
         }
 
         if (registries.state_registry.solo_active) {
             let r = selected_and_other_loops_in_track()
-            root.transition_loops(r[1], ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+            root.transition_loops(r[1], ShoopRustConstants.LoopMode.Stopped, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
         }
     }
 
     function on_stop_clicked() {
         root.transition(
-           ShoopConstants.LoopMode.Stopped,
-           root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-           ShoopConstants.DontAlignToSyncImmediately)
+           ShoopRustConstants.LoopMode.Stopped,
+           root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+           ShoopRustConstants.DontAlignToSyncImmediately)
     }
 
     function on_recordfx_clicked() {
@@ -646,8 +646,8 @@ Item {
                 root.use_delay : // delay to other
                 root.n_multiples_of_sync_length - root.current_cycle - 1 // delay to self
         var prev_mode = statusrect.loop.mode
-        root.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, delay, ShoopConstants.DontAlignToSyncImmediately)
-        statusrect.loop.transition(prev_mode, delay + n, ShoopConstants.DontAlignToSyncImmediately)
+        root.transition(ShoopRustConstants.LoopMode.RecordingDryIntoWet, delay, ShoopRustConstants.DontAlignToSyncImmediately)
+        statusrect.loop.transition(prev_mode, delay + n, ShoopRustConstants.DontAlignToSyncImmediately)
     }
 
     function compose_add_to_end(subloop, do_parallel) {
@@ -921,7 +921,7 @@ Item {
 
                     LoopStateIcon {
                         id: loopstateicon
-                        mode: statusrect.loop ? statusrect.loop.mode : ShoopConstants.LoopMode.Unknown
+                        mode: statusrect.loop ? statusrect.loop.mode : ShoopRustConstants.LoopMode.Unknown
                         show_timer_instead: parent.show_next_mode
                         visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.loop.next_transition_delay == 0)
                         connected: true
@@ -962,7 +962,7 @@ Item {
                     LoopStateIcon {
                         id: loopnextstateicon
                         mode: parent.show_next_mode ?
-                            statusrect.loop.next_mode : ShoopConstants.LoopMode.Unknown
+                            statusrect.loop.next_mode : ShoopRustConstants.LoopMode.Unknown
                         show_timer_instead: false
                         is_regular_composite: false
                         is_script_composite: false
@@ -1545,13 +1545,13 @@ Item {
                     }
 
                     switch(loopprogressrect.loop.mode) {
-                    case ShoopConstants.LoopMode.Playing:
+                    case ShoopRustConstants.LoopMode.Playing:
                         return '#004400';
-                    case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                    case ShoopRustConstants.LoopMode.PlayingDryThroughWet:
                         return '#333300';
-                    case ShoopConstants.LoopMode.Recording:
+                    case ShoopRustConstants.LoopMode.Recording:
                         return '#660000';
-                    case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                    case ShoopRustConstants.LoopMode.RecordingDryIntoWet:
                         return '#663300';
                     default:
                         return default_color;
@@ -1618,13 +1618,13 @@ Item {
                 }
 
                 switch(lsicon.mode) {
-                case ShoopConstants.LoopMode.Playing:
-                case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                case ShoopRustConstants.LoopMode.Playing:
+                case ShoopRustConstants.LoopMode.PlayingDryThroughWet:
                     return lsicon.muted ? 'volume-mute' : 'play'
-                case ShoopConstants.LoopMode.Recording:
-                case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                case ShoopRustConstants.LoopMode.Recording:
+                case ShoopRustConstants.LoopMode.RecordingDryIntoWet:
                     return 'record-rec'
-                case ShoopConstants.LoopMode.Stopped:
+                case ShoopRustConstants.LoopMode.Stopped:
                     if(lsicon.is_regular_composite) {
                         return 'view-list'
                     }
@@ -1645,15 +1645,15 @@ Item {
                     return Material.foreground
                 }
                 switch(lsicon.mode) {
-                case ShoopConstants.LoopMode.Playing:
+                case ShoopRustConstants.LoopMode.Playing:
                     if (lsicon.is_script_composite) {
                         return Material.foreground
                     }
                     return '#00AA00'
-                case ShoopConstants.LoopMode.Recording:
+                case ShoopRustConstants.LoopMode.Recording:
                     return 'red'
-                case ShoopConstants.LoopMode.RecordingDryIntoWet:
-                case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                case ShoopRustConstants.LoopMode.RecordingDryIntoWet:
+                case ShoopRustConstants.LoopMode.PlayingDryThroughWet:
                     return 'orange'
                 default:
                     if(lsicon.is_regular_composite || lsicon.is_script_composite) {
@@ -1669,8 +1669,8 @@ Item {
                     return ''
                 }
                 switch(lsicon.mode) {
-                case ShoopConstants.LoopMode.RecordingDryIntoWet:
-                case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                case ShoopRustConstants.LoopMode.RecordingDryIntoWet:
+                case ShoopRustConstants.LoopMode.PlayingDryThroughWet:
                     return 'FX'
                 default:
                     return ''
@@ -1876,9 +1876,9 @@ Item {
                         valueRole: "value"
                         model: [
                             { value: (chan) => true, text: "All" },
-                            { value: (chan) => chan.mode == ShoopConstants.ChannelMode.Direct, text: "Regular" },
-                            { value: (chan) => chan.mode == ShoopConstants.ChannelMode.Dry, text: "Dry" },
-                            { value: (chan) => chan.mode == ShoopConstants.ChannelMode.Wet, text: "Wet" }
+                            { value: (chan) => chan.mode == ShoopRustConstants.ChannelMode.Direct, text: "Regular" },
+                            { value: (chan) => chan.mode == ShoopRustConstants.ChannelMode.Dry, text: "Dry" },
+                            { value: (chan) => chan.mode == ShoopRustConstants.ChannelMode.Wet, text: "Wet" }
                         ]
                         Component.onCompleted: presavedialog.update()
                         onActivated: presavedialog.update()
@@ -2007,9 +2007,9 @@ Item {
 
             function update() {
                 var chans = root.audio_channels
-                direct_audio_channels = chans.filter(c => c.mode == ShoopConstants.ChannelMode.Direct)
-                dry_audio_channels = chans.filter(c => c.mode == ShoopConstants.ChannelMode.Dry)
-                wet_audio_channels = chans.filter(c => c.mode == ShoopConstants.ChannelMode.Wet)
+                direct_audio_channels = chans.filter(c => c.mode == ShoopRustConstants.ChannelMode.Direct)
+                dry_audio_channels = chans.filter(c => c.mode == ShoopRustConstants.ChannelMode.Dry)
+                wet_audio_channels = chans.filter(c => c.mode == ShoopRustConstants.ChannelMode.Wet)
                 var to_load = []
                 if (direct_load_checkbox.checked) { to_load = to_load.concat(direct_audio_channels) }
                 if (dry_load_checkbox.checked) { to_load = to_load.concat(dry_audio_channels) }

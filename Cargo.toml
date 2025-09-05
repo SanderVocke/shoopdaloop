@@ -45,6 +45,9 @@ midly = "0.5"
 directories = "6.0"
 mlua = { version = "0.11", features = ["lua54"] }
 itertools = "0.14"
+num_enum = "0.7"
+enum-iterator = "2.1"
+prettyplease = "0.2"
 
 # [patch.crates-io]F
 # cxx-qt =  { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt" }

@@ -1,7 +1,6 @@
 import QtQuick 6.6
-
+import ShoopDaLoop.Rust
 import './testDeepEqual.js' as TestDeepEqual
-import ShoopConstants
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'

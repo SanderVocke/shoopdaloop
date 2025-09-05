@@ -22,6 +22,8 @@ pub mod qobj_crash_handling;
 pub mod qobj_crash_handling_bridge;
 pub mod qobj_dummy_process_helper;
 pub mod qobj_dummy_process_helper_bridge;
+pub mod qobj_enums;
+pub mod qobj_enums_bridge;
 pub mod qobj_file_io;
 pub mod qobj_file_io_bridge;
 pub mod qobj_find_parent_item;

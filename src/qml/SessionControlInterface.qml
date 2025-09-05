@@ -1,7 +1,6 @@
 import QtQuick 6.6
 import ShoopDaLoop.PythonLogger
-
-import ShoopConstants
+import ShoopDaLoop.Rust
 import 'js/midi.js' as Midi
 
 LuaControlInterface {
@@ -349,7 +348,7 @@ LuaControlInterface {
                         "may_open": false,
                         "name_hint": "auto_control_" + rule.id,
                         "autoconnect_regexes": [ rule.regex ],
-                        "direction": ShoopConstants.PortDirection.Input,
+                        "direction": ShoopRustConstants.PortDirection.Input,
                         "parent": root,
                         'lua_engine': rule.engine,
                         'backend': Qt.binding( () => root.backend )
@@ -402,7 +401,7 @@ LuaControlInterface {
                         "may_open": false,
                         "name_hint": "auto_control_" + rule.id,
                         "autoconnect_regexes": [ rule.regex ],
-                        "direction": ShoopConstants.PortDirection.Output,
+                        "direction": ShoopRustConstants.PortDirection.Output,
                         "parent": root,
                         "lua_engine": rule.engine,
                         'send_rate_limit_hz': rule.rate_limit_hz,

@@ -4,7 +4,8 @@ use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::{
     qmetatype_helpers::*,
     qvariant_helpers::{
-        qvariant_to_qstringlist, qvariant_to_qvariantlist, qvariant_to_qvariantmap, qvariant_type_id, qvariant_type_name, qvariantmap_to_qvariant
+        qvariant_to_qstringlist, qvariant_to_qvariantlist, qvariant_to_qvariantmap,
+        qvariant_type_id, qvariant_type_name, qvariantmap_to_qvariant,
     },
 };
 use mlua::{self, FromLua};
@@ -133,7 +134,7 @@ impl IntoLuaExtended for QVariant {
             _v if _v == qmetatype_id_qstring() => {
                 let str = self.value::<QString>().unwrap().to_string();
                 str.into_lua(lua)
-            },
+            }
             _v if _v == qmetatype_id_qvariantmap() => {
                 let map = qvariant_to_qvariantmap(&self).map_err(|e| {
                     mlua::Error::ToLuaConversionError {
@@ -143,7 +144,7 @@ impl IntoLuaExtended for QVariant {
                     }
                 })?;
                 map.into_lua(lua)
-            },
+            }
             _v if _v == qmetatype_id_qvariantlist() => {
                 let l = qvariant_to_qvariantlist(&self).map_err(|e| {
                     mlua::Error::ToLuaConversionError {
@@ -153,7 +154,7 @@ impl IntoLuaExtended for QVariant {
                     }
                 })?;
                 l.into_lua(lua)
-            },
+            }
             _v if _v == qmetatype_id_qstringlist() => {
                 let l = qvariant_to_qstringlist(&self).map_err(|e| {
                     mlua::Error::ToLuaConversionError {
@@ -163,7 +164,7 @@ impl IntoLuaExtended for QVariant {
                     }
                 })?;
                 l.into_lua(lua)
-            },
+            }
             _ => Err(mlua::Error::ToLuaConversionError {
                 from: type_name.to_string(),
                 to: "Lua val",

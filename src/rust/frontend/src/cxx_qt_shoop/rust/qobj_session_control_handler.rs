@@ -30,6 +30,31 @@ use std::collections::BTreeMap;
 use std::pin::Pin;
 use std::rc::{Rc, Weak};
 shoop_log_unit!("Frontend.SessionControlHandler");
+use enum_iterator::*;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
+pub enum KeyEventType {
+    Pressed,
+    Released,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
+pub enum LoopEventType {
+    ModeChanged,
+    LengthChanged,
+    SelectedChanged,
+    TargetedChanged,
+    CoordsChanged,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
+pub enum GlobalEventType {
+    GlobalControlChanged,
+}
 
 fn as_coords(val: &mlua::Value) -> Option<(i64, i64)> {
     if let mlua::Value::Table(table) = val {
@@ -211,20 +236,24 @@ impl SessionControlHandlerLuaTarget {
                 r.map_err(|e| anyhow::anyhow!("Could not set constant: {e}"))
             };
 
-            // LoopMode
-            map_const_err(lua_constants.set("LoopMode_Unknown", LoopMode::Unknown as i64))?;
-            map_const_err(lua_constants.set("LoopMode_Stopped", LoopMode::Stopped as i64))?;
-            map_const_err(lua_constants.set("LoopMode_Playing", LoopMode::Playing as i64))?;
-            map_const_err(lua_constants.set("LoopMode_Recording", LoopMode::Recording as i64))?;
-            map_const_err(lua_constants.set("LoopMode_Replacing", LoopMode::Replacing as i64))?;
-            map_const_err(lua_constants.set(
-                "LoopMode_PlayingDryThroughWet",
-                LoopMode::PlayingDryThroughWet as i64,
-            ))?;
-            map_const_err(lua_constants.set(
-                "LoopMode_RecordingDryIntoWet",
-                LoopMode::RecordingDryIntoWet as i64,
-            ))?;
+            macro_rules! map_iterable_enum {
+                ($maybe_basename:expr, $ty:ty) => {
+                    for v in enum_iterator::all::<$ty>() {
+                        let lua_name = format!("{}{:?}", $maybe_basename.unwrap_or(""), v);
+                        map_const_err(lua_constants.set(lua_name, v as i64))?;
+                    }
+                };
+            }
+
+            map_iterable_enum!(Some("LoopMode_"), LoopMode);
+            map_iterable_enum!(Some("LoopEventType_"), LoopEventType);
+            map_iterable_enum!(Some("GlobalEventType_"), GlobalEventType);
+            map_iterable_enum!(Some("KeyEventType_"), KeyEventType);
+            map_iterable_enum!(None, qt_header_bindings::Qt_Key);
+            map_iterable_enum!(
+                Some("KeyModifier_"),
+                qt_header_bindings::Qt_KeyboardModifier
+            );
 
             // Special arg values
             map_const_err(lua_constants.set("Loop_DontWaitForSync", -1))?;
@@ -321,6 +350,8 @@ impl SessionControlHandlerLuaTarget {
 
             // event API
             add_self_callback!(register_loop_event_cb);
+            add_self_callback!(register_global_event_cb);
+            add_self_callback!(register_keyboard_event_cb);
 
             wrapped_engine.set_toplevel("__shoop_control", lua_module)?;
 
@@ -936,7 +967,12 @@ impl SessionControlHandlerLuaTarget {
         };
         let mut loops: QList_QVariant = QList::default();
         self.select_loops(lua, selector)?.for_each(|l| {
-            loops.append(qobject_ptr_to_qvariant(&l).unwrap_or(QVariant::default()));
+            match qobject_ptr_to_qvariant(&l).unwrap_or(QVariant::default()) {
+                v if !v.is_null() => {
+                    loops.append(v);
+                }
+                _ => {}
+            }
         });
 
         unsafe {
@@ -1978,7 +2014,7 @@ impl SessionControlHandlerLuaTarget {
         }
         unsafe {
             qobject_property_string(&mut *self.global_state_registry, "default_recording_action")
-                .map(|v| IntoLua::into_lua(v.to_string(),lua).unwrap_or(mlua::Value::Nil))
+                .map(|v| IntoLua::into_lua(v.to_string(), lua).unwrap_or(mlua::Value::Nil))
                 .map_err(|e| anyhow::anyhow!("could not get state registry property: {e}"))
         }
     }
@@ -2011,6 +2047,76 @@ impl SessionControlHandlerLuaTarget {
                 Ok(mlua::Value::Nil)
             } else {
                 return Err(anyhow::anyhow!("Could not get callbacks for loop event"));
+            }
+        } else {
+            return Err(anyhow::anyhow!("Passed argument is not a function"));
+        }
+    }
+
+    /*
+    @shoop_lua_fn_docstring.start
+    shoop_control.register_global_event_cb(callback)
+    Register a callback for global events, e.g. global controls changes. See global_event_callback for details.
+    @shoop_lua_fn_docstring.end
+    */
+    fn register_global_event_cb(
+        &self,
+        lua: &Rc<mlua::Lua>,
+        args: mlua::MultiValue,
+    ) -> Result<mlua::Value, anyhow::Error> {
+        if args.len() != 1 {
+            return Err(anyhow::anyhow!("Expected 1 arguments, got {}", args.len()));
+        }
+        let lua_fn = args.get(0).unwrap_or(&mlua::Value::Nil);
+        if let mlua::Value::Function(function) = lua_fn {
+            if let Some(vec) = self
+                .callbacks_rust_to_lua
+                .borrow_mut()
+                .get_mut(&RustToLuaCallbackType::OnGlobalEvent)
+            {
+                vec.push(RustToLuaCallback {
+                    callback: function.clone(),
+                    weak_lua: Rc::downgrade(lua),
+                });
+                Ok(mlua::Value::Nil)
+            } else {
+                return Err(anyhow::anyhow!("Could not get callbacks for global event"));
+            }
+        } else {
+            return Err(anyhow::anyhow!("Passed argument is not a function"));
+        }
+    }
+
+    /*
+    @shoop_lua_fn_docstring.start
+    shoop_control.register_keyboard_event_cb(callback)
+    Register a callback for keyboard events. See keyboard_callback for details.
+    @shoop_lua_fn_docstring.end
+    */
+    fn register_keyboard_event_cb(
+        &self,
+        lua: &Rc<mlua::Lua>,
+        args: mlua::MultiValue,
+    ) -> Result<mlua::Value, anyhow::Error> {
+        if args.len() != 1 {
+            return Err(anyhow::anyhow!("Expected 1 arguments, got {}", args.len()));
+        }
+        let lua_fn = args.get(0).unwrap_or(&mlua::Value::Nil);
+        if let mlua::Value::Function(function) = lua_fn {
+            if let Some(vec) = self
+                .callbacks_rust_to_lua
+                .borrow_mut()
+                .get_mut(&RustToLuaCallbackType::OnKeyEvent)
+            {
+                vec.push(RustToLuaCallback {
+                    callback: function.clone(),
+                    weak_lua: Rc::downgrade(lua),
+                });
+                Ok(mlua::Value::Nil)
+            } else {
+                return Err(anyhow::anyhow!(
+                    "Could not get callbacks for keyboard event"
+                ));
             }
         } else {
             return Err(anyhow::anyhow!("Passed argument is not a function"));
@@ -2320,10 +2426,25 @@ impl SessionControlHandler {
 
     /*
     @shoop_lua_fn_docstring.start
+    type loop_event_type
+    Loop event type. Possible values:
+    - shoop_control.constants.LoopEventType_ModeChanged
+    - shoop_control.constants.LoopEventType_LengthChanged
+    - shoop_control.constants.LoopEventType_SelectedChanged
+    - shoop_control.constants.LoopEventType_TargetedChanged
+    - shoop_control.constants.LoopEventType_CoordsChanged
+    @shoop_lua_fn_docstring.end
+    */
+    /*
+    @shoop_lua_fn_docstring.start
     type loop_callback
-    Loop event callback type. The callback takes an event argument, which is a table
-    with fields 'coords' (table [x,y]), 'mode' (mode), 'selected' (bool),
-    'targeted' (bool) and 'length' (int).
+    Loop event callback type. The callback takes an event argument, which is a table with fields:
+    - 'coords' (table [x,y])
+    - 'type' (loop_event_type)
+    - 'mode' (mode)
+    - 'selected' (bool)
+    - 'targeted' (bool)
+    - 'length' (int).
     Coordinates map to the loop grid. Only the sync loop has a special location [-1,0].
     @shoop_lua_fn_docstring.end
     */
@@ -2339,7 +2460,9 @@ impl SessionControlHandler {
                 .iter()
             {
                 if let Some(lock) = registered_cb.weak_lua.upgrade() {
-                    let event = event.clone().into_lua(&lock)
+                    let event = event
+                        .clone()
+                        .into_lua(&lock)
                         .map_err(|e| anyhow::anyhow!("Could not convert loop event: {e}"))?;
                     if let Err(e) = registered_cb.callback.call::<()>(event) {
                         error!("Could not call loop event callback: {e}");
@@ -2354,12 +2477,103 @@ impl SessionControlHandler {
         }
     }
 
-    pub fn on_global_event(self: Pin<&mut SessionControlHandler>, _event: QMap_QString_QVariant) {
-        todo!();
+    /*
+    @shoop_lua_fn_docstring.start
+    type global_event_type
+    Loop event type. Possible values:
+    - shoop_control.constants.GlobalEventType_GlobalControlChanged
+    @shoop_lua_fn_docstring.end
+    */
+    /*
+    @shoop_lua_fn_docstring.start
+    type global_event_callback
+    Global event callback type. The callback takes a table with fields:
+      'type' (global_event_type)
+    @shoop_lua_fn_docstring.end
+    */
+    pub fn on_global_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            for registered_cb in self
+                .lua_target
+                .borrow()
+                .callbacks_rust_to_lua
+                .borrow()
+                .get(&RustToLuaCallbackType::OnGlobalEvent)
+                .unwrap_or(&vec![])
+                .iter()
+            {
+                if let Some(lock) = registered_cb.weak_lua.upgrade() {
+                    let event = event
+                        .clone()
+                        .into_lua(&lock)
+                        .map_err(|e| anyhow::anyhow!("Could not convert global event: {e}"))?;
+                    if let Err(e) = registered_cb.callback.call::<()>(event) {
+                        error!("Could not call global event callback: {e}");
+                    }
+                } else {
+                    error!("Could not call global event callback: lua engine went out of scope");
+                }
+            }
+            Ok(())
+        }() {
+            error!("Could not convert global event: {e}");
+        }
     }
 
-    pub fn on_key_event(self: Pin<&mut SessionControlHandler>, _event: QMap_QString_QVariant) {
-        todo!();
+    /*
+    @shoop_lua_fn_docstring.start
+    shoop_control.register_keyboard_event_cb(callback)
+    Register a callback for keyboard events. See keyboard_callback for details.
+    @shoop_lua_fn_docstring.end
+    */
+    /*
+    @shoop_lua_fn_docstring.start
+    type keyboard_event_callback
+    Keyboard event callback type. The callback takes a table with fields:
+    - 'type' (keyboard_event_type, see shoop_control.constants.KeyEventType_[Pressed, Released])
+    - 'key' (integer, see keycode constants e.g. shoop_control.constants.Key_[...])
+    - 'modifiers' (integer, flag combination of e.g. shoop_control.constants.KeyModifier_[...]Modifier)
+    @shoop_lua_fn_docstring.end
+    */
+    pub fn on_key_event(self: Pin<&mut SessionControlHandler>, event: QMap_QString_QVariant) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            for registered_cb in self
+                .lua_target
+                .borrow()
+                .callbacks_rust_to_lua
+                .borrow()
+                .get(&RustToLuaCallbackType::OnKeyEvent)
+                .unwrap_or(&vec![])
+                .iter()
+            {
+                if let Some(lock) = registered_cb.weak_lua.upgrade() {
+                    let event = event
+                        .clone()
+                        .into_lua(&lock)
+                        .map_err(|e| anyhow::anyhow!("Could not convert keyboard event: {e}"))?;
+                    if let Err(e) = registered_cb.callback.call::<()>(event) {
+                        error!("Could not call keyboard event callback: {e}");
+                    }
+                } else {
+                    error!("Could not call keyboard event callback: lua engine went out of scope");
+                }
+            }
+            Ok(())
+        }() {
+            error!("Could not convert keyboard event: {e}");
+        }
+    }
+
+    pub fn uninstall_lua_engine(self: Pin<&mut SessionControlHandler>, _engine: *mut QObject) {
+        error!("unimplementd: uninstall_lua_engine");
+    }
+
+    pub fn engine_is_installed(
+        self: Pin<&mut SessionControlHandler>,
+        _engine: *mut QObject,
+    ) -> bool {
+        error!("unimplementd: engine_is_installed");
+        return true;
     }
 }
 

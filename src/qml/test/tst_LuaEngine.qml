@@ -1,7 +1,6 @@
 import QtQuick 6.6
 
 import '..'
-import ShoopConstants
 import ShoopDaLoop.Rust
 import './testfilename.js' as TestFilename
 

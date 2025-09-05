@@ -1,8 +1,7 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import ShoopDaLoop.PythonLogger
-
-import ShoopConstants
+import ShoopDaLoop.Rust
 import 'js/mode_helpers.js' as ModeHelpers
 
 // Wrap a Loop that may be dynamically loaded in a just-in-time way.
@@ -114,7 +113,7 @@ Loop {
             var channel_fn = (c => {
                 if (ModeHelpers.is_recording_mode_for(mode, c.mode)) {
                     c.recording_started_at = now
-                    if (c.mode == ShoopConstants.ChannelMode.Wet && maybe_fx_chain) {
+                    if (c.mode == ShoopRustConstants.ChannelMode.Wet && maybe_fx_chain) {
                         if (!fx_chain_desc_id) {
                             root.logger.debug(`Caching FX chain state for wet channel ${c.obj_id}`)
                             fx_chain_desc_id = registries.fx_chain_states_registry.generate_id('fx_chain_state')

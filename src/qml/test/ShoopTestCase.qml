@@ -3,7 +3,6 @@ import QtQuick 6.6
 import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 
-import ShoopConstants
 import './testDeepEqual.js' as TestDeepEqual
 import '../js/type_checks.js' as TypeChecks
 import '..'
@@ -89,7 +88,7 @@ Item {
     }
 
     function verify_loop_cleared(loop) {
-        verify_eq(loop.mode, ShoopConstants.LoopMode.Stopped)
+        verify_eq(loop.mode, ShoopRustConstants.LoopMode.Stopped)
         verify_eq(loop.length, 0)
     }
 

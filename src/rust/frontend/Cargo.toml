@@ -16,6 +16,7 @@ shoop_py_wrapped_objects = { path = "../shoop_py_wrapped_objects" }
 cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
 shoop_py_backend = { path = "../shoop_py_backend"}
 midi_processing = { path = "../midi_processing" }
+qt_header_bindings = { path = "../qt_header_bindings"}
 
 directories = { workspace = true }
 cxx = { workspace = true }
@@ -38,6 +39,8 @@ json = { workspace = true }
 midly = { workspace = true }
 mlua = { workspace = true }
 itertools = { workspace = true }
+enum-iterator = { workspace = true }
+num_enum = { workspace = true }
 
 [build-dependencies]
 macros = { path = "../macros" }
@@ -53,5 +56,6 @@ prebuild = ["macros/prebuild",
             "crashhandling/prebuild",
             "config/prebuild",
             "cxx_qt_lib_shoop/prebuild",
-            "midi_processing/prebuild"]
+            "midi_processing/prebuild",
+            "qt_header_bindings/prebuild"]
 

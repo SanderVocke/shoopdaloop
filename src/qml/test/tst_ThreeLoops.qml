@@ -1,7 +1,7 @@
 import QtQuick 6.6
 
 import './testDeepEqual.js' as TestDeepEqual
-import ShoopConstants
+import ShoopDaLoop.Rust
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
@@ -127,11 +127,11 @@ ShoopTestFile {
                     first_loop().queue_set_length(48000)
                     registries.state_registry.set_sync_active(false)
                     testcase.wait_updated(session.backend)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
 
                     first_loop().on_play_clicked()
                     testcase.wait_updated(session.backend)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
 
@@ -156,8 +156,8 @@ ShoopTestFile {
                     second_loop().on_play_clicked()
 
                     testcase.wait_updated(session.backend)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
 
                     // Now play the first loop solo
                     registries.state_registry.set_solo_active(true)
@@ -165,9 +165,9 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(second_loop().next_transition_delay, -1) // nothing planned
                 },
 
@@ -181,29 +181,29 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
                     registries.state_registry.set_sync_active(true)
                     first_loop().on_play_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 0) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Playing)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(100)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
@@ -221,16 +221,16 @@ ShoopTestFile {
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
 
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    second_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
                     registries.state_registry.set_sync_active(true)
@@ -238,20 +238,20 @@ ShoopTestFile {
                     first_loop().on_play_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 0) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(second_loop().next_transition_delay, 0)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(100)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(second_loop().next_transition_delay, -1)
                 },
 
@@ -268,16 +268,16 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    second_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
@@ -286,15 +286,15 @@ ShoopTestFile {
                     first_loop().on_play_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 2) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Playing)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(300)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
@@ -312,16 +312,16 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    second_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
@@ -331,21 +331,21 @@ ShoopTestFile {
                     first_loop().on_play_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 2) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(second_loop().next_transition_delay, 2)
-                    verify_eq(second_loop().next_mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().next_mode, ShoopRustConstants.LoopMode.Stopped)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(300)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(second_loop().next_transition_delay, -1) // nothing planned
                 },
 
@@ -356,11 +356,11 @@ ShoopTestFile {
                     first_loop().queue_set_length(48000)
                     registries.state_registry.set_sync_active(false)
                     testcase.wait_updated(session.backend)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
 
                     first_loop().on_playdry_clicked()
                     testcase.wait_updated(session.backend)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.PlayingDryThroughWet)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
 
@@ -385,8 +385,8 @@ ShoopTestFile {
                     second_loop().on_play_clicked()
 
                     testcase.wait_updated(session.backend)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
 
                     // Now play the first loop solo
                     registries.state_registry.set_solo_active(true)
@@ -394,9 +394,9 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.PlayingDryThroughWet)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(second_loop().next_transition_delay, -1) // nothing planned
                 },
 
@@ -410,29 +410,29 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
                     registries.state_registry.set_sync_active(true)
                     first_loop().on_playdry_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 0) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.PlayingDryThroughWet)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(100)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.PlayingDryThroughWet)
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
@@ -450,16 +450,16 @@ ShoopTestFile {
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
 
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    second_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
                     registries.state_registry.set_sync_active(true)
@@ -467,20 +467,20 @@ ShoopTestFile {
                     first_loop().on_playdry_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 0) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(second_loop().next_transition_delay, 0)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(100)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.PlayingDryThroughWet)
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(second_loop().next_transition_delay, -1)
                 },
 
@@ -497,16 +497,16 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    second_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
@@ -515,15 +515,15 @@ ShoopTestFile {
                     first_loop().on_playdry_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 2) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.PlayingDryThroughWet)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(300)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.PlayingDryThroughWet)
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
@@ -541,16 +541,16 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    second_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
@@ -560,21 +560,21 @@ ShoopTestFile {
                     first_loop().on_playdry_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 2) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(second_loop().next_transition_delay, 2)
-                    verify_eq(second_loop().next_mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().next_mode, ShoopRustConstants.LoopMode.Stopped)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(300)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.PlayingDryThroughWet)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.PlayingDryThroughWet)
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(second_loop().next_transition_delay, -1) // nothing planned
                 },
 
@@ -585,11 +585,11 @@ ShoopTestFile {
                     first_loop().queue_set_length(48000)
                     registries.state_registry.set_sync_active(false)
                     testcase.wait_updated(session.backend)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
 
                     first_loop().on_record_clicked()
                     testcase.wait_updated(session.backend)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Recording)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
 
@@ -603,14 +603,14 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
                     registries.state_registry.set_sync_active(true)
@@ -618,15 +618,15 @@ ShoopTestFile {
                     first_loop().on_record_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 0) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Recording)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(100)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Recording)
                     verify_eq(first_loop().length, 50)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
@@ -641,14 +641,14 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
                     registries.state_registry.set_sync_active(true)
@@ -657,24 +657,24 @@ ShoopTestFile {
                     first_loop().on_record_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 0) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Recording)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(100)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Recording)
                     verify_eq(first_loop().length, 50)
                     verify_eq(first_loop().next_transition_delay, 1) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Playing)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(200)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().length, 200)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
@@ -690,14 +690,14 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
                     registries.state_registry.set_sync_active(true)
@@ -706,24 +706,24 @@ ShoopTestFile {
                     first_loop().on_record_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 0) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Recording)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(100)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Recording)
                     verify_eq(first_loop().length, 50)
                     verify_eq(first_loop().next_transition_delay, 1) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Stopped)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(200)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().position, 0)
                     verify_eq(first_loop().length, 200)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
@@ -742,16 +742,16 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    second_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
@@ -761,24 +761,24 @@ ShoopTestFile {
                     first_loop().on_record_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 2) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Recording)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(300)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Recording)
                     verify_eq(first_loop().length, 50)
                     verify_eq(first_loop().next_transition_delay, 2) // plan to play
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Playing)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(300)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
@@ -796,16 +796,16 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    second_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
@@ -815,24 +815,24 @@ ShoopTestFile {
                     first_loop().on_record_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, 2) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Recording)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(300)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Recording)
                     verify_eq(first_loop().length, 50)
                     verify_eq(first_loop().next_transition_delay, 2) // plan to play
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Stopped)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(300)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().position, 0)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
@@ -858,8 +858,8 @@ ShoopTestFile {
                     second_loop().on_play_clicked()
 
                     testcase.wait_updated(session.backend)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
 
                     // Now play the first loop solo
                     registries.state_registry.set_solo_active(true)
@@ -867,9 +867,9 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Recording)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(second_loop().next_transition_delay, -1) // nothing planned
                 },
 
@@ -885,12 +885,12 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
                     registries.state_registry.set_play_after_record_active(false)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     first_loop().on_grab_clicked()
 
                     testcase.wait_updated(session.backend)
                     verify_true(first_loop().length > 0)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                     let data = first_loop_audio_chan().get_data().slice(-500)
                     verify_markers_at(data, [data.length - 1])
@@ -908,12 +908,12 @@ ShoopTestFile {
 
                     testcase.wait_updated(session.backend)
                     registries.state_registry.set_play_after_record_active(true)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     first_loop().on_grab_clicked()
 
                     testcase.wait_updated(session.backend)
                     verify_true(first_loop().length > 0)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                     let data = first_loop_audio_chan().get_data().slice(-500)
                     verify_markers_at(data, [data.length - 1])
@@ -935,12 +935,12 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     // Start playback on both loops
-                    first_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    first_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    second_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
 
                     testcase.wait_updated(session.backend)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
 
                     // Now grab and play
                     session.backend.dummy_request_controlled_frames(500);
@@ -948,14 +948,14 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     registries.state_registry.set_play_after_record_active(true)
                     registries.state_registry.set_solo_active(true)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     first_loop().on_grab_clicked()
 
                     testcase.wait_updated(session.backend)
                     verify_true(first_loop().length > 0)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(second_loop().next_transition_delay, -1) // nothing planned
                 },
 
@@ -969,7 +969,7 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     // Run 550 samples with a marker sample at 325 and 475. That corresponds to
@@ -978,8 +978,8 @@ ShoopTestFile {
                     run_with_marker_samples(550, [325, 475])
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
                     registries.state_registry.set_sync_active(true)
@@ -988,7 +988,7 @@ ShoopTestFile {
                     first_loop().on_grab_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                     verify_eq(first_loop().position, 50)
                     verify_eq(first_loop().length, 200)
@@ -1007,7 +1007,7 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     // Run 550 samples with a marker sample at 425 and 510. That corresponds to
@@ -1015,8 +1015,8 @@ ShoopTestFile {
                     run_with_marker_samples(550, [425, 510])
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
                     registries.state_registry.set_sync_active(false)
@@ -1029,9 +1029,9 @@ ShoopTestFile {
                     // running cycle is the last one being recorded. Recording should
                     // immediately continue until the end of the cycle.
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Recording)
                     verify_eq(first_loop().next_transition_delay, 0) // record the remainder
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().length, 150)
 
                     // Perform the transition
@@ -1039,7 +1039,7 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                     verify_eq(first_loop().length, 200)
                     verify_eq(first_loop().position, 50)
@@ -1060,8 +1060,8 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    second_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     // Run 550 samples with a marker sample at 301 and 410. That corresponds to
@@ -1070,8 +1070,8 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     // Second loop is in its 2nd cycle of 3
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 150)
 
@@ -1089,9 +1089,9 @@ ShoopTestFile {
                     // equal to the targeted loop's and the loop should transition to recording
                     // until the targeted loop restarts.
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Recording)
                     verify_eq(first_loop().next_transition_delay, 1) // record the remainder
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().length, 150)
                     let start_offset = first_loop_audio_chan().start_offset
                     let data = first_loop_audio_chan().get_data().slice(start_offset)
@@ -1102,7 +1102,7 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                     verify_eq(first_loop().length, 300)
                     verify_eq(first_loop().position, 50)
@@ -1120,8 +1120,8 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    second_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     // Run 450 samples with a marker sample at 1, 150 and 299. That corresponds to
@@ -1131,8 +1131,8 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     // Second loop is in its 2nd cycle of 3
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 150)
 
@@ -1143,7 +1143,7 @@ ShoopTestFile {
                     first_loop().on_grab_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                     verify_eq(first_loop().length, 300)
                     verify_eq(first_loop().position, 150)
@@ -1158,13 +1158,13 @@ ShoopTestFile {
                     first_loop().create_backend_loop()
                     first_loop().queue_set_length(48000)
                     registries.state_registry.set_sync_active(false)
-                    first_loop().transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    first_loop().transition(ShoopRustConstants.LoopMode.Recording, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Recording)
 
                     first_loop().on_stop_clicked()
                     testcase.wait_updated(session.backend)
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
 
@@ -1178,30 +1178,30 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    first_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    first_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
                     registries.state_registry.set_sync_active(true)
                     first_loop().on_stop_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, 0) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Stopped)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(100)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().position, 0)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },
@@ -1220,17 +1220,17 @@ ShoopTestFile {
                     sync_loop().queue_set_length(100)
                     session.backend.dummy_enter_controlled_mode()
                     testcase.wait_controlled_mode(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    first_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
-                    second_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    first_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
+                    second_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(second_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
                     verify_eq(first_loop().position, 50)
                     verify_eq(second_loop().position, 50)
@@ -1240,15 +1240,15 @@ ShoopTestFile {
                     first_loop().on_stop_clicked()
                     testcase.wait_updated(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(first_loop().next_transition_delay, 2) // planned transition
-                    verify_eq(first_loop().next_mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().next_mode, ShoopRustConstants.LoopMode.Stopped)
 
                     // Now proceed to the trigger
                     session.backend.dummy_request_controlled_frames(300)
                     testcase.wait_controlled_mode(session.backend)
 
-                    verify_eq(first_loop().mode, ShoopConstants.LoopMode.Stopped)
+                    verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     verify_eq(first_loop().position, 0)
                     verify_eq(first_loop().next_transition_delay, -1) // nothing planned
                 },

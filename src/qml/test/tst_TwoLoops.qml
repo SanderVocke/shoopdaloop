@@ -1,7 +1,7 @@
 import QtQuick 6.6
 
 import './testDeepEqual.js' as TestDeepEqual
-import ShoopConstants
+import ShoopDaLoop.Rust
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
@@ -57,9 +57,9 @@ ShoopTestFile {
                     clear()
                     testcase.wait_updated(session.backend)
 
-                    sync_loop().transition(ShoopConstants.LoopMode.Recording, 0, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Recording, 0, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Recording)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Recording)
                     verify_gt(sync_loop().length, 0)
                     verify_loop_cleared(other_loop())
 
@@ -70,9 +70,9 @@ ShoopTestFile {
                     check_backend()
 
                     sync_loop().queue_set_length(48000)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, 0, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().length, 48000)
                     verify_loop_cleared(other_loop())
 
@@ -91,14 +91,14 @@ ShoopTestFile {
                     other_loop().create_backend_loop()
                     other_loop().queue_set_length(100)
 
-                    other_loop().transition(ShoopConstants.LoopMode.Playing, 2, ShoopConstants.DontAlignToSyncImmediately)
+                    other_loop().transition(ShoopRustConstants.LoopMode.Playing, 2, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
-                    sync_loop().transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    sync_loop().transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(50)
 
                     testcase.wait_updated(session.backend)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(other_loop().next_transition_delay, 2)
 
                     for(var i=0; i<6; i++) {
@@ -108,8 +108,8 @@ ShoopTestFile {
                     }
 
                     testcase.wait_updated(session.backend)
-                    verify_eq(sync_loop().mode, ShoopConstants.LoopMode.Playing)
-                    verify_eq(other_loop().mode, ShoopConstants.LoopMode.Playing)
+                    verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
+                    verify_eq(other_loop().mode, ShoopRustConstants.LoopMode.Playing)
 
                     session.backend.dummy_enter_automatic_mode()
                     testcase.wait_updated(session.backend)

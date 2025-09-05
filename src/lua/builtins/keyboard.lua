@@ -82,9 +82,9 @@ local handle_direction_key = function(key, modifiers)
         return
     end
 
-    if (modifiers & shoop_control.constants.ControlModifier) > 0 then
+    if (modifiers & shoop_control.constants.KeyModifier_ControlModifier) > 0 then
         shoop_helpers.expand_selection(key)
-    elseif (modifiers & shoop_control.constants.AltModifier) > 0 then
+    elseif (modifiers & shoop_control.constants.KeyModifier_AltModifier) > 0 then
         shoop_helpers.shrink_selection(key)
     else
         shoop_helpers.move_selection(key)
@@ -144,8 +144,10 @@ local handle_loop_action = function(mode)
 end
 
 --  Overall keyboard event handler.
-local handle_keyboard = function(event_type, key, modifiers)
-    if event_type == shoop_control.constants.KeyEventType_Pressed then
+local handle_keyboard = function(event)
+    local key = event.key
+    local modifiers = event.modifiers
+    if event.type == shoop_control.constants.KeyEventType_Pressed then
         local as_number = as_number_key(key)
         if is_direction_key(key) then
             handle_direction_key(key, modifiers)
@@ -180,7 +182,7 @@ local handle_keyboard = function(event_type, key, modifiers)
         elseif as_number ~= nil then
             handle_number_pressed(as_number, modifiers)
         end
-    elseif event_type == shoop_control.constants.KeyEventType_Released then
+    elseif event.type == shoop_control.constants.KeyEventType_Released then
         local as_number = as_number_key(key)
         if as_number ~= nil then
             handle_number_released(as_number, modifiers)

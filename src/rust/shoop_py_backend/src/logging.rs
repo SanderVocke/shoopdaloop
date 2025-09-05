@@ -45,7 +45,7 @@ impl LogLevel {
 impl LogLevel {
     #[new]
     fn py_new(value: u32) -> PyResult<Self> {
-        match backend_bindings::LogLevel::try_from(value) {
+        match backend_bindings::LogLevel::try_from(value as i32) {
             Ok(val) => Ok(LogLevel::try_from(val).unwrap()),
             Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Invalid LogLevel",

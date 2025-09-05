@@ -24,7 +24,6 @@ from .q_objects.MidiControlPort import MidiControlPort
 from .q_objects.TestScreenGrabber import TestScreenGrabber
 
 from .logging import Logger as BareLogger
-from .js_constants import create_js_constants
 
 import time
 
@@ -60,8 +59,6 @@ def install_qt_message_handler():
 def register_qml_class(t, name):
     qmlRegisterType(t, "ShoopDaLoop.Python" + name, 1, 0, "Python" + name)
 
-def create_constants_instance(engine):
-    return create_js_constants(engine)
 
 def register_shoopdaloop_qml_classes():
     # Register Python classes
@@ -72,8 +69,6 @@ def register_shoopdaloop_qml_classes():
     register_qml_class(ControlInterface, 'ControlInterface')
     register_qml_class(MidiControlPort, 'MidiControlPort')
     register_qml_class(TestScreenGrabber, 'TestScreenGrabber')
-
-    qmlRegisterSingletonType("ShoopConstants", 1, 0, "ShoopConstants", create_constants_instance)
     install_qt_message_handler()
 
 def create_and_populate_root_context_with_engine_addr(engine_addr):

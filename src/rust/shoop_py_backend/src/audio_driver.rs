@@ -16,7 +16,7 @@ pub enum AudioDriverType {
 impl AudioDriverType {
     #[new]
     fn py_new(value: u32) -> PyResult<Self> {
-        match backend_bindings::AudioDriverType::try_from(value) {
+        match backend_bindings::AudioDriverType::try_from(value as i32) {
             Ok(val) => Ok(AudioDriverType::try_from(val).unwrap()),
             Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Invalid AudioDriverType",
@@ -150,7 +150,7 @@ pub struct AudioDriver {
 impl AudioDriver {
     #[new]
     fn py_new(driver_type: u32) -> PyResult<Self> {
-        let driver_type = backend_bindings::AudioDriverType::try_from(driver_type)
+        let driver_type = backend_bindings::AudioDriverType::try_from(driver_type as i32)
             .map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid driver type"))?;
         let obj = backend_bindings::AudioDriver::new(driver_type, None).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
@@ -254,7 +254,7 @@ impl AudioDriver {
 #[pyfunction]
 pub fn driver_type_supported(driver_type: u32) -> bool {
     backend_bindings::driver_type_supported(
-        backend_bindings::AudioDriverType::try_from(driver_type).unwrap(),
+        backend_bindings::AudioDriverType::try_from(driver_type as i32).unwrap(),
     )
 }
 

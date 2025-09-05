@@ -37,6 +37,46 @@ def find_qmake(directory, is_debug_build):
 
     return (qmake, env_settings)
 
+def find_qt_include_dir(qmake_path):
+    try:
+        # Run qmake and capture its output to find the include paths
+        process = subprocess.run(
+            [qmake_path, '-query', 'QT_INSTALL_HEADERS'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        qt_headers_path = process.stdout.strip()
+        return qt_headers_path
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing qmake: {e}")
+        exit(1)
+
+def find_qnamespace_header(qmake_path):
+    try:
+        # Run qmake and capture its output to find the include paths
+        process = subprocess.run(
+            [qmake_path, '-query', 'QT_INSTALL_HEADERS'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        qt_headers_path = process.stdout.strip()
+        
+        # Construct the full path to qnamespace.h
+        qnamespace_path = os.path.join(qt_headers_path, 'QtCore', 'qnamespace.h')
+
+        if os.path.exists(qnamespace_path):
+            return qnamespace_path
+        else:
+            print(f"Error: qnamespace.h not found at the expected path: {qnamespace_path}")
+            return None
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing qmake: {e}")
+        exit(1)
+
 def find_python(vcpkg_installed_directory, is_debug_build):
     executable_release = ("python.exe" if sys.platform == "win32" else "python3")
     executable_debug = (None if sys.platform == "win32" else "python3d")
@@ -299,6 +339,14 @@ def generate_env(args, env, is_debug):
     for key, value in qmake_env.items():
         print(f"using extra qmake env: {qmake_env}")
         build_env[key] = value
+
+    # Find qt include dir
+    qt_include_dir = find_qt_include_dir(qmake_path)
+    build_env["SHOOP_QT_INCLUDE_DIR"] = qt_include_dir
+
+    # Find qnamespace.h
+    qnamespace_header = find_qnamespace_header(qmake_path)
+    build_env['SHOOP_QNAMESPACE_HEADER'] = qnamespace_header
 
     # Find Lua
     build_env["LUA_LIB_NAME"] = "lua"

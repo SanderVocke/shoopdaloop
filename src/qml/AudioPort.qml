@@ -2,8 +2,6 @@ import ShoopDaLoop.Rust
 import ShoopDaLoop.PythonLogger
 import QtQuick 6.6
 
-import ShoopConstants
-
 ShoopRustPortGui {
     id: root
     property var descriptor : null
@@ -18,10 +16,10 @@ ShoopRustPortGui {
     function parse_connectability(conn) {
         var rval = 0
         if (conn.includes('internal')) {
-            rval |= ShoopConstants.PortConnectability.Internal
+            rval |= ShoopRustConstants.PortConnectability.Internal
         }
         if (conn.includes('external')) {
-            rval |= ShoopConstants.PortConnectability.External
+            rval |= ShoopRustConstants.PortConnectability.External
         }
         return rval
     }

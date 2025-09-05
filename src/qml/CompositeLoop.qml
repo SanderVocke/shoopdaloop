@@ -3,8 +3,6 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
-
-import ShoopConstants
 import 'js/mode_helpers.js' as ModeHelpers
 
 Item {

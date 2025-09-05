@@ -14,7 +14,7 @@ pub enum PortDirection {
 impl PortDirection {
     #[new]
     fn py_new(value: u32) -> PyResult<Self> {
-        match backend_bindings::PortDirection::try_from(value) {
+        match backend_bindings::PortDirection::try_from(value as i32) {
             Ok(val) => Ok(PortDirection::try_from(val).unwrap()),
             Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Invalid PortDirection",
@@ -55,7 +55,7 @@ pub enum PortConnectabilityKind {
 impl PortConnectabilityKind {
     #[new]
     fn py_new(value: u32) -> PyResult<Self> {
-        match backend_bindings::PortConnectabilityKind::try_from(value) {
+        match backend_bindings::PortConnectabilityKind::try_from(value as i32) {
             Ok(val) => Ok(PortConnectabilityKind::try_from(val).unwrap()),
             Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Invalid PortConnectabilityKind",
@@ -100,7 +100,7 @@ pub enum PortDataType {
 impl PortDataType {
     #[new]
     fn py_new(value: u32) -> PyResult<Self> {
-        match backend_bindings::PortDataType::try_from(value) {
+        match backend_bindings::PortDataType::try_from(value as i32) {
             Ok(val) => Ok(PortDataType::try_from(val).unwrap()),
             Err(_) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Invalid PortDataType",

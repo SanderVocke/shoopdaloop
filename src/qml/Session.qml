@@ -8,7 +8,6 @@ import ShoopDaLoop.PythonControlInterface
 import ShoopDaLoop.Rust
 
 import "./js/generate_session.js" as GenerateSession
-import ShoopConstants
 
 Item {
     id: root
@@ -91,24 +90,6 @@ Item {
         // and exit.
         test_screen_grab_trigger.output_folder = output_folder
         test_screen_grab_trigger.trigger()
-    }
-
-    // Observe loop events
-    signal on_loop_change_event(var loop)
-    Repeater { 
-        model: root.loops
-        Item {
-            property var mapped_item: root.loops[index]
-            Connections {
-                target: mapped_item
-                function onModeChanged() { root.on_loop_change_event(mapped_item) }
-                function onLengthChanged() { root.on_loop_change_event(mapped_item) }
-                function onSelectedChanged() { root.on_loop_change_event(mapped_item) }
-                function onTargetedChanged() { root.on_loop_change_event(mapped_item) }
-                function onIdx_in_trackChanged() { root.on_loop_change_event(mapped_item) }
-                function onTrack_idxChanged() { root.on_loop_change_event(mapped_item) }
-            }
-        }
     }
 
     property var tracks: [sync_track, ...tracks_widget.tracks]
@@ -426,19 +407,19 @@ Item {
         }
     }
 
-    MidiControl {
-        id: midi_control
-        control_interface: control_interface
-        configuration: lookup_midi_configuration.object || fallback
+    // MidiControl {
+    //     id: midi_control
+    //     control_interface: control_interface
+    //     configuration: lookup_midi_configuration.object || fallback
 
-        MidiControlConfiguration { id: fallback }
+    //     MidiControlConfiguration { id: fallback }
 
-        RegistryLookup {
-            registry: registries.state_registry
-            key: 'midi_control_configuration'
-            id: lookup_midi_configuration
-        }
-    }
+    //     RegistryLookup {
+    //         registry: registries.state_registry
+    //         key: 'midi_control_configuration'
+    //         id: lookup_midi_configuration
+    //     }
+    // }
 
     Loader {
         active: global_args.monkey_tester
@@ -450,6 +431,9 @@ Item {
             }
         }
     }
+
+    signal key_pressed(var event)
+    signal key_released(var event)
 
     MouseArea {
         ExecuteNextCycle {
@@ -463,8 +447,8 @@ Item {
         focus: true
         id: session_focus_item
 
-        Keys.onPressed: (event) => control_interface && control_interface.key_pressed(event.key, event.modifiers)
-        Keys.onReleased: (event) => control_interface && control_interface.key_released(event.key, event.modifiers)
+        Keys.onPressed: (event) => root.key_pressed(event)
+        Keys.onReleased: (event) => root.key_released(event)
 
         property var focusItem : Window.activeFocusItem
         onFocusItemChanged: {
@@ -496,35 +480,39 @@ Item {
             app_controls.add_backend_refresh_interval_point(last_update_interval)
         }
 
-        SessionControlInterface {
-            backend: session_backend
+        SessionControlHandler {
+            //backend: session_backend
             id: control_interface
             session: root
         }
 
-        MidiControlPort {
-            backend: session_backend
-            id: midi_control_port
-            name_hint: "control"
-            direction: ShoopConstants.PortDirection.Input
-            lua_engine: midi_control.lua_engine
+        // MidiControlPort {
+        //     backend: session_backend
+        //     id: midi_control_port
+        //     name_hint: "control"
+        //     direction: ShoopRustConstants.PortDirection.Input
+        //     lua_engine: midi_control.lua_engine
 
-            RegistryLookup {
-                id: lookup_autoconnect
-                registry: registries.state_registry
-                key: 'autoconnect_input_regexes'
-            }
+        //     RegistryLookup {
+        //         id: lookup_autoconnect
+        //         registry: registries.state_registry
+        //         key: 'autoconnect_input_regexes'
+        //     }
 
-            autoconnect_regexes: lookup_autoconnect.object || []
-            may_open: true
+        //     autoconnect_regexes: lookup_autoconnect.object || []
+        //     may_open: true
 
-            onMsgReceived: msg => midi_control.handle_midi(msg, midi_control_port)
-        }
+        //     onMsgReceived: msg => midi_control.handle_midi(msg, midi_control_port)
+        // }
 
         RegisterInRegistry {
             registry: registries.state_registry
             key: 'midi_control_port'
-            object: midi_control_port
+            object: {
+                root.logger.error("Reenable MIDI control")
+                // midi_control_port
+                return null
+            }
         }
 
         anchors {

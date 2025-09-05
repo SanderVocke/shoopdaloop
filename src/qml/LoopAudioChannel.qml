@@ -3,7 +3,6 @@ import QtQuick 6.6
 import ShoopDaLoop.PythonLogger
 
 import 'js/schema_conversions.js' as Conversions
-import ShoopConstants
 
 ShoopRustLoopChannelGui {
     id: root

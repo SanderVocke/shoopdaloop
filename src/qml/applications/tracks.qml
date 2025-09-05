@@ -2,9 +2,9 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Dialogs 6.6
-
+import ShoopDaLoop.Rust
 import ".."
-import ShoopConstants
+
 
 ShoopApplicationWindow {
     id: root
@@ -25,7 +25,7 @@ ShoopApplicationWindow {
             id: backend
             update_interval_ms: 30
             client_name_hint: 'ShoopDaLoop_Tracks'
-            backend_type: ShoopConstants.AudioDriverType.Jack
+            backend_type: ShoopRustConstants.AudioDriverType.Jack
 
             anchors.fill: parent
 

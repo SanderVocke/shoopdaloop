@@ -1,22 +1,23 @@
 use crate::ffi;
-use crate::integer_enum;
 use anyhow;
+use enum_iterator::*;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::sync::Mutex;
 
 use crate::audio_channel::AudioChannel;
 use crate::channel::ChannelMode;
 use crate::midi_channel::MidiChannel;
 
-integer_enum! {
-    pub enum LoopMode {
-        Unknown = ffi::shoop_loop_mode_t_LoopMode_Unknown,
-        Stopped = ffi::shoop_loop_mode_t_LoopMode_Stopped,
-        Playing = ffi::shoop_loop_mode_t_LoopMode_Playing,
-        Recording = ffi::shoop_loop_mode_t_LoopMode_Recording,
-        Replacing = ffi::shoop_loop_mode_t_LoopMode_Replacing,
-        PlayingDryThroughWet = ffi::shoop_loop_mode_t_LoopMode_PlayingDryThroughWet,
-        RecordingDryIntoWet = ffi::shoop_loop_mode_t_LoopMode_RecordingDryIntoWet,
-    }
+#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
+pub enum LoopMode {
+    Unknown = ffi::shoop_loop_mode_t_LoopMode_Unknown,
+    Stopped = ffi::shoop_loop_mode_t_LoopMode_Stopped,
+    Playing = ffi::shoop_loop_mode_t_LoopMode_Playing,
+    Recording = ffi::shoop_loop_mode_t_LoopMode_Recording,
+    Replacing = ffi::shoop_loop_mode_t_LoopMode_Replacing,
+    PlayingDryThroughWet = ffi::shoop_loop_mode_t_LoopMode_PlayingDryThroughWet,
+    RecordingDryIntoWet = ffi::shoop_loop_mode_t_LoopMode_RecordingDryIntoWet,
 }
 
 pub struct LoopState {

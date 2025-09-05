@@ -2,8 +2,6 @@ import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 import QtQuick 6.6
 
-import ShoopConstants
-
 ShoopRustFXChainGui {
     id: root
     property bool loaded : (initialized &&
@@ -48,10 +46,10 @@ ShoopRustFXChainGui {
     Component.onCompleted: {
         if (descriptor) {
             switch(descriptor.type) {
-                case "carla_rack": chain_type = ShoopConstants.FXChainType.CarlaRack; break;
-                case "carla_patchbay": chain_type = ShoopConstants.FXChainType.CarlaPatchbay; break;
-                case "carla_patchbay_16x": chain_type = ShoopConstants.FXChainType.CarlaPatchbay16x; break;
-                case "test2x2x1": chain_type = ShoopConstants.FXChainType.Test2x2x1; break;
+                case "carla_rack": chain_type = ShoopRustConstants.FXChainType.CarlaRack; break;
+                case "carla_patchbay": chain_type = ShoopRustConstants.FXChainType.CarlaPatchbay; break;
+                case "carla_patchbay_16x": chain_type = ShoopRustConstants.FXChainType.CarlaPatchbay16x; break;
+                case "test2x2x1": chain_type = ShoopRustConstants.FXChainType.Test2x2x1; break;
             }
 
             if ('internal_state' in descriptor) {

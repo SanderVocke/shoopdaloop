@@ -1,7 +1,6 @@
 import QtQuick 6.6
-
+import ShoopDaLoop.Rust
 import '..'
-import ShoopConstants
 import './testfilename.js' as TestFilename
 
 ShoopTestFile {
@@ -9,7 +8,7 @@ ShoopTestFile {
         id: backend
         update_interval_ms: 10
         client_name_hint: 'ShoopDaLoop'
-        backend_type: ShoopConstants.AudioDriverType.Dummy
+        backend_type: ShoopRustConstants.AudioDriverType.Dummy
         driver_setting_overrides: ({})
 
         ShoopTestCase {

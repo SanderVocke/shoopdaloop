@@ -1,18 +1,19 @@
 use crate::ffi;
-use crate::integer_enum;
 use anyhow;
+use enum_iterator::*;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::sync::Mutex;
 
 use crate::audio_port::AudioPort;
 use crate::midi_port::MidiPort;
 
-integer_enum! {
-    pub enum FXChainType {
-        CarlaRack = ffi::shoop_fx_chain_type_t_Carla_Rack,
-        CarlaPatchbay = ffi::shoop_fx_chain_type_t_Carla_Patchbay,
-        CarlaPatchbay16x = ffi::shoop_fx_chain_type_t_Carla_Patchbay_16x,
-        Test2x2x1 = ffi::shoop_fx_chain_type_t_Test2x2x1,
-    }
+#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
+pub enum FXChainType {
+    CarlaRack = ffi::shoop_fx_chain_type_t_Carla_Rack,
+    CarlaPatchbay = ffi::shoop_fx_chain_type_t_Carla_Patchbay,
+    CarlaPatchbay16x = ffi::shoop_fx_chain_type_t_Carla_Patchbay_16x,
+    Test2x2x1 = ffi::shoop_fx_chain_type_t_Test2x2x1,
 }
 
 impl FXChainType {

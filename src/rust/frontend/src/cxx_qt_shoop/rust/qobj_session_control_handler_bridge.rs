@@ -37,6 +37,15 @@ pub mod ffi {
         pub fn install_on_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject);
 
         #[qinvokable]
+        pub fn uninstall_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject);
+
+        #[qinvokable]
+        pub fn engine_is_installed(
+            self: Pin<&mut SessionControlHandler>,
+            engine: *mut QObject,
+        ) -> bool;
+
+        #[qinvokable]
         pub fn update_structured_loop_widget_references(self: Pin<&mut SessionControlHandler>);
 
         #[qinvokable]
@@ -137,12 +146,12 @@ use crate::lua_callback::LuaCallback;
 pub enum RustToLuaCallbackType {
     OnLoopEvent,
     OnGlobalEvent,
-    OnKeyEvent
+    OnKeyEvent,
 }
 
 pub struct RustToLuaCallback {
-    pub callback : mlua::Function,
-    pub weak_lua : Weak<mlua::Lua>,
+    pub callback: mlua::Function,
+    pub weak_lua: Weak<mlua::Lua>,
 }
 
 pub struct SessionControlHandlerLuaTarget {

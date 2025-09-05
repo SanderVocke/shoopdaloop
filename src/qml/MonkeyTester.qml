@@ -2,7 +2,6 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.PythonLogger
-import ShoopConstants
 import "./js/generate_session.js" as GenerateSession
 import ShoopDaLoop.Rust
 
@@ -119,7 +118,7 @@ Item {
             if (sync_loop.length == 0) {
                 sync_loop.queue_set_length(24000)
             }
-            sync_loop.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately, false)
+            sync_loop.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately, false)
 
             let chosen_action = pick_random(actions_distribution, (a) => action_possible(a))
             root.logger.debug(`Main action: ${chosen_action}`)
@@ -239,8 +238,8 @@ Item {
             return;
         }
         root.logger.debug(`--> play ${track.name}::${loop.name}`)
-        loop.transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
-        loop.transition(ShoopConstants.LoopMode.Stopped, 4, ShoopConstants.DontAlignToSyncImmediately)
+        loop.transition(ShoopRustConstants.LoopMode.Playing, 0, ShoopRustConstants.DontAlignToSyncImmediately)
+        loop.transition(ShoopRustConstants.LoopMode.Stopped, 4, ShoopRustConstants.DontAlignToSyncImmediately)
     }
 
     function loop_play_drywet_4() {
@@ -255,8 +254,8 @@ Item {
             return;
         }
         root.logger.debug(`--> play dry ${track.name}::${loop.name}`)
-        loop.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, ShoopConstants.DontAlignToSyncImmediately)
-        loop.transition(ShoopConstants.LoopMode.Stopped, 4, ShoopConstants.DontAlignToSyncImmediately)
+        loop.transition(ShoopRustConstants.LoopMode.PlayingDryThroughWet, 0, ShoopRustConstants.DontAlignToSyncImmediately)
+        loop.transition(ShoopRustConstants.LoopMode.Stopped, 4, ShoopRustConstants.DontAlignToSyncImmediately)
     }
 
     Component.onDestruction: {

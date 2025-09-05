@@ -1,6 +1,5 @@
 import QtQuick 6.6
-
-import ShoopConstants
+import ShoopDaLoop.Rust
 import './testfilename.js' as TestFilename
 import '..'
 
@@ -9,8 +8,8 @@ ShoopTestFile {
         id: backend
         update_interval_ms: 10
         client_name_hint: 'shoop'
-        backend_type: backend_type_is_supported(ShoopConstants.AudioDriverType.JackTest) ?
-                      ShoopConstants.AudioDriverType.JackTest : ShoopConstants.AudioDriverType.Dummy
+        backend_type: backend_type_is_supported(ShoopRustConstants.AudioDriverType.JackTest) ?
+                      ShoopRustConstants.AudioDriverType.JackTest : ShoopRustConstants.AudioDriverType.Dummy
         driver_setting_overrides: ({})
 
         ShoopTestCase {
@@ -23,7 +22,7 @@ ShoopTestFile {
 
             test_fns: ({
                 'test_backend_jack': () => {
-                    if(!backend.backend_type_is_supported(ShoopConstants.AudioDriverType.JackTest)) {
+                    if(!backend.backend_type_is_supported(ShoopRustConstants.AudioDriverType.JackTest)) {
                         skip("Backend was built without Jack support")
                         backend.close()
                         return
@@ -33,7 +32,7 @@ ShoopTestFile {
                     wait(1000)
                     verify_eq(
                         backend.actual_backend_type,
-                        ShoopConstants.AudioDriverType.JackTest,
+                        ShoopRustConstants.AudioDriverType.JackTest,
                         "Was not able to start a Jack test backend even though support should be available"
                     )
 
