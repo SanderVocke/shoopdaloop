@@ -6,7 +6,9 @@ use crate::cxx_qt_shoop::qobj_midi_control_port_bridge::MidiControlPortRust;
 use backend_bindings::PortDirection;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
+use cxx_qt_lib::QList;
 use cxx_qt_lib::QMap;
+use cxx_qt_lib::QVariant;
 use cxx_qt_lib_shoop::connect::connect_or_report;
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
@@ -16,6 +18,7 @@ use cxx_qt_lib_shoop::qobject::qobject_set_property_int;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qobject::FromQObject;
 use cxx_qt_lib_shoop::qtimer::QTimer;
+use cxx_qt_lib_shoop::qvariant_helpers::qlist_u8_to_qvariant;
 use midi_processing::channel;
 use midi_processing::is_cc;
 use midi_processing::is_note_off;
@@ -72,13 +75,41 @@ impl MidiControlPort {
                 "maybe_initialize()",
                 connection_types::QUEUED_CONNECTION,
             );
+            connect_or_report(
+                &mut *self_qobj,
+                "may_openChanged()",
+                &mut *self_qobj,
+                "maybe_initialize()",
+                connection_types::QUEUED_CONNECTION,
+            );
+            connect_or_report(
+                &mut *self_qobj,
+                "backendChanged()",
+                &mut *self_qobj,
+                "autoconnect_update()",
+                connection_types::QUEUED_CONNECTION,
+            );
         }
 
+        self.as_mut()
+            .on_autoconnect_regexes_changed(|s| {
+                debug!("autoconnect regexes -> # {}", s.autoconnect_regexes.len());
+            })
+            .release();
+        self.as_mut()
+            .on_name_changed(|s| debug!("name -> {:?}", s.name))
+            .release();
         self.as_mut().autoconnect_update();
     }
 
     pub fn maybe_initialize(mut self: Pin<&mut MidiControlPort>) {
         if self.backend.is_null() {
+            return;
+        }
+        if !self.may_open {
+            return;
+        }
+        if self.backend_port_wrapper.is_some() {
             return;
         }
 
@@ -143,6 +174,8 @@ impl MidiControlPort {
                 }
             }
 
+            self.as_mut().opened();
+            self.as_mut().autoconnect_update();
             self.set_initialized(true);
 
             Ok(())
@@ -168,15 +201,17 @@ impl MidiControlPort {
         }
     }
 
-    pub fn connect_external_port(mut self: Pin<&mut MidiControlPort>, name: QString) {
+    pub fn connect_external_port(mut self: Pin<&mut MidiControlPort>, name: QString) -> bool {
         if let Some(backend_port) = self.as_mut().backend_port_wrapper.as_ref() {
             debug!("Connecting to external port {:?}", name);
             backend_port.connect_external_port(&name.to_string());
+            true
         } else {
             error!(
                 "Attempted to connect uninitialized port {:?}",
                 self.name_hint
             );
+            false
         }
     }
 
@@ -219,7 +254,7 @@ impl MidiControlPort {
             unsafe {
                 if let Err(e) = invoke::<_, (), _>(
                     &mut *self.send_timer,
-                    "start",
+                    "start()",
                     connection_types::DIRECT_CONNECTION,
                     &(),
                 ) {
@@ -229,16 +264,14 @@ impl MidiControlPort {
         }
     }
 
-    pub fn queue_send_msg(mut self: Pin<&mut MidiControlPort>, msg: QList_u8) {
+    pub fn queue_send_msg_impl(mut self: Pin<&mut MidiControlPort>, msg: Vec<u8>) {
         let mut rust_mut = self.as_mut().rust_mut();
-        rust_mut
-            .send_queue
-            .push(msg.iter().map(|x| *x).collect::<Vec<u8>>());
+        rust_mut.send_queue.push(msg);
         if rust_mut.send_rate_limit_hz > 0 {
             unsafe {
                 if let Err(e) = invoke::<_, (), _>(
                     &mut *self.send_timer,
-                    "start",
+                    "start()",
                     connection_types::DIRECT_CONNECTION,
                     &(),
                 ) {
@@ -250,7 +283,16 @@ impl MidiControlPort {
         }
     }
 
+    pub fn queue_send_msg(self: Pin<&mut MidiControlPort>, msg: QList_u8) {
+        self.queue_send_msg_impl(msg.iter().map(|x| *x).collect::<Vec<u8>>());
+    }
+
     pub fn autoconnect_update(mut self: Pin<&mut MidiControlPort>) {
+        if self.backend.is_null() {
+            debug!("Defer autoconnect update, backend not set");
+            return;
+        }
+
         debug!("Autoconnect update");
 
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
@@ -258,6 +300,7 @@ impl MidiControlPort {
         rust_mut.autoconnecters.clear();
 
         for regex in rust_mut.autoconnect_regexes.clone().iter() {
+            trace!("Creating autoconnect for: {:?}", regex);
             let autoconnect = make_unique_autoconnect();
             let mut pin_mut_autoconnect =
                 unsafe { std::pin::Pin::new_unchecked(&mut *autoconnect.as_mut_ptr()) };
@@ -265,6 +308,7 @@ impl MidiControlPort {
                 .as_mut()
                 .set_connect_to_port_regex(regex.clone());
             pin_mut_autoconnect.as_mut().set_internal_port(self_qobj);
+            pin_mut_autoconnect.as_mut().set_backend(rust_mut.backend);
 
             unsafe {
                 connect_or_report(
@@ -304,6 +348,13 @@ impl MidiControlPort {
         } else if is_cc(msg) {
             rust_mut.cc_states[channel(msg) as usize][note(msg) as usize] = Some(msg[2]);
         }
+        let mut list: QList<u8> = QList::default();
+        for byte in msg {
+            list.append(*byte);
+        }
+        let variant = qlist_u8_to_qvariant(&list).unwrap_or(QVariant::default());
+        self.as_mut().msg_received(list);
+        self.as_mut().msg_received_variant(variant);
     }
 
     pub fn poll(mut self: Pin<&mut MidiControlPort>) {

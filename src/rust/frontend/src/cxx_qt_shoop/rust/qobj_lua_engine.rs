@@ -98,6 +98,10 @@ impl LuaEngine {
     pub fn make_unique() -> cxx::UniquePtr<Self> {
         make_unique_lua_engine()
     }
+
+    pub fn ensure_engine_destroyed(self: std::pin::Pin<&mut Self>) {
+        self.rust_mut().engine = None;
+    }
 }
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {

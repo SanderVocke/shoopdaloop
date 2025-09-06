@@ -383,6 +383,14 @@ Item {
             onPlay_after_record_activeChanged: registries.state_registry.set_play_after_record_active(play_after_record_active)
             Component.onCompleted: registries.state_registry.set_play_after_record_active(play_after_record_active)
 
+            Connections {
+                target: registries.state_registry
+                function onPlay_after_record_activeChanged() {
+                    let v = registries.state_registry.play_after_record
+                    play_after_record_active_button.state = play_after_record_active_button.inverted ? !v : v
+                }
+            }
+
             highlighted : play_after_record_active
 
             MaterialDesignIcon {
@@ -425,6 +433,14 @@ Item {
             onSync_activeChanged: registries.state_registry.set_sync_active(sync_active)
             Component.onCompleted: registries.state_registry.set_sync_active(sync_active)
 
+            Connections {
+                target: registries.state_registry
+                function onSync_activeChanged() {
+                    let v = registries.state_registry.sync_active
+                    sync_active_button.state = sync_active_button.inverted ? !v : v
+                }
+            }
+
             highlighted : sync_active
 
             MaterialDesignIcon {
@@ -448,6 +464,14 @@ Item {
 
             onSolo_activeChanged: registries.state_registry.set_solo_active(solo_active)
             Component.onCompleted: registries.state_registry.set_solo_active(solo_active)
+
+            Connections {
+                target: registries.state_registry
+                function onSolo_activeChanged() {
+                    let v = registries.state_registry.solo_active
+                    solo_active_button.state = solo_active_button.inverted ? !v : v
+                }
+            }
 
             highlighted : solo_active
 

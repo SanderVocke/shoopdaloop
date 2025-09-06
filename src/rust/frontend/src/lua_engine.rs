@@ -1,7 +1,7 @@
 use std::{
     cell::RefCell,
     collections::HashMap,
-    rc::{Rc, Weak},
+    sync::{Arc, Weak},
 };
 
 use common::logging::macros::*;
@@ -18,7 +18,7 @@ pub enum LuaScope {
 
 pub struct LuaEngineImpl {
     weak_self: Weak<RefCell<LuaEngineImpl>>,
-    pub lua: Rc<mlua::Lua>,
+    pub lua: Arc<mlua::Lua>,
     preloaded_libs: HashMap<String, String>,
     run_sandboxed: Option<mlua::Function>,
     require: Option<mlua::Function>,
@@ -26,22 +26,22 @@ pub struct LuaEngineImpl {
 }
 
 pub struct LuaEngine {
-    pub lua: Rc<RefCell<LuaEngineImpl>>,
+    pub lua: Arc<RefCell<LuaEngineImpl>>,
 }
 
 impl Default for LuaEngine {
     fn default() -> Self {
         let rval = Self {
-            lua: Rc::new(RefCell::new(LuaEngineImpl {
+            lua: Arc::new(RefCell::new(LuaEngineImpl {
                 weak_self: Weak::new(),
-                lua: Rc::new(mlua::Lua::new()),
+                lua: Arc::new(mlua::Lua::new()),
                 preloaded_libs: HashMap::default(),
                 run_sandboxed: None,
                 require: None,
                 get_builtin_script_fn: None,
             })),
         };
-        let weak = Rc::downgrade(&rval.lua);
+        let weak = Arc::downgrade(&rval.lua);
         rval.lua.borrow_mut().weak_self = weak;
         rval
     }
@@ -274,9 +274,9 @@ impl LuaEngineImpl {
     pub fn create_callback_fn(
         &mut self,
         name: &str,
-        callback: &Rc<Box<dyn LuaCallback>>,
+        callback: &Arc<Box<dyn LuaCallback>>,
     ) -> Result<mlua::Function, anyhow::Error> {
-        let weak = Rc::downgrade(callback);
+        let weak = Arc::downgrade(callback);
         let name = name.to_string();
         let weak_self = self.weak_self.clone();
         self.lua
@@ -307,7 +307,7 @@ impl LuaEngineImpl {
         &mut self,
         name: &str,
         scope: LuaScope,
-        callback: &Rc<Box<dyn LuaCallback>>,
+        callback: &Arc<Box<dyn LuaCallback>>,
     ) -> Result<(), anyhow::Error> {
         let call = self.create_callback_fn(name, callback)?;
         match scope {
@@ -328,7 +328,7 @@ impl LuaEngineImpl {
         &mut self,
         name: &str,
         scope: LuaScope,
-        callbacks: impl Iterator<Item = (&'a str, &'a Rc<Box<dyn LuaCallback>>)>,
+        callbacks: impl Iterator<Item = (&'a str, &'a Arc<Box<dyn LuaCallback>>)>,
     ) -> Result<(), anyhow::Error> {
         let module = self
             .lua
@@ -415,7 +415,7 @@ impl LuaEngine {
         &mut self,
         name: &str,
         scope: LuaScope,
-        callback: &Rc<Box<dyn LuaCallback>>,
+        callback: &Arc<Box<dyn LuaCallback>>,
     ) -> Result<(), anyhow::Error> {
         self.lua
             .borrow_mut()
@@ -426,7 +426,7 @@ impl LuaEngine {
         &mut self,
         name: &str,
         scope: LuaScope,
-        callbacks: impl Iterator<Item = (&'a str, &'a Rc<Box<dyn LuaCallback>>)>,
+        callbacks: impl Iterator<Item = (&'a str, &'a Arc<Box<dyn LuaCallback>>)>,
     ) -> Result<(), anyhow::Error> {
         self.lua
             .borrow_mut()
@@ -436,7 +436,7 @@ impl LuaEngine {
     pub fn create_callback_fn(
         &mut self,
         name: &str,
-        callback: &Rc<Box<dyn LuaCallback>>,
+        callback: &Arc<Box<dyn LuaCallback>>,
     ) -> Result<mlua::Function, anyhow::Error> {
         self.lua.borrow_mut().create_callback_fn(name, callback)
     }
@@ -526,7 +526,7 @@ return test_hello_world()
         impl LuaCallback for TestCallback {
             fn call(
                 &self,
-                _: &Rc<mlua::Lua>,
+                _: &Arc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
@@ -538,7 +538,7 @@ return test_hello_world()
             }
         }
 
-        let cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(TestCallback {}));
+        let cb: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(TestCallback {}));
 
         let mut eng = LuaEngine::default();
         eng.initialize(testing_builtins, HashMap::default())
@@ -559,7 +559,7 @@ return test_hello_world()
         impl LuaCallback for TestCallback {
             fn call(
                 &self,
-                _: &Rc<mlua::Lua>,
+                _: &Arc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
@@ -571,7 +571,7 @@ return test_hello_world()
             }
         }
 
-        let cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(TestCallback {}));
+        let cb: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(TestCallback {}));
 
         let mut eng = LuaEngine::default();
         eng.initialize(testing_builtins, HashMap::default())
@@ -592,7 +592,7 @@ return test_hello_world()
         impl LuaCallback for TestAddCallback {
             fn call(
                 &self,
-                _: &Rc<mlua::Lua>,
+                _: &Arc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
@@ -607,7 +607,7 @@ return test_hello_world()
         impl LuaCallback for TestSubtractCallback {
             fn call(
                 &self,
-                _: &Rc<mlua::Lua>,
+                _: &Arc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
@@ -619,10 +619,10 @@ return test_hello_world()
             }
         }
 
-        let add_cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(TestAddCallback {}));
-        let sub_cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(TestSubtractCallback {}));
+        let add_cb: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(TestAddCallback {}));
+        let sub_cb: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(TestSubtractCallback {}));
 
-        let mut module: HashMap<String, Rc<Box<dyn LuaCallback>>> = HashMap::new();
+        let mut module: HashMap<String, Arc<Box<dyn LuaCallback>>> = HashMap::new();
         module.insert("add".to_string(), add_cb);
         module.insert("sub".to_string(), sub_cb);
 
@@ -654,7 +654,7 @@ return test_hello_world()
         impl LuaCallback for TestAddCallback {
             fn call(
                 &self,
-                _: &Rc<mlua::Lua>,
+                _: &Arc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
@@ -669,7 +669,7 @@ return test_hello_world()
         impl LuaCallback for TestSubtractCallback {
             fn call(
                 &self,
-                _: &Rc<mlua::Lua>,
+                _: &Arc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 if args.len() != 2 {
@@ -681,10 +681,10 @@ return test_hello_world()
             }
         }
 
-        let add_cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(TestAddCallback {}));
-        let sub_cb: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(TestSubtractCallback {}));
+        let add_cb: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(TestAddCallback {}));
+        let sub_cb: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(TestSubtractCallback {}));
 
-        let mut module: HashMap<String, Rc<Box<dyn LuaCallback>>> = HashMap::new();
+        let mut module: HashMap<String, Arc<Box<dyn LuaCallback>>> = HashMap::new();
         module.insert("add".to_string(), add_cb);
         module.insert("sub".to_string(), sub_cb);
 

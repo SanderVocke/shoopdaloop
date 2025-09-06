@@ -48,7 +48,10 @@ Item {
                 root.control_interface.install_on_lua_engine(the_engine)
                 ready = true
             }
-            Component.onDestruction: root.control_interface.uninstall_lua_engine(the_engine)
+            Component.onDestruction: {
+                the_engine.ensure_engine_destroyed()
+                root.control_interface.uninstall_lua_engine(the_engine)
+            }
         }
     }
 

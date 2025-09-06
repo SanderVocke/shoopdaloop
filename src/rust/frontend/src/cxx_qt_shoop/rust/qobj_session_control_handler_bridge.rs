@@ -31,6 +31,7 @@ pub mod ffi {
         #[qproperty(QVariant, targeted_loop, READ=get_targeted_loop, WRITE=set_targeted_loop, NOTIFY=targeted_loop_changed)]
         #[qproperty(*mut QObject, global_state_registry, READ=get_global_state_registry, WRITE=set_global_state_registry, NOTIFY=global_state_registry_changed)]
         #[qproperty(*mut QObject, session, READ=get_session, WRITE=set_session, NOTIFY=session_changed)]
+        #[qproperty(*mut QObject, backend, READ=get_backend, WRITE=set_backend, NOTIFY=backend_changed)]
         type SessionControlHandler = super::SessionControlHandlerRust;
 
         #[qinvokable]
@@ -72,6 +73,12 @@ pub mod ffi {
         pub fn get_session(self: Pin<&mut SessionControlHandler>) -> *mut QObject;
 
         #[qinvokable]
+        pub fn set_backend(self: Pin<&mut SessionControlHandler>, backend: *mut QObject);
+
+        #[qinvokable]
+        pub fn get_backend(self: Pin<&mut SessionControlHandler>) -> *mut QObject;
+
+        #[qinvokable]
         pub fn set_global_state_registry(
             self: Pin<&mut SessionControlHandler>,
             registry: *mut QObject,
@@ -93,6 +100,9 @@ pub mod ffi {
         pub fn session_changed(self: Pin<&mut SessionControlHandler>);
 
         #[qsignal]
+        pub fn backend_changed(self: Pin<&mut SessionControlHandler>);
+
+        #[qsignal]
         pub fn selected_loops_changed(self: Pin<&mut SessionControlHandler>);
 
         #[qsignal]
@@ -104,10 +114,22 @@ pub mod ffi {
 
     unsafe extern "RustQt" {
         #[qobject]
-        type TimedLuaCallback = super::TimedLuaCallbackRust;
+        type WrappedLuaCallback = super::WrappedLuaCallbackRust;
 
         #[qinvokable]
-        pub fn execute(self: Pin<&mut TimedLuaCallback>);
+        pub fn call(self: Pin<&mut WrappedLuaCallback>);
+
+        #[qinvokable]
+        pub fn call_with_arg(self: Pin<&mut WrappedLuaCallback>, arg: QVariant);
+
+        #[qinvokable]
+        pub fn call_and_delete(self: Pin<&mut WrappedLuaCallback>);
+
+        #[qinvokable]
+        pub fn delete_later(self: Pin<&mut WrappedLuaCallback>);
+
+        #[qinvokable]
+        pub fn call_with_stored_arg(self: Pin<&mut WrappedLuaCallback>);
     }
 
     unsafe extern "C++" {
@@ -133,16 +155,20 @@ pub mod ffi {
 
     unsafe extern "C++" {
         include!("cxx-qt-lib-shoop/make_raw.h");
-        #[rust_name = "make_raw_timed_lua_callback"]
-        unsafe fn make_raw() -> *mut TimedLuaCallback;
+        #[rust_name = "make_raw_wrapped_lua_callback"]
+        unsafe fn make_raw() -> *mut WrappedLuaCallback;
+
+        include!("cxx-qt-lib-shoop/make_unique.h");
+        #[rust_name = "make_unique_wrapped_lua_callback"]
+        unsafe fn make_unique() -> UniquePtr<WrappedLuaCallback>;
 
         include!("cxx-qt-lib-shoop/qobject.h");
 
-        #[rust_name = "timed_lua_callback_qobject_from_ptr"]
-        unsafe fn qobjectFromPtr(obj: *mut TimedLuaCallback) -> *mut QObject;
+        #[rust_name = "wrapped_lua_callback_qobject_from_ptr"]
+        unsafe fn qobjectFromPtr(obj: *mut WrappedLuaCallback) -> *mut QObject;
 
-        #[rust_name = "timed_lua_callback_qobject_from_ref"]
-        fn qobjectFromRef(obj: &TimedLuaCallback) -> &QObject;
+        #[rust_name = "wrapped_lua_callback_qobject_from_ref"]
+        fn qobjectFromRef(obj: &WrappedLuaCallback) -> &QObject;
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)>
@@ -155,14 +181,16 @@ pub mod ffi {
 use std::{
     cell::RefCell,
     collections::BTreeMap,
-    rc::{Rc, Weak},
+    sync::{Arc, Weak},
 };
 
 use cxx_qt_lib::QList;
 use cxx_qt_lib_shoop::{qobject::AsQObject, qpointer::QPointerQObject};
 use ffi::*;
 
-use crate::lua_callback::LuaCallback;
+use crate::{
+    cxx_qt_shoop::qobj_midi_control_port_bridge::MidiControlPort, lua_callback::LuaCallback,
+};
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum RustToLuaCallbackType {
@@ -176,32 +204,43 @@ pub struct RustToLuaCallback {
     pub weak_lua: Weak<mlua::Lua>,
 }
 
+pub struct BridgedMidiControlPortRule {
+    pub port: Arc<RefCell<cxx::UniquePtr<MidiControlPort>>>,
+    pub listening_callbacks: Vec<cxx::UniquePtr<WrappedLuaCallback>>,
+    pub weak_lua: Weak<mlua::Lua>,
+}
+
 pub struct SessionControlHandlerLuaTarget {
     pub structured_loop_widget_references: BTreeMap<(i64, i64), cxx::UniquePtr<QPointerQObject>>,
     pub structured_track_control_widget_references: BTreeMap<i64, cxx::UniquePtr<QPointerQObject>>,
+    pub installed_on: RefCell<Vec<Weak<mlua::Lua>>>,
     pub weak_self: Weak<RefCell<SessionControlHandlerLuaTarget>>,
-    pub callbacks_lua_to_rust: Vec<Rc<Box<dyn LuaCallback>>>,
-    pub callbacks_rust_to_lua: Rc<RefCell<BTreeMap<RustToLuaCallbackType, Vec<RustToLuaCallback>>>>,
+    pub callbacks_lua_to_rust: Vec<Arc<Box<dyn LuaCallback>>>,
+    pub callbacks_rust_to_lua:
+        Arc<RefCell<BTreeMap<RustToLuaCallbackType, Vec<RustToLuaCallback>>>>,
     pub selected_loops: Vec<*mut QObject>,
     pub maybe_targeted_loop: Option<*mut QObject>,
     pub session: *mut QObject,
     pub global_state_registry: *mut QObject,
+    pub midi_control_port_rules: RefCell<Vec<BridgedMidiControlPortRule>>,
+    pub created_port_idx: RefCell<usize>,
+    pub backend: *mut QObject,
 }
 
 pub struct SessionControlHandlerRust {
     pub loop_widget_references: QList_QVariant,
     pub track_control_widget_references: QList_QVariant,
-    pub lua_target: Rc<RefCell<SessionControlHandlerLuaTarget>>,
+    pub lua_target: Arc<RefCell<SessionControlHandlerLuaTarget>>,
 }
 
 impl Default for SessionControlHandlerRust {
     fn default() -> Self {
-        let target = Rc::new(RefCell::new(SessionControlHandlerLuaTarget {
+        let target = Arc::new(RefCell::new(SessionControlHandlerLuaTarget {
             structured_loop_widget_references: BTreeMap::new(),
             structured_track_control_widget_references: BTreeMap::new(),
-            weak_self: std::rc::Weak::new(),
+            weak_self: std::sync::Weak::new(),
             callbacks_lua_to_rust: Vec::default(),
-            callbacks_rust_to_lua: Rc::new(RefCell::new(BTreeMap::from([
+            callbacks_rust_to_lua: Arc::new(RefCell::new(BTreeMap::from([
                 (RustToLuaCallbackType::OnLoopEvent, Vec::default()),
                 (RustToLuaCallbackType::OnGlobalEvent, Vec::default()),
                 (RustToLuaCallbackType::OnKeyEvent, Vec::default()),
@@ -210,8 +249,12 @@ impl Default for SessionControlHandlerRust {
             maybe_targeted_loop: None,
             session: std::ptr::null_mut(),
             global_state_registry: std::ptr::null_mut(),
+            midi_control_port_rules: RefCell::new(Vec::new()),
+            installed_on: RefCell::new(Vec::default()),
+            created_port_idx: RefCell::new(0),
+            backend: std::ptr::null_mut(),
         }));
-        let weak = Rc::downgrade(&target);
+        let weak = Arc::downgrade(&target);
         target.borrow_mut().weak_self = weak;
 
         Self {
@@ -222,14 +265,16 @@ impl Default for SessionControlHandlerRust {
     }
 }
 
-pub struct TimedLuaCallbackRust {
+pub struct WrappedLuaCallbackRust {
     pub callback: RefCell<Option<RustToLuaCallback>>,
+    pub stored_arg: mlua::MultiValue,
 }
 
-impl Default for TimedLuaCallbackRust {
+impl Default for WrappedLuaCallbackRust {
     fn default() -> Self {
         Self {
             callback: RefCell::new(None),
+            stored_arg: mlua::MultiValue::new(),
         }
     }
 }
@@ -244,13 +289,13 @@ impl AsQObject for ffi::SessionControlHandler {
     }
 }
 
-impl AsQObject for ffi::TimedLuaCallback {
+impl AsQObject for ffi::WrappedLuaCallback {
     unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
-        ffi::timed_lua_callback_qobject_from_ptr(self as *mut Self)
+        ffi::wrapped_lua_callback_qobject_from_ptr(self as *mut Self)
     }
 
     unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
-        ffi::timed_lua_callback_qobject_from_ref(self) as *const ffi::QObject
+        ffi::wrapped_lua_callback_qobject_from_ref(self) as *const ffi::QObject
     }
 }
 

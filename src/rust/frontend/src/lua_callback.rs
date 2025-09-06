@@ -1,10 +1,10 @@
 use mlua;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub trait LuaCallback {
     fn call(
         &self,
-        lua: &Rc<mlua::Lua>,
+        lua: &Arc<mlua::Lua>,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error>;
 }

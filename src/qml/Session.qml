@@ -3,8 +3,6 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Dialogs 6.6
 import ShoopDaLoop.PythonLogger
-import ShoopDaLoop.PythonControlHandler
-import ShoopDaLoop.PythonControlInterface
 import ShoopDaLoop.Rust
 
 import "./js/generate_session.js" as GenerateSession
@@ -481,12 +479,12 @@ Item {
         }
 
         SessionControlHandler {
-            //backend: session_backend
             id: control_interface
             session: root
+            backend: session_backend
         }
 
-        // MidiControlPort {
+        // ShoopRustMidiControlPort {
         //     backend: session_backend
         //     id: midi_control_port
         //     name_hint: "control"

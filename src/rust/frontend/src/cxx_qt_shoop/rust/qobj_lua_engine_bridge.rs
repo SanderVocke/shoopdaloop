@@ -38,6 +38,9 @@ pub mod ffi {
             maybe_script_name: QVariant,
             sandboxed: bool,
         );
+
+        #[qinvokable]
+        pub fn ensure_engine_destroyed(self: Pin<&mut LuaEngine>);
     }
 
     unsafe extern "C++" {

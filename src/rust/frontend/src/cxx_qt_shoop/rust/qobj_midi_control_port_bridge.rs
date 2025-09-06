@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use backend_bindings::DecoupledMidiPort;
+use backend_bindings::{DecoupledMidiPort, PortDataType};
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.MidiControlPort");
 
@@ -48,6 +48,7 @@ pub mod ffi {
         #[qproperty(i32, direction)]
         #[qproperty(bool, may_open)]
         #[qproperty(i32, send_rate_limit_hz)]
+        #[qproperty(i32, data_type, READ, CONSTANT)]
         type MidiControlPort = super::MidiControlPortRust;
 
         pub fn initialize_impl(self: Pin<&mut MidiControlPort>);
@@ -56,7 +57,7 @@ pub mod ffi {
         pub fn get_connections_state(self: Pin<&mut MidiControlPort>) -> QMap_QString_QVariant;
 
         #[qinvokable]
-        pub fn connect_external_port(self: Pin<&mut MidiControlPort>, name: QString);
+        pub fn connect_external_port(self: Pin<&mut MidiControlPort>, name: QString) -> bool;
 
         #[qinvokable]
         pub fn disconnect_external_port(self: Pin<&mut MidiControlPort>, name: QString);
@@ -80,10 +81,16 @@ pub mod ffi {
         pub fn msg_received(self: Pin<&mut MidiControlPort>, msg: QList_u8);
 
         #[qsignal]
+        pub fn msg_received_variant(self: Pin<&mut MidiControlPort>, msg: QVariant);
+
+        #[qsignal]
         pub fn detected_external_autoconnect_partner_while_closed(self: Pin<&mut MidiControlPort>);
 
         #[qsignal]
         pub fn connected(self: Pin<&mut MidiControlPort>);
+
+        #[qsignal]
+        pub fn opened(self: Pin<&mut MidiControlPort>);
 
         #[qinvokable]
         pub fn send_detected_external_autoconnect_partner_while_closed(
@@ -166,6 +173,7 @@ pub struct MidiControlPortRust {
     pub direction: i32,
     pub may_open: bool,
     pub send_rate_limit_hz: i32,
+    pub data_type: i32,
 
     // Other
     pub backend_port_wrapper: Option<DecoupledMidiPort>,
@@ -196,6 +204,7 @@ impl Default for MidiControlPortRust {
                 16,                                                // 16 channels
             )),
             autoconnecters: Vec::new(),
+            data_type: PortDataType::Midi as i32,
         }
     }
 }

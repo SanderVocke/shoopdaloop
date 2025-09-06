@@ -1,12 +1,14 @@
+use crate::cxx_qt_shoop::qobj_midi_control_port_bridge::ffi::make_unique_midi_control_port;
 use crate::cxx_qt_shoop::qobj_session_control_handler_bridge::{
-    RustToLuaCallback, RustToLuaCallbackType, SessionControlHandlerLuaTarget,
+    BridgedMidiControlPortRule, RustToLuaCallback, RustToLuaCallbackType,
+    SessionControlHandlerLuaTarget, WrappedLuaCallbackRust,
 };
 use crate::cxx_qt_shoop::{
     qobj_lua_engine_bridge::ffi::LuaEngine, qobj_session_control_handler_bridge::ffi::*,
 };
 use crate::lua_callback::LuaCallback;
-use crate::lua_conversions::IntoLuaExtended;
-use backend_bindings::LoopMode;
+use crate::lua_conversions::{FromLuaExtended, IntoLuaExtended};
+use backend_bindings::{LoopMode, PortDirection};
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QList, QString};
@@ -14,8 +16,8 @@ use cxx_qt_lib_shoop::connect::{connect, connect_or_report};
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
 use cxx_qt_lib_shoop::qobject::{
-    qobject_property_bool, qobject_property_float, qobject_property_int, qobject_property_string,
-    AsQObject,
+    qobject_property_bool, qobject_property_float, qobject_property_int, qobject_property_qvariant,
+    qobject_property_string, AsQObject,
 };
 use cxx_qt_lib_shoop::qpointer::{qpointer_from_qobject, QPointerQObject};
 use cxx_qt_lib_shoop::qtimer::QTimer;
@@ -29,7 +31,7 @@ use std::boxed::Box;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::pin::Pin;
-use std::rc::{Rc, Weak};
+use std::sync::{Arc, Weak};
 shoop_log_unit!("Frontend.SessionControlHandler");
 use enum_iterator::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -163,6 +165,17 @@ fn loop_int_prop(l: &*mut QObject, prop: &str) -> Result<i32, anyhow::Error> {
     }
 }
 
+fn loop_opt_int_prop(l: &*mut QObject, prop: &str) -> Result<Option<i32>, anyhow::Error> {
+    if l.is_null() {
+        return Err(anyhow::anyhow!("loop is null"));
+    }
+    unsafe {
+        qobject_property_qvariant(&**l, prop)
+            .map(|v| v.value::<i32>())
+            .map_err(|e| anyhow::anyhow!("Could not get loop int prop: {e}"))
+    }
+}
+
 fn loop_bool_prop(l: &*mut QObject, prop: &str) -> Result<bool, anyhow::Error> {
     if l.is_null() {
         return Err(anyhow::anyhow!("loop is null"));
@@ -190,7 +203,7 @@ impl SessionControlHandlerLuaTarget {
             callable: Box<
                 dyn Fn(
                     &SessionControlHandlerLuaTarget,
-                    &Rc<mlua::Lua>,
+                    &Arc<mlua::Lua>,
                     mlua::MultiValue,
                 ) -> Result<mlua::Value, anyhow::Error>,
             >,
@@ -199,7 +212,7 @@ impl SessionControlHandlerLuaTarget {
         impl LuaCallback for SessionControlCallback {
             fn call(
                 &self,
-                lua: &Rc<mlua::Lua>,
+                lua: &Arc<mlua::Lua>,
                 args: mlua::MultiValue,
             ) -> Result<mlua::Value, anyhow::Error> {
                 let strong_self = self
@@ -270,7 +283,7 @@ impl SessionControlHandlerLuaTarget {
                         weak_target: weak_clone,
                         callable: Box::new($callback),
                     };
-                    let callback_rc: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(callback));
+                    let callback_rc: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(callback));
                     let callback_lua = wrapped_engine.create_callback_fn($name, &callback_rc)?;
                     lua_module.set($name, callback_lua).map_err(|e| {
                         anyhow::anyhow!("Could not set module callback {}: {e}", $name)
@@ -354,6 +367,8 @@ impl SessionControlHandlerLuaTarget {
             add_self_callback!(register_global_event_cb);
             add_self_callback!(register_keyboard_event_cb);
             add_self_callback!(register_one_shot_timer_cb);
+            add_self_callback!(auto_open_device_specific_midi_control_input);
+            add_self_callback!(auto_open_device_specific_midi_control_output);
 
             wrapped_engine.set_toplevel("__shoop_control", lua_module)?;
 
@@ -454,11 +469,11 @@ impl SessionControlHandlerLuaTarget {
         if args.len() != 1 {
             return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
         }
-        let mode: i64 = i64::from_lua(args.get(0).unwrap().clone(), lua)
+        let mode: i64 = <i64 as FromLua>::from_lua(args.get(0).unwrap().clone(), lua)
             .map_err(|e| anyhow::anyhow!("arg is not an int: {e}"))?;
         loops_coords_vec(
             self.all_loops_iter()?
-                .filter(|l| loop_int_prop(l, "mode").ok() == Some(mode as i32)),
+                .filter(|l| loop_opt_int_prop(l, "mode").ok() == Some(Some(mode as i32))),
         )
         .collect::<Vec<Vec<i64>>>()
         .into_lua(lua)
@@ -501,8 +516,8 @@ impl SessionControlHandlerLuaTarget {
             return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
-            .map(|l| loop_int_prop(&l, "next_mode").unwrap_or(LoopMode::Unknown as i32))
-            .collect::<Vec<i32>>()
+            .map(|l| loop_opt_int_prop(&l, "next_mode").unwrap_or(None))
+            .collect::<Vec<Option<i32>>>()
             .into_lua(lua)
             .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
     }
@@ -522,8 +537,8 @@ impl SessionControlHandlerLuaTarget {
             return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
         }
         self.select_loops(lua, args.get(0).unwrap_or(&mlua::Value::Nil))?
-            .map(|l| loop_int_prop(&l, "next_transition_delay").unwrap_or(-1))
-            .collect::<Vec<i32>>()
+            .map(|l| loop_opt_int_prop(&l, "next_transition_delay").unwrap_or(None))
+            .collect::<Vec<Option<i32>>>()
             .into_lua(lua)
             .map_err(|e| anyhow::anyhow!("could not convert to lua: {e}"))
     }
@@ -1739,6 +1754,7 @@ impl SessionControlHandlerLuaTarget {
             warn!("set_apply_n_cycles: state registry is null");
             return Ok(mlua::Value::Nil);
         }
+        debug!("set apply n cycles -> {n}");
 
         unsafe {
             invoke::<_, (), _>(
@@ -1802,6 +1818,8 @@ impl SessionControlHandlerLuaTarget {
             return Ok(mlua::Value::Nil);
         }
 
+        debug!("set solo -> {v}");
+
         unsafe {
             invoke::<_, (), _>(
                 &mut *self.global_state_registry,
@@ -1863,6 +1881,8 @@ impl SessionControlHandlerLuaTarget {
             return Ok(mlua::Value::Nil);
         }
 
+        debug!("set sync active -> {v}");
+
         unsafe {
             invoke::<_, (), _>(
                 &mut *self.global_state_registry,
@@ -1923,6 +1943,8 @@ impl SessionControlHandlerLuaTarget {
             warn!("set_play_after_record: state registry is null");
             return Ok(mlua::Value::Nil);
         }
+
+        debug!("set play after record -> {v}");
 
         unsafe {
             invoke::<_, (), _>(
@@ -2029,7 +2051,7 @@ impl SessionControlHandlerLuaTarget {
     */
     fn register_loop_event_cb(
         &self,
-        lua: &Rc<mlua::Lua>,
+        lua: &Arc<mlua::Lua>,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
@@ -2044,7 +2066,7 @@ impl SessionControlHandlerLuaTarget {
             {
                 vec.push(RustToLuaCallback {
                     callback: function.clone(),
-                    weak_lua: Rc::downgrade(lua),
+                    weak_lua: Arc::downgrade(lua),
                 });
                 Ok(mlua::Value::Nil)
             } else {
@@ -2063,7 +2085,7 @@ impl SessionControlHandlerLuaTarget {
     */
     fn register_global_event_cb(
         &self,
-        lua: &Rc<mlua::Lua>,
+        lua: &Arc<mlua::Lua>,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
@@ -2078,7 +2100,7 @@ impl SessionControlHandlerLuaTarget {
             {
                 vec.push(RustToLuaCallback {
                     callback: function.clone(),
-                    weak_lua: Rc::downgrade(lua),
+                    weak_lua: Arc::downgrade(lua),
                 });
                 Ok(mlua::Value::Nil)
             } else {
@@ -2097,7 +2119,7 @@ impl SessionControlHandlerLuaTarget {
     */
     fn register_keyboard_event_cb(
         &self,
-        lua: &Rc<mlua::Lua>,
+        lua: &Arc<mlua::Lua>,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 1 {
@@ -2112,7 +2134,7 @@ impl SessionControlHandlerLuaTarget {
             {
                 vec.push(RustToLuaCallback {
                     callback: function.clone(),
-                    weak_lua: Rc::downgrade(lua),
+                    weak_lua: Arc::downgrade(lua),
                 });
                 Ok(mlua::Value::Nil)
             } else {
@@ -2133,7 +2155,7 @@ impl SessionControlHandlerLuaTarget {
     */
     fn register_one_shot_timer_cb(
         &self,
-        lua: &Rc<mlua::Lua>,
+        lua: &Arc<mlua::Lua>,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         if args.len() != 2 {
@@ -2152,13 +2174,248 @@ impl SessionControlHandlerLuaTarget {
         if time_ms < 0 {
             return Err(anyhow::anyhow!("time may not be negative"));
         }
-        TimedLuaCallback::create(
+        WrappedLuaCallback::create_one_shot_timed(
             time_ms as usize,
             RustToLuaCallback {
                 callback: lua_fn.clone(),
-                weak_lua: Rc::downgrade(lua),
+                weak_lua: Arc::downgrade(lua),
             },
         );
+        Ok(mlua::Value::Nil)
+    }
+
+    /*
+    @shoop_lua_fn_docstring.start
+    shoop_control.auto_open_device_specific_midi_control_output(device_name_filter_regex, opened_callback, connected_callback, msg_rate_limit_hz)
+    Instruct the application to automatically open a MIDI control output port if a device matching the regex appears, and connect to it.
+    Also registers callbacks for when the port is opened and connected. These callbacks just pass a port object which has a 'send' method to send bytes.
+    "msg_rate_limit_hz" can be used to limit the rate at which messages will be sent to the port. Some devices become unstable if sent too fast.
+    Setting this to 0 disables the limit.
+    @shoop_lua_fn_docstring.end
+    */
+    fn auto_open_device_specific_midi_control_output(
+        &self,
+        lua: &Arc<mlua::Lua>,
+        args: mlua::MultiValue,
+    ) -> Result<mlua::Value, anyhow::Error> {
+        // Parse arguments
+        if args.len() != 4 {
+            return Err(anyhow::anyhow!("Expected 4 arguments, got {}", args.len()));
+        }
+        let regex = args
+            .get(0)
+            .map(|v| v.as_string())
+            .flatten()
+            .ok_or(anyhow::anyhow!("1st arg is not a string"))?;
+        let opened_callback = args
+            .get(1)
+            .map(|v| v.as_function())
+            .flatten()
+            .ok_or(anyhow::anyhow!("2nd arg is not a function"))?;
+        let connected_callback = args
+            .get(2)
+            .map(|v| v.as_function())
+            .flatten()
+            .ok_or(anyhow::anyhow!("3rd arg is not a function"))?;
+        let msg_rate_limit_hz = args
+            .get(3)
+            .map(|v| v.as_integer())
+            .flatten()
+            .ok_or(anyhow::anyhow!("4th arg is not an integer"))?;
+
+        // Determine port names and regexes
+        let port_idx = self.created_port_idx.borrow().clone();
+        self.created_port_idx.replace(port_idx + 1);
+        let name = format!("auto_control_{port_idx}");
+
+        let mut regexes = QList::<QString>::default();
+        regexes.append(QString::from(regex.to_string_lossy()));
+
+        // Create a port object and configure it
+        let port = Arc::new(RefCell::new(make_unique_midi_control_port()));
+        let weak_port = Arc::downgrade(&port);
+
+        let mut port_pin = port.borrow_mut();
+        let mut port_pin = port_pin.pin_mut();
+
+        port_pin.as_mut().set_autoconnect_regexes(regexes);
+        port_pin
+            .as_mut()
+            .set_direction(PortDirection::Output as i32);
+        port_pin.as_mut().set_name_hint(QString::from(name));
+        port_pin
+            .as_mut()
+            .set_send_rate_limit_hz(msg_rate_limit_hz as i32);
+        if self.backend.is_null() {
+            error!("Backend not set at the time of port callback registration");
+        }
+        port_pin.as_mut().set_backend(self.backend);
+
+        // Create the lua representation of the port object:
+        // a table with a "send" function to send messages with
+        let send_fn = lua
+            .create_function(move |_lua, args: Vec<u8>| -> Result<(), mlua::Error> {
+                if let Err(e) = || -> Result<(), anyhow::Error> {
+                    let port = weak_port
+                        .upgrade()
+                        .ok_or(anyhow::anyhow!("MIDI control port went out of scope"))?;
+                    port.borrow_mut().pin_mut().queue_send_msg_impl(args);
+
+                    Ok(())
+                }() {
+                    error!("Failed to send MIDI message: {e}");
+                }
+
+                Ok(())
+            })
+            .map_err(|e| anyhow::anyhow!("Failed to create Lua function: {e}"))?;
+        let lua_module = lua
+            .create_table()
+            .map_err(|e| anyhow::anyhow!("Failed to create table: {e}"))?;
+        lua_module
+            .set("send", send_fn)
+            .map_err(|e| anyhow::anyhow!("Failed to set send function: {e}"))?;
+
+        // Create qt objects which will act as proxies for forwarding the Qt port's
+        // signals onto lua callbacks
+        let connected_callback = RustToLuaCallback {
+            callback: connected_callback.clone(),
+            weak_lua: Arc::downgrade(lua),
+        };
+        let mut wrapped_connected = WrappedLuaCallback::create_unique_ptr(connected_callback);
+        let mut wrapped_connected_pin = wrapped_connected.pin_mut();
+        wrapped_connected_pin.as_mut().rust_mut().stored_arg =
+            mlua::MultiValue::from_vec(vec![mlua::Value::Table(lua_module.clone())]);
+        let opened_callback = RustToLuaCallback {
+            callback: opened_callback.clone(),
+            weak_lua: Arc::downgrade(lua),
+        };
+        let mut wrapped_opened = WrappedLuaCallback::create_unique_ptr(opened_callback);
+        let mut wrapped_opened_pin = wrapped_opened.pin_mut();
+        wrapped_opened_pin.as_mut().rust_mut().stored_arg =
+            mlua::MultiValue::from_vec(vec![mlua::Value::Table(lua_module)]);
+
+        // Connect the signals to the callbacks
+        unsafe {
+            let port_qobj = port_pin.as_mut().pin_mut_qobject_ptr();
+            let connected_qobj = wrapped_connected_pin.pin_mut_qobject_ptr();
+            let opened_qobj = wrapped_opened_pin.pin_mut_qobject_ptr();
+            connect_or_report(
+                &mut *port_qobj,
+                "connected()",
+                &mut *connected_qobj,
+                "call_with_stored_arg()",
+                connection_types::QUEUED_CONNECTION,
+            );
+            connect_or_report(
+                &mut *port_qobj,
+                "opened()",
+                &mut *opened_qobj,
+                "call_with_stored_arg()",
+                connection_types::QUEUED_CONNECTION,
+            );
+        }
+
+        // Store everything on ourselves, which will keep alive the created reference-counted
+        // data
+        self.midi_control_port_rules
+            .borrow_mut()
+            .push(BridgedMidiControlPortRule {
+                port: port.clone(),
+                listening_callbacks: vec![wrapped_connected, wrapped_opened],
+                weak_lua: Arc::downgrade(lua),
+            });
+
+        // only now, allow the port to open
+        port_pin.as_mut().set_may_open(true);
+
+        Ok(mlua::Value::Nil)
+    }
+
+    /*
+    @shoop_lua_fn_docstring.start
+    shoop_control.auto_open_device_specific_midi_control_input(device_name_filter_regex, message_callback)
+    Instruct the application to automatically open a MIDI control input port if a device matching the regex appears, and connect to it.
+    Also registers a callback for received MIDI events on such a port. See midi_callback for details.
+    @shoop_lua_fn_docstring.end
+    */
+    fn auto_open_device_specific_midi_control_input(
+        &self,
+        lua: &Arc<mlua::Lua>,
+        args: mlua::MultiValue,
+    ) -> Result<mlua::Value, anyhow::Error> {
+        // Parse arguments
+        if args.len() != 2 {
+            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+        }
+        let regex = args
+            .get(0)
+            .map(|v| v.as_string())
+            .flatten()
+            .ok_or(anyhow::anyhow!("1st arg is not a string"))?;
+        let msg_callback = args
+            .get(1)
+            .map(|v| v.as_function())
+            .flatten()
+            .ok_or(anyhow::anyhow!("2nd arg is not a function"))?;
+
+        // Determine port names and regexes
+        let port_idx = self.created_port_idx.borrow().clone();
+        self.created_port_idx.replace(port_idx + 1);
+        let name = format!("auto_control_{port_idx}");
+
+        let mut regexes = QList::<QString>::default();
+        regexes.append(QString::from(regex.to_string_lossy()));
+
+        // Create a port object and configure it
+        let port = Arc::new(RefCell::new(make_unique_midi_control_port()));
+
+        let mut port_pin = port.borrow_mut();
+        let mut port_pin = port_pin.pin_mut();
+
+        port_pin.as_mut().set_autoconnect_regexes(regexes);
+        port_pin.as_mut().set_direction(PortDirection::Input as i32);
+        port_pin.as_mut().set_name_hint(QString::from(name));
+        if self.backend.is_null() {
+            error!("Backend not set at the time of port callback registration");
+        }
+        port_pin.as_mut().set_backend(self.backend);
+
+        // Create a qt object which will act as a proxy for forwarding the Qt port's
+        // messages onto lua callbacks
+        let msg_callback = RustToLuaCallback {
+            callback: msg_callback.clone(),
+            weak_lua: Arc::downgrade(lua),
+        };
+        let mut wrapped_msg = WrappedLuaCallback::create_unique_ptr(msg_callback);
+        let wrapped_msg_pin = wrapped_msg.pin_mut();
+
+        // Connect the signals to the callbacks
+        unsafe {
+            let port_qobj = port_pin.as_mut().pin_mut_qobject_ptr();
+            let connected_qobj = wrapped_msg_pin.pin_mut_qobject_ptr();
+            connect_or_report(
+                &mut *port_qobj,
+                "msg_received_variant(QVariant)",
+                &mut *connected_qobj,
+                "call_with_arg(QVariant)",
+                connection_types::QUEUED_CONNECTION,
+            );
+        }
+
+        // Store everything on ourselves, which will keep alive the created reference-counted
+        // data
+        self.midi_control_port_rules
+            .borrow_mut()
+            .push(BridgedMidiControlPortRule {
+                port: port.clone(),
+                listening_callbacks: vec![wrapped_msg],
+                weak_lua: Arc::downgrade(lua),
+            });
+
+        // only now, allow the port to open
+        port_pin.as_mut().set_may_open(true);
+
         Ok(mlua::Value::Nil)
     }
 
@@ -2275,6 +2532,56 @@ impl SessionControlHandlerLuaTarget {
                 "Unsupported track selector type: {others:?}"
             )),
         }
+    }
+
+    fn engine_is_installed(&self, engine: &Arc<mlua::Lua>) -> bool {
+        for weak_engine in self.installed_on.borrow().iter() {
+            if let Some(installed) = weak_engine.upgrade() {
+                if Arc::ptr_eq(&installed, engine) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    fn uninstall_lua_engine(&mut self, engine: &Arc<mlua::Lua>) {
+        self.installed_on.borrow_mut().retain(|weak_engine| {
+            if let Some(installed) = weak_engine.upgrade() {
+                if Arc::ptr_eq(&installed, engine) {
+                    return false;
+                } else {
+                    return true;
+                }
+            }
+            return false;
+        });
+
+        self.garbage_collect();
+    }
+
+    fn garbage_collect(&mut self) {
+        debug!("Garbage collect dangling Lua callbacks");
+        self.midi_control_port_rules.borrow_mut().retain(|rule| {
+            let rval = rule.weak_lua.upgrade().is_some();
+            if !rval {
+                let name = rule.port.borrow().name.to_string();
+                debug!("Removing MIDI control port rule for {name}: lua out of scope");
+            }
+            rval
+        });
+        self.callbacks_rust_to_lua
+            .borrow_mut()
+            .values_mut()
+            .for_each(|callbacks| {
+                callbacks.retain(|cb| {
+                    let rval = cb.weak_lua.upgrade().is_some();
+                    if !rval {
+                        debug!("Removing Lua callback: lua out of scope");
+                    }
+                    rval
+                })
+            });
     }
 }
 
@@ -2439,6 +2746,7 @@ impl SessionControlHandler {
 
     pub fn set_session(self: Pin<&mut SessionControlHandler>, session: *mut QObject) {
         if self.lua_target.borrow().session != session {
+            debug!("session -> {session:?}");
             self.lua_target.borrow_mut().session = session;
             self.session_changed();
         }
@@ -2446,6 +2754,18 @@ impl SessionControlHandler {
 
     pub fn get_session(self: Pin<&mut SessionControlHandler>) -> *mut QObject {
         self.lua_target.borrow().session
+    }
+
+    pub fn set_backend(self: Pin<&mut SessionControlHandler>, backend: *mut QObject) {
+        if self.lua_target.borrow().backend != backend {
+            debug!("backend -> {backend:?}");
+            self.lua_target.borrow_mut().backend = backend;
+            self.backend_changed();
+        }
+    }
+
+    pub fn get_backend(self: Pin<&mut SessionControlHandler>) -> *mut QObject {
+        self.lua_target.borrow().backend
     }
 
     pub fn set_global_state_registry(
@@ -2597,25 +2917,48 @@ impl SessionControlHandler {
         }
     }
 
-    pub fn uninstall_lua_engine(self: Pin<&mut SessionControlHandler>, _engine: *mut QObject) {
-        error!("unimplementd: uninstall_lua_engine");
+    pub fn uninstall_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject) {
+        unsafe {
+            if let Ok(engine) = LuaEngine::from_qobject_mut_ptr(engine) {
+                if let Some(engine) = engine.engine.as_ref() {
+                    let engine = &engine.lua.borrow().lua;
+                    self.lua_target.borrow_mut().uninstall_lua_engine(engine);
+                }
+            }
+        }
     }
 
     pub fn engine_is_installed(
         self: Pin<&mut SessionControlHandler>,
-        _engine: *mut QObject,
+        engine: *mut QObject,
     ) -> bool {
-        error!("unimplementd: engine_is_installed");
-        return true;
+        unsafe {
+            if let Ok(engine) = LuaEngine::from_qobject_mut_ptr(engine) {
+                if let Some(engine) = engine.engine.as_ref() {
+                    let engine = &engine.lua.borrow().lua;
+                    return self.lua_target.borrow_mut().engine_is_installed(engine);
+                } else {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
     }
 }
 
-impl TimedLuaCallback {
+impl Drop for WrappedLuaCallbackRust {
+    fn drop(&mut self) {
+        debug!("Dropping wrapped Lua callback");
+    }
+}
+
+impl WrappedLuaCallback {
     // Create a raw instance without a parent. It will configure
     // the timer to call-back to itself, call Lua and self-destruct.
-    pub fn create(duration_ms: usize, callback: RustToLuaCallback) {
+    pub fn create_one_shot_timed(duration_ms: usize, callback: RustToLuaCallback) {
         unsafe {
-            let obj: *mut TimedLuaCallback = make_raw_timed_lua_callback();
+            let obj: *mut WrappedLuaCallback = make_raw_wrapped_lua_callback();
             let mut obj_pin = std::pin::Pin::new_unchecked(&mut *obj);
             let qobj = obj_pin.as_mut().pin_mut_qobject_ptr();
 
@@ -2629,7 +2972,7 @@ impl TimedLuaCallback {
                 &mut *timer_qobj,
                 "timeout()",
                 &mut *qobj,
-                "execute()",
+                "call_and_delete()",
                 connection_types::QUEUED_CONNECTION,
             );
 
@@ -2639,23 +2982,95 @@ impl TimedLuaCallback {
         }
     }
 
-    pub fn execute(self: Pin<&mut TimedLuaCallback>) {
-        if let Some(cb) = self.callback.borrow().as_ref() {
-            if let Err(e) = cb.callback.call::<()>(()) {
-                error!("Failed to call timed Lua callback: {e}");
+    // Create an unique ptr instance.
+    pub fn create_unique_ptr(callback: RustToLuaCallback) -> cxx::UniquePtr<WrappedLuaCallback> {
+        let mut cb = unsafe { make_unique_wrapped_lua_callback() };
+        cb.as_mut().unwrap().rust_mut().callback = RefCell::new(Some(callback));
+        cb
+    }
+
+    pub fn call_impl(self: Pin<&mut WrappedLuaCallback>, args: mlua::MultiValue) {
+        match || -> Result<QVariant, anyhow::Error> {
+            let callback = self.callback.borrow();
+            let callback = callback
+                .as_ref()
+                .ok_or(anyhow::anyhow!("No callback set"))?;
+            let lua = callback
+                .weak_lua
+                .upgrade()
+                .ok_or(anyhow::anyhow!("Lua went out of scope"))?;
+            let lua = lua.as_ref();
+            let rval = callback
+                .callback
+                .call::<mlua::Value>(args)
+                .map_err(|e| anyhow::anyhow!("failed to call callback: {e}"))?;
+            let rval = QVariant::from_lua(rval, lua)
+                .map_err(|e| anyhow::anyhow!("failed to convert return value: {e}"))?;
+
+            Ok(rval)
+        }() {
+            Ok(rval) => rval,
+            Err(e) => {
+                error!("Could not call wrapped Lua callback: {e}");
+                QVariant::default()
             }
-        } else {
-            error!("Timed lua callback: no lua function set");
+        };
+    }
+
+    pub fn call(self: Pin<&mut WrappedLuaCallback>) {
+        trace!("wrapped lua callback: call no args");
+        self.call_impl(mlua::MultiValue::new());
+    }
+
+    pub fn call_with_arg(mut self: Pin<&mut WrappedLuaCallback>, arg: QVariant) {
+        trace!("wrapped lua callback: call with arg");
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let converted: mlua::Value;
+            {
+                let rust_mut = self.as_mut().rust_mut();
+                let callback = rust_mut.callback.borrow();
+                let callback = callback
+                    .as_ref()
+                    .ok_or(anyhow::anyhow!("No callback set"))?;
+                let lua = callback
+                    .weak_lua
+                    .upgrade()
+                    .ok_or(anyhow::anyhow!("Lua went out of scope"))?;
+                let lua = lua.as_ref();
+                converted = arg
+                    .into_lua(lua)
+                    .map_err(|e| anyhow::anyhow!("Could not convert arg to lua: {e}"))?;
+            }
+            self.as_mut()
+                .call_impl(mlua::MultiValue::from_vec(vec![converted]));
+            Ok(())
+        }() {
+            error!("Could not call wrapped lua callback: {e}")
         }
+    }
+
+    pub fn call_with_stored_arg(self: Pin<&mut WrappedLuaCallback>) {
+        trace!("wrapped lua callback: call with stored arg");
+        let arg = self.stored_arg.clone();
+        self.call_impl(arg)
+    }
+
+    pub fn call_and_delete(mut self: Pin<&mut WrappedLuaCallback>) {
+        trace!("wrapped lua callback: call and delete");
+        self.as_mut().call_impl(mlua::MultiValue::new());
+        self.as_mut().delete_later();
+    }
+
+    pub fn delete_later(mut self: Pin<&mut WrappedLuaCallback>) {
         unsafe {
-            let qobj = self.pin_mut_qobject_ptr();
+            let qobj = self.as_mut().pin_mut_qobject_ptr();
             if let Err(e) = invoke::<_, (), _>(
                 &mut *qobj,
                 "deleteLater()",
                 connection_types::QUEUED_CONNECTION,
                 &(),
             ) {
-                error!("Failed to delete timed Lua callback: {e}");
+                error!("Failed to delete wrapped Lua callback: {e}");
             }
         }
     }

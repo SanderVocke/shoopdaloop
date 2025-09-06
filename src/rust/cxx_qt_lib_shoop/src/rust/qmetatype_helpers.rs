@@ -16,6 +16,7 @@ mod ffi {
         type QMap_QString_QVariant = cxx_qt_lib::QMap<cxx_qt_lib::QMapPair_QString_QVariant>;
         type QList_QVariant = cxx_qt_lib::QList<QVariant>;
         type QList_QString = cxx_qt_lib::QList<QString>;
+        type QList_u8 = cxx_qt_lib::QList<u8>;
 
         type QObject = crate::qobject::QObject;
 
@@ -27,6 +28,9 @@ mod ffi {
 
         #[rust_name = "qmetatype_id_uint"]
         unsafe fn meta_type_id(v: *mut u32) -> i32;
+
+        #[rust_name = "qmetatype_id_uchar"]
+        unsafe fn meta_type_id(v: *mut u8) -> i32;
 
         #[rust_name = "qmetatype_id_uint64"]
         unsafe fn meta_type_id(v: *mut u64) -> i32;
@@ -55,6 +59,9 @@ mod ffi {
         #[rust_name = "qmetatype_id_qstringlist"]
         unsafe fn meta_type_id(v: *mut QList_QString) -> i32;
 
+        #[rust_name = "qmetatype_id_qlist_u8"]
+        unsafe fn meta_type_id(v: *mut QList_u8) -> i32;
+
         #[rust_name = "qmetatype_id_qjsvalue"]
         unsafe fn meta_type_id(v: *mut QJSValue) -> i32;
 
@@ -69,6 +76,8 @@ static QMETATYPE_ID_INT64: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_int64(std::ptr::null_mut()) });
 static QMETATYPE_ID_UINT: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_uint(std::ptr::null_mut()) });
+static QMETATYPE_ID_UCHAR: Lazy<i32> =
+    Lazy::new(|| unsafe { ffi::qmetatype_id_uchar(std::ptr::null_mut()) });
 static QMETATYPE_ID_UINT64: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_uint64(std::ptr::null_mut()) });
 static QMETATYPE_ID_QSTRING: Lazy<i32> =
@@ -87,6 +96,8 @@ static QMETATYPE_ID_QVARIANTLIST: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_qvariantlist(std::ptr::null_mut()) });
 static QMETATYPE_ID_QSTRINGLIST: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_qstringlist(std::ptr::null_mut()) });
+static QMETATYPE_ID_QLIST_U8: Lazy<i32> =
+    Lazy::new(|| unsafe { ffi::qmetatype_id_qlist_u8(std::ptr::null_mut()) });
 static QMETATYPE_ID_QJSVALUE: Lazy<i32> =
     Lazy::new(|| unsafe { ffi::qmetatype_id_qjsvalue(std::ptr::null_mut()) });
 
@@ -98,6 +109,9 @@ pub fn qmetatype_id_int64() -> i32 {
 }
 pub fn qmetatype_id_uint() -> i32 {
     *Lazy::force(&QMETATYPE_ID_UINT)
+}
+pub fn qmetatype_id_uchar() -> i32 {
+    *Lazy::force(&QMETATYPE_ID_UCHAR)
 }
 pub fn qmetatype_id_uint64() -> i32 {
     *Lazy::force(&QMETATYPE_ID_UINT64)
@@ -125,6 +139,9 @@ pub fn qmetatype_id_qvariantlist() -> i32 {
 }
 pub fn qmetatype_id_qstringlist() -> i32 {
     *Lazy::force(&QMETATYPE_ID_QSTRINGLIST)
+}
+pub fn qmetatype_id_qlist_u8() -> i32 {
+    *Lazy::force(&QMETATYPE_ID_QLIST_U8)
 }
 pub fn qmetatype_id_qjsvalue() -> i32 {
     *Lazy::force(&QMETATYPE_ID_QJSVALUE)

@@ -4,8 +4,8 @@ use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::{
     qmetatype_helpers::*,
     qvariant_helpers::{
-        qvariant_to_qstringlist, qvariant_to_qvariantlist, qvariant_to_qvariantmap,
-        qvariant_type_id, qvariant_type_name, qvariantmap_to_qvariant,
+        qvariant_to_qlist_u8, qvariant_to_qstringlist, qvariant_to_qvariantlist,
+        qvariant_to_qvariantmap, qvariant_type_id, qvariant_type_name, qvariantmap_to_qvariant,
     },
 };
 use mlua::{self, FromLua};
@@ -55,6 +55,7 @@ macro_rules! specific_builtin_impl {
 
 specific_builtin_impl!(i32);
 specific_builtin_impl!(i64);
+specific_builtin_impl!(u8);
 specific_builtin_impl!(String);
 specific_builtin_impl!(f32);
 specific_builtin_impl!(f64);
@@ -116,7 +117,7 @@ impl IntoLuaExtended for QVariant {
                 self.value::<$T>()
                     .ok_or(mlua::Error::ToLuaConversionError {
                         from: type_name.to_string(),
-                        to: "Lua val",
+                        to: "val",
                         message: Some("failed to get qvariant value".to_string()),
                     })?
                     .into_lua(lua)
@@ -127,6 +128,7 @@ impl IntoLuaExtended for QVariant {
             _v if _v == qmetatype_id_int() => convert!(i64),
             _v if _v == qmetatype_id_int64() || type_name == "qlonglong" => convert!(i64),
             _v if _v == qmetatype_id_uint() => convert!(i64),
+            _v if _v == qmetatype_id_uchar() || type_name == "uchar" => convert!(u8),
             _v if _v == qmetatype_id_uint64() => convert!(i64),
             _v if _v == qmetatype_id_bool() => convert!(bool),
             _v if _v == qmetatype_id_float() => convert!(f32),
@@ -139,7 +141,7 @@ impl IntoLuaExtended for QVariant {
                 let map = qvariant_to_qvariantmap(&self).map_err(|e| {
                     mlua::Error::ToLuaConversionError {
                         from: type_name.to_string(),
-                        to: "Lua val",
+                        to: "val",
                         message: Some(format!("Failed to extract QVariantMap: {e}")),
                     }
                 })?;
@@ -149,7 +151,7 @@ impl IntoLuaExtended for QVariant {
                 let l = qvariant_to_qvariantlist(&self).map_err(|e| {
                     mlua::Error::ToLuaConversionError {
                         from: type_name.to_string(),
-                        to: "Lua val",
+                        to: "val",
                         message: Some(format!("Failed to extract QVariantList: {e}")),
                     }
                 })?;
@@ -159,15 +161,24 @@ impl IntoLuaExtended for QVariant {
                 let l = qvariant_to_qstringlist(&self).map_err(|e| {
                     mlua::Error::ToLuaConversionError {
                         from: type_name.to_string(),
-                        to: "Lua val",
+                        to: "val",
                         message: Some(format!("Failed to extract QStringList: {e}")),
                     }
                 })?;
                 l.into_lua(lua)
             }
+            _v if _v == qmetatype_id_qlist_u8() => {
+                let l =
+                    qvariant_to_qlist_u8(&self).map_err(|e| mlua::Error::ToLuaConversionError {
+                        from: type_name.to_string(),
+                        to: "val",
+                        message: Some(format!("Failed to extract QStringList: {e}")),
+                    })?;
+                l.into_lua(lua)
+            }
             _ => Err(mlua::Error::ToLuaConversionError {
                 from: type_name.to_string(),
-                to: "Lua val",
+                to: "val",
                 message: Some("unsupported".to_string()),
             }),
         }
@@ -210,6 +221,17 @@ impl FromLuaExtended for QList<QVariant> {
 }
 
 impl IntoLuaExtended for QList<QVariant> {
+    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
+        Ok(mlua::Value::Table(
+            lua.create_sequence_from(
+                self.iter()
+                    .map(|v| IntoLuaExtended::into_lua(v.clone(), lua).unwrap_or(mlua::Value::Nil)),
+            )?,
+        ))
+    }
+}
+
+impl IntoLuaExtended for QList<u8> {
     fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
         Ok(mlua::Value::Table(
             lua.create_sequence_from(

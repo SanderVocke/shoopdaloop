@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, rc::Rc};
+use std::{marker::PhantomData, sync::Arc};
 
 use cxx_qt_lib_shoop::{
     invokable::{invoke, Invokable},
@@ -45,7 +45,7 @@ where
 {
     fn call(
         &self,
-        lua: &Rc<mlua::Lua>,
+        lua: &Arc<mlua::Lua>,
         args: mlua::MultiValue,
     ) -> Result<mlua::Value, anyhow::Error> {
         let args: Args = Args::from_lua_multi(args, lua)
@@ -89,7 +89,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, rc::Rc};
+    use std::collections::HashMap;
 
     use cxx_qt_lib_shoop::{connection_types, qobject::AsQObject, qpointer::qpointer_from_qobject};
 
@@ -115,7 +115,7 @@ mod tests {
             "add(::std::int32_t,::std::int32_t)",
             connection_types::DIRECT_CONNECTION,
         );
-        let callback: Rc<Box<dyn LuaCallback>> = Rc::new(Box::new(callback));
+        let callback: Arc<Box<dyn LuaCallback>> = Arc::new(Box::new(callback));
 
         eng.register_callback("qobj_add", LuaScope::Sandboxed, &callback)
             .unwrap();

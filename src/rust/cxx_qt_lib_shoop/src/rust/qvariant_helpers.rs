@@ -18,6 +18,7 @@ mod ffi {
         type QList_QVariant = cxx_qt_lib::QList<QVariant>;
         type QList_i32 = cxx_qt_lib::QList<i32>;
         type QList_f32 = cxx_qt_lib::QList<f32>;
+        type QList_u8 = cxx_qt_lib::QList<u8>;
 
         include!("cxx-qt-lib/qvector.h");
         type QVector_QVariant = cxx_qt_lib::QVector<QVariant>;
@@ -140,6 +141,15 @@ mod ffi {
 
         #[rust_name = "qlist_f32_to_qvariant"]
         unsafe fn asQVariant(obj: &QList_f32) -> Result<QVariant>;
+
+        #[rust_name = "qvariant_convertible_to_qlist_u8"]
+        unsafe fn qvariantConvertibleTo(obj: &QVariant, example: *mut QList_u8) -> Result<bool>;
+
+        #[rust_name = "qvariant_to_qlist_u8"]
+        unsafe fn qvariantAs(variant: &QVariant, example: *mut QList_u8) -> Result<QList_u8>;
+
+        #[rust_name = "qlist_u8_to_qvariant"]
+        unsafe fn asQVariant(obj: &QList_u8) -> Result<QVariant>;
 
         #[rust_name = "qvariant_convertible_to_qsharedpointer_qobject"]
         unsafe fn qvariantConvertibleTo(
@@ -285,6 +295,18 @@ pub fn qvariant_to_qlist_f32(obj: &QVariant) -> Result<QList_f32, cxx::Exception
 
 pub fn qlist_f32_to_qvariant(obj: &QList_f32) -> Result<QVariant, cxx::Exception> {
     unsafe { ffi::qlist_f32_to_qvariant(obj) }
+}
+
+pub fn qvariant_convertible_to_qlist_u8(obj: &QVariant) -> Result<bool, cxx::Exception> {
+    unsafe { ffi::qvariant_convertible_to_qlist_u8(obj, std::ptr::null_mut()) }
+}
+
+pub fn qvariant_to_qlist_u8(obj: &QVariant) -> Result<QList_u8, cxx::Exception> {
+    unsafe { ffi::qvariant_to_qlist_u8(obj, std::ptr::null_mut()) }
+}
+
+pub fn qlist_u8_to_qvariant(obj: &QList_u8) -> Result<QVariant, cxx::Exception> {
+    unsafe { ffi::qlist_u8_to_qvariant(obj) }
 }
 
 pub fn qvariant_convertible_to_qsharedpointer_qobject(

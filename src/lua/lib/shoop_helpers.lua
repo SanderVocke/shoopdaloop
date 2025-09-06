@@ -111,15 +111,21 @@ function shoop_helpers.default_loop_action(loops, dry)
     local modes = list_to_set(shoop_control.loop_get_mode(loops))
     local lengths = list_to_set(shoop_control.loop_get_length(loops))
     local next_modes_list = shoop_control.loop_get_next_mode(loops)
-    local next_modes_with_nil_and_stopped = next_modes_list
-    table.insert(next_modes_with_nil_and_stopped, shoop_control.constants.LoopMode_Stopped)
-    table.insert(next_modes_with_nil_and_stopped, nil)
-    next_modes_with_nil_and_stopped = list_to_set(next_modes_with_nil_and_stopped)
+    local next_modes_with_nil_unknown_and_stopped = next_modes_list
+    table.insert(next_modes_with_nil_unknown_and_stopped, shoop_control.constants.LoopMode_Stopped)
+    table.insert(next_modes_with_nil_unknown_and_stopped, shoop_control.constants.LoopMode_Unknown)
+    table.insert(next_modes_with_nil_unknown_and_stopped, nil)
+    next_modes_with_nil_unknown_and_stopped = list_to_set(next_modes_with_nil_unknown_and_stopped)
     local new_mode = nil
     local all_recording = sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Recording }))
     local all_empty = sets_equal(lengths, list_to_set({ 0 })) and sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Stopped }))
     local all_stopped = not sets_equal(lengths, list_to_set({ 0 })) and sets_equal(modes, list_to_set({ shoop_control.constants.LoopMode_Stopped }))
-    local any_transition_planned = not sets_equal(next_modes_with_nil_and_stopped, list_to_set({ shoop_control.constants.LoopMode_Stopped, nil }))
+    local stopped_unknown_and_nil = {}
+    table.insert(stopped_unknown_and_nil, shoop_control.constants.LoopMode_Stopped)
+    table.insert(stopped_unknown_and_nil, shoop_control.constants.LoopMode_Unknown)
+    table.insert(stopped_unknown_and_nil, nil)
+    stopped_unknown_and_nil = list_to_set(stopped_unknown_and_nil)
+    local any_transition_planned = not sets_equal(next_modes_with_nil_unknown_and_stopped, stopped_unknown_and_nil)
     if any_transition_planned then
         print_debug("Default loop action: Cancel planned transitions")
         new_mode = shoop_control.constants.LoopMode_Stopped
