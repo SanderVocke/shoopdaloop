@@ -1,7 +1,7 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import "AppRegistries.qml" as AppRegistries
+
 import "./js/generate_session.js" as GenerateSession
 
 

@@ -2,7 +2,6 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.Rust
-import "AppRegistries.qml" as AppRegistries
 
 // The track control widget displays control buttons to control the
 // (loops within a) track.

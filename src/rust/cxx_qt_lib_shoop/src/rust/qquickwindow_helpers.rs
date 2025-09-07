@@ -9,6 +9,9 @@ pub mod ffi {
         type QString = cxx_qt_lib::QString;
 
         unsafe fn qobject_as_qquickwindow_title(obj: *mut QObject) -> Result<QString>;
-        unsafe fn qobject_as_qquickwindow_grab_and_save(obj: *mut QObject, filename: QString) -> Result<bool>;
+        unsafe fn qobject_as_qquickwindow_grab_and_save(
+            obj: *mut QObject,
+            filename: QString,
+        ) -> Result<bool>;
     }
 }

@@ -6,7 +6,6 @@ import ShoopDaLoop.Rust
 
 import 'js/qml_url_to_filename.js' as UrlToFilename
 import 'js/delay.js' as Delay
-import 'AppRegistries.qml' as AppRegistries
 
 Item {
     id: root

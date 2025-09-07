@@ -1,5 +1,6 @@
 use common::logging::macros::*;
 use config::config::ShoopConfig;
+use cxx_qt_lib_shoop::register_qml_singletons;
 use once_cell::sync::OnceCell;
 shoop_log_unit!("Main");
 
@@ -10,7 +11,7 @@ fn register_qml_types_and_singletons() {
 
     let mdl = String::from("ShoopDaLoop.Rust");
 
-    // Singletons
+    // Singletons (Rust)
     qobj_file_io::register_qml_singleton(&mdl, "ShoopRustFileIO");
     qobj_os_utils::register_qml_singleton(&mdl, "ShoopRustOSUtils");
     qobj_release_focus_notifier::register_qml_singleton(&mdl, "ShoopRustReleaseFocusNotifier");
@@ -22,6 +23,17 @@ fn register_qml_types_and_singletons() {
     qobj_settings_io::register_qml_singleton(&mdl, "ShoopRustSettingsIO");
     qobj_enums::register_qml_singleton(&mdl, "ShoopRustConstants");
     qobj_test_screen_grabber::register_qml_singleton(&mdl, "ShoopRustTestScreenGrabber");
+
+    // Singletons (QML)
+    unsafe {
+        register_qml_singletons::ffi::register_qmlfile_singleton(
+            &mut format!("{}/AppRegistries.qml", GLOBAL_CONFIG.get().unwrap().qml_dir),
+            &mut mdl.clone(),
+            1,
+            0,
+            &mut "AppRegistries".to_string(),
+        );
+    }
 
     // Types
     qobj_dummy_process_helper::register_qml_type(&mdl, "ShoopRustDummyProcessHelper");
@@ -50,9 +62,4 @@ pub extern "C" fn init(config: &ShoopConfig) {
     register_metatypes();
     register_qml_types_and_singletons();
     crate::engine_update_thread::init();
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn shoop_rust_create_autoconnect() -> *mut std::ffi::c_void {
-    crate::cxx_qt_shoop::qobj_autoconnect::make_raw() as *mut std::ffi::c_void
 }

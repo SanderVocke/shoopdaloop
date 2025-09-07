@@ -2,7 +2,6 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import ShoopDaLoop.Rust
 import 'js/mode_helpers.js' as ModeHelpers
-import 'AppRegistries.qml' as AppRegistries
 
 // Wrap a Loop that may be dynamically loaded in a just-in-time way.
 Loop {

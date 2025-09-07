@@ -1,6 +1,5 @@
 import ShoopDaLoop.Rust
 import QtQuick 6.6
-import 'AppRegistries.qml' as AppRegistries
 
 ShoopRustPortGui {
     id: root

@@ -8,7 +8,6 @@ import 'js/mode_helpers.js' as ModeHelpers
 import 'js/stereo.js' as Stereo
 import 'js/qml_url_to_filename.js' as UrlToFilename
 
-import 'AppRegistries.qml' as AppRegistries
 
 // The loop widget allows manipulating a single loop within a track.
 Item {

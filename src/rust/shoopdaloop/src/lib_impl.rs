@@ -207,23 +207,6 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
                         }
                     })
                 }
-
-                Python::with_gil(|py| -> PyResult<()> {
-                    // Python-side setup
-                    let qml_helpers = py.import("shoopdaloop.lib.qml_helpers")?;
-                    let create_and_populate_root_context_with_engine_addr =
-                        qml_helpers.getattr("create_and_populate_root_context_with_engine_addr")?;
-                    unsafe {
-                        let engine_addr =
-                            qml_engine.get_unchecked_mut() as *mut QmlEngine as usize as u64;
-                        let args = (engine_addr,);
-                        create_and_populate_root_context_with_engine_addr.call1(args)?;
-                    }
-
-                    Ok(())
-                })
-                .map_err(|e| anyhow::anyhow!("Unable to initialize QML Python state: {e}"))
-                .unwrap();
             },
             qml,
             startup_settings,
@@ -397,21 +380,10 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
                 .set_item("shoop_config", py_config)?;
         }
         {
-            let shoop_rust_py_module = crate::shoop_rust_py::create_py_module(py).unwrap();
-            sys.getattr("modules")?
-                .set_item("shoop_rust", shoop_rust_py_module)?;
-        }
-        {
             let shoop_py_backend_module = shoop_py_backend::create_py_module(py).unwrap();
             sys.getattr("modules")?
                 .set_item("shoop_py_backend", shoop_py_backend_module)?;
         }
-
-        // Expose Python functionality to QML
-        let qml_helpers = py.import("shoopdaloop.lib.qml_helpers")?;
-        let register_shoopdaloop_qml_classes =
-            qml_helpers.getattr("register_shoopdaloop_qml_classes")?;
-        register_shoopdaloop_qml_classes.call0()?;
 
         Ok(())
     })

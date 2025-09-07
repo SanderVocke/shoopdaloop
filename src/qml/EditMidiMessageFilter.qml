@@ -6,7 +6,6 @@ import QtQuick.Layouts 6.6
 import 'js/midi.js' as Midi
 import 'js/midi_control.js' as MidiControl
 import 'test/testDeepEqual.js' as TestDeepEqual
-import 'AppRegistries.qml' as AppRegistries
 
 Column {
     id: root

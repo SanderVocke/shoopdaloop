@@ -2,7 +2,6 @@ import ShoopDaLoop.Rust
 import QtQuick 6.6
 
 import 'js/schema_conversions.js' as Conversions
-import 'AppRegistries.qml' as AppRegistries
 
 ShoopRustLoopChannelGui {
     id: root

@@ -5,7 +5,6 @@ import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '../js/delay.js' as Delay
 import '..'
-import "AppRegistries.qml" as AppRegistries
 
 ShoopTestFile {
     TestSession {

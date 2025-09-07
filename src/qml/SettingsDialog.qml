@@ -4,7 +4,6 @@ import QtQuick.Layouts 6.6
 import QtQuick.Controls.Material 6.6
 import Qt.labs.qmlmodels 1.0
 import QtQuick.Dialogs 6.6
-import "AppRegistries.qml" as AppRegistries
 
 import 'js/qml_url_to_filename.js' as UrlToFilename
 

@@ -3,7 +3,6 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.Rust
 import 'js/mode_helpers.js' as ModeHelpers
-import 'AppRegistries.qml' as AppRegistries
 
 Item {
     id: root

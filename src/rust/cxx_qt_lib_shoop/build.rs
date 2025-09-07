@@ -32,6 +32,7 @@ fn main() {
         .file("src/rust/qvariant_helpers.rs")
         .file("src/rust/qweakpointer_qobject.rs")
         .file("src/rust/qquickwindow_helpers.rs")
+        .file("src/rust/register_qml_singletons.rs")
         .cc_builder(|cc| {
             cc.include("src/include");
         })

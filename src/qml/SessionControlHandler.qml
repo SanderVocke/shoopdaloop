@@ -1,6 +1,5 @@
 import QtQuick 6.6
 import ShoopDaLoop.Rust
-import "AppRegistries.qml" as AppRegistries
 
 ShoopRustSessionControlHandler {
     id: root

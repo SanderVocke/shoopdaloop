@@ -19,7 +19,7 @@ pub mod ffi {
         pub fn remove_window(self: Pin<&mut TestScreenGrabber>, window: *mut QObject);
 
         #[qinvokable]
-        pub fn grab_all(self: Pin<&mut TestScreenGrabber>, output_folder : QString);
+        pub fn grab_all(self: Pin<&mut TestScreenGrabber>, output_folder: QString);
     }
 
     unsafe extern "C++" {
@@ -41,8 +41,8 @@ pub mod ffi {
     }
 }
 
-use std::collections::BTreeSet;
 pub use ffi::TestScreenGrabber;
+use std::collections::BTreeSet;
 
 pub struct TestScreenGrabberRust {
     pub windows: BTreeSet<*mut ffi::QObject>,

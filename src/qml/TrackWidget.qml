@@ -4,7 +4,6 @@ import QtQuick.Controls.Material 6.6
 import QtQuick.Window 6.6
 import ShoopDaLoop.Rust
 import "./js/generate_session.js" as GenerateSession
-import "AppRegistries.qml" as AppRegistries
 
 // The track widget displays the state of a track (collection of
 // loopers with shared settings/control).

@@ -1,7 +1,7 @@
 import QtQuick 6.6
 
 import ShoopDaLoop.Rust
-import "AppRegistries.qml" as AppRegistries
+
 import './testDeepEqual.js' as TestDeepEqual
 import '../js/type_checks.js' as TypeChecks
 import '..'
