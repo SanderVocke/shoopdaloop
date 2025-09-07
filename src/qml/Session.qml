@@ -71,7 +71,7 @@ Item {
         id: test_screen_grab_trigger
         property string output_folder
         onExecute: {
-            screen_grabber.grab_all(output_folder)
+            ShoopRustTestScreenGrabber.grab_all(output_folder)
             root.logger.info("Screenshots written to: " + output_folder + ". Quitting.")
             Qt.callLater(Qt.quit)
         }

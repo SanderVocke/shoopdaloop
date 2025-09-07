@@ -17,7 +17,6 @@ pkg_version = shoop_version
 
 from .q_objects.Logger import Logger
 from .q_objects.DictTreeModel import DictTreeModelFactory
-from .q_objects.TestScreenGrabber import TestScreenGrabber
 
 from .logging import Logger as BareLogger
 
@@ -60,7 +59,6 @@ def register_shoopdaloop_qml_classes():
     # Register Python classes
     register_qml_class(Logger, 'Logger')
     register_qml_class(DictTreeModelFactory, 'DictTreeModelFactory')
-    register_qml_class(TestScreenGrabber, 'TestScreenGrabber')
     install_qt_message_handler()
 
 def create_and_populate_root_context_with_engine_addr(engine_addr):
@@ -86,7 +84,6 @@ def create_and_populate_root_context(engine):
         'default_logger': Logger(),
         'tree_model_factory': DictTreeModelFactory(parent=engine),
         'registries': registries,
-        'screen_grabber': TestScreenGrabber(weak_engine=weakref.ref(engine), parent=engine)
     }
 
     items['default_logger'].name = 'Frontend.Qml'

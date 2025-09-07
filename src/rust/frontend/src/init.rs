@@ -21,6 +21,7 @@ fn register_qml_types_and_singletons() {
     qobj_click_track_generator::register_qml_singleton(&mdl, "ShoopRustClickTrackGenerator");
     qobj_settings_io::register_qml_singleton(&mdl, "ShoopRustSettingsIO");
     qobj_enums::register_qml_singleton(&mdl, "ShoopRustConstants");
+    qobj_test_screen_grabber::register_qml_singleton(&mdl, "ShoopRustTestScreenGrabber");
 
     // Types
     qobj_dummy_process_helper::register_qml_type(&mdl, "ShoopRustDummyProcessHelper");

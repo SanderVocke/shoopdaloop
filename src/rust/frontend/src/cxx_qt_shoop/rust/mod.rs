@@ -65,6 +65,8 @@ pub mod qobj_session_control_handler;
 pub mod qobj_session_control_handler_bridge;
 pub mod qobj_settings_io;
 pub mod qobj_settings_io_bridge;
+pub mod qobj_test_screen_grabber;
+pub mod qobj_test_screen_grabber_bridge;
 pub mod qobj_update_thread;
 pub mod qobj_update_thread_bridge;
 

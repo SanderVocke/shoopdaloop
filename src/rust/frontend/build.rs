@@ -46,6 +46,7 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/qobj_schema_validator_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_session_control_handler_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_settings_io_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_test_screen_grabber_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_update_thread_bridge.rs")
         .file("src/cxx_qt_shoop/rust/test/qobj_generic_test_item_bridge.rs")
         .file("src/cxx_qt_shoop/rust/test/qobj_test_backend_wrapper_bridge.rs")
