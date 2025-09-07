@@ -6,6 +6,7 @@ import ShoopDaLoop.Rust
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
+import "AppRegistries.qml" as AppRegistries
 
 ShoopTestFile {
     TestSession {
@@ -47,42 +48,42 @@ ShoopTestFile {
 
             RegistryLookup {
                 id: lookup_input_port_1
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_in_1"
             }
             property alias input_port_1: lookup_input_port_1.object
 
             RegistryLookup {
                 id: lookup_input_port_2
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_in_2"
             }
             property alias input_port_2: lookup_input_port_2.object
 
             RegistryLookup {
                 id: lookup_output_port_1
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_out_1"
             }
             property alias output_port_1: lookup_output_port_1.object
 
             RegistryLookup {
                 id: lookup_output_port_2
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_out_2"
             }
             property alias output_port_2: lookup_output_port_2.object
 
             RegistryLookup {
                 id: lookup_midi_input_port
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_midi_in"
             }
             property alias midi_input_port: lookup_midi_input_port.object
 
             RegistryLookup {
                 id: lookup_midi_output_port
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_midi_out"
             }
             property alias midi_output_port: lookup_midi_output_port.object

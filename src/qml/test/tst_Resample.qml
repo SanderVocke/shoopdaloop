@@ -5,6 +5,7 @@ import ShoopDaLoop.Rust
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
+import "AppRegistries.qml" as AppRegistries
 
 ShoopTestFile {
 
@@ -165,7 +166,7 @@ ShoopTestFile {
                     loop2_channels()[1].load_data([])
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.io_active == false)
+                    testcase.wait_condition(() => AppRegistries.state_registry.io_active == false)
                     testcase.wait_updated(session.backend)
 
                     verify_eq(loop2_channels().length, 2)
@@ -175,7 +176,7 @@ ShoopTestFile {
                         }
 
                     testcase.wait_updated(session.backend)
-                    testcase.wait_condition(() => registries.state_registry.io_active == false)
+                    testcase.wait_condition(() => AppRegistries.state_registry.io_active == false)
                     testcase.wait_updated(session.backend)
 
                     let datas = loop2_channels().map(m => m.get_data())

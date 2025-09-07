@@ -9,7 +9,9 @@ Item {
     property var loop
     property var sync_loop
 
-    property ShoopRustLogger logger : default_logger
+    property ShoopRustLogger logger : 
+    ShoopRustLogger { name: "Frontend.Qml.LoopContentWidget"
+                      instance_identifier: root.obj_id }
 
     height: childrenRect.height
 

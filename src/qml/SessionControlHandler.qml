@@ -1,5 +1,6 @@
 import QtQuick 6.6
 import ShoopDaLoop.Rust
+import "AppRegistries.qml" as AppRegistries
 
 ShoopRustSessionControlHandler {
     id: root
@@ -7,7 +8,7 @@ ShoopRustSessionControlHandler {
 
     loop_widget_references: session.loops
     track_control_widget_references : session.tracks.map(t => t.control_widget)
-    global_state_registry: registries.state_registry
+    global_state_registry: AppRegistries.state_registry
     selected_loops: {
         // Sort by coordinates to get stable results
         var result = Array.from(session.selected_loops)
@@ -20,7 +21,7 @@ ShoopRustSessionControlHandler {
         })
         return result
     }
-    targeted_loop: registries.state_registry.targeted_loop
+    targeted_loop: AppRegistries.state_registry.targeted_loop
 
     // Observe loop events
     Repeater { 
@@ -52,7 +53,7 @@ ShoopRustSessionControlHandler {
 
     // Observe global events
     Connections {
-        target: registries.state_registry
+        target: AppRegistries.state_registry
         function onSolo_activeChanged() { root.do_global_event_callback(ShoopRustConstants.GlobalEventType.GlobalControlChanged) }
         function onSync_activeChanged() { root.do_global_event_callback(ShoopRustConstants.GlobalEventType.GlobalControlChanged) }
         function onPlay_after_record_activeChanged() { root.do_global_event_callback(ShoopRustConstants.GlobalEventType.GlobalControlChanged) }

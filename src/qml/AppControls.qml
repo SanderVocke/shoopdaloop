@@ -6,6 +6,7 @@ import ShoopDaLoop.Rust
 
 import 'js/qml_url_to_filename.js' as UrlToFilename
 import 'js/delay.js' as Delay
+import 'AppRegistries.qml' as AppRegistries
 
 Item {
     id: root
@@ -205,7 +206,7 @@ Item {
             height: 40
             width: 30
             onClicked: {
-                var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.mode !== ShoopRustConstants.LoopMode.Stopped)
+                var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.mode !== ShoopRustConstants.LoopMode.Stopped)
                 if (loops.length > 0) {
                     loops[0].transition_loops(
                         loops,
@@ -227,7 +228,7 @@ Item {
             id: deselect_button
             height: 40
             width: 30
-            onClicked: registries.state_registry.clear_set('selected_loop_ids')
+            onClicked: AppRegistries.state_registry.clear_set('selected_loop_ids')
 
             MaterialDesignIcon {
                 size: Math.min(parent.width, parent.height) - 10
@@ -262,7 +263,7 @@ Item {
                     onClicked: {
                         confirm_clear_dialog.text = 'Clear ALL loop recordings?'
                         confirm_clear_dialog.action = () => {
-                            var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.maybe_backend_loop)
+                            var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.maybe_backend_loop)
                             loops.forEach(l => l.clear())
                         }
                         confirm_clear_dialog.open()
@@ -273,7 +274,7 @@ Item {
                     onClicked: {
                         confirm_clear_dialog.text = 'Clear ALL loop recordings except sync?'
                         confirm_clear_dialog.action = () => {
-                            var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.maybe_backend_loop && !o.is_sync)
+                            var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.maybe_backend_loop && !o.is_sync)
                             loops.forEach(l => l.clear())
                         }
                         confirm_clear_dialog.open()
@@ -284,7 +285,7 @@ Item {
                     onClicked: {
                         confirm_clear_dialog.text = 'Clear ALL loops?'
                         confirm_clear_dialog.action = () => {
-                            var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget")
+                            var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget")
                             loops.forEach(l => l.clear())
                         }
                         confirm_clear_dialog.open()
@@ -295,7 +296,7 @@ Item {
                     onClicked: {
                         confirm_clear_dialog.text = 'Clear ALL loops except sync?'
                         confirm_clear_dialog.action = () => {
-                            var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && !o.is_sync)
+                            var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && !o.is_sync)
                             loops.forEach(l => l.clear())
                         }
                         confirm_clear_dialog.open()
@@ -339,9 +340,9 @@ Item {
             id: default_recording_action_button
             height: 40
             width: 30
-            onClicked: registries.state_registry.toggle_default_recording_action()
+            onClicked: AppRegistries.state_registry.toggle_default_recording_action()
             highlighted : false
-            readonly property string value : registries.state_registry.default_recording_action
+            readonly property string value : AppRegistries.state_registry.default_recording_action
 
             MaterialDesignIcon {
                 size: Math.min(parent.width, parent.height) - 10
@@ -379,13 +380,13 @@ Item {
             property bool state : true
             property bool play_after_record_active : inverted ? !state : state
 
-            onPlay_after_record_activeChanged: registries.state_registry.set_play_after_record_active(play_after_record_active)
-            Component.onCompleted: registries.state_registry.set_play_after_record_active(play_after_record_active)
+            onPlay_after_record_activeChanged: AppRegistries.state_registry.set_play_after_record_active(play_after_record_active)
+            Component.onCompleted: AppRegistries.state_registry.set_play_after_record_active(play_after_record_active)
 
             Connections {
-                target: registries.state_registry
+                target: AppRegistries.state_registry
                 function onPlay_after_record_activeChanged() {
-                    let v = registries.state_registry.play_after_record
+                    let v = AppRegistries.state_registry.play_after_record
                     play_after_record_active_button.state = play_after_record_active_button.inverted ? !v : v
                 }
             }
@@ -429,13 +430,13 @@ Item {
             property bool state : true
             property bool sync_active : inverted ? !state : state
 
-            onSync_activeChanged: registries.state_registry.set_sync_active(sync_active)
-            Component.onCompleted: registries.state_registry.set_sync_active(sync_active)
+            onSync_activeChanged: AppRegistries.state_registry.set_sync_active(sync_active)
+            Component.onCompleted: AppRegistries.state_registry.set_sync_active(sync_active)
 
             Connections {
-                target: registries.state_registry
+                target: AppRegistries.state_registry
                 function onSync_activeChanged() {
-                    let v = registries.state_registry.sync_active
+                    let v = AppRegistries.state_registry.sync_active
                     sync_active_button.state = sync_active_button.inverted ? !v : v
                 }
             }
@@ -461,13 +462,13 @@ Item {
             property bool state : false
             property bool solo_active : inverted ? !state : state
 
-            onSolo_activeChanged: registries.state_registry.set_solo_active(solo_active)
-            Component.onCompleted: registries.state_registry.set_solo_active(solo_active)
+            onSolo_activeChanged: AppRegistries.state_registry.set_solo_active(solo_active)
+            Component.onCompleted: AppRegistries.state_registry.set_solo_active(solo_active)
 
             Connections {
-                target: registries.state_registry
+                target: AppRegistries.state_registry
                 function onSolo_activeChanged() {
-                    let v = registries.state_registry.solo_active
+                    let v = AppRegistries.state_registry.solo_active
                     solo_active_button.state = solo_active_button.inverted ? !v : v
                 }
             }
@@ -488,7 +489,7 @@ Item {
             width: 80
             anchors.verticalCenter: parent.verticalCenter
 
-            value: registries.state_registry.apply_n_cycles
+            value: AppRegistries.state_registry.apply_n_cycles
             from: -1
 
             editable: true
@@ -498,9 +499,9 @@ Item {
             }
 
             onValueModified: {
-                if (value != registries.state_registry.apply_n_cycles) {
-                    registries.state_registry.set_apply_n_cycles(value)
-                    value = Qt.binding(() => registries.state_registry.apply_n_cycles)
+                if (value != AppRegistries.state_registry.apply_n_cycles) {
+                    AppRegistries.state_registry.set_apply_n_cycles(value)
+                    value = Qt.binding(() => AppRegistries.state_registry.apply_n_cycles)
                 }
             }
 

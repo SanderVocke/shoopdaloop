@@ -4,6 +4,7 @@ import QtQuick.Controls.Material 6.6
 import QtQuick.Window 6.6
 import ShoopDaLoop.Rust
 import "./js/generate_session.js" as GenerateSession
+import "AppRegistries.qml" as AppRegistries
 
 // The track widget displays the state of a track (collection of
 // loopers with shared settings/control).
@@ -258,14 +259,14 @@ Item {
 
     RegisterInRegistry {
         id: reg_entry
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         object: root
         key: root.obj_id
     }
 
     RegistryLookup {
         id: lookup_control_widget
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         key: root.obj_id + "_control_widget"
     }
     property alias control_widget: lookup_control_widget.object
@@ -356,7 +357,7 @@ Item {
     // Use registry lookup to find our ports back dynamically
     RegistryLookups {
         id: lookup_ports
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         keys: root.initial_descriptor ? root.initial_descriptor.ports.map((p) => p.id) : []
     }
     property alias ports : lookup_ports.objects
@@ -544,9 +545,9 @@ Item {
                                     title: "Choose a name"
                                     width: 300
                                     onAcceptedInput: name => {
-                                        var id = registries.fx_chain_states_registry.generate_id("fx_chain_state")
+                                        var id = AppRegistries.fx_chain_states_registry.generate_id("fx_chain_state")
                                         data.title = name
-                                        registries.fx_chain_states_registry.register(id, JSON.parse(JSON.stringify(data)))
+                                        AppRegistries.fx_chain_states_registry.register(id, JSON.parse(JSON.stringify(data)))
                                     }
                                 }
                             }
@@ -557,7 +558,7 @@ Item {
                                 enabled: !root.sync_loop_layout && root.maybe_fx_chain != undefined && fx_states.length > 0
 
                                 RegistrySelects {
-                                    registry: registries.fx_chain_states_registry
+                                    registry: AppRegistries.fx_chain_states_registry
                                     select_fn: r => true
                                     values_only: true
                                     id: all_chain_states

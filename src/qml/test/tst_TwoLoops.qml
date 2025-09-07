@@ -5,6 +5,7 @@ import ShoopDaLoop.Rust
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
+import "AppRegistries.qml" as AppRegistries
 
 ShoopTestFile {
     TestSession {
@@ -43,7 +44,7 @@ ShoopTestFile {
                 testcase.wait_updated(session.backend)
                 verify_loop_cleared(sync_loop())
                 verify_loop_cleared(other_loop())
-                registries.state_registry.reset()
+                AppRegistries.state_registry.reset()
             }
 
             test_fns: ({

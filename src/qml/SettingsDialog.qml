@@ -4,7 +4,7 @@ import QtQuick.Layouts 6.6
 import QtQuick.Controls.Material 6.6
 import Qt.labs.qmlmodels 1.0
 import QtQuick.Dialogs 6.6
-
+import "AppRegistries.qml" as AppRegistries
 
 import 'js/qml_url_to_filename.js' as UrlToFilename
 
@@ -124,12 +124,12 @@ Dialog {
         property var autoconnect_output_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_output_regexes : []
 
         RegisterInRegistry {
-            registry: registries.state_registry
+            registry: AppRegistries.state_registry
             key: 'autoconnect_input_regexes'
             object: autoconnect_input_regexes
         }
         RegisterInRegistry {
-            registry: registries.state_registry
+            registry: AppRegistries.state_registry
             key: 'autoconnect_output_regexes'
             object: autoconnect_output_regexes
         }
@@ -336,7 +336,7 @@ Dialog {
                             }
 
                             RegisterInRegistry {
-                                registry: registries.state_registry
+                                registry: AppRegistries.state_registry
                                 key: 'midi_control_configuration'
                                 object: edit_midi_control.configuration
                             }
@@ -397,7 +397,7 @@ Dialog {
         RegistryLookup {
             id: lookup_script_manager
             key: 'lua_script_manager'
-            registry: registries.state_registry
+            registry: AppRegistries.state_registry
         }
         property alias script_manager: lookup_script_manager.object
 

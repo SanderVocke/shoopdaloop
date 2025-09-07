@@ -1,7 +1,7 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-
+import "AppRegistries.qml" as AppRegistries
 import "./js/generate_session.js" as GenerateSession
 
 
@@ -32,7 +32,7 @@ FocusReleasingScrollView {
     }
 
     RegisterInRegistry {
-        registry: registries.state_registry
+        registry: AppRegistries.state_registry
         key: 'track_descriptors'
         object: track_initial_descriptors
     }

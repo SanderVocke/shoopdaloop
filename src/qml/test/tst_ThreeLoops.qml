@@ -5,6 +5,7 @@ import ShoopDaLoop.Rust
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
+import "AppRegistries.qml" as AppRegistries
 
 ShoopTestFile {
     TestSession {
@@ -25,7 +26,7 @@ ShoopTestFile {
 
         RegistryLookup {
             id: lookup_audio_in
-            registry: registries.objects_registry
+            registry: AppRegistries.objects_registry
             key: "tut_direct_in_1"
         }
         property alias audio_in: lookup_audio_in.object
@@ -64,7 +65,7 @@ ShoopTestFile {
                 verify_loop_cleared(sync_loop())
                 verify_loop_cleared(first_loop())
                 verify_loop_cleared(second_loop())
-                registries.state_registry.reset()
+                AppRegistries.state_registry.reset()
             }
 
             // Convenience function to run the backend in controlled mode
@@ -125,7 +126,7 @@ ShoopTestFile {
 
                     first_loop().create_backend_loop()
                     first_loop().queue_set_length(48000)
-                    registries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_sync_active(false)
                     testcase.wait_updated(session.backend)
                     verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
 
@@ -151,7 +152,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     // Start playback on both loops
-                    registries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_sync_active(false)
                     first_loop().on_play_clicked()
                     second_loop().on_play_clicked()
 
@@ -160,7 +161,7 @@ ShoopTestFile {
                     verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
 
                     // Now play the first loop solo
-                    registries.state_registry.set_solo_active(true)
+                    AppRegistries.state_registry.set_solo_active(true)
                     first_loop().on_play_clicked()
 
                     testcase.wait_updated(session.backend)
@@ -191,7 +192,7 @@ ShoopTestFile {
                     verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
                     first_loop().on_play_clicked()
                     testcase.wait_updated(session.backend)
 
@@ -233,8 +234,8 @@ ShoopTestFile {
                     verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_solo_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_solo_active(true)
                     first_loop().on_play_clicked()
                     testcase.wait_updated(session.backend)
 
@@ -281,7 +282,7 @@ ShoopTestFile {
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
                     second_loop().target()
                     first_loop().on_play_clicked()
                     testcase.wait_updated(session.backend)
@@ -325,8 +326,8 @@ ShoopTestFile {
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_solo_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_solo_active(true)
                     second_loop().target()
                     first_loop().on_play_clicked()
                     testcase.wait_updated(session.backend)
@@ -354,7 +355,7 @@ ShoopTestFile {
 
                     first_loop().create_backend_loop()
                     first_loop().queue_set_length(48000)
-                    registries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_sync_active(false)
                     testcase.wait_updated(session.backend)
                     verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
 
@@ -380,7 +381,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     // Start playback on both loops
-                    registries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_sync_active(false)
                     first_loop().on_play_clicked()
                     second_loop().on_play_clicked()
 
@@ -389,7 +390,7 @@ ShoopTestFile {
                     verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
 
                     // Now play the first loop solo
-                    registries.state_registry.set_solo_active(true)
+                    AppRegistries.state_registry.set_solo_active(true)
                     first_loop().on_playdry_clicked()
 
                     testcase.wait_updated(session.backend)
@@ -420,7 +421,7 @@ ShoopTestFile {
                     verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
                     first_loop().on_playdry_clicked()
                     testcase.wait_updated(session.backend)
 
@@ -462,8 +463,8 @@ ShoopTestFile {
                     verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_solo_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_solo_active(true)
                     first_loop().on_playdry_clicked()
                     testcase.wait_updated(session.backend)
 
@@ -510,7 +511,7 @@ ShoopTestFile {
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
                     second_loop().target()
                     first_loop().on_playdry_clicked()
                     testcase.wait_updated(session.backend)
@@ -554,8 +555,8 @@ ShoopTestFile {
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_solo_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_solo_active(true)
                     second_loop().target()
                     first_loop().on_playdry_clicked()
                     testcase.wait_updated(session.backend)
@@ -583,7 +584,7 @@ ShoopTestFile {
 
                     first_loop().create_backend_loop()
                     first_loop().queue_set_length(48000)
-                    registries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_sync_active(false)
                     testcase.wait_updated(session.backend)
                     verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
 
@@ -613,8 +614,8 @@ ShoopTestFile {
                     verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_apply_n_cycles(0)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_apply_n_cycles(0)
                     first_loop().on_record_clicked()
                     testcase.wait_updated(session.backend)
 
@@ -651,9 +652,9 @@ ShoopTestFile {
                     verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_apply_n_cycles(2)
-                    registries.state_registry.set_play_after_record_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_apply_n_cycles(2)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
                     first_loop().on_record_clicked()
                     testcase.wait_updated(session.backend)
 
@@ -700,9 +701,9 @@ ShoopTestFile {
                     verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_apply_n_cycles(2)
-                    registries.state_registry.set_play_after_record_active(false)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_apply_n_cycles(2)
+                    AppRegistries.state_registry.set_play_after_record_active(false)
                     first_loop().on_record_clicked()
                     testcase.wait_updated(session.backend)
 
@@ -755,8 +756,8 @@ ShoopTestFile {
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_play_after_record_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
                     second_loop().target()
                     first_loop().on_record_clicked()
                     testcase.wait_updated(session.backend)
@@ -809,8 +810,8 @@ ShoopTestFile {
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_play_after_record_active(false)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_play_after_record_active(false)
                     second_loop().target()
                     first_loop().on_record_clicked()
                     testcase.wait_updated(session.backend)
@@ -853,7 +854,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     // Start playback on both loops
-                    registries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_sync_active(false)
                     first_loop().on_play_clicked()
                     second_loop().on_play_clicked()
 
@@ -862,7 +863,7 @@ ShoopTestFile {
                     verify_eq(second_loop().mode, ShoopRustConstants.LoopMode.Playing)
 
                     // Now play the first loop solo
-                    registries.state_registry.set_solo_active(true)
+                    AppRegistries.state_registry.set_solo_active(true)
                     first_loop().on_record_clicked()
 
                     testcase.wait_updated(session.backend)
@@ -884,7 +885,7 @@ ShoopTestFile {
                     run_with_marker_samples(500, [499])
 
                     testcase.wait_updated(session.backend)
-                    registries.state_registry.set_play_after_record_active(false)
+                    AppRegistries.state_registry.set_play_after_record_active(false)
                     verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     first_loop().on_grab_clicked()
 
@@ -907,7 +908,7 @@ ShoopTestFile {
                     run_with_marker_samples(500, [499])
 
                     testcase.wait_updated(session.backend)
-                    registries.state_registry.set_play_after_record_active(true)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
                     verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Stopped)
                     first_loop().on_grab_clicked()
 
@@ -946,8 +947,8 @@ ShoopTestFile {
                     session.backend.dummy_request_controlled_frames(500);
                     session.backend.dummy_run_requested_frames()
                     testcase.wait_updated(session.backend)
-                    registries.state_registry.set_play_after_record_active(true)
-                    registries.state_registry.set_solo_active(true)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
+                    AppRegistries.state_registry.set_solo_active(true)
                     verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     first_loop().on_grab_clicked()
 
@@ -982,9 +983,9 @@ ShoopTestFile {
                     verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_apply_n_cycles(2)
-                    registries.state_registry.set_play_after_record_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_apply_n_cycles(2)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
                     first_loop().on_grab_clicked()
                     testcase.wait_updated(session.backend)
 
@@ -1019,9 +1020,9 @@ ShoopTestFile {
                     verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(false)
-                    registries.state_registry.set_apply_n_cycles(2)
-                    registries.state_registry.set_play_after_record_active(true)
+                    AppRegistries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_apply_n_cycles(2)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
                     first_loop().on_grab_clicked()
                     testcase.wait_updated(session.backend)
 
@@ -1075,9 +1076,9 @@ ShoopTestFile {
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 150)
 
-                    registries.state_registry.set_sync_active(false)
-                    registries.state_registry.set_apply_n_cycles(2)
-                    registries.state_registry.set_play_after_record_active(true)
+                    AppRegistries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_apply_n_cycles(2)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
                     second_loop().target()
                     first_loop().on_grab_clicked()
                     testcase.wait_updated(session.backend)
@@ -1136,9 +1137,9 @@ ShoopTestFile {
                     verify_eq(sync_loop().position, 50)
                     verify_eq(second_loop().position, 150)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_apply_n_cycles(2)
-                    registries.state_registry.set_play_after_record_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_apply_n_cycles(2)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
                     second_loop().target()
                     first_loop().on_grab_clicked()
                     testcase.wait_updated(session.backend)
@@ -1157,7 +1158,7 @@ ShoopTestFile {
 
                     first_loop().create_backend_loop()
                     first_loop().queue_set_length(48000)
-                    registries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_sync_active(false)
                     first_loop().transition(ShoopRustConstants.LoopMode.Recording, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     verify_eq(first_loop().mode, ShoopRustConstants.LoopMode.Recording)
@@ -1189,7 +1190,7 @@ ShoopTestFile {
                     verify_eq(sync_loop().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(sync_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
                     first_loop().on_stop_clicked()
                     testcase.wait_updated(session.backend)
 
@@ -1235,7 +1236,7 @@ ShoopTestFile {
                     verify_eq(first_loop().position, 50)
                     verify_eq(second_loop().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
                     second_loop().target()
                     first_loop().on_stop_clicked()
                     testcase.wait_updated(session.backend)

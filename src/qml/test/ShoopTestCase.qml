@@ -1,7 +1,7 @@
 import QtQuick 6.6
 
 import ShoopDaLoop.Rust
-
+import "AppRegistries.qml" as AppRegistries
 import './testDeepEqual.js' as TestDeepEqual
 import '../js/type_checks.js' as TypeChecks
 import '..'
@@ -240,7 +240,7 @@ Item {
 
     function wait_session_io_done() {
         root.logger.debug("Start wait session IO done")
-        wait_condition(() => !registries.state_registry.io_active, 2000, "Session I/O not finished in time")
+        wait_condition(() => !AppRegistries.state_registry.io_active, 2000, "Session I/O not finished in time")
         root.logger.debug("Session IO done.")
     }
 

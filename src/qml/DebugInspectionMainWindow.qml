@@ -1,6 +1,7 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
+import 'AppRegistries.qml' as AppRegistries
 
 ShoopApplicationWindow {
     
@@ -14,11 +15,11 @@ ShoopApplicationWindow {
     minimumHeight: 250
     maximumHeight: 250
 
-    property var object_ids: registries.objects_registry.keys()
+    property var object_ids: AppRegistries.objects_registry.keys()
     Connections {
-        target: registries.objects_registry ? registries.objects_registry : null
+        target: AppRegistries.objects_registry ? AppRegistries.objects_registry : null
         function onContentsChanged() {
-            object_ids = registries.objects_registry.keys()
+            object_ids = AppRegistries.objects_registry.keys()
         }
     }
 
@@ -52,13 +53,13 @@ ShoopApplicationWindow {
                     case "Any":
                         return root.object_ids
                     case "Port":
-                        return root.object_ids.filter(id => registries.objects_registry.get(id).object_schema.match(/(?:audio|midi)port.[0-9]+/))
+                        return root.object_ids.filter(id => AppRegistries.objects_registry.get(id).object_schema.match(/(?:audio|midi)port.[0-9]+/))
                     case "Loop":
-                        return root.object_ids.filter(id => registries.objects_registry.get(id).object_schema.match(/loop.[0-9]+/))
+                        return root.object_ids.filter(id => AppRegistries.objects_registry.get(id).object_schema.match(/loop.[0-9]+/))
                     case "Channel":
-                        return root.object_ids.filter(id => registries.objects_registry.get(id).object_schema.match(/channel.[0-9]+/))
+                        return root.object_ids.filter(id => AppRegistries.objects_registry.get(id).object_schema.match(/channel.[0-9]+/))
                     case "FX":
-                        return root.object_ids.filter(id => registries.objects_registry.get(id).object_schema.match(/fx_chain.[0-9]+/))
+                        return root.object_ids.filter(id => AppRegistries.objects_registry.get(id).object_schema.match(/fx_chain.[0-9]+/))
                 }
             }
             width: 400
@@ -67,8 +68,8 @@ ShoopApplicationWindow {
             anchors.verticalCenter: filter.verticalCenter
             text: "Inspect"
             onClicked: {
-                if (registries.objects_registry.has(object_select.currentValue)) {
-                    root.spawn_window(registries.objects_registry.get(object_select.currentValue))
+                if (AppRegistries.objects_registry.has(object_select.currentValue)) {
+                    root.spawn_window(AppRegistries.objects_registry.get(object_select.currentValue))
                 }
             }
         }

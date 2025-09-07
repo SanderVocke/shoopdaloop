@@ -8,6 +8,8 @@ import 'js/mode_helpers.js' as ModeHelpers
 import 'js/stereo.js' as Stereo
 import 'js/qml_url_to_filename.js' as UrlToFilename
 
+import 'AppRegistries.qml' as AppRegistries
+
 // The loop widget allows manipulating a single loop within a track.
 Item {
     id: root
@@ -117,17 +119,17 @@ Item {
 
     property bool loaded : false
 
-    property var sync_loop : registries.state_registry.sync_loop
+    property var sync_loop : AppRegistries.state_registry.sync_loop
 
     readonly property int cycle_length: sync_loop ? sync_loop.length : 0
     readonly property int n_cycles: cycle_length ? Math.ceil(length / cycle_length) : 0
 
-    property var targeted_loop : registries.state_registry.targeted_loop
+    property var targeted_loop : AppRegistries.state_registry.targeted_loop
     property bool targeted : targeted_loop == root
 
     RegistryLookup {
         id: main_details_pane_lookup
-        registry: registries.state_registry
+        registry: AppRegistries.state_registry
         key: 'main_details_pane'
     }
     property alias main_details_pane : main_details_pane_lookup.object
@@ -154,13 +156,13 @@ Item {
         id: obj_reg_entry
         object: root
         key: obj_id
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
     }
 
     RegisterInRegistry {
         id: sync_reg_entry
         enabled: initial_descriptor.is_sync
-        registry: registries.state_registry
+        registry: AppRegistries.state_registry
         key: 'sync_loop'
         object: root
     }
@@ -230,7 +232,7 @@ Item {
     readonly property var record_kind : {
         if (root.is_sync) { return "infinite" }
         if (root.delay_for_targeted != undefined) { return "with_targeted" }
-        let apply_n_cycles = registries.state_registry.apply_n_cycles
+        let apply_n_cycles = AppRegistries.state_registry.apply_n_cycles
         if (apply_n_cycles <= 0) { return "infinite" }
         return apply_n_cycles
     }
@@ -321,25 +323,25 @@ Item {
     function select(clear = false) {
         untarget()
         if (!clear) {
-            registries.state_registry.add_to_set('selected_loop_ids', obj_id)
+            AppRegistries.state_registry.add_to_set('selected_loop_ids', obj_id)
         } else {
-            registries.state_registry.replace('selected_loop_ids', new Set([obj_id]))
+            AppRegistries.state_registry.replace('selected_loop_ids', new Set([obj_id]))
         }
     }
     function deselect(clear = false) {
         if (!clear) {
-            registries.state_registry.remove_from_set('selected_loop_ids', obj_id)
+            AppRegistries.state_registry.remove_from_set('selected_loop_ids', obj_id)
         } else {
-            registries.state_registry.replace('selected_loop_ids', new Set())
+            AppRegistries.state_registry.replace('selected_loop_ids', new Set())
         }
     }
     function target() {
         deselect()
-        registries.state_registry.set_targeted_loop(root)
+        AppRegistries.state_registry.set_targeted_loop(root)
     }
     function untarget() {
         if (targeted) {
-            registries.state_registry.untarget_loop()
+            AppRegistries.state_registry.untarget_loop()
         }
     }
     function toggle_selected(clear_if_select = false) {
@@ -419,17 +421,17 @@ Item {
     }
 
     function record_n(delay_start, n) {
-        if (registries.state_registry.solo_active) {
+        if (AppRegistries.state_registry.solo_active) {
             root.transition_solo_in_track(ShoopRustConstants.LoopMode.Recording, delay_start, ShoopRustConstants.DontAlignToSyncImmediately)
             root.transition(
-                registries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
+                AppRegistries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
                 delay_start + n,
                 ShoopRustConstants.DontAlignToSyncImmediately
             )
         } else {
             root.transition(ShoopRustConstants.LoopMode.Recording, delay_start, ShoopRustConstants.DontAlignToSyncImmediately)
             root.transition(
-                registries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
+                AppRegistries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
                 delay_start + n,
                 ShoopRustConstants.DontAlignToSyncImmediately
             )
@@ -540,7 +542,7 @@ Item {
     }
 
     function on_play_clicked() {
-        if (registries.state_registry.solo_active) {
+        if (AppRegistries.state_registry.solo_active) {
             root.transition_solo_in_track(ShoopRustConstants.LoopMode.Playing,
                 root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
                 ShoopRustConstants.DontAlignToSyncImmediately)
@@ -552,7 +554,7 @@ Item {
     }
 
     function on_playdry_clicked() {
-        if (registries.state_registry.solo_active) {
+        if (AppRegistries.state_registry.solo_active) {
             root.transition_solo_in_track(ShoopRustConstants.LoopMode.PlayingDryThroughWet,
                 root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
                 ShoopRustConstants.DontAlignToSyncImmediately)
@@ -565,7 +567,7 @@ Item {
 
     function on_record_clicked() {
         if (root.record_kind == 'infinite' || root.maybe_composite_loop) {
-            if (registries.state_registry.solo_active) {
+            if (AppRegistries.state_registry.solo_active) {
                 root.transition_solo_in_track(ShoopRustConstants.LoopMode.Recording,
                     root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
                     ShoopRustConstants.DontAlignToSyncImmediately)
@@ -582,7 +584,7 @@ Item {
     }
 
     readonly property int n_cycles_to_grab : {
-        var rval = registries.state_registry.apply_n_cycles
+        var rval = AppRegistries.state_registry.apply_n_cycles
         if (rval <= 0) { rval = 1; }
         return rval
     }
@@ -594,7 +596,7 @@ Item {
             root.create_backend_loop()
         }
         if (root.sync_active) {
-            let go_to_mode = registries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Unknown
+            let go_to_mode = AppRegistries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Unknown
             if (root.targeted_loop) {
                 // Grab and sync up with the running targeted loop
                 selection.forEach(l => l.adopt_ringbuffers(root.targeted_loop.current_cycle + root.targeted_loop.n_cycles, root.targeted_loop.n_cycles,
@@ -607,7 +609,7 @@ Item {
                 // Grab current targeted loop content and record the rest
                 root.adopt_ringbuffers(null, root.targeted_loop.current_cycle + 1, root.targeted_loop.current_cycle, ShoopRustConstants.LoopMode.Recording)
                 root.transition(
-                    registries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
+                    AppRegistries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
                     root.delay_for_targeted,
                     ShoopRustConstants.DontAlignToSyncImmediately
                 )
@@ -618,14 +620,14 @@ Item {
                         root.n_cycles_to_grab - 1
                 root.adopt_ringbuffers(null, root.n_cycles_to_grab, goto_cycle, ShoopRustConstants.LoopMode.Recording)
                 root.transition(
-                    registries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
+                    AppRegistries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
                     0,
                     ShoopRustConstants.DontAlignToSyncImmediately
                 )
             }
         }
 
-        if (registries.state_registry.solo_active) {
+        if (AppRegistries.state_registry.solo_active) {
             let r = selected_and_other_loops_in_track()
             root.transition_loops(r[1], ShoopRustConstants.LoopMode.Stopped, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
         }
@@ -651,7 +653,7 @@ Item {
 
     function compose_add_to_end(subloop, do_parallel) {
         if (!maybe_composite_loop) { create_composite_loop() }
-        maybe_composite_loop.add_loop(subloop, 0, registries.state_registry.apply_n_cycles, do_parallel ? undefined : 0)
+        maybe_composite_loop.add_loop(subloop, 0, AppRegistries.state_registry.apply_n_cycles, do_parallel ? undefined : 0)
     }
 
     property bool initialized : maybe_loop ? (maybe_loop.initialized ? true : false) : false
@@ -659,7 +661,7 @@ Item {
     property var audio_channels : (maybe_loop && maybe_loop.audio_channels) ? maybe_loop.audio_channels : []
     property var midi_channels : (maybe_loop && maybe_loop.midi_channels) ? maybe_loop.midi_channels : []
 
-    property bool sync_active : registries.state_registry.sync_active
+    property bool sync_active : AppRegistries.state_registry.sync_active
     onSync_activeChanged: root.logger.debug(`Sync active: ${sync_active}`)
 
     // UI
@@ -945,9 +947,9 @@ Item {
                                                 // Add the selected loop to the currently selected composite loop.
                                                 // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
                                                 if (ShoopRustKeyModifiers.control_pressed) {
-                                                    selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, undefined)
+                                                    selected.maybe_composite_loop.add_loop(root, 0, AppRegistries.state_registry.apply_n_cycles, undefined)
                                                 } else {
-                                                    selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, 0)
+                                                    selected.maybe_composite_loop.add_loop(root, 0, AppRegistries.state_registry.apply_n_cycles, 0)
                                                 }
                                             }
                                         }
@@ -1100,7 +1102,7 @@ Item {
                             text: {
                                 var rval = ''
                                 if (root.delay_for_targeted != undefined)  { rval += '>' }
-                                if (registries.state_registry.solo_active) { rval += 'S' }
+                                if (AppRegistries.state_registry.solo_active) { rval += 'S' }
                                 return rval
                             }
                             font.pixelSize: size / 2.0
@@ -1112,8 +1114,8 @@ Item {
                         ToolTip.timeout: 5000
                         ToolTip.visible: hovered
                         ToolTip.text: 'Play wet recording' +
-                            (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
-                            (registries.state_registry.solo_active ? ' (solo in track)' : '') +
+                            (AppRegistries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                            (AppRegistries.state_registry.solo_active ? ' (solo in track)' : '') +
                             (root.delay_for_targeted != undefined  ? ' (with targeted loop)' : '')
                             + '.'
 
@@ -1172,7 +1174,7 @@ Item {
                                             text: {
                                                 var rval = ''
                                                 if (root.delay_for_targeted != undefined)  { rval += '>' }
-                                                if (registries.state_registry.solo_active) { rval += 'S' }
+                                                if (AppRegistries.state_registry.solo_active) { rval += 'S' }
                                                 return rval
                                             }
                                             font.pixelSize: size / 2.0
@@ -1184,8 +1186,8 @@ Item {
                                         ToolTip.timeout: 5000
                                         ToolTip.visible: hovered
                                         ToolTip.text: "Play dry recording through live effects" +
-                                            (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
-                                            (registries.state_registry.solo_active ? ' (solo in track)' : '') +
+                                            (AppRegistries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                                            (AppRegistries.state_registry.solo_active ? ' (solo in track)' : '') +
                                             (root.delay_for_targeted != undefined  ? ' (with targeted loop)' : '') +
                                             + '.'
                                     }
@@ -1212,7 +1214,7 @@ Item {
                                 var rval = root.record_kind == 'with_targeted' ? '><' :
                                         root.record_kind == 'infinite' ? '' :
                                         root.record_kind.toString() // integer
-                                if (registries.state_registry.solo_active) { rval += 'S' }
+                                if (AppRegistries.state_registry.solo_active) { rval += 'S' }
                                 return rval
                             }
                             font.pixelSize: size / 2.0
@@ -1230,7 +1232,7 @@ Item {
                                     size: record_icon.size
                                     name: 'record'
                                     color: 'green'
-                                    visible: registries.state_registry.play_after_record_active
+                                    visible: AppRegistries.state_registry.play_after_record_active
                                 }
                             }
                         }
@@ -1241,10 +1243,10 @@ Item {
                         ToolTip.timeout: 5000
                         ToolTip.visible: hovered
                         ToolTip.text: "Record" +
-                                            (registries.state_registry.play_after_record_active ? ', then play' : ', then stop') +
+                                            (AppRegistries.state_registry.play_after_record_active ? ', then play' : ', then stop') +
                                             (root.record_kind == 'infinite' ? ' (until stopped)' : (root.record_kind == 'with_targeted' ? ' (with targeted loop)' : ` (${root.record_kind} cycles)`)) +
-                                            (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
-                                            (registries.state_registry.solo_active ? ' (solo in track)' : '')
+                                            (AppRegistries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                                            (AppRegistries.state_registry.solo_active ? ' (solo in track)' : '')
                                             + '.'
                         Connections {
                             target: statusrect
@@ -1325,7 +1327,7 @@ Item {
                                                     size: record_icon.size
                                                     name: 'arrow-collapse-down'
                                                     color: 'green'
-                                                    visible: registries.state_registry.play_after_record_active
+                                                    visible: AppRegistries.state_registry.play_after_record_active
                                                 }
                                             }
                                         }
@@ -1336,8 +1338,8 @@ Item {
                                         ToolTip.timeout: 5000
                                         ToolTip.visible: hovered
                                         ToolTip.text: "Grab always-on recording" +
-                                            (registries.state_registry.play_after_record_active ? ' and play immediately' : '') +
-                                            ((registries.state_registry.solo_active && registries.state_registry.play_after_record_active) ? ' (solo in track)' : '')
+                                            (AppRegistries.state_registry.play_after_record_active ? ' and play immediately' : '') +
+                                            ((AppRegistries.state_registry.solo_active && AppRegistries.state_registry.play_after_record_active) ? ' (solo in track)' : '')
                                             + '.'
                                     }
 
@@ -1764,7 +1766,7 @@ Item {
                text: "Details"
                onClicked: () => {
                   if(root.main_details_pane) { root.main_details_pane.add_user_item(root.name, root) }
-                  registries.state_registry.set_details_open(true)
+                  AppRegistries.state_registry.set_details_open(true)
                }
             }
             ShoopMenuItem {
@@ -1831,7 +1833,7 @@ Item {
                         .filter(c => c.recording_fx_chain_state_id != undefined)
                         .map(c => c.recording_fx_chain_state_id);
                     return channel_states.length > 0 ?
-                        registries.fx_chain_states_registry.maybe_get(channel_states[0], undefined)
+                        AppRegistries.fx_chain_states_registry.maybe_get(channel_states[0], undefined)
                         : undefined
                 }
 
@@ -1929,7 +1931,7 @@ Item {
                         })
                         return task;
                     }
-                    registries.state_registry.set_active_io_task_fn(create_task)
+                    AppRegistries.state_registry.set_active_io_task_fn(create_task)
                 } catch (e) {
                     throw e;
                 }
@@ -2052,7 +2054,7 @@ Item {
                         })
                         return task
                     }
-                    registries.state_registry.set_active_io_task_fn(create_task)
+                    AppRegistries.state_registry.set_active_io_task_fn(create_task)
                 } catch(e) {
                     throw e
                 }

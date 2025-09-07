@@ -2,6 +2,7 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import ShoopDaLoop.Rust
 import 'js/mode_helpers.js' as ModeHelpers
+import 'AppRegistries.qml' as AppRegistries
 
 // Wrap a Loop that may be dynamically loaded in a just-in-time way.
 Loop {
@@ -115,12 +116,12 @@ Loop {
                     if (c.mode == ShoopRustConstants.ChannelMode.Wet && maybe_fx_chain) {
                         if (!fx_chain_desc_id) {
                             root.logger.debug(`Caching FX chain state for wet channel ${c.obj_id}`)
-                            fx_chain_desc_id = registries.fx_chain_states_registry.generate_id('fx_chain_state')
+                            fx_chain_desc_id = AppRegistries.fx_chain_states_registry.generate_id('fx_chain_state')
                             var fx_chain_desc = maybe_fx_chain.actual_session_descriptor()
                             delete fx_chain_desc.ports // Port descriptions not needed for state caching, this is track-dependent
                             fx_chain_desc.title = ""   // No title indicates elsewhere that this is not a snapshot that the user can directly see in the list.
                             fx_chain_desc.id = fx_chain_desc_id
-                            registries.fx_chain_states_registry.register (fx_chain_desc_id, fx_chain_desc)
+                            AppRegistries.fx_chain_states_registry.register (fx_chain_desc_id, fx_chain_desc)
                         }
                         c.recording_fx_chain_state_id = fx_chain_desc_id
                     }

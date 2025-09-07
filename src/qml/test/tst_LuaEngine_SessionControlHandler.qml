@@ -4,6 +4,7 @@ import './testDeepEqual.js' as TestDeepEqual
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
+import "AppRegistries.qml" as AppRegistries
 import ShoopDaLoop.Rust
 
 ShoopTestFile {
@@ -39,7 +40,7 @@ ShoopTestFile {
             session: session
             additional_when_condition: (
                 // lua_engine.ready &&
-                registries.state_registry && loop_at(0,0) && loop_at(0,1) && loop_at(1,0) && loop_at(1,1)
+                AppRegistries.state_registry && loop_at(0,0) && loop_at(0,1) && loop_at(1,0) && loop_at(1,1)
             )
 
             function loop_at(track, idx) {
@@ -89,7 +90,7 @@ ShoopTestFile {
                 verify_loop_cleared(loop_at(1,0))
                 verify_loop_cleared(loop_at(1,1))
                 testcase.wait_updated(session.backend)
-                registries.state_registry.reset()
+                AppRegistries.state_registry.reset()
             }
 
             function do_eval(code) {
@@ -708,13 +709,13 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    registries.state_registry.set_apply_n_cycles(0)
+                    AppRegistries.state_registry.set_apply_n_cycles(0)
 
                     verify_eq_lua('shoop_control.get_apply_n_cycles()', '0')
 
                     do_execute('shoop_control.set_apply_n_cycles(4)')
                     testcase.wait_updated(session.backend)
-                    verify_eq(registries.state_registry.apply_n_cycles, 4)
+                    verify_eq(AppRegistries.state_registry.apply_n_cycles, 4)
                     verify_eq_lua('shoop_control.get_apply_n_cycles()', '4')
                 },
 
@@ -722,13 +723,13 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    registries.state_registry.set_solo_active(false)
+                    AppRegistries.state_registry.set_solo_active(false)
 
                     verify_eq_lua('shoop_control.get_solo()', 'false')
 
                     do_execute('shoop_control.set_solo(true)')
                     testcase.wait_updated(session.backend)
-                    verify_eq(registries.state_registry.solo_active, true)
+                    verify_eq(AppRegistries.state_registry.solo_active, true)
                     verify_eq_lua('shoop_control.get_solo()', 'true')
                 },
 
@@ -736,13 +737,13 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    registries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_sync_active(false)
 
                     verify_eq_lua('shoop_control.get_sync_active()', 'false')
                     
                     do_execute('shoop_control.set_sync_active(true)')
                     testcase.wait_updated(session.backend)
-                    verify_eq(registries.state_registry.sync_active, true)
+                    verify_eq(AppRegistries.state_registry.sync_active, true)
                     verify_eq_lua('shoop_control.get_sync_active()', 'true')
                 },
 
@@ -750,13 +751,13 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    registries.state_registry.set_play_after_record_active(false)
+                    AppRegistries.state_registry.set_play_after_record_active(false)
 
                     verify_eq_lua('shoop_control.get_play_after_record()', 'false')
                     
                     do_execute('shoop_control.set_play_after_record(true)')
                     testcase.wait_updated(session.backend)
-                    verify_eq(registries.state_registry.play_after_record_active, true)
+                    verify_eq(AppRegistries.state_registry.play_after_record_active, true)
                     verify_eq_lua('shoop_control.get_play_after_record()', 'true')
                 },
 
@@ -802,29 +803,29 @@ ShoopTestFile {
                         shoop_control.register_global_event_cb(callback)
                     `)
 
-                    registries.state_registry.set_sync_active(false)
-                    registries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_sync_active(true)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('most_recent_event.type', 'shoop_control.constants.GlobalEventType_GlobalControlChanged')
 
                     do_execute("most_recent_event=nil")
                     verify_eq_lua('most_recent_event', 'nil')
-                    registries.state_registry.set_play_after_record_active(false)
-                    registries.state_registry.set_play_after_record_active(true)
+                    AppRegistries.state_registry.set_play_after_record_active(false)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('most_recent_event.type', 'shoop_control.constants.GlobalEventType_GlobalControlChanged')
 
                     do_execute("most_recent_event=nil")
                     verify_eq_lua('most_recent_event', 'nil')
-                    registries.state_registry.set_solo_active(false)
-                    registries.state_registry.set_solo_active(true)
+                    AppRegistries.state_registry.set_solo_active(false)
+                    AppRegistries.state_registry.set_solo_active(true)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('most_recent_event.type', 'shoop_control.constants.GlobalEventType_GlobalControlChanged')
 
                     do_execute("most_recent_event=nil")
                     verify_eq_lua('most_recent_event', 'nil')
-                    registries.state_registry.set_apply_n_cycles(0)
-                    registries.state_registry.set_apply_n_cycles(1)
+                    AppRegistries.state_registry.set_apply_n_cycles(0)
+                    AppRegistries.state_registry.set_apply_n_cycles(1)
                     testcase.wait_updated(session.backend)
                     verify_eq_lua('most_recent_event.type', 'shoop_control.constants.GlobalEventType_GlobalControlChanged')
                 },

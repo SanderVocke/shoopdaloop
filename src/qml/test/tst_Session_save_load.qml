@@ -5,6 +5,7 @@ import ShoopDaLoop.Rust
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
+import "AppRegistries.qml" as AppRegistries
 
 ShoopTestFile {
     TestSession {
@@ -140,7 +141,7 @@ ShoopTestFile {
 
             RegistryLookup {
                 id: lookup_input_port_1
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "dt_direct_in_1"
             }
             property alias input_port_1: lookup_input_port_1.object

@@ -2,6 +2,7 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.Rust
+import "AppRegistries.qml" as AppRegistries
 
 // The track control widget displays control buttons to control the
 // (loops within a) track.
@@ -175,7 +176,7 @@ Item {
     // Registration
     RegisterInRegistry {
         id: reg_entry
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         object: root
         key: root.initial_track_descriptor.id + "_control_widget"
     }
@@ -190,22 +191,22 @@ Item {
     }
     RegistryLookups {
         id: lookup_loops
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         keys: root.initial_track_descriptor ? root.initial_track_descriptor.loops.map((l) => l.id) : []
     }
     RegistryLookups {
         id: lookup_ports
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         keys: initial_track_descriptor ? initial_track_descriptor.ports.map((p) => p.id) : []
     }
     RegistryLookups {
         id: lookup_fx_ports
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         keys: (initial_track_descriptor && initial_track_descriptor.fx_chain) ? initial_track_descriptor.fx_chain.ports.map((p) => p.id) : []
     }
     RegistryLookup {
         id: lookup_fx_chain
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         key: (initial_track_descriptor && initial_track_descriptor.fx_chain) ? initial_track_descriptor.fx_chain.id : null
     }
     LinearDbConversion {

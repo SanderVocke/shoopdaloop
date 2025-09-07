@@ -3,7 +3,7 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Dialogs 6.6
 import ShoopDaLoop.Rust
-
+import "AppRegistries.qml" as AppRegistries
 import "./js/generate_session.js" as GenerateSession
 
 Item {
@@ -76,7 +76,7 @@ Item {
         }
     }
     RegistrySelects {
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         select_fn: (obj) => obj && obj.object_schema && obj.object_schema.match(/loop.[0-9]+/)
         id: lookup_loops
         values_only: true
@@ -112,7 +112,7 @@ Item {
             [],
             [],
             [],
-            registries.fx_chain_states_registry.all_values()
+            AppRegistries.fx_chain_states_registry.all_values()
         );
     }
 
@@ -123,7 +123,7 @@ Item {
         id: validator
     }
 
-    readonly property bool doing_io : registries.state_registry.io_active
+    readonly property bool doing_io : AppRegistries.state_registry.io_active
     readonly property var backend : session_backend
     property alias control_interface: control_interface
 
@@ -196,8 +196,8 @@ Item {
             throw new Error("Failed to create temporary folder")
         }
         var session_filename = tempdir + '/session.json'
-        registries.state_registry.set_active_io_task_fn(() => {
-            registries.state_registry.set_force_io_active(true)
+        AppRegistries.state_registry.set_active_io_task_fn(() => {
+            AppRegistries.state_registry.set_force_io_active(true)
 
             var observer = create_task_observer()
 
@@ -215,7 +215,7 @@ Item {
                 } else {
                     root.logger.error("Writing session failed.")
                 }
-                registries.state_registry.set_force_io_active(false)
+                AppRegistries.state_registry.set_force_io_active(false)
             })
 
             // TODO make this step asynchronous
@@ -231,10 +231,10 @@ Item {
 
     function unload_session() {
         root.logger.debug("Unloading session")
-        registries.state_registry.clear([
+        AppRegistries.state_registry.clear([
             'sync_active'
         ])
-        registries.objects_registry.clear()
+        AppRegistries.objects_registry.clear()
         tracks_widget.unload()
         sync_loop_loader.unload()
         root.logger.debug("Session unloaded")
@@ -321,7 +321,7 @@ Item {
             root.load_current_session()
 
             let finish_fn = () => {
-                registries.state_registry.set_active_io_task_fn(() => {
+                AppRegistries.state_registry.set_active_io_task_fn(() => {
                     var observer = create_task_observer()
 
                     root.logger.debug("Queueing load tasks")
@@ -344,7 +344,7 @@ Item {
                     observer.start()
                     return observer
                 })
-                registries.state_registry.set_force_io_active(false)
+                AppRegistries.state_registry.set_force_io_active(false)
             }
 
             function connectOnce(sig, slot) {
@@ -355,7 +355,7 @@ Item {
                 sig.connect(f)
             }
 
-            registries.state_registry.set_force_io_active(true)
+            AppRegistries.state_registry.set_force_io_active(true)
             if(root.loaded) { finish_fn() }
             else {
                 connectOnce(root.loadedChanged, finish_fn)
@@ -374,21 +374,21 @@ Item {
         if (!clear && session.selected_loops) {
             root.selected_loops.forEach((l) => { selection.add(l.obj_id) })
         }
-        registries.state_registry.replace('selected_loop_ids', selection)
+        AppRegistries.state_registry.replace('selected_loop_ids', selection)
     }
 
     RegistryLookup {
         id: targeted_loop_lookup
-        registry: registries.state_registry
+        registry: AppRegistries.state_registry
         key: 'targeted_loop'
     }
     property alias targeted_loop : targeted_loop_lookup.object
     function target_loop(loop) {
-        registries.state_registry.set_targeted_loop(loop)
+        AppRegistries.state_registry.set_targeted_loop(loop)
     }
 
     RegisterInRegistry {
-        registry: registries.state_registry
+        registry: AppRegistries.state_registry
         key: 'control_interface'
         object: control_interface
     }
@@ -400,7 +400,7 @@ Item {
         RegisterInRegistry {
             object: parent
             key: 'lua_script_manager'
-            registry: registries.state_registry
+            registry: AppRegistries.state_registry
         }
     }
 
@@ -412,7 +412,7 @@ Item {
     //     MidiControlConfiguration { id: fallback }
 
     //     RegistryLookup {
-    //         registry: registries.state_registry
+    //         registry: AppRegistries.state_registry
     //         key: 'midi_control_configuration'
     //         id: lookup_midi_configuration
     //     }
@@ -492,7 +492,7 @@ Item {
 
         //     RegistryLookup {
         //         id: lookup_autoconnect
-        //         registry: registries.state_registry
+        //         registry: AppRegistries.state_registry
         //         key: 'autoconnect_input_regexes'
         //     }
 
@@ -503,7 +503,7 @@ Item {
         // }
 
         RegisterInRegistry {
-            registry: registries.state_registry
+            registry: AppRegistries.state_registry
             key: 'midi_control_port'
             object: {
                 root.logger.error("Reenable MIDI control")
@@ -599,7 +599,7 @@ Item {
         ResizeableItem {
             id: pane_area
 
-            readonly property bool open : registries.state_registry.details_open
+            readonly property bool open : AppRegistries.state_registry.details_open
             visible: open
 
             property real active_height: 200
@@ -635,7 +635,7 @@ Item {
                     }))
 
                 RegisterInRegistry {
-                    registry: registries.state_registry
+                    registry: AppRegistries.state_registry
                     key: 'main_details_pane'
                     object: pane
                 }
@@ -663,11 +663,11 @@ Item {
                 togglable: true
                 height: 26
 
-                Component.onCompleted: registries.state_registry.set_details_open(checked)
-                onCheckedChanged: registries.state_registry.set_details_open(checked)
+                Component.onCompleted: AppRegistries.state_registry.set_details_open(checked)
+                onCheckedChanged: AppRegistries.state_registry.set_details_open(checked)
                 Connections {
-                    target: registries.state_registry
-                    function onDetails_openChanged() { details_toggle.checked = registries.state_registry.details_open }
+                    target: AppRegistries.state_registry
+                    function onDetails_openChanged() { details_toggle.checked = AppRegistries.state_registry.details_open }
                 }
             }
         }

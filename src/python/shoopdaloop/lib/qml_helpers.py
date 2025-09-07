@@ -15,7 +15,6 @@ import platform
 from shoop_config import shoop_version, shoop_qml_dir
 pkg_version = shoop_version
 
-from .q_objects.Logger import Logger
 from .q_objects.DictTreeModel import DictTreeModelFactory
 
 from .logging import Logger as BareLogger
@@ -57,7 +56,6 @@ def register_qml_class(t, name):
 
 def register_shoopdaloop_qml_classes():
     # Register Python classes
-    register_qml_class(Logger, 'Logger')
     register_qml_class(DictTreeModelFactory, 'DictTreeModelFactory')
     install_qt_message_handler()
 
@@ -68,25 +66,9 @@ def create_and_populate_root_context_with_engine_addr(engine_addr):
     return create_and_populate_root_context(engine)
 
 def create_and_populate_root_context(engine):
-    def create_component(path):
-        comp = QQmlComponent(engine, QUrl.fromLocalFile(path))
-        while comp.status() == QQmlComponent.Loading:
-            time.sleep(0.05)
-        if comp.status() != QQmlComponent.Ready:
-            raise Exception('Failed to load {}: {}'.format(path, str(comp.errorString())))
-        return comp
-
-    # QML instantiations
-    registries_comp = create_component(shoop_qml_dir + '/AppRegistries.qml')
-    registries = registries_comp.create()
-
     items = {
-        'default_logger': Logger(),
         'tree_model_factory': DictTreeModelFactory(parent=engine),
-        'registries': registries,
     }
-
-    items['default_logger'].name = 'Frontend.Qml'
 
     for key, item in items.items():
         engine.rootContext().setContextProperty(key, item)

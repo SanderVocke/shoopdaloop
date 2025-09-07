@@ -4,6 +4,7 @@ import './testDeepEqual.js' as TestDeepEqual
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
+import "AppRegistries.qml" as AppRegistries
 
 ShoopTestFile {
     TestSession {
@@ -33,12 +34,12 @@ ShoopTestFile {
             }
 
             function track_widget() {
-                return registries.objects_registry.get(get_loop(0).track_obj_id)
+                return AppRegistries.objects_registry.get(get_loop(0).track_obj_id)
             }
 
             function clear() {
                 testcase.wait_updated(session.backend)
-                registries.state_registry.reset()
+                AppRegistries.state_registry.reset()
             }
 
             test_fns: ({

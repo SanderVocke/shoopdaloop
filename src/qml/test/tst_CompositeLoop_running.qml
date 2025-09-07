@@ -5,6 +5,7 @@ import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '../js/delay.js' as Delay
 import '..'
+import "AppRegistries.qml" as AppRegistries
 
 ShoopTestFile {
     TestSession {
@@ -28,7 +29,7 @@ ShoopTestFile {
 
         RegistryLookup {
             id: lookup_audio_in
-            registry: registries.objects_registry
+            registry: AppRegistries.objects_registry
             key: "track1_direct_in_1"
         }
         property alias audio_in: lookup_audio_in.object
@@ -75,8 +76,8 @@ ShoopTestFile {
                 l1().clear()
                 l2().clear()
                 c().clear()
-                registries.state_registry.set_sync_active(true)
-                registries.state_registry.set_apply_n_cycles(0)
+                AppRegistries.state_registry.set_sync_active(true)
+                AppRegistries.state_registry.set_apply_n_cycles(0)
                 testcase.wait_updated(session.backend)
                 verify_loop_cleared(s())
                 verify_loop_cleared(l0())
@@ -1235,7 +1236,7 @@ ShoopTestFile {
                     l2().create_backend_loop()
                     s().create_backend_loop()
 
-                    registries.state_registry.set_play_after_record_active(true)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
 
                     testcase.wait_updated(session.backend)
 
@@ -1302,7 +1303,7 @@ ShoopTestFile {
                     l2().create_backend_loop()
                     s().create_backend_loop()
 
-                    registries.state_registry.set_play_after_record_active(false)
+                    AppRegistries.state_registry.set_play_after_record_active(false)
 
                     testcase.wait_updated(session.backend)
 
@@ -1370,7 +1371,7 @@ ShoopTestFile {
                     run_with_marker_samples(500, [349, 499])
                     s().create_backend_loop()
 
-                    registries.state_registry.set_play_after_record_active(false)
+                    AppRegistries.state_registry.set_play_after_record_active(false)
 
                     testcase.wait_updated(session.backend)
 
@@ -1420,8 +1421,8 @@ ShoopTestFile {
                     verify_eq(s().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(s().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_play_after_record_active(false)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_play_after_record_active(false)
 
                     testcase.wait_updated(session.backend)
 
@@ -1475,8 +1476,8 @@ ShoopTestFile {
                     verify_eq(s().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(s().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_play_after_record_active(false)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_play_after_record_active(false)
 
                     testcase.wait_updated(session.backend)
 
@@ -1530,8 +1531,8 @@ ShoopTestFile {
                     verify_eq(s().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(s().position, 50)
 
-                    registries.state_registry.set_sync_active(true)
-                    registries.state_registry.set_play_after_record_active(true)
+                    AppRegistries.state_registry.set_sync_active(true)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
 
                     testcase.wait_updated(session.backend)
 
@@ -1589,8 +1590,8 @@ ShoopTestFile {
                     verify_eq(s().position, 50)
 
                     testcase.section('setup composite')
-                    registries.state_registry.set_sync_active(false)
-                    registries.state_registry.set_play_after_record_active(false)
+                    AppRegistries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_play_after_record_active(false)
 
                     testcase.wait_updated(session.backend)
 
@@ -1672,8 +1673,8 @@ ShoopTestFile {
                     verify_eq(s().mode, ShoopRustConstants.LoopMode.Playing)
                     verify_eq(s().position, 50)
 
-                    registries.state_registry.set_sync_active(false)
-                    registries.state_registry.set_play_after_record_active(true)
+                    AppRegistries.state_registry.set_sync_active(false)
+                    AppRegistries.state_registry.set_play_after_record_active(true)
 
                     testcase.wait_updated(session.backend)
 

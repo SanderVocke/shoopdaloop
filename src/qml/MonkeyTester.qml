@@ -3,6 +3,7 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import "./js/generate_session.js" as GenerateSession
 import ShoopDaLoop.Rust
+import "AppRegistries.qml" as AppRegistries
 
 Item {
     id: root
@@ -45,7 +46,7 @@ Item {
         onTriggered: root.action()
     }
 
-    property var sync_loop : registries.state_registry.sync_loop
+    property var sync_loop : AppRegistries.state_registry.sync_loop
 
     function object_values_total(obj) {
         var r = 0.0

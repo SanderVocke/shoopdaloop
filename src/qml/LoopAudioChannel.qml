@@ -2,6 +2,7 @@ import ShoopDaLoop.Rust
 import QtQuick 6.6
 
 import 'js/schema_conversions.js' as Conversions
+import 'AppRegistries.qml' as AppRegistries
 
 ShoopRustLoopChannelGui {
     id: root
@@ -49,7 +50,7 @@ ShoopRustLoopChannelGui {
             if (add_tasks_to) {
                 if (add_tasks_to) { add_tasks_to.add_task(create_task()) }
             } else {
-                registries.state_registry.set_active_io_task_fn(create_task)
+                AppRegistries.state_registry.set_active_io_task_fn(create_task)
             }
             rval['data_file'] = filename
         }
@@ -73,7 +74,7 @@ ShoopRustLoopChannelGui {
             if (add_tasks_to) {
                 add_tasks_to.add_task(create_task())
             } else {
-                registries.state_registry.set_active_io_task_fn(create_task)
+                AppRegistries.state_registry.set_active_io_task_fn(create_task)
             }
         }
     }
@@ -106,7 +107,7 @@ ShoopRustLoopChannelGui {
 
     RegistryLookups {
         id: lookup_connected_ports
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         keys: descriptor.connected_port_ids
     }
 
@@ -114,7 +115,7 @@ ShoopRustLoopChannelGui {
         id: reg_entry
         object: root
         key: root.descriptor.id
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
     }
 
     Component.onCompleted: {

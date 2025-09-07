@@ -3,6 +3,7 @@ import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import ShoopDaLoop.Rust
 import 'js/mode_helpers.js' as ModeHelpers
+import 'AppRegistries.qml' as AppRegistries
 
 Item {
     id: root
@@ -45,8 +46,8 @@ Item {
         id: rust_loop
         sync_source: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
         schedule: root.schedule
-        play_after_record: registries.state_registry.play_after_record_active
-        sync_mode_active: registries.state_registry.sync_active
+        play_after_record: AppRegistries.state_registry.play_after_record_active
+        sync_mode_active: AppRegistries.state_registry.sync_active
 
         onCycled: n => root.cycled(n)
         Component.onCompleted: root.recalculate_schedule()
@@ -100,7 +101,7 @@ Item {
                 circular = true
             }
             if (circular) { return; }
-            let loop_widget = registries.objects_registry.value_or(loop_id, undefined)
+            let loop_widget = AppRegistries.objects_registry.value_or(loop_id, undefined)
             if (loop_widget && loop_widget.maybe_composite_loop) {
                 for_each_loop_id(loop_widget.maybe_composite_loop.playlists, (lid) => {
                     if (lid == own_obj_id) {
@@ -163,7 +164,7 @@ Item {
                 var total_duration = 0
                 for (var h=0; h<elems.length; h++) {
                     let elem = elems[h]
-                    let loop_widget = registries.objects_registry.value_or(elem.loop_id, undefined)
+                    let loop_widget = AppRegistries.objects_registry.value_or(elem.loop_id, undefined)
                     if (!loop_widget) {
                         root.logger.debug("Could not find " + elem.loop_id) 
                         continue
@@ -340,12 +341,12 @@ Item {
         }
         return r
     }
-    property var all_loops: new Set(Array.from(all_loop_ids || []).map(id => registries.objects_registry.value_or(id, undefined)).filter(m => m))
+    property var all_loops: new Set(Array.from(all_loop_ids || []).map(id => AppRegistries.objects_registry.value_or(id, undefined)).filter(m => m))
     property bool all_loops_found:  all_loops.size == all_loop_ids.size
 
     // If the registry changes and we didn't find all our loops, trigger to look again
     Connections {
-        target: registries.objects_registry
+        target: AppRegistries.objects_registry
         function onContentsChanged() { if (!all_loops_found) { root.all_loop_idsChanged() } }
     }
 
@@ -355,7 +356,7 @@ Item {
 
     // If we didn't find all our loops, listen for registry changes to find them later
     Connections {
-        target: all_loops_found ? null : registries.objects_registry
+        target: all_loops_found ? null : AppRegistries.objects_registry
         function onItemAdded(id, val) { if (all_loop_ids.has(id)) { playlists_inChanged() } }
         function onItemModified(id, val) { if (all_loop_ids.has(id)) { playlists_inChanged() } }
     }
@@ -375,7 +376,7 @@ Item {
         }
     }
 
-    property var sync_loop : registries.state_registry.sync_loop
+    property var sync_loop : AppRegistries.state_registry.sync_loop
 
     function transition(mode, maybe_delay, maybe_align_to_sync_at) {
         rust_loop.transition(mode, maybe_delay, maybe_align_to_sync_at)

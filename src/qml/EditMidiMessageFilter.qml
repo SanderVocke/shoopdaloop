@@ -6,6 +6,7 @@ import QtQuick.Layouts 6.6
 import 'js/midi.js' as Midi
 import 'js/midi_control.js' as MidiControl
 import 'test/testDeepEqual.js' as TestDeepEqual
+import 'AppRegistries.qml' as AppRegistries
 
 Column {
     id: root
@@ -23,7 +24,7 @@ Column {
     // Register for MIDI events to have MIDI learn
     RegistryLookup {
         id: lookup_midi_control_port
-        registry: registries.state_registry
+        registry: AppRegistries.state_registry
         key: 'midi_control_port'
     }
     Connections {

@@ -1,5 +1,6 @@
 import ShoopDaLoop.Rust
 import QtQuick 6.6
+import 'AppRegistries.qml' as AppRegistries
 
 ShoopRustFXChainGui {
     id: root
@@ -37,7 +38,7 @@ ShoopRustFXChainGui {
 
     RegisterInRegistry {
         id: reg_entry
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         key: root.descriptor.id
         object: root
     }
