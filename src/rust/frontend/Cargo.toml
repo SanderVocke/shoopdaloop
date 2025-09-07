@@ -41,6 +41,7 @@ mlua = { workspace = true }
 itertools = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
+jsonschema = { workspace = true }
 
 [build-dependencies]
 macros = { path = "../macros" }

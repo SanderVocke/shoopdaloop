@@ -6,7 +6,7 @@ QtObject {
     property var descriptor
     property string schema
     property bool enabled: true
-    property string object_description: 'unknown'
+    property string object_description: '(unknown)'
 
     readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.SchemaCheck" }
     Component.onCompleted: maybe_check()

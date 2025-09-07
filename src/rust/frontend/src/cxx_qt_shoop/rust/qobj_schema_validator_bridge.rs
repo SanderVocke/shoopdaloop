@@ -41,14 +41,5 @@ pub mod ffi {
     }
 }
 
-pub struct SchemaValidatorRust {
-    pub validator: shoop_py_wrapped_objects::schema_validator::SchemaValidator,
-}
-
-impl Default for SchemaValidatorRust {
-    fn default() -> Self {
-        Self {
-            validator: shoop_py_wrapped_objects::schema_validator::SchemaValidator::default(),
-        }
-    }
-}
+#[derive(Default)]
+pub struct SchemaValidatorRust {}
