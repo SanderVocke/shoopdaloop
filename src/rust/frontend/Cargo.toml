@@ -42,6 +42,7 @@ itertools = { workspace = true }
 enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 jsonschema = { workspace = true }
+rodio = { workspace = true }
 
 [build-dependencies]
 macros = { path = "../macros" }

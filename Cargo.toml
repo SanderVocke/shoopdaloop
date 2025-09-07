@@ -49,6 +49,7 @@ num_enum = "0.7"
 enum-iterator = "2.1"
 prettyplease = "0.2"
 jsonschema = "0.33"
+rodio = "0.21"
 
 # [patch.crates-io]F
 # cxx-qt =  { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt" }

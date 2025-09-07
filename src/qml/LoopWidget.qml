@@ -1716,6 +1716,7 @@ Item {
 
             audio_enabled: root.descriptor_has_audio
             midi_enabled: root.descriptor_has_midi
+            sample_rate: root.backend.get_sample_rate()
 
             onAcceptedClickTrack: (kind, filename) => {
                 if (kind == 'audio') {

@@ -16,6 +16,7 @@ Dialog {
 
     property bool audio_enabled: true
     property bool midi_enabled: true
+    property int sample_rate: 48000
 
     property alias primary_click: primary_click_combo.currentText
     property alias secondary_click: secondary_click_combo.currentText
@@ -45,14 +46,19 @@ Dialog {
     property int click_note : parseInt(click_note_text)
     property real note_length : parseFloat(note_length_text)
 
+    function chosen_clicks() {
+        var clicks = [primary_click]
+        if (secondary_click != 'None') {
+            for (var i = 0; i < parseInt(num_secondary_per_primary_text); i++) {
+                clicks.push(secondary_click)
+            }
+        }
+        return clicks
+    }
+
     function generate() {
         if (kind_combo.currentValue == 'Audio') {
-            var clicks = [primary_click]
-            if (secondary_click != 'None') {
-                for (var i = 0; i < parseInt(num_secondary_per_primary_text); i++) {
-                    clicks.push(secondary_click)
-                }
-            }
+            var clicks = chosen_clicks()
 
             return {
                 'filename': ShoopRustClickTrackGenerator.generate_audio(clicks, bpm, n_beats, alternate_delay_percent),
@@ -206,7 +212,7 @@ Dialog {
             onClicked: () => {
                 if (root.loop) {
                     root.loop.create_backend_loop()
-                    var srate = root.loop.maybe_loaded_loop.backend.get_sample_rate()
+                    var srate = root.sample_rate
                     var _bpm = n_beats / (root.loop.length / srate / 60.0)
                     bpm_field.text = _bpm.toFixed(2)
                 }
@@ -217,13 +223,13 @@ Dialog {
             tooltip: "Listen to a preview of the chosen click track."
             text: "Preview"
             enabled: kind_combo.currentValue == 'Audio'
-            onClicked: () => {
-                           var out = generate()
-                           if (out.kind != 'audio') {
-                                throw new Error("Preview only supported for audio click tracks")
-                           }
-                           ShoopRustClickTrackGenerator.preview(out.filename)
-                       }
+            onClicked: () => ShoopRustClickTrackGenerator.preview_audio(
+                chosen_clicks(),
+                root.bpm,
+                root.n_beats,
+                root.alternate_delay_percent,
+                root.sample_rate
+                )
         }
     }
 
