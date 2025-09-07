@@ -9,6 +9,8 @@ Dialog {
     modal: true
     standardButtons: Dialog.Ok | Dialog.Cancel
 
+    property var logger : ShoopRustLogger { name: "Frontend.Qml.ClickTrackDialog" }
+
     width: 400
     height: 450
 
@@ -17,6 +19,10 @@ Dialog {
     property bool audio_enabled: true
     property bool midi_enabled: true
     property int sample_rate: 48000
+
+    property var target_loop_widget: null
+
+    signal prepareToReceiveClickTrack()
 
     property alias primary_click: primary_click_combo.currentText
     property alias secondary_click: secondary_click_combo.currentText
@@ -55,29 +61,6 @@ Dialog {
         }
         return clicks
     }
-
-    function generate() {
-        if (kind_combo.currentValue == 'Audio') {
-            var clicks = chosen_clicks()
-
-            return {
-                'filename': ShoopRustClickTrackGenerator.generate_audio(clicks, bpm, n_beats, alternate_delay_percent),
-                'kind': 'audio'
-            }
-        } else if (kind_combo.currentValue == 'Midi') {
-            return {
-                'filename': ShoopRustClickTrackGenerator.generate_midi(
-                        [click_note],
-                        [0],
-                        [127],
-                        note_length, bpm, n_beats, alternate_delay_percent
-                    ),
-                'kind': 'midi'
-            }
-        }
-    }
-
-    signal acceptedClickTrack(kind: string, filename: string)
 
     Grid {
         columns: 2
@@ -234,7 +217,32 @@ Dialog {
     }
 
     onAccepted: () => {
-        var result = generate()
-        acceptedClickTrack(result.kind, result.filename)
+        if (!target_loop_widget) {
+            root.logger.error("cannot create click track - no target loop set")
+            return
+        }
+        root.prepareToReceiveClickTrack()
+        if (kind_combo.currentValue == "Audio") {
+            let channels = target_loop_widget.audio_channels
+
+            if (channels.length == 0) {
+                root.logger.error("cannot create click track - no backend loop on target loop widget")
+                return
+            }
+
+            let length = ShoopRustClickTrackGenerator.generate_audio_into_channels(
+                chosen_clicks(),
+                root.bpm,
+                root.n_beats,
+                root.alternate_delay_percent,
+                root.sample_rate,
+                channels
+            )
+
+            target_loop_widget.queue_set_length(length)
+        } else {
+            root.logger.error("cannot create click track - MIDI unimplemented")
+            return
+        }
     }
 }

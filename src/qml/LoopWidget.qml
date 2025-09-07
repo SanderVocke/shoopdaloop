@@ -1714,23 +1714,14 @@ Item {
             x: (parent.width-width) / 2
             y: (parent.height-height) / 2
 
+            target_loop_widget: root
+
             audio_enabled: root.descriptor_has_audio
             midi_enabled: root.descriptor_has_midi
             sample_rate: root.backend.get_sample_rate()
 
-            onAcceptedClickTrack: (kind, filename) => {
-                if (kind == 'audio') {
-                    loadoptionsdialog.filename = filename
-                    close()
-                    root.create_backend_loop()
-                    loadoptionsdialog.update()
-                    loadoptionsdialog.open()
-                } else if (kind == 'midi') {
-                    midiloadoptionsdialog.filename = filename
-                    close()
-                    root.create_backend_loop()
-                    midiloadoptionsdialog.open()
-                }
+            onPrepareToReceiveClickTrack: () => {
+                root.create_backend_loop()
             }
         }
 

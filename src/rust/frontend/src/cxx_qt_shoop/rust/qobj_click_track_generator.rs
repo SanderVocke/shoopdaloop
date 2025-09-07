@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap},
     path::PathBuf,
 };
 
@@ -10,6 +10,9 @@ use backend_bindings::{MidiEvent, MultichannelAudio};
 use cxx_qt_lib::QList;
 
 use common::logging::macros::*;
+use cxx_qt_lib_shoop::{
+    connection_types, invokable::invoke, qvariant_helpers::qvariant_to_qobject_ptr,
+};
 use sndfile::SndFileIO;
 shoop_log_unit!("Frontend.ClickTrackGenerator");
 
@@ -183,9 +186,87 @@ impl ClickTrackGenerator {
         alt_click_delay_percent: i32,
         sample_rate: usize,
     ) -> QList_f32 {
-        todo!();
-        // self.generator
-        //     .generate_audio(click_names, bpm, n_beats, alt_click_delay_percent)
+        match || -> Result<QList_f32, anyhow::Error> {
+            let clicks: Vec<String> = click_names.iter().map(|q| q.to_string()).collect();
+            let wave = generate_click_track_audio(
+                &clicks,
+                bpm as f64,
+                n_beats as usize,
+                alt_click_delay_percent as f64,
+                sample_rate as usize,
+            )?;
+
+            let mut list: QList_f32 = QList::default();
+            list.reserve(wave.len() as isize);
+            for v in wave.iter() {
+                list.append(*v);
+            }
+
+            Ok(list)
+        }() {
+            Ok(list) => list,
+            Err(e) => {
+                error!("Failed to preview click track: {e}");
+                QList::default()
+            }
+        }
+    }
+
+    pub fn generate_audio_into_channels(
+        self: &ClickTrackGenerator,
+        click_names: QList_QString,
+        bpm: i32,
+        n_beats: i32,
+        alt_click_delay_percent: i32,
+        sample_rate: usize,
+        channels: QList_QVariant,
+    ) -> i32 {
+        match || -> Result<i32, anyhow::Error> {
+            let data = self.generate_audio(
+                click_names,
+                bpm,
+                n_beats,
+                alt_click_delay_percent,
+                sample_rate,
+            );
+
+            for channel in channels.iter() {
+                let channel = unsafe { qvariant_to_qobject_ptr(channel)? };
+                if channel.is_null() {
+                    return Err(anyhow::anyhow!("Null channel"));
+                }
+                unsafe {
+                    invoke::<_, (), _>(
+                        &mut *channel,
+                        "load_audio_data(QList<float>)",
+                        connection_types::DIRECT_CONNECTION,
+                        &(data),
+                    )?;
+                    invoke::<_, (), _>(
+                        &mut *channel,
+                        "push_start_offset(::std::int32_t)",
+                        connection_types::DIRECT_CONNECTION,
+                        &(0),
+                    )?;
+                    invoke::<_, (), _>(
+                        &mut *channel,
+                        "push_n_preplay_samples(::std::int32_t)",
+                        connection_types::DIRECT_CONNECTION,
+                        &(0),
+                    )?;
+                }
+            }
+
+            info!("Loaded click track into {} loop channels.", channels.len());
+
+            Ok(data.len() as i32)
+        }() {
+            Ok(l) => l,
+            Err(e) => {
+                error!("Failed to generate click track into channel(s): {e}");
+                0
+            }
+        }
     }
 
     pub fn generate_midi(
