@@ -34,6 +34,7 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/qobj_loop_gui_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_loop_channel_backend_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_loop_channel_gui_bridge.rs")
+        .file("src/cxx_qt_shoop/rust/qobj_logger_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_lua_engine_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_midi_control_port_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_os_utils_bridge.rs")

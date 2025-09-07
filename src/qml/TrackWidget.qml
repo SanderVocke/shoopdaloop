@@ -2,7 +2,6 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Window 6.6
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 import "./js/generate_session.js" as GenerateSession
 
@@ -25,7 +24,7 @@ Item {
     }
 
     property var initial_descriptor : null
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TrackWidget" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.TrackWidget" }
 
     property int track_idx: -1
 

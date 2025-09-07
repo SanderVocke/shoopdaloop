@@ -2,7 +2,6 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import Qt.labs.platform as LabsPlatform
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 
 import 'js/qml_url_to_filename.js' as UrlToFilename
@@ -22,7 +21,7 @@ Item {
     property alias play_after_record_active : play_after_record_active_button.play_after_record_active
     property var backend : null
 
-    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.AppControls" }
+    property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.AppControls" }
 
     onSync_activeChanged: {
         logger.debug("Sync active changed to " + sync_active)

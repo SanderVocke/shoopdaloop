@@ -2,7 +2,6 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Dialogs 6.6
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 
 import "./js/generate_session.js" as GenerateSession
@@ -11,7 +10,7 @@ Item {
     id: root
     objectName: 'session'
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Session" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.Session" }
 
     // The descriptor is an object matching the ShoopDaLoop session JSON
     // schema. The Session object will manage an actual session (consisting)

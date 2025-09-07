@@ -1,12 +1,11 @@
 import QtQuick 6.6
-import ShoopDaLoop.PythonLogger
 
 Item {
     id: root
 
     property bool when: true
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LuaScript" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.LuaScript" }
 
     // Inputs
     property var lua_engine: null

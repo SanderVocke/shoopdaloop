@@ -1,4 +1,3 @@
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 import QtQuick 6.6
 
@@ -11,7 +10,7 @@ ShoopRustFXChainGui {
 
     RequireBackend {}
 
-    readonly property var logger : PythonLogger { name: "Frontend.Qml.FXChain" }
+    readonly property var logger : ShoopRustLogger { name: "Frontend.Qml.FXChain" }
 
     property var descriptor : null
 

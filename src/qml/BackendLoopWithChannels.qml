@@ -1,6 +1,5 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 import 'js/mode_helpers.js' as ModeHelpers
 
@@ -12,7 +11,7 @@ Loop {
     readonly property var loop : root
     readonly property var maybe_backend_loop: root
 
-    readonly property PythonLogger logger : PythonLogger { name:"Frontend.Qml.BackendLoopWithChannels" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name:"Frontend.Qml.BackendLoopWithChannels" }
 
     readonly property var audio_channel_descriptors: (initial_descriptor && initial_descriptor.channels) ? initial_descriptor.channels.filter(c => c.type == 'audio') : []
     readonly property var midi_channel_descriptors: (initial_descriptor && initial_descriptor.channels) ? initial_descriptor.channels.filter(c => c.type == 'midi') : []

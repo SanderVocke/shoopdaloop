@@ -2,7 +2,6 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Dialogs 6.6
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 
 import 'js/mode_helpers.js' as ModeHelpers
@@ -31,9 +30,9 @@ Item {
         logger.debug(`Loop @ (${track_idx},${idx_in_track})`)
     }
 
-    // property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LoopWidget" }
+    // property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.LoopWidget" }
     property alias logger: logger
-    PythonLogger {
+    ShoopRustLogger {
         id: logger
         name: "Frontend.Qml.LoopWidget"
     }

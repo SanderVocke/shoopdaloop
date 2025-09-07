@@ -1,10 +1,9 @@
 import QtQuick 6.6
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 
 ShoopRustSessionControlHandler {
     id: root
-    property var logger : PythonLogger { name: "Frontend.Qml.SessionControlHandler" }
+    property var logger : ShoopRustLogger { name: "Frontend.Qml.SessionControlHandler" }
 
     loop_widget_references: session.loops
     track_control_widget_references : session.tracks.map(t => t.control_widget)

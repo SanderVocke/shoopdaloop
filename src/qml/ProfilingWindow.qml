@@ -1,7 +1,6 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonLogger
 
 // The click track dialog allows the user to interactively configure, preview
 // and select a generated click track clip.
@@ -14,7 +13,7 @@ ShoopApplicationWindow {
 
     property int cycle_us : 0
     property var backend : null
-    property PythonLogger logger : PythonLogger { name: 'Frontend.ProfilingDialog' }
+    property ShoopRustLogger logger : ShoopRustLogger { name: 'Frontend.ProfilingDialog' }
     property var profiling_data : null
     property var profiling_tree_model : {
         if (profiling_data) {

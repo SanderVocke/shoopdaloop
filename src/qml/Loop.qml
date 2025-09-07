@@ -1,4 +1,3 @@
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 import QtQuick 6.6
 
@@ -8,9 +7,9 @@ ShoopRustLoopGui {
 
     RequireBackend {}
 
-    readonly property PythonLogger logger: PythonLogger {
+    readonly property ShoopRustLogger logger: ShoopRustLogger {
         name: "Frontend.Qml.Loop"
-        instanceIdentifier: root.instance_identifier
+        instance_identifier: root.instance_identifier
     }
     instance_identifier: obj_id
 

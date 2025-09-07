@@ -1,14 +1,13 @@
 import ShoopDaLoop.Rust
-import ShoopDaLoop.PythonLogger
 import QtQuick 6.6
 
 ShoopRustPortGui {
     id: root
     property var descriptor : null
     property bool loaded : initialized
-    property var logger : PythonLogger {
+    property var logger : ShoopRustLogger {
         name: "Frontend.Qml.AudioPort"
-        instanceIdentifier: root.obj_id
+        instance_identifier: root.obj_id
     }
 
     RequireBackend {}

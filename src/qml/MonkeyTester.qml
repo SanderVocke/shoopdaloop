@@ -1,7 +1,6 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonLogger
 import "./js/generate_session.js" as GenerateSession
 import ShoopDaLoop.Rust
 
@@ -35,7 +34,7 @@ Item {
     property var loop_action_distribution: default_loop_action_distribution
     property real interval: 0.3
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.MonkeyTester" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.MonkeyTester" }
 
     property bool running: false
 

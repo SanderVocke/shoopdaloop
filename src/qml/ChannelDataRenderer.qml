@@ -1,7 +1,6 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonLogger
 
 import 'js/mode_helpers.js' as ModeHelpers
 
@@ -17,7 +16,7 @@ Item {
     property real major_grid_lines_interval
     property real minor_grid_lines_interval
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.ChannelDataRenderer" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.ChannelDataRenderer" }
 
     property var played_back_sample : channel ? channel.played_back_sample : 0
     property int n_preplay_samples : channel ? channel.n_preplay_samples : 0

@@ -2,7 +2,6 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Layouts 6.6
-import ShoopDaLoop.PythonLogger
 
 import 'js/midi.js' as Midi
 import 'js/midi_control.js' as MidiControl
@@ -15,7 +14,7 @@ Column {
     property var filters: create_default_filters(MidiControl.UiMessageFilterKind.NoteOn)
     property var filters_descriptor: MidiControl.parse_midi_filters(filters)
 
-    property PythonLogger logger: PythonLogger { name: 'Frontend.Qml.EditMidiMessageFilter'}
+    property ShoopRustLogger logger: ShoopRustLogger { name: 'Frontend.Qml.EditMidiMessageFilter'}
 
     property var maybe_suggested_filters: null
     property var maybe_suggested_filters_description: maybe_suggested_filters !== null ?

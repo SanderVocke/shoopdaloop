@@ -1,6 +1,5 @@
 import ShoopDaLoop.Rust
 import QtQuick 6.6
-import ShoopDaLoop.PythonLogger
 
 import 'js/schema_conversions.js' as Conversions
 
@@ -20,7 +19,7 @@ ShoopRustLoopChannelGui {
         schema: root.object_schema
     }
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LoopAudioChannel" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.LoopAudioChannel" }
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var rval = {

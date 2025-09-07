@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import ShoopDaLoop.PythonLogger
 
 import 'js/midi.js' as Midi
 import 'js/midi_control.js' as Js
@@ -104,7 +103,7 @@ shoop_format = require('shoop_format')
         }
     }
 
-    readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.MidiControl" }
+    readonly property ShoopRustLogger logger: ShoopRustLogger { name: "Frontend.Qml.MidiControl" }
 
     // Handle a MIDI message received and execute any actions that match.
     function handle_midi(msg, control_port) {

@@ -1,6 +1,5 @@
 import QtQuick 6.6
 
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 
 import './testDeepEqual.js' as TestDeepEqual
@@ -10,7 +9,7 @@ import '..'
 Item {
     id: root
     property string filename : 'UnknownTestFile'
-    property var logger : PythonLogger { name: `Frontend.Qml.ShoopTestCase` }
+    property var logger : ShoopRustLogger { name: `Frontend.Qml.ShoopTestCase` }
 
     property bool print_error_traces: ShoopRustOSUtils.get_env_var("QMLTEST_NO_ERROR_TRACES") == null
 

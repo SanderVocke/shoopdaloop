@@ -1,12 +1,11 @@
 import QtQuick 6.6
-import ShoopDaLoop.PythonLogger
 
 Item {
     id: root
     property var control_interface: null
     property var active_scripts: ({})
 
-    property PythonLogger logger: PythonLogger { name: "Frontend.Qml.LuaScriptManager" }
+    property ShoopRustLogger logger: ShoopRustLogger { name: "Frontend.Qml.LuaScriptManager" }
 
     signal changed()
 

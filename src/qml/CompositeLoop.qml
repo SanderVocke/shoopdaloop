@@ -1,7 +1,6 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 import 'js/mode_helpers.js' as ModeHelpers
 
@@ -124,9 +123,9 @@ Item {
     // { delay: int, loop_id: str, start_iteration: int, end_iteration: int, loop: Loop }
     property var scheduled_playlists: []
 
-    readonly property PythonLogger logger: PythonLogger {
+    readonly property ShoopRustLogger logger: ShoopRustLogger {
         name: "Frontend.Qml.CompositeLoop"
-        instanceIdentifier: obj_id
+        instance_identifier: obj_id
     }
 
     signal cycled(int cycle_nr)

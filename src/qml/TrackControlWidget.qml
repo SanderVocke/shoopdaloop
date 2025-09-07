@@ -1,7 +1,6 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 
 // The track control widget displays control buttons to control the
@@ -57,7 +56,7 @@ Item {
     }
 
     // Readonlies
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TrackControlWidget" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.TrackControlWidget" }
     readonly property bool in_is_stereo: audio_in_ports.length == 2
     readonly property bool out_is_stereo: audio_out_ports.length == 2
     readonly property var initial_output_gain_and_balance: {

@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 
 Item {
@@ -40,7 +39,7 @@ Item {
 
     Component.onCompleted: trigger_signals()
 
-    property PythonLogger logger: PythonLogger { name: "Frontend.Qml.TrackControlLogic" }
+    property ShoopRustLogger logger: ShoopRustLogger { name: "Frontend.Qml.TrackControlLogic" }
 
     onMonitorChanged: logger.debug("monitor: " + monitor)
     onMute_drywet_input_passthroughChanged: logger.debug("mute drywet in passthrough: " + mute_drywet_input_passthrough)

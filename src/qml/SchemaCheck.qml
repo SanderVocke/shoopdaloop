@@ -1,5 +1,4 @@
 import QtQuick 6.6
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 
 QtObject {
@@ -9,7 +8,7 @@ QtObject {
     property bool enabled: true
     property string object_description: 'unknown'
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.SchemaCheck" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.SchemaCheck" }
     Component.onCompleted: maybe_check()
     onEnabledChanged: maybe_check()
     

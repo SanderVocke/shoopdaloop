@@ -1,13 +1,12 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
-import ShoopDaLoop.PythonLogger
 
 Item {
     property var registry
     property string key
     property var object : null
 
-    property PythonLogger logger: PythonLogger { name: "Frontend.Qml.RegistryLookup" }
+    property ShoopRustLogger logger: ShoopRustLogger { name: "Frontend.Qml.RegistryLookup" }
 
     function update() {
         object = (registry && key.length > 0 && registry.has(key)) ?

@@ -33,6 +33,8 @@ pub mod qobj_global_utils;
 pub mod qobj_global_utils_bridge;
 pub mod qobj_key_modifiers;
 pub mod qobj_key_modifiers_bridge;
+pub mod qobj_logger;
+pub mod qobj_logger_bridge;
 pub mod qobj_loop_backend;
 pub mod qobj_loop_backend_bridge;
 pub mod qobj_loop_channel_backend;

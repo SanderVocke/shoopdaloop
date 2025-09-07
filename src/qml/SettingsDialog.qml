@@ -5,7 +5,6 @@ import QtQuick.Controls.Material 6.6
 import Qt.labs.qmlmodels 1.0
 import QtQuick.Dialogs 6.6
 
-import ShoopDaLoop.PythonLogger
 
 import 'js/qml_url_to_filename.js' as UrlToFilename
 
@@ -16,7 +15,7 @@ Dialog {
     standardButtons: Dialog.Save | Dialog.Close
     property bool io_enabled: false
 
-    readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.SettingsDialog" }
+    readonly property ShoopRustLogger logger: ShoopRustLogger { name: "Frontend.Qml.SettingsDialog" }
 
     onAccepted: all_settings.save()
 
@@ -63,7 +62,7 @@ Dialog {
         schema_name: "settings"
         current_version: 1
 
-        readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.AllSettings" }
+        readonly property ShoopRustLogger logger: ShoopRustLogger { name: "Frontend.Qml.AllSettings" }
 
         function save() {
             if (!io_enabled) return
