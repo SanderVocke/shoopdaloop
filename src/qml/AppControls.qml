@@ -175,15 +175,15 @@ Item {
                 }
             }
 
-            Item {
-            Component.onCompleted: console.log("ProfilingWindow HACK")
-               id: profilingwindow
-            }
+            // Item {
+            // Component.onCompleted: console.log("ProfilingWindow HACK")
+            //    id: profilingwindow
+            // }
 
-            //  ProfilingWindow {
-            //      id: profilingwindow
-            //      backend: root.backend
-            //  }
+            ProfilingWindow {
+                id: profilingwindow
+                backend: root.backend
+            }
 
             MonitorWindow {
                 id: monitorwindow

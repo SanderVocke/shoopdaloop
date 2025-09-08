@@ -16,7 +16,6 @@ use frontend::cxx_qt_shoop::qobj_qmlengine::{
 use frontend::cxx_qt_shoop::test::qobj_test_file_runner::TestFileRunner;
 use glob::glob;
 use once_cell::sync::OnceCell;
-use pyo3::prelude::*;
 use std::env;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -267,13 +266,6 @@ fn app_main(cli_args: &CliArgs, config: ShoopConfig) -> Result<i32, anyhow::Erro
 }
 
 fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
-    // Set up PYTHONPATH.
-    env::set_var(
-        "PYTHONPATH",
-        &config.pythonpaths.join(common::util::PATH_LIST_SEPARATOR),
-    );
-    env::set_var("PYTHONHOME", &config.pythonhome);
-
     let qt_plugins_path = &config.qt_plugins_dir;
     if !qt_plugins_path.is_empty() {
         env::set_var("QT_PLUGIN_PATH", qt_plugins_path);
@@ -284,8 +276,6 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
     let qml_dirs_string = qml_dirs.join(common::util::PATH_LIST_SEPARATOR);
     env::set_var("SHOOP_QML_PATHS", &qml_dirs_string);
 
-    debug!("PYTHONPATH={:?}", env::var("PYTHONPATH"));
-    debug!("PYTHONHOME={:?}", env::var("PYTHONHOME"));
     debug!("SHOOP_QML_PATHS={:?}", env::var("SHOOP_QML_PATHS"));
     debug!("QT_PLUGIN_PATH={:?}", env::var("QT_PLUGIN_PATH"));
 
@@ -359,35 +349,6 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
         println!("{version}");
         return Ok(0);
     }
-
-    // Initialize the Python interpreter
-    Python::with_gil(|py| -> PyResult<()> {
-        let sys = py.import("sys")?;
-        let os = py.import("os")?;
-
-        // Explicitly add DLL search paths for extension modules
-        if cfg!(target_os = "windows") {
-            for path in &config.dynlibpaths {
-                debug!("Add DLL directory: {}", path);
-                os.getattr("add_dll_directory")?.call1((path.as_str(),))?;
-            }
-        }
-
-        // Expose Rust functionality to Python modules
-        {
-            let py_config = crate::py_config::create_py_config_module(&config, py).unwrap();
-            sys.getattr("modules")?
-                .set_item("shoop_config", py_config)?;
-        }
-        {
-            let shoop_py_backend_module = shoop_py_backend::create_py_module(py).unwrap();
-            sys.getattr("modules")?
-                .set_item("shoop_py_backend", shoop_py_backend_module)?;
-        }
-
-        Ok(())
-    })
-    .map_err(|e| anyhow::anyhow!("Failed to initialize Python environment: {e}"))?;
 
     app_main(&cli_args, config)
 }

@@ -86,14 +86,11 @@ pub mod ffi {
 }
 
 pub struct ClickTrackGeneratorRust {
-    pub generator: shoop_py_wrapped_objects::click_track_generator::ClickTrackGenerator,
 }
 
 impl Default for ClickTrackGeneratorRust {
     fn default() -> Self {
         Self {
-            generator:
-                shoop_py_wrapped_objects::click_track_generator::ClickTrackGenerator::default(),
         }
     }
 }

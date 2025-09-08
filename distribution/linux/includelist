@@ -82,7 +82,6 @@
 */libpq.so*
 */libpyside6*.so*
 */libpyside6qfeMorphology.so*
-*/libpython3.*
 */libQt6*.so*
 */libreadline.so*
 */libresolv.so*

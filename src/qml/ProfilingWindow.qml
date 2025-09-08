@@ -15,40 +15,48 @@ ShoopApplicationWindow {
     property var backend : null
     property ShoopRustLogger logger : ShoopRustLogger { name: 'Frontend.ProfilingDialog' }
     property var profiling_data : null
-    property var profiling_tree_model : {
-        if (profiling_data) {
-            // Round any floating-point values to integers
-            // and provide data as percent of process cycle
-            var _data = {}
+    property var profiling_tree_model : dictmodel
 
-            var bufsize = root.backend.get_buffer_size()
-            var samplerate = root.backend && root.backend.ready ? root.backend.get_sample_rate() : 1
-            cycle_us = bufsize / samplerate * 1000000.0
+    // ShoopRustDictTreeModel {
+    //     id: dictmodel
+    //     column_roles : ['name', 'average', 'worst', 'average_%', 'worst_%']
+    //     column_headers : ['Section', 'Avg', 'Worst', 'Avg (%)', 'Worst (%)']
+    //     tree_separator: "."
+    // }
 
-            Object.entries(profiling_data).forEach((p) => {
-                _data[p[0]] = {}
-                Object.entries(p[1]).forEach((pp) => {
-                    var asfloat = parseFloat(pp[1])
-                    if (asfloat != NaN) {
-                        _data[p[0]][pp[0]] = parseInt(asfloat)
-                        var percentkey = pp[0] + '_%'
-                        _data[p[0]][percentkey] = parseInt(asfloat / cycle_us * 100.0)
-                    } else {
-                        // Not a number. no rounding or percentages
-                        _data[p[0]][pp[0]] = pp[1]
-                    }
 
-                    _data[p[0]][pp[0]] =
-                        parseFloat(pp[1]) != NaN ?
-                        parseInt(pp[1]) : pp[1]
-                })
-            })
-            return tree_model_factory.create(_data, '.', column_roles, column_headers)
-        }
-        return null;
-    }
-    readonly property var column_roles : ['name', 'average', 'worst', 'average_%', 'worst_%']
-    readonly property var column_headers : ['Section', 'Avg', 'Worst', 'Avg (%)', 'Worst (%)']
+    // {
+    //     if (profiling_data) {
+    //         // Round any floating-point values to integers
+    //         // and provide data as percent of process cycle
+    //         var _data = {}
+
+    //         var bufsize = root.backend.get_buffer_size()
+    //         var samplerate = root.backend && root.backend.ready ? root.backend.get_sample_rate() : 1
+    //         cycle_us = bufsize / samplerate * 1000000.0
+
+    //         Object.entries(profiling_data).forEach((p) => {
+    //             _data[p[0]] = {}
+    //             Object.entries(p[1]).forEach((pp) => {
+    //                 var asfloat = parseFloat(pp[1])
+    //                 if (asfloat != NaN) {
+    //                     _data[p[0]][pp[0]] = parseInt(asfloat)
+    //                     var percentkey = pp[0] + '_%'
+    //                     _data[p[0]][percentkey] = parseInt(asfloat / cycle_us * 100.0)
+    //                 } else {
+    //                     // Not a number. no rounding or percentages
+    //                     _data[p[0]][pp[0]] = pp[1]
+    //                 }
+
+    //                 _data[p[0]][pp[0]] =
+    //                     parseFloat(pp[1]) != NaN ?
+    //                     parseInt(pp[1]) : pp[1]
+    //             })
+    //         })
+    //         return tree_model_factory.create(_data, '.', column_roles, column_headers)
+    //     }
+    //     return null;
+    // }
 
     property alias auto_update: auto_update_switch.checked
 
@@ -106,7 +114,7 @@ ShoopApplicationWindow {
 
     TreeView {
         id: tree
-       
+
         rowHeightProvider: (idx) => 20
 
         anchors {

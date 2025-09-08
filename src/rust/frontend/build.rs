@@ -23,7 +23,6 @@ fn main() {
         .file("src/cxx_qt_shoop/rust/qobj_composite_loop_backend_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_composite_loop_gui_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_crash_handling_bridge.rs")
-        .file("src/cxx_qt_shoop/rust/qobj_dict_tree_model_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_dummy_process_helper_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_enums_bridge.rs")
         .file("src/cxx_qt_shoop/rust/qobj_file_io_bridge.rs")

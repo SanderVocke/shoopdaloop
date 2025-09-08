@@ -9,7 +9,6 @@ path = "src/main.rs"
 
 [dependencies]
 common = { path = "../common" }
-py_env = { path = "../py_env" }
 backend = { path = "../backend" }
 
 walkdir = { workspace = true }
@@ -25,4 +24,4 @@ clap = { workspace = true, features = ["derive"] }
 
 [features]
 # Dummy build to build dependencies only
-prebuild = ["common/prebuild", "py_env/prebuild", "backend/prebuild"]
+prebuild = ["common/prebuild", "backend/prebuild"]
