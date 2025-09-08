@@ -26,7 +26,7 @@ module: shoop_control
 Provides basic interfacing with **ShoopDaLoop**. Note that these functions are provided as bindings into the application - they are not written in Lua.
 
 .. shoop_function_docstrings::
-   src/rust/frontend/lib/cxx_qt_shoop/qobj_session_control_handler.rs
+   src/rust/frontend/src/cxx_qt_shoop/rust/qobj_session_control_handler.rs
 
 module: shoop_coords
 """"""""""""""""""""

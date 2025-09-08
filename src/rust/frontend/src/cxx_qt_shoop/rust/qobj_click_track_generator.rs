@@ -45,8 +45,8 @@ fn generate_click_track_timings(
         for idx in 0..n_beats {
             if idx % 2 > 0 {
                 let frame = beat_start_frames.get_mut(idx).unwrap();
-                *frame +=
-                    (alt_click_delay_percent * sample_rate as f64 * seconds_per_beat) as usize;
+                *frame += (alt_click_delay_percent * sample_rate as f64 * seconds_per_beat / 100.0)
+                    as usize;
             }
         }
     }
