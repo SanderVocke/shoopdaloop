@@ -85,7 +85,7 @@ Testing
 The test suites for **ShoopDaLoop** are by no means complete, but do test essential functions at several levels. The following testing tools exist:
 
 * C++ unit and integration tests powered by **boost_ext::ut**.
-* Python unit and integration tests powered by **pytest**, testing individual front-end extensions.
+* Rust unit and integration tests powered by **cargo**, testing individual front-end extensions.
 * QML unit and integration tests powered by **Qt Quick Test**.
 
 The QML integration tests come closest to "system-level". For example, there are tests there which can check cycle-accurately that the correct audio samples are produced based on what the user clicked in the user interface.

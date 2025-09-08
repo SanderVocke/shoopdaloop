@@ -35,7 +35,6 @@ runs:
     run: |
       echo "PYTHON=${{ inputs.python }}" | tee -a $GITHUB_ENV
       echo "PIP=${{ inputs.python }} -m pip" | tee -a $GITHUB_ENV
-      echo "PYTEST=${{ inputs.python }} -m pytest" | tee -a $GITHUB_ENV
       echo "ASAN_OPTIONS=detect_leaks=0,new_delete_type_mismatch=0" | tee -a $GITHUB_ENV
       echo 'SHOOP_CRASH_METADATA_BASE_JSON={"environment": "ci", "tags": {"ci_build_type": "${{ inputs.sentry_build_type }}", "ci_run": "${{ github.run_id }}", "vc_ref": "${{ github.ref }}"}}' | tee -a $GITHUB_ENV
 
@@ -135,7 +134,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      PIP_BREAK_SYSTEM_PACKAGES=1 ${{ env.PIP }} install pytest coverage pipx
+      PIP_BREAK_SYSTEM_PACKAGES=1 ${{ env.PIP }} install pipx
   - uses: ./.github/actions/checkpoint
     if: always()
   - name: Install Qoverage
@@ -200,15 +199,6 @@ runs:
       tee_all_output_to: test-qml-console-output.log
   - uses: ./.github/actions/checkpoint
     if: always()
-  - name: Generate QML Python coverage report
-    if: always() && inputs.coverage && (inputs.do_qml_tests == 'true')
-    shell: wrap-shell {0}
-    env:
-       GHA_RUN_ALWAYS: 1
-    run: |
-      $PYTHON -m coverage xml -i -o coverage_reports/qml_pycoverage.xml
-      sed -r -i 's/test_venv.*shoopdaloop/src\/shoopdaloop/g' coverage_reports/qml_pycoverage.xml
-      $PYTHON -m coverage erase
   - name: Qoverage - Generate report
     if: always() && inputs.coverage && (inputs.do_qml_tests == 'true')
     uses: ./.github/actions/qoverage_generate_report
@@ -303,7 +293,7 @@ runs:
     with:
       token: ${{ inputs.codecov_token }}
       flags: qml
-      files: coverage_reports/qml_lcov.info,coverage_reports/qml_pycoverage.xml,coverage_reports/qml_qoverage.xml
+      files: coverage_reports/qml_lcov.info,coverage_reports/qml_qoverage.xml
       verbose: true
       fail_ci_if_error: true
   - name: Upload raw coverage reports
