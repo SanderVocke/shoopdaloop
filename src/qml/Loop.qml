@@ -21,9 +21,4 @@ ShoopRustLoopGui {
 
     property var initial_descriptor: null
     property string obj_id: initial_descriptor ? initial_descriptor.id : null
-
-    // TODO: can be removed / refactored out after getting rid of Python
-    function queue_set_length_qml(length) {
-        root.queue_set_length(length)
-    }
 }

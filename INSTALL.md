@@ -37,7 +37,6 @@ ShoopDaLoop's build is governed by Cargo. In principle, the build command is `ca
 However, managing dependencies can get complicated:
 
 * Rust dependencies are pulled in and built on-the-fly by Cargo.
-* Python dependencies (except PySide) are pulled from PyPi by the Rust build scripts.
 * C++ dependencies are not pulled in but searched on your system by CMake.
 
 For reproducible builds, a script is included which pulls C++ dependencies from `vcpkg` and builds them from source (including Qt and PySide). To run this script:
@@ -46,7 +45,7 @@ For reproducible builds, a script is included which pulls C++ dependencies from 
 
 This will obviously take a long time, but when done, the folder `build/vcpkg_installed` will contain the required dependencies. There will also be a set of `build/build-env-[debug|release].[sh|ps1|elv]` scripts created, which you can source to set the environment to start the cargo build.
 
-Alternatively, you can set up the C++ dependencies however you wish (e.g. distro packages). If things are not auto-detected you can manually set `QMAKE`, `SHOOP_DEV_ENV_PYTHON`, `PYO3_CONFIG_FILE` and/or `PYO3_PYTHON`. (the latter should point to a valid PyO3 config file).
+Alternatively, you can set up the C++ dependencies however you wish (e.g. distro packages). If things are not auto-detected you can manually set `QMAKE`.
 
 After the Cargo build, executables can be found in `target/[debug|release]`.
 
@@ -56,7 +55,7 @@ After building ShoopDaLoop in-tree as described above, there are several redistr
 
 ### Editable development build
 
-Since ShoopDaLoop partly consists of interpreted / JIT-compiled scripts (in Lua, Python and QML), for a large part developers can make changes without having to rebuild.
+Since ShoopDaLoop partly consists of interpreted / JIT-compiled scripts (in Lua and QML), for a these parts developers can make changes without having to rebuild.
 
 In order to run ShoopDaLoop in "editable" mode (using the scripts in the repository as opposed to installing them into the system), simply run:
 

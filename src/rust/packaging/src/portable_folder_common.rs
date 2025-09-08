@@ -36,10 +36,6 @@ pub fn populate_portable_folder(
     let lib_dir = folder.join("lib");
     std::fs::create_dir(&lib_dir).with_context(|| format!("Cannot create dir: {:?}", lib_dir))?;
 
-    let py_lib_dir = lib_dir.join("python");
-    std::fs::create_dir(&py_lib_dir)
-        .with_context(|| format!("Cannot create dir: {:?}", py_lib_dir))?;
-
     info!("Bundling executable...");
     let final_exe_filename = if cfg!(target_os = "windows") {
         "shoopdaloop_exe.exe"

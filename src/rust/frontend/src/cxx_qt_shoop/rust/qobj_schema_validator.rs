@@ -1,11 +1,10 @@
-use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::qjsonobject::QJsonObject;
 
 pub use crate::cxx_qt_shoop::qobj_schema_validator_bridge::ffi::SchemaValidator;
 use crate::cxx_qt_shoop::qobj_schema_validator_bridge::ffi::*;
-use std::pin::Pin;
-use std::path::PathBuf;
 use crate::init::GLOBAL_CONFIG;
+use std::path::PathBuf;
+use std::pin::Pin;
 
 use common::logging::macros::*;
 shoop_log_unit!("Frontend.SchemaValidator");
@@ -29,15 +28,20 @@ impl SchemaValidator {
         match || -> Result<bool, anyhow::Error> {
             let json_object = QJsonObject::from_variant_map(&object)
                 .map_err(|e| anyhow::anyhow!("Failed to convert: {e}"))?;
-            let json = json_object.to_json()
+            let json = json_object
+                .to_json()
                 .map_err(|e| anyhow::anyhow!("Failed to convert: {e}"))?;
             let json = serde_json::from_str::<serde_json::Value>(&json)?;
-            
-            let schemas_dir = GLOBAL_CONFIG.get().as_ref()
+
+            let schemas_dir = GLOBAL_CONFIG
+                .get()
+                .as_ref()
                 .map(|config| config.schemas_dir.clone())
                 .ok_or(anyhow::anyhow!("Global config not initialized"))?;
             let schemas_dir = PathBuf::from(schemas_dir);
-            let schema_file = schemas_dir.join("schemas").join(schemaname.to_string() + ".json");
+            let schema_file = schemas_dir
+                .join("schemas")
+                .join(schemaname.to_string() + ".json");
             let schema = std::fs::read_to_string(&schema_file)
                 .map_err(|e| anyhow::anyhow!("Failed to read schema file {schema_file:?}: {e}"))?;
             let schema = serde_json::from_str::<serde_json::Value>(&schema)?;
@@ -53,8 +57,8 @@ impl SchemaValidator {
         }() {
             Ok(result) => result,
             Err(e) => {
-            error!("could not validate schema: {e}");
-            false
+                error!("could not validate schema: {e}");
+                false
             }
         }
     }

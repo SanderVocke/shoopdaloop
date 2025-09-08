@@ -24,7 +24,7 @@ Item {
     // set internally
     property alias kind : rust_loop.kind
 
-    // The Python-side object manages triggering other loops based on the
+    // The extension object manages triggering other loops based on the
     // schedule. This needs to keep running even if the QML/GUI thread hangs.
     // In the QML side, we manage updating/calculating the schedule.
     property var schedule: ({})
@@ -219,8 +219,7 @@ Item {
                             continue
                         }
                     }
-                    // If our target is a CompositeLoop, it does not directly inherit a Python loop.
-                    // Instead it will be stored in its rust_loop subobject.
+                    // If our target is a CompositeLoop, it does not directly inherit a loop.
                     if (loop.objectName === "Qml.CompositeLoop") {
                         loop = loop.rust_loop
                     }
@@ -248,7 +247,7 @@ Item {
                     _schedule[k].loops_start.delete(starting)
                 }
             }
-            // Also convert the sets to lists for Python usage
+            // Also convert the sets to lists for extension usage
             _schedule[k].loops_start = Array.from(_schedule[k].loops_start)
             _schedule[k].loops_end = Array.from(_schedule[k].loops_end)
             _schedule[k].loops_ignored = Array.from(_schedule[k].loops_ignored)

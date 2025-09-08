@@ -20,23 +20,13 @@ Globally available APIs
 
 * **print(msg)**, **print_debug(msg)**, **print_error(msg)**, **print_info(msg)**: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error.
 
-type: midi_control_port
-"""""""""""""""""""""""
-
-.. shoop_function_docstrings::
-   src/python/shoopdaloop/lib/q_objects/MidiControlPort.py
-
 module: shoop_control
 """""""""""""""""""""
 
 Provides basic interfacing with **ShoopDaLoop**. Note that these functions are provided as bindings into the application - they are not written in Lua.
 
 .. shoop_function_docstrings::
-   src/python/shoopdaloop/lib/q_objects/ControlHandler.py
-
-.. shoop_function_docstrings::
-   src/python/shoopdaloop/lib/q_objects/ControlInterface.py
-
+   src/rust/frontend/lib/cxx_qt_shoop/qobj_session_control_handler.rs
 
 module: shoop_coords
 """"""""""""""""""""

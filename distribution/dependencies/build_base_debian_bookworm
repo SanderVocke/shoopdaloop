@@ -22,7 +22,6 @@ bison
 flex
 libc-bin
 autoconf-archive
-python3-jinja2
 lld
 patchelf
 

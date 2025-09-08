@@ -28,7 +28,7 @@ pub mod ffi {
             bpm: i32,
             n_beats: i32,
             alt_click_delay_percent: i32,
-            sample_rate : usize,
+            sample_rate: usize,
         ) -> QList_f32;
 
         #[qinvokable]
@@ -38,8 +38,8 @@ pub mod ffi {
             bpm: i32,
             n_beats: i32,
             alt_click_delay_percent: i32,
-            sample_rate : usize,
-            channels: QList_QVariant
+            sample_rate: usize,
+            channels: QList_QVariant,
         ) -> i32;
 
         #[qinvokable]
@@ -85,12 +85,10 @@ pub mod ffi {
     }
 }
 
-pub struct ClickTrackGeneratorRust {
-}
+pub struct ClickTrackGeneratorRust {}
 
 impl Default for ClickTrackGeneratorRust {
     fn default() -> Self {
-        Self {
-        }
+        Self {}
     }
 }

@@ -1,9 +1,6 @@
 use std::pin::Pin;
 
-use crate::cxx_qt_shoop::qobj_logger_bridge::{
-    ffi::{register_qml_type_logger, Logger},
-    *,
-};
+use crate::cxx_qt_shoop::qobj_logger_bridge::ffi::{register_qml_type_logger, Logger};
 use backend_bindings::{LogLevel, Logger as BackendLogger};
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::QString;
@@ -26,7 +23,7 @@ impl Logger {
             .release();
     }
 
-    pub fn create_logger(mut self: Pin<&mut Logger>, name: QString) {
+    pub fn create_logger(self: Pin<&mut Logger>, _name: QString) {
         if let Ok(b) = BackendLogger::new(self.name.to_string().as_str()) {
             self.rust_mut().backend.replace(b);
         };

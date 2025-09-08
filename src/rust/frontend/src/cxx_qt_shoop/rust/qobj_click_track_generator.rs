@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap},
-    path::PathBuf,
-};
+use std::{collections::BTreeMap, path::PathBuf};
 
 pub use crate::cxx_qt_shoop::qobj_click_track_generator_bridge::ffi::ClickTrackGenerator;
 use crate::cxx_qt_shoop::qobj_click_track_generator_bridge::ffi::*;
@@ -60,15 +57,15 @@ fn generate_click_track_timings(
     }
 }
 
-fn generate_click_track_midi(
-    notes: Vec<u8>,
-    channesl: Vec<u8>,
-    velocities: Vec<u8>,
-    note_length: f32,
-    bpm: f64,
-    n_beats: usize,
-    alt_click_delay_percent: f64,
-    sample_rate: usize,
+fn _generate_click_track_midi(
+    _notes: Vec<u8>,
+    _channesl: Vec<u8>,
+    _velocities: Vec<u8>,
+    _note_length: f32,
+    _bpm: f64,
+    _n_beats: usize,
+    _alt_click_delay_percent: f64,
+    _sample_rate: usize,
 ) -> Vec<MidiEvent> {
     todo!();
 }
@@ -231,7 +228,7 @@ impl ClickTrackGenerator {
             );
 
             for channel in channels.iter() {
-                let channel = unsafe { qvariant_to_qobject_ptr(channel)? };
+                let channel = qvariant_to_qobject_ptr(channel)?;
                 if channel.is_null() {
                     return Err(anyhow::anyhow!("Null channel"));
                 }
@@ -271,14 +268,14 @@ impl ClickTrackGenerator {
 
     pub fn generate_midi(
         self: &ClickTrackGenerator,
-        notes: QList_i32,
-        channels: QList_i32,
-        velocities: QList_i32,
-        note_length: f32,
-        bpm: i32,
-        n_beats: i32,
-        alt_click_delay_percent: i32,
-        sample_rate: i32,
+        _notes: QList_i32,
+        _channels: QList_i32,
+        _velocities: QList_i32,
+        _note_length: f32,
+        _bpm: i32,
+        _n_beats: i32,
+        _alt_click_delay_percent: i32,
+        _sample_rate: i32,
     ) -> QString {
         todo!();
     }

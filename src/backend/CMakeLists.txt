@@ -9,17 +9,6 @@ set(CMAKE_CXX_EXTENSIONS NO)
 set(CMAKE_EXPORT_COMPILE_COMMANDS YES)
 set(CMAKE_VISIBILITY_INLINES_HIDDEN 1)
 
-if(NOT DEFINED PYTHON_CMD)
-  if(DEFINED ENV{PYTHON})
-    set(PYTHON_CMD $ENV{PYTHON})
-  else()
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
-    set(PYTHON_CMD ${Python3_EXECUTABLE})
-  endif()
-endif()
-set(GLOB_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../../scripts/do_glob.py")
-set(RUN_WITH_ENV_CMD ${PYTHON_CMD} "${CMAKE_SOURCE_DIR}/../../scripts/run_with_env_from_files.py")
-
 find_package(Threads REQUIRED)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/cmake")
@@ -315,30 +304,3 @@ set(PATH_SEP ":")
 if (WIN32)
   set(PATH_SEP $<SEMICOLON>)
 endif()
-
-# Generate and install version.txt and description.txt
-add_custom_command(
-  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/version.txt
-  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../../metadata.toml version > version.txt
-  COMMENT "Generating version.txt"
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-)
-add_custom_target(version_txt ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/version.txt)
-add_custom_command(
-  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/description.txt
-  COMMAND ${PYTHON_CMD} ${CMAKE_SOURCE_DIR}/../../scripts/parse_pyproject_toml.py ${CMAKE_SOURCE_DIR}/../../metadata.toml description > description.txt
-  COMMENT "Generating description.txt"
-  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-)
-add_custom_target(description_txt ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/description.txt)
-
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/version.txt ${CMAKE_CURRENT_BINARY_DIR}/description.txt
-        DESTINATION tools/shoopdaloop)
-# Include app test scripts
-install(FILES ${CMAKE_SOURCE_DIR}/../../scripts/repeat_run_app.py
-        PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
-        DESTINATION tools/shoopdaloop/scripts)
-install(FILES ${CMAKE_SOURCE_DIR}/../../scripts/run_and_generate_coverage.sh
-        EXCLUDE_FROM_ALL
-        PERMISSIONS WORLD_EXECUTE OWNER_EXECUTE GROUP_EXECUTE GROUP_WRITE OWNER_WRITE GROUP_READ OWNER_READ WORLD_READ
-        DESTINATION tools/shoopdaloop/scripts)

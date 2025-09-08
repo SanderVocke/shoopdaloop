@@ -16,7 +16,7 @@ Architecture
         shoopdaloop (QML front-end)
     ]
     collections extensions [
-        Front-end Extensions (Python + PySide6)
+        Front-end Extensions (Rust + cxx-qt)
     ]
     interface interface [
         libshoopdaloop_backend C API
@@ -40,17 +40,18 @@ The **libshoopdaloop_backend backend** handles:
 * Logging and profiling
 * Basic loop synchronization (loop transitions)
 
-The **front-end + Python extensions** handle:
+The **front-end + extensions** handle:
 
 * The user interface
 * Session saving/loading
 * Advanced loop synchronization (scheduling loop transitions over multiple sync loop cycles)
-* MIDI handling for MIDI controllers (non-cycle-accurate)
+* Composite loops
+* Thread-decoupled forwarding of UI events to/from the back-end
 
 The **LUA scripts** are meant for parts that may need to be added/modified by individual users, such as:
 
 * MIDI controller profiles
-
+* Keyboard control
 
 Build And Packaging
 ^^^^^^^^^^^^^^^^^^^^

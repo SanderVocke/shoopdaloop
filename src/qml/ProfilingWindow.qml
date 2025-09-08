@@ -15,7 +15,7 @@ ShoopApplicationWindow {
     property var backend : null
     property ShoopRustLogger logger : ShoopRustLogger { name: 'Frontend.ProfilingDialog' }
     property var profiling_data : null
-    property var profiling_tree_model : dictmodel
+    // property var profiling_tree_model : dictmodel
 
     // ShoopRustDictTreeModel {
     //     id: dictmodel
@@ -112,29 +112,29 @@ ShoopApplicationWindow {
         text: "System cycle time (us): " + root.cycle_us
     }
 
-    TreeView {
-        id: tree
+    // TreeView {
+    //     id: tree
 
-        rowHeightProvider: (idx) => 20
+    //     rowHeightProvider: (idx) => 20
 
-        anchors {
-            left: parent.left
-            right: parent.right
-            bottom: parent.bottom
-            top: cycle_time_label.bottom
-        }
+    //     anchors {
+    //         left: parent.left
+    //         right: parent.right
+    //         bottom: parent.bottom
+    //         top: cycle_time_label.bottom
+    //     }
 
-        delegate: TreeViewDelegate {
-            id: delegate
-            background: Rectangle { color: 'transparent' }
-        }
+    //     delegate: TreeViewDelegate {
+    //         id: delegate
+    //         background: Rectangle { color: 'transparent' }
+    //     }
 
-        model: root.profiling_tree_model
-        onModelChanged: expander.trigger()
+    //     model: root.profiling_tree_model
+    //     onModelChanged: expander.trigger()
 
-        ExecuteNextCycle {
-            id: expander
-            onExecute: if(tree.model) { tree.expandRecursively() }
-        }
-    }
+    //     ExecuteNextCycle {
+    //         id: expander
+    //         onExecute: if(tree.model) { tree.expandRecursively() }
+    //     }
+    // }
 }
