@@ -19,6 +19,8 @@ pub mod qobj_composite_loop_gui;
 pub mod qobj_composite_loop_gui_bridge;
 pub mod qobj_crash_handling;
 pub mod qobj_crash_handling_bridge;
+pub mod qobj_dict_tree_model;
+pub mod qobj_dict_tree_model_bridge;
 pub mod qobj_dummy_process_helper;
 pub mod qobj_dummy_process_helper_bridge;
 pub mod qobj_enums;

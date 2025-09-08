@@ -14,6 +14,8 @@ ShoopApplicationWindow {
     minimumHeight: 350
     title: "ShoopDaLoop"
 
+    Component.onCompleted: console.log("IMPLEMENT MIDI CLICKTRACK")
+
     Session {
         anchors.fill: parent
         initial_descriptor: GenerateSession.generate_default_session(global_args.version_string, null, true)
