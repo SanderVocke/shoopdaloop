@@ -148,6 +148,9 @@ pub mod ffi {
             ports: QList_QVariant,
         );
 
+        #[qinvokable]
+        pub fn deinit(self: Pin<&mut LoopChannelGui>);
+
         #[qsignal]
         pub unsafe fn backend_changed(self: Pin<&mut LoopChannelGui>, backend: *mut QObject);
 
@@ -273,6 +276,10 @@ pub mod ffi {
 
         #[qsignal]
         pub fn backend_clear(self: Pin<&mut LoopChannelGui>, length: i32);
+
+        #[qsignal]
+        #[inherit]
+        pub unsafe fn destroyed(self: Pin<&mut LoopChannelGui>, obj: *mut QObject);
     }
 
     unsafe extern "RustQt" {

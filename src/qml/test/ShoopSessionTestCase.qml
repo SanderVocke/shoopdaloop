@@ -5,10 +5,16 @@ ShoopTestCase {
     property var session : null
     property var backend : session ? session.backend : null
     property bool additional_when_condition: true
+    property bool total_precondition: session && session.loaded && additional_when_condition
+
+    onTotal_preconditionChanged: {
+        if (total_precondition) {
+            timer.start()
+        }
+    }
 
     Timer {
         id: timer
-        running: session && session.loaded && additional_when_condition
         interval: 100
         repeat: false
         property bool done : false

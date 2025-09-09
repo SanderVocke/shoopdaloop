@@ -2,6 +2,7 @@ use std::{collections::HashMap, i64};
 
 use cxx_qt_lib::{QList, QMap, QMapPair_QString_QVariant, QString, QVariant};
 use cxx_qt_lib_shoop::{
+    qjsvalue::qvariant_qjsvalue_convert_js_objects,
     qmetatype_helpers::*,
     qvariant_helpers::{
         qvariant_to_qlist_u8, qvariant_to_qstringlist, qvariant_to_qvariantlist,
@@ -104,19 +105,18 @@ impl FromLuaExtended for QVariant {
 }
 
 impl IntoLuaExtended for QVariant {
-    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
+    fn into_lua(mut self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
         if self.is_null() {
             return Ok(mlua::Value::Nil);
         }
 
         let type_id = qvariant_type_id(&self).unwrap();
-        let type_name = qvariant_type_name(&self).unwrap();
 
         macro_rules! convert {
             ($T:ty) => {
                 self.value::<$T>()
                     .ok_or(mlua::Error::ToLuaConversionError {
-                        from: type_name.to_string(),
+                        from: qvariant_type_name(&self).unwrap().to_string(),
                         to: "val",
                         message: Some("failed to get qvariant value".to_string()),
                     })?
@@ -126,9 +126,15 @@ impl IntoLuaExtended for QVariant {
 
         match type_id {
             _v if _v == qmetatype_id_int() => convert!(i64),
-            _v if _v == qmetatype_id_int64() || type_name == "qlonglong" => convert!(i64),
+            _v if _v == qmetatype_id_int64()
+                || qvariant_type_name(&self).unwrap() == "qlonglong" =>
+            {
+                convert!(i64)
+            }
             _v if _v == qmetatype_id_uint() => convert!(i64),
-            _v if _v == qmetatype_id_uchar() || type_name == "uchar" => convert!(u8),
+            _v if _v == qmetatype_id_uchar() || qvariant_type_name(&self).unwrap() == "uchar" => {
+                convert!(u8)
+            }
             _v if _v == qmetatype_id_uint64() => convert!(i64),
             _v if _v == qmetatype_id_bool() => convert!(bool),
             _v if _v == qmetatype_id_float() => convert!(f32),
@@ -140,7 +146,7 @@ impl IntoLuaExtended for QVariant {
             _v if _v == qmetatype_id_qvariantmap() => {
                 let map = qvariant_to_qvariantmap(&self).map_err(|e| {
                     mlua::Error::ToLuaConversionError {
-                        from: type_name.to_string(),
+                        from: qvariant_type_name(&self).unwrap().to_string(),
                         to: "val",
                         message: Some(format!("Failed to extract QVariantMap: {e}")),
                     }
@@ -150,7 +156,7 @@ impl IntoLuaExtended for QVariant {
             _v if _v == qmetatype_id_qvariantlist() => {
                 let l = qvariant_to_qvariantlist(&self).map_err(|e| {
                     mlua::Error::ToLuaConversionError {
-                        from: type_name.to_string(),
+                        from: qvariant_type_name(&self).unwrap().to_string(),
                         to: "val",
                         message: Some(format!("Failed to extract QVariantList: {e}")),
                     }
@@ -160,7 +166,7 @@ impl IntoLuaExtended for QVariant {
             _v if _v == qmetatype_id_qstringlist() => {
                 let l = qvariant_to_qstringlist(&self).map_err(|e| {
                     mlua::Error::ToLuaConversionError {
-                        from: type_name.to_string(),
+                        from: qvariant_type_name(&self).unwrap().to_string(),
                         to: "val",
                         message: Some(format!("Failed to extract QStringList: {e}")),
                     }
@@ -170,14 +176,35 @@ impl IntoLuaExtended for QVariant {
             _v if _v == qmetatype_id_qlist_u8() => {
                 let l =
                     qvariant_to_qlist_u8(&self).map_err(|e| mlua::Error::ToLuaConversionError {
-                        from: type_name.to_string(),
+                        from: qvariant_type_name(&self).unwrap().to_string(),
                         to: "val",
                         message: Some(format!("Failed to extract QStringList: {e}")),
                     })?;
                 l.into_lua(lua)
             }
+            _v if _v == qmetatype_id_qjsvalue() => {
+                {
+                    let pin_self = std::pin::Pin::new(&mut self);
+                    if !qvariant_qjsvalue_convert_js_objects(pin_self).map_err(|e| {
+                        mlua::Error::ToLuaConversionError {
+                            from: "QJSValue in QVariant".to_string(),
+                            to: "val",
+                            message: Some(format!("Failed to convert JS objects in QVariant: {e}")),
+                        }
+                    })? {
+                        return Err(mlua::Error::ToLuaConversionError {
+                            from: qvariant_type_name(&self).unwrap().to_string(),
+                            to: "val",
+                            message: Some(format!(
+                            "Failed to convert JS objects in QVariant: post-conversion is still JS"
+                        )),
+                        });
+                    }
+                }
+                self.into_lua(lua)
+            }
             _ => Err(mlua::Error::ToLuaConversionError {
-                from: type_name.to_string(),
+                from: qvariant_type_name(&self).unwrap().to_string(),
                 to: "val",
                 message: Some("unsupported".to_string()),
             }),

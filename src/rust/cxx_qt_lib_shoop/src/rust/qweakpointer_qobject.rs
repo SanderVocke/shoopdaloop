@@ -38,7 +38,13 @@ impl QWeakPointer_QObject {
         unsafe { ffi::qweakpointer_qobject_copy(self) }
     }
 
-    pub fn to_strong(&self) -> Result<UniquePtr<QSharedPointer_QObject>, cxx::Exception> {
-        unsafe { ffi::qweakpointer_qobject_to_strong(self) }
+    pub fn to_strong(&self) -> Result<Option<UniquePtr<QSharedPointer_QObject>>, cxx::Exception> {
+        unsafe { ffi::qweakpointer_qobject_to_strong(self) }.map(|rval| {
+            if rval.is_null() {
+                None
+            } else {
+                Some(rval)
+            }
+        })
     }
 }

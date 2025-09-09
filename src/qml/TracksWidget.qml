@@ -144,6 +144,8 @@ FocusReleasingScrollView {
         load()
     }
 
+    Component.onDestruction: root.logger.debug("destruct")
+
     FocusReleasingScrollView {
         id: tracks_view
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff

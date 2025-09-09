@@ -33,8 +33,20 @@ macro_rules! error {
 }
 
 impl FXChainGui {
+    pub fn deinit(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().backend_chain_wrapper = cxx::UniquePtr::null();
+        self.as_mut().rust_mut().initialized = false;
+        unsafe {
+            self.as_mut().initialized_changed(false);
+        }
+    }
+
     pub fn initialize_impl(mut self: Pin<&mut Self>) {
         debug!(self, "Initializing");
+
+        self.as_mut()
+            .on_destroyed(|s, _| debug!(s, "Destroyed"))
+            .release();
 
         unsafe {
             let backend_fx_chain = make_raw_fx_chain_backend();

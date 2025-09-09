@@ -2,6 +2,7 @@
 #include <QJSValue>
 #include <QVariant>
 #include <stdexcept>
+#include <memory>
 
 inline void callQVariantAsCallableQJSValue(QVariant const& v) {
     if (!v.canConvert<QJSValue>()) {
@@ -28,4 +29,12 @@ inline void callQVariantAsCallableQJSValueBoolArg(QVariant const& v, bool arg) {
     }
     auto result = qjsvalue.call(args);
     (void) result;
+}
+
+inline bool qvariantQJSValueConvertJSObjects(QVariant &v) {
+    v = v.value<QJSValue>().toVariant(QJSValue::ConvertJSObjects);
+    if (v.typeId() == qMetaTypeId<QJSValue>()) {
+        return false;
+    }
+    return true;
 }

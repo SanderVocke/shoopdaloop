@@ -499,7 +499,7 @@ Item {
                 let balance = last_pushed_stereo_balance
                 maybe_loop = backend_loop_factory.createObject(root, {
                     'initial_descriptor': root.initial_descriptor,
-                    'sync_source': Qt.binding(() => (!is_sync && root.use_sync_loop && root.sync_loop.maybe_backend_loop) ? root.use_sync_loop.maybe_backend_loop : null),
+                    'sync_source': Qt.binding(() => (!is_sync && root.use_sync_loop && root.use_sync_loop.maybe_backend_loop) ? root.use_sync_loop.maybe_backend_loop : null),
                 })
                 push_stereo_balance(balance)
                 push_gain(gain)

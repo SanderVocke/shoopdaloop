@@ -1,12 +1,22 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::Arc;
 
-use crate::cxx_qt_shoop::qobj_lua_engine_bridge::ffi::*;
+use crate::cxx_qt_shoop::qobj_lua_engine_bridge::{
+    ffi::*, RustToLuaCallback, WrappedLuaCallbackRust,
+};
 use crate::init::GLOBAL_CONFIG;
-use crate::lua_conversions::FromLuaExtended;
+use crate::lua_conversions::{FromLuaExtended, IntoLuaExtended};
 use crate::lua_engine::LuaEngine as WrappedLuaEngine;
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
+use cxx_qt_lib_shoop::connect::connect_or_report;
+use cxx_qt_lib_shoop::connection_types;
+use cxx_qt_lib_shoop::invokable::invoke;
+use cxx_qt_lib_shoop::qobject::AsQObject;
+use cxx_qt_lib_shoop::qtimer::QTimer;
 shoop_log_unit!("Frontend.LuaEngine");
 
 impl LuaEngine {
@@ -108,6 +118,45 @@ impl LuaEngine {
     pub fn ensure_engine_destroyed(self: std::pin::Pin<&mut Self>) {
         self.rust_mut().engine = None;
     }
+
+    pub fn create_qt_to_lua_callback_fn(
+        mut self: Pin<&mut LuaEngine>,
+        name: QString,
+        code: QString,
+    ) -> *mut WrappedLuaCallback {
+        match || -> Result<*mut WrappedLuaCallback, anyhow::Error> {
+            let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
+            let engine = self
+                .engine
+                .as_ref()
+                .ok_or(anyhow::anyhow!("No engine set"))?;
+            let cb = engine.evaluate::<mlua::Function>(
+                code.to_string().as_str(),
+                Some(name.to_string().as_str()),
+                true,
+            )?;
+            let wrapped = WrappedLuaCallback::create_raw_with_parent(
+                RustToLuaCallback {
+                    callback: cb,
+                    weak_lua: Arc::downgrade(&engine.lua.try_borrow()?.lua),
+                },
+                self_qobj,
+            );
+
+            debug!(
+                "Created Qt to Lua callback \"{:?}\" with code:\n{:?}",
+                name, code
+            );
+
+            Ok(wrapped)
+        }() {
+            Ok(cb) => cb,
+            Err(e) => {
+                error!("Could not create Lua callback: {e}");
+                std::ptr::null_mut()
+            }
+        }
+    }
 }
 
 pub fn register_qml_type(module_name: &str, type_name: &str) {
@@ -115,6 +164,146 @@ pub fn register_qml_type(module_name: &str, type_name: &str) {
     let mut tp = String::from(type_name);
     unsafe {
         register_qml_type_lua_engine(std::ptr::null_mut(), &mut mdl, 1, 0, &mut tp);
+    }
+}
+
+impl Drop for WrappedLuaCallbackRust {
+    fn drop(&mut self) {
+        debug!("Dropping wrapped Lua callback");
+    }
+}
+
+impl WrappedLuaCallback {
+    // Create a raw instance without a parent. It will configure
+    // the timer to call-back to itself, call Lua and self-destruct.
+    pub fn create_one_shot_timed(duration_ms: usize, callback: RustToLuaCallback) {
+        unsafe {
+            let obj: *mut WrappedLuaCallback = make_raw_wrapped_lua_callback();
+            let mut obj_pin = std::pin::Pin::new_unchecked(&mut *obj);
+            let qobj = obj_pin.as_mut().pin_mut_qobject_ptr();
+
+            *obj_pin.callback.borrow_mut() = Some(callback);
+
+            let timer: *mut QTimer = QTimer::make_raw_with_parent(qobj);
+            let mut timer_pin = std::pin::Pin::new_unchecked(&mut *timer);
+            let timer_qobj = QTimer::qobject_from_ptr(timer_pin.as_mut());
+
+            connect_or_report(
+                &mut *timer_qobj,
+                "timeout()",
+                &mut *qobj,
+                "call_and_delete()",
+                connection_types::QUEUED_CONNECTION,
+            );
+
+            timer_pin.as_mut().set_interval(duration_ms as i32);
+            timer_pin.as_mut().set_single_shot(true);
+            timer_pin.as_mut().start();
+        }
+    }
+
+    // Create an unique ptr instance.
+    pub fn create_unique_ptr(callback: RustToLuaCallback) -> cxx::UniquePtr<WrappedLuaCallback> {
+        let mut cb = unsafe { make_unique_wrapped_lua_callback() };
+        cb.as_mut().unwrap().rust_mut().callback = RefCell::new(Some(callback));
+        cb
+    }
+
+    pub fn create_raw_with_parent(
+        callback: RustToLuaCallback,
+        parent: *mut QObject,
+    ) -> *mut WrappedLuaCallback {
+        let cb = unsafe { make_raw_wrapped_lua_callback_with_parent(parent) };
+        let pin = unsafe { std::pin::Pin::new_unchecked(&mut *cb) };
+        let mut rust_mut = pin.rust_mut();
+        rust_mut.callback = RefCell::new(Some(callback));
+        cb
+    }
+
+    pub fn call_impl(self: Pin<&mut WrappedLuaCallback>, args: mlua::MultiValue) {
+        match || -> Result<QVariant, anyhow::Error> {
+            let callback = self.callback.borrow();
+            let callback = callback
+                .as_ref()
+                .ok_or(anyhow::anyhow!("No callback set"))?;
+            let lua = callback
+                .weak_lua
+                .upgrade()
+                .ok_or(anyhow::anyhow!("Lua went out of scope"))?;
+            let lua = lua.as_ref();
+            let rval = callback
+                .callback
+                .call::<mlua::Value>(args)
+                .map_err(|e| anyhow::anyhow!("failed to call callback: {e}"))?;
+            let rval = QVariant::from_lua(rval, lua)
+                .map_err(|e| anyhow::anyhow!("failed to convert return value: {e}"))?;
+
+            Ok(rval)
+        }() {
+            Ok(rval) => rval,
+            Err(e) => {
+                error!("Could not call wrapped Lua callback: {e}");
+                QVariant::default()
+            }
+        };
+    }
+
+    pub fn call(self: Pin<&mut WrappedLuaCallback>) {
+        trace!("wrapped lua callback: call no args");
+        self.call_impl(mlua::MultiValue::new());
+    }
+
+    pub fn call_with_arg(mut self: Pin<&mut WrappedLuaCallback>, arg: QVariant) {
+        trace!("wrapped lua callback: call with arg");
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let converted: mlua::Value;
+            {
+                let rust_mut = self.as_mut().rust_mut();
+                let callback = rust_mut.callback.borrow();
+                let callback = callback
+                    .as_ref()
+                    .ok_or(anyhow::anyhow!("No callback set"))?;
+                let lua = callback
+                    .weak_lua
+                    .upgrade()
+                    .ok_or(anyhow::anyhow!("Lua went out of scope"))?;
+                let lua = lua.as_ref();
+                converted = arg
+                    .into_lua(lua)
+                    .map_err(|e| anyhow::anyhow!("Could not convert arg to lua: {e}"))?;
+            }
+            self.as_mut()
+                .call_impl(mlua::MultiValue::from_vec(vec![converted]));
+            Ok(())
+        }() {
+            error!("Could not call wrapped lua callback: {e}")
+        }
+    }
+
+    pub fn call_with_stored_arg(self: Pin<&mut WrappedLuaCallback>) {
+        trace!("wrapped lua callback: call with stored arg");
+        let arg = self.stored_arg.clone();
+        self.call_impl(arg)
+    }
+
+    pub fn call_and_delete(mut self: Pin<&mut WrappedLuaCallback>) {
+        trace!("wrapped lua callback: call and delete");
+        self.as_mut().call_impl(mlua::MultiValue::new());
+        self.as_mut().delete_later();
+    }
+
+    pub fn delete_later(mut self: Pin<&mut WrappedLuaCallback>) {
+        unsafe {
+            let qobj = self.as_mut().pin_mut_qobject_ptr();
+            if let Err(e) = invoke::<_, (), _>(
+                &mut *qobj,
+                "deleteLater()",
+                connection_types::QUEUED_CONNECTION,
+                &(),
+            ) {
+                error!("Failed to delete wrapped Lua callback: {e}");
+            }
+        }
     }
 }
 

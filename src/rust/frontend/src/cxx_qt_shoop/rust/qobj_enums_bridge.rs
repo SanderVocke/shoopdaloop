@@ -45,7 +45,7 @@ pub mod ffi {
         #[qproperty(
             QMap_QString_QVariant,
             fx_chain_types,
-            cxx_name = "FxChainType",
+            cxx_name = "FXChainType",
             CONSTANT,
             READ
         )]

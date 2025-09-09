@@ -41,6 +41,13 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn ensure_engine_destroyed(self: Pin<&mut LuaEngine>);
+
+        #[qinvokable]
+        pub fn create_qt_to_lua_callback_fn(
+            self: Pin<&mut LuaEngine>,
+            name: QString,
+            code: QString,
+        ) -> *mut WrappedLuaCallback;
     }
 
     unsafe extern "C++" {
@@ -77,10 +84,54 @@ pub mod ffi {
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = (*mut QQuickItem,)> for LuaEngine {}
     impl cxx_qt::Constructor<(), NewArguments = ()> for LuaEngine {}
+
+    unsafe extern "RustQt" {
+        #[qobject]
+        type WrappedLuaCallback = super::WrappedLuaCallbackRust;
+
+        #[qinvokable]
+        pub fn call(self: Pin<&mut WrappedLuaCallback>);
+
+        #[qinvokable]
+        pub fn call_with_arg(self: Pin<&mut WrappedLuaCallback>, arg: QVariant);
+
+        #[qinvokable]
+        pub fn call_and_delete(self: Pin<&mut WrappedLuaCallback>);
+
+        #[qinvokable]
+        pub fn delete_later(self: Pin<&mut WrappedLuaCallback>);
+
+        #[qinvokable]
+        pub fn call_with_stored_arg(self: Pin<&mut WrappedLuaCallback>);
+    }
+
+    unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/make_raw.h");
+        #[rust_name = "make_raw_wrapped_lua_callback"]
+        unsafe fn make_raw() -> *mut WrappedLuaCallback;
+
+        #[rust_name = "make_raw_wrapped_lua_callback_with_parent"]
+        unsafe fn make_raw_with_one_arg(parent: *mut QObject) -> *mut WrappedLuaCallback;
+
+        include!("cxx-qt-lib-shoop/make_unique.h");
+        #[rust_name = "make_unique_wrapped_lua_callback"]
+        unsafe fn make_unique() -> UniquePtr<WrappedLuaCallback>;
+
+        include!("cxx-qt-lib-shoop/qobject.h");
+
+        #[rust_name = "wrapped_lua_callback_qobject_from_ptr"]
+        unsafe fn qobjectFromPtr(obj: *mut WrappedLuaCallback) -> *mut QObject;
+
+        #[rust_name = "wrapped_lua_callback_qobject_from_ref"]
+        fn qobjectFromRef(obj: &WrappedLuaCallback) -> &QObject;
+    }
 }
 
 use crate::lua_engine::LuaEngine as WrappedLuaEngine;
+use cxx_qt_lib_shoop::qobject::AsQObject;
 use ffi::*;
+use std::cell::RefCell;
+use std::sync::Weak;
 
 pub struct LuaEngineRust {
     pub engine: Option<WrappedLuaEngine>,
@@ -166,3 +217,32 @@ impl cxx_qt_lib_shoop::qobject::FromQObject for LuaEngine {
 }
 
 impl cxx_qt_lib_shoop::qquickitem::IsQQuickItem for LuaEngine {}
+
+pub struct RustToLuaCallback {
+    pub callback: mlua::Function,
+    pub weak_lua: Weak<mlua::Lua>,
+}
+
+pub struct WrappedLuaCallbackRust {
+    pub callback: RefCell<Option<RustToLuaCallback>>,
+    pub stored_arg: mlua::MultiValue,
+}
+
+impl Default for WrappedLuaCallbackRust {
+    fn default() -> Self {
+        Self {
+            callback: RefCell::new(None),
+            stored_arg: mlua::MultiValue::new(),
+        }
+    }
+}
+
+impl AsQObject for ffi::WrappedLuaCallback {
+    unsafe fn mut_qobject_ptr(&mut self) -> *mut ffi::QObject {
+        ffi::wrapped_lua_callback_qobject_from_ptr(self as *mut Self)
+    }
+
+    unsafe fn ref_qobject_ptr(&self) -> *const ffi::QObject {
+        ffi::wrapped_lua_callback_qobject_from_ref(self) as *const ffi::QObject
+    }
+}

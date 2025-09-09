@@ -52,7 +52,7 @@ GenericJackPort<API>::GenericJackPort(std::string name,
     }
 
     if (p == nullptr) {
-        throw std::runtime_error("Unable to open port.");
+        throw std::runtime_error("Unable to open port: " + name);
     }
 
     m_port = p;

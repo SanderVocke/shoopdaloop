@@ -118,6 +118,8 @@ Item {
         }
     }
 
+    Component.onDestruction: root.logger.debug("destruct")
+
     readonly property int num_slots : loops.length
     property string name: initial_descriptor.name
     property int max_slots

@@ -1,5 +1,5 @@
-import ShoopDaLoop.Rust
 import QtQuick 6.6
+import ShoopDaLoop.Rust
 
 ShoopRustFXChainGui {
     id: root
@@ -66,7 +66,7 @@ ShoopRustFXChainGui {
 
     function unload() {
         reg_entry.close()
-        close()
+        deinit()
     }
 
     function all_ports() {

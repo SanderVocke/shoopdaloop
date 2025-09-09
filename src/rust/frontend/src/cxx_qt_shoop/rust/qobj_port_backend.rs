@@ -274,6 +274,8 @@ impl PortBackend {
                     .ok_or(anyhow::anyhow!("min_n_ringbuffer_samples not set"))?;
                 let backend = BackendWrapper::from_qobject_ref_ptr(self.backend as *const QObject)?;
 
+                debug!(self, "Opening driver port for: {name_hint}");
+
                 let port = AnyBackendPort::new_driver_port(
                     port_type.clone(),
                     backend
@@ -288,6 +290,8 @@ impl PortBackend {
                     &direction,
                     min_n_ringbuffer_samples as u32,
                 )?;
+
+                trace!(self, "Opened driver port for: {name_hint}");
 
                 // To push any state that was already set on us before initializing
                 let state = &self.prev_state;
@@ -1034,7 +1038,7 @@ impl PortBackend {
         }
         let weak = self.fx_chain.as_ref().unwrap().as_ref().unwrap();
         match weak.to_strong() {
-            Ok(ptr) => match ptr.data() {
+            Ok(Some(ptr)) => match ptr.data() {
                 Ok(ptr) => {
                     return ptr;
                 }
@@ -1042,7 +1046,7 @@ impl PortBackend {
                     return std::ptr::null_mut();
                 }
             },
-            Err(_) => {
+            _ => {
                 return std::ptr::null_mut();
             }
         }

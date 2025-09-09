@@ -52,7 +52,9 @@ ShoopRustPortGui {
         root.logger.trace("onCompleted for AudioPort. descriptor: " + JSON.stringify(descriptor, null, 2))
         push_all()
     }
-    
+
+    Component.onDestruction: root.logger.debug("destruct")
+
     function push_all() {
         push_muted(descriptor.muted)
         push_passthrough_muted(descriptor.passthrough_muted)
@@ -80,9 +82,9 @@ ShoopRustPortGui {
     }
 
     function unload() {
+        root.logger.debug("unloading: " + root.name_hint)
         reg_entry.close()
-        close()
-        destroy()
+        deinit()
     }
 
     property var name_parts : descriptor.name_parts

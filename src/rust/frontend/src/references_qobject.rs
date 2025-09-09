@@ -79,8 +79,8 @@ impl ReferencesQObject for cxx::UniquePtr<QWeakPointer_QObject> {
     fn as_qobject_ptr(&mut self) -> *mut QObject {
         match self.as_ref() {
             Some(obj) => match obj.to_strong() {
-                Ok(obj) => obj.data().unwrap_or(std::ptr::null_mut()),
-                Err(_) => std::ptr::null_mut(),
+                Ok(Some(obj)) => obj.data().unwrap_or(std::ptr::null_mut()),
+                _ => std::ptr::null_mut(),
             },
             None => std::ptr::null_mut(),
         }
@@ -89,8 +89,8 @@ impl ReferencesQObject for cxx::UniquePtr<QWeakPointer_QObject> {
     fn as_qobject_ref(&self) -> *const QObject {
         match self.as_ref() {
             Some(obj) => match obj.to_strong() {
-                Ok(obj) => obj.data().unwrap_or(std::ptr::null_mut()) as *const QObject,
-                Err(_) => std::ptr::null(),
+                Ok(Some(obj)) => obj.data().unwrap_or(std::ptr::null_mut()) as *const QObject,
+                _ => std::ptr::null(),
             },
             None => std::ptr::null(),
         }

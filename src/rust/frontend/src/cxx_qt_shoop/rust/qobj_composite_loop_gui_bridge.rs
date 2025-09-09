@@ -300,6 +300,13 @@ pub mod ffi {
             maybe_cycles_delay: i32,
             maybe_to_sync_at_cycle: i32,
         );
+
+        #[qinvokable]
+        pub fn deinit(self: Pin<&mut CompositeLoopGui>);
+
+        #[qsignal]
+        #[inherit]
+        pub unsafe fn destroyed(self: Pin<&mut CompositeLoopGui>, obj: *mut QObject);
     }
 
     unsafe extern "C++" {

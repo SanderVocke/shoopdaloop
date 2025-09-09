@@ -468,46 +468,42 @@ Item {
             backend: session_backend
         }
 
-        // ShoopRustMidiControlPort {
-        //     backend: session_backend
-        //     id: midi_control_port
-        //     name_hint: "app-control"
-        //     direction: ShoopRustConstants.PortDirection.Input
+        ShoopRustMidiControlPort {
+            backend: session_backend
+            id: midi_control_port
+            name_hint: "app-control"
+            direction: ShoopRustConstants.PortDirection.Input
 
-        //     RegistryLookup {
-        //         id: lookup_autoconnect
-        //         registry: AppRegistries.state_registry
-        //         key: 'autoconnect_input_regexes'
-        //     }
+            RegistryLookup {
+                id: lookup_autoconnect
+                registry: AppRegistries.state_registry
+                key: 'autoconnect_input_regexes'
+            }
 
-        //     autoconnect_regexes: lookup_autoconnect.object || []
-        //     may_open: true
+            autoconnect_regexes: lookup_autoconnect.object || []
+            may_open: true
 
-        //     onMsg_received: msg => midi_control.handle_midi(msg, midi_control_port)
-        // }
+            onMsg_received: msg => midi_control.handle_midi(msg, midi_control_port)
+        }
 
-        // MidiControl {
-        //     id: midi_control
-        //     control_interface: control_interface
-        //     configuration: lookup_midi_configuration.object || fallback
+        MidiControl {
+            id: midi_control
+            control_interface: control_interface
+            configuration: lookup_midi_configuration.object || fallback
 
-        //     MidiControlConfiguration { id: fallback }
+            MidiControlConfiguration { id: fallback }
 
-        //     RegistryLookup {
-        //         registry: AppRegistries.state_registry
-        //         key: 'midi_control_configuration'
-        //         id: lookup_midi_configuration
-        //     }
-        // }
+            RegistryLookup {
+                registry: AppRegistries.state_registry
+                key: 'midi_control_configuration'
+                id: lookup_midi_configuration
+            }
+        }
 
         RegisterInRegistry {
             registry: AppRegistries.state_registry
             key: 'midi_control_port'
-            object: {
-                root.logger.error("Reenable MIDI control")
-                // midi_control_port
-                return null
-            }
+            object: midi_control_port
         }
 
         anchors {
@@ -711,6 +707,7 @@ Item {
 
                 function unload() {
                     root.logger.debug("sync loop: unloading session")
+                    if (item && item.track_widget) { item.track_widget.unload() }
                     active = false
                     loaded = false
                     initial_descriptor = null

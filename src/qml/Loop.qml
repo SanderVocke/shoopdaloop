@@ -21,4 +21,6 @@ ShoopRustLoopGui {
 
     property var initial_descriptor: null
     property string obj_id: initial_descriptor ? initial_descriptor.id : null
+
+    Component.onDestruction: deinit()
 }

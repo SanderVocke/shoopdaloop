@@ -133,6 +133,9 @@ pub mod ffi {
         pub fn dummy_clear_queues(self: Pin<&mut PortGui>);
 
         #[qinvokable]
+        pub fn deinit(self: Pin<&mut PortGui>);
+
+        #[qinvokable]
         pub unsafe fn backend_state_changed(
             self: Pin<&mut PortGui>,
             initialized: bool,
@@ -321,6 +324,9 @@ pub mod ffi {
         #[qsignal]
         pub unsafe fn backend_set_fx_chain_port_idx(self: Pin<&mut PortGui>, idx: i32);
 
+        #[qsignal]
+        #[inherit]
+        pub unsafe fn destroyed(self: Pin<&mut PortGui>, obj: *mut QObject);
     }
 
     unsafe extern "C++" {

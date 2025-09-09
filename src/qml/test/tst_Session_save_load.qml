@@ -78,7 +78,9 @@ ShoopTestFile {
             name: 'Session_save_load'
             filename : TestFilename.test_filename()
             session: session
-            additional_when_condition: other_session && other_session.loaded
+            additional_when_condition: {
+                return other_session && other_session.loaded
+            }
 
             function dt(s=session) { return s.main_tracks[0] }
             function dwt(s=session) { return s.main_tracks[1] }
