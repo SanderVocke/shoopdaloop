@@ -22,10 +22,13 @@ pub fn register_qml_type(module_name: &str, type_name: &str) {
 }
 
 impl ffi::RenderAudioWaveform {
-    fn preprocess_from_iter(self: Pin<&mut Self>, iter: impl Iterator<Item = f32>) {
-        let mut p = self.pyramid.lock().unwrap();
-        *p = audio_power_pyramid::create_audio_power_pyramid(iter, 2048);
-        debug!("Created pyramid with {} levels", p.levels.len());
+    fn preprocess_from_iter(mut self: Pin<&mut Self>, iter: impl Iterator<Item = f32>) {
+        {
+            let mut p = self.pyramid.lock().unwrap();
+            *p = audio_power_pyramid::create_audio_power_pyramid(iter, 2048);
+            debug!("Created pyramid with {} levels", p.levels.len());
+        }
+        self.as_mut().update();
     }
 
     pub fn preprocess(mut self: Pin<&mut Self>) {

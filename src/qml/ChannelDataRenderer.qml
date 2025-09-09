@@ -18,7 +18,7 @@ Item {
 
     readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.ChannelDataRenderer" }
 
-    property var played_back_sample : channel ? channel.played_back_sample : 0
+    property var played_back_sample : channel ? channel.last_played_sample : 0
     property int n_preplay_samples : channel ? channel.n_preplay_samples : 0
     property int start_offset : channel ? channel.start_offset : 0
 
@@ -216,9 +216,6 @@ Item {
             width: root.width
             height: root.height
             clip: true
-
-
-            visible: false
 
             property var running_fetch_task: null
 

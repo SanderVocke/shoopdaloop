@@ -31,7 +31,7 @@ Loop {
 
         var total = 0;
         for (var channel of midi_channels) {
-            total += channel.n_events_triggered;
+            total += channel.midi_n_events_triggered;
         }
         return total
     }
@@ -43,7 +43,7 @@ Loop {
 
         var total = 0;
         for (var channel of midi_channels) {
-            total += channel.n_notes_active;
+            total += channel.midi_n_notes_active;
         }
         return total
     }

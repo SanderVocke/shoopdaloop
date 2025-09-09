@@ -49,7 +49,7 @@ impl RenderMidiSequence {
                 0,
                 ((note.start - samples_offset as i64) as f32 / samples_per_bin) as i64,
             );
-            note.scaled_end = std::cmp::max(
+            note.scaled_end = std::cmp::min(
                 width,
                 ((note.end - samples_offset as i64) as f32 / samples_per_bin) as i64,
             );
@@ -68,16 +68,15 @@ impl RenderMidiSequence {
             min = std::cmp::min(min, n.note);
             max = std::cmp::max(max, n.note);
         });
+        let maxmindiff = std::cmp::max(1, max - min) as f64;
 
-        let note_thickness = std::cmp::min(
-            15,
-            std::cmp::max(3, (height * 0.8 / (max - min) as f64) as i32),
-        ) as f32;
+        let note_thickness =
+            std::cmp::min(15, std::cmp::max(3, (height * 0.8 / maxmindiff) as i32)) as f32;
 
         let color = QColor::from_rgb(0, 0, (0.8 * 255.0) as i32);
 
         for note in filtered_notes_iter() {
-            let y_rel: f32 = (note.note as f32 - min as f32) / (max as f32 - min as f32);
+            let y_rel: f32 = (note.note as f32 - min as f32) / maxmindiff as f32;
             let y_inv: f32 = (height as f32 * 0.1) + y_rel * (height as f32 * 0.8);
             let y = height as f32 - y_inv;
 
@@ -99,7 +98,7 @@ impl RenderMidiSequence {
                 .data()?
                 .as_ref()
                 .ok_or(anyhow::anyhow!("Could not extract data vector"))?;
-
+            trace!("Got {} events", vector.len());
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.notes =
                 msgs_to_notes(vector.iter().map(|v| MidiEvent::from_qvariant(&v).unwrap()))
@@ -112,6 +111,9 @@ impl RenderMidiSequence {
                         scaled_end: 0,
                     })
                     .collect();
+
+            trace!("{} msgs -> {} notes", vector.len(), rust_mut.notes.len());
+
             self.as_mut().update();
             Ok(())
         }() {
@@ -132,6 +134,9 @@ impl cxx_qt::Initialize for RenderMidiSequence {
             .release();
         self.as_mut()
             .on_samples_per_bin_changed(|s| s.update())
+            .release();
+        self.as_mut()
+            .on_input_data_changed(|s| unsafe { s.parse() })
             .release();
     }
 }

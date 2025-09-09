@@ -224,11 +224,11 @@ Item {
     function is_wet(p)    { return p && p.id.match(/.*_wet_.*/); }
     function is_direct(p) { return p && p.id.match(/.*_direct_.*/); }
     function aggregate_midi_notes(ports) {
-        var notes_per_port = ports.map((p) => p.n_input_notes_active)
+        var notes_per_port = ports.map((p) => p.midi_n_input_notes_active)
         return Math.max(notes_per_port)
     }
     function aggregate_midi_events(ports) {
-        var events_per_port = ports.map((p) => p.n_input_events)
+        var events_per_port = ports.map((p) => p.midi_n_input_events)
         return Math.max(events_per_port)
     }
     function update_midi() {

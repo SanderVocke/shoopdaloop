@@ -222,14 +222,14 @@ Dialog {
             return
         }
         root.prepareToReceiveClickTrack()
+        let channels = kind_combo.currentValue == 'Audio' ? target_loop_widget.audio_channels
+            : target_loop_widget.midi_channels
+
+        if (channels.length == 0) {
+            root.logger.error("cannot create click track - no backend loop on target loop widget")
+            return
+        }
         if (kind_combo.currentValue == "Audio") {
-            let channels = target_loop_widget.audio_channels
-
-            if (channels.length == 0) {
-                root.logger.error("cannot create click track - no backend loop on target loop widget")
-                return
-            }
-
             let length = ShoopRustClickTrackGenerator.generate_audio_into_channels(
                 chosen_clicks(),
                 root.bpm,
@@ -241,8 +241,19 @@ Dialog {
 
             target_loop_widget.queue_set_length(length)
         } else {
-            root.logger.error("cannot create click track - MIDI unimplemented")
-            return
+            let length = ShoopRustClickTrackGenerator.generate_midi_into_channels(
+                [click_note],
+                [0],
+                [127],
+                note_length,
+                root.bpm,
+                root.n_beats,
+                root.alternate_delay_percent,
+                root.sample_rate,
+                channels
+            )
+
+            target_loop_widget.queue_set_length(length)
         }
     }
 }

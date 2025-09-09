@@ -1,15 +1,19 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
 pub use crate::cxx_qt_shoop::qobj_click_track_generator_bridge::ffi::ClickTrackGenerator;
-use crate::cxx_qt_shoop::qobj_click_track_generator_bridge::ffi::*;
 use crate::init::GLOBAL_CONFIG;
+use crate::{
+    cxx_qt_shoop::qobj_click_track_generator_bridge::ffi::*,
+    midi_event_helpers::MidiEventToQVariant,
+};
 use backend_bindings::{MidiEvent, MultichannelAudio};
-use cxx_qt_lib::QList;
+use cxx_qt_lib::{QList, QVariant, QVector};
 
 use common::logging::macros::*;
 use cxx_qt_lib_shoop::{
     connection_types, invokable::invoke, qvariant_helpers::qvariant_to_qobject_ptr,
 };
+use midi_processing::{make_note_off, make_note_on};
 use sndfile::SndFileIO;
 shoop_log_unit!("Frontend.ClickTrackGenerator");
 
@@ -57,17 +61,51 @@ fn generate_click_track_timings(
     }
 }
 
-fn _generate_click_track_midi(
-    _notes: Vec<u8>,
-    _channesl: Vec<u8>,
-    _velocities: Vec<u8>,
-    _note_length: f32,
-    _bpm: f64,
-    _n_beats: usize,
-    _alt_click_delay_percent: f64,
-    _sample_rate: usize,
+fn generate_click_track_midi(
+    notes: Vec<u8>,
+    channels: Vec<u8>,
+    velocities: Vec<u8>,
+    note_length: f32,
+    bpm: f64,
+    n_beats: usize,
+    alt_click_delay_percent: f64,
+    sample_rate: usize,
 ) -> Vec<MidiEvent> {
-    todo!();
+    match || -> Result<Vec<MidiEvent>, anyhow::Error> {
+        let mut msgs: Vec<MidiEvent> = Vec::new();
+        let note_length_frames = (note_length * sample_rate as f32) as usize;
+        let timings =
+            generate_click_track_timings(bpm, n_beats, alt_click_delay_percent, sample_rate);
+        for (idx, start) in timings.beat_start_frames.iter().enumerate() {
+            let chan = channels
+                .get(idx % channels.len())
+                .ok_or(anyhow::anyhow!("Failed to index channels"))?;
+            let note = notes
+                .get(idx % notes.len())
+                .ok_or(anyhow::anyhow!("Failed to index channels"))?;
+            let velocity = notes
+                .get(idx % velocities.len())
+                .ok_or(anyhow::anyhow!("Failed to index velocities"))?;
+
+            msgs.push(MidiEvent {
+                time: *start as i32,
+                data: make_note_on(*chan, *note, *velocity),
+            });
+            msgs.push(MidiEvent {
+                time: *start as i32 + note_length_frames as i32,
+                data: make_note_off(*chan, *note, *velocity),
+            });
+        }
+        msgs.sort_by(|a, b| a.time.cmp(&b.time));
+
+        Ok(msgs)
+    }() {
+        Ok(vec) => vec,
+        Err(e) => {
+            error!("Failed to generate MIDI click track: {e}");
+            Vec::new()
+        }
+    }
 }
 
 fn generate_click_track_audio_from_waveforms(
@@ -268,16 +306,103 @@ impl ClickTrackGenerator {
 
     pub fn generate_midi(
         self: &ClickTrackGenerator,
-        _notes: QList_i32,
-        _channels: QList_i32,
-        _velocities: QList_i32,
-        _note_length: f32,
-        _bpm: i32,
-        _n_beats: i32,
-        _alt_click_delay_percent: i32,
-        _sample_rate: i32,
-    ) -> QString {
-        todo!();
+        notes: QList_i32,
+        channels: QList_i32,
+        velocities: QList_i32,
+        note_length: f32,
+        bpm: i32,
+        n_beats: i32,
+        alt_click_delay_percent: i32,
+        sample_rate: i32,
+    ) -> QVector<QVariant> {
+        let notes: Vec<u8> = notes.iter().map(|n| *n as u8).collect();
+        let channels: Vec<u8> = channels.iter().map(|n| *n as u8).collect();
+        let velocities: Vec<u8> = velocities.iter().map(|n| *n as u8).collect();
+        let msgs = generate_click_track_midi(
+            notes,
+            channels,
+            velocities,
+            note_length,
+            bpm as f64,
+            n_beats as usize,
+            alt_click_delay_percent as f64,
+            sample_rate as usize,
+        );
+        let mut list: QVector<QVariant> = QVector::default();
+        for msg in msgs {
+            list.append(msg.to_qvariant());
+        }
+
+        list
+    }
+
+    pub fn generate_midi_into_channels(
+        self: &ClickTrackGenerator,
+        notes: QList_i32,
+        channels: QList_i32,
+        velocities: QList_i32,
+        note_length: f32,
+        bpm: i32,
+        n_beats: i32,
+        alt_click_delay_percent: i32,
+        sample_rate: i32,
+        target_channels: QList_QVariant,
+    ) -> i32 {
+        match || -> Result<i32, anyhow::Error> {
+            let data = self.generate_midi(
+                notes,
+                channels,
+                velocities,
+                note_length,
+                bpm,
+                n_beats,
+                alt_click_delay_percent,
+                sample_rate,
+            );
+
+            for channel in target_channels.iter() {
+                let channel = qvariant_to_qobject_ptr(channel)?;
+                if channel.is_null() {
+                    return Err(anyhow::anyhow!("Null channel"));
+                }
+                unsafe {
+                    invoke::<_, (), _>(
+                        &mut *channel,
+                        "load_midi_data(QVector<QVariant>)",
+                        connection_types::DIRECT_CONNECTION,
+                        &(data),
+                    )?;
+                    invoke::<_, (), _>(
+                        &mut *channel,
+                        "push_start_offset(::std::int32_t)",
+                        connection_types::DIRECT_CONNECTION,
+                        &(0),
+                    )?;
+                    invoke::<_, (), _>(
+                        &mut *channel,
+                        "push_n_preplay_samples(::std::int32_t)",
+                        connection_types::DIRECT_CONNECTION,
+                        &(0),
+                    )?;
+                }
+            }
+
+            info!(
+                "Loaded click track MIDI ({} msgs) into {} loop channels.",
+                data.len(),
+                target_channels.len()
+            );
+
+            let total_length_frames =
+                (1.0 / bpm as f64 * n_beats as f64 * 60.0 * sample_rate as f64) as i32;
+            Ok(total_length_frames)
+        }() {
+            Ok(l) => l,
+            Err(e) => {
+                error!("Failed to generate click track into channel(s): {e}");
+                0
+            }
+        }
     }
 
     pub fn preview_audio(

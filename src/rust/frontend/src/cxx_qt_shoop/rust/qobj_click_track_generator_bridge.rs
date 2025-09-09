@@ -12,6 +12,9 @@ pub mod ffi {
         type QList_f32 = cxx_qt_lib::QList<f32>;
         type QList_QString = cxx_qt_lib::QList<QString>;
         type QList_QVariant = cxx_qt_lib::QList<cxx_qt_lib::QVariant>;
+
+        include!("cxx-qt-lib/qvector.h");
+        type QVector_QVariant = cxx_qt_lib::QVector<cxx_qt_lib::QVariant>;
     }
 
     unsafe extern "RustQt" {
@@ -53,7 +56,21 @@ pub mod ffi {
             n_beats: i32,
             alt_click_delay_percent: i32,
             sample_rate: i32,
-        ) -> QString;
+        ) -> QVector_QVariant;
+
+        #[qinvokable]
+        pub fn generate_midi_into_channels(
+            self: &ClickTrackGenerator,
+            notes: QList_i32,
+            channels: QList_i32,
+            velocities: QList_i32,
+            note_length: f32,
+            bpm: i32,
+            n_beats: i32,
+            alt_click_delay_percent: i32,
+            sample_rate: i32,
+            target_channels: QList_QVariant,
+        ) -> i32;
 
         #[qinvokable]
         pub fn preview_audio(

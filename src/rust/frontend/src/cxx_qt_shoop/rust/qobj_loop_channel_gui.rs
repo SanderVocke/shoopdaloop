@@ -532,6 +532,8 @@ impl LoopChannelGui {
                 );
             }
 
+            trace!(self, "Start async job for getting channel data");
+
             pin_async_task.as_mut().exec_concurrent_rust_then_finish(
                 move || -> Result<(), anyhow::Error> {
                     let backend_channel_qobj = channel_backend
@@ -550,6 +552,8 @@ impl LoopChannelGui {
                             &(),
                         )?
                     };
+
+                    raw_trace!("Got {} data elements asynchronously", data.len());
 
                     // Move onto the heap
                     let on_heap = Box::into_raw(Box::<QVector_QVariant>::new(data));
