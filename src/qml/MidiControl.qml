@@ -12,14 +12,11 @@ Item {
 
     LuaEngine {
         id: _lua_engine
-        ready: false
-        function update() {
-            if (root.control_interface) {
-                create_lua_qobject_interface_as_global('__shoop_control_interface', root.control_interface)
-            }
+        property bool ready: false
+        Component.onCompleted: {
+            control_interface.install_on_lua_engine(lua_engine)
             ready = true
         }
-        Component.onCompleted: update()
     }
 
     function initialize() {
@@ -94,7 +91,7 @@ shoop_format = require('shoop_format')
             script += ` end`
             root.logger.trace('Generated script: ' + script)
 
-            let fn = _lua_engine.evaluate(script, 'MidiControl', true, true)
+            let fn = _lua_engine.evaluate(script, 'MidiControl', true)
             let _name = action_name
             return function(msg, port, _fn=fn, name=_name) {
                 root.logger.debug(`Running action ${name}`)
