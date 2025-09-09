@@ -1,18 +1,15 @@
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 import QtQuick 6.6
 
-import ShoopConstants
-
-LoopGui {
+ShoopRustLoopGui {
     id: root
     property bool loaded : initialized
 
     RequireBackend {}
 
-    readonly property PythonLogger logger: PythonLogger {
+    readonly property ShoopRustLogger logger: ShoopRustLogger {
         name: "Frontend.Qml.Loop"
-        instanceIdentifier: root.instance_identifier
+        instance_identifier: root.instance_identifier
     }
     instance_identifier: obj_id
 
@@ -20,13 +17,8 @@ LoopGui {
     property var loop_widget : null
 
     // Gives a nice full progress bar when recording
-    readonly property int display_position: mode == ShoopConstants.LoopMode.Recording ? length : position
+    readonly property int display_position: mode == ShoopRustConstants.LoopMode.Recording ? length : position
 
     property var initial_descriptor: null
     property string obj_id: initial_descriptor ? initial_descriptor.id : null
-
-    // TODO: can be removed / refactored out after getting rid of Python
-    function queue_set_length_qml(length) {
-        root.queue_set_length(length)
-    }
 }

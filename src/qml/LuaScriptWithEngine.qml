@@ -10,7 +10,6 @@ Item {
     property var script_code
     property string script_name
     property var script_path
-    property bool catch_errors
     property bool ready: script !== undefined && script.ready !== undefined && script.ready
 
     property bool ran: false
@@ -25,9 +24,9 @@ Item {
 
         sourceComponent : LuaEngine {
             id: the_engine
-            ready: false
 
             property alias script : the_script
+            property bool ready : false
 
             LuaScript {
                 id: the_script
@@ -35,25 +34,24 @@ Item {
                 script_code : root.script_code
                 script_path : root.script_path
                 script_name : root.script_name
-                catch_errors : root.catch_errors
 
-                when: the_engine && the_engine.ready && control_interface && control_interface.ready
+                when: the_engine && the_engine.ready && control_interface
                 lua_engine: the_engine
 
                 onRanScript: {
                     ran = true
-                    listening = (control_interface.engine_registered(the_engine))
+                    listening = (control_interface.engine_is_installed(the_engine))
                 }
             }
 
-            function update() {
-                if (root.control_interface && root.control_interface.ready) {
-                    create_lua_qobject_interface_as_global('__shoop_control_interface', root.control_interface)
-                }
+            Component.onCompleted: {
+                root.control_interface.install_on_lua_engine(the_engine)
                 ready = true
             }
-            Component.onCompleted: update()
-            Component.onDestruction: root.control_interface.unregister_lua_engine(the_engine)
+            Component.onDestruction: {
+                the_engine.ensure_engine_destroyed()
+                root.control_interface.uninstall_lua_engine(the_engine)
+            }
         }
     }
 

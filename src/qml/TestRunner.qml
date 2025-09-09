@@ -1,7 +1,7 @@
 Item {
     id: root
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TestRunner" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.TestRunner" }
     property var running_testcase : null
     property var registered_testcases: []
     property var testcase_results: ({})

@@ -44,13 +44,6 @@ runs:
       echo "==== Rust component list ===="
       rustup component list
 
-  - name: Install Python build requirements
-    if: always()
-    shell: wrap-shell {0}
-    run: |
-      python3 -m pip install --upgrade pip
-      python3 -m pip install -r build_python_requirements.txt
-
   - name: Prepare linux
     if: always() && inputs.variant == 'linux'
     uses: ./.github/actions/prepare_build_linux

@@ -10,7 +10,7 @@ shoop_midi.PolyAftertouch = 0xD0
 shoop_midi.SysEx = 0xF0
 
 function shoop_midi.is_kind(msg, kind)
-    return (msg.bytes[0] & 0XF0) == kind
+    return (msg[1] & 0XF0) == kind
 end
 
 return shoop_midi

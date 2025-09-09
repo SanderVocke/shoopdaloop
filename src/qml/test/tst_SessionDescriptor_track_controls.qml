@@ -1,7 +1,7 @@
 import QtQuick 6.6
 
 import './testDeepEqual.js' as TestDeepEqual
-import ShoopConstants
+import ShoopDaLoop.Rust
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
@@ -68,7 +68,7 @@ ShoopTestFile {
                     reference['track_groups'][0]['tracks'][0]['width'] = actual['track_groups'][0]['tracks'][0]['width']
                     verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
 
-                    var filename = ShoopFileIO.generate_temporary_filename() + '.shl'
+                    var filename = ShoopRustFileIO.generate_temporary_filename() + '.shl'
 
                     session.logger.info("Saving session to " + filename)
                     session.save_session(filename)
@@ -83,7 +83,7 @@ ShoopTestFile {
 
                     actual = session.actual_session_descriptor(false, '', null)
 
-                    ShoopFileIO.delete_file(filename)
+                    ShoopRustFileIO.delete_file(filename)
 
                     verify(TestDeepEqual.testDeepEqual(actual, reference, session.logger.error))
                 }

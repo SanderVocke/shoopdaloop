@@ -1,1 +1,0 @@
-import add_vcpkg_paths; add_vcpkg_paths.add_vcpkg_paths()

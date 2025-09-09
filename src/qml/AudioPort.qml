@@ -1,16 +1,13 @@
 import ShoopDaLoop.Rust
-import ShoopDaLoop.PythonLogger
 import QtQuick 6.6
 
-import ShoopConstants
-
-PortGui {
+ShoopRustPortGui {
     id: root
     property var descriptor : null
     property bool loaded : initialized
-    property var logger : PythonLogger {
+    property var logger : ShoopRustLogger {
         name: "Frontend.Qml.AudioPort"
-        instanceIdentifier: root.obj_id
+        instance_identifier: root.obj_id
     }
 
     RequireBackend {}
@@ -18,10 +15,10 @@ PortGui {
     function parse_connectability(conn) {
         var rval = 0
         if (conn.includes('internal')) {
-            rval |= ShoopConstants.PortConnectability.Internal
+            rval |= ShoopRustConstants.PortConnectability.Internal
         }
         if (conn.includes('external')) {
-            rval |= ShoopConstants.PortConnectability.External
+            rval |= ShoopRustConstants.PortConnectability.External
         }
         return rval
     }
@@ -65,7 +62,7 @@ PortGui {
 
     RegistryLookups {
         id: lookup_internal_port_connections
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         keys: descriptor.internal_port_connections
     }
 
@@ -77,7 +74,7 @@ PortGui {
 
     RegisterInRegistry {
         id: reg_entry
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         key: root.descriptor.id
         object: root
     }

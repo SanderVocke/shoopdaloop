@@ -1,10 +1,7 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
-
-import ShoopConstants
 import 'js/mode_helpers.js' as ModeHelpers
 
 Item {
@@ -27,7 +24,7 @@ Item {
     // set internally
     property alias kind : rust_loop.kind
 
-    // The Python-side object manages triggering other loops based on the
+    // The extension object manages triggering other loops based on the
     // schedule. This needs to keep running even if the QML/GUI thread hangs.
     // In the QML side, we manage updating/calculating the schedule.
     property var schedule: ({})
@@ -44,12 +41,12 @@ Item {
     property alias rust_loop : rust_loop
     property alias backend : rust_loop.backend
 
-    CompositeLoopGui {
+    ShoopRustCompositeLoopGui {
         id: rust_loop
         sync_source: (root.sync_loop && root.sync_loop.maybe_loop) ? root.sync_loop.maybe_loop : null
         schedule: root.schedule
-        play_after_record: registries.state_registry.play_after_record_active
-        sync_mode_active: registries.state_registry.sync_active
+        play_after_record: AppRegistries.state_registry.play_after_record_active
+        sync_mode_active: AppRegistries.state_registry.sync_active
 
         onCycled: n => root.cycled(n)
         Component.onCompleted: root.recalculate_schedule()
@@ -103,7 +100,7 @@ Item {
                 circular = true
             }
             if (circular) { return; }
-            let loop_widget = registries.objects_registry.value_or(loop_id, undefined)
+            let loop_widget = AppRegistries.objects_registry.value_or(loop_id, undefined)
             if (loop_widget && loop_widget.maybe_composite_loop) {
                 for_each_loop_id(loop_widget.maybe_composite_loop.playlists, (lid) => {
                     if (lid == own_obj_id) {
@@ -126,9 +123,9 @@ Item {
     // { delay: int, loop_id: str, start_iteration: int, end_iteration: int, loop: Loop }
     property var scheduled_playlists: []
 
-    readonly property PythonLogger logger: PythonLogger {
+    readonly property ShoopRustLogger logger: ShoopRustLogger {
         name: "Frontend.Qml.CompositeLoop"
-        instanceIdentifier: obj_id
+        instance_identifier: obj_id
     }
 
     signal cycled(int cycle_nr)
@@ -166,7 +163,7 @@ Item {
                 var total_duration = 0
                 for (var h=0; h<elems.length; h++) {
                     let elem = elems[h]
-                    let loop_widget = registries.objects_registry.value_or(elem.loop_id, undefined)
+                    let loop_widget = AppRegistries.objects_registry.value_or(elem.loop_id, undefined)
                     if (!loop_widget) {
                         root.logger.debug("Could not find " + elem.loop_id) 
                         continue
@@ -222,8 +219,7 @@ Item {
                             continue
                         }
                     }
-                    // If our target is a CompositeLoop, it does not directly inherit a Python loop.
-                    // Instead it will be stored in its rust_loop subobject.
+                    // If our target is a CompositeLoop, it does not directly inherit a loop.
                     if (loop.objectName === "Qml.CompositeLoop") {
                         loop = loop.rust_loop
                     }
@@ -251,7 +247,7 @@ Item {
                     _schedule[k].loops_start.delete(starting)
                 }
             }
-            // Also convert the sets to lists for Python usage
+            // Also convert the sets to lists for extension usage
             _schedule[k].loops_start = Array.from(_schedule[k].loops_start)
             _schedule[k].loops_end = Array.from(_schedule[k].loops_end)
             _schedule[k].loops_ignored = Array.from(_schedule[k].loops_ignored)
@@ -343,12 +339,12 @@ Item {
         }
         return r
     }
-    property var all_loops: new Set(Array.from(all_loop_ids || []).map(id => registries.objects_registry.value_or(id, undefined)).filter(m => m))
+    property var all_loops: new Set(Array.from(all_loop_ids || []).map(id => AppRegistries.objects_registry.value_or(id, undefined)).filter(m => m))
     property bool all_loops_found:  all_loops.size == all_loop_ids.size
 
     // If the registry changes and we didn't find all our loops, trigger to look again
     Connections {
-        target: registries.objects_registry
+        target: AppRegistries.objects_registry
         function onContentsChanged() { if (!all_loops_found) { root.all_loop_idsChanged() } }
     }
 
@@ -358,7 +354,7 @@ Item {
 
     // If we didn't find all our loops, listen for registry changes to find them later
     Connections {
-        target: all_loops_found ? null : registries.objects_registry
+        target: all_loops_found ? null : AppRegistries.objects_registry
         function onItemAdded(id, val) { if (all_loop_ids.has(id)) { playlists_inChanged() } }
         function onItemModified(id, val) { if (all_loop_ids.has(id)) { playlists_inChanged() } }
     }
@@ -378,7 +374,7 @@ Item {
         }
     }
 
-    property var sync_loop : registries.state_registry.sync_loop
+    property var sync_loop : AppRegistries.state_registry.sync_loop
 
     function transition(mode, maybe_delay, maybe_align_to_sync_at) {
         rust_loop.transition(mode, maybe_delay, maybe_align_to_sync_at)

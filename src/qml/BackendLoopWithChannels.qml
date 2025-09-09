@@ -1,8 +1,6 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
-import ShoopDaLoop.PythonLogger
-
-import ShoopConstants
+import ShoopDaLoop.Rust
 import 'js/mode_helpers.js' as ModeHelpers
 
 // Wrap a Loop that may be dynamically loaded in a just-in-time way.
@@ -13,7 +11,7 @@ Loop {
     readonly property var loop : root
     readonly property var maybe_backend_loop: root
 
-    readonly property PythonLogger logger : PythonLogger { name:"Frontend.Qml.BackendLoopWithChannels" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name:"Frontend.Qml.BackendLoopWithChannels" }
 
     readonly property var audio_channel_descriptors: (initial_descriptor && initial_descriptor.channels) ? initial_descriptor.channels.filter(c => c.type == 'audio') : []
     readonly property var midi_channel_descriptors: (initial_descriptor && initial_descriptor.channels) ? initial_descriptor.channels.filter(c => c.type == 'midi') : []
@@ -33,7 +31,7 @@ Loop {
 
         var total = 0;
         for (var channel of midi_channels) {
-            total += channel.n_events_triggered;
+            total += channel.midi_n_events_triggered;
         }
         return total
     }
@@ -45,7 +43,7 @@ Loop {
 
         var total = 0;
         for (var channel of midi_channels) {
-            total += channel.n_notes_active;
+            total += channel.midi_n_notes_active;
         }
         return total
     }
@@ -114,15 +112,15 @@ Loop {
             var channel_fn = (c => {
                 if (ModeHelpers.is_recording_mode_for(mode, c.mode)) {
                     c.recording_started_at = now
-                    if (c.mode == ShoopConstants.ChannelMode.Wet && maybe_fx_chain) {
+                    if (c.mode == ShoopRustConstants.ChannelMode.Wet && maybe_fx_chain) {
                         if (!fx_chain_desc_id) {
                             root.logger.debug(`Caching FX chain state for wet channel ${c.obj_id}`)
-                            fx_chain_desc_id = registries.fx_chain_states_registry.generate_id('fx_chain_state')
+                            fx_chain_desc_id = AppRegistries.fx_chain_states_registry.generate_id('fx_chain_state')
                             var fx_chain_desc = maybe_fx_chain.actual_session_descriptor()
                             delete fx_chain_desc.ports // Port descriptions not needed for state caching, this is track-dependent
                             fx_chain_desc.title = ""   // No title indicates elsewhere that this is not a snapshot that the user can directly see in the list.
                             fx_chain_desc.id = fx_chain_desc_id
-                            registries.fx_chain_states_registry.register (fx_chain_desc_id, fx_chain_desc)
+                            AppRegistries.fx_chain_states_registry.register (fx_chain_desc_id, fx_chain_desc)
                         }
                         c.recording_fx_chain_state_id = fx_chain_desc_id
                     }

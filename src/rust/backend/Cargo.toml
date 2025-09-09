@@ -13,7 +13,6 @@ common = { path = "../common" }
 
 [build-dependencies]
 common = { path = "../common" }
-py_prepare = { path = "../py_prepare" }
 
 cmake = { workspace = true }
 anyhow = { workspace = true }
@@ -21,4 +20,4 @@ glob = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only
-prebuild = ["common/prebuild", "py_prepare/prebuild"]
+prebuild = ["common/prebuild"]

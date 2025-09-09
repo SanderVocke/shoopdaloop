@@ -18,13 +18,10 @@ path = "src/bin/print_shoopdaloop_out_dir.rs"
 frontend = { path = "../frontend" }
 backend_bindings = { path = "../backend_bindings" }
 common = { path = "../common" }
-py_env = { path = "../py_env" }
 config = { path = "../config" }
 crashhandling = { path = "../crashhandling" }
-shoop_py_backend = { path = "../shoop_py_backend" }
 cxx_qt_lib_shoop = { path = "../cxx_qt_lib_shoop" }
 
-pyo3 = { workspace = true, features = ["auto-initialize"] }
 glob = { workspace = true }
 anyhow = { workspace = true }
 regex = { workspace = true }
@@ -56,8 +53,5 @@ ctor = { workspace = true }
 prebuild = ["frontend/prebuild",
             "backend_bindings/prebuild",
             "backend/prebuild",
-            "py_env/prebuild",
             "common/prebuild",
-            "py_env/prebuild",
-            "crashhandling/prebuild",
-            "shoop_py_backend/prebuild"]
+            "crashhandling/prebuild"]

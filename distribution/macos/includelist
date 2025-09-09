@@ -5,7 +5,6 @@
 */libzix-*.dylib*
 */libQt6*.dylib*
 */libsratom-*.dylib*
-*/libpython*.dylib*
 */libb*.dylib*
 */libicu*.dylib*
 */libdouble-conversion*.dylib

@@ -2,7 +2,6 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Layouts 6.6
-import ShoopDaLoop.PythonLogger
 
 Item {
     property var audio_in_ports: []
@@ -13,7 +12,7 @@ Item {
     property var midi_out_ports: []
     property var midi_send_ports: []
 
-    readonly property PythonLogger logger : PythonLogger { name:"Frontend.ConnectionsDialog" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name:"Frontend.ConnectionsDialog" }
 
     id: root
 

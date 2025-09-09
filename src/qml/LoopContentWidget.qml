@@ -1,7 +1,6 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonLogger
 
 import 'js/mode_helpers.js' as ModeHelpers
 
@@ -10,7 +9,9 @@ Item {
     property var loop
     property var sync_loop
 
-    property PythonLogger logger : default_logger
+    property ShoopRustLogger logger : 
+    ShoopRustLogger { name: "Frontend.Qml.LoopContentWidget"
+                      instance_identifier: root.loop.obj_id }
 
     height: childrenRect.height
 

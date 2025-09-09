@@ -1,7 +1,7 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonLogger
+import Qt.labs.qmlmodels
 
 // The click track dialog allows the user to interactively configure, preview
 // and select a generated click track clip.
@@ -14,42 +14,39 @@ ShoopApplicationWindow {
 
     property int cycle_us : 0
     property var backend : null
-    property PythonLogger logger : PythonLogger { name: 'Frontend.ProfilingDialog' }
+    property ShoopRustLogger logger : ShoopRustLogger { name: 'Frontend.ProfilingDialog' }
     property var profiling_data : null
-    property var profiling_tree_model : {
-        if (profiling_data) {
-            // Round any floating-point values to integers
-            // and provide data as percent of process cycle
-            var _data = {}
 
-            var bufsize = root.backend.get_buffer_size()
-            var samplerate = root.backend && root.backend.ready ? root.backend.get_sample_rate() : 1
-            cycle_us = bufsize / samplerate * 1000000.0
-
-            Object.entries(profiling_data).forEach((p) => {
-                _data[p[0]] = {}
-                Object.entries(p[1]).forEach((pp) => {
-                    var asfloat = parseFloat(pp[1])
-                    if (asfloat != NaN) {
-                        _data[p[0]][pp[0]] = parseInt(asfloat)
-                        var percentkey = pp[0] + '_%'
-                        _data[p[0]][percentkey] = parseInt(asfloat / cycle_us * 100.0)
-                    } else {
-                        // Not a number. no rounding or percentages
-                        _data[p[0]][pp[0]] = pp[1]
-                    }
-
-                    _data[p[0]][pp[0]] =
-                        parseFloat(pp[1]) != NaN ?
-                        parseInt(pp[1]) : pp[1]
-                })
+    property var profiling_data_rows: {
+        if (!profiling_data) { return [] }
+        return Object.keys(profiling_data).map((key) =>
+            ({
+                item: key,
+                average: Math.round(profiling_data[key].average),
+                worst: Math.round(profiling_data[key].worst)
             })
-            return tree_model_factory.create(_data, '.', column_roles, column_headers)
-        }
-        return null;
+        )
     }
-    readonly property var column_roles : ['name', 'average', 'worst', 'average_%', 'worst_%']
-    readonly property var column_headers : ['Section', 'Avg', 'Worst', 'Avg (%)', 'Worst (%)']
+
+    TableModel {
+        id: table_model
+        TableModelColumn {
+            display: "item"
+        }
+        TableModelColumn {
+            display: "average"
+        }
+        TableModelColumn {
+            display: "worst"
+        }
+
+        property var header_row: ({ item: "Item", average: "Avg", worst: "Worst" })
+
+        rows: profiling_data_rows ? [
+            header_row,
+            ...profiling_data_rows
+        ] : [header_row]
+    }
 
     property alias auto_update: auto_update_switch.checked
 
@@ -105,9 +102,10 @@ ShoopApplicationWindow {
         text: "System cycle time (us): " + root.cycle_us
     }
 
-    TreeView {
-        id: tree
-       
+    TableView {
+        id: table
+        model: table_model
+
         rowHeightProvider: (idx) => 20
 
         anchors {
@@ -117,17 +115,21 @@ ShoopApplicationWindow {
             top: cycle_time_label.bottom
         }
 
-        delegate: TreeViewDelegate {
-            id: delegate
-            background: Rectangle { color: 'transparent' }
-        }
-
-        model: root.profiling_tree_model
-        onModelChanged: expander.trigger()
-
-        ExecuteNextCycle {
-            id: expander
-            onExecute: if(tree.model) { tree.expandRecursively() }
+        delegate: DelegateChooser {
+            DelegateChoice {
+                row: 0
+                Label {
+                    padding: 10
+                    font.bold: true
+                    text: model.display
+                }
+            }
+            DelegateChoice {
+                Label {
+                    padding: 10
+                    text: model.display
+                }
+            }
         }
     }
 }

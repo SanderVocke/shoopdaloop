@@ -1,10 +1,9 @@
 import QtQuick 6.6
-import ShoopDaLoop.PythonLogger
 
 Registry {
     id: root
 
-    property PythonLogger my_logger : PythonLogger { name: "Frontend.Qml.StateRegistry" }
+    property ShoopRustLogger my_logger : ShoopRustLogger { name: "Frontend.Qml.StateRegistry" }
 
     function update_active_io() {
         if (root.active_io_task && !root.active_io_task.active) {

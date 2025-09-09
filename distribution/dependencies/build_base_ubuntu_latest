@@ -20,7 +20,6 @@ bison
 flex
 libc-bin
 autoconf-archive
-python3-jinja2
 patchelf
 
 # libraries
@@ -32,7 +31,7 @@ libboost-dev
 libjack-jackd2-dev
 libarchive-dev
 libcryptsetup-dev
-
+libasound2-dev
 libxcb-composite0-dev
 libxcb-cursor-dev
 libxcb-damage0-dev
@@ -45,7 +44,7 @@ libxcb-icccm4-dev
 libxcb-image0-dev
 libxcb-imdkit-dev
 libxcb-keysyms1-dev
-libxcb-present-dev 
+libxcb-present-dev
 libxcb-randr0-dev
 libxcb-record0-dev
 libxcb-render-util0-dev
@@ -80,12 +79,9 @@ gcc
 procps
 
 # python
-python3-build
 python3-venv
 python3-virtualenv
-python3-pytest
 python3-pip
-python3-coverage
 
 # not sure why exactly these are needed
 libgl1-mesa-dev

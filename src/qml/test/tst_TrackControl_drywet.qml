@@ -1,7 +1,7 @@
 import QtQuick 6.6
 
 import './testDeepEqual.js' as TestDeepEqual
-import ShoopConstants
+import ShoopDaLoop.Rust
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
@@ -45,42 +45,42 @@ ShoopTestFile {
 
             RegistryLookup {
                 id: lookup_input_port_1
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_audio_dry_in_1"
             }
             property alias input_port_1: lookup_input_port_1.object
 
             RegistryLookup {
                 id: lookup_input_port_2
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_audio_dry_in_2"
             }
             property alias input_port_2: lookup_input_port_2.object
 
             RegistryLookup {
                 id: lookup_output_port_1
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_audio_wet_out_1"
             }
             property alias output_port_1: lookup_output_port_1.object
 
             RegistryLookup {
                 id: lookup_output_port_2
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_audio_wet_out_2"
             }
             property alias output_port_2: lookup_output_port_2.object
 
             RegistryLookup {
                 id: lookup_midi_input_port
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_dry_midi_in"
             }
             property alias midi_input_port: lookup_midi_input_port.object
 
             RegistryLookup {
                 id: lookup_fx
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_fx_chain"
             }
             property alias fx: lookup_fx.object

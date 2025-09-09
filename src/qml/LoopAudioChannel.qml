@@ -1,11 +1,9 @@
 import ShoopDaLoop.Rust
 import QtQuick 6.6
-import ShoopDaLoop.PythonLogger
 
 import 'js/schema_conversions.js' as Conversions
-import ShoopConstants
 
-LoopChannelGui {
+ShoopRustLoopChannelGui {
     id: root
     objectName: "LoopAudioChannel"
 
@@ -21,7 +19,7 @@ LoopChannelGui {
         schema: root.object_schema
     }
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LoopAudioChannel" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.LoopAudioChannel" }
 
     function actual_session_descriptor(do_save_data_files, data_files_dir, add_tasks_to) {
         var rval = {
@@ -43,7 +41,7 @@ LoopChannelGui {
             var filename = obj_id + '.flac'
             var full_filename = data_files_dir + '/' + filename
             var create_task = () => {
-                var task = ShoopFileIO.save_channels_to_soundfile_async(full_filename, root.backend.get_sample_rate(), [root])
+                var task = ShoopRustFileIO.save_channels_to_soundfile_async(full_filename, root.backend.get_sample_rate(), [root])
                 task.then_delete()
                 return task
             }
@@ -51,7 +49,7 @@ LoopChannelGui {
             if (add_tasks_to) {
                 if (add_tasks_to) { add_tasks_to.add_task(create_task()) }
             } else {
-                registries.state_registry.set_active_io_task_fn(create_task)
+                AppRegistries.state_registry.set_active_io_task_fn(create_task)
             }
             rval['data_file'] = filename
         }
@@ -60,7 +58,7 @@ LoopChannelGui {
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         if (has_data_file()) {
             var create_task = () => {
-                var task = ShoopFileIO.load_soundfile_to_channels_async(
+                var task = ShoopRustFileIO.load_soundfile_to_channels_async(
                     data_files_dir + '/' + descriptor.data_file,
                     to_sample_rate,
                     descriptor.data_length,
@@ -75,7 +73,7 @@ LoopChannelGui {
             if (add_tasks_to) {
                 add_tasks_to.add_task(create_task())
             } else {
-                registries.state_registry.set_active_io_task_fn(create_task)
+                AppRegistries.state_registry.set_active_io_task_fn(create_task)
             }
         }
     }
@@ -108,7 +106,7 @@ LoopChannelGui {
 
     RegistryLookups {
         id: lookup_connected_ports
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         keys: descriptor.connected_port_ids
     }
 
@@ -116,7 +114,7 @@ LoopChannelGui {
         id: reg_entry
         object: root
         key: root.descriptor.id
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
     }
 
     Component.onCompleted: {

@@ -1,6 +1,5 @@
 use anyhow;
 use backend;
-use py_env;
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
@@ -48,21 +47,6 @@ fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
         .iter()
         .map(|p| p.to_string_lossy().to_string())
         .collect();
-    // For dev config, stack our Python source dir on top of the dev venv.
-    // That way, any changes to Python code will be immediately used as opposed
-    // to loading the most recently built wheel.
-    let shoop_py_src = shoop_src_root_dir.join("src/python");
-    let dev_env_python_paths: Vec<String> = py_env::dev_env_pythonpath()
-        .split(common::util::PATH_LIST_SEPARATOR)
-        .map(|s| s.to_string())
-        .collect();
-    let shoop_py_paths = vec![shoop_py_src.to_string_lossy().to_string()];
-    let python_paths: Vec<String> = shoop_py_paths
-        .iter()
-        .chain(dev_env_python_paths.iter())
-        .chain(dynlib_paths.iter())
-        .map(|sref| sref.clone())
-        .collect();
 
     let mut config = config::ShoopConfig::default();
     config.qml_dir = shoop_src_root_dir
@@ -86,8 +70,6 @@ fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
         .unwrap()
         .to_string();
     config.qt_plugins_dir = qt_plugins;
-    config.pythonhome = String::from("");
-    config.pythonpaths = python_paths;
     config.dynlibpaths = dynlib_paths;
     config.additional_qml_dirs = vec![qt_qml];
 

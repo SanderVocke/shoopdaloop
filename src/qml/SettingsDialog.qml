@@ -5,8 +5,6 @@ import QtQuick.Controls.Material 6.6
 import Qt.labs.qmlmodels 1.0
 import QtQuick.Dialogs 6.6
 
-import ShoopDaLoop.PythonLogger
-
 import 'js/qml_url_to_filename.js' as UrlToFilename
 
 Dialog {
@@ -16,7 +14,7 @@ Dialog {
     standardButtons: Dialog.Save | Dialog.Close
     property bool io_enabled: false
 
-    readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.SettingsDialog" }
+    readonly property ShoopRustLogger logger: ShoopRustLogger { name: "Frontend.Qml.SettingsDialog" }
 
     onAccepted: all_settings.save()
 
@@ -63,20 +61,20 @@ Dialog {
         schema_name: "settings"
         current_version: 1
 
-        readonly property PythonLogger logger: PythonLogger { name: "Frontend.Qml.AllSettings" }
+        readonly property ShoopRustLogger logger: ShoopRustLogger { name: "Frontend.Qml.AllSettings" }
 
         function save() {
             if (!io_enabled) return
 
             logger.debug("Saving settings.")
             validate()
-            ShoopSettingsIO.save_settings(to_dict(), null)
+            ShoopRustSettingsIO.save_settings(to_dict(), null)
         }
 
         function load() {
             if (io_enabled) {
                 logger.debug("Loading settings.")
-                let loaded_settings = ShoopSettingsIO.load_settings(null)
+                let loaded_settings = ShoopRustSettingsIO.load_settings(null)
                 if (loaded_settings != null) { from_dict(loaded_settings) }
             }
 
@@ -125,12 +123,12 @@ Dialog {
         property var autoconnect_output_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_output_regexes : []
 
         RegisterInRegistry {
-            registry: registries.state_registry
+            registry: AppRegistries.state_registry
             key: 'autoconnect_input_regexes'
             object: autoconnect_input_regexes
         }
         RegisterInRegistry {
-            registry: registries.state_registry
+            registry: AppRegistries.state_registry
             key: 'autoconnect_output_regexes'
             object: autoconnect_output_regexes
         }
@@ -337,7 +335,7 @@ Dialog {
                             }
 
                             RegisterInRegistry {
-                                registry: registries.state_registry
+                                registry: AppRegistries.state_registry
                                 key: 'midi_control_configuration'
                                 object: edit_midi_control.configuration
                             }
@@ -362,10 +360,10 @@ Dialog {
 
         Component.onCompleted: {
             let builtins_dir = global_args.lua_dir + '/builtins'
-            let builtins = ShoopFileIO.glob(builtins_dir + '/**/*.lua')
+            let builtins = ShoopRustFileIO.glob(builtins_dir + '/**/*.lua')
             let default_run = ['keyboard.lua']
             for (let builtin of builtins) {
-                let builtin_name = ShoopFileIO.basename(builtin)
+                let builtin_name = ShoopRustFileIO.basename(builtin)
                 var found = false
                 for (let script of contents.known_scripts) {
                     if (script.path_or_filename == builtin || script.path_or_filename == builtin_name) {
@@ -398,23 +396,23 @@ Dialog {
         RegistryLookup {
             id: lookup_script_manager
             key: 'lua_script_manager'
-            registry: registries.state_registry
+            registry: AppRegistries.state_registry
         }
         property alias script_manager: lookup_script_manager.object
 
         function builtins_path() {
-            return ShoopFileIO.realpath(global_args.lua_dir + '/builtins')
+            return ShoopRustFileIO.realpath(global_args.lua_dir + '/builtins')
         }
 
         function full_path(script_name) {
             var fullpath = script_name
-            if (!ShoopFileIO.is_absolute(fullpath)) {
+            if (!ShoopRustFileIO.is_absolute(fullpath)) {
                 fullpath = builtins_path() + '/' + fullpath
             }
-            if (!ShoopFileIO.exists(fullpath)) {
+            if (!ShoopRustFileIO.exists(fullpath)) {
                 return null
             }
-            return ShoopFileIO.realpath(fullpath)
+            return ShoopRustFileIO.realpath(fullpath)
         }
 
         function status(script_name) {
@@ -541,7 +539,7 @@ Dialog {
                             Label {
                                 property var mapped_item
                                 property int index
-                                text: ShoopFileIO.basename(mapped_item.path_or_filename)
+                                text: ShoopRustFileIO.basename(mapped_item.path_or_filename)
                             }
                         }
 
@@ -644,7 +642,7 @@ Dialog {
                                     }
                                     onClicked: {
                                         var window = script_doc_dialog_factory.createObject(root.parent, {
-                                            script_name: ShoopFileIO.basename(mapped_item.path_or_filename),
+                                            script_name: ShoopRustFileIO.basename(mapped_item.path_or_filename),
                                             docstring: maybe_docstring,
                                             visible: true
                                         })

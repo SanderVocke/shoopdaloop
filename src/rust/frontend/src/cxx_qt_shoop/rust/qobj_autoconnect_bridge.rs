@@ -34,6 +34,7 @@ pub mod ffi {
         #[qproperty(*mut QObject, internal_port)]
         #[qproperty(QString, connect_to_port_regex)]
         #[qproperty(bool, is_closed)]
+        #[qproperty(*mut QObject, backend)]
         type AutoConnect = super::AutoConnectRust;
 
         pub fn initialize_impl(self: Pin<&mut AutoConnect>);
@@ -92,9 +93,6 @@ pub mod ffi {
     impl cxx_qt::Constructor<(), NewArguments = ()> for AutoConnect {}
 }
 
-use crate::cxx_qt_shoop::fn_find_backend_wrapper;
-use crate::cxx_qt_shoop::qobj_find_parent_item::FindParentItem;
-use cxx::UniquePtr;
 use cxx_qt_lib_shoop::qquickitem::IsQQuickItem;
 pub use ffi::AutoConnect;
 use ffi::*;
@@ -103,8 +101,8 @@ pub struct AutoConnectRust {
     pub internal_port: *mut QObject,
     pub connect_to_port_regex: QString,
     pub is_closed: bool,
+    pub backend: *mut QObject,
     // Private
-    pub find_backend_wrapper: UniquePtr<FindParentItem>,
     pub timer: *mut QTimer,
 }
 
@@ -114,8 +112,8 @@ impl Default for AutoConnectRust {
             internal_port: std::ptr::null_mut(),
             connect_to_port_regex: QString::default(),
             is_closed: false,
-            find_backend_wrapper: fn_find_backend_wrapper::create_find_parent_backend_wrapper(),
             timer: std::ptr::null_mut(),
+            backend: std::ptr::null_mut(),
         }
     }
 }
@@ -150,7 +148,7 @@ impl cxx_qt::Constructor<(*mut QQuickItem,)> for AutoConnect {
         AutoConnectRust::default()
     }
 
-    fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
+    fn initialize(self: std::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
         AutoConnect::initialize_impl(self);
     }
 }
@@ -174,7 +172,7 @@ impl cxx_qt::Constructor<()> for AutoConnect {
         AutoConnectRust::default()
     }
 
-    fn initialize(self: core::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
+    fn initialize(self: std::pin::Pin<&mut Self>, _: Self::InitializeArguments) {
         AutoConnect::initialize_impl(self);
     }
 }

@@ -1,7 +1,6 @@
 import QtQuick 6.6
-
+import ShoopDaLoop.Rust
 import './testDeepEqual.js' as TestDeepEqual
-import ShoopConstants
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '../js/midi.js' as Midi
@@ -48,14 +47,14 @@ ShoopTestFile {
 
             RegistryLookup {
                 id: lookup_midi_input_port
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_midi_in"
             }
             property alias midi_input_port: lookup_midi_input_port.object
 
             RegistryLookup {
                 id: lookup_midi_output_port
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_midi_out"
             }
             property alias midi_output_port: lookup_midi_output_port.object
@@ -76,7 +75,7 @@ ShoopTestFile {
             }
 
             function reset_loop(loopwidget) {
-                loopwidget.transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                loopwidget.transition(ShoopRustConstants.LoopMode.Stopped, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                 testcase.wait_updated(session.backend)
                 loopwidget.clear(0)
                 session.backend.wait_process()
@@ -96,7 +95,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = false
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Recording, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -118,7 +117,7 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
 
                     // Data should now be in channel. Switch to playback.
-                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     midi_output_port.dummy_request_data(6)
@@ -145,13 +144,13 @@ ShoopTestFile {
 
                     // Set sync loop so that it will trigger in 2 frames from now
                     syncloop.queue_set_length(4)
-                    syncloop.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    syncloop.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_run_requested_frames()
 
                     // Set main loop to record (will pre-record, then transition @ sync)
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Recording, 0, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -171,7 +170,7 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
 
                     // Data should now be in channel. Switch to playback.
-                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     midi_output_port.dummy_request_data(4)
@@ -202,13 +201,13 @@ ShoopTestFile {
 
                     // Set sync loop so that it will trigger in 20 frames from now
                     syncloop.queue_set_length(20)
-                    syncloop.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    syncloop.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)
                     session.backend.dummy_run_requested_frames()
 
                     // Set main loop to record (will pre-record, then transition @ sync)
-                    lut.transition(ShoopConstants.LoopMode.Recording, 0, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Recording, 0, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -229,7 +228,7 @@ ShoopTestFile {
                     session.backend.dummy_run_requested_frames()
 
                     // Data should now be in channel. Switch to playback.
-                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     midi_output_port.dummy_request_data(40)
@@ -257,7 +256,7 @@ ShoopTestFile {
                     verify_eq(chan.get_recorded_midi_msgs(), input, null, true)
                     verify_eq(out, expect_output, null, true)
 
-                    lut.transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Stopped, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)
                     session.backend.dummy_run_requested_frames()
@@ -267,15 +266,15 @@ ShoopTestFile {
                     // When saving this to disk and re-loading, the state stuff should still work
                     // and play back in the exact same way. That means the state itself should be
                     // somehow saved. Test here that it works.
-                    var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
-                    if (!ShoopFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)) {
+                    var filename = ShoopRustFileIO.generate_temporary_filename() + '.smf'
+                    if (!ShoopRustFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)) {
                         testcase.fail("Could not save channel MIDI");
                     }
                     chan.clear(0)
                     testcase.wait_updated(session.backend)
                     testcase.wait_updated(session.backend)
                     verify_eq(chan.get_data(), [], null, true)
-                    if (!ShoopFileIO.load_midi_to_channels(
+                    if (!ShoopRustFileIO.load_midi_to_channels(
                                 filename,
                                 session.backend.get_sample_rate(),
                                 [chan],
@@ -285,7 +284,7 @@ ShoopTestFile {
                                     testcase.fail("Could not load MIDI to channels.")
                                 }
 
-                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     midi_output_port.dummy_request_data(40)
                     session.backend.dummy_request_controlled_frames(40)
@@ -317,14 +316,14 @@ ShoopTestFile {
                     // Process 6 frames (nothing, then record)
                     session.backend.dummy_request_controlled_frames(2)
                     session.backend.dummy_run_requested_frames()
-                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Recording, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
 
                     // NoteOn should now be in state, NoteOff should be in the
                     // recording. Start playback.
-                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     midi_output_port.dummy_request_data(4)
@@ -347,7 +346,7 @@ ShoopTestFile {
                     // playback behavior is still the same.
 
                     // First stop for a while
-                    lut.transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Stopped, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)
                     session.backend.dummy_run_requested_frames()
@@ -355,15 +354,15 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     // Save and re-load
-                    var filename = ShoopFileIO.generate_temporary_filename() + '.smf'
-                    if (!ShoopFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)) {
+                    var filename = ShoopRustFileIO.generate_temporary_filename() + '.smf'
+                    if (!ShoopRustFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)) {
                         testcase.fail("Could not save channel MIDI");
                     }
                     chan.clear(0)
                     testcase.wait_updated(session.backend)
                     testcase.wait_updated(session.backend)
                     verify_eq(chan.get_data(), [], null, true)
-                    if (!ShoopFileIO.load_midi_to_channels(
+                    if (!ShoopRustFileIO.load_midi_to_channels(
                                 filename,
                                 session.backend.get_sample_rate(),
                                 [chan],
@@ -373,7 +372,7 @@ ShoopTestFile {
                                     testcase.fail("Could not load MIDI to channels.")
                                 }
 
-                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
                     midi_output_port.dummy_request_data(4)
                     session.backend.dummy_request_controlled_frames(4)

@@ -17,7 +17,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
     let cmake_backend_dir = "../../backend";
     let profile = std::env::var("PROFILE").unwrap();
     let cmake_output_dir = out_dir.join("cmake_build");
-    let build_python = py_prepare::build_venv_python();
 
     if !["debug", "release"].contains(&profile.as_str()) {
         return Err(anyhow::anyhow!("Unknown build profile: {}", &profile));
@@ -43,8 +42,7 @@ fn main_impl() -> Result<(), anyhow::Error> {
                 } else {
                     "Release"
                 }
-            ))
-            .configure_arg(format!("-DPYTHON_CMD={}", build_python));
+            ));
         let _ = cmake_config_mut.build();
     }
 
@@ -60,7 +58,6 @@ fn main_impl() -> Result<(), anyhow::Error> {
     println!("cargo:rerun-if-changed={}", cmake_backend_dir);
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-env-changed=PYTHON");
 
     println!(
         "cargo:rustc-env=SHOOP_BUILD_TIME_LINK_DIRS={}",

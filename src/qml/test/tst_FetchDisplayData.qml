@@ -1,7 +1,6 @@
 import QtQuick 6.6
-
+import ShoopDaLoop.Rust
 import './testDeepEqual.js' as TestDeepEqual
-import ShoopConstants
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
@@ -23,7 +22,7 @@ ShoopTestFile {
             session: session
 
             RegistryLookup {
-                registry: registries.state_registry
+                registry: AppRegistries.state_registry
                 key: 'main_details_pane'
                 id: lookup_main_details_pane
             }
@@ -46,7 +45,7 @@ ShoopTestFile {
                 sync_loop().clear()
                 testcase.wait_updated(session.backend)
                 verify_loop_cleared(sync_loop())
-                registries.state_registry.reset()
+                AppRegistries.state_registry.reset()
             }
 
             test_fns: ({
@@ -54,29 +53,29 @@ ShoopTestFile {
                     check_backend()
                     clear()
 
-                    registries.state_registry.add_to_set('selected_loop_ids', sync_loop().obj_id)
+                    AppRegistries.state_registry.add_to_set('selected_loop_ids', sync_loop().obj_id)
 
                     sync_loop_channel().load_data(new Array(50000).fill(0.1))
 
                     testcase.wait_updated(session.backend)
 
-                    registries.state_registry.set_details_open(true)
+                    AppRegistries.state_registry.set_details_open(true)
                     testcase.wait_updated(session.backend)
                     testcase.wait(100)
 
-                    registries.state_registry.set_details_open(false)
+                    AppRegistries.state_registry.set_details_open(false)
                     testcase.wait_updated(session.backend)
                     testcase.wait(100)
 
-                    registries.state_registry.set_details_open(true)
+                    AppRegistries.state_registry.set_details_open(true)
                     testcase.wait_updated(session.backend)
                     testcase.wait(100)
 
-                    registries.state_registry.set_details_open(false)
+                    AppRegistries.state_registry.set_details_open(false)
                     testcase.wait_updated(session.backend)
                     testcase.wait(100)
 
-                    registries.state_registry.set_details_open(true)
+                    AppRegistries.state_registry.set_details_open(true)
                     testcase.wait_updated(session.backend)
                     testcase.wait(100)
                 },

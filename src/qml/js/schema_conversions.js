@@ -1,10 +1,10 @@
-.import ShoopConstants 1.0 as SC
+.import ShoopDaLoop.Rust 1.0 as SC
 
 const channel_modes = {
-    'direct': SC.ShoopConstants.ChannelMode.Direct,
-    'disabled': SC.ShoopConstants.ChannelMode.Disabled,
-    'dry': SC.ShoopConstants.ChannelMode.Dry,
-    'wet': SC.ShoopConstants.ChannelMode.Wet
+    'direct': SC.ShoopRustConstants.ChannelMode.Direct,
+    'disabled': SC.ShoopRustConstants.ChannelMode.Disabled,
+    'dry': SC.ShoopRustConstants.ChannelMode.Dry,
+    'wet': SC.ShoopRustConstants.ChannelMode.Wet
 }
 
 function parse_channel_mode(mode_str) {

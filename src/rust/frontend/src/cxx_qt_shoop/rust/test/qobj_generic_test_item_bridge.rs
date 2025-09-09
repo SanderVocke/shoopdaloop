@@ -14,6 +14,9 @@ pub mod ffi {
         #[base = QQuickItem]
         #[qproperty(bool, bool_prop)]
         type GenericTestItem = super::GenericTestItemRust;
+
+        #[qinvokable]
+        pub fn add(self: &GenericTestItem, a: i32, b: i32) -> i32;
     }
 
     unsafe extern "C++" {
@@ -26,7 +29,7 @@ pub mod ffi {
 
         include!("cxx-qt-lib-shoop/make_unique.h");
         #[rust_name = "make_unique_generic_test_item"]
-        fn make_unique() -> UniquePtr<GenericTestItem>;
+        pub fn make_unique() -> UniquePtr<GenericTestItem>;
     }
 
     impl cxx_qt::Constructor<(*mut QQuickItem,), NewArguments = ()> for GenericTestItem {}

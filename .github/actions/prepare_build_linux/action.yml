@@ -1,5 +1,5 @@
 name: prepare_build_linux
-description: Prepare Linux for building Shoopdaloop wheels
+description: Prepare Linux for building Shoopdaloop
 
 runs:
   using: "composite"
@@ -8,6 +8,5 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      $PIP install --upgrade pip build auditwheel patchelf
-      $PIP install -r build_python_requirements.txt
+      $PIP install --upgrade pip build patchelf toml
       echo "RUSTFLAGS=-C linker=gcc" | tee -a $GITHUB_ENV

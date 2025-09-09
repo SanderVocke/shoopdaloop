@@ -2,7 +2,7 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 
 import './testDeepEqual.js' as TestDeepEqual
-import ShoopConstants
+import ShoopDaLoop.Rust
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
@@ -47,42 +47,42 @@ ShoopTestFile {
 
             RegistryLookup {
                 id: lookup_input_port_1
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_in_1"
             }
             property alias input_port_1: lookup_input_port_1.object
 
             RegistryLookup {
                 id: lookup_input_port_2
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_in_2"
             }
             property alias input_port_2: lookup_input_port_2.object
 
             RegistryLookup {
                 id: lookup_output_port_1
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_out_1"
             }
             property alias output_port_1: lookup_output_port_1.object
 
             RegistryLookup {
                 id: lookup_output_port_2
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_out_2"
             }
             property alias output_port_2: lookup_output_port_2.object
 
             RegistryLookup {
                 id: lookup_midi_input_port
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_midi_in"
             }
             property alias midi_input_port: lookup_midi_input_port.object
 
             RegistryLookup {
                 id: lookup_midi_output_port
-                registry: registries.objects_registry
+                registry: AppRegistries.objects_registry
                 key: "tut_direct_midi_out"
             }
             property alias midi_output_port: lookup_midi_output_port.object
@@ -111,7 +111,7 @@ ShoopTestFile {
             }
 
             function reset_loop(loopwidget) {
-                loopwidget.transition(ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                loopwidget.transition(ShoopRustConstants.LoopMode.Stopped, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                 testcase.wait_updated(session.backend)
                 loopwidget.clear(0)
                 session.backend.wait_process()
@@ -130,7 +130,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = false
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Recording, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
@@ -159,7 +159,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = false
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Recording, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -202,7 +202,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Recording, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
@@ -231,7 +231,7 @@ ShoopTestFile {
                     reset()
                     tut_control().monitor = true
                     tut_control().mute = false
-                    lut.transition(ShoopConstants.LoopMode.Recording, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Recording, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     let input = [
@@ -278,7 +278,7 @@ ShoopTestFile {
                     chans[0].load_data([5, 6, 7, 8])
                     chans[1].load_data([8, 7, 6, 5])
                     lut.queue_set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
@@ -319,7 +319,7 @@ ShoopTestFile {
                     let chan = lut.get_midi_output_channels()[0]
                     chan.load_midi_data(loop)
                     lut.queue_set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     midi_input_port.dummy_clear_queues()
@@ -354,7 +354,7 @@ ShoopTestFile {
                     chans[0].load_data([5, 6, 7, 8])
                     chans[1].load_data([8, 7, 6, 5])
                     lut.queue_set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
@@ -400,7 +400,7 @@ ShoopTestFile {
                     let chan = lut.get_midi_output_channels()[0]
                     chan.load_midi_data(loop)
                     lut.queue_set_length(4)
-                    lut.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+                    lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
                     testcase.wait_updated(session.backend)
 
                     midi_input_port.dummy_clear_queues()

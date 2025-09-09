@@ -16,7 +16,7 @@ Architecture
         shoopdaloop (QML front-end)
     ]
     collections extensions [
-        Front-end Extensions (Python + PySide6)
+        Front-end Extensions (Rust + cxx-qt)
     ]
     interface interface [
         libshoopdaloop_backend C API
@@ -40,17 +40,18 @@ The **libshoopdaloop_backend backend** handles:
 * Logging and profiling
 * Basic loop synchronization (loop transitions)
 
-The **front-end + Python extensions** handle:
+The **front-end + extensions** handle:
 
 * The user interface
 * Session saving/loading
 * Advanced loop synchronization (scheduling loop transitions over multiple sync loop cycles)
-* MIDI handling for MIDI controllers (non-cycle-accurate)
+* Composite loops
+* Thread-decoupled forwarding of UI events to/from the back-end
 
 The **LUA scripts** are meant for parts that may need to be added/modified by individual users, such as:
 
 * MIDI controller profiles
-
+* Keyboard control
 
 Build And Packaging
 ^^^^^^^^^^^^^^^^^^^^
@@ -84,7 +85,7 @@ Testing
 The test suites for **ShoopDaLoop** are by no means complete, but do test essential functions at several levels. The following testing tools exist:
 
 * C++ unit and integration tests powered by **boost_ext::ut**.
-* Python unit and integration tests powered by **pytest**, testing individual front-end extensions.
+* Rust unit and integration tests powered by **cargo**, testing individual front-end extensions.
 * QML unit and integration tests powered by **Qt Quick Test**.
 
 The QML integration tests come closest to "system-level". For example, there are tests there which can check cycle-accurately that the correct audio samples are produced based on what the user clicked in the user interface.

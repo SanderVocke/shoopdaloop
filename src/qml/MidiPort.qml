@@ -1,9 +1,7 @@
 import ShoopDaLoop.Rust
 import QtQuick 6.6
 
-import ShoopConstants
-
-PortGui {
+ShoopRustPortGui {
     id: root
     property var descriptor : null
     property bool loaded : initialized
@@ -13,10 +11,10 @@ PortGui {
     function parse_connectability(conn) {
         var rval = 0
         if (conn.includes('internal')) {
-            rval |= ShoopConstants.PortConnectability.Internal
+            rval |= ShoopRustConstants.PortConnectability.Internal
         }
         if (conn.includes('external')) {
-            rval |= ShoopConstants.PortConnectability.External
+            rval |= ShoopRustConstants.PortConnectability.External
         }
         return rval
     }
@@ -55,7 +53,7 @@ PortGui {
 
     RegistryLookups {
         id: lookup_internal_port_connections
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         keys: descriptor.internal_port_connections
     }
 
@@ -67,7 +65,7 @@ PortGui {
 
     RegisterInRegistry {
         id: reg_entry
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         key: root.descriptor.id
         object: root
     }

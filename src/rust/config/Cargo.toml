@@ -9,7 +9,6 @@ path = "src/bin/print_configs_dir.rs"
 [dependencies]
 common = { path = "../common" }
 
-pyo3 = { workspace = true, features = ["auto-initialize"] }
 glob = { workspace = true }
 anyhow = { workspace = true }
 regex = { workspace = true }
@@ -20,7 +19,6 @@ toml = { workspace = true }
 serde = { workspace = true }
 
 [build-dependencies]
-py_env = { path = "../py_env" }
 backend = { path = "../backend" }
 common = { path = "../common" }
 
@@ -33,5 +31,4 @@ ctor = { workspace = true }
 [features]
 # Dummy build to build dependencies only
 prebuild = ["backend/prebuild",
-            "py_env/prebuild",
             "common/prebuild"]

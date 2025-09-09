@@ -7,7 +7,7 @@ use toml;
 use common::logging::macros::*;
 shoop_log_unit!("Main");
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ShoopConfig {
     pub _version: String,
     pub _description: String,
@@ -17,8 +17,6 @@ pub struct ShoopConfig {
     pub resource_dir: String,
     pub schemas_dir: String,
     pub qt_plugins_dir: String,
-    pub pythonhome: String,
-    pub pythonpaths: Vec<String>,
     pub dynlibpaths: Vec<String>,
     pub additional_qml_dirs: Vec<String>,
 }
@@ -31,8 +29,6 @@ pub struct ShoopTomlConfig {
     pub resource_dir: Option<String>,
     pub schemas_dir: Option<String>,
     pub qt_plugins_dir: Option<String>,
-    pub pythonhome: Option<String>,
-    pub pythonpaths: Option<Vec<String>>,
     pub dynlibpaths: Option<Vec<String>>,
     pub additional_qml_dirs: Option<Vec<String>>,
 }
@@ -53,12 +49,6 @@ impl ShoopTomlConfig {
         }
         if self.qt_plugins_dir.is_some() {
             config.qt_plugins_dir = self.qt_plugins_dir.unwrap()
-        }
-        if self.pythonhome.is_some() {
-            config.pythonhome = self.pythonhome.unwrap()
-        }
-        if self.pythonpaths.is_some() {
-            config.pythonpaths = self.pythonpaths.unwrap()
         }
         if self.dynlibpaths.is_some() {
             config.dynlibpaths = self.dynlibpaths.unwrap()
@@ -86,12 +76,6 @@ impl ShoopTomlConfig {
         if config.qt_plugins_dir != defaults.qt_plugins_dir {
             result.qt_plugins_dir = Some(config.qt_plugins_dir.clone())
         }
-        if config.pythonhome != defaults.pythonhome {
-            result.pythonhome = Some(config.pythonhome.clone())
-        }
-        if config.pythonpaths != defaults.pythonpaths {
-            result.pythonpaths = Some(config.pythonpaths.clone())
-        }
         if config.dynlibpaths != defaults.dynlibpaths {
             result.dynlibpaths = Some(config.dynlibpaths.clone())
         }
@@ -113,17 +97,6 @@ impl ShoopTomlConfig {
         substitute(&mut self.resource_dir);
         substitute(&mut self.schemas_dir);
         substitute(&mut self.qt_plugins_dir);
-        substitute(&mut self.pythonhome);
-        if self.pythonpaths.is_some() {
-            self.pythonpaths = Some(
-                self.pythonpaths
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .map(|s| s.replace("$ROOT", root.to_str().unwrap()))
-                    .collect(),
-            );
-        }
         if self.dynlibpaths.is_some() {
             self.dynlibpaths = Some(
                 self.dynlibpaths
@@ -169,8 +142,6 @@ impl Default for ShoopConfig {
             resource_dir: String::from(""),
             schemas_dir: String::from(""),
             qt_plugins_dir: String::from(""),
-            pythonhome: String::from(""),
-            pythonpaths: vec![],
             dynlibpaths: vec![],
             additional_qml_dirs: vec![],
         }

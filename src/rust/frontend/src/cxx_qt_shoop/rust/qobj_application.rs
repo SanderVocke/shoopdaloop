@@ -163,7 +163,7 @@ impl Application {
             self.as_mut()
                 .set_organization_name(&QString::from("ShoopDaLoop"));
             self.as_mut()
-                .set_application_version(&QString::from(config._version));
+                .set_application_version(&QString::from(config.clone()._version));
         }
 
         if self.settings.qml_debug_port.is_some() {
@@ -174,7 +174,7 @@ impl Application {
         }
 
         // Initialize metatypes, oncecells, etc.
-        crate::init::init();
+        crate::init::init(&config);
 
         // Initialize shoop engine update thread
         unsafe {

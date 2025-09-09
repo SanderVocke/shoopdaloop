@@ -2,6 +2,7 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Shapes 6.6
+import ShoopDaLoop.Rust
 
 Item {
     id: root
@@ -760,7 +761,7 @@ Item {
     function to_script() {
         playlist_elems.forEach(p => p.forEach(pp => pp.forEach(e => {
             if (e.maybe_mode === null) {
-                e.maybe_mode = ShoopConstants.LoopMode.Playing
+                e.maybe_mode = ShoopRustConstants.LoopMode.Playing
             }
         })))
         push_playlists(playlist_elems)
@@ -881,13 +882,13 @@ Item {
 
                                         color: {
                                             switch(mapped_item.loop_widget.mode) {
-                                            case ShoopConstants.LoopMode.Playing:
+                                            case ShoopRustConstants.LoopMode.Playing:
                                                 return '#004400';
-                                            case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                                            case ShoopRustConstants.LoopMode.PlayingDryThroughWet:
                                                 return '#333300';
-                                            case ShoopConstants.LoopMode.Recording:
+                                            case ShoopRustConstants.LoopMode.Recording:
                                                 return '#660000';
-                                            case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                                            case ShoopRustConstants.LoopMode.RecordingDryIntoWet:
                                                 return '#663300';
                                             default:
                                                 return '#000044';
@@ -920,7 +921,7 @@ Item {
                                                 top: parent.top
                                                 bottom: parent.bottom
                                             }
-                                            width: ShoopKeyModifiers.control_pressed ? parent.width : 20
+                                            width: ShoopRustKeyModifiers.control_pressed ? parent.width : 20
 
                                             // for debugging
                                             //color: 'red'
@@ -962,13 +963,13 @@ Item {
                                             MouseArea {
                                                 id: right_drag_area
                                                 anchors.fill: parent
-                                                cursorShape: ShoopKeyModifiers.control_pressed ? Qt.DragCopyCursor : Qt.SizeHorCursor
+                                                cursorShape: ShoopRustKeyModifiers.control_pressed ? Qt.DragCopyCursor : Qt.SizeHorCursor
 
                                                 onReleased: {
                                                     if (drag.active) {
                                                         let new_n = right_resize_preview.dragged_cycle
                                                         if (new_n >= 1) {
-                                                            if (ShoopKeyModifiers.control_pressed) {
+                                                            if (ShoopRustKeyModifiers.control_pressed) {
                                                                 // Duplicate loop
                                                                 let length = mapped_item.end_iteration - mapped_item.start_iteration
                                                                 let n_copies = Math.ceil((new_n - length) / length)
@@ -1012,10 +1013,10 @@ Item {
                                             size: 20
 
                                             readonly property var model: [
-                                                { mode: ShoopConstants.LoopMode.Playing, icon: 'play', color: 'green' },
-                                                { mode: ShoopConstants.LoopMode.Recording, icon: 'record', color: 'red' },
-                                                { mode: ShoopConstants.LoopMode.PlayingDryThroughWet, icon: 'play', color: 'orange' },
-                                                { mode: ShoopConstants.LoopMode.RecordingDryIntoWet, icon: 'record', color: 'orange' }
+                                                { mode: ShoopRustConstants.LoopMode.Playing, icon: 'play', color: 'green' },
+                                                { mode: ShoopRustConstants.LoopMode.Recording, icon: 'record', color: 'red' },
+                                                { mode: ShoopRustConstants.LoopMode.PlayingDryThroughWet, icon: 'play', color: 'orange' },
+                                                { mode: ShoopRustConstants.LoopMode.RecordingDryIntoWet, icon: 'record', color: 'orange' }
                                             ]
                                             property var cur_idx: {
                                                 let m = loop_rect.mapped_item.maybe_mode

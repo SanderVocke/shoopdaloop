@@ -167,9 +167,6 @@ impl BackendWrapper {
             debug!("ready");
         }
 
-        // FIXME
-        error!("use QPointer for all frontend pointers returned from backend wrappers!");
-
         Ok(())
     }
 

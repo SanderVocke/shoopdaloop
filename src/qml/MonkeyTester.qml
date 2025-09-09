@@ -1,8 +1,6 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonLogger
-import ShoopConstants
 import "./js/generate_session.js" as GenerateSession
 import ShoopDaLoop.Rust
 
@@ -36,7 +34,7 @@ Item {
     property var loop_action_distribution: default_loop_action_distribution
     property real interval: 0.3
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.MonkeyTester" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.MonkeyTester" }
 
     property bool running: false
 
@@ -47,7 +45,7 @@ Item {
         onTriggered: root.action()
     }
 
-    property var sync_loop : registries.state_registry.sync_loop
+    property var sync_loop : AppRegistries.state_registry.sync_loop
 
     function object_values_total(obj) {
         var r = 0.0
@@ -119,12 +117,12 @@ Item {
             if (sync_loop.length == 0) {
                 sync_loop.queue_set_length(24000)
             }
-            sync_loop.transition(ShoopConstants.LoopMode.Playing, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately, false)
+            sync_loop.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately, false)
 
             let chosen_action = pick_random(actions_distribution, (a) => action_possible(a))
             root.logger.debug(`Main action: ${chosen_action}`)
 
-            ShoopCrashHandling.set_json_tag("shoop_action", `monkey test (${chosen_action})`)
+            ShoopRustCrashHandling.set_json_tag("shoop_action", `monkey test (${chosen_action})`)
 
             if (chosen_action == 'add_track') { add_track(); }
             else if (chosen_action == 'add_loop') { add_loop(); }
@@ -239,8 +237,8 @@ Item {
             return;
         }
         root.logger.debug(`--> play ${track.name}::${loop.name}`)
-        loop.transition(ShoopConstants.LoopMode.Playing, 0, ShoopConstants.DontAlignToSyncImmediately)
-        loop.transition(ShoopConstants.LoopMode.Stopped, 4, ShoopConstants.DontAlignToSyncImmediately)
+        loop.transition(ShoopRustConstants.LoopMode.Playing, 0, ShoopRustConstants.DontAlignToSyncImmediately)
+        loop.transition(ShoopRustConstants.LoopMode.Stopped, 4, ShoopRustConstants.DontAlignToSyncImmediately)
     }
 
     function loop_play_drywet_4() {
@@ -255,11 +253,11 @@ Item {
             return;
         }
         root.logger.debug(`--> play dry ${track.name}::${loop.name}`)
-        loop.transition(ShoopConstants.LoopMode.PlayingDryThroughWet, 0, ShoopConstants.DontAlignToSyncImmediately)
-        loop.transition(ShoopConstants.LoopMode.Stopped, 4, ShoopConstants.DontAlignToSyncImmediately)
+        loop.transition(ShoopRustConstants.LoopMode.PlayingDryThroughWet, 0, ShoopRustConstants.DontAlignToSyncImmediately)
+        loop.transition(ShoopRustConstants.LoopMode.Stopped, 4, ShoopRustConstants.DontAlignToSyncImmediately)
     }
 
     Component.onDestruction: {
-        ShoopCrashHandling.set_json_tag("shoop_action", "monkey test (finished)")
+        ShoopRustCrashHandling.set_json_tag("shoop_action", "monkey test (finished)")
     }
 }

@@ -1,10 +1,8 @@
 import ShoopDaLoop.Rust
 import QtQuick 6.6
-
-import ShoopConstants
 import 'js/schema_conversions.js' as Conversions
 
-LoopChannelGui {
+ShoopRustLoopChannelGui {
     id: root
     objectName: "LoopMidiChannel"
 
@@ -42,7 +40,7 @@ LoopChannelGui {
             var full_filename = data_files_dir + '/' + filename;
 
             var create_task = () => {
-                var task = ShoopFileIO.save_channel_to_midi_async(full_filename, root.backend.get_sample_rate(), root)
+                var task = ShoopRustFileIO.save_channel_to_midi_async(full_filename, root.backend.get_sample_rate(), root)
                 task.then_delete()
                 return task
             }
@@ -50,7 +48,7 @@ LoopChannelGui {
             if (add_tasks_to) {
                 add_tasks_to.add_task(create_task())
             } else {
-                registries.state_registry.set_active_io_task_fn(create_task)
+                AppRegistries.state_registry.set_active_io_task_fn(create_task)
             }
             rval['data_file'] = filename
         }
@@ -61,7 +59,7 @@ LoopChannelGui {
         if (has_data_file()) {
 
             var create_task = () => {
-                var task = ShoopFileIO.load_midi_to_channels_async(
+                var task = ShoopRustFileIO.load_midi_to_channels_async(
                     data_files_dir + '/' + descriptor.data_file,
                     to_sample_rate,
                     [root],
@@ -76,7 +74,7 @@ LoopChannelGui {
             if (add_tasks_to) {
                 add_tasks_to.add_task(create_task())
             } else {
-                registries.state_registry.set_active_io_task_fn(create_task)
+                AppRegistries.state_registry.set_active_io_task_fn(create_task)
             }
         }
     }
@@ -100,13 +98,13 @@ LoopChannelGui {
 
     RegistryLookups {
         id: lookup_connected_ports
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         keys: descriptor.connected_port_ids
     }
 
     RegisterInRegistry {
         id: reg_entry
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         key: root.descriptor.id
         object: root
     }

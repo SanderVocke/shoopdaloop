@@ -36,10 +36,6 @@ pub fn populate_portable_folder(
     let lib_dir = folder.join("lib");
     std::fs::create_dir(&lib_dir).with_context(|| format!("Cannot create dir: {:?}", lib_dir))?;
 
-    let py_lib_dir = lib_dir.join("python");
-    std::fs::create_dir(&py_lib_dir)
-        .with_context(|| format!("Cannot create dir: {:?}", py_lib_dir))?;
-
     info!("Bundling executable...");
     let final_exe_filename = if cfg!(target_os = "windows") {
         "shoopdaloop_exe.exe"
@@ -48,21 +44,6 @@ pub fn populate_portable_folder(
     };
     let final_exe_path = folder.join(final_exe_filename);
     std::fs::copy(exe_path, &final_exe_path)?;
-
-    info!("Bundling development environment Python packages from PYTHONPATH...");
-    let python_lib_paths =
-        crate::remove_subpaths::remove_subpaths(&py_env::dev_env_pythonpath_entries());
-    for path in python_lib_paths {
-        if path.ends_with("site-packages") {
-            debug!("--> {} -> site-packages", path);
-            copy_dir_merge(&path, &py_lib_dir.join("site-packages"))?;
-        } else if PathBuf::from(path.clone()).is_dir() {
-            debug!("--> {} -> python", path);
-            copy_dir_merge(&path, &py_lib_dir)?;
-        } else {
-            debug!("--> {} -> ignored (not a directory)", path);
-        }
-    }
 
     // Copy filesets into our output lib dir
     let to_copy = [

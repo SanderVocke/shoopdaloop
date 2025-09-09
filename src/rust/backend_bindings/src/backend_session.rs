@@ -90,7 +90,7 @@ impl BackendSession {
         let driver_guard = driver.lock();
         let driver_obj = *driver_guard;
         let result = unsafe { ffi::set_audio_driver(obj, driver_obj) };
-        if BackendResult::try_from(result)? == BackendResult::Success {
+        if BackendResult::try_from(result as i32)? == BackendResult::Success {
             Ok(())
         } else {
             Err(anyhow::anyhow!("set_audio_driver() failed"))

@@ -1,7 +1,6 @@
 import QtQuick 6.6
+import ShoopDaLoop.Rust
 
-import ShoopDaLoop.PythonLuaEngine
-
-PythonLuaEngine {
+ShoopRustLuaEngine {
     property bool ready: true
 }

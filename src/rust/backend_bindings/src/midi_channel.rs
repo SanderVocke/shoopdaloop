@@ -20,7 +20,7 @@ pub struct MidiChannelState {
 impl MidiChannelState {
     pub fn new(obj: &ffi::shoop_midi_channel_state_info_t) -> Result<Self, anyhow::Error> {
         Ok(MidiChannelState {
-            mode: ChannelMode::try_from(obj.mode)?,
+            mode: ChannelMode::try_from(obj.mode as i32)?,
             n_events_triggered: obj.n_events_triggered,
             n_notes_active: obj.n_notes_active,
             length: obj.length,

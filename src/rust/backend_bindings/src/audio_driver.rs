@@ -1,16 +1,17 @@
 use crate::ffi;
-use crate::integer_enum;
 use crate::port::ExternalPortDescriptor;
 use anyhow;
+use enum_iterator::*;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::fmt;
 use std::sync::Mutex;
 
-integer_enum! {
-    pub enum AudioDriverType {
-        Jack = ffi::shoop_audio_driver_type_t_Jack,
-        JackTest = ffi::shoop_audio_driver_type_t_JackTest,
-        Dummy = ffi::shoop_audio_driver_type_t_Dummy,
-    }
+#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive, Sequence)]
+#[repr(i32)]
+pub enum AudioDriverType {
+    Jack = ffi::shoop_audio_driver_type_t_Jack as i32,
+    JackTest = ffi::shoop_audio_driver_type_t_JackTest as i32,
+    Dummy = ffi::shoop_audio_driver_type_t_Dummy as i32,
 }
 
 pub struct JackAudioDriverSettings {

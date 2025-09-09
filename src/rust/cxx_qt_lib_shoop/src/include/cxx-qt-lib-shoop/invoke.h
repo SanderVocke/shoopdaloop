@@ -115,6 +115,25 @@ RetVal invoke_two_args_with_return(
 }
 
 template<typename Obj,
+         typename Arg1, typename Arg2>
+void invoke_two_args(
+            Obj * object,
+            ::rust::String method,
+            unsigned connection_type,
+            Arg1 arg1, Arg2 arg2)
+{
+    auto qobj = static_cast<QObject*>(object);
+    auto meta = qobj->metaObject();
+    int index = meta->indexOfMethod(method.c_str());
+
+    if (index < 0) {
+        report_method_not_found(object, method.operator std::string());
+    }
+     QMetaMethod _method = meta->method(index);
+    _method.invoke(qobj, (Qt::ConnectionType) connection_type, arg1, arg2);
+}
+
+template<typename Obj,
          typename Arg1, typename Arg2, typename Arg3,
          typename RetVal>
 RetVal invoke_three_args_with_return(

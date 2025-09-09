@@ -52,3 +52,15 @@ pub mod smf;
 
 #[cfg(not(feature = "prebuild"))]
 pub mod midi_io;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod lua_engine;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod lua_callback;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod lua_qobject_callback;
+
+#[cfg(not(feature = "prebuild"))]
+pub mod lua_conversions;

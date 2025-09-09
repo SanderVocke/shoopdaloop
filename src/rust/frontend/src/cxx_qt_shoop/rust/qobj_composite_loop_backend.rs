@@ -653,7 +653,12 @@ impl CompositeLoopBackend {
     }
 
     pub fn update_length(mut self: Pin<&mut Self>) {
-        trace!(self, "update length");
+        trace!(
+            self,
+            "update length: sync length {}, n cycles {}",
+            self.sync_length,
+            self.n_cycles
+        );
         let length = self.sync_length * self.n_cycles;
         if length != self.length {
             let mut rust_mut = self.as_mut().rust_mut();

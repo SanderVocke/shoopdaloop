@@ -8,7 +8,6 @@ impl KeyModifiers {
     }
 
     pub fn on_control_pressed(self: Pin<&mut KeyModifiers>) {
-        println!("control pressed");
         self.set_control_pressed(true);
     }
 
@@ -21,7 +20,6 @@ impl KeyModifiers {
     }
 
     pub fn on_control_released(self: Pin<&mut KeyModifiers>) {
-        println!("control released");
         self.set_control_pressed(false);
     }
 

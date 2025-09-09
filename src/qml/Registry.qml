@@ -1,12 +1,11 @@
 import QtQuick 6.6
-import ShoopDaLoop.PythonLogger
 
 // A registry is a simple key-value store which can be shared by reference
 Item {
     property var registry_data: ({})
     property var verbose: false
 
-    property PythonLogger logger: PythonLogger { name: "Frontend.Qml.Registry" }
+    property ShoopRustLogger logger: ShoopRustLogger { name: "Frontend.Qml.Registry" }
 
     signal contentsChanged()
     signal itemAdded(var id, var item)

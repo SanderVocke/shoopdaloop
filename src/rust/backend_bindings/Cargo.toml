@@ -6,9 +6,10 @@ edition = "2021"
 
 [dependencies]
 backend = { path = "../backend" }
-
+num_enum = { workspace = true }
 anyhow = { workspace = true }
 static_assertions = { workspace = true }
+enum-iterator = { workspace = true }
 
 [build-dependencies]
 backend = { path = "../backend" }

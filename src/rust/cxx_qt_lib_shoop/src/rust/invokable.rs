@@ -60,6 +60,23 @@ mod ffi {
             arg1: i32,
         ) -> Result<()>;
 
+        #[rust_name = "invoke_noreturn_f32"]
+        unsafe fn invoke_one_arg(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+            arg1: f32,
+        ) -> Result<()>;
+
+        #[rust_name = "invoke_i32_i32_i32"]
+        unsafe fn invoke_two_args_with_return(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+            arg1: i32,
+            arg2: i32,
+        ) -> Result<i32>;
+
         #[rust_name = "invoke_noreturn_i32_i32_i32"]
         unsafe fn invoke_three_args(
             obj: *mut QObject,
@@ -90,6 +107,17 @@ mod ffi {
             arg2: QVariant,
             arg3: QVariant,
             arg4: i32,
+        ) -> Result<()>;
+
+        #[rust_name = "invoke_noreturn_qvariant_qvariant_qvariant_qvariant"]
+        unsafe fn invoke_four_args(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+            arg1: QVariant,
+            arg2: QVariant,
+            arg3: QVariant,
+            arg4: QVariant,
         ) -> Result<()>;
 
         #[rust_name = "invoke_bool_qstring"]
@@ -165,6 +193,15 @@ mod ffi {
             method: String,
             connection_type: u32,
             arg1: QVariant,
+        ) -> Result<()>;
+
+        #[rust_name = "invoke_noreturn_qvariant_qvariant"]
+        unsafe fn invoke_two_args(
+            obj: *mut QObject,
+            method: String,
+            connection_type: u32,
+            arg1: QVariant,
+            arg2: QVariant,
         ) -> Result<()>;
 
         #[rust_name = "invoke_qlistqvariant_noargs"]
@@ -384,6 +421,43 @@ impl Invokable<(), i32> for ffi::QObject {
     }
 }
 
+impl Invokable<(), f32> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: &str,
+        connection_type: u32,
+        args: &f32,
+    ) -> Result<(), Exception> {
+        unsafe {
+            ffi::invoke_noreturn_f32(
+                self as *mut ffi::QObject,
+                method.to_string(),
+                connection_type,
+                *args,
+            )
+        }
+    }
+}
+
+impl Invokable<i32, (i32, i32)> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: &str,
+        connection_type: u32,
+        args: &(i32, i32),
+    ) -> Result<i32, Exception> {
+        unsafe {
+            ffi::invoke_i32_i32_i32(
+                self as *mut ffi::QObject,
+                method.to_string(),
+                connection_type,
+                args.0,
+                args.1,
+            )
+        }
+    }
+}
+
 impl Invokable<(), (i32, i32, i32)> for ffi::QObject {
     fn invoke_fn_qobj(
         &mut self,
@@ -476,6 +550,25 @@ impl Invokable<(), QVariant> for ffi::QObject {
     }
 }
 
+impl Invokable<(), (QVariant, QVariant)> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: &str,
+        connection_type: u32,
+        args: &(QVariant, QVariant),
+    ) -> Result<(), Exception> {
+        unsafe {
+            ffi::invoke_noreturn_qvariant_qvariant(
+                self as *mut ffi::QObject,
+                method.to_string(),
+                connection_type,
+                args.0.clone(),
+                args.1.clone(),
+            )
+        }
+    }
+}
+
 impl Invokable<(), ffi::QVector_QVariant> for ffi::QObject {
     fn invoke_fn_qobj(
         &mut self,
@@ -549,6 +642,27 @@ impl Invokable<(), (QVariant, QVariant, QVariant, i32)> for ffi::QObject {
                 args.1.clone(),
                 args.2.clone(),
                 args.3,
+            )
+        }
+    }
+}
+
+impl Invokable<(), (QVariant, QVariant, QVariant, QVariant)> for ffi::QObject {
+    fn invoke_fn_qobj(
+        &mut self,
+        method: &str,
+        connection_type: u32,
+        args: &(QVariant, QVariant, QVariant, QVariant),
+    ) -> Result<(), Exception> {
+        unsafe {
+            ffi::invoke_noreturn_qvariant_qvariant_qvariant_qvariant(
+                self as *mut ffi::QObject,
+                method.to_string(),
+                connection_type,
+                args.0.clone(),
+                args.1.clone(),
+                args.2.clone(),
+                args.3.clone(),
             )
         }
     }
@@ -767,6 +881,7 @@ where
 
 pub trait QObjectOrConvertible {
     fn qobject_mut(&mut self) -> *mut ffi::QObject;
+    fn qobject_ref(&self) -> *const ffi::QObject;
 }
 
 impl<T> QObjectOrConvertible for T
@@ -776,11 +891,19 @@ where
     fn qobject_mut(&mut self) -> *mut ffi::QObject {
         unsafe { self.qobject_mut() }
     }
+
+    fn qobject_ref(&self) -> *const ffi::QObject {
+        unsafe { self.qobject_ref() }
+    }
 }
 
 impl QObjectOrConvertible for crate::qobject::QObject {
     fn qobject_mut(&mut self) -> *mut ffi::QObject {
         self as *mut ffi::QObject
+    }
+
+    fn qobject_ref(&self) -> *const ffi::QObject {
+        self as *const ffi::QObject
     }
 }
 

@@ -4,7 +4,6 @@ import QtQuick.Controls.Material 6.6
 
 import "./js/generate_session.js" as GenerateSession
 
-import ShoopDaLoop.PythonLogger
 
 FocusReleasingScrollView {
     ScrollBar.horizontal.policy: ScrollBar.horizontal.size < 1.0 ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
@@ -13,7 +12,7 @@ FocusReleasingScrollView {
     contentWidth: buttons_column.x + buttons_column.width
     property int scroll_offset : ScrollBar.horizontal.position * contentWidth
 
-    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TracksWidget" }
+    property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.TracksWidget" }
 
     id: root
 
@@ -33,7 +32,7 @@ FocusReleasingScrollView {
     }
 
     RegisterInRegistry {
-        registry: registries.state_registry
+        registry: AppRegistries.state_registry
         key: 'track_descriptors'
         object: track_initial_descriptors
     }
@@ -266,6 +265,7 @@ FocusReleasingScrollView {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.horizontalCenter: parent.horizontalCenter
                     initial_track_descriptor: a_track.mapped_item.initial_descriptor
+                    track: a_track.mapped_item
                 }
             }
         }

@@ -29,7 +29,7 @@ impl DecoupledMidiPort {
             )
         };
         if obj.is_null() {
-            return Err(anyhow::anyhow!("Failed to create audio port"));
+            return Err(anyhow::anyhow!("Failed to create decoupled MIDI port"));
         }
         Ok(DecoupledMidiPort {
             obj: Mutex::new(obj),

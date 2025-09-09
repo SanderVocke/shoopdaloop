@@ -1,6 +1,5 @@
 import QtQuick 6.6
-
-import ShoopConstants
+import ShoopDaLoop.Rust
 import './testfilename.js' as TestFilename
 import '..' 
 
@@ -9,25 +8,23 @@ ShoopTestFile {
         id: backend
         update_interval_ms: 10
         client_name_hint: 'shoop'
-        backend_type: ShoopConstants.AudioDriverType.Dummy
+        backend_type: ShoopRustConstants.AudioDriverType.Dummy
         driver_setting_overrides: ({})
 
-        MidiControlPort {
+        ShoopRustMidiControlPort {
             backend: backend
             id: midi_control_port_in
             name_hint: "control_in"
-            direction: ShoopConstants.PortDirection.Input
-            lua_engine: null
+            direction: ShoopRustConstants.PortDirection.Input
             autoconnect_regexes: []
             may_open: true
         }
 
-        MidiControlPort {
+        ShoopRustMidiControlPort {
             backend: backend
             id: midi_control_port_out
             name_hint: "control_out"
-            direction: ShoopConstants.PortDirection.Output
-            lua_engine: null
+            direction: ShoopRustConstants.PortDirection.Output
             autoconnect_regexes: []
             may_open: true
         }
@@ -45,7 +42,7 @@ ShoopTestFile {
 
                     midi_control_port_in.autoconnect_regexes = ['.*testport.*']
                     
-                    backend.dummy_add_external_mock_port("my_testport_out", ShoopConstants.PortDirection.Output, ShoopConstants.PortDataType.Midi)
+                    backend.dummy_add_external_mock_port("my_testport_out", ShoopRustConstants.PortDirection.Output, ShoopRustConstants.PortDataType.Midi)
 
                     midi_control_port_in.autoconnect_update()
 
@@ -61,7 +58,7 @@ ShoopTestFile {
 
                     midi_control_port_in.autoconnect_regexes = ['.*testport.*']
                     
-                    backend.dummy_add_external_mock_port("my_testport_in", ShoopConstants.PortDirection.Input, ShoopConstants.PortDataType.Midi)
+                    backend.dummy_add_external_mock_port("my_testport_in", ShoopRustConstants.PortDirection.Input, ShoopRustConstants.PortDataType.Midi)
 
                     midi_control_port_in.autoconnect_update()
 
@@ -75,7 +72,7 @@ ShoopTestFile {
 
                     midi_control_port_out.autoconnect_regexes = ['.*testport.*']
                     
-                    backend.dummy_add_external_mock_port("my_testport_out", ShoopConstants.PortDirection.Output, ShoopConstants.PortDataType.Midi)
+                    backend.dummy_add_external_mock_port("my_testport_out", ShoopRustConstants.PortDirection.Output, ShoopRustConstants.PortDataType.Midi)
 
                     midi_control_port_out.autoconnect_update()
 
@@ -89,7 +86,7 @@ ShoopTestFile {
 
                     midi_control_port_out.autoconnect_regexes = ['.*testport.*']
                     
-                    backend.dummy_add_external_mock_port("my_testport_in", ShoopConstants.PortDirection.Input, ShoopConstants.PortDataType.Midi)
+                    backend.dummy_add_external_mock_port("my_testport_in", ShoopRustConstants.PortDirection.Input, ShoopRustConstants.PortDataType.Midi)
 
                     midi_control_port_out.autoconnect_update()
 
@@ -105,7 +102,7 @@ ShoopTestFile {
 
                     midi_control_port_out.autoconnect_regexes = ['']
                     
-                    backend.dummy_add_external_mock_port("my_testport_in", ShoopConstants.PortDirection.Input, ShoopConstants.PortDataType.Midi)
+                    backend.dummy_add_external_mock_port("my_testport_in", ShoopRustConstants.PortDirection.Input, ShoopRustConstants.PortDataType.Midi)
 
                     midi_control_port_out.autoconnect_update()
 
@@ -119,7 +116,7 @@ ShoopTestFile {
 
                     midi_control_port_out.autoconnect_regexes = ['testport']
                     
-                    backend.dummy_add_external_mock_port("my_testport_in", ShoopConstants.PortDirection.Input, ShoopConstants.PortDataType.Midi)
+                    backend.dummy_add_external_mock_port("my_testport_in", ShoopRustConstants.PortDirection.Input, ShoopRustConstants.PortDataType.Midi)
 
                     midi_control_port_out.autoconnect_update()
 
@@ -133,7 +130,7 @@ ShoopTestFile {
 
                     midi_control_port_out.autoconnect_regexes = ['my']
                     
-                    backend.dummy_add_external_mock_port("my_testport_in", ShoopConstants.PortDirection.Input, ShoopConstants.PortDataType.Midi)
+                    backend.dummy_add_external_mock_port("my_testport_in", ShoopRustConstants.PortDirection.Input, ShoopRustConstants.PortDataType.Midi)
 
                     midi_control_port_out.autoconnect_update()
 

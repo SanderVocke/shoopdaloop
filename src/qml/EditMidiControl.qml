@@ -1,7 +1,6 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonLogger
 
 import 'js/midi.js' as Midi
 import 'js/midi_control.js' as MidiControl
@@ -10,7 +9,7 @@ Column {
     id: root
     width: parent.width
 
-    property PythonLogger logger: PythonLogger { name: "Frontend.Qml.EditMidiControl" }
+    property ShoopRustLogger logger: ShoopRustLogger { name: "Frontend.Qml.EditMidiControl" }
 
     property MidiControlConfiguration configuration : MidiControlConfiguration {}
 

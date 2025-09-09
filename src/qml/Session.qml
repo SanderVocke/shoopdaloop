@@ -2,19 +2,14 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Dialogs 6.6
-import ShoopDaLoop.PythonLogger
-import ShoopDaLoop.PythonControlHandler
-import ShoopDaLoop.PythonControlInterface
 import ShoopDaLoop.Rust
-
 import "./js/generate_session.js" as GenerateSession
-import ShoopConstants
 
 Item {
     id: root
     objectName: 'session'
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.Session" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.Session" }
 
     // The descriptor is an object matching the ShoopDaLoop session JSON
     // schema. The Session object will manage an actual session (consisting)
@@ -74,13 +69,13 @@ Item {
         id: test_screen_grab_trigger
         property string output_folder
         onExecute: {
-            screen_grabber.grab_all(output_folder)
+            ShoopRustTestScreenGrabber.grab_all(output_folder)
             root.logger.info("Screenshots written to: " + output_folder + ". Quitting.")
             Qt.callLater(Qt.quit)
         }
     }
     RegistrySelects {
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         select_fn: (obj) => obj && obj.object_schema && obj.object_schema.match(/loop.[0-9]+/)
         id: lookup_loops
         values_only: true
@@ -92,6 +87,8 @@ Item {
         test_screen_grab_trigger.output_folder = output_folder
         test_screen_grab_trigger.trigger()
     }
+
+    property var tracks: [sync_track, ...tracks_widget.tracks]
 
     property bool settings_io_enabled: false
 
@@ -114,7 +111,7 @@ Item {
             [],
             [],
             [],
-            registries.fx_chain_states_registry.all_values()
+            AppRegistries.fx_chain_states_registry.all_values()
         );
     }
 
@@ -125,7 +122,7 @@ Item {
         id: validator
     }
 
-    readonly property bool doing_io : registries.state_registry.io_active
+    readonly property bool doing_io : AppRegistries.state_registry.io_active
     readonly property var backend : session_backend
     property alias control_interface: control_interface
 
@@ -192,14 +189,14 @@ Item {
 
     function save_session(filename) {
         root.logger.debug(`saving session to: ${filename}`)
-        var tempdir = ShoopFileIO.create_temporary_folder()
+        var tempdir = ShoopRustFileIO.create_temporary_folder()
         root.logger.trace(`Created temporary folder: ${tempdir}`)
         if (tempdir == null) {
             throw new Error("Failed to create temporary folder")
         }
         var session_filename = tempdir + '/session.json'
-        registries.state_registry.set_active_io_task_fn(() => {
-            registries.state_registry.set_force_io_active(true)
+        AppRegistries.state_registry.set_active_io_task_fn(() => {
+            AppRegistries.state_registry.set_force_io_active(true)
 
             var observer = create_task_observer()
 
@@ -207,22 +204,22 @@ Item {
                 if (success) {
                     try {
                         // TODO make this step asynchronous
-                        if (!ShoopFileIO.make_tarfile(filename, tempdir)) {
+                        if (!ShoopRustFileIO.make_tarfile(filename, tempdir)) {
                             throw new Error(`Failed to create tarfile ${filename}`)
                         }
                         root.logger.info("Session written to: " + filename)
                     } finally {
-                        ShoopFileIO.delete_recursive(tempdir)
+                        ShoopRustFileIO.delete_recursive(tempdir)
                     }
                 } else {
                     root.logger.error("Writing session failed.")
                 }
-                registries.state_registry.set_force_io_active(false)
+                AppRegistries.state_registry.set_force_io_active(false)
             })
 
             // TODO make this step asynchronous
             var descriptor = actual_session_descriptor(true, tempdir, observer)
-            if(!ShoopFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
+            if(!ShoopRustFileIO.write_file(session_filename, JSON.stringify(descriptor, null, 2))) {
                 throw new Error(`Failed to write session file ${session_filename}`)
             }
             observer.start()
@@ -233,10 +230,10 @@ Item {
 
     function unload_session() {
         root.logger.debug("Unloading session")
-        registries.state_registry.clear([
+        AppRegistries.state_registry.clear([
             'sync_active'
         ])
-        registries.objects_registry.clear()
+        AppRegistries.objects_registry.clear()
         tracks_widget.unload()
         sync_loop_loader.unload()
         root.logger.debug("Session unloaded")
@@ -289,21 +286,21 @@ Item {
 
     function load_session(filename, ignore_resample_warning=false) {
         root.logger.debug(`loading session: ${filename}`)
-        var tempdir = ShoopFileIO.create_temporary_folder()
+        var tempdir = ShoopRustFileIO.create_temporary_folder()
 
         try {
             root.unload_session()
 
-            ShoopFileIO.extract_tarfile(filename, tempdir)
-            root.logger.debug(`Extracted files to ${tempdir}: ${JSON.stringify(ShoopFileIO.glob(tempdir + '/*'), null, 2)}`)
+            ShoopRustFileIO.extract_tarfile(filename, tempdir)
+            root.logger.debug(`Extracted files to ${tempdir}: ${JSON.stringify(ShoopRustFileIO.glob(tempdir + '/*'), null, 2)}`)
 
             var session_filename = tempdir + '/session.json'
-            var session_file_contents = ShoopFileIO.read_file(session_filename)
+            var session_file_contents = ShoopRustFileIO.read_file(session_filename)
             var descriptor = JSON.parse(session_file_contents)
             let our_sample_rate = session_backend.get_sample_rate()
             let incoming_sample_rate = descriptor.sample_rate
 
-            if (!ShoopSchemaValidator.validate_schema(descriptor, "Session object", validator.schema, false)) {
+            if (!ShoopRustSchemaValidator.validate_schema(descriptor, "Session object", validator.schema, false)) {
                 return;
             }
 
@@ -323,7 +320,7 @@ Item {
             root.load_current_session()
 
             let finish_fn = () => {
-                registries.state_registry.set_active_io_task_fn(() => {
+                AppRegistries.state_registry.set_active_io_task_fn(() => {
                     var observer = create_task_observer()
 
                     root.logger.debug("Queueing load tasks")
@@ -331,7 +328,7 @@ Item {
                     observer.finished.connect((success) => {
                         if (success) {
                             try {
-                                ShoopFileIO.delete_recursive(tempdir)
+                                ShoopRustFileIO.delete_recursive(tempdir)
                             } finally {
                                 root.logger.info("Session loaded from: " + filename)
                             }
@@ -346,7 +343,7 @@ Item {
                     observer.start()
                     return observer
                 })
-                registries.state_registry.set_force_io_active(false)
+                AppRegistries.state_registry.set_force_io_active(false)
             }
 
             function connectOnce(sig, slot) {
@@ -357,29 +354,40 @@ Item {
                 sig.connect(f)
             }
 
-            registries.state_registry.set_force_io_active(true)
+            AppRegistries.state_registry.set_force_io_active(true)
             if(root.loaded) { finish_fn() }
             else {
                 connectOnce(root.loadedChanged, finish_fn)
             }
         } catch(e) {
-            ShoopFileIO.delete_recursive(tempdir)
+            ShoopRustFileIO.delete_recursive(tempdir)
             throw e;
         }
     }
 
     SelectedLoops { id: selected_loops_lookup }
     property alias selected_loops: selected_loops_lookup.loops
+    function select_loops(loops, clear=false) {
+        var selection = new Set(loops.map(l => l.obj_id))
+        selection.delete(null)
+        if (!clear && session.selected_loops) {
+            root.selected_loops.forEach((l) => { selection.add(l.obj_id) })
+        }
+        AppRegistries.state_registry.replace('selected_loop_ids', selection)
+    }
 
     RegistryLookup {
         id: targeted_loop_lookup
-        registry: registries.state_registry
+        registry: AppRegistries.state_registry
         key: 'targeted_loop'
     }
     property alias targeted_loop : targeted_loop_lookup.object
+    function target_loop(loop) {
+        AppRegistries.state_registry.set_targeted_loop(loop)
+    }
 
     RegisterInRegistry {
-        registry: registries.state_registry
+        registry: AppRegistries.state_registry
         key: 'control_interface'
         object: control_interface
     }
@@ -391,21 +399,7 @@ Item {
         RegisterInRegistry {
             object: parent
             key: 'lua_script_manager'
-            registry: registries.state_registry
-        }
-    }
-
-    MidiControl {
-        id: midi_control
-        control_interface: control_interface
-        configuration: lookup_midi_configuration.object || fallback
-
-        MidiControlConfiguration { id: fallback }
-
-        RegistryLookup {
-            registry: registries.state_registry
-            key: 'midi_control_configuration'
-            id: lookup_midi_configuration
+            registry: AppRegistries.state_registry
         }
     }
 
@@ -420,6 +414,9 @@ Item {
         }
     }
 
+    signal key_pressed(var event)
+    signal key_released(var event)
+
     MouseArea {
         ExecuteNextCycle {
             id: takeFocus
@@ -432,8 +429,8 @@ Item {
         focus: true
         id: session_focus_item
 
-        Keys.onPressed: (event) => control_interface && control_interface.key_pressed(event.key, event.modifiers)
-        Keys.onReleased: (event) => control_interface && control_interface.key_released(event.key, event.modifiers)
+        Keys.onPressed: (event) => root.key_pressed(event)
+        Keys.onReleased: (event) => root.key_released(event)
 
         property var focusItem : Window.activeFocusItem
         onFocusItemChanged: {
@@ -445,7 +442,7 @@ Item {
 
         onClicked: forceActiveFocus()
         Connections {
-            target: ShoopReleaseFocusNotifier
+            target: ShoopRustReleaseFocusNotifier
             function onFocus_released() {
                 session_focus_item.forceActiveFocus()
             }
@@ -465,35 +462,52 @@ Item {
             app_controls.add_backend_refresh_interval_point(last_update_interval)
         }
 
-        SessionControlInterface {
-            backend: session_backend
+        SessionControlHandler {
             id: control_interface
             session: root
-        }
-
-        MidiControlPort {
             backend: session_backend
-            id: midi_control_port
-            name_hint: "control"
-            direction: ShoopConstants.PortDirection.Input
-            lua_engine: midi_control.lua_engine
-
-            RegistryLookup {
-                id: lookup_autoconnect
-                registry: registries.state_registry
-                key: 'autoconnect_input_regexes'
-            }
-
-            autoconnect_regexes: lookup_autoconnect.object || []
-            may_open: true
-
-            onMsgReceived: msg => midi_control.handle_midi(msg, midi_control_port)
         }
+
+        // ShoopRustMidiControlPort {
+        //     backend: session_backend
+        //     id: midi_control_port
+        //     name_hint: "app-control"
+        //     direction: ShoopRustConstants.PortDirection.Input
+
+        //     RegistryLookup {
+        //         id: lookup_autoconnect
+        //         registry: AppRegistries.state_registry
+        //         key: 'autoconnect_input_regexes'
+        //     }
+
+        //     autoconnect_regexes: lookup_autoconnect.object || []
+        //     may_open: true
+
+        //     onMsg_received: msg => midi_control.handle_midi(msg, midi_control_port)
+        // }
+
+        // MidiControl {
+        //     id: midi_control
+        //     control_interface: control_interface
+        //     configuration: lookup_midi_configuration.object || fallback
+
+        //     MidiControlConfiguration { id: fallback }
+
+        //     RegistryLookup {
+        //         registry: AppRegistries.state_registry
+        //         key: 'midi_control_configuration'
+        //         id: lookup_midi_configuration
+        //     }
+        // }
 
         RegisterInRegistry {
-            registry: registries.state_registry
+            registry: AppRegistries.state_registry
             key: 'midi_control_port'
-            object: midi_control_port
+            object: {
+                root.logger.error("Reenable MIDI control")
+                // midi_control_port
+                return null
+            }
         }
 
         anchors {
@@ -583,7 +597,7 @@ Item {
         ResizeableItem {
             id: pane_area
 
-            readonly property bool open : registries.state_registry.details_open
+            readonly property bool open : AppRegistries.state_registry.details_open
             visible: open
 
             property real active_height: 200
@@ -619,7 +633,7 @@ Item {
                     }))
 
                 RegisterInRegistry {
-                    registry: registries.state_registry
+                    registry: AppRegistries.state_registry
                     key: 'main_details_pane'
                     object: pane
                 }
@@ -647,11 +661,11 @@ Item {
                 togglable: true
                 height: 26
 
-                Component.onCompleted: registries.state_registry.set_details_open(checked)
-                onCheckedChanged: registries.state_registry.set_details_open(checked)
+                Component.onCompleted: AppRegistries.state_registry.set_details_open(checked)
+                onCheckedChanged: AppRegistries.state_registry.set_details_open(checked)
                 Connections {
-                    target: registries.state_registry
-                    function onDetails_openChanged() { details_toggle.checked = registries.state_registry.details_open }
+                    target: AppRegistries.state_registry
+                    function onDetails_openChanged() { details_toggle.checked = AppRegistries.state_registry.details_open }
                 }
             }
         }
@@ -746,6 +760,7 @@ Item {
                         }
 
                         initial_track_descriptor: root.sync_loop_track_descriptor
+                        track: sync_loop_widget
                     }
                 }
             }

@@ -1,6 +1,5 @@
 import QtQuick 6.6
-
-import ShoopConstants
+import ShoopDaLoop.Rust
 import '../js/generate_session.js' as GenerateSession
 import './testfilename.js' as TestFilename
 import '..'
@@ -65,7 +64,7 @@ ShoopTestFile {
                     let port = Object.values(session.control_interface.midi_control_ports)[0]
                     verify_eq(port.initialized, false)
 
-                    backend.dummy_add_external_mock_port("my_testport", ShoopConstants.PortDirection.Input, ShoopConstants.PortDataType.Midi)
+                    backend.dummy_add_external_mock_port("my_testport", ShoopRustConstants.PortDirection.Input, ShoopRustConstants.PortDataType.Midi)
                     wait_condition(() => port.initialized)
 
                     script.stop()

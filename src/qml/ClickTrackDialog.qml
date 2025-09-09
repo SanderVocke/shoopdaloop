@@ -9,6 +9,8 @@ Dialog {
     modal: true
     standardButtons: Dialog.Ok | Dialog.Cancel
 
+    property var logger : ShoopRustLogger { name: "Frontend.Qml.ClickTrackDialog" }
+
     width: 400
     height: 450
 
@@ -16,6 +18,11 @@ Dialog {
 
     property bool audio_enabled: true
     property bool midi_enabled: true
+    property int sample_rate: 48000
+
+    property var target_loop_widget: null
+
+    signal prepareToReceiveClickTrack()
 
     property alias primary_click: primary_click_combo.currentText
     property alias secondary_click: secondary_click_combo.currentText
@@ -26,14 +33,14 @@ Dialog {
     property alias num_secondary_per_primary_text: secondary_clicks_per_primary_field.text
     property alias alternate_delay_percent_text: alternate_delay_percent_field.text
     property var possible_primary_clicks: {
-        if(ShoopClickTrackGenerator) {
-            return ShoopClickTrackGenerator.get_possible_clicks()
+        if(ShoopRustClickTrackGenerator) {
+            return ShoopRustClickTrackGenerator.get_possible_clicks()
         }
         return []
     }
     property var possible_secondary_clicks: {
-        if(ShoopClickTrackGenerator) {
-            return ['None'].concat(ShoopClickTrackGenerator.get_possible_clicks());
+        if(ShoopRustClickTrackGenerator) {
+            return ['None'].concat(ShoopRustClickTrackGenerator.get_possible_clicks());
         }
         return []
     }
@@ -45,33 +52,15 @@ Dialog {
     property int click_note : parseInt(click_note_text)
     property real note_length : parseFloat(note_length_text)
 
-    function generate() {
-        if (kind_combo.currentValue == 'Audio') {
-            var clicks = [primary_click]
-            if (secondary_click != 'None') {
-                for (var i = 0; i < parseInt(num_secondary_per_primary_text); i++) {
-                    clicks.push(secondary_click)
-                }
-            }
-
-            return {
-                'filename': ShoopClickTrackGenerator.generate_audio(clicks, bpm, n_beats, alternate_delay_percent),
-                'kind': 'audio'
-            }
-        } else if (kind_combo.currentValue == 'Midi') {
-            return {
-                'filename': ShoopClickTrackGenerator.generate_midi(
-                        [click_note],
-                        [0],
-                        [127],
-                        note_length, bpm, n_beats, alternate_delay_percent
-                    ),
-                'kind': 'midi'
+    function chosen_clicks() {
+        var clicks = [primary_click]
+        if (secondary_click != 'None') {
+            for (var i = 0; i < parseInt(num_secondary_per_primary_text); i++) {
+                clicks.push(secondary_click)
             }
         }
+        return clicks
     }
-
-    signal acceptedClickTrack(kind: string, filename: string)
 
     Grid {
         columns: 2
@@ -206,7 +195,7 @@ Dialog {
             onClicked: () => {
                 if (root.loop) {
                     root.loop.create_backend_loop()
-                    var srate = root.loop.maybe_loaded_loop.backend.get_sample_rate()
+                    var srate = root.sample_rate
                     var _bpm = n_beats / (root.loop.length / srate / 60.0)
                     bpm_field.text = _bpm.toFixed(2)
                 }
@@ -217,18 +206,54 @@ Dialog {
             tooltip: "Listen to a preview of the chosen click track."
             text: "Preview"
             enabled: kind_combo.currentValue == 'Audio'
-            onClicked: () => {
-                           var out = generate()
-                           if (out.kind != 'audio') {
-                                throw new Error("Preview only supported for audio click tracks")
-                           }
-                           ShoopClickTrackGenerator.preview(out.filename)
-                       }
+            onClicked: () => ShoopRustClickTrackGenerator.preview_audio(
+                chosen_clicks(),
+                root.bpm,
+                root.n_beats,
+                root.alternate_delay_percent,
+                root.sample_rate
+                )
         }
     }
 
     onAccepted: () => {
-        var result = generate()
-        acceptedClickTrack(result.kind, result.filename)
+        if (!target_loop_widget) {
+            root.logger.error("cannot create click track - no target loop set")
+            return
+        }
+        root.prepareToReceiveClickTrack()
+        let channels = kind_combo.currentValue == 'Audio' ? target_loop_widget.audio_channels
+            : target_loop_widget.midi_channels
+
+        if (channels.length == 0) {
+            root.logger.error("cannot create click track - no backend loop on target loop widget")
+            return
+        }
+        if (kind_combo.currentValue == "Audio") {
+            let length = ShoopRustClickTrackGenerator.generate_audio_into_channels(
+                chosen_clicks(),
+                root.bpm,
+                root.n_beats,
+                root.alternate_delay_percent,
+                root.sample_rate,
+                channels
+            )
+
+            target_loop_widget.queue_set_length(length)
+        } else {
+            let length = ShoopRustClickTrackGenerator.generate_midi_into_channels(
+                [click_note],
+                [0],
+                [127],
+                note_length,
+                root.bpm,
+                root.n_beats,
+                root.alternate_delay_percent,
+                root.sample_rate,
+                channels
+            )
+
+            target_loop_widget.queue_set_length(length)
+        }
     }
 }

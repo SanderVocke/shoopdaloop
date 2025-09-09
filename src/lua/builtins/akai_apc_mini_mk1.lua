@@ -315,6 +315,7 @@ local push_loop_color = function(coords, event)
     local color = LED_off
     if event.mode == shoop_control.constants.LoopMode_Playing or
        event.mode == shoop_control.constants.LoopMode_PlayingDryThroughWet then
+        print_debug("GREEN")
         color = LED_green
     elseif event.mode == shoop_control.constants.LoopMode_Recording or
            event.mode == shoop_control.constants.LoopMode_RecordingDryIntoWet then
@@ -379,8 +380,8 @@ local reset = function()
 end
 
 -- Handle a NoteOn message coming from the device (a button was pressed).
-local handle_noteOn = function(msg, port)
-    local note = msg.bytes[1]
+local handle_noteOn = function(msg)
+    local note = msg[2]
     local maybe_loop = note_to_loop_coords(note)
 
     if maybe_loop ~= nil then
@@ -457,8 +458,8 @@ local handle_noteOn = function(msg, port)
 end
 
 -- Handle a NoteOff message from the device (a button was released)
-local handle_noteOff = function(msg, port)
-    local note = msg.bytes[1]
+local handle_noteOff = function(msg)
+    local note = msg[2]
     local maybe_loop = note_to_loop_coords(note)
 
     if maybe_loop ~= nil then
@@ -521,9 +522,9 @@ local handle_noteOff = function(msg, port)
 end
 
 -- Handle a CC message coming from the device (a fader was moved)
-local handle_cc = function (msg, port)
-    local cc = msg.bytes[1]
-    local value = msg.bytes[2]
+local handle_cc = function (msg)
+    local cc = msg[2]
+    local value = msg[3]
     local maybe_fader_track = cc_to_fader_track(cc)
 
     if maybe_fader_track ~= nil then
@@ -539,35 +540,37 @@ local handle_cc = function (msg, port)
 end
 
 -- Handle a Midi message coming from the device (top-level handler)
-local on_midi_in = function(msg, port)
+local on_midi_in = function(msg)
+    print_debug("received: " .. shoop_format.format_table(msg, true))
     if shoop_midi.is_kind(msg, shoop_midi.NoteOn) then
-        handle_noteOn(msg, port)
+        handle_noteOn(msg)
     elseif shoop_midi.is_kind(msg, shoop_midi.NoteOff) then
-        handle_noteOff(msg, port)
+        handle_noteOff(msg)
     elseif shoop_midi.is_kind(msg, shoop_midi.ControlChange) then
-        handle_cc(msg, port)
+        handle_cc(msg)
     end
 end
 
 -- We will register this callback to execute when ShoopDaLoop automatically
 -- opens a MIDI port which can send messages to the AKAI device.
-local on_output_port_opened = function(_send_fn)
+local on_output_port_opened = function(port)
     print_debug("output port opened")
-    send_fn = _send_fn
+    print_debug(shoop_format.format_table(port, true))
+    send_fn = port.send
 end
 
 -- We will register this callback to execute when ShoopDaLoop automatically
 -- connects to the AKAI device via MIDI.
-local on_output_port_connected = function()
+local on_output_port_connected = function(port)
     print_debug("output port connected")
-    shoop_control.one_shot_timer_cb(reset, 1000)
+    shoop_control.register_one_shot_timer_cb(1000, reset)
 end
 
 -- We will register this callback to execute when a loop generates an event
 -- from ShoopDaLoop. The event contains information such as the loop mode
 -- and length.
-local handle_loop_event = function(coords, event)
-    push_loop_color(coords, event)
+local handle_loop_event = function(event)
+    push_loop_color(event.coords, event)
 end
 
 -- Register the port-related callbacks
@@ -579,3 +582,5 @@ shoop_control.register_loop_event_cb(handle_loop_event)
 
 -- Register the re-check function to handle global events from ShoopDaLoop.
 shoop_control.register_global_event_cb(recheck_global_controls)
+
+print_debug("akai_apc_mini_mk1.lua: ready")

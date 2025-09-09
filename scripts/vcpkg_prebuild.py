@@ -37,46 +37,6 @@ def find_qmake(directory, is_debug_build):
 
     return (qmake, env_settings)
 
-def find_python(vcpkg_installed_directory, is_debug_build):
-    executable_release = ("python.exe" if sys.platform == "win32" else "python3")
-    executable_debug = (None if sys.platform == "win32" else "python3d")
-    # Note: using a debug interpreter on Windows is a nightmare. There we just
-    # use release version of Python and packages.
-    _is_debug_build = is_debug_build and sys.platform != "win32"
-    executable = executable_debug if _is_debug_build else executable_release
-    tail = os.path.join("tools", "python3", executable)
-    if _is_debug_build:
-        tail = os.path.join("debug", tail)
-    pattern = f'{vcpkg_installed_directory}/**/{tail}'
-    python_paths = glob.glob(pattern, recursive=True)
-    exe = (python_paths[0] if python_paths else None)
-
-    if not exe or not os.path.isfile(exe):
-        print(f"Couldn't find vcpkg-built python interpreter @ {pattern}")
-        exit(1)
-
-    # query the python version number by running the executable
-    try:
-        result = subprocess.run([exe, "--version"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        version_output = result.stdout.decode('utf-8')
-        # Extract the major and minor version numbers
-        match = re.search(r'Python (\d+)\.(\d+)', version_output)
-        if not match:
-            raise ValueError("Couldn't extract Python version from output")
-        major_version, minor_version = map(int, match.groups())
-        print(f"-> Found python version: {major_version}.{minor_version}")
-    except Exception as e:
-        print(f"-> Error: {e}")
-        exit(1)
-
-    dbg_suffix = '_d' if sys.platform == 'win32' else 'd'
-    maybe_dot = '' if sys.platform == 'win32' else '.'
-    libname = f'python{major_version}{maybe_dot}{minor_version}{dbg_suffix}' if _is_debug_build else f'python{major_version}{maybe_dot}{minor_version}'
-    libdir = os.path.join(os.path.dirname(exe), '../../../debug/lib' if _is_debug_build else '../../lib')
-    version = f'{major_version}.{minor_version}'
-
-    return (exe, libdir, libname, version)
-
 def windows_to_bash_path(windows_path):
     # Match drive letter at the beginning of the path (e.g., C:\ or D:/)
     match = re.match(r'^([A-Za-z]):[\\/](.*)', windows_path)
@@ -144,11 +104,6 @@ def find_vcpkg_dynlibs_paths(installed_dir, is_debug_build):
     compiletime = find_path_based_on_tail(compiletime_tail, is_debug_build)
 
     sep = ';' if sys.platform == 'win32' else ':'
-
-    if is_debug_build and sys.platform == 'win32':
-        # We will use release python, so also include the release binary directory as well
-        runtime = f'{runtime}{sep}{find_path_based_on_tail(runtime_tail, False)}'
-        compiletime = f'{compiletime}{sep}{find_path_based_on_tail(compiletime_tail, False)}'
     
     # add manually-linked libs (i.e. Catch2)
     print(f"Looking for manual-link folders")
@@ -276,19 +231,6 @@ def generate_env(args, env, is_debug):
     build_env['SHOOP_BUILD_TIME_LINK_DIRS'] = compiletime_dirs
     build_env['SHOOP_RUNTIME_LINK_DIRS'] = runtime_dirs
 
-    # Find python
-    (python_exe, python_libdir, python_libname, python_version) = find_python(args.vcpkg_installed_dir, is_debug)
-    print(f"Found python at: {python_exe}")
-    pyo3_config_file=os.path.join(base_path, 'build', f'pyo3-config-{("debug" if is_debug else "release")}.toml')
-    with open(pyo3_config_file, 'w') as f:
-        f.write(f"shared=true\n")
-        f.write(f"lib_name={python_libname}\n")
-        f.write(f"lib_dir={python_libdir}\n")
-        f.write(f"executable={python_exe}\n")
-        f.write(f"version={python_version}\n")
-    build_env["PYO3_CONFIG_FILE"] = pyo3_config_file
-    build_env["SHOOP_DEV_ENV_PYTHON"] = python_exe
-
     # Find qmake
     (qmake_path, qmake_env) = find_qmake(args.vcpkg_installed_dir, is_debug)
     if not qmake_path:
@@ -299,6 +241,9 @@ def generate_env(args, env, is_debug):
     for key, value in qmake_env.items():
         print(f"using extra qmake env: {qmake_env}")
         build_env[key] = value
+
+    # Find Lua
+    build_env["LUA_LIB_NAME"] = "lua"
     
     return build_env
     

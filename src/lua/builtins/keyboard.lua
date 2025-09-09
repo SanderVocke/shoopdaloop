@@ -34,6 +34,8 @@
 -- -  U key:      Untarget all loops.
 -- -  W key:      Record the selected loop(s) in sync with the targeted loop(s).
 -- -  C key:      Clear the selected loop(s).
+-- -  "." key:    Sampling mode. Selected loop(s) record/play immediately until
+--                key is released, without regard for sync with other loops.
 -- -  0-9 keys:   Set the amount of sync loop cycles to apply future actions for.
 --                0 disables this - all actions will be open-ended.
 --                Most numbers higher than 10 can also be achieved by e.g. first
@@ -82,9 +84,9 @@ local handle_direction_key = function(key, modifiers)
         return
     end
 
-    if (modifiers & shoop_control.constants.ControlModifier) > 0 then
+    if (modifiers & shoop_control.constants.KeyModifier_ControlModifier) > 0 then
         shoop_helpers.expand_selection(key)
-    elseif (modifiers & shoop_control.constants.AltModifier) > 0 then
+    elseif (modifiers & shoop_control.constants.KeyModifier_AltModifier) > 0 then
         shoop_helpers.shrink_selection(key)
     else
         shoop_helpers.move_selection(key)
@@ -106,6 +108,7 @@ local update_n_cycles = function()
     for idx, value in ipairs(pressed_numbers_state) do
         result = result + (10 ^ (#pressed_numbers_state - idx)) * value
     end
+    result = math.floor(result)
     shoop_control.set_apply_n_cycles(result)
 end
 local handle_number_pressed = function(number, modifiers)
@@ -144,8 +147,10 @@ local handle_loop_action = function(mode)
 end
 
 --  Overall keyboard event handler.
-local handle_keyboard = function(event_type, key, modifiers)
-    if event_type == shoop_control.constants.KeyEventType_Pressed then
+local handle_keyboard = function(event)
+    local key = event.key
+    local modifiers = event.modifiers
+    if event.type == shoop_control.constants.KeyEventType_Pressed then
         local as_number = as_number_key(key)
         if is_direction_key(key) then
             handle_direction_key(key, modifiers)
@@ -177,12 +182,16 @@ local handle_keyboard = function(event_type, key, modifiers)
             shoop_control.loop_trigger_grab(shoop_control.loop_get_which_selected())
         elseif key == shoop_control.constants.Key_Escape then
             shoop_control.loop_select({}, true)
+        elseif key == shoop_control.constants.Key_Period then
+            shoop_helpers.start_sampler(shoop_control.loop_get_which_selected())
         elseif as_number ~= nil then
             handle_number_pressed(as_number, modifiers)
         end
-    elseif event_type == shoop_control.constants.KeyEventType_Released then
+    elseif event.type == shoop_control.constants.KeyEventType_Released then
         local as_number = as_number_key(key)
-        if as_number ~= nil then
+        if key == shoop_control.constants.Key_Period then
+            shoop_helpers.stop_sampler()
+        elseif as_number ~= nil then
             handle_number_released(as_number, modifiers)
         end
     end

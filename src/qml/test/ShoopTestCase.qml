@@ -1,9 +1,7 @@
 import QtQuick 6.6
 
-import ShoopDaLoop.PythonLogger
 import ShoopDaLoop.Rust
 
-import ShoopConstants
 import './testDeepEqual.js' as TestDeepEqual
 import '../js/type_checks.js' as TypeChecks
 import '..'
@@ -11,9 +9,9 @@ import '..'
 Item {
     id: root
     property string filename : 'UnknownTestFile'
-    property var logger : PythonLogger { name: `Frontend.Qml.ShoopTestCase` }
+    property var logger : ShoopRustLogger { name: `Frontend.Qml.ShoopTestCase` }
 
-    property bool print_error_traces: ShoopOSUtils.get_env_var("QMLTEST_NO_ERROR_TRACES") == null
+    property bool print_error_traces: ShoopRustOSUtils.get_env_var("QMLTEST_NO_ERROR_TRACES") == null
 
     // It seems the built-in test function filter of the QML test runner is not working.
     // Provide a means to only run a subset of tests.
@@ -89,7 +87,7 @@ Item {
     }
 
     function verify_loop_cleared(loop) {
-        verify_eq(loop.mode, ShoopConstants.LoopMode.Stopped)
+        verify_eq(loop.mode, ShoopRustConstants.LoopMode.Stopped)
         verify_eq(loop.length, 0)
     }
 
@@ -197,12 +195,12 @@ Item {
     }
 
     function start_test_fn(name) {
-        ShoopCrashHandling.set_json_tag("shoop_action", `qml test (${name})`)
+        ShoopRustCrashHandling.set_json_tag("shoop_action", `qml test (${name})`)
         logger.info(`===== TEST START ${name}`)
     }
 
     function end_test_fn(name) {
-        ShoopCrashHandling.set_json_tag("shoop_action", "qml test (none)")
+        ShoopRustCrashHandling.set_json_tag("shoop_action", "qml test (none)")
         logger.info(`===== TEST END ${name}`)
     }
 
@@ -242,7 +240,7 @@ Item {
 
     function wait_session_io_done() {
         root.logger.debug("Start wait session IO done")
-        wait_condition(() => !registries.state_registry.io_active, 2000, "Session I/O not finished in time")
+        wait_condition(() => !AppRegistries.state_registry.io_active, 2000, "Session I/O not finished in time")
         root.logger.debug("Session IO done.")
     }
 

@@ -2,12 +2,12 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import QtQuick.Dialogs 6.6
-import ShoopDaLoop.PythonLogger
-import ShoopConstants
+import ShoopDaLoop.Rust
 
 import 'js/mode_helpers.js' as ModeHelpers
 import 'js/stereo.js' as Stereo
 import 'js/qml_url_to_filename.js' as UrlToFilename
+
 
 // The loop widget allows manipulating a single loop within a track.
 Item {
@@ -31,9 +31,9 @@ Item {
         logger.debug(`Loop @ (${track_idx},${idx_in_track})`)
     }
 
-    // property PythonLogger logger : PythonLogger { name: "Frontend.Qml.LoopWidget" }
+    // property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.LoopWidget" }
     property alias logger: logger
-    PythonLogger {
+    ShoopRustLogger {
         id: logger
         name: "Frontend.Qml.LoopWidget"
     }
@@ -118,17 +118,23 @@ Item {
 
     property bool loaded : false
 
-    property var sync_loop : registries.state_registry.sync_loop
+    property var sync_loop : AppRegistries.state_registry.sync_loop
+    property bool repeat_sync: true
+    property var use_sync_loop : repeat_sync ? sync_loop : null
+
+    function set_repeat_sync(active) {
+        repeat_sync = active
+    }
 
     readonly property int cycle_length: sync_loop ? sync_loop.length : 0
     readonly property int n_cycles: cycle_length ? Math.ceil(length / cycle_length) : 0
 
-    property var targeted_loop : registries.state_registry.targeted_loop
+    property var targeted_loop : AppRegistries.state_registry.targeted_loop
     property bool targeted : targeted_loop == root
 
     RegistryLookup {
         id: main_details_pane_lookup
-        registry: registries.state_registry
+        registry: AppRegistries.state_registry
         key: 'main_details_pane'
     }
     property alias main_details_pane : main_details_pane_lookup.object
@@ -155,13 +161,13 @@ Item {
         id: obj_reg_entry
         object: root
         key: obj_id
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
     }
 
     RegisterInRegistry {
         id: sync_reg_entry
         enabled: initial_descriptor.is_sync
-        registry: registries.state_registry
+        registry: AppRegistries.state_registry
         key: 'sync_loop'
         object: root
     }
@@ -204,7 +210,7 @@ Item {
         // then this property will hold the amount of sync loop cycles
         // to delay in order to transition in sync with the targeted loop.
         // Otherwise, it will be 0.
-        if (targeted_loop && sync_loop) {
+        if (targeted_loop && use_sync_loop) {
             var to_transition = undefined
             if (targeted_loop.next_transition_delay >= 0 && targeted_loop.next_mode >= 0) {
                 to_transition = targeted_loop.next_transition_delay
@@ -231,7 +237,7 @@ Item {
     readonly property var record_kind : {
         if (root.is_sync) { return "infinite" }
         if (root.delay_for_targeted != undefined) { return "with_targeted" }
-        let apply_n_cycles = registries.state_registry.apply_n_cycles
+        let apply_n_cycles = AppRegistries.state_registry.apply_n_cycles
         if (apply_n_cycles <= 0) { return "infinite" }
         return apply_n_cycles
     }
@@ -266,11 +272,11 @@ Item {
         }
     }
     function trigger_mode_button(mode) {
-        if (mode == ShoopConstants.LoopMode.Stopped) { root.on_stop_clicked() }
-        else if (mode == ShoopConstants.LoopMode.Playing) { root.on_play_clicked() }
-        else if (mode == ShoopConstants.LoopMode.PlayingDryThroughWet) { root.on_playdry_clicked() }
-        else if (mode == ShoopConstants.LoopMode.Recording) { root.on_record_clicked() }
-        else if (mode == ShoopConstants.LoopMode.RecordingDryIntoWet) { root.on_recordfx_clicked() }
+        if (mode == ShoopRustConstants.LoopMode.Stopped) { root.on_stop_clicked() }
+        else if (mode == ShoopRustConstants.LoopMode.Playing) { root.on_play_clicked() }
+        else if (mode == ShoopRustConstants.LoopMode.PlayingDryThroughWet) { root.on_playdry_clicked() }
+        else if (mode == ShoopRustConstants.LoopMode.Recording) { root.on_record_clicked() }
+        else if (mode == ShoopRustConstants.LoopMode.RecordingDryIntoWet) { root.on_recordfx_clicked() }
     }
 
     function selected_and_other_loops_in_track() {
@@ -294,7 +300,7 @@ Item {
     function transition_solo_in_track(mode, maybe_delay, maybe_align_to_sync_at) {
         let r = selected_and_other_loops_in_track()
         // Do the transitions
-        transition_loops(r[1], ShoopConstants.LoopMode.Stopped, maybe_delay, maybe_align_to_sync_at)
+        transition_loops(r[1], ShoopRustConstants.LoopMode.Stopped, maybe_delay, maybe_align_to_sync_at)
         transition_loops(r[0], mode, maybe_delay, maybe_align_to_sync_at)
     }
 
@@ -319,29 +325,28 @@ Item {
             maybe_loop = null
         }
     }
-
     function select(clear = false) {
         untarget()
         if (!clear) {
-            registries.state_registry.add_to_set('selected_loop_ids', obj_id)
+            AppRegistries.state_registry.add_to_set('selected_loop_ids', obj_id)
         } else {
-            registries.state_registry.replace('selected_loop_ids', new Set([obj_id]))
+            AppRegistries.state_registry.replace('selected_loop_ids', new Set([obj_id]))
         }
     }
     function deselect(clear = false) {
         if (!clear) {
-            registries.state_registry.remove_from_set('selected_loop_ids', obj_id)
+            AppRegistries.state_registry.remove_from_set('selected_loop_ids', obj_id)
         } else {
-            registries.state_registry.replace('selected_loop_ids', new Set())
+            AppRegistries.state_registry.replace('selected_loop_ids', new Set())
         }
     }
     function target() {
         deselect()
-        registries.state_registry.set_targeted_loop(root)
+        AppRegistries.state_registry.set_targeted_loop(root)
     }
     function untarget() {
         if (targeted) {
-            registries.state_registry.untarget_loop()
+            AppRegistries.state_registry.untarget_loop()
         }
     }
     function toggle_selected(clear_if_select = false) {
@@ -377,9 +382,7 @@ Item {
     function set_gain_fader(value) {
         statusrect.gain_dial.set_as_range_fraction(value)
     }
-    function get_gain_fader() {
-        return statusrect.gain_dial.position
-    }
+    readonly property real gain_fader : statusrect.gain_dial.position
 
     property real last_pushed_gain: initial_gain
     property real last_pushed_stereo_balance: initial_stereo_balance ? initial_stereo_balance : 0.0
@@ -423,19 +426,19 @@ Item {
     }
 
     function record_n(delay_start, n) {
-        if (registries.state_registry.solo_active) {
-            root.transition_solo_in_track(ShoopConstants.LoopMode.Recording, delay_start, ShoopConstants.DontAlignToSyncImmediately)
+        if (AppRegistries.state_registry.solo_active) {
+            root.transition_solo_in_track(ShoopRustConstants.LoopMode.Recording, delay_start, ShoopRustConstants.DontAlignToSyncImmediately)
             root.transition(
-                registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                AppRegistries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
                 delay_start + n,
-                ShoopConstants.DontAlignToSyncImmediately
+                ShoopRustConstants.DontAlignToSyncImmediately
             )
         } else {
-            root.transition(ShoopConstants.LoopMode.Recording, delay_start, ShoopConstants.DontAlignToSyncImmediately)
+            root.transition(ShoopRustConstants.LoopMode.Recording, delay_start, ShoopRustConstants.DontAlignToSyncImmediately)
             root.transition(
-                registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                AppRegistries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
                 delay_start + n,
-                ShoopConstants.DontAlignToSyncImmediately
+                ShoopRustConstants.DontAlignToSyncImmediately
             )
         }
     }
@@ -472,8 +475,8 @@ Item {
 
     readonly property int length : maybe_loop ? maybe_loop.length : 0
     readonly property int position : maybe_loop ? maybe_loop.position : 0
-    readonly property int mode : maybe_loop ? maybe_loop.mode : ShoopConstants.LoopMode.Stopped
-    readonly property int next_mode : maybe_loop ? maybe_loop.next_mode : ShoopConstants.LoopMode.Stopped
+    readonly property int mode : maybe_loop ? maybe_loop.mode : ShoopRustConstants.LoopMode.Stopped
+    readonly property int next_mode : maybe_loop ? maybe_loop.next_mode : ShoopRustConstants.LoopMode.Stopped
     readonly property int next_transition_delay : maybe_loop ? maybe_loop.next_transition_delay : -1
 
     Component {
@@ -496,7 +499,7 @@ Item {
                 let balance = last_pushed_stereo_balance
                 maybe_loop = backend_loop_factory.createObject(root, {
                     'initial_descriptor': root.initial_descriptor,
-                    'sync_source': Qt.binding(() => (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null),
+                    'sync_source': Qt.binding(() => (!is_sync && root.use_sync_loop && root.sync_loop.maybe_backend_loop) ? root.use_sync_loop.maybe_backend_loop : null),
                 })
                 push_stereo_balance(balance)
                 push_gain(gain)
@@ -544,39 +547,39 @@ Item {
     }
 
     function on_play_clicked() {
-        if (registries.state_registry.solo_active) {
-            root.transition_solo_in_track(ShoopConstants.LoopMode.Playing,
-                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-                ShoopConstants.DontAlignToSyncImmediately)
+        if (AppRegistries.state_registry.solo_active) {
+            root.transition_solo_in_track(ShoopRustConstants.LoopMode.Playing,
+                root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+                ShoopRustConstants.DontAlignToSyncImmediately)
         } else {
-            root.transition(ShoopConstants.LoopMode.Playing,
-                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-                ShoopConstants.DontAlignToSyncImmediately)
+            root.transition(ShoopRustConstants.LoopMode.Playing,
+                root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+                ShoopRustConstants.DontAlignToSyncImmediately)
         }
     }
 
     function on_playdry_clicked() {
-        if (registries.state_registry.solo_active) {
-            root.transition_solo_in_track(ShoopConstants.LoopMode.PlayingDryThroughWet,
-                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-                ShoopConstants.DontAlignToSyncImmediately)
+        if (AppRegistries.state_registry.solo_active) {
+            root.transition_solo_in_track(ShoopRustConstants.LoopMode.PlayingDryThroughWet,
+                root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+                ShoopRustConstants.DontAlignToSyncImmediately)
         } else {
-            root.transition(ShoopConstants.LoopMode.PlayingDryThroughWet,
-                root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-                ShoopConstants.DontAlignToSyncImmediately)
+            root.transition(ShoopRustConstants.LoopMode.PlayingDryThroughWet,
+                root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+                ShoopRustConstants.DontAlignToSyncImmediately)
         }
     }
 
     function on_record_clicked() {
         if (root.record_kind == 'infinite' || root.maybe_composite_loop) {
-            if (registries.state_registry.solo_active) {
-                root.transition_solo_in_track(ShoopConstants.LoopMode.Recording,
-                    root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-                    ShoopConstants.DontAlignToSyncImmediately)
+            if (AppRegistries.state_registry.solo_active) {
+                root.transition_solo_in_track(ShoopRustConstants.LoopMode.Recording,
+                    root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+                    ShoopRustConstants.DontAlignToSyncImmediately)
             } else {
-                root.transition(ShoopConstants.LoopMode.Recording,
-                    root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-                    ShoopConstants.DontAlignToSyncImmediately)
+                root.transition(ShoopRustConstants.LoopMode.Recording,
+                    root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+                    ShoopRustConstants.DontAlignToSyncImmediately)
             }
         } else if (root.record_kind == 'with_targeted') {
             root.record_with_targeted();
@@ -586,7 +589,7 @@ Item {
     }
 
     readonly property int n_cycles_to_grab : {
-        var rval = registries.state_registry.apply_n_cycles
+        var rval = AppRegistries.state_registry.apply_n_cycles
         if (rval <= 0) { rval = 1; }
         return rval
     }
@@ -598,7 +601,7 @@ Item {
             root.create_backend_loop()
         }
         if (root.sync_active) {
-            let go_to_mode = registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Unknown
+            let go_to_mode = AppRegistries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Unknown
             if (root.targeted_loop) {
                 // Grab and sync up with the running targeted loop
                 selection.forEach(l => l.adopt_ringbuffers(root.targeted_loop.current_cycle + root.targeted_loop.n_cycles, root.targeted_loop.n_cycles,
@@ -609,37 +612,37 @@ Item {
         } else {
             if (root.targeted_loop) {
                 // Grab current targeted loop content and record the rest
-                root.adopt_ringbuffers(null, root.targeted_loop.current_cycle + 1, root.targeted_loop.current_cycle, ShoopConstants.LoopMode.Recording)
+                root.adopt_ringbuffers(null, root.targeted_loop.current_cycle + 1, root.targeted_loop.current_cycle, ShoopRustConstants.LoopMode.Recording)
                 root.transition(
-                    registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                    AppRegistries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
                     root.delay_for_targeted,
-                    ShoopConstants.DontAlignToSyncImmediately
+                    ShoopRustConstants.DontAlignToSyncImmediately
                 )
             } else {
                 let goto_cycle =
                     root.maybe_composite_loop ?
                         root.maybe_composite_loop.n_cycles - 1 :
                         root.n_cycles_to_grab - 1
-                root.adopt_ringbuffers(null, root.n_cycles_to_grab, goto_cycle, ShoopConstants.LoopMode.Recording)
+                root.adopt_ringbuffers(null, root.n_cycles_to_grab, goto_cycle, ShoopRustConstants.LoopMode.Recording)
                 root.transition(
-                    registries.state_registry.play_after_record_active ? ShoopConstants.LoopMode.Playing : ShoopConstants.LoopMode.Stopped,
+                    AppRegistries.state_registry.play_after_record_active ? ShoopRustConstants.LoopMode.Playing : ShoopRustConstants.LoopMode.Stopped,
                     0,
-                    ShoopConstants.DontAlignToSyncImmediately
+                    ShoopRustConstants.DontAlignToSyncImmediately
                 )
             }
         }
 
-        if (registries.state_registry.solo_active) {
+        if (AppRegistries.state_registry.solo_active) {
             let r = selected_and_other_loops_in_track()
-            root.transition_loops(r[1], ShoopConstants.LoopMode.Stopped, ShoopConstants.DontWaitForSync, ShoopConstants.DontAlignToSyncImmediately)
+            root.transition_loops(r[1], ShoopRustConstants.LoopMode.Stopped, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
         }
     }
 
     function on_stop_clicked() {
         root.transition(
-           ShoopConstants.LoopMode.Stopped,
-           root.sync_active ? root.use_delay : ShoopConstants.DontWaitForSync,
-           ShoopConstants.DontAlignToSyncImmediately)
+           ShoopRustConstants.LoopMode.Stopped,
+           root.sync_active ? root.use_delay : ShoopRustConstants.DontWaitForSync,
+           ShoopRustConstants.DontAlignToSyncImmediately)
     }
 
     function on_recordfx_clicked() {
@@ -649,8 +652,13 @@ Item {
                 root.use_delay : // delay to other
                 root.n_multiples_of_sync_length - root.current_cycle - 1 // delay to self
         var prev_mode = statusrect.loop.mode
-        root.transition(ShoopConstants.LoopMode.RecordingDryIntoWet, delay, ShoopConstants.DontAlignToSyncImmediately)
-        statusrect.loop.transition(prev_mode, delay + n, ShoopConstants.DontAlignToSyncImmediately)
+        root.transition(ShoopRustConstants.LoopMode.RecordingDryIntoWet, delay, ShoopRustConstants.DontAlignToSyncImmediately)
+        statusrect.loop.transition(prev_mode, delay + n, ShoopRustConstants.DontAlignToSyncImmediately)
+    }
+
+    function compose_add_to_end(subloop, do_parallel) {
+        if (!maybe_composite_loop) { create_composite_loop() }
+        maybe_composite_loop.add_loop(subloop, 0, AppRegistries.state_registry.apply_n_cycles, do_parallel ? undefined : 0)
     }
 
     property bool initialized : maybe_loop ? (maybe_loop.initialized ? true : false) : false
@@ -658,7 +666,7 @@ Item {
     property var audio_channels : (maybe_loop && maybe_loop.audio_channels) ? maybe_loop.audio_channels : []
     property var midi_channels : (maybe_loop && maybe_loop.midi_channels) ? maybe_loop.midi_channels : []
 
-    property bool sync_active : registries.state_registry.sync_active
+    property bool sync_active : AppRegistries.state_registry.sync_active
     onSync_activeChanged: root.logger.debug(`Sync active: ${sync_active}`)
 
     // UI
@@ -919,7 +927,7 @@ Item {
 
                     LoopStateIcon {
                         id: loopstateicon
-                        mode: statusrect.loop ? statusrect.loop.mode : ShoopConstants.LoopMode.Unknown
+                        mode: statusrect.loop ? statusrect.loop.mode : ShoopRustConstants.LoopMode.Unknown
                         show_timer_instead: parent.show_next_mode
                         visible: !parent.show_next_mode || (parent.show_next_mode && statusrect.loop.next_transition_delay == 0)
                         connected: true
@@ -931,11 +939,11 @@ Item {
                         muted: false
                         empty: !statusrect.loop || statusrect.loop.length == 0
                         onDoubleClicked: (event) => {
-                                if (!ShoopKeyModifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
+                                if (!ShoopRustKeyModifiers.alt_pressed && event.button === Qt.LeftButton) { root.target() }
                             }
                         onClicked: (event) => {
                             if (event.button === Qt.LeftButton) {
-                                if (ShoopKeyModifiers.alt_pressed) {
+                                if (ShoopRustKeyModifiers.alt_pressed) {
                                     if (root.selected_loops.size == 1) {
                                         let selected = Array.from(root.selected_loops)[0]
                                         if (selected != root) {
@@ -943,16 +951,16 @@ Item {
                                             if (selected.maybe_composite_loop) {
                                                 // Add the selected loop to the currently selected composite loop.
                                                 // If ctrl pressed, as a new parallel timeline; otherwise at the end of the default timeline.
-                                                if (ShoopKeyModifiers.control_pressed) {
-                                                    selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, undefined)
+                                                if (ShoopRustKeyModifiers.control_pressed) {
+                                                    selected.maybe_composite_loop.add_loop(root, 0, AppRegistries.state_registry.apply_n_cycles, undefined)
                                                 } else {
-                                                    selected.maybe_composite_loop.add_loop(root, 0, registries.state_registry.apply_n_cycles, 0)
+                                                    selected.maybe_composite_loop.add_loop(root, 0, AppRegistries.state_registry.apply_n_cycles, 0)
                                                 }
                                             }
                                         }
                                     }
                                 } else if (root.targeted) { root.untarget(); root.deselect() }
-                                else { root.toggle_selected(!ShoopKeyModifiers.control_pressed) }
+                                else { root.toggle_selected(!ShoopRustKeyModifiers.control_pressed) }
                             }
                             else if (event.button === Qt.RightButton) { context_menu_loader.popup() }
                         }
@@ -960,7 +968,7 @@ Item {
                     LoopStateIcon {
                         id: loopnextstateicon
                         mode: parent.show_next_mode ?
-                            statusrect.loop.next_mode : ShoopConstants.LoopMode.Unknown
+                            statusrect.loop.next_mode : ShoopRustConstants.LoopMode.Unknown
                         show_timer_instead: false
                         is_regular_composite: false
                         is_script_composite: false
@@ -1099,7 +1107,7 @@ Item {
                             text: {
                                 var rval = ''
                                 if (root.delay_for_targeted != undefined)  { rval += '>' }
-                                if (registries.state_registry.solo_active) { rval += 'S' }
+                                if (AppRegistries.state_registry.solo_active) { rval += 'S' }
                                 return rval
                             }
                             font.pixelSize: size / 2.0
@@ -1111,8 +1119,8 @@ Item {
                         ToolTip.timeout: 5000
                         ToolTip.visible: hovered
                         ToolTip.text: 'Play wet recording' +
-                            (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
-                            (registries.state_registry.solo_active ? ' (solo in track)' : '') +
+                            (AppRegistries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                            (AppRegistries.state_registry.solo_active ? ' (solo in track)' : '') +
                             (root.delay_for_targeted != undefined  ? ' (with targeted loop)' : '')
                             + '.'
 
@@ -1171,7 +1179,7 @@ Item {
                                             text: {
                                                 var rval = ''
                                                 if (root.delay_for_targeted != undefined)  { rval += '>' }
-                                                if (registries.state_registry.solo_active) { rval += 'S' }
+                                                if (AppRegistries.state_registry.solo_active) { rval += 'S' }
                                                 return rval
                                             }
                                             font.pixelSize: size / 2.0
@@ -1183,8 +1191,8 @@ Item {
                                         ToolTip.timeout: 5000
                                         ToolTip.visible: hovered
                                         ToolTip.text: "Play dry recording through live effects" +
-                                            (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
-                                            (registries.state_registry.solo_active ? ' (solo in track)' : '') +
+                                            (AppRegistries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                                            (AppRegistries.state_registry.solo_active ? ' (solo in track)' : '') +
                                             (root.delay_for_targeted != undefined  ? ' (with targeted loop)' : '') +
                                             + '.'
                                     }
@@ -1211,7 +1219,7 @@ Item {
                                 var rval = root.record_kind == 'with_targeted' ? '><' :
                                         root.record_kind == 'infinite' ? '' :
                                         root.record_kind.toString() // integer
-                                if (registries.state_registry.solo_active) { rval += 'S' }
+                                if (AppRegistries.state_registry.solo_active) { rval += 'S' }
                                 return rval
                             }
                             font.pixelSize: size / 2.0
@@ -1229,7 +1237,7 @@ Item {
                                     size: record_icon.size
                                     name: 'record'
                                     color: 'green'
-                                    visible: registries.state_registry.play_after_record_active
+                                    visible: AppRegistries.state_registry.play_after_record_active
                                 }
                             }
                         }
@@ -1240,10 +1248,10 @@ Item {
                         ToolTip.timeout: 5000
                         ToolTip.visible: hovered
                         ToolTip.text: "Record" +
-                                            (registries.state_registry.play_after_record_active ? ', then play' : ', then stop') +
+                                            (AppRegistries.state_registry.play_after_record_active ? ', then play' : ', then stop') +
                                             (root.record_kind == 'infinite' ? ' (until stopped)' : (root.record_kind == 'with_targeted' ? ' (with targeted loop)' : ` (${root.record_kind} cycles)`)) +
-                                            (registries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
-                                            (registries.state_registry.solo_active ? ' (solo in track)' : '')
+                                            (AppRegistries.state_registry.sync_active ? ' (synchronous)' : ' (immediate)') +
+                                            (AppRegistries.state_registry.solo_active ? ' (solo in track)' : '')
                                             + '.'
                         Connections {
                             target: statusrect
@@ -1324,7 +1332,7 @@ Item {
                                                     size: record_icon.size
                                                     name: 'arrow-collapse-down'
                                                     color: 'green'
-                                                    visible: registries.state_registry.play_after_record_active
+                                                    visible: AppRegistries.state_registry.play_after_record_active
                                                 }
                                             }
                                         }
@@ -1335,8 +1343,8 @@ Item {
                                         ToolTip.timeout: 5000
                                         ToolTip.visible: hovered
                                         ToolTip.text: "Grab always-on recording" +
-                                            (registries.state_registry.play_after_record_active ? ' and play immediately' : '') +
-                                            ((registries.state_registry.solo_active && registries.state_registry.play_after_record_active) ? ' (solo in track)' : '')
+                                            (AppRegistries.state_registry.play_after_record_active ? ' and play immediately' : '') +
+                                            ((AppRegistries.state_registry.solo_active && AppRegistries.state_registry.play_after_record_active) ? ' (solo in track)' : '')
                                             + '.'
                                     }
 
@@ -1543,13 +1551,13 @@ Item {
                     }
 
                     switch(loopprogressrect.loop.mode) {
-                    case ShoopConstants.LoopMode.Playing:
+                    case ShoopRustConstants.LoopMode.Playing:
                         return '#004400';
-                    case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                    case ShoopRustConstants.LoopMode.PlayingDryThroughWet:
                         return '#333300';
-                    case ShoopConstants.LoopMode.Recording:
+                    case ShoopRustConstants.LoopMode.Recording:
                         return '#660000';
-                    case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                    case ShoopRustConstants.LoopMode.RecordingDryIntoWet:
                         return '#663300';
                     default:
                         return default_color;
@@ -1616,13 +1624,13 @@ Item {
                 }
 
                 switch(lsicon.mode) {
-                case ShoopConstants.LoopMode.Playing:
-                case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                case ShoopRustConstants.LoopMode.Playing:
+                case ShoopRustConstants.LoopMode.PlayingDryThroughWet:
                     return lsicon.muted ? 'volume-mute' : 'play'
-                case ShoopConstants.LoopMode.Recording:
-                case ShoopConstants.LoopMode.RecordingDryIntoWet:
+                case ShoopRustConstants.LoopMode.Recording:
+                case ShoopRustConstants.LoopMode.RecordingDryIntoWet:
                     return 'record-rec'
-                case ShoopConstants.LoopMode.Stopped:
+                case ShoopRustConstants.LoopMode.Stopped:
                     if(lsicon.is_regular_composite) {
                         return 'view-list'
                     }
@@ -1643,15 +1651,15 @@ Item {
                     return Material.foreground
                 }
                 switch(lsicon.mode) {
-                case ShoopConstants.LoopMode.Playing:
+                case ShoopRustConstants.LoopMode.Playing:
                     if (lsicon.is_script_composite) {
                         return Material.foreground
                     }
                     return '#00AA00'
-                case ShoopConstants.LoopMode.Recording:
+                case ShoopRustConstants.LoopMode.Recording:
                     return 'red'
-                case ShoopConstants.LoopMode.RecordingDryIntoWet:
-                case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                case ShoopRustConstants.LoopMode.RecordingDryIntoWet:
+                case ShoopRustConstants.LoopMode.PlayingDryThroughWet:
                     return 'orange'
                 default:
                     if(lsicon.is_regular_composite || lsicon.is_script_composite) {
@@ -1667,8 +1675,8 @@ Item {
                     return ''
                 }
                 switch(lsicon.mode) {
-                case ShoopConstants.LoopMode.RecordingDryIntoWet:
-                case ShoopConstants.LoopMode.PlayingDryThroughWet:
+                case ShoopRustConstants.LoopMode.RecordingDryIntoWet:
+                case ShoopRustConstants.LoopMode.PlayingDryThroughWet:
                     return 'FX'
                 default:
                     return ''
@@ -1712,22 +1720,14 @@ Item {
             x: (parent.width-width) / 2
             y: (parent.height-height) / 2
 
+            target_loop_widget: root
+
             audio_enabled: root.descriptor_has_audio
             midi_enabled: root.descriptor_has_midi
+            sample_rate: root.backend.get_sample_rate()
 
-            onAcceptedClickTrack: (kind, filename) => {
-                if (kind == 'audio') {
-                    loadoptionsdialog.filename = filename
-                    close()
-                    root.create_backend_loop()
-                    loadoptionsdialog.update()
-                    loadoptionsdialog.open()
-                } else if (kind == 'midi') {
-                    midiloadoptionsdialog.filename = filename
-                    close()
-                    root.create_backend_loop()
-                    midiloadoptionsdialog.open()
-                }
+            onPrepareToReceiveClickTrack: () => {
+                root.create_backend_loop()
             }
         }
 
@@ -1753,7 +1753,7 @@ Item {
                         onEditingFinished: {
                             root.name = text
                             focus = false
-                            ShoopReleaseFocusNotifier.notify()
+                            ShoopRustReleaseFocusNotifier.notify()
                         }
                     }
                 }
@@ -1763,7 +1763,7 @@ Item {
                text: "Details"
                onClicked: () => {
                   if(root.main_details_pane) { root.main_details_pane.add_user_item(root.name, root) }
-                  registries.state_registry.set_details_open(true)
+                  AppRegistries.state_registry.set_details_open(true)
                }
             }
             ShoopMenuItem {
@@ -1830,7 +1830,7 @@ Item {
                         .filter(c => c.recording_fx_chain_state_id != undefined)
                         .map(c => c.recording_fx_chain_state_id);
                     return channel_states.length > 0 ?
-                        registries.fx_chain_states_registry.maybe_get(channel_states[0], undefined)
+                        AppRegistries.fx_chain_states_registry.maybe_get(channel_states[0], undefined)
                         : undefined
                 }
 
@@ -1874,9 +1874,9 @@ Item {
                         valueRole: "value"
                         model: [
                             { value: (chan) => true, text: "All" },
-                            { value: (chan) => chan.mode == ShoopConstants.ChannelMode.Direct, text: "Regular" },
-                            { value: (chan) => chan.mode == ShoopConstants.ChannelMode.Dry, text: "Dry" },
-                            { value: (chan) => chan.mode == ShoopConstants.ChannelMode.Wet, text: "Wet" }
+                            { value: (chan) => chan.mode == ShoopRustConstants.ChannelMode.Direct, text: "Regular" },
+                            { value: (chan) => chan.mode == ShoopRustConstants.ChannelMode.Dry, text: "Dry" },
+                            { value: (chan) => chan.mode == ShoopRustConstants.ChannelMode.Wet, text: "Wet" }
                         ]
                         Component.onCompleted: presavedialog.update()
                         onActivated: presavedialog.update()
@@ -1903,7 +1903,7 @@ Item {
             id: savedialog
             fileMode: FileDialog.SaveFile
             acceptLabel: 'Save'
-            nameFilters: Object.entries(ShoopFileIO.get_soundfile_formats()).map((e) => {
+            nameFilters: Object.entries(ShoopRustFileIO.get_soundfile_formats()).map((e) => {
                 var extension = e[0]
                 var description = e[1].replace('(', '- ').replace(')', '')
                 return description + ' (*.' + extension + ')';
@@ -1920,7 +1920,7 @@ Item {
                     var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
 
                     var create_task = () => {
-                        var task = ShoopFileIO.save_channels_to_soundfile_async(filename, samplerate, channels)
+                        var task = ShoopRustFileIO.save_channels_to_soundfile_async(filename, samplerate, channels)
                         task.then((success) => {
                             if (!success) {
                                 root.logger.error("saving channels to sound file failed")
@@ -1928,7 +1928,7 @@ Item {
                         })
                         return task;
                     }
-                    registries.state_registry.set_active_io_task_fn(create_task)
+                    AppRegistries.state_registry.set_active_io_task_fn(create_task)
                 } catch (e) {
                     throw e;
                 }
@@ -1950,7 +1950,7 @@ Item {
                 close()
                 var filename = UrlToFilename.qml_url_to_filename(file.toString());
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                ShoopFileIO.save_channel_to_midi_async(filename, samplerate, channel)
+                ShoopRustFileIO.save_channel_to_midi_async(filename, samplerate, channel)
             }
 
         }
@@ -1961,7 +1961,7 @@ Item {
             acceptLabel: 'Load'
             nameFilters: [
                 'Supported sound files ('
-                + Object.entries(ShoopFileIO.get_soundfile_formats()).map((e) => '*.' + e[0].toLowerCase()).join(' ')
+                + Object.entries(ShoopRustFileIO.get_soundfile_formats()).map((e) => '*.' + e[0].toLowerCase()).join(' ')
                 + ')'
             ]
             onAccepted: {
@@ -1997,7 +1997,7 @@ Item {
             height: 400
 
             onFilenameChanged: {
-                var props = ShoopFileIO.get_soundfile_info(filename)
+                var props = ShoopRustFileIO.get_soundfile_info(filename)
                 n_file_channels = props['channels']
                 file_sample_rate = props['samplerate']
             }
@@ -2005,9 +2005,9 @@ Item {
 
             function update() {
                 var chans = root.audio_channels
-                direct_audio_channels = chans.filter(c => c.mode == ShoopConstants.ChannelMode.Direct)
-                dry_audio_channels = chans.filter(c => c.mode == ShoopConstants.ChannelMode.Dry)
-                wet_audio_channels = chans.filter(c => c.mode == ShoopConstants.ChannelMode.Wet)
+                direct_audio_channels = chans.filter(c => c.mode == ShoopRustConstants.ChannelMode.Direct)
+                dry_audio_channels = chans.filter(c => c.mode == ShoopRustConstants.ChannelMode.Dry)
+                wet_audio_channels = chans.filter(c => c.mode == ShoopRustConstants.ChannelMode.Wet)
                 var to_load = []
                 if (direct_load_checkbox.checked) { to_load = to_load.concat(direct_audio_channels) }
                 if (dry_load_checkbox.checked) { to_load = to_load.concat(dry_audio_channels) }
@@ -2042,7 +2042,7 @@ Item {
                         fidx = (fidx + 1) % n_file_channels
                     }
                     var create_task = () => {
-                        var task = ShoopFileIO.load_soundfile_to_channels_async(filename, samplerate, null,
+                        var task = ShoopRustFileIO.load_soundfile_to_channels_async(filename, samplerate, null,
                             mapping, 0, 0, root.maybe_backend_loop)
                         task.then((success) => {
                             if (!success) {
@@ -2051,7 +2051,7 @@ Item {
                         })
                         return task
                     }
-                    registries.state_registry.set_active_io_task_fn(create_task)
+                    AppRegistries.state_registry.set_active_io_task_fn(create_task)
                 } catch(e) {
                     throw e
                 }
@@ -2135,7 +2135,7 @@ Item {
             function doLoad(update_loop_length) {
                 root.create_backend_loop()
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
-                ShoopFileIO.load_midi_to_channels_async(filename, samplerate, channels,
+                ShoopRustFileIO.load_midi_to_channels_async(filename, samplerate, channels,
                     0, 0, root.maybe_backend_loop)
             }
 

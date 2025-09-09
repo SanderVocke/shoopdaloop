@@ -1,7 +1,6 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-import ShoopDaLoop.PythonLogger
 
 import 'js/mode_helpers.js' as ModeHelpers
 
@@ -11,7 +10,7 @@ ShoopApplicationWindow {
     property var maybe_composite_loop : loop_widget.maybe_composite_loop
     property var sync_loop_widget
 
-    property PythonLogger logger : PythonLogger { name: 'Frontend.Qml.LoopDetailsWindow' }
+    property ShoopRustLogger logger : ShoopRustLogger { name: 'Frontend.Qml.LoopDetailsWindow' }
     
     id: root
 

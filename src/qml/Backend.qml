@@ -1,7 +1,7 @@
 import QtQuick 6.6
-import ShoopConstants
+import ShoopDaLoop.Rust
 
-ShoopBackendWrapper {
+ShoopRustBackendWrapper {
     objectName: "shoop_backend_wrapper"
     Component.onCompleted: {
         maybe_init()

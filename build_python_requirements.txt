@@ -1,7 +1,0 @@
-setuptools
-setuptools-scm
-meson
-toml
-build
-jinja2
-wheel

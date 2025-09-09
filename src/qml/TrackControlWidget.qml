@@ -1,9 +1,7 @@
 import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
-
-import ShoopDaLoop.PythonLogger
-import ShoopConstants
+import ShoopDaLoop.Rust
 
 // The track control widget displays control buttons to control the
 // (loops within a) track.
@@ -13,6 +11,7 @@ Item {
 
     // Input properties
     property var initial_track_descriptor : null
+    property var track: null
 
     // UI-controlled properties
     property alias gain_dB: gain_fader.value
@@ -23,6 +22,8 @@ Item {
     property alias output_balance: output_balance_dial.value
     property real gain_fader_position: gain_fader.position
     property real input_fader_position: input_fader.position
+
+    readonly property int track_idx: track ? track.track_idx : -1
 
     property bool monitor : {
         // Initial setting
@@ -55,7 +56,7 @@ Item {
     }
 
     // Readonlies
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TrackControlWidget" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.TrackControlWidget" }
     readonly property bool in_is_stereo: audio_in_ports.length == 2
     readonly property bool out_is_stereo: audio_out_ports.length == 2
     readonly property var initial_output_gain_and_balance: {
@@ -174,7 +175,7 @@ Item {
     // Registration
     RegisterInRegistry {
         id: reg_entry
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         object: root
         key: root.initial_track_descriptor.id + "_control_widget"
     }
@@ -189,22 +190,22 @@ Item {
     }
     RegistryLookups {
         id: lookup_loops
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         keys: root.initial_track_descriptor ? root.initial_track_descriptor.loops.map((l) => l.id) : []
     }
     RegistryLookups {
         id: lookup_ports
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         keys: initial_track_descriptor ? initial_track_descriptor.ports.map((p) => p.id) : []
     }
     RegistryLookups {
         id: lookup_fx_ports
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         keys: (initial_track_descriptor && initial_track_descriptor.fx_chain) ? initial_track_descriptor.fx_chain.ports.map((p) => p.id) : []
     }
     RegistryLookup {
         id: lookup_fx_chain
-        registry: registries.objects_registry
+        registry: AppRegistries.objects_registry
         key: (initial_track_descriptor && initial_track_descriptor.fx_chain) ? initial_track_descriptor.fx_chain.id : null
     }
     LinearDbConversion {
@@ -223,11 +224,11 @@ Item {
     function is_wet(p)    { return p && p.id.match(/.*_wet_.*/); }
     function is_direct(p) { return p && p.id.match(/.*_direct_.*/); }
     function aggregate_midi_notes(ports) {
-        var notes_per_port = ports.map((p) => p.n_input_notes_active)
+        var notes_per_port = ports.map((p) => p.midi_n_input_notes_active)
         return Math.max(notes_per_port)
     }
     function aggregate_midi_events(ports) {
-        var events_per_port = ports.map((p) => p.n_input_events)
+        var events_per_port = ports.map((p) => p.midi_n_input_events)
         return Math.max(events_per_port)
     }
     function update_midi() {
@@ -264,6 +265,12 @@ Item {
     function set_input_gain_fader(value) {
         input_fader.value = input_fader.valueAt(value)
         push_in_gains()
+    }
+    function set_monitor(monitor) {
+        root.monitor = monitor
+    }
+    function set_mute(mute) {
+        root.mute = mute
     }
     function convert_gain_to_linear(gain) {
         convert_gain.dB = gain

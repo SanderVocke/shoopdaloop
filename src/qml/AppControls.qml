@@ -2,10 +2,7 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 import Qt.labs.platform as LabsPlatform
-import ShoopDaLoop.PythonLogger
-// import ShoopDaLoop.Rust
-
-import ShoopConstants
+import ShoopDaLoop.Rust
 
 import 'js/qml_url_to_filename.js' as UrlToFilename
 import 'js/delay.js' as Delay
@@ -24,7 +21,7 @@ Item {
     property alias play_after_record_active : play_after_record_active_button.play_after_record_active
     property var backend : null
 
-    property PythonLogger logger : PythonLogger { name: "Frontend.Qml.AppControls" }
+    property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.AppControls" }
 
     onSync_activeChanged: {
         logger.debug("Sync active changed to " + sync_active)
@@ -116,21 +113,21 @@ Item {
                         ShoopMenuItem {
                             text: "Test thread panic (UI thread)"
                             onClicked: {
-                                ShoopOSUtils.cause_panic()
+                                ShoopRustOSUtils.cause_panic()
                             }
                         }
 
                         ShoopMenuItem {
                             text: "Test segfault (UI thread)"
                             onClicked: {
-                                ShoopOSUtils.cause_segfault()
+                                ShoopRustOSUtils.cause_segfault()
                             }
                         }
 
                         ShoopMenuItem {
                             text: "Test abort (UI thread)"
                             onClicked: {
-                                ShoopOSUtils.cause_abort()
+                                ShoopRustOSUtils.cause_abort()
                             }
                         }
 
@@ -178,15 +175,15 @@ Item {
                 }
             }
 
-            Item {
-            Component.onCompleted: console.log("ProfilingWindow HACK")
-               id: profilingwindow
-            }
+            // Item {
+            // Component.onCompleted: console.log("ProfilingWindow HACK")
+            //    id: profilingwindow
+            // }
 
-            //  ProfilingWindow {
-            //      id: profilingwindow
-            //      backend: root.backend
-            //  }
+            ProfilingWindow {
+                id: profilingwindow
+                backend: root.backend
+            }
 
             MonitorWindow {
                 id: monitorwindow
@@ -208,12 +205,12 @@ Item {
             height: 40
             width: 30
             onClicked: {
-                var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.mode !== ShoopConstants.LoopMode.Stopped)
+                var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.mode !== ShoopRustConstants.LoopMode.Stopped)
                 if (loops.length > 0) {
                     loops[0].transition_loops(
                         loops,
-                        ShoopConstants.LoopMode.Stopped,
-                        root.sync_active ? 0 : ShoopConstants.DontWaitForSync)
+                        ShoopRustConstants.LoopMode.Stopped,
+                        root.sync_active ? 0 : ShoopRustConstants.DontWaitForSync)
                 }
             }
 
@@ -230,7 +227,7 @@ Item {
             id: deselect_button
             height: 40
             width: 30
-            onClicked: registries.state_registry.clear_set('selected_loop_ids')
+            onClicked: AppRegistries.state_registry.clear_set('selected_loop_ids')
 
             MaterialDesignIcon {
                 size: Math.min(parent.width, parent.height) - 10
@@ -265,7 +262,7 @@ Item {
                     onClicked: {
                         confirm_clear_dialog.text = 'Clear ALL loop recordings?'
                         confirm_clear_dialog.action = () => {
-                            var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.maybe_backend_loop)
+                            var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.maybe_backend_loop)
                             loops.forEach(l => l.clear())
                         }
                         confirm_clear_dialog.open()
@@ -276,7 +273,7 @@ Item {
                     onClicked: {
                         confirm_clear_dialog.text = 'Clear ALL loop recordings except sync?'
                         confirm_clear_dialog.action = () => {
-                            var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.maybe_backend_loop && !o.is_sync)
+                            var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && o.maybe_backend_loop && !o.is_sync)
                             loops.forEach(l => l.clear())
                         }
                         confirm_clear_dialog.open()
@@ -287,7 +284,7 @@ Item {
                     onClicked: {
                         confirm_clear_dialog.text = 'Clear ALL loops?'
                         confirm_clear_dialog.action = () => {
-                            var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget")
+                            var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget")
                             loops.forEach(l => l.clear())
                         }
                         confirm_clear_dialog.open()
@@ -298,7 +295,7 @@ Item {
                     onClicked: {
                         confirm_clear_dialog.text = 'Clear ALL loops except sync?'
                         confirm_clear_dialog.action = () => {
-                            var loops = registries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && !o.is_sync)
+                            var loops = AppRegistries.objects_registry.select_values(o => o.objectName === "Qml.LoopWidget" && !o.is_sync)
                             loops.forEach(l => l.clear())
                         }
                         confirm_clear_dialog.open()
@@ -342,9 +339,9 @@ Item {
             id: default_recording_action_button
             height: 40
             width: 30
-            onClicked: registries.state_registry.toggle_default_recording_action()
+            onClicked: AppRegistries.state_registry.toggle_default_recording_action()
             highlighted : false
-            readonly property string value : registries.state_registry.default_recording_action
+            readonly property string value : AppRegistries.state_registry.default_recording_action
 
             MaterialDesignIcon {
                 size: Math.min(parent.width, parent.height) - 10
@@ -378,12 +375,20 @@ Item {
             width: 30
             onClicked: state = !state
 
-            property bool inverted : ShoopKeyModifiers.alt_pressed
+            property bool inverted : ShoopRustKeyModifiers.alt_pressed
             property bool state : true
             property bool play_after_record_active : inverted ? !state : state
 
-            onPlay_after_record_activeChanged: registries.state_registry.set_play_after_record_active(play_after_record_active)
-            Component.onCompleted: registries.state_registry.set_play_after_record_active(play_after_record_active)
+            onPlay_after_record_activeChanged: AppRegistries.state_registry.set_play_after_record_active(play_after_record_active)
+            Component.onCompleted: AppRegistries.state_registry.set_play_after_record_active(play_after_record_active)
+
+            Connections {
+                target: AppRegistries.state_registry
+                function onPlay_after_record_activeChanged() {
+                    let v = AppRegistries.state_registry.play_after_record
+                    play_after_record_active_button.state = play_after_record_active_button.inverted ? !v : v
+                }
+            }
 
             highlighted : play_after_record_active
 
@@ -420,12 +425,20 @@ Item {
             width: 30
             onClicked: state = !state
 
-            property bool inverted : ShoopKeyModifiers.control_pressed
+            property bool inverted : ShoopRustKeyModifiers.control_pressed
             property bool state : true
             property bool sync_active : inverted ? !state : state
 
-            onSync_activeChanged: registries.state_registry.set_sync_active(sync_active)
-            Component.onCompleted: registries.state_registry.set_sync_active(sync_active)
+            onSync_activeChanged: AppRegistries.state_registry.set_sync_active(sync_active)
+            Component.onCompleted: AppRegistries.state_registry.set_sync_active(sync_active)
+
+            Connections {
+                target: AppRegistries.state_registry
+                function onSync_activeChanged() {
+                    let v = AppRegistries.state_registry.sync_active
+                    sync_active_button.state = sync_active_button.inverted ? !v : v
+                }
+            }
 
             highlighted : sync_active
 
@@ -444,12 +457,20 @@ Item {
             width: 30
             onClicked: state = !state
 
-            property bool inverted : ShoopKeyModifiers.shift_pressed
+            property bool inverted : ShoopRustKeyModifiers.shift_pressed
             property bool state : false
             property bool solo_active : inverted ? !state : state
 
-            onSolo_activeChanged: registries.state_registry.set_solo_active(solo_active)
-            Component.onCompleted: registries.state_registry.set_solo_active(solo_active)
+            onSolo_activeChanged: AppRegistries.state_registry.set_solo_active(solo_active)
+            Component.onCompleted: AppRegistries.state_registry.set_solo_active(solo_active)
+
+            Connections {
+                target: AppRegistries.state_registry
+                function onSolo_activeChanged() {
+                    let v = AppRegistries.state_registry.solo_active
+                    solo_active_button.state = solo_active_button.inverted ? !v : v
+                }
+            }
 
             highlighted : solo_active
 
@@ -467,19 +488,19 @@ Item {
             width: 80
             anchors.verticalCenter: parent.verticalCenter
 
-            value: registries.state_registry.apply_n_cycles
+            value: AppRegistries.state_registry.apply_n_cycles
             from: -1
 
             editable: true
             valueFromText: function(text, locale) {
-                ShoopReleaseFocusNotifier.notify()
+                ShoopRustReleaseFocusNotifier.notify()
                 return Number.fromLocaleString(locale, text);
             }
 
             onValueModified: {
-                if (value != registries.state_registry.apply_n_cycles) {
-                    registries.state_registry.set_apply_n_cycles(value)
-                    value = Qt.binding(() => registries.state_registry.apply_n_cycles)
+                if (value != AppRegistries.state_registry.apply_n_cycles) {
+                    AppRegistries.state_registry.set_apply_n_cycles(value)
+                    value = Qt.binding(() => AppRegistries.state_registry.apply_n_cycles)
                 }
             }
 

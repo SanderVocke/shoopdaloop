@@ -14,7 +14,7 @@ Item {
 
     property bool done_internal: n_done >= n_tasks
 
-    readonly property PythonLogger logger : PythonLogger { name: "Frontend.Qml.TaskObserver" }
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.TaskObserver" }
 
     signal finished(bool success)
 
