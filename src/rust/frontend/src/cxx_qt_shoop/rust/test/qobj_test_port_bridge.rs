@@ -31,7 +31,7 @@ pub mod ffi {
         type TestPort = super::TestPortRust;
 
         #[qinvokable]
-        pub fn determine_connections_state(self: Pin<&mut TestPort>) -> QMap_QString_QVariant;
+        pub fn get_connections_state(self: Pin<&mut TestPort>) -> QMap_QString_QVariant;
 
         #[qinvokable]
         pub fn connect_external_port(self: Pin<&mut TestPort>, name: QString) -> bool;

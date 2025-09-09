@@ -16,7 +16,7 @@ impl TestPort {
         Ok(())
     }
 
-    pub fn determine_connections_state(self: Pin<&mut TestPort>) -> QMap_QString_QVariant {
+    pub fn get_connections_state(self: Pin<&mut TestPort>) -> QMap_QString_QVariant {
         self.connections_state().clone().into()
     }
 

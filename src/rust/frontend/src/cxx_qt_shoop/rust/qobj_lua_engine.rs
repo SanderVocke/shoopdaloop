@@ -49,6 +49,8 @@ impl LuaEngine {
             let mut rust_mut = self.as_mut().rust_mut();
             rust_mut.engine = Some(engine);
 
+            trace!("Lua engine initialized");
+
             Ok(())
         }() {
             error!("Failed to initialize: {e}");
@@ -64,11 +66,15 @@ impl LuaEngine {
         match || -> Result<QVariant, anyhow::Error> {
             let maybe_script_name: Option<String> =
                 maybe_script_name.value::<QString>().map(|s| s.to_string());
-            let lua_val = self.engine.as_ref().unwrap().evaluate::<mlua::Value>(
-                code.to_string().as_str(),
-                maybe_script_name.as_ref().map(|s| s.as_str()),
-                sandboxed,
-            )?;
+            let lua_val = self
+                .engine
+                .as_ref()
+                .ok_or(anyhow::anyhow!("engine not initialized"))?
+                .evaluate::<mlua::Value>(
+                    code.to_string().as_str(),
+                    maybe_script_name.as_ref().map(|s| s.as_str()),
+                    sandboxed,
+                )?;
             let eng_impl = self.engine.as_ref().unwrap().lua.borrow();
             QVariant::from_lua(lua_val, &eng_impl.lua)
                 .map_err(|e| anyhow::anyhow!("Failed to map to QVariant: {e}"))
@@ -114,10 +120,13 @@ pub fn register_qml_type(module_name: &str, type_name: &str) {
 
 #[cfg(test)]
 mod tests {
+    use config::config::ShoopConfig;
+
     use super::*;
 
     #[test]
     fn test_basic_eval_expression_sandboxed() {
+        GLOBAL_CONFIG.get_or_init(|| ShoopConfig::default());
         let eng = LuaEngine::make_unique();
         assert_eq!(
             eng.as_ref()
@@ -131,6 +140,7 @@ mod tests {
 
     #[test]
     fn test_basic_eval_expression_unsandboxed() {
+        GLOBAL_CONFIG.get_or_init(|| ShoopConfig::default());
         let eng = LuaEngine::make_unique();
         assert_eq!(
             eng.as_ref()
