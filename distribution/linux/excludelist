@@ -24,3 +24,4 @@
 */libwayland-cursor.so*
 */libwayland-egl.so*
 */libwayland-server.so*
+*/libasound.so*

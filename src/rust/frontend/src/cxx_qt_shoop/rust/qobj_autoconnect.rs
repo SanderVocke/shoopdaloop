@@ -39,6 +39,12 @@ impl AutoConnect {
                     o.update();
                 })
                 .release();
+            self.as_mut()
+                .on_backend_changed(|o| {
+                    debug!("backend -> {:?}", o.backend());
+                    o.update();
+                })
+                .release();
         }
 
         let obj_qquickitem = self.as_mut().pin_mut_qquickitem_ptr();
@@ -229,7 +235,6 @@ mod tests {
     use crate::cxx_qt_shoop::test::qobj_test_backend_wrapper;
     use crate::cxx_qt_shoop::test::qobj_test_port;
     use cxx_qt_lib_shoop::qobject::AsQObject;
-    use cxx_qt_lib_shoop::qquickitem::{AsQQuickItem, IsQQuickItem};
     use cxx_qt_lib_shoop::qsignalspy::QSignalSpy;
 
     #[test]
@@ -273,7 +278,7 @@ mod tests {
                         data_type: PortDataType::Audio,
                     });
             }
-            let backend_ptr = backend.as_mut().unwrap().pin_mut_qquickitem_ptr();
+            let backend_ptr = backend.as_mut().unwrap().pin_mut_qobject_ptr();
 
             // Instantiate the connector
             let mut obj = make_unique_autoconnect();
@@ -297,7 +302,7 @@ mod tests {
                 .unwrap()
                 .set_connect_to_port_regex(QString::from("port_1"));
             obj.as_mut().unwrap().set_internal_port(port_ptr);
-            obj.as_mut().unwrap().set_parent_item(backend_ptr);
+            obj.as_mut().unwrap().set_backend(backend_ptr);
 
             assert_eq!(
                 autoconnect_connected_spy
@@ -351,7 +356,7 @@ mod tests {
                         data_type: PortDataType::Audio,
                     });
             }
-            let backend_ptr = backend.as_mut().unwrap().pin_mut_qquickitem_ptr();
+            let backend_ptr = backend.as_mut().unwrap().pin_mut_qobject_ptr();
 
             // Instantiate the connector
             let mut obj = make_unique_autoconnect();
@@ -375,7 +380,7 @@ mod tests {
                 .unwrap()
                 .set_connect_to_port_regex(QString::from("port_1"));
             obj.as_mut().unwrap().set_internal_port(port_ptr);
-            obj.as_mut().unwrap().set_parent_item(backend_ptr);
+            obj.as_mut().unwrap().set_backend(backend_ptr);
 
             assert_eq!(
                 autoconnect_connected_spy
@@ -429,7 +434,7 @@ mod tests {
                         data_type: PortDataType::Audio,
                     });
             }
-            let backend_ptr = backend.as_mut().unwrap().pin_mut_qquickitem_ptr();
+            let backend_ptr = backend.as_mut().unwrap().pin_mut_qobject_ptr();
 
             // Instantiate the connector
             let mut obj = make_unique_autoconnect();
@@ -453,7 +458,7 @@ mod tests {
                 .unwrap()
                 .set_connect_to_port_regex(QString::from("port_1"));
             obj.as_mut().unwrap().set_internal_port(port_ptr);
-            obj.as_mut().unwrap().set_parent_item(backend_ptr);
+            obj.as_mut().unwrap().set_backend(backend_ptr);
 
             assert_eq!(
                 autoconnect_connected_spy
@@ -507,7 +512,7 @@ mod tests {
                         data_type: PortDataType::Audio,
                     });
             }
-            let backend_ptr = backend.as_mut().unwrap().pin_mut_qquickitem_ptr();
+            let backend_ptr = backend.as_mut().unwrap().pin_mut_qobject_ptr();
 
             // Instantiate the connector
             let mut obj = make_unique_autoconnect();
@@ -531,7 +536,7 @@ mod tests {
                 .unwrap()
                 .set_connect_to_port_regex(QString::from("port_1"));
             obj.as_mut().unwrap().set_internal_port(port_ptr);
-            obj.as_mut().unwrap().set_parent_item(backend_ptr);
+            obj.as_mut().unwrap().set_backend(backend_ptr);
 
             assert_eq!(
                 autoconnect_connected_spy
@@ -573,7 +578,7 @@ mod tests {
             // Create the fake backend
             let mut backend = qobj_test_backend_wrapper::make_unique();
             backend.as_mut().unwrap().set_ready(true);
-            let backend_ptr = backend.as_mut().unwrap().pin_mut_qquickitem_ptr();
+            let backend_ptr = backend.as_mut().unwrap().pin_mut_qobject_ptr();
 
             // Instantiate the connector
             let mut obj = make_unique_autoconnect();
@@ -597,7 +602,7 @@ mod tests {
                 .unwrap()
                 .set_connect_to_port_regex(QString::from("port_1"));
             obj.as_mut().unwrap().set_internal_port(port_ptr);
-            obj.as_mut().unwrap().set_parent_item(backend_ptr);
+            obj.as_mut().unwrap().set_backend(backend_ptr);
 
             assert_eq!(
                 autoconnect_connected_spy
