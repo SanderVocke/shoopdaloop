@@ -333,6 +333,7 @@ impl SessionControlHandlerLuaTarget {
             add_self_callback!(loop_toggle_selected);
             add_self_callback!(loop_adopt_ringbuffers);
             add_self_callback!(loop_compose_add_to_end);
+            add_self_callback!(loop_set_repeat_sync);
 
             // track API
             add_self_callback!(track_get_gain);
@@ -1151,22 +1152,18 @@ impl SessionControlHandlerLuaTarget {
             return Err(anyhow::anyhow!("Expected 1 argument, got {}", args.len()));
         }
         let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
-        let l = self
-            .select_loops(lua, selector)?
-            .nth(0)
-            .ok_or(anyhow::anyhow!("No loop found to toggle selected"))?;
-        unsafe {
+        self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
             if l.is_null() {
                 warn!("loop_toggle_selected: loop is null");
-                return Ok(mlua::Value::Nil);
+                return Ok(());
             }
             invoke::<_, (), _>(
                 &mut *l,
                 "toggle_selected(QVariant)",
                 connection_types::QUEUED_CONNECTION,
                 &(QVariant::from(&false)),
-            )?;
-        }
+            )
+        })?;
         Ok(mlua::Value::Nil)
     }
 
@@ -1319,6 +1316,45 @@ impl SessionControlHandlerLuaTarget {
                 ),
             )?;
         }
+        Ok(mlua::Value::Nil)
+    }
+
+    /*
+    @shoop_lua_fn_docstring.start
+    shoop_control.loop_set_repeat_sync(loop_selector, active)
+    Enables/disables the sync on playback repeat for the loop: whether the
+    loop waits for sync with the sync loop after it reached its end, before
+    restarting.
+    @shoop_lua_fn_docstring.end
+    */
+    fn loop_set_repeat_sync(
+        &self,
+        lua: &mlua::Lua,
+        args: mlua::MultiValue,
+    ) -> Result<mlua::Value, anyhow::Error> {
+        if args.len() != 2 {
+            return Err(anyhow::anyhow!("Expected 2 arguments, got {}", args.len()));
+        }
+        let selector = args.get(0).unwrap_or(&mlua::Value::Nil);
+        let active = args.get(1).unwrap_or(&mlua::Value::Nil);
+        let active = match active {
+            mlua::Value::Boolean(active) => *active,
+            _ => {
+                return Err(anyhow::anyhow!("arg 2 is not a boolean"));
+            }
+        };
+        self.select_loops(lua, selector)?.try_for_each(|l| unsafe {
+            if l.is_null() {
+                warn!("loop_set_repeat_sync: loop is null");
+                return Ok(());
+            }
+            invoke::<_, (), _>(
+                &mut *l,
+                "set_repeat_sync(QVariant)",
+                connection_types::QUEUED_CONNECTION,
+                &(QVariant::from(&active)),
+            )
+        })?;
         Ok(mlua::Value::Nil)
     }
 

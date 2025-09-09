@@ -588,6 +588,19 @@ ShoopTestFile {
                     verify_eq(loop_at(0,0).length, 100)
                 },
 
+                'test_loop_set_repeat_sync': () => {
+                    check_backend()
+                    clear()
+
+                    do_execute('shoop_control.loop_set_repeat_sync({0,0}, false)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(loop_at(0,0).repeat_sync, false)
+
+                    do_execute('shoop_control.loop_set_repeat_sync({0,0}, true)')
+                    testcase.wait_updated(session.backend)
+                    verify_eq(loop_at(0,0).repeat_sync, true)
+                },
+
                 'test_track_set_get_gain': () => {
                     check_backend()
                     clear()

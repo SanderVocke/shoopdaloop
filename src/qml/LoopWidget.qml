@@ -119,6 +119,12 @@ Item {
     property bool loaded : false
 
     property var sync_loop : AppRegistries.state_registry.sync_loop
+    property bool repeat_sync: true
+    property var use_sync_loop : repeat_sync ? sync_loop : null
+
+    function set_repeat_sync(active) {
+        repeat_sync = active
+    }
 
     readonly property int cycle_length: sync_loop ? sync_loop.length : 0
     readonly property int n_cycles: cycle_length ? Math.ceil(length / cycle_length) : 0
@@ -204,7 +210,7 @@ Item {
         // then this property will hold the amount of sync loop cycles
         // to delay in order to transition in sync with the targeted loop.
         // Otherwise, it will be 0.
-        if (targeted_loop && sync_loop) {
+        if (targeted_loop && use_sync_loop) {
             var to_transition = undefined
             if (targeted_loop.next_transition_delay >= 0 && targeted_loop.next_mode >= 0) {
                 to_transition = targeted_loop.next_transition_delay
@@ -493,7 +499,7 @@ Item {
                 let balance = last_pushed_stereo_balance
                 maybe_loop = backend_loop_factory.createObject(root, {
                     'initial_descriptor': root.initial_descriptor,
-                    'sync_source': Qt.binding(() => (!is_sync && root.sync_loop && root.sync_loop.maybe_backend_loop) ? root.sync_loop.maybe_backend_loop : null),
+                    'sync_source': Qt.binding(() => (!is_sync && root.use_sync_loop && root.sync_loop.maybe_backend_loop) ? root.use_sync_loop.maybe_backend_loop : null),
                 })
                 push_stereo_balance(balance)
                 push_gain(gain)

@@ -69,6 +69,7 @@ ShoopRustSessionControlHandler {
     Connections {
         target: session
         function onKey_pressed(event) {
+            if (event.isAutoRepeat) { return }
             root.on_key_event({
                 'type': ShoopRustConstants.KeyEventType.Pressed,
                 'key': event.key,
@@ -76,6 +77,7 @@ ShoopRustSessionControlHandler {
             })
         }
         function onKey_released(event) {
+            if (event.isAutoRepeat) { return }
             root.on_key_event({
                 'type': ShoopRustConstants.KeyEventType.Released,
                 'key': event.key,

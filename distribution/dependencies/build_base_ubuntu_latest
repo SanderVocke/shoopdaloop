@@ -31,7 +31,7 @@ libboost-dev
 libjack-jackd2-dev
 libarchive-dev
 libcryptsetup-dev
-
+libasound2-dev
 libxcb-composite0-dev
 libxcb-cursor-dev
 libxcb-damage0-dev

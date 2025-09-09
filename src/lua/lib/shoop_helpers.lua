@@ -4,6 +4,8 @@ local shoop_format = shoop_format or require('shoop_format')
 
 local shoop_helpers = {}
 
+local sampler_loops_active_set = {}
+
 --  Convert a list to a set.
 local list_to_set = function(list)
     local set = {}
@@ -11,6 +13,18 @@ local list_to_set = function(list)
         set[v] = true
     end
     return set
+end
+
+--  Combine sets.
+local sets_union = function(set1, set2)
+    local result = {}
+    for k, _ in pairs(set1) do
+        result[k] = true
+    end
+    for k, _ in pairs(set2) do
+        result[k] = true
+    end
+    return result
 end
 
 --  Compare sets.
@@ -260,6 +274,58 @@ end
 function shoop_helpers.track_toggle_input_muted(index)
     local state = shoop_control.track_get_input_muted(index)[1]
     shoop_control.track_set_input_muted(index, not state)
+end
+
+--  @shoop_lua_fn_docstring.start
+--  shoop_helpers.start_sampler(loops)
+--  Start "sampler mode" on the given loops. This just means to transition
+--  them to recording (if empty) or playing (if non-empty) immediately,
+--  without regard for sync with other loops.
+--  They will immediately exit the mode when stop_sampler() is called.
+--  @shoop_lua_fn_docstring.end
+function shoop_helpers.start_sampler(loops)
+    local loops_set = list_to_set(loops)
+    for l, _ in pairs(loops_set) do
+        if (shoop_control.loop_get_mode(l)[1] == shoop_control.constants.LoopMode_Stopped) then
+            if (shoop_control.loop_get_length(l)[1] == 0) then
+                -- Record
+                shoop_control.loop_transition(
+                    l,
+                    shoop_control.constants.LoopMode_Recording,
+                    shoop_control.constants.Loop_DontWaitForSync,
+                    shoop_control.constants.Loop_DontAlignToSyncImmediately
+                )
+            else
+                -- Play
+                shoop_control.loop_set_repeat_sync(l, false)
+                shoop_control.loop_transition(
+                    l,
+                    shoop_control.constants.LoopMode_Playing,
+                    shoop_control.constants.Loop_DontWaitForSync,
+                    shoop_control.constants.Loop_DontAlignToSyncImmediately
+                )
+            end
+        end                
+    end
+    sampler_loops_active_set = sets_union(sampler_loops_active_set, loops_set)
+end
+
+--  @shoop_lua_fn_docstring.start
+--  shoop_helpers.stop_sampler()
+--  Stop "sampler mode". This means that any loop which was started with
+--  "start_sampler(...)" will immediately stop.
+--  @shoop_lua_fn_docstring.end
+function shoop_helpers.stop_sampler()
+    for l, _ in pairs(sampler_loops_active_set) do
+        shoop_control.loop_set_repeat_sync(l, true)
+        shoop_control.loop_transition(
+            l,
+            shoop_control.constants.LoopMode_Stopped,
+            shoop_control.constants.Loop_DontWaitForSync,
+            shoop_control.constants.Loop_DontAlignToSyncImmediately
+        )
+    end
+    sampler_loops_active_set = {}
 end
 
 return shoop_helpers

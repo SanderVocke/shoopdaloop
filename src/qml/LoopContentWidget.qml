@@ -11,7 +11,7 @@ Item {
 
     property ShoopRustLogger logger : 
     ShoopRustLogger { name: "Frontend.Qml.LoopContentWidget"
-                      instance_identifier: root.obj_id }
+                      instance_identifier: root.loop.obj_id }
 
     height: childrenRect.height
 

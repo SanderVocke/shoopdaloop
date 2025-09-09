@@ -43,6 +43,7 @@ xz-utils
 tk-dev
 libffi-dev
 liblzma-dev
+libasound2-dev
 
 libxcb-composite0-dev
 libxcb-cursor-dev
