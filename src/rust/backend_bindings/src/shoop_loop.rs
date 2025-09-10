@@ -196,7 +196,7 @@ impl Loop {
                         *other_guard
                     }
                 }
-            },
+            }
             None => std::ptr::null_mut(),
         };
         unsafe { ffi::set_loop_sync_source(obj, loop_ptr) };

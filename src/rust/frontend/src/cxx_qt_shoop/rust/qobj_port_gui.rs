@@ -402,7 +402,7 @@ impl PortGui {
         }() {
             Ok(data) => data,
             Err(e) => {
-                error!(self, "Could not dequeue audio data: {e}");
+                error!(self, "Could not get connections state: {e}");
                 QMap::default()
             }
         }
@@ -422,7 +422,7 @@ impl PortGui {
         }() {
             Ok(data) => data,
             Err(e) => {
-                error!(self, "Could not dequeue audio data: {e}");
+                error!(self, "Could not query connected ports: {e}");
                 QList::default()
             }
         }

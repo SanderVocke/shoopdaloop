@@ -28,7 +28,7 @@ Item {
     onIdx_in_trackChanged: print_coords()
 
     function print_coords() {
-        logger.debug(`Loop @ (${track_idx},${idx_in_track})`)
+        logger.debug(`loop ${obj_id} @ (${track_idx},${idx_in_track})`)
     }
 
     // property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.LoopWidget" }
@@ -98,8 +98,8 @@ Item {
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         var have_data_files = initial_descriptor.channels ? initial_descriptor.channels.map(c => {
             let r = ('data_file' in c)
-            if (r) { root.logger.debug(`${obj_id} has data file for channel ${c.obj_id}`) }
-            else   { root.logger.debug(`${obj_id} has no data file for channel ${c.obj_id}`) }
+            if (r) { root.logger.debug(`${obj_id} has data file for channel ${c.id}: ${c.data_file}`) }
+            else   { root.logger.debug(`${obj_id} has no data file for channel ${c.id}`) }
             return r
         }) : []
         let have_any_data = have_data_files.filter(d => d == true).length > 0
@@ -117,6 +117,7 @@ Item {
     }
 
     property bool loaded : false
+    onLoadedChanged: root.logger.debug(`${obj_id}: loaded -> ${loaded}`)
 
     property var sync_loop : AppRegistries.state_registry.sync_loop
     property bool repeat_sync: true

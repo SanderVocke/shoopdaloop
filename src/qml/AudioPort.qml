@@ -5,6 +5,7 @@ ShoopRustPortGui {
     id: root
     property var descriptor : null
     property bool loaded : initialized
+    onLoadedChanged: root.logger.debug(`${obj_id}: loaded -> ${loaded}`)
     property var logger : ShoopRustLogger {
         name: "Frontend.Qml.AudioPort"
         instance_identifier: root.obj_id

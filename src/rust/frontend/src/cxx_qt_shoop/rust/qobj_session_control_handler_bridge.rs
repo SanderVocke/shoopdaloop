@@ -43,7 +43,10 @@ pub mod ffi {
         pub fn uninstall_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject);
 
         #[qinvokable]
-        pub fn uninstall_lua_engine_if_no_callbacks(self: Pin<&mut SessionControlHandler>, engine: *mut QObject);
+        pub fn uninstall_lua_engine_if_no_callbacks(
+            self: Pin<&mut SessionControlHandler>,
+            engine: *mut QObject,
+        );
 
         #[qinvokable]
         pub fn engine_is_installed(

@@ -220,7 +220,10 @@ impl WrappedLuaCallback {
         cb
     }
 
-    pub fn call_impl(self: Pin<&mut WrappedLuaCallback>, override_stored_args: Option<&mlua::MultiValue>) {
+    pub fn call_impl(
+        self: Pin<&mut WrappedLuaCallback>,
+        override_stored_args: Option<&mlua::MultiValue>,
+    ) {
         match || -> Result<QVariant, anyhow::Error> {
             let callback = self.callback.borrow();
             let callback = callback

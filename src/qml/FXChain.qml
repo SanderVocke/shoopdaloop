@@ -7,6 +7,7 @@ ShoopRustFXChainGui {
                             audio_input_ports_mapper.loaded &&
                             audio_output_ports_mapper.loaded &&
                             midi_input_ports_mapper.loaded)
+    onLoadedChanged: root.logger.debug(`${obj_id}: loaded -> ${loaded}`)
 
     RequireBackend {}
 
@@ -86,8 +87,8 @@ ShoopRustFXChainGui {
                 result = result && unsorted_instances[i].loaded;
             }
             return result
-        }             
-        
+        }
+
         Loader {
             active: root.initialized
             property bool loaded: active && item.loaded
@@ -114,8 +115,8 @@ ShoopRustFXChainGui {
                 result = result && unsorted_instances[i].loaded;
             }
             return result
-        }             
-        
+        }
+
         Loader {
             active: root.initialized
             property bool loaded: active && item.loaded
@@ -142,8 +143,8 @@ ShoopRustFXChainGui {
                 result = result && unsorted_instances[i].loaded;
             }
             return result
-        }  
-        
+        }
+
         Loader {
             active: root.initialized
             property bool loaded: active && item.loaded

@@ -35,6 +35,7 @@ Item {
 
     property bool did_auto_load: false
     onLoadedChanged: {
+        root.logger.debug(`loaded -> ${loaded}`)
         if (loaded) {
             if (global_args.load_session_on_startup && !did_auto_load) {
                 did_auto_load = true
@@ -297,6 +298,7 @@ Item {
             var session_filename = tempdir + '/session.json'
             var session_file_contents = ShoopRustFileIO.read_file(session_filename)
             var descriptor = JSON.parse(session_file_contents)
+            root.logger.trace(`Session descriptor: ${JSON.stringify(descriptor, null, 2)}`)
             let our_sample_rate = session_backend.get_sample_rate()
             let incoming_sample_rate = descriptor.sample_rate
 
@@ -692,7 +694,7 @@ Item {
                 property bool loaded: false
                 property var initial_descriptor : null
 
-                Component.onCompleted: { 
+                Component.onCompleted: {
                     unload()
                     load()
                 }
