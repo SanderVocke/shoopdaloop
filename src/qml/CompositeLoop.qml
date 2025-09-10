@@ -50,6 +50,7 @@ Item {
 
         onCycled: n => root.cycled(n)
         Component.onCompleted: root.recalculate_schedule()
+        Component.onDestruction: deinit()
     }
 
     // The sequence is stored as a set of "playlists". Each playlist represents a parallel

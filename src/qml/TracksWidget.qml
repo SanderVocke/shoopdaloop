@@ -19,7 +19,17 @@ FocusReleasingScrollView {
     property var initial_track_descriptors : []
 
     property bool loaded : false
-    property int n_loaded : 0
+    function is_loaded() {
+        if (tracks.length != initial_track_descriptors.length) { return false; }
+        for (var i = 0; i < tracks.length; i++) {
+            if (!tracks[i].loaded) { return false; }
+        }
+        return true;
+    }
+    function update_loaded() {
+        loaded = is_loaded()
+    }
+    onLoadedChanged: root.logger.debug(`loaded -> ${loaded}`)
 
     property var tracks : []
     property var track_initial_descriptors : []
@@ -50,7 +60,7 @@ FocusReleasingScrollView {
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         root.logger.debug(`Queue load tasks for ${root.tracks.length} tracks`)
         for(var i=0; i<root.tracks.length; i++) {
-            tracks[i].queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to)
+            root.tracks[i].queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to)
         }
     }
 
@@ -92,11 +102,7 @@ FocusReleasingScrollView {
     }
 
     function track_loaded_changed(track) {
-        if(track.loaded) {
-            n_loaded = n_loaded + 1;
-        } else {
-            n_loaded = n_loaded - 1;
-        }
+        update_loaded()
     }
 
     function max_slots() {
@@ -128,21 +134,22 @@ FocusReleasingScrollView {
     function load() {
         root.logger.debug("loading session")
         // Instantiate initial tracks
-        var _n_loaded = 0
+        root.loaded = false;
+        root.clear_tracks()
         root.initial_track_descriptors.forEach(desc => {
-            var track = root.add_track({
+            root.add_track({
                 initial_descriptor: desc,
             });
-            if (track.loaded) { _n_loaded += 1 }
         })
-        n_loaded = _n_loaded
-        loaded = Qt.binding(() => { return n_loaded >= tracks.length })
+        update_loaded()
     }
 
     Component.onCompleted: {
         unload()
         load()
     }
+
+    Component.onDestruction: root.logger.debug("destruct")
 
     FocusReleasingScrollView {
         id: tracks_view
@@ -164,7 +171,7 @@ FocusReleasingScrollView {
                 top: parent.top
                 bottom: parent.bottom
             }
-            
+
             Mapper {
                 id: tracks_mapper
                 model: root.tracks

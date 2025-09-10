@@ -140,8 +140,19 @@ fn replace_by_backend_objects(
 use crate::cxx_qt_shoop::qobj_composite_loop_backend_bridge::ffi::composite_loop_backend_qobject_from_ptr;
 
 impl CompositeLoopGui {
+    pub fn deinit(mut self: Pin<&mut CompositeLoopGui>) {
+        self.as_mut().rust_mut().initialized = false;
+        unsafe {
+            self.as_mut().initialized_changed(false);
+        }
+    }
+
     pub fn initialize_impl(mut self: Pin<&mut Self>) {
         debug!(self, "initializing");
+
+        self.as_mut()
+            .on_destroyed(|s, _| debug!(s, "Destroyed"))
+            .release();
 
         unsafe {
             let backend_loop = make_raw_composite_loop_backend();

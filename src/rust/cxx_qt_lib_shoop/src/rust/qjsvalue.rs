@@ -16,6 +16,9 @@ mod ffi {
 
         #[rust_name = "qvariant_call_as_callable_qjsvalue_bool_arg"]
         pub fn callQVariantAsCallableQJSValueBoolArg(obj: &QVariant, arg: bool) -> Result<()>;
+
+        #[rust_name = "qvariant_qjsvalue_convert_js_objects"]
+        pub fn qvariantQJSValueConvertJSObjects(obj: Pin<&mut QVariant>) -> Result<bool>;
     }
 }
 

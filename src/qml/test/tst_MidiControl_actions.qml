@@ -7,77 +7,84 @@ import '..'
 
 ShoopTestFile {
     Item {
-        // A dummy control interface which logs calls for testing
-        component Interface: LuaControlInterface {
-            qml_instance: this
-            property var logged_calls: []
-            function clear() { logged_calls = [] }
-
-            function loop_count_override(loop_selector) {
-                logged_calls.push(['loop_count', loop_selector])
-            }
-            function loop_transition_override(loop_selector, mode, maybe_cycles_delay, maybe_align_to_sync_at) {
-                logged_calls.push(['loop_transition', loop_selector, mode, maybe_cycles_delay, maybe_align_to_sync_at])
-            }
-
-            function loop_get_all_override() {
-                return [[0, 0], [1, 1], [2, 2]]
-            }
-            function loop_get_which_selected_override() {
-                return [[0, 0], [2, 2]]
-            }
+        component FakeLoop: Item {
+            property int track_idx
+            property int idx_in_track
+            function transition(a,b,c,d) {}
         }
 
-        Interface {
+        FakeLoop {
+            id: fakeloop1
+            track_idx: 0
+            idx_in_track: 0
+        }
+        FakeLoop {
+            id: fakeloop2
+            track_idx: 1
+            idx_in_track: 1
+        }
+        FakeLoop {
+            id: fakeloop3
+            track_idx: 2
+            idx_in_track: 2
+        }
+
+        SessionControlHandler {
             id: itf
+            Component.onCompleted: {
+                itf.set_test_logging_enabled(true)
+            }
+            loop_widget_references: [fakeloop1, fakeloop2, fakeloop3]
+            selected_loops: [fakeloop1, fakeloop3]
+            targeted_loop: undefined
+        }
 
-            MidiControl {
-                id: ctl
-                control_interface: itf
+        MidiControl {
+            id: ctl
+            control_interface: itf
 
-                configuration: MidiControlConfiguration {
-                    id: config
-                    contents: [
-                        {
-                            'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(1)],
-                            'action': 'shoop_control.loop_count({{0, 0}})'
+            configuration: MidiControlConfiguration {
+                id: config
+                contents: [
+                    {
+                        'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(1)],
+                        'action': 'shoop_control.loop_count({{0, 0}})'
+                    },
+                    {
+                        'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(2)],
+                        'action': 'Loop Transition',
+                        'inputs': {
+                            'loops': 'all'
                         },
-                        {
-                            'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(2)],
-                            'action': 'Loop Transition',
-                            'inputs': {
-                                'loops': 'all'
-                            },
+                    },
+                    {
+                        'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(3)],
+                        'action': 'Loop Transition',
+                        'inputs': {
+                            'loops': 'selection'
+                        }
+                    },
+                    {
+                        'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(4)],
+                        'action': 'Loop Transition',
+                        'inputs': {
+                            'loops': '{{1, 1}}'
+                        }
+                    },
+                    {
+                        'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(5)],
+                        'action': 'Loop Transition',
+                        'condition': 'false'
+                    },
+                    {
+                        'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(6)],
+                        'action': 'Loop Transition',
+                        'inputs': {
+                            'loops': 'all'
                         },
-                        {
-                            'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(3)],
-                            'action': 'Loop Transition',
-                            'inputs': {
-                                'loops': 'selection'
-                            }
-                        },
-                        {
-                            'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(4)],
-                            'action': 'Loop Transition',
-                            'inputs': {
-                                'loops': '{{1, 1}}'
-                            }
-                        },
-                        {
-                            'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(5)],
-                            'action': 'Loop Transition',
-                            'condition': 'false'
-                        },
-                        {
-                            'filters': [MidiControl.match_type(Midi.NoteOn), MidiControl.match_note(6)],
-                            'action': 'Loop Transition',
-                            'inputs': {
-                                'loops': 'all'
-                            },
-                            'condition': 'true'
-                        },
-                    ]
-                }
+                        'condition': 'true'
+                    },
+                ]
             }
         }
 
@@ -92,55 +99,45 @@ ShoopTestFile {
                 },
 
                 'test_midi_control_custom_action': () => {
-                    itf.clear()
+                    itf.clear_logged_calls()
                     ctl.handle_midi(Midi.create_noteOn(0, 1, 127), null)
 
-                    verify_eq(itf.logged_calls, [
-                        [ 'loop_count', [[0, 0]] ]
-                    ])
+                    verify_eq(itf.logged_calls(), ["loop_count_[[0, 0]]"])
                 },
 
                 'test_midi_control_default_action': () => {
-                    itf.clear()
+                    itf.clear_logged_calls()
                     ctl.handle_midi(Midi.create_noteOn(0, 2, 127), null)
 
-                    verify_eq(itf.logged_calls, [
-                        [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], ShoopRustConstants.LoopMode.Stopped, 0, ShoopRustConstants.DontAlignToSyncImmediately ]
-                    ])
+                    verify_eq(itf.logged_calls(), ["loop_transition_[[0, 0], [1, 1], [2, 2]]_mode1_d0_s-1"])
                 },
 
                 'test_midi_control_action_with_input_preset': () => {
-                    itf.clear()
+                    itf.clear_logged_calls()
                     ctl.handle_midi(Midi.create_noteOn(0, 3, 127), null)
 
-                    verify_eq(itf.logged_calls, [
-                        [ 'loop_transition', [[0, 0], [2, 2]], ShoopRustConstants.LoopMode.Stopped, 0, ShoopRustConstants.DontAlignToSyncImmediately ]
-                    ])
+                    verify_eq(itf.logged_calls(), ["loop_transition_[[0, 0], [2, 2]]_mode1_d0_s-1"])
                 },
 
                 'test_midi_control_action_with_custom_input': () => {
-                    itf.clear()
+                    itf.clear_logged_calls()
                     ctl.handle_midi(Midi.create_noteOn(0, 4, 127), null)
 
-                    verify_eq(itf.logged_calls, [
-                        [ 'loop_transition', [[1, 1]], ShoopRustConstants.LoopMode.Stopped, 0, ShoopRustConstants.DontAlignToSyncImmediately ]
-                    ])
+                    verify_eq(itf.logged_calls(), ["loop_transition_[[1, 1]]_mode1_d0_s-1"])
                 },
 
                 'test_midi_control_action_with_condition_false': () => {
-                    itf.clear()
+                    itf.clear_logged_calls()
                     ctl.handle_midi(Midi.create_noteOn(0, 5, 127), null)
 
-                    verify_eq(itf.logged_calls, [])
+                    verify_eq(itf.logged_calls(), [])
                 },
 
                 'test_midi_control_action_with_condition_true': () => {
-                    itf.clear()
+                    itf.clear_logged_calls()
                     ctl.handle_midi(Midi.create_noteOn(0, 6, 127), null)
 
-                    verify_eq(itf.logged_calls, [
-                        [ 'loop_transition', [[0, 0], [1, 1], [2, 2]], ShoopRustConstants.LoopMode.Stopped, 0, ShoopRustConstants.DontAlignToSyncImmediately ]
-                    ])
+                    verify_eq(itf.logged_calls(), ["loop_transition_[[0, 0], [1, 1], [2, 2]]_mode1_d0_s-1"])
                 }
             })
         }

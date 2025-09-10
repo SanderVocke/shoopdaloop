@@ -124,6 +124,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn get_backend_loop_wrapper(self: Pin<&mut LoopGui>) -> QVariant;
 
+        #[qinvokable]
+        pub fn deinit(self: Pin<&mut LoopGui>);
+
         #[qsignal]
         #[cxx_name = "backendChanged"]
         pub unsafe fn backend_changed(self: Pin<&mut LoopGui>, backend: *mut QObject);
@@ -201,6 +204,10 @@ pub mod ffi {
         );
         #[qsignal]
         pub fn backend_set_sync_source(self: Pin<&mut LoopGui>, sync_source: QVariant);
+
+        #[qsignal]
+        #[inherit]
+        pub unsafe fn destroyed(self: Pin<&mut LoopGui>, obj: *mut QObject);
     }
 
     unsafe extern "C++" {

@@ -49,8 +49,20 @@ impl LoopChannelGui {
         self.instance_identifier.to_string()
     }
 
+    pub fn deinit(mut self: Pin<&mut LoopChannelGui>) {
+        self.as_mut().rust_mut().backend_channel_wrapper = cxx::UniquePtr::null();
+        self.as_mut().rust_mut().initialized = false;
+        unsafe {
+            self.as_mut().initialized_changed(false);
+        }
+    }
+
     pub fn initialize_impl(mut self: Pin<&mut LoopChannelGui>) {
         debug!(self, "Initializing");
+
+        self.as_mut()
+            .on_destroyed(|s, _| debug!(s, "Destroyed"))
+            .release();
 
         unsafe {
             let backend_channel = make_raw_loop_channel_backend();
@@ -596,23 +608,27 @@ impl LoopChannelGui {
         for weak in weak_ports.iter() {
             match qvariant_to_qweakpointer_qobject(weak) {
                 Ok(weak) => {
-                    if let Ok(strong) = weak.to_strong() {
-                        let raw = strong.as_ref().unwrap().data().unwrap();
-                        match unsafe {
-                            invoke::<_, *mut QObject, _>(
-                                &mut *raw,
-                                "get_frontend_object()",
-                                connection_types::BLOCKING_QUEUED_CONNECTION,
-                                &(),
-                            )
-                        } {
-                            Ok(obj) => frontend_ports.append(
-                                qobject_ptr_to_qvariant(&obj).unwrap_or(QVariant::default()),
-                            ),
-                            Err(e) => {
-                                debug!(self, "connected port is not a QObject: {e}");
+                    if let Ok(Some(strong)) = weak.to_strong() {
+                        if let Some(Ok(raw)) = strong.as_ref().map(|s| s.data()) {
+                            if !raw.is_null() {
+                                match unsafe {
+                                    invoke::<_, *mut QObject, _>(
+                                        &mut *raw,
+                                        "get_frontend_object()",
+                                        connection_types::BLOCKING_QUEUED_CONNECTION,
+                                        &(),
+                                    )
+                                } {
+                                    Ok(obj) => frontend_ports.append(
+                                        qobject_ptr_to_qvariant(&obj)
+                                            .unwrap_or(QVariant::default()),
+                                    ),
+                                    Err(e) => {
+                                        debug!(self, "connected port is not a QObject: {e}");
+                                    }
+                                }
                             }
-                        };
+                        }
                     }
                 }
                 Err(e) => {

@@ -65,6 +65,9 @@ pub mod ffi {
         #[qinvokable]
         pub fn push_ui_visible(self: Pin<&mut FXChainGui>, ui_visible: bool);
 
+        #[qinvokable]
+        pub fn deinit(self: Pin<&mut FXChainGui>);
+
         #[qsignal]
         pub unsafe fn initialized_changed(self: Pin<&mut FXChainGui>, initialized: bool);
 
@@ -103,6 +106,10 @@ pub mod ffi {
 
         #[qsignal]
         pub unsafe fn backend_restore_state(self: Pin<&mut FXChainGui>, state_str: QString);
+
+        #[qsignal]
+        #[inherit]
+        pub unsafe fn destroyed(self: Pin<&mut FXChainGui>, obj: *mut QObject);
     }
 
     unsafe extern "C++" {

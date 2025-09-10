@@ -39,11 +39,23 @@ macro_rules! error {
 }
 
 impl PortGui {
+    pub fn deinit(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().backend_port_wrapper = cxx::UniquePtr::null();
+        self.as_mut().rust_mut().initialized = false;
+        unsafe {
+            self.as_mut().initialized_changed(false);
+        }
+    }
+
     pub fn initialize_impl(mut self: Pin<&mut PortGui>) {
         {
             let self_ptr = unsafe { self.as_mut().get_unchecked_mut() as *mut Self };
             debug!(self, "Initializing @ {self_ptr:?}");
         }
+
+        self.as_mut()
+            .on_destroyed(|s, _| debug!(s, "Destroyed"))
+            .release();
 
         unsafe {
             let backend_port = make_raw_port_backend();
@@ -390,7 +402,7 @@ impl PortGui {
         }() {
             Ok(data) => data,
             Err(e) => {
-                error!(self, "Could not dequeue audio data: {e}");
+                error!(self, "Could not get connections state: {e}");
                 QMap::default()
             }
         }
@@ -410,7 +422,7 @@ impl PortGui {
         }() {
             Ok(data) => data,
             Err(e) => {
-                error!(self, "Could not dequeue audio data: {e}");
+                error!(self, "Could not query connected ports: {e}");
                 QList::default()
             }
         }

@@ -44,8 +44,18 @@ macro_rules! error {
 }
 
 impl LoopGui {
+    pub fn deinit(mut self: Pin<&mut LoopGui>) {
+        self.as_mut().rust_mut().backend_loop_wrapper = cxx::UniquePtr::null();
+        self.as_mut().rust_mut().initialized = false;
+        unsafe { self.as_mut().initialized_changed(false) };
+    }
+
     pub fn initialize_impl(mut self: Pin<&mut LoopGui>) {
         debug!(self, "Initializing");
+
+        self.as_mut()
+            .on_destroyed(|s, _| debug!(s, "Destroyed"))
+            .release();
 
         unsafe {
             let backend_loop = make_raw_loop_backend();

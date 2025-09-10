@@ -109,7 +109,7 @@ Item {
             }
             Mapper {
                 model: connections.ports
-                
+
                 Rectangle {
                     property int index
                     property var mapped_item
@@ -133,7 +133,7 @@ Item {
                     }
                 }
             }
-        }   
+        }
 
         ScrollView {
             anchors.bottom: parent.bottom
@@ -145,10 +145,10 @@ Item {
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
             contentHeight: colly.height + 100
-    
+
             Column {
                 id: colly
-                
+
                 // Row per external port
                 Mapper {
                     id: external_ports_mapper
@@ -193,12 +193,12 @@ Item {
                                     anchors.right: parent.right
                                     anchors.rightMargin: 5
                                     font.pixelSize: connections.font_size
-                                    text: mapped_item.split(':')[1]
+                                    text: mapped_item.split(':')[1] || ""
                                 }
                             }
                             Mapper {
                                 model: connections.ports
-                                
+
                                 Rectangle {
                                     property int index
                                     property var mapped_item

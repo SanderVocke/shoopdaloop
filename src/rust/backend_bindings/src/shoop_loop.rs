@@ -2,7 +2,7 @@ use crate::ffi;
 use anyhow;
 use enum_iterator::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use crate::audio_channel::AudioChannel;
 use crate::channel::ChannelMode;
@@ -89,28 +89,29 @@ unsafe impl Send for Loop {}
 unsafe impl Sync for Loop {}
 
 impl Loop {
+    fn lock(&self) -> Result<MutexGuard<'_, *mut ffi::shoopdaloop_loop_t>, anyhow::Error> {
+        self.obj
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Failed to get mutex lock: {e}"))
+    }
+
     pub fn new(obj: *mut ffi::shoopdaloop_loop_t) -> Result<Self, anyhow::Error> {
         let wrapped = Mutex::new(obj);
         Ok(Loop { obj: wrapped })
     }
 
     pub fn add_audio_channel(&self, mode: ChannelMode) -> Result<AudioChannel, anyhow::Error> {
-        let guard = self.obj.lock().unwrap();
+        let guard = self.lock()?;
         let obj = *guard;
         let channel = unsafe { ffi::add_audio_channel(obj, (mode as u32).try_into().unwrap()) };
         AudioChannel::new(channel)
     }
 
     pub fn add_midi_channel(&self, mode: ChannelMode) -> Result<MidiChannel, anyhow::Error> {
-        let guard = self.obj.lock().unwrap();
+        let guard = self.lock()?;
         let obj = *guard;
         let channel = unsafe { ffi::add_midi_channel(obj, (mode as u32).try_into().unwrap()) };
         MidiChannel::new(channel)
-    }
-
-    pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_loop_t {
-        let guard = self.obj.lock().unwrap();
-        *guard
     }
 
     pub fn transition(
@@ -119,7 +120,7 @@ impl Loop {
         maybe_cycles_delay: i32,
         maybe_to_sync_at_cycle: i32,
     ) -> Result<(), anyhow::Error> {
-        let guard = self.obj.lock().unwrap();
+        let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
             return Err(anyhow::anyhow!("Invalid backend object"));
@@ -136,7 +137,7 @@ impl Loop {
     }
 
     pub fn get_state(&self) -> Result<LoopState, anyhow::Error> {
-        let guard = self.obj.lock().unwrap();
+        let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
             return Err(anyhow::anyhow!("Failed to retrieve loop state"));
@@ -151,7 +152,7 @@ impl Loop {
     }
 
     pub fn set_length(&self, length: u32) -> Result<(), anyhow::Error> {
-        let guard = self.obj.lock().unwrap();
+        let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
             return Err(anyhow::anyhow!("Invalid backend object"));
@@ -161,7 +162,7 @@ impl Loop {
     }
 
     pub fn set_position(&self, position: u32) -> Result<(), anyhow::Error> {
-        let guard = self.obj.lock().unwrap();
+        let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
             return Err(anyhow::anyhow!("Invalid backend object"));
@@ -171,7 +172,7 @@ impl Loop {
     }
 
     pub fn clear(&self, length: u32) -> Result<(), anyhow::Error> {
-        let guard = self.obj.lock().unwrap();
+        let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
             return Err(anyhow::anyhow!("Invalid backend object"));
@@ -181,13 +182,21 @@ impl Loop {
     }
 
     pub fn set_sync_source(&self, loop_ref: Option<&Loop>) -> Result<(), anyhow::Error> {
-        let guard = self.obj.lock().unwrap();
+        let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
             return Err(anyhow::anyhow!("Invalid backend object"));
         }
         let loop_ptr = match loop_ref {
-            Some(loop_ref) => unsafe { loop_ref.unsafe_backend_ptr() },
+            Some(loop_ref) => {
+                match std::ptr::eq(self, loop_ref) {
+                    true => obj, // sync loop is self
+                    false => {
+                        let other_guard = loop_ref.lock()?;
+                        *other_guard
+                    }
+                }
+            }
             None => std::ptr::null_mut(),
         };
         unsafe { ffi::set_loop_sync_source(obj, loop_ptr) };
@@ -205,7 +214,7 @@ impl Loop {
         let cycles_length = cycles_length.unwrap_or(-1);
         let go_to_cycle = go_to_cycle.unwrap_or(-1);
 
-        let guard = self.obj.lock().unwrap();
+        let guard = self.lock()?;
         let obj = *guard;
         if obj.is_null() {
             return Err(anyhow::anyhow!("Invalid backend object"));
@@ -234,7 +243,7 @@ pub fn transition_multiple_loops(
     }
     let handles: Vec<*mut ffi::shoopdaloop_loop_t> = loops
         .iter()
-        .map(|l| unsafe { l.unsafe_backend_ptr() })
+        .map(|l| l.lock().map(|l| *l).unwrap_or(std::ptr::null_mut()))
         .collect();
     let handles_ptr: *mut *mut ffi::shoopdaloop_loop_t =
         handles.as_ptr() as *mut *mut ffi::shoopdaloop_loop_t;

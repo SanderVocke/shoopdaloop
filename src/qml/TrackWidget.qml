@@ -31,6 +31,7 @@ Item {
     readonly property string obj_id : initial_descriptor.id
 
     property bool loaded : audio_ports_repeater.loaded && midi_ports_repeater.loaded && loops_loaded
+    onLoadedChanged: root.logger.debug(`${obj_id}: loaded -> ${loaded} (desc: ${initial_descriptor ? initial_descriptor.loops.length : 0} loops, actual: ${loops.length} loops)`)
 
     property var incubating_loops: []
     property bool loops_loaded : false
@@ -105,6 +106,7 @@ Item {
     }
     function queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to) {
         var all_loops = Array.from(Array(loops.length).keys()).map((i) => loops[i])
+        root.logger.debug(`${obj_id}: Queueing load tasks for ${all_loops.length} loops`)
         all_loops.forEach((loop) => loop.queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to))
         ports.forEach((port) => port.queue_load_tasks(data_files_dir, from_sample_rate, to_sample_rate, add_tasks_to))
     }
@@ -117,6 +119,8 @@ Item {
             loops[i].unload();
         }
     }
+
+    Component.onDestruction: root.logger.debug("destruct")
 
     readonly property int num_slots : loops.length
     property string name: initial_descriptor.name

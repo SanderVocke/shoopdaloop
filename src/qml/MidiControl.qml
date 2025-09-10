@@ -31,7 +31,7 @@ shoop_control = require('shoop_control')
 shoop_coords = require('shoop_coords')
 shoop_helpers = require('shoop_helpers')
 shoop_format = require('shoop_format')
-`, 'MidiControl', true, true)
+`, 'MidiControl', true)
 
         update_all_handlers()
 
@@ -55,48 +55,49 @@ shoop_format = require('shoop_format')
 
     // Hook up an action descriptor to a configuration descriptor using that action,
     // generating a callable that can be called to execute the configured action.
-    property Component actionImplementation: QtObject {
-        property var action_or_script: null
-        property var configuration: null
-        property string action_name: 'unknown'
+    function create_handler(action, configuration, name) {
+        if (action === null || configuration === null) {
+            return null
+        }
 
-        readonly property var callable: {
-            if (action_or_script === null || configuration === null) {
-                return null
+        root.logger.trace('Generating script for: ' + JSON.stringify(configuration))
+
+        let base_script = (typeof action === 'string') ? action : action.script
+        let inputs = (typeof action === 'string') ? {} : action.inputs
+
+        var script = `return function(msg, port) `
+        let do_if =  ('condition' in configuration && configuration.condition)
+        if (do_if) {
+            script += `if (${configuration.condition}) then `
+        }
+        for (const input_name in inputs) {
+            let action_input = inputs[input_name]
+            var input_impl = null
+            let input_to_use = ('inputs' in configuration && input_name in configuration.inputs) ? configuration.inputs[input_name] : action_input.default
+            if (action_input.hasOwnProperty('presets') && input_to_use in action_input.presets) {
+                input_impl = action_input.presets[input_to_use]
+            } else {
+                input_impl = input_to_use
             }
+            script += `local ${input_name} = ${input_impl}; `
+        }
+        script += ` ${base_script} `
+        if (do_if) { script += `end ` }
+        script += ` end`
+        root.logger.trace('Generated script: ' + script)
 
-            root.logger.trace('Generating script for: ' + JSON.stringify(configuration))
+        let cb = _lua_engine.create_qt_to_lua_callback_fn(
+            `MidiControl-${name}`,
+            script
+        )
 
-            let base_script = (typeof action_or_script === 'string') ? action_or_script : action_or_script.script
-            let inputs = (typeof action_or_script === 'string') ? {} : action_or_script.inputs
-
-            var script = `return function(msg, port) `
-            let do_if =  ('condition' in configuration && configuration.condition)
-            if (do_if) {
-                script += `if (${configuration.condition}) then `
-            }
-            for (const input_name in inputs) {
-                let action_input = inputs[input_name]
-                var input_impl = null
-                let input_to_use = ('inputs' in configuration && input_name in configuration.inputs) ? configuration.inputs[input_name] : action_input.default
-                if (action_input.hasOwnProperty('presets') && input_to_use in action_input.presets) {
-                    input_impl = action_input.presets[input_to_use]
-                } else {
-                    input_impl = input_to_use
-                }
-                script += `local ${input_name} = ${input_impl}; `
-            }
-            script += ` ${base_script} `
-            if (do_if) { script += `end ` }
-            script += ` end`
-            root.logger.trace('Generated script: ' + script)
-
-            let fn = _lua_engine.evaluate(script, 'MidiControl', true)
-            let _name = action_name
-            return function(msg, port, _fn=fn, name=_name) {
-                root.logger.debug(`Running action ${name}`)
-                _lua_engine.call(_fn, [msg, port], false)
-            }
+        let _name = name
+        return function(msg, port, _cb=cb, name=_name) {
+            root.logger.debug(`Running action ${name}`)
+            cb.call_with_arg({
+                'msg': msg,
+                'port': port
+            })
         }
     }
 
@@ -124,7 +125,7 @@ shoop_format = require('shoop_format')
                 if (configuration_handlers.length <= i) {
                     root.logger.error('MIDI control handlers not up-to-date')
                 }
-                configuration_handlers[i].callable(msg_object, control_port ? control_port.lua_interface : null)
+                configuration_handlers[i](msg_object, control_port ? control_port.lua_interface : null)
             } else {
                 root.logger.trace(`No match for MIDI control filter: msg = ${msg}, filters = ${filters}, action = ${action}`)
             }
@@ -138,11 +139,7 @@ shoop_format = require('shoop_format')
             let conf = configuration.contents[i]
             let action = (conf.action in Js.builtin_actions) ? Js.builtin_actions[conf.action] : conf.action
             let action_name = (conf.action in Js.builtin_actions) ? conf.action : '<custom>'
-            rval.push(actionImplementation.createObject(root, {
-                'action_or_script': action,
-                'configuration': conf,
-                'action_name': action_name,
-            }))
+            rval.push(create_handler(action, conf, action_name))
         }
         configuration_handlers = rval
     }

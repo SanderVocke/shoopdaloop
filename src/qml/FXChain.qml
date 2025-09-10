@@ -1,5 +1,5 @@
-import ShoopDaLoop.Rust
 import QtQuick 6.6
+import ShoopDaLoop.Rust
 
 ShoopRustFXChainGui {
     id: root
@@ -7,6 +7,7 @@ ShoopRustFXChainGui {
                             audio_input_ports_mapper.loaded &&
                             audio_output_ports_mapper.loaded &&
                             midi_input_ports_mapper.loaded)
+    onLoadedChanged: root.logger.debug(`${obj_id}: loaded -> ${loaded}`)
 
     RequireBackend {}
 
@@ -66,7 +67,7 @@ ShoopRustFXChainGui {
 
     function unload() {
         reg_entry.close()
-        close()
+        deinit()
     }
 
     function all_ports() {
@@ -86,8 +87,8 @@ ShoopRustFXChainGui {
                 result = result && unsorted_instances[i].loaded;
             }
             return result
-        }             
-        
+        }
+
         Loader {
             active: root.initialized
             property bool loaded: active && item.loaded
@@ -114,8 +115,8 @@ ShoopRustFXChainGui {
                 result = result && unsorted_instances[i].loaded;
             }
             return result
-        }             
-        
+        }
+
         Loader {
             active: root.initialized
             property bool loaded: active && item.loaded
@@ -142,8 +143,8 @@ ShoopRustFXChainGui {
                 result = result && unsorted_instances[i].loaded;
             }
             return result
-        }  
-        
+        }
+
         Loader {
             active: root.initialized
             property bool loaded: active && item.loaded
