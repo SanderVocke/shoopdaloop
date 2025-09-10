@@ -12,7 +12,7 @@ use crate::lua_conversions::IntoLuaExtended;
 use backend_bindings::{LoopMode, PortDirection};
 use common::logging::macros::*;
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QList, QMap, QString};
+use cxx_qt_lib::{QList, QString};
 use cxx_qt_lib_shoop::connect::{connect, connect_or_report};
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
@@ -3025,7 +3025,7 @@ impl SessionControlHandler {
                 }
                 Err(_) => QList::default(),
             },
-            Err(e) => QList::default(),
+            Err(_) => QList::default(),
         }
     }
 
@@ -3040,7 +3040,7 @@ impl SessionControlHandler {
 
     pub fn clear_logged_calls(self: Pin<&mut SessionControlHandler>) {
         match self.lua_target.try_borrow_mut() {
-            Ok(mut b) => match b.logged_calls.try_borrow_mut() {
+            Ok(b) => match b.logged_calls.try_borrow_mut() {
                 Ok(mut b) => {
                     b.clear();
                 }
