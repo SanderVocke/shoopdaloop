@@ -55,8 +55,6 @@ void process_loops(SharedLoopsBegin loops_begin,
     // If we didn't process the whole thing, keep going.
     if(process_until < n_samples) {
         process_loops(loops_begin, loops_end, n_samples - process_until, loop_getter,
-                      (n_samples == 0 ?
-                       n_recursive_0_procs + 1 :
-                       n_recursive_0_procs));
+                      n_recursive_0_procs + 1);
     }
 }
