@@ -2331,12 +2331,30 @@ impl SessionControlHandlerLuaTarget {
         // Create the lua representation of the port object:
         // a table with a "send" function to send messages with
         let send_fn = lua
-            .create_function(move |_lua, args: Vec<u8>| -> Result<(), mlua::Error> {
+            .create_function(move |_lua, args: Vec<i64>| -> Result<(), mlua::Error> {
                 if let Err(e) = || -> Result<(), anyhow::Error> {
+                    let mut error_msg : Option<String> = None;
+                    let bytes: Vec<u8> = args
+                        .into_iter()
+                        .enumerate()
+                        .map(|(idx, n)| {
+                            let byte = n.clamp(0, 255);
+                            if byte != n {
+                                error_msg = Some(format!("midi send fn: byte {} passed from LUA is out of range ({}) - ignoring message.",
+                                    idx, n));
+                            }
+                            byte as u8
+                        })
+                        .collect();
+                    
+                    if error_msg.is_some() {
+                        return Err(anyhow::anyhow!("{}", error_msg.unwrap()));
+                    }
+
                     let port = weak_port
                         .upgrade()
                         .ok_or(anyhow::anyhow!("MIDI control port went out of scope"))?;
-                    port.borrow_mut().pin_mut().queue_send_msg_impl(args);
+                    port.borrow_mut().pin_mut().queue_send_msg_impl(bytes);
 
                     Ok(())
                 }() {

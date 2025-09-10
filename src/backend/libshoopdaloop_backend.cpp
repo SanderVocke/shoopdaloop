@@ -1459,6 +1459,7 @@ shoop_audio_channel_state_info_t *get_audio_channel_state (shoopdaloop_loop_audi
         [&]() { return chan->maybe_audio(); },
         chan->maybe_audio(),
         *_backend);
+    if (!audio) { return nullptr; }
     r->output_peak = audio->get_output_peak();
     r->gain = audio->get_gain();
     r->mode = audio->get_mode();
@@ -1484,6 +1485,7 @@ shoop_midi_channel_state_info_t *get_midi_channel_state   (shoopdaloop_loop_midi
         [&]() { return chan->maybe_midi(); },
         chan->maybe_midi(),
         *_backend);
+    if (!midi) { return nullptr; }
     r->n_events_triggered = midi->get_n_events_triggered();
     r->n_notes_active = midi->get_n_notes_active();
     r->mode = midi->get_mode();

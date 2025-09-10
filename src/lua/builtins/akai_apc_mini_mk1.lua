@@ -173,14 +173,25 @@ local led_message = function(coords, color)
     local x = coords[1]
     local y = coords[2]
 
-    if x == -1 and y == 0 then
-        if color == LED_yellow then
-            color = LED_off
+    if x == -1 then
+        if y == 0 then
+            if color == LED_yellow then
+                color = LED_off
+            end
+            return {0x90, BUTTON_sync_loop, color}
+        else
+            print_warning("led_message: invalid coords: (" .. x .. "," .. y .. ")")
+            return {}
         end
-        return {0x90, BUTTON_sync_loop, color}
+    end
+
+    if x < -1 or x > 7 or y < 0 or y > 7 then
+        print_warning("led_message: invalid coords: (" .. x .. "," .. y .. ")")
+        return {}
     end
 
     local note = (7-y)*8 + x
+    print_trace("LED @ (" .. x .. "," .. y .. ") - " .. note .. " -> " .. color)
     return {0x90, note, color}
 end
 
@@ -315,7 +326,6 @@ local push_loop_color = function(coords, event)
     local color = LED_off
     if event.mode == shoop_control.constants.LoopMode_Playing or
        event.mode == shoop_control.constants.LoopMode_PlayingDryThroughWet then
-        print_debug("GREEN")
         color = LED_green
     elseif event.mode == shoop_control.constants.LoopMode_Recording or
            event.mode == shoop_control.constants.LoopMode_RecordingDryIntoWet then
