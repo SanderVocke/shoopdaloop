@@ -2333,20 +2333,21 @@ impl SessionControlHandlerLuaTarget {
         let send_fn = lua
             .create_function(move |_lua, args: Vec<i64>| -> Result<(), mlua::Error> {
                 if let Err(e) = || -> Result<(), anyhow::Error> {
-                    let mut error_msg : Option<String> = None;
+                    let mut error_msg: Option<String> = None;
                     let bytes: Vec<u8> = args
                         .into_iter()
                         .enumerate()
                         .map(|(idx, n)| {
                             let byte = n.clamp(0, 255);
                             if byte != n {
-                                error_msg = Some(format!("midi send fn: byte {} passed from LUA is out of range ({}) - ignoring message.",
-                                    idx, n));
+                                error_msg = Some(
+                                    format!("midi send fn: byte {} passed from LUA is out of range ({}) - ignoring message.", idx, n)
+                                );
                             }
                             byte as u8
                         })
                         .collect();
-                    
+
                     if error_msg.is_some() {
                         return Err(anyhow::anyhow!("{}", error_msg.unwrap()));
                     }

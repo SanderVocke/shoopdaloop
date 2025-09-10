@@ -342,6 +342,7 @@ ShoopTestFile {
                     // Load into the other session, which has 3/4 the sample rate of this one
                     other_session.load_session(filename, true)
                     testcase.wait_session_loaded(other_session)
+                    testcase.wait_updated(session.backend)
                     testcase.wait_updated(other_session.backend)
 
                     verify_true(dt_loop_2(other_session).maybe_composite_loop)

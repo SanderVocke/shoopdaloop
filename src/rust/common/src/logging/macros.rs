@@ -19,11 +19,11 @@ pub use shoop_info as info;
 pub use shoop_trace as trace;
 pub use shoop_warn as warn;
 
-pub use log::trace as explicit_trace;
 pub use log::debug as explicit_debug;
-pub use log::info as explicit_info;
-pub use log::warn as explicit_warn;
 pub use log::error as explicit_error;
+pub use log::info as explicit_info;
+pub use log::trace as explicit_trace;
+pub use log::warn as explicit_warn;
 
 #[macro_export]
 macro_rules! shoop_log_unit {

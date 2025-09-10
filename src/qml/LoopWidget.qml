@@ -20,8 +20,8 @@ Item {
 
     property var initial_descriptor : null
 
-    property int track_idx : -1
-    property int idx_in_track : -1
+    property int track_idx : undefined
+    property int idx_in_track : undefined
     property string track_obj_id : ''
 
     onTrack_idxChanged: print_coords()
@@ -184,7 +184,7 @@ Item {
             root.logger.debug(`${obj_id} has composition, creating composite loop.`)
             create_composite_loop(initial_descriptor.composition)
         }
-        loaded = true
+        loaded = Qt.binding(() => root.track_idx !== undefined && root.idx_in_track !== undefined)
     }
 
     Component.onCompleted: init()
