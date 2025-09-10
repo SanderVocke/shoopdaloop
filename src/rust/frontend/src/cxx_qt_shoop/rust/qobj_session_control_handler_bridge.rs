@@ -29,6 +29,7 @@ pub mod ffi {
         #[qproperty(QList_QVariant, loop_widget_references)]
         #[qproperty(QList_QVariant, track_control_widget_references)]
         #[qproperty(QList_QVariant, selected_loops, READ=get_selected_loops, WRITE=set_selected_loops, NOTIFY=selected_loops_changed)]
+        #[qproperty(QList_QVariant, midi_control_ports, READ=get_midi_control_ports)]
         #[qproperty(QVariant, targeted_loop, READ=get_targeted_loop, WRITE=set_targeted_loop, NOTIFY=targeted_loop_changed)]
         #[qproperty(*mut QObject, global_state_registry, READ=get_global_state_registry, WRITE=set_global_state_registry, NOTIFY=global_state_registry_changed)]
         #[qproperty(*mut QObject, session, READ=get_session, WRITE=set_session, NOTIFY=session_changed)]
@@ -40,6 +41,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn uninstall_lua_engine(self: Pin<&mut SessionControlHandler>, engine: *mut QObject);
+
+        #[qinvokable]
+        pub fn uninstall_lua_engine_if_no_callbacks(self: Pin<&mut SessionControlHandler>, engine: *mut QObject);
 
         #[qinvokable]
         pub fn engine_is_installed(
@@ -78,6 +82,9 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn get_backend(self: Pin<&mut SessionControlHandler>) -> *mut QObject;
+
+        #[qinvokable]
+        pub fn get_midi_control_ports(self: Pin<&mut SessionControlHandler>) -> QList_QVariant;
 
         #[qinvokable]
         pub fn set_global_state_registry(

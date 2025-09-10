@@ -373,6 +373,16 @@ impl SessionControlHandlerLuaTarget {
 
             wrapped_engine.set_toplevel("__shoop_control", lua_module)?;
 
+            self.installed_on.try_borrow_mut()?.push(Arc::downgrade(
+                &engine
+                    .engine
+                    .as_ref()
+                    .ok_or(anyhow::anyhow!("Engine not initialized"))?
+                    .lua
+                    .try_borrow()?
+                    .lua,
+            ));
+
             Ok(())
         }() {
             error!("Could not install on Lua engine: {e}");
@@ -2616,6 +2626,7 @@ impl SessionControlHandlerLuaTarget {
         self.installed_on.borrow_mut().retain(|weak_engine| {
             if let Some(installed) = weak_engine.upgrade() {
                 if Arc::ptr_eq(&installed, engine) {
+                    debug!("uninstalling lua engine");
                     return false;
                 } else {
                     return true;
@@ -2627,26 +2638,72 @@ impl SessionControlHandlerLuaTarget {
         self.garbage_collect();
     }
 
+    fn uninstall_lua_engine_if_no_callbacks(&mut self, engine: &Arc<mlua::Lua>) {
+        if let Err(e) = || -> Result<(), anyhow::Error> {
+            let mut found = false;
+            for cbs in self.callbacks_rust_to_lua.try_borrow()?.values() {
+                for cb in cbs.iter() {
+                    match cb.weak_lua.upgrade().map(|e| Arc::ptr_eq(&e, engine)) {
+                        Some(true) => {
+                            found = true;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            for rule in self.midi_control_port_rules.try_borrow()?.iter() {
+                match rule.weak_lua.upgrade().map(|e| Arc::ptr_eq(&e, engine)) {
+                    Some(true) => {
+                        found = true;
+                    }
+                    _ => {}
+                }
+            }
+
+            if !found {
+                self.uninstall_lua_engine(engine);
+            }
+
+            self.garbage_collect();
+
+            Ok(())
+        }() {
+            error!("Could not check for callbacks and uninstall: {e}");
+        }
+    }
+
     fn garbage_collect(&mut self) {
         debug!("Garbage collect dangling Lua callbacks");
         self.midi_control_port_rules.borrow_mut().retain(|rule| {
-            let rval = rule.weak_lua.upgrade().is_some();
-            if !rval {
+            let cb_eng = rule.weak_lua.upgrade();
+            if cb_eng.is_none() {
                 let name = rule.port.borrow().name.to_string();
                 debug!("Removing MIDI control port rule for {name}: lua out of scope");
+                return false;
             }
-            rval
+            let cb_eng = cb_eng.unwrap();
+            if !self.engine_is_installed(&cb_eng) {
+                debug!("Removing Lua callback: lua exists but was uninstalled");
+                return false;
+            }
+            true
         });
         self.callbacks_rust_to_lua
             .borrow_mut()
             .values_mut()
             .for_each(|callbacks| {
                 callbacks.retain(|cb| {
-                    let rval = cb.weak_lua.upgrade().is_some();
-                    if !rval {
+                    let cb_eng = cb.weak_lua.upgrade();
+                    if cb_eng.is_none() {
                         debug!("Removing Lua callback: lua out of scope");
+                        return false;
                     }
-                    rval
+                    let cb_eng = cb_eng.unwrap();
+                    if !self.engine_is_installed(&cb_eng) {
+                        debug!("Removing Lua callback: lua exists but was uninstalled");
+                        return false;
+                    }
+                    true
                 })
             });
     }
@@ -2670,6 +2727,32 @@ impl SessionControlHandler {
                 "update_structured_track_control_widget_references()",
                 connection_types::AUTO_CONNECTION,
             );
+        }
+    }
+
+    pub fn get_midi_control_ports(self: Pin<&mut SessionControlHandler>) -> QList_QVariant {
+        match || -> Result<QList_QVariant, anyhow::Error> {
+            let mut list: QList_QVariant = QList::default();
+            for rule in self
+                .lua_target
+                .try_borrow()?
+                .midi_control_port_rules
+                .try_borrow()?
+                .iter()
+            {
+                let mut port = rule.port.try_borrow_mut()?;
+                let port = port.pin_mut();
+                let port = unsafe { port.pin_mut_qobject_ptr() };
+                let port = qobject_ptr_to_qvariant(&port)?;
+                list.append(port);
+            }
+            Ok(list)
+        }() {
+            Ok(list) => list,
+            Err(e) => {
+                error!("Could not get MIDI control ports: {e}");
+                QList::default()
+            }
         }
     }
 
@@ -2990,6 +3073,22 @@ impl SessionControlHandler {
                 if let Some(engine) = engine.engine.as_ref() {
                     let engine = &engine.lua.borrow().lua;
                     self.lua_target.borrow_mut().uninstall_lua_engine(engine);
+                }
+            }
+        }
+    }
+
+    pub fn uninstall_lua_engine_if_no_callbacks(
+        self: Pin<&mut SessionControlHandler>,
+        engine: *mut QObject,
+    ) {
+        unsafe {
+            if let Ok(engine) = LuaEngine::from_qobject_mut_ptr(engine) {
+                if let Some(engine) = engine.engine.as_ref() {
+                    let engine = &engine.lua.borrow().lua;
+                    self.lua_target
+                        .borrow_mut()
+                        .uninstall_lua_engine_if_no_callbacks(engine);
                 }
             }
         }

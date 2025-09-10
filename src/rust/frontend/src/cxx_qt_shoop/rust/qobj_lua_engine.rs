@@ -220,7 +220,7 @@ impl WrappedLuaCallback {
         cb
     }
 
-    pub fn call_impl(self: Pin<&mut WrappedLuaCallback>, args: mlua::MultiValue) {
+    pub fn call_impl(self: Pin<&mut WrappedLuaCallback>, override_stored_args: Option<&mlua::MultiValue>) {
         match || -> Result<QVariant, anyhow::Error> {
             let callback = self.callback.borrow();
             let callback = callback
@@ -231,9 +231,10 @@ impl WrappedLuaCallback {
                 .upgrade()
                 .ok_or(anyhow::anyhow!("Lua went out of scope"))?;
             let lua = lua.as_ref();
+            let args = override_stored_args.unwrap_or(&self.stored_arg);
             let rval = callback
                 .callback
-                .call::<mlua::Value>(args)
+                .call::<mlua::Value>(args.clone())
                 .map_err(|e| anyhow::anyhow!("failed to call callback: {e}"))?;
             let rval = QVariant::from_lua(rval, lua)
                 .map_err(|e| anyhow::anyhow!("failed to convert return value: {e}"))?;
@@ -250,7 +251,7 @@ impl WrappedLuaCallback {
 
     pub fn call(self: Pin<&mut WrappedLuaCallback>) {
         trace!("wrapped lua callback: call no args");
-        self.call_impl(mlua::MultiValue::new());
+        self.call_impl(Some(&mlua::MultiValue::new()));
     }
 
     pub fn call_with_arg(mut self: Pin<&mut WrappedLuaCallback>, arg: QVariant) {
@@ -273,7 +274,7 @@ impl WrappedLuaCallback {
                     .map_err(|e| anyhow::anyhow!("Could not convert arg to lua: {e}"))?;
             }
             self.as_mut()
-                .call_impl(mlua::MultiValue::from_vec(vec![converted]));
+                .call_impl(Some(&mlua::MultiValue::from_vec(vec![converted])));
             Ok(())
         }() {
             error!("Could not call wrapped lua callback: {e}")
@@ -282,13 +283,12 @@ impl WrappedLuaCallback {
 
     pub fn call_with_stored_arg(self: Pin<&mut WrappedLuaCallback>) {
         trace!("wrapped lua callback: call with stored arg");
-        let arg = self.stored_arg.clone();
-        self.call_impl(arg)
+        self.call_impl(None)
     }
 
     pub fn call_and_delete(mut self: Pin<&mut WrappedLuaCallback>) {
         trace!("wrapped lua callback: call and delete");
-        self.as_mut().call_impl(mlua::MultiValue::new());
+        self.as_mut().call_impl(Some(&mlua::MultiValue::new()));
         self.as_mut().delete_later();
     }
 

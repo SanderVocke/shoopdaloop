@@ -4,6 +4,8 @@ Item {
     id: root
     property var control_interface: null
 
+    readonly property ShoopRustLogger logger : ShoopRustLogger { name: "Frontend.Qml.LuaScriptWithEngine" }
+
     // Inputs
     property alias script : loader.script
     property alias engine : loader.engine
@@ -40,7 +42,9 @@ Item {
 
                 onRanScript: {
                     ran = true
+                    control_interface.uninstall_lua_engine_if_no_callbacks(the_engine)
                     listening = (control_interface.engine_is_installed(the_engine))
+                    root.logger.debug(`script "${script_name}" ran. Still listening for callbacks: ${listening}`)
                 }
             }
 
@@ -49,8 +53,8 @@ Item {
                 ready = true
             }
             Component.onDestruction: {
-                the_engine.ensure_engine_destroyed()
                 root.control_interface.uninstall_lua_engine(the_engine)
+                the_engine.ensure_engine_destroyed()
             }
         }
     }
@@ -61,5 +65,7 @@ Item {
     function start() {
         loader.active = true
     }
+
+    Component.onDestruction: stop()
 }
 

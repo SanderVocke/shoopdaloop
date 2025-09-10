@@ -22,7 +22,7 @@ ShoopTestFile {
         }
 
         Component {
-            id: factory
+            id: autoconnect_factory
             LuaScriptWithEngine {
                 control_interface : session.control_interface
                 script_code : `
@@ -37,13 +37,26 @@ ShoopTestFile {
                 end
 
                 shoop_control.auto_open_device_specific_midi_control_output(".*testport.*", on_opened, on_connected, 0)
-
                 `
+                script_name: "test_autoconnect"
             }
         }
 
+        Component {
+            id: simple_factory
+            LuaScriptWithEngine {
+                control_interface : session.control_interface
+                script_code : `
+                print_debug("hello world")
+                `
+                script_name: "test_simple"
+            }
+        }
+
+
         ShoopSessionTestCase {
             name: 'Lua_autoconnect'
+            id: testcase
             session: session
             filename : TestFilename.test_filename()
             when: backend.ready || backend.backend_type == null
@@ -51,33 +64,46 @@ ShoopTestFile {
             testcase_deinit_fn: () => { backend.close() }
 
             test_fns: ({
+                'test_simple': () => {
+                    check_backend()
+                    session.backend.dummy_remove_all_external_mock_ports();
+                    verify_eq(Object.values(session.control_interface.midi_control_ports).length, 0)
+
+                    // Create and run the script.
+                    let script = simple_factory.createObject(this, {})
+                    wait_condition(() => script.ran)
+
+                    verify_eq(script.listening, false)
+
+                    script.destroy()
+                },
                 'test_autoconnect': () => {
                     check_backend()
                     session.backend.dummy_remove_all_external_mock_ports();
                     verify_eq(Object.values(session.control_interface.midi_control_ports).length, 0)
 
                     // Create and run the script. Should be listening then for ports to connect to.
-                    let script = factory.createObject(this, {})
+                    let script = autoconnect_factory.createObject(this, {})
                     wait_condition(() => script.ran)
                     verify_eq(script.listening, true)
-                    verify_eq(Object.values(session.control_interface.midi_control_ports).length, 1)
-                    let port = Object.values(session.control_interface.midi_control_ports)[0]
-                    verify_eq(port.initialized, false)
+                    verify_eq(session.control_interface.midi_control_ports.length, 1)
+                    let port = session.control_interface.midi_control_ports[0]
+                    verify_eq(port.initialized, true)
 
                     backend.dummy_add_external_mock_port("my_testport", ShoopRustConstants.PortDirection.Input, ShoopRustConstants.PortDataType.Midi)
                     wait_condition(() => port.initialized)
 
                     script.stop()
-
-                    verify_eq(Object.values(session.control_interface.midi_control_ports).length, 0)
+                    verify_eq(session.control_interface.midi_control_ports.length, 0)
 
                     script.start()
 
-                    verify_eq(Object.values(session.control_interface.midi_control_ports).length, 1)
-                    let port2 = Object.values(session.control_interface.midi_control_ports)[0]
+                    verify_eq(session.control_interface.midi_control_ports.length, 1)
+                    let port2 = session.control_interface.midi_control_ports[0]
                     wait_condition(() => port2.initialized)
 
-                    script.destroy()
+                    script.stop()
+                    verify_eq(session.control_interface.midi_control_ports.length, 0)
                 },
             })
         }
