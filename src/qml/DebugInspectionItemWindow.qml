@@ -130,6 +130,36 @@ ShoopApplicationWindow {
                 }
 
                 ItemRow {
+                    label: "input peak (audio):"
+                    Label { text: object.audio_input_peak }
+                }
+
+                ItemRow {
+                    label: "output peak (audio):"
+                    Label { text: object.audio_output_peak }
+                }
+
+                ItemRow {
+                    label: "input n messages (midi):"
+                    Label { text: object.midi_n_input_events }
+                }
+
+                ItemRow {
+                    label: "output n messages (midi):"
+                    Label { text: object.midi_n_input_events }
+                }
+
+                ItemRow {
+                    label: "input n notes (midi):"
+                    Label { text: object.midi_n_input_notes_active }
+                }
+
+                ItemRow {
+                    label: "output n notes (midi):"
+                    Label { text: object.midi_n_output_notes_active }
+                }
+
+                ItemRow {
                     label: "descriptor:"
                     Label { text: JSON.stringify(object.descriptor, null, 2) }
                 }
@@ -196,6 +226,21 @@ ShoopApplicationWindow {
                 ItemRow {
                     label: "n preplay:"
                     Label { text: object.n_preplay_samples }
+                }
+
+                ItemRow {
+                    label: "output peak (audio)"
+                    Label { text: object.audio_output_peak }
+                }
+                
+                ItemRow {
+                    label: "n events triggered (midi)"
+                    Label { text: object.midi_n_events_triggered }
+                }
+
+                ItemRow {
+                    label: "n notes active (midi)"
+                    Label { text: object.midi_n_notes_active }
                 }
 
                 ItemRow {

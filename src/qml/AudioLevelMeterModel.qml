@@ -1,6 +1,6 @@
 import QtQuick 6.6
 
-Item {
+QtObject {
     id: root
     property real max_decrease_rate: 40.0
     property real max_decrease_rate_acceleration: 10000.0
@@ -20,6 +20,4 @@ Item {
             to: input_db > value ? input_db : bottom_db
         }
     }
-
-    onInputChanged: update()
 }
