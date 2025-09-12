@@ -65,7 +65,8 @@ ShoopRustLoopChannelGui {
                     [root],
                     descriptor.n_preplay_samples,
                     descriptor.start_offset,
-                    null
+                    null,
+                    3000
                     )
                 task.then_delete()
                 return task

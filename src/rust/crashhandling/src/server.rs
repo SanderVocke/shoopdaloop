@@ -6,6 +6,8 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
+#[cfg(target_os = "windows")]
+use std::time::Duration;
 shoop_log_unit!("CrashHandlingServer");
 
 fn set_json(to: &mut JsonValue, from: &JsonValue) -> anyhow::Result<()> {
@@ -209,6 +211,13 @@ pub fn crashhandling_server() {
         serde_json::json!({ "environment": "unknown" })
     };
 
+    #[cfg(target_os = "windows")]
+    watchdog::start();
+
+    // NOTE: don't put any logging beyond this point. On Windows,
+    // it may cause deadlocks because of trying to write to the
+    // nonexistent parent process' output stream.
+
     server
         .run(
             Box::new(Handler {
@@ -220,7 +229,57 @@ pub fn crashhandling_server() {
         )
         .expect("failed to run server");
 
-    info!("Crash handling server exiting");
-
+    // ensure that we will exit
+    #[cfg(target_os = "windows")]
+    watchdog::notify(Duration::from_millis(3000));
     std::process::exit(0);
+}
+
+#[cfg(target_os = "windows")]
+mod watchdog {
+    use once_cell::sync::OnceCell;
+    use std::sync::Mutex;
+    use std::thread;
+    use std::time::Duration;
+    use winapi::um::processthreadsapi::{GetCurrentProcess, TerminateProcess};
+    use winapi::um::winnt::HANDLE;
+
+    static DO_EXIT_IN: OnceCell<Mutex<Option<Duration>>> = OnceCell::new();
+
+    pub fn start() {
+        let _ = DO_EXIT_IN.get_or_init(|| Mutex::new(None));
+        thread::spawn(move || {
+            let get_timeout = || -> Option<Duration> {
+                match DO_EXIT_IN.get() {
+                    Some(mutex) => match mutex.lock() {
+                        Ok(lock) => match lock.as_ref() {
+                            Some(a) => Some(*a),
+                            None => None,
+                        },
+                        Err(_) => None,
+                    },
+                    None => None,
+                }
+            };
+
+            while get_timeout().is_none() {
+                thread::sleep(Duration::from_millis(1000));
+            }
+
+            if let Some(timeout) = get_timeout() {
+                thread::sleep(timeout);
+                let process_handle: HANDLE = unsafe { GetCurrentProcess() };
+                unsafe {
+                    TerminateProcess(process_handle, 1);
+                }
+            }
+        });
+    }
+
+    pub fn notify(timeout: std::time::Duration) {
+        let lock = DO_EXIT_IN.get_or_init(|| Mutex::new(None)).lock();
+        if let Ok(mut lock) = lock {
+            lock.replace(timeout);
+        }
+    }
 }

@@ -281,7 +281,8 @@ ShoopTestFile {
                                 0,
                                 20,
                                 false)) {
-                                    testcase.fail("Could not load MIDI to channels.")
+                                    testcase.fail("Could not load MIDI to channels."),
+                                3000
                                 }
 
                     lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
@@ -369,7 +370,8 @@ ShoopTestFile {
                                 0,
                                 0,
                                 false))  {
-                                    testcase.fail("Could not load MIDI to channels.")
+                                    testcase.fail("Could not load MIDI to channels."),
+                                3000
                                 }
 
                     lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)

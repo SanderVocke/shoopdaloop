@@ -2044,7 +2044,7 @@ Item {
                     }
                     var create_task = () => {
                         var task = ShoopRustFileIO.load_soundfile_to_channels_async(filename, samplerate, null,
-                            mapping, 0, 0, root.maybe_backend_loop)
+                            mapping, 0, 0, root.maybe_backend_loop, 3000)
                         task.then((success) => {
                             if (!success) {
                                 root.logger.error("loading soundfile to channels failed")
@@ -2137,7 +2137,7 @@ Item {
                 root.create_backend_loop()
                 var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
                 ShoopRustFileIO.load_midi_to_channels_async(filename, samplerate, channels,
-                    0, 0, root.maybe_backend_loop)
+                    0, 0, root.maybe_backend_loop, 3000)
             }
 
             onAccepted: doLoad(true)
