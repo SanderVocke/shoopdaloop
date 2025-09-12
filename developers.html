@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <meta name="lang:clipboard.copy" content="Copy to clipboard">
+  <meta name="lang:clipboard.copied" content="Copied to clipboard">
+  <meta name="lang:search.language" content="en">
+  <meta name="lang:search.pipeline.stopwords" content="True">
+  <meta name="lang:search.pipeline.trimmer" content="True">
+  <meta name="lang:search.result.none" content="No matching documents">
+  <meta name="lang:search.result.one" content="1 matching document">
+  <meta name="lang:search.result.other" content="# matching documents">
+  <meta name="lang:search.tokenizer" content="[\s\-]+">
+
+  
+    <link href="https://fonts.gstatic.com/" rel="preconnect" crossorigin>
+    <link href="https://fonts.googleapis.com/css?family=Roboto+Mono:400,500,700|Roboto:300,400,400i,700&display=fallback" rel="stylesheet">
+
+    <style>
+      body,
+      input {
+        font-family: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif
+      }
+
+      code,
+      kbd,
+      pre {
+        font-family: "Roboto Mono", "Courier New", Courier, monospace
+      }
+    </style>
+  
+
+  <link rel="stylesheet" href="_static/stylesheets/application.css"/>
+  <link rel="stylesheet" href="_static/stylesheets/application-palette.css"/>
+  <link rel="stylesheet" href="_static/stylesheets/application-fixes.css"/>
+  
+  <link rel="stylesheet" href="_static/fonts/material-icons.css"/>
+  
+  <meta name="theme-color" content="#3f51b5">
+  <script src="_static/javascripts/modernizr.js"></script>
+  
+  
+  
+    <title>For Developers / Advanced Users &#8212; ShoopDaLoop  documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=75810a84" />
+    <link rel="stylesheet" type="text/css" href="_static/material.css?v=79c92029" />
+    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Usage" href="usage.html" />
+  
+   
+
+  </head>
+  <body dir=ltr
+        data-md-color-primary=grey data-md-color-accent=grey>
+  
+  <svg class="md-svg">
+    <defs data-children-count="0">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" width="416" height="448" viewBox="0 0 416 448" id="__github"><path fill="currentColor" d="M160 304q0 10-3.125 20.5t-10.75 19T128 352t-18.125-8.5-10.75-19T96 304t3.125-20.5 10.75-19T128 256t18.125 8.5 10.75 19T160 304zm160 0q0 10-3.125 20.5t-10.75 19T288 352t-18.125-8.5-10.75-19T256 304t3.125-20.5 10.75-19T288 256t18.125 8.5 10.75 19T320 304zm40 0q0-30-17.25-51T296 232q-10.25 0-48.75 5.25Q229.5 240 208 240t-39.25-2.75Q130.75 232 120 232q-29.5 0-46.75 21T56 304q0 22 8 38.375t20.25 25.75 30.5 15 35 7.375 37.25 1.75h42q20.5 0 37.25-1.75t35-7.375 30.5-15 20.25-25.75T360 304zm56-44q0 51.75-15.25 82.75-9.5 19.25-26.375 33.25t-35.25 21.5-42.5 11.875-42.875 5.5T212 416q-19.5 0-35.5-.75t-36.875-3.125-38.125-7.5-34.25-12.875T37 371.5t-21.5-28.75Q0 312 0 260q0-59.25 34-99-6.75-20.5-6.75-42.5 0-29 12.75-54.5 27 0 47.5 9.875t47.25 30.875Q171.5 96 212 96q37 0 70 8 26.25-20.5 46.75-30.25T376 64q12.75 25.5 12.75 54.5 0 21.75-6.75 42 34 40 34 99.5z"/></svg>
+      
+    </defs>
+  </svg>
+  
+  <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer">
+  <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search">
+  <label class="md-overlay" data-md-component="overlay" for="__drawer"></label>
+  <a href="#developers" tabindex="1" class="md-skip"> Skip to content </a>
+  <header class="md-header" data-md-component="header">
+  <nav class="md-header-nav md-grid">
+    <div class="md-flex navheader">
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <a href="index.html" title="ShoopDaLoop  documentation"
+           class="md-header-nav__button md-logo">
+          
+            &nbsp;
+          
+        </a>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <label class="md-icon md-icon--menu md-header-nav__button" for="__drawer"></label>
+      </div>
+      <div class="md-flex__cell md-flex__cell--stretch">
+        <div class="md-flex__ellipsis md-header-nav__title" data-md-component="title">
+          <span class="md-header-nav__topic">ShoopDaLoop  documentation</span>
+          <span class="md-header-nav__topic"> For Developers / Advanced Users </span>
+        </div>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <label class="md-icon md-icon--search md-header-nav__button" for="__search"></label>
+        
+<div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" action="search.html" method="get" name="search">
+      <input type="text" class="md-search__input" name="q" placeholder=""Search""
+             autocapitalize="off" autocomplete="off" spellcheck="false"
+             data-md-component="query" data-md-state="active">
+      <label class="md-icon md-search__icon" for="__search"></label>
+      <button type="reset" class="md-icon md-search__icon" data-md-component="reset" tabindex="-1">
+        &#xE5CD;
+      </button>
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="result">
+          <div class="md-search-result__meta">
+            Type to start searching
+          </div>
+          <ol class="md-search-result__list"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+      </div>
+      
+      
+  
+  <script src="_static/javascripts/version_dropdown.js"></script>
+  <script>
+    var json_loc = ""versions.json"",
+        target_loc = "../",
+        text = "Versions";
+    $( document ).ready( add_version_dropdown(json_loc, target_loc, text));
+  </script>
+  
+
+    </div>
+  </nav>
+</header>
+
+  
+  <div class="md-container">
+    
+    
+    
+  <nav class="md-tabs" data-md-component="tabs">
+    <div class="md-tabs__inner md-grid">
+      <ul class="md-tabs__list">
+          <li class="md-tabs__item"><a href="index.html" class="md-tabs__link">ShoopDaLoop  documentation</a></li>
+      </ul>
+    </div>
+  </nav>
+    <main class="md-main">
+      <div class="md-main__inner md-grid" data-md-component="container">
+        
+          <div class="md-sidebar md-sidebar--primary" data-md-component="navigation">
+            <div class="md-sidebar__scrollwrap">
+              <div class="md-sidebar__inner">
+                <nav class="md-nav md-nav--primary" data-md-level="0">
+  <label class="md-nav__title md-nav__title--site" for="__drawer">
+    <a href="index.html" title="ShoopDaLoop documentation" class="md-nav__button md-logo">
+      
+        <img src="_static/" alt=" logo" width="48" height="48">
+      
+    </a>
+    <a href="index.html"
+       title="ShoopDaLoop documentation">ShoopDaLoop  documentation</a>
+  </label>
+  
+
+</nav>
+              </div>
+            </div>
+          </div>
+          <div class="md-sidebar md-sidebar--secondary" data-md-component="toc">
+            <div class="md-sidebar__scrollwrap">
+              <div class="md-sidebar__inner">
+                
+<nav class="md-nav md-nav--secondary">
+    <label class="md-nav__title" for="__toc">"Contents"</label>
+  <ul class="md-nav__list" data-md-scrollfix="">
+        <li class="md-nav__item"><a href="" class="md-nav__link"></a>
+        </li>
+        <li class="md-nav__item"><a href="concept.html" class="md-nav__link">Concept</a>
+        </li>
+        <li class="md-nav__item"><a href="usage.html" class="md-nav__link">Usage</a>
+        </li>
+        <li class="md-nav__item"><a href="#developers--page-root" class="md-nav__link">For Developers / Advanced Users</a><nav class="md-nav">
+              <ul class="md-nav__list">
+        <li class="md-nav__item"><a href="#states-and-connections" class="md-nav__link">States And Connections</a>
+        </li>
+        <li class="md-nav__item"><a href="#lua-scripting" class="md-nav__link">Lua Scripting</a><nav class="md-nav">
+              <ul class="md-nav__list">
+        <li class="md-nav__item"><a href="#introduction" class="md-nav__link">Introduction</a>
+        </li>
+        <li class="md-nav__item"><a href="#api-and-libraries" class="md-nav__link">API and Libraries</a><nav class="md-nav">
+              <ul class="md-nav__list">
+        <li class="md-nav__item"><a href="#globally-available-apis" class="md-nav__link">Globally available APIs</a>
+        </li>
+        <li class="md-nav__item"><a href="#module-shoop-control" class="md-nav__link">module: shoop_control</a>
+        </li>
+        <li class="md-nav__item"><a href="#module-shoop-coords" class="md-nav__link">module: shoop_coords</a>
+        </li>
+        <li class="md-nav__item"><a href="#module-shoop-helpers" class="md-nav__link">module: shoop_helpers</a>
+        </li>
+        <li class="md-nav__item"><a href="#module-shoop-format" class="md-nav__link">module: shoop_format</a>
+        </li></ul>
+            </nav>
+        </li></ul>
+            </nav>
+        </li>
+        <li class="md-nav__item"><a href="#software-design" class="md-nav__link">Software Design</a><nav class="md-nav">
+              <ul class="md-nav__list">
+        <li class="md-nav__item"><a href="#architecture" class="md-nav__link">Architecture</a>
+        </li>
+        <li class="md-nav__item"><a href="#build-and-packaging" class="md-nav__link">Build And Packaging</a>
+        </li>
+        <li class="md-nav__item"><a href="#debugging" class="md-nav__link">Debugging</a>
+        </li>
+        <li class="md-nav__item"><a href="#testing" class="md-nav__link">Testing</a>
+        </li>
+        <li class="md-nav__item"><a href="#continuous-integration" class="md-nav__link">Continuous integration</a>
+        </li></ul>
+            </nav>
+        </li></ul>
+            </nav>
+        </li>
+    
+<li class="md-nav__item"><a class="md-nav__extra_link" href="_sources/developers.rst.txt">Show Source</a> </li>
+
+<li id="searchbox" class="md-nav__item"></li>
+
+  </ul>
+</nav>
+              </div>
+            </div>
+          </div>
+        
+        <div class="md-content">
+          <article class="md-content__inner md-typeset" role="main">
+            
+  <section id="for-developers-advanced-users">
+<h1 id="developers--page-root">For Developers / Advanced Users<a class="headerlink" href="#developers--page-root" title="Link to this heading">¶</a></h1>
+<section id="states-and-connections">
+<h2 id="states-and-connections">States And Connections<a class="headerlink" href="#states-and-connections" title="Link to this heading">¶</a></h2>
+<p>The basic principles of muting, monitoring, recording, playing back etc. are straightforward.
+However, in the case of a dry/wet combined looping setup, these principles can get confusing and/or impossible to implement perfectly, given that only a single FX processor exists.</p>
+<p>For example, it is not possible to re-record the dry audio of multiple loops into their respective wet audio channels if they are sharing the same track (and thus the same FX processor). Their wet audio would be combined.
+Likewise, it is not possible to monitor the input while re-recording a loop.</p>
+<p>Therefore some compromises have been made to select what is probably the most desirable wiring for each state of loop(s) and monitoring.</p>
+<p>The following diagrams show the internal wiring of ShoopDaLoop’s ports and loops, including which signal paths are disabled / silent in different track/loop states.</p>
+<figure class="align-default" id="id2">
+<a class="reference internal image-reference" href="_images/connections_states.drawio.svg"><img alt="Connections in different states" src="_images/connections_states.drawio.svg" style="width: 800px;"/>
+</a>
+<figcaption>
+<p><span class="caption-text">Connections in different states.</span><a class="headerlink" href="#id2" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
+</section>
+<section id="lua-scripting">
+<h2 id="lua-scripting">Lua Scripting<a class="headerlink" href="#lua-scripting" title="Link to this heading">¶</a></h2>
+<section id="introduction">
+<span id="id1"></span><h3 id="introduction">Introduction<a class="headerlink" href="#introduction" title="Link to this heading">¶</a></h3>
+<p><strong>ShoopDaLoop</strong> supports embedded <strong>Lua scripts</strong> for querying and controlling the application. For example, these are used to define how <strong>ShoopDaLoop</strong> reacts to control MIDI events.
+Lua scripts can be provided by the user and don’t require a re-installation of the software.</p>
+<p><strong>Lua</strong> inside <strong>ShoopDaLoop</strong> is sandboxed for security making a large part of the standard libary unavailable. Only a whitelisted list of functions can be used. See <strong>sandbox.lua</strong> for details. Most notably: not any module can be imported through <strong>require</strong>. Only <strong>ShoopDaLoop</strong>-provided modules can be used.</p>
+</section>
+<section id="api-and-libraries">
+<h3 id="api-and-libraries">API and Libraries<a class="headerlink" href="#api-and-libraries" title="Link to this heading">¶</a></h3>
+<p>The API consists of globally available functions and constants, in addition to functions and constants available through built-in libraries. Built-in libraries should be included in scripts using the <cite>require</cite> function. Check <cite>src/lua/builtins/keyboard.lua</cite> for an example.</p>
+<section id="globally-available-apis">
+<h4 id="globally-available-apis">Globally available APIs<a class="headerlink" href="#globally-available-apis" title="Link to this heading">¶</a></h4>
+<ul class="simple">
+<li><p><strong>print(msg)</strong>, <strong>print_debug(msg)</strong>, <strong>print_error(msg)</strong>, <strong>print_info(msg)</strong>: Print a message to the Frontend.LuaScript logger. Respective log levels are info (default), debug, error.</p></li>
+</ul>
+</section>
+<section id="module-shoop-control">
+<h4 id="module-shoop-control">module: shoop_control<a class="headerlink" href="#module-shoop-control" title="Link to this heading">¶</a></h4>
+<p>Provides basic interfacing with <strong>ShoopDaLoop</strong>. Note that these functions are provided as bindings into the application - they are not written in Lua.</p>
+<p><ul>
+<li><strong>shoop_control.loop_count(loop_selector) -&gt; int</strong><p>Count the amount of loops given by the selector.</p>
+</li>
+<li><strong>shoop_control.loop_get_all() -&gt; [[x1,y1],[x2,y2],…]</strong><p>Get the coordinates of all loops.</p>
+</li>
+<li><strong>shoop_control.loop_get_which_selected() -&gt; [[x1,y1],[x2,y2],…]</strong><p>Get the coordinates of all currently selected loops.</p>
+</li>
+<li><strong>shoop_control.loop_get_which_targeted() -&gt; [x,y] | nil</strong><p>Get the coordinates of the currently targeted loop, or None if none are targeted.</p>
+</li>
+<li><strong>shoop_control.loop_get_by_mode(mode) -&gt; [[x1,y1],[x2,y2],…]</strong><p>Get the coordinates of all loops with the given mode.</p>
+</li>
+<li><strong>shoop_control.loop_get_mode(loop_selector) -&gt; list[LoopMode]</strong><p>Get the current mode of the specified loops.</p>
+</li>
+<li><strong>shoop_control.loop_get_next_mode(loop_selector) -&gt; list[ LoopMode or nil ]</strong><p>For the specified loops, get the upcoming mode transition, if any.</p>
+</li>
+<li><strong>shoop_control.loop_get_next_mode_delay(loop_selector) -&gt; list[ int or nil ]</strong><p>For the specified loops, get the upcoming mode transition delay in cycles, if any.</p>
+</li>
+<li><strong>shoop_control.loop_get_length(loop_selector) -&gt; list[int]</strong><p>Get the length of the specified loops in samples.</p>
+</li>
+<li><strong>shoop_control.loop_get_by_track(track) -&gt; [[x1,y1],[x2,y2],…]</strong><p>Get the coordinates of all loops with the given mode.</p>
+</li>
+<li><strong>shoop_control.loop_transition(loop_selector, mode, maybe_cycles_delay, maybe_align_to_sync_at)</strong><p>Transition the given loops. Pass shoop_control.constants.Loop_DontWaitForSync and shoop_control.constants.Loop_DontAlignToSyncImmediately to maybe_cycles_delay and maybe_align_to_sync_at respectively, to disable them.</p>
+</li>
+<li><strong>shoop_control.loop_trigger(loop_selector, mode)</strong><p>Trigger the loop with the given mode. Equivalent to pressing the loop’s button in the UI. That means the way the trigger is interpreted also depends on the global controls for e.g. sync.</p>
+</li>
+<li><strong>shoop_control.loop_trigger_grab(loop_selector, mode)</strong><p>Trigger a ringbuffer grab on the given loop. Equivalent to pressing the grab button.</p>
+</li>
+<li><strong>shoop_control.loop_get_gain(loop_selector) -&gt; list[float]</strong><p>Get the output audio gain of the specified loops as a gain factor.</p>
+</li>
+<li><strong>shoop_control.loop_get_gain(loop_selector) -&gt; list[float]</strong><p>Get the output audio gain fader position as a fraction of its total range (0-1) of the given loop.</p>
+</li>
+<li><strong>shoop_control.loop_get_balance(loop_selector) -&gt; list[float]</strong><p>Get the output audio balance of the specified stereo loops.</p>
+</li>
+<li><strong>shoop_control.loop_record_n(loop_selector, n_cycles, cycles_delay)</strong><p>Record the given loops for N cycles synchronously.</p>
+</li>
+<li><strong>shoop_control.loop_record_with_targeted(loop_selector)</strong><p>Record the given loops in sync with the currently targeted loop.</p>
+</li>
+<li><strong>shoop_control.loop_set_gain(loop_selector, gain)</strong><p>Set the output audio gain of the specified loops as a gain factor.</p>
+</li>
+<li><strong>shoop_control.loop_set_gain(loop_selector)</strong><p>Set the output audio gain fader position as a fraction of its total range (0-1) of the given loop.</p>
+</li>
+<li><strong>shoop_control.loop_set_balance(loop_selector, balance)</strong><p>Set the audio output balance for the specified loops.</p>
+</li>
+<li><strong>shoop_control.loop_select(loop_selector, deselect_others)</strong><p>Select the specified loops. If deselect_others is true, all other loops are deselected.</p>
+</li>
+<li><strong>shoop_control.loop_target(loop_selector)</strong><p>Target the specified loop. If the selector specifies more than one loop, a single loop in the set is chosen arbitrarily. If nil or no loop is passed, the targeted loop is cleared.</p>
+</li>
+<li><strong>shoop_control.loop_clear(loop_selector)</strong><p>Clear the given loops.</p>
+</li>
+<li><strong>shoop_control.loop_clear_all()</strong><p>Clear all loops.</p>
+</li>
+<li><strong>shoop_control.loop_clear_all()</strong><p>Untarget all loops.</p>
+</li>
+<li><strong>shoop_control.loop_toggle_selected(loop_selector)</strong><p>Toggle selection on the specified loops.</p>
+</li>
+<li><strong>shoop_control.loop_toggle_targeted(loop_selector)</strong><p>Target the specified loop or untarget it if already targeted. If the selector specifies more than one loop, a single loop in the set is chosen arbitrarily. If nil or no loop is passed, the targeted loop is cleared.</p>
+</li>
+<li><strong>shoop_control.loop_adopt_ringbuffers(loop_selector, reverse_cycle_start, cycles_length, go_to_cycle, go_to_mode)</strong><p>For all channels in the given loops, grab the data currently in the ringbuffer and set it as the content (i.e. after-the-fact-recording or “grab”). reverse_cycle_start sets the start offset for playback. 0 means to play what was being recorded in the current sync loop cycle, 1 means start from the previous cycle, etc. go_to_cycle and go_to_mode can control the cycle and mode the loop will have right after adopting. cycles_length sets the loop length.</p>
+</li>
+<li><strong>shoop_control.loop_compose_add_to_end(loop_selector, loop_selector, parallel)</strong><p>Add a loop to the a composition. The first argument is the singular target loop in which the composition is stored. If empty, a composition is created. The second argument is the loop that should be added. The third argument is whether the addition should be parallel to the existing composition. If false, the loop is added to the end.</p>
+</li>
+<li><strong>shoop_control.loop_set_repeat_sync(loop_selector, active)</strong><p>Enables/disables the sync on playback repeat for the loop: whether the loop waits for sync with the sync loop after it reached its end, before restarting.</p>
+</li>
+<li><strong>shoop_control.track_get_gain(track_selector) -&gt; list[float]</strong><p>Get the gain of the given track(s) as a gain factor.</p>
+</li>
+<li><strong>shoop_control.track_get_balance(track_selector) -&gt; list[float]</strong><p>Get the balance of the given track(s) as a value between -1 and 1.</p>
+</li>
+<li><strong>shoop_control.track_get_gain_fader(track_selector) -&gt; list[float]</strong><p>Get the gain of the given track(s) as a fraction of its total range (0-1).</p>
+</li>
+<li><strong>shoop_control.track_get_input_gain(track_selector) -&gt; list[float]</strong><p>Get the input gain of the given track(s) as a gain factor.</p>
+</li>
+<li><strong>shoop_control.track_get_input_gain_fader(track_selector) -&gt; list[float]</strong><p>Get the input gain of the given track(s) as a fraction of its total range (0-1).</p>
+</li>
+<li><strong>shoop_control.track_get_muted(track_selector) -&gt; list[bool]</strong><p>Get whether the given track(s) is/are muted.</p>
+</li>
+<li><strong>shoop_control.track_set_muted(track_selector, bool)</strong><p>Set whether the given track is muted.</p>
+</li>
+<li><strong>shoop_control.track_get_input_muted(track_selector) -&gt; list[bool]</strong><p>Get whether the given tracks’ input(s) is/are muted.</p>
+</li>
+<li><strong>shoop_control.track_set_input_muted(track_selector, muted)</strong><p>Set whether the given track’s input is muted.</p>
+</li>
+<li><strong>shoop_control.track_set_gain(track_selector, vol)</strong><p>Set the given track’s gain as a gain factor.</p>
+</li>
+<li><strong>shoop_control.track_set_balance(track_selector, val)</strong><p>Set the given track’s balance as a value between -1 and 1.</p>
+</li>
+<li><strong>shoop_control.track_set_gain_fader(track_selector, vol)</strong><p>Set the given track’s gain as a fraction of its total range (0-1).</p>
+</li>
+<li><strong>shoop_control.track_set_input_gain(track_selector, vol)</strong><p>Set the given track’s input gain as a gain factor.</p>
+</li>
+<li><strong>shoop_control.track_set_input_gain_fader(track_selector, vol)</strong><p>Set the given track’s input gain as a fraction of its total range (0-1).</p>
+</li>
+<li><strong>shoop_control.set_apply_n_cycles(n)</strong><p>Set the amount of sync loop cycles future actions will be executed for. Setting to 0 will disable this - actions will be open-ended.</p>
+</li>
+<li><strong>shoop_control.get_apply_n_cycles(n)</strong><p>Get the amount of sync loop cycles future actions will be executed for. 0 means disabled.</p>
+</li>
+<li><strong>shoop_control.set_solo(val)</strong><p>Set the global “solo” control state.</p>
+</li>
+<li><strong>shoop_control.get_solo() -&gt; bool</strong><p>Get the global “solo” control state.</p>
+</li>
+<li><strong>shoop_control.set_sync_active(val)</strong><p>Set the global “sync_active” control state.</p>
+</li>
+<li><strong>shoop_control.get_sync_active() -&gt; bool</strong><p>Get the global “sync_active” control state.</p>
+</li>
+<li><strong>shoop_control.set_play_after_record(val)</strong><p>Set the global “play_after_record” control state.</p>
+</li>
+<li><strong>shoop_control.get_play_after_record() -&gt; bool</strong><p>Get the global “play_after_record” control state.</p>
+</li>
+<li><strong>shoop_control.set_default_recording_action(val)</strong><p>Set the global “default recording action” control state. Valid values are ‘record’ or ‘grab’ - others are ignored.</p>
+</li>
+<li><strong>shoop_control.get_default_recording_action() -&gt; string</strong><p>Get the global “default recording action” control state (‘record’ or ‘grab’).</p>
+</li>
+<li><strong>shoop_control.register_loop_event_cb(callback)</strong><p>Register a callback for loop events. See loop_callback for details.</p>
+</li>
+<li><strong>shoop_control.register_global_event_cb(callback)</strong><p>Register a callback for global events, e.g. global controls changes. See global_event_callback for details.</p>
+</li>
+<li><strong>shoop_control.register_keyboard_event_cb(callback)</strong><p>Register a callback for keyboard events. See keyboard_callback for details.</p>
+</li>
+<li><strong>shoop_control.one_shot_timer_cb(callback, time_ms)</strong><p>Register a callback to happen after the given amount of ms, once.</p>
+</li>
+<li><strong>shoop_control.auto_open_device_specific_midi_control_output(device_name_filter_regex, opened_callback, connected_callback, msg_rate_limit_hz)</strong><p>Instruct the application to automatically open a MIDI control output port if a device matching the regex appears, and connect to it. Also registers callbacks for when the port is opened and connected. These callbacks just pass a port object which has a ‘send’ method to send bytes. “msg_rate_limit_hz” can be used to limit the rate at which messages will be sent to the port. Some devices become unstable if sent too fast. Setting this to 0 disables the limit.</p>
+</li>
+<li><strong>shoop_control.auto_open_device_specific_midi_control_input(device_name_filter_regex, message_callback)</strong><p>Instruct the application to automatically open a MIDI control input port if a device matching the regex appears, and connect to it. Also registers a callback for received MIDI events on such a port. See midi_callback for details.</p>
+</li>
+<li><strong>type loop_event_type</strong><p>Loop event type. Possible values: - shoop_control.constants.LoopEventType_ModeChanged - shoop_control.constants.LoopEventType_LengthChanged - shoop_control.constants.LoopEventType_SelectedChanged - shoop_control.constants.LoopEventType_TargetedChanged - shoop_control.constants.LoopEventType_CoordsChanged</p>
+</li>
+<li><strong>type loop_callback</strong><p>Loop event callback type. The callback takes an event argument, which is a table with fields: - ‘coords’ (table [x,y]) - ‘type’ (loop_event_type) - ‘mode’ (mode) - ‘selected’ (bool) - ‘targeted’ (bool) - ‘length’ (int). Coordinates map to the loop grid. Only the sync loop has a special location [-1,0].</p>
+</li>
+<li><strong>type global_event_type</strong><p>Loop event type. Possible values: - shoop_control.constants.GlobalEventType_GlobalControlChanged</p>
+</li>
+<li><strong>type global_event_callback</strong><p>Global event callback type. The callback takes a table with fields: ‘type’ (global_event_type)</p>
+</li>
+<li><strong>type keyboard_event_callback</strong><p>Keyboard event callback type. The callback takes a table with fields: - ‘type’ (keyboard_event_type, see shoop_control.constants.KeyEventType_[Pressed, Released]) - ‘key’ (integer, see keycode constants e.g. shoop_control.constants.Key_[…]) - ‘modifiers’ (integer, flag combination of e.g. shoop_control.constants.KeyModifier_[…]Modifier)</p>
+</li>
+</ul>
+</p>
+</section>
+<section id="module-shoop-coords">
+<h4 id="module-shoop-coords">module: shoop_coords<a class="headerlink" href="#module-shoop-coords" title="Link to this heading">¶</a></h4>
+<p>Provides helper functions to manipulate loop and track coordinates. Implemented in <cite>shoop_coords.lua</cite>.</p>
+<p><ul>
+<li><strong>shoop_coords.move(coords, direction_key) -&gt; coords</strong><p>Take a single coordinates list and return coordinates if they were moved to the direction indicated by the given keyboard key.</p>
+</li>
+<li><strong>shoop_coords.extreme(all_coords, direction_key, highest) -&gt; coord</strong><p>Look for the highest (if highest == true) or lowest index (row/col) in the given direction</p>
+</li>
+</ul>
+</p>
+</section>
+<section id="module-shoop-helpers">
+<h4 id="module-shoop-helpers">module: shoop_helpers<a class="headerlink" href="#module-shoop-helpers" title="Link to this heading">¶</a></h4>
+<p>Provides helper functions for advanced control. Implemented in <cite>shoop_helpers.lua</cite>.</p>
+<p><ul>
+<li><strong>shoop_helpers.expand_selection(direction_key)</strong><p>Given a direction key, expand the current selection of loops by adding the loop(s) in the given direction.</p>
+</li>
+<li><strong>shoop_helpers.shrink_selection(direction_key)</strong><p>Given a direction key, shrink the current selection of loops by removing loops “coming from” that direction.</p>
+</li>
+<li><strong>shoop_helpers.move_selection(direction_key)</strong><p>Given a direction key, move the selection of loops to that direction if none of the loops would be out of bounds.</p>
+</li>
+<li><strong>shoop_helpers.default_loop_action(loop_selector, dry)</strong><p>Perform the “default loop action” on a set of loop coordinates. The default loop action is designed to cycle intuitively from empty to recording/grabbing, playing and stopping. If “dry” is set to true, going to playback will go to playing dry through wet instead.</p>
+</li>
+<li><strong>shoop_helpers.record_into_first_empty(overdub)</strong><p>In the track(s) of all selected loop(s) (or recording loop(s) of none selected), find the first empty loop and start recording into it. If overdub is true, already recording loops will transition to Playing. Otherwise, they will transition to Stopped.</p>
+</li>
+<li><strong>shoop_helpers.toggle_solo()</strong><p>Toggle the global “solo” control</p>
+</li>
+<li><strong>shoop_helpers.toggle_sync_active()</strong><p>Toggle the global “sync active” control</p>
+</li>
+<li><strong>shoop_helpers.toggle_play_after_record()</strong><p>Toggle the global “sync active” control</p>
+</li>
+<li><strong>shoop_helpers.track_toggle_muted(index)</strong><p>Toggle the muted state of the given track. -1 is the sync track.</p>
+</li>
+<li><strong>shoop_helpers.track_toggle_input_muted(index)</strong><p>Toggle the input muted state of the given track. -1 is the sync track.</p>
+</li>
+<li><strong>shoop_helpers.start_sampler(loops)</strong><p>Start “sampler mode” on the given loops. This just means to transition them to recording (if empty) or playing (if non-empty) immediately, without regard for sync with other loops. They will immediately exit the mode when stop_sampler() is called.</p>
+</li>
+<li><strong>shoop_helpers.stop_sampler()</strong><p>Stop “sampler mode”. This means that any loop which was started with “start_sampler(…)” will immediately stop.</p>
+</li>
+</ul>
+</p>
+</section>
+<section id="module-shoop-format">
+<h4 id="module-shoop-format">module: shoop_format<a class="headerlink" href="#module-shoop-format" title="Link to this heading">¶</a></h4>
+<p>Provides helper functions for formatting strings. Implemented in <cite>shoop_format.lua</cite>.</p>
+<p><ul>
+<li><strong>shoop_format.format_table(table, recursive) -&gt; string</strong><p>Format a table such that all elements can be inspected.</p>
+</li>
+</ul>
+</p>
+</section>
+</section>
+</section>
+<section id="software-design">
+<h2 id="software-design">Software Design<a class="headerlink" href="#software-design" title="Link to this heading">¶</a></h2>
+<section id="architecture">
+<h3 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Link to this heading">¶</a></h3>
+<p><strong>ShoopDaLoop</strong> is built up as a back-end and a front-end, which are connected through a C API interface.</p>
+<figure class="align-default" id="id3">
+<p class="plantuml">
+<img alt="component backend [
+    libshoopdaloop_backend (C++ back-end)
+]
+component frontend [
+    shoopdaloop (QML front-end)
+]
+collections extensions [
+    Front-end Extensions (Rust + cxx-qt)
+]
+interface interface [
+    libshoopdaloop_backend C API
+]
+component scripting [
+    LUA scripts
+]
+
+backend - interface
+extensions ..&gt; interface : uses
+frontend - extensions
+frontend ..&gt; scripting : embeds" src="_images/plantuml-68c65db4302d5b68b5fb424f7d28d97596af3d02.png"/>
+</p>
+<figcaption>
+<p><span class="caption-text">Overall software stack</span><a class="headerlink" href="#id3" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
+<p>The split between front-end and back-end is not entirely pure, as different parts of the functionality are implemented in the layer where it is most convenient.</p>
+<p>The <strong>libshoopdaloop_backend backend</strong> handles:</p>
+<ul class="simple">
+<li><p>All real-time audio + MIDI processing</p></li>
+<li><p>Interconnections of ports, loop channels and FX</p></li>
+<li><p>Nearly all calls to the JACK API (exceptions below)</p></li>
+<li><p>Logging and profiling</p></li>
+<li><p>Basic loop synchronization (loop transitions)</p></li>
+</ul>
+<p>The <strong>front-end + extensions</strong> handle:</p>
+<ul class="simple">
+<li><p>The user interface</p></li>
+<li><p>Session saving/loading</p></li>
+<li><p>Advanced loop synchronization (scheduling loop transitions over multiple sync loop cycles)</p></li>
+<li><p>Composite loops</p></li>
+<li><p>Thread-decoupled forwarding of UI events to/from the back-end</p></li>
+</ul>
+<p>The <strong>LUA scripts</strong> are meant for parts that may need to be added/modified by individual users, such as:</p>
+<ul class="simple">
+<li><p>MIDI controller profiles</p></li>
+<li><p>Keyboard control</p></li>
+</ul>
+</section>
+<section id="build-and-packaging">
+<h3 id="build-and-packaging">Build And Packaging<a class="headerlink" href="#build-and-packaging" title="Link to this heading">¶</a></h3>
+<p>The combination of different languages, OSes and the dual dependency on Qt and PySide has resulted in a complex build approach.
+As the project is packaged as a Python package, an approach based on <strong>pyproject.toml</strong> has been taken.
+For the C++ parts, <strong>CMake</strong> is used.
+For combining the two, a tool called <strong>py-build-cmake</strong> is used.
+The <strong>CMake</strong> part cannot be run trivially without the <strong>py-build-cmake</strong> integration because there is also some code generation taking place which requires both sides of the equation.
+A source package cannot be built - only a wheel directly. Please refer to the build instructions for details.</p>
+<p>For a build on the same system where ShoopDaLoop is to be used, the building is pretty much a “straightforward” py-build-cmake build.</p>
+<p>For the official release wheels though, the setup is more complicated because we need to be binary-compatible with the Qt libraries that ship with PySide. Documentation for this will be added in the future, when the still pending improvements to this build flow are finished.</p>
+</section>
+<section id="debugging">
+<h3 id="debugging">Debugging<a class="headerlink" href="#debugging" title="Link to this heading">¶</a></h3>
+<p>There are several tools at your disposal for debugging:</p>
+<ul class="simple">
+<li><p>The <strong>logging framework</strong> is available at all levels in the software stack. It allows for logging at different levels, and filtering on levels or components where the message originated from. Note that in a release build, the <strong>debug</strong> and <strong>trace</strong> levels are removed from C++ during compilation, so less logging is available.</p></li>
+<li><p>The built-in <strong>profiler</strong> allows checking which parts take up the most time in the audio process loop. It can be accessed from the user interface.</p></li>
+<li><p>The built-in <strong>debug inspector</strong> can inspect back-end objects’ states from the user interface.</p></li>
+<li><p>ShoopDaLoop can be run with the <cite>-d PORT</cite> flag to connect a QML debug client or profiler (such as those offered from QtCreator).</p></li>
+</ul>
+</section>
+<section id="testing">
+<h3 id="testing">Testing<a class="headerlink" href="#testing" title="Link to this heading">¶</a></h3>
+<p>The test suites for <strong>ShoopDaLoop</strong> are by no means complete, but do test essential functions at several levels. The following testing tools exist:</p>
+<ul class="simple">
+<li><p>C++ unit and integration tests powered by <strong>boost_ext::ut</strong>.</p></li>
+<li><p>Rust unit and integration tests powered by <strong>cargo</strong>, testing individual front-end extensions.</p></li>
+<li><p>QML unit and integration tests powered by <strong>Qt Quick Test</strong>.</p></li>
+</ul>
+<p>The QML integration tests come closest to “system-level”. For example, there are tests there which can check cycle-accurately that the correct audio samples are produced based on what the user clicked in the user interface.</p>
+<p>Coverage is generated at each of the aforementioned test levels. QML coverage generation is powered by <a class="reference external" href="https://github.com/SanderVocke/qoverage">qoverage</a>.</p>
+</section>
+<section id="continuous-integration">
+<h3 id="continuous-integration">Continuous integration<a class="headerlink" href="#continuous-integration" title="Link to this heading">¶</a></h3>
+<p>CI automation code is in-repo for <strong>GitHub Actions</strong>.</p>
+</section>
+</section>
+</section>
+
+
+          </article>
+        </div>
+      </div>
+    </main>
+  </div>
+  <footer class="md-footer">
+    <div class="md-footer-nav">
+      <nav class="md-footer-nav__inner md-grid">
+          
+            <a href="usage.html" title="Usage"
+               class="md-flex md-footer-nav__link md-footer-nav__link--prev"
+               rel="prev">
+              <div class="md-flex__cell md-flex__cell--shrink">
+                <i class="md-icon md-icon--arrow-back md-footer-nav__button"></i>
+              </div>
+              <div class="md-flex__cell md-flex__cell--stretch md-footer-nav__title">
+                <span class="md-flex__ellipsis">
+                  <span
+                      class="md-footer-nav__direction"> "Previous" </span> Usage </span>
+              </div>
+            </a>
+          
+          
+        </a>
+        
+      </nav>
+    </div>
+    <div class="md-footer-meta md-typeset">
+      <div class="md-footer-meta__inner md-grid">
+        <div class="md-footer-copyright">
+          <div class="md-footer-copyright__highlight">
+              &#169; Copyright 2023, Sander Vocke.
+              
+          </div>
+            Created using
+            <a href="http://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+             and
+            <a href="https://github.com/bashtage/sphinx-material/">Material for
+              Sphinx</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+  <script src="_static/javascripts/application.js"></script>
+  <script>app.initialize({version: "1.0.4", url: {base: ".."}})</script>
+  </body>
+</html>
