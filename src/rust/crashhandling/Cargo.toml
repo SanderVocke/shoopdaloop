@@ -4,7 +4,6 @@ edition = "2021"
 
 [dependencies]
 common = { path = "../common" }
-
 minidumper = { workspace = true }
 crash-handler = { workspace = true }
 ctor = { workspace = true }
@@ -15,6 +14,9 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 anyhow = { workspace = true }
 once_cell = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+winapi = { workspace = true }
 
 [features]
 # Dummy build to build dependencies only

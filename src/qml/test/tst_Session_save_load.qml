@@ -193,7 +193,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
 
-                    if (!ShoopRustFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null))  {
+                    if (!ShoopRustFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null, 3000))  {
                         testcase.fail("Could not load MIDI to channels.")
                     }
                     testcase.wait_updated(session.backend)
@@ -226,7 +226,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     verify_eq(mt_midi_channels()[0].get_recorded_midi_msgs(), [])
 
-                    if (!ShoopRustFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null)) {
+                    if (!ShoopRustFileIO.load_midi_to_channels(filename, 48000, [mt_midi_channels()[0]], null, null, null, 3000)) {
                         testcase.fail("Could not load MIDI to channels.")
                     }
                     testcase.wait_updated(session.backend)
@@ -300,7 +300,7 @@ ShoopTestFile {
                 "test_save_load_session_audio_and_midi_resampled": () => {
                     clear_all()
                     check_backend()
-                    
+
                     verify(other_session.backend && other_session.backend.ready, "resampled backend not initialized")
 
                     let midichan = [

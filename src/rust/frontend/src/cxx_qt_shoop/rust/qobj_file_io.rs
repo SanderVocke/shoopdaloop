@@ -3,7 +3,9 @@ use common::logging::macros::*;
 use cxx_qt_lib::{QList, QMap, QVector};
 use cxx_qt_lib_shoop::connection_types;
 use cxx_qt_lib_shoop::invokable::invoke;
-use cxx_qt_lib_shoop::qobject::{qobject_property_int, AsQObject, FromQObject};
+use cxx_qt_lib_shoop::qobject::{
+    qobject_property_bool, qobject_property_int, AsQObject, FromQObject,
+};
 use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
 use cxx_qt_lib_shoop::qvariant_helpers::{
     qlist_f32_to_qvariant, qvariant_to_qobject_ptr, qvariant_to_qvariantlist,
@@ -27,7 +29,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub fn register_qml_singleton(module_name: &str, type_name: &str) {
     let mut mdl = String::from(module_name);
@@ -219,6 +221,7 @@ fn load_midi_to_channels_impl<'a>(
     maybe_set_n_preplay_samples: Option<usize>,
     maybe_set_start_offset: Option<isize>,
     maybe_update_loop_to_data_length: Option<cxx::UniquePtr<QSharedPointer_QObject>>,
+    timeout: Duration,
 ) -> Result<(), anyhow::Error> {
     let extension = filename.extension().ok_or(anyhow::anyhow!(
         "Could not determine filename extension for {filename:?}"
@@ -250,10 +253,25 @@ fn load_midi_to_channels_impl<'a>(
     for channel in channels {
         unsafe {
             let channel = channel.data()?;
+            let now = Instant::now();
+            let channel_ready = || {
+                qobject_property_bool(&mut *channel, "initialized")
+                    .map_err(|e| anyhow::anyhow!("could not get bool property: {e}"))
+            };
+            let timeout_expired = || now.elapsed() > timeout;
+            while !channel_ready()? && !timeout_expired() {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            if !channel_ready()? {
+                return Err(anyhow::anyhow!(
+                    "Channel was not ready to receive data within the timeout ({:?})",
+                    timeout
+                ));
+            }
             invoke::<_, (), _>(
                 &mut *channel,
                 "load_midi_data(QVector<QVariant>)",
-                connection_types::BLOCKING_QUEUED_CONNECTION,
+                connection_types::QUEUED_CONNECTION,
                 &messages_qlist,
             )?;
             if let Some(start_offset) = maybe_set_start_offset {
@@ -303,6 +321,7 @@ fn load_soundfile_to_channels_impl(
     maybe_set_n_preplay_samples: Option<usize>,
     maybe_set_start_offset: Option<isize>,
     maybe_update_loop_to_data_length: Option<cxx::UniquePtr<QSharedPointer_QObject>>,
+    timeout: Duration,
 ) -> Result<(), anyhow::Error> {
     let combined_data: Vec<f32>;
     let n_channels: usize;
@@ -369,17 +388,32 @@ fn load_soundfile_to_channels_impl(
                 for target_channel in target_channels.iter() {
                     unsafe {
                         let target_channel = target_channel.as_ref().unwrap().data().unwrap();
+                        let now = Instant::now();
+                        let channel_ready = || {
+                            qobject_property_bool(&mut *target_channel, "initialized")
+                                .map_err(|e| anyhow::anyhow!("could not get bool property: {e}"))
+                        };
+                        let timeout_expired = || now.elapsed() > timeout;
+                        while !channel_ready()? && !timeout_expired() {
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        if !channel_ready()? {
+                            return Err(anyhow::anyhow!(
+                                "Channel was not ready to receive data within the timeout ({:?})",
+                                timeout
+                            ));
+                        }
                         invoke::<_, (), _>(
                             &mut *target_channel,
                             "load_audio_data(QList<float>)",
-                            connection_types::DIRECT_CONNECTION,
+                            connection_types::QUEUED_CONNECTION,
                             &(*qlist),
                         )?;
                         if let Some(start_offset) = maybe_set_start_offset {
                             invoke::<_, (), _>(
                                 &mut *target_channel,
                                 "push_start_offset(::std::int32_t)",
-                                connection_types::DIRECT_CONNECTION,
+                                connection_types::QUEUED_CONNECTION,
                                 &(start_offset as i32),
                             )?;
                         }
@@ -387,7 +421,7 @@ fn load_soundfile_to_channels_impl(
                             invoke::<_, (), _>(
                                 &mut *target_channel,
                                 "push_n_preplay_samples(::std::int32_t)",
-                                connection_types::DIRECT_CONNECTION,
+                                connection_types::QUEUED_CONNECTION,
                                 &(n_preplay as i32),
                             )?;
                         }
@@ -404,7 +438,7 @@ fn load_soundfile_to_channels_impl(
             invoke::<_, (), _>(
                 &mut *loop_obj,
                 "set_length(::std::int32_t)",
-                connection_types::DIRECT_CONNECTION,
+                connection_types::QUEUED_CONNECTION,
                 &(target_frames as i32),
             )?;
         }
@@ -825,6 +859,7 @@ impl FileIO {
         maybe_set_n_preplay_samples: QVariant,
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
+        ready_timeout_ms: i32,
     ) -> *mut QObject {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
@@ -862,6 +897,7 @@ impl FileIO {
                             true => None,
                         },
                         maybe_loop,
+                        Duration::from_millis(ready_timeout_ms as u64),
                     )
                     .map_err(|e| anyhow::anyhow!("Failed to load MIDI to channels: {e}"))
                 },
@@ -883,6 +919,7 @@ impl FileIO {
         maybe_set_n_preplay_samples: QVariant,
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
+        ready_timeout_ms: i32,
     ) -> bool {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let backend_channels: Vec<cxx::UniquePtr<QSharedPointer_QObject>> =
@@ -911,6 +948,7 @@ impl FileIO {
                     true => None,
                 },
                 maybe_loop,
+                Duration::from_millis(ready_timeout_ms as u64),
             )
         }() {
             error!("Could not load MIDI to channels: {e}");
@@ -1008,6 +1046,7 @@ impl FileIO {
         maybe_set_n_preplay_samples: QVariant,
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
+        ready_timeout_ms: i32,
     ) -> *mut QObject {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
@@ -1032,6 +1071,7 @@ impl FileIO {
                         .map(|v| v as usize),
                     maybe_set_start_offset.value::<i32>().map(|v| v as isize),
                     maybe_loop,
+                    Duration::from_millis(ready_timeout_ms as u64),
                 )
                 .map_err(|e| anyhow::anyhow!("Failed to load soundfile to channels: {e}"))
             });
@@ -1048,6 +1088,7 @@ impl FileIO {
         maybe_set_n_preplay_samples: QVariant,
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
+        ready_timeout_ms: i32,
     ) -> bool {
         // Get shared pointers to back-end objects, which we can move to our
         // other-thread function.
@@ -1064,6 +1105,7 @@ impl FileIO {
                 .map(|v| v as usize),
             maybe_set_start_offset.value::<i32>().map(|v| v as isize),
             maybe_loop,
+            Duration::from_millis(ready_timeout_ms as u64),
         ) {
             error!("Failed to load soundfile to channels: {e}");
             return false;

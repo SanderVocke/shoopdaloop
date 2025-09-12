@@ -65,7 +65,8 @@ ShoopRustLoopChannelGui {
                     [[root]],
                     descriptor.n_preplay_samples,
                     descriptor.start_offset,
-                    null)
+                    null,
+                    3000)
                 task.then_delete()
                 return task
             }
@@ -89,7 +90,7 @@ ShoopRustLoopChannelGui {
     }
 
     function load_data(data) { load_audio_data(data) }
-    function get_data() { 
+    function get_data() {
         let rval = get_audio_data()
         return rval
     }

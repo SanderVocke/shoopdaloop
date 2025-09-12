@@ -68,7 +68,7 @@ ShoopTestFile {
                     }
 
                     var filename = ShoopRustFileIO.generate_temporary_filename() + '.wav'
-                    
+
                     // Jump through some hoops to avoid getting a QJSValue to
                     // the file I/O. Loading via the channel forces the data type.
                     channel().load_data(data)
@@ -84,7 +84,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     if (!ShoopRustFileIO.load_soundfile_to_channels(filename, 48000, null,
-                        [[channel()]], null, null, null)) {
+                        [[channel()]], null, null, null, 3000)) {
                             testcase.fail("Failed to load soundfile to channels");
                         }
 
@@ -125,7 +125,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     if (!ShoopRustFileIO.load_soundfile_to_channels(filename, 48000, 13000,
-                        [[channel()]], null, null, null)) {
+                        [[channel()]], null, null, null, 3000)) {
                             testcase.fail("Failed to load soundfile to channels");
                         }
 
@@ -151,7 +151,7 @@ ShoopTestFile {
                     }
 
                     var filename = ShoopRustFileIO.generate_temporary_filename() + '.wav'
-                    
+
                     // Jump through some hoops to avoid getting a QJSValue to
                     // the file I/O. Loading via the channel forces the data type.
                     loop2_channels()[0].load_data(data)
@@ -170,7 +170,7 @@ ShoopTestFile {
 
                     verify_eq(loop2_channels().length, 2)
                     if (!ShoopRustFileIO.load_soundfile_to_channels(filename, 48000, 13000,
-                        [[loop2_channels()[0]], [loop2_channels()[1]]], null, null, null)) {
+                        [[loop2_channels()[0]], [loop2_channels()[1]]], null, null, null, 3000)) {
                             testcase.fail("Failed to load soundfile to channels");
                         }
 

@@ -118,6 +118,7 @@ pub mod ffi {
             maybe_set_n_preplay_samples: QVariant,
             maybe_set_start_offset: QVariant,
             maybe_update_loop_to_data_length: QVariant,
+            ready_timeout_ms: i32,
         ) -> *mut QObject;
 
         #[qinvokable]
@@ -129,6 +130,7 @@ pub mod ffi {
             maybe_set_n_preplay_samples: QVariant,
             maybe_set_start_offset: QVariant,
             maybe_update_loop_to_data_length: QVariant,
+            ready_timeout_ms: i32,
         ) -> bool;
 
         // returns an AsyncTask
@@ -159,6 +161,7 @@ pub mod ffi {
             maybe_set_n_preplay_samples: QVariant,
             maybe_set_start_offset: QVariant,
             maybe_update_loop_to_data_length: QVariant,
+            ready_timeout_ms: i32,
         ) -> *mut QObject;
 
         #[qinvokable]
@@ -171,6 +174,7 @@ pub mod ffi {
             maybe_set_n_preplay_samples: QVariant,
             maybe_set_start_offset: QVariant,
             maybe_update_loop_to_data_length: QVariant,
+            ready_timeout_ms: i32,
         ) -> bool;
 
         #[qinvokable]
