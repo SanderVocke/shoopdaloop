@@ -232,10 +232,12 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
 
                     midi_output_port.dummy_request_data(40)
+                    testcase.wait_updated(session.backend)
 
                     // Process 40 frames (play back twice)
                     session.backend.dummy_request_controlled_frames(40)
                     session.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(session.backend)
                     let out = midi_output_port.dummy_dequeue_midi_msgs()
 
                     midi_input_port.dummy_clear_queues()
@@ -280,9 +282,9 @@ ShoopTestFile {
                                 [chan],
                                 0,
                                 20,
-                                false)) {
-                                    testcase.fail("Could not load MIDI to channels."),
-                                3000
+                                false,
+                                3000)) {
+                                    testcase.fail("Could not load MIDI to channels.")
                                 }
 
                     lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)
@@ -369,9 +371,9 @@ ShoopTestFile {
                                 [chan],
                                 0,
                                 0,
-                                false))  {
-                                    testcase.fail("Could not load MIDI to channels."),
-                                3000
+                                false,
+                                3000))  {
+                                    testcase.fail("Could not load MIDI to channels.")
                                 }
 
                     lut.transition(ShoopRustConstants.LoopMode.Playing, ShoopRustConstants.DontWaitForSync, ShoopRustConstants.DontAlignToSyncImmediately)

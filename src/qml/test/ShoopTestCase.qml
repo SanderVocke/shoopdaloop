@@ -11,7 +11,11 @@ Item {
     property string filename : 'UnknownTestFile'
     property var logger : ShoopRustLogger { name: `Frontend.Qml.ShoopTestCase` }
 
-    property bool print_error_traces: ShoopRustOSUtils.get_env_var("QMLTEST_NO_ERROR_TRACES") == null
+    property bool print_error_traces: {
+        let result = (ShoopRustOSUtils.get_env_var("QMLTEST_NO_ERROR_TRACES") === null) ||
+                     (ShoopRustOSUtils.get_env_var("QMLTEST_NO_ERROR_TRACES") === undefined)
+        return result
+    }
 
     // It seems the built-in test function filter of the QML test runner is not working.
     // Provide a means to only run a subset of tests.

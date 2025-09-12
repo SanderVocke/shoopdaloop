@@ -6,6 +6,9 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+
+        include!("cxx-qt-lib/qvariant.h");
+        type QVariant = cxx_qt_lib::QVariant;
     }
 
     unsafe extern "RustQt" {
@@ -24,7 +27,7 @@ pub mod ffi {
         fn cause_segfault(self: &OSUtils);
 
         #[qinvokable]
-        fn get_env_var(self: &OSUtils, var: &QString) -> QString;
+        fn get_env_var(self: &OSUtils, var: &QString) -> QVariant;
     }
 
     unsafe extern "C++" {

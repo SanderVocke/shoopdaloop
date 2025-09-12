@@ -3,7 +3,7 @@ shoop_log_unit!("Frontend.OSUtils");
 
 pub use crate::cxx_qt_shoop::qobj_os_utils_bridge::ffi::OSUtils;
 use crate::cxx_qt_shoop::qobj_os_utils_bridge::ffi::*;
-use cxx_qt_lib::QString;
+use cxx_qt_lib::{QString, QVariant};
 use std::env;
 
 pub fn register_qml_singleton(module_name: &str, type_name: &str) {
@@ -34,15 +34,15 @@ impl OSUtils {
         panic!("Manually triggered panic");
     }
 
-    pub fn get_env_var(self: &OSUtils, var: &QString) -> QString {
+    pub fn get_env_var(self: &OSUtils, var: &QString) -> QVariant {
         match env::var(var.to_string()) {
             Ok(value) => {
                 debug!("Read env var {}: {}", var.to_string(), value);
-                return QString::from(&value);
+                return QVariant::from(&QString::from(&value));
             }
             Err(_value) => {
                 debug!("Failed to read env var {}", var.to_string());
-                return QString::default();
+                return QVariant::default();
             }
         }
     }
@@ -64,6 +64,13 @@ mod tests {
         let os_utils = make_unique_osutils();
         let var: &str = if cfg!(windows) { "UserProfile" } else { "HOME" };
         let home = env::var(var).unwrap();
-        assert_eq!(os_utils.get_env_var(&QString::from(var)).to_string(), home);
+        assert_eq!(
+            os_utils
+                .get_env_var(&QString::from(var))
+                .value::<QString>()
+                .unwrap_or(QString::default())
+                .to_string(),
+            home
+        );
     }
 }
