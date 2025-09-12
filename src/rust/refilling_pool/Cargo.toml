@@ -1,0 +1,16 @@
+[package]
+name = "refilling_pool"
+edition = "2021"
+
+[lib]
+
+[dependencies]
+crossbeam-queue = { workspace = true }
+cxx = { workspace = true }
+
+[build-dependencies]
+cxx-build = { workspace = true }
+
+[features]
+# Dummy build to build dependencies only
+prebuild = []
