@@ -164,7 +164,7 @@ jobs:
       volumes: ${{ matrix.container.volumes }}
     env:
       PATH_SEPARATOR: ":"
-      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
+      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
     needs: maybe_create_release
     if: ${{ (github.event.inputs.build_linux || 'true') == 'true' }}
@@ -187,20 +187,20 @@ jobs:
       if: always()
       uses: ./.github/actions/build_toplevel
       with:
-        name: ${{ matrix.kind.name }}
-        platform: ${{ matrix.kind.platform }}
-        release_build: ${{ matrix.kind.release_build }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
+        coverage: ${{ matrix.kind.coverage }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        name: ${{ matrix.kind.name }}
+        package_kind: ${{ matrix.kind.package_kind }}
+        platform: ${{ matrix.kind.platform }}
         prepare_kind: 'linux'
         python: python3.11
-        package_kind: ${{ matrix.kind.package_kind }}
+        release_build: ${{ matrix.kind.release_build }}
         second_package_kind: ${{ matrix.kind.second_package_kind }}
+        sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
         third_package_kind: ${{ matrix.kind.third_package_kind }}
-        coverage: ${{ matrix.kind.coverage }}
         upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
     - uses: ./.github/actions/checkpoint
       if: always()
 
@@ -284,7 +284,7 @@ jobs:
 
 
 
-  
+
 
   ##############################################################
   ## MacOS
@@ -298,39 +298,39 @@ jobs:
           - name: macos_release
             release_build: true
             package_kind: portable_folder
-            #second_package_kind: dmg
+            second_package_kind: dmg
             third_package_kind: test_binaries
             os: macos-13
             upload_release_assets: true
             platform: macos-x64
-          # - name: macos_debug
-          #   release_build: false
-          #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
-          #   os: macos-13
-          #   upload_release_assets: true
-          #   platform: macos-x64
+          - name: macos_debug
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            os: macos-13
+            upload_release_assets: true
+            platform: macos-x64
           - name: macos_release_arm
             release_build: true
             package_kind: portable_folder
-            #second_package_kind: dmg
+            second_package_kind: dmg
             third_package_kind: test_binaries
             os: macos-14
             upload_release_assets: true
             platform: macos-arm
-          # - name: macos_debug_arm
-          #   release_build: false
-          #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
-          #   os: macos-14
-          #   upload_release_assets: true
-          #   platform: macos-arm
+          - name: macos_debug_arm
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            os: macos-14
+            upload_release_assets: true
+            platform: macos-arm
     runs-on: ${{ matrix.kind.os }}
     needs: maybe_create_release
-    if: ${{ (github.event.inputs.build_macos || 'false') == 'true' }}
+    if: ${{ (github.event.inputs.build_macos || 'true') == 'true' }}
     env:
        PATH_SEPARATOR: ":"
-       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
+       COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
        checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
     steps:
     - name: Checkout
@@ -344,23 +344,21 @@ jobs:
     - name: Build
       uses: ./.github/actions/build_toplevel
       with:
-        name: ${{ matrix.kind.name }}
-        platform: ${{ matrix.kind.platform }}
-        cmake_build_type: ${{ matrix.kind.build_type }}
         cmake_opts: ${{ matrix.kind.cmake_opts }}
-        prepare_kind: 'macos'
-        python: python3.9
-        appbundle: ${{ matrix.kind.appbundle }}
-        package_kind: ${{ matrix.kind.package_kind }}
-        second_package_kind: ${{ matrix.kind.second_package_kind }}
-        third_package_kind: ${{ matrix.kind.third_package_kind }}
-        release_build: ${{ matrix.kind.release_build }}
         coverage: ${{ matrix.kind.coverage }}
-        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         macos_target_version: ${{ matrix.kind.macos_target_version }}
-        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
+        name: ${{ matrix.kind.name }}
+        package_kind: ${{ matrix.kind.package_kind }}
+        platform: ${{ matrix.kind.platform }}
+        prepare_kind: 'macos'
+        python: python3.9
+        release_build: ${{ matrix.kind.release_build }}
+        second_package_kind: ${{ matrix.kind.second_package_kind }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        third_package_kind: ${{ matrix.kind.third_package_kind }}
+        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+        vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
     - uses: ./.github/actions/checkpoint
       if: always()
 
@@ -376,12 +374,12 @@ jobs:
             package: shoopdaloop.*.release-macos-arm.portable.tar.gz
             second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
             sentry_build_type: release
-          # - name: debug_macos_arm
-          #   python: python3
-          #   container: null
-          #   os: macos-14
-          #   package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
+          - name: debug_macos_arm
+            python: python3
+            container: null
+            os: macos-14
+            package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
+            second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
           - name: release_macos
             python: python3
             container: null
@@ -389,15 +387,15 @@ jobs:
             package: shoopdaloop.*.release-macos-x64.portable.tar.gz
             second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
             sentry_build_type: release
-          # - name: debug_macos
-          #   python: python3
-          #   container: null
-          #   os: macos-13
-          #   package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
+          - name: debug_macos
+            python: python3
+            container: null
+            os: macos-13
+            package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
+            second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
     needs: build_macos
-    if: ${{ (github.event.inputs.test_macos || 'false') == 'true' }}
+    if: ${{ (github.event.inputs.test_macos || 'true') == 'true' }}
     container:
       image: ${{ matrix.kind.container }}
       options: --user root --workdir / # Note: this gets disregarded if container is null
@@ -421,6 +419,7 @@ jobs:
         coverage: ${{ matrix.kind.coverage }}
         python: ${{ matrix.kind.python }}
         codecov_token: ${{ secrets.CODECOV_TOKEN }}
+        sentry_key: ${{ secrets.SENTRY_KEY }}
         sentry_build_type: ${{ matrix.kind.sentry_build_type }}
     - uses: ./.github/actions/checkpoint
 
@@ -462,16 +461,16 @@ jobs:
             third_package_kind: test_binaries
             upload_release_assets: true
             platform: windows-msvc-x64
-          # - name: windows_debug
-          #   os: windows-2022
-          #   python: python.exe
-          #   pip: python.exe -m pip
-          #   container_image: null
-          #   prepare: 'windows'
-          #   release_build: false
-          #   package_kind: portable_folder
-          #   second_package_kind: test_binaries
-          #   platform: windows-msvc-x64
+          - name: windows_debug
+            os: windows-2022
+            python: python.exe
+            pip: python.exe -m pip
+            container_image: null
+            prepare: 'windows'
+            release_build: false
+            package_kind: portable_folder
+            second_package_kind: test_binaries
+            platform: windows-msvc-x64
           # - name: windows_arm_debug
           #   os: windows-11-arm
           #   python: python.exe
@@ -487,8 +486,8 @@ jobs:
     env:
       NATIVE_SHELL_CMD: "powershell -Command"
       PATH_SEPARATOR: ";"
-      CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _ 
-      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _ 
+      CONVERT_PATH_FN: bash -c "cygpath -w \$1 | sed 's/\\\\/\\\\\\\\/g'" _
+      COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
     if: ${{ (github.event.inputs.build_windows || 'true') == 'true' }}
     container:
@@ -543,13 +542,14 @@ jobs:
             package: ShoopDaLoop-Installer-*.exe
             pathconvert: "| cygpath -u -f -"
             sentry_build_type: release
-          # - name: debug_windows
-          #   python: python.exe
-          #   container: null
-          #   os: windows-2022
-          #   package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
-          #   second_package: shoopdaloop.*.debug-windows-msvc-x64.test_binaries.tar.gz
-          #   pathconvert: "| cygpath -u -f -"
+          - name: debug_windows
+            python: python.exe
+            container: null
+            os: windows-2022
+            package: shoopdaloop.*.debug-windows-msvc-x64.portable.tar.gz
+            second_package: shoopdaloop.*.debug-windows-msvc-x64.test_binaries.tar.gz
+            pathconvert: "| cygpath -u -f -"
+            sentry_build_type: debug
     runs-on: ${{ matrix.kind.os }}
     needs: build_windows
     env:
