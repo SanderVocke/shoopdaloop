@@ -919,7 +919,7 @@ impl FileIO {
         maybe_set_n_preplay_samples: QVariant,
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
-        ready_timeout_ms: i32
+        ready_timeout_ms: i32,
     ) -> bool {
         if let Err(e) = || -> Result<(), anyhow::Error> {
             let backend_channels: Vec<cxx::UniquePtr<QSharedPointer_QObject>> =
@@ -948,7 +948,7 @@ impl FileIO {
                     true => None,
                 },
                 maybe_loop,
-                Duration::from_millis(ready_timeout_ms as u64)
+                Duration::from_millis(ready_timeout_ms as u64),
             )
         }() {
             error!("Could not load MIDI to channels: {e}");
@@ -1046,7 +1046,7 @@ impl FileIO {
         maybe_set_n_preplay_samples: QVariant,
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
-        ready_timeout_ms: i32
+        ready_timeout_ms: i32,
     ) -> *mut QObject {
         let self_qobj = unsafe { self.as_mut().pin_mut_qobject_ptr() };
         let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
@@ -1071,7 +1071,7 @@ impl FileIO {
                         .map(|v| v as usize),
                     maybe_set_start_offset.value::<i32>().map(|v| v as isize),
                     maybe_loop,
-                    Duration::from_millis(ready_timeout_ms as u64)
+                    Duration::from_millis(ready_timeout_ms as u64),
                 )
                 .map_err(|e| anyhow::anyhow!("Failed to load soundfile to channels: {e}"))
             });
@@ -1088,7 +1088,7 @@ impl FileIO {
         maybe_set_n_preplay_samples: QVariant,
         maybe_set_start_offset: QVariant,
         maybe_update_loop_to_data_length: QVariant,
-        ready_timeout_ms: i32
+        ready_timeout_ms: i32,
     ) -> bool {
         // Get shared pointers to back-end objects, which we can move to our
         // other-thread function.
@@ -1105,7 +1105,7 @@ impl FileIO {
                 .map(|v| v as usize),
             maybe_set_start_offset.value::<i32>().map(|v| v as isize),
             maybe_loop,
-            Duration::from_millis(ready_timeout_ms as u64)
+            Duration::from_millis(ready_timeout_ms as u64),
         ) {
             error!("Failed to load soundfile to channels: {e}");
             return false;
