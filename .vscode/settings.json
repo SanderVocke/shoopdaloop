@@ -1,4 +1,5 @@
 {
+    "rust-analyzer.check.command": "build",
     "files.associations": {
         ".als.json": "jsonc",
         "memory": "cpp",

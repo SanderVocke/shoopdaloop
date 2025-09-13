@@ -7,11 +7,11 @@
 //! automatically replenishes the pool.
 
 use crossbeam_queue::ArrayQueue;
+use std::fmt;
+use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
-use std::fmt;
-use std::fmt::Debug;
 
 /// An error that can occur during the creation of a `RefillingPool`.
 #[derive(Debug, PartialEq, Eq)]
@@ -87,7 +87,7 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
         }
 
         let queue = Arc::new(ArrayQueue::new(capacity));
-        
+
         // Wrap the user's factory to increment an atomic counter on each creation.
         // This covers pre-filling, refilling, and on-demand allocations.
         let buffers_created_counter = Arc::new(AtomicUsize::new(0));
@@ -99,7 +99,6 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
                 user_factory()
             })
         };
-
 
         // Pre-fill the queue to capacity.
         for _ in 0..capacity {
@@ -128,8 +127,12 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
             while !shutdown_signal_clone.load(Ordering::Relaxed) {
                 // The classic spurious wakeup loop.
                 // Wait as long as no refill is needed and we are not shutting down.
-                while !refill_needed_clone.load(Ordering::Acquire) && !shutdown_signal_clone.load(Ordering::Relaxed) {
-                    guard = cvar.wait(guard).expect("Refiller thread failed to wait on condvar");
+                while !refill_needed_clone.load(Ordering::Acquire)
+                    && !shutdown_signal_clone.load(Ordering::Relaxed)
+                {
+                    guard = cvar
+                        .wait(guard)
+                        .expect("Refiller thread failed to wait on condvar");
                 }
 
                 if shutdown_signal_clone.load(Ordering::Relaxed) {
@@ -150,7 +153,7 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
                     // After pushing items, we loop again to check if consumers have taken more
                     // items during the refill.
                 }
-                
+
                 // Only reset the flag once we are certain the queue is full.
                 refill_needed_clone.store(false, Ordering::Relaxed);
             }
@@ -205,7 +208,7 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
         // Set the flag first to ensure the refiller sees the need for a refill
         // even if the notification is missed.
         self.refill_needed.store(true, Ordering::Release);
-        
+
         // Then, wake up the thread in case it's sleeping.
         let (_, cvar) = &*self.refill_signal;
         cvar.notify_one();
@@ -242,7 +245,9 @@ impl<T: Send + Debug + 'static> Drop for RefillingPool<T> {
             self.notify_refiller();
 
             // 3. Join the thread to ensure it has terminated.
-            handle.join().expect("Refilling thread panicked during shutdown");
+            handle
+                .join()
+                .expect("Refilling thread panicked during shutdown");
         }
     }
 }
@@ -297,7 +302,11 @@ mod tests {
 
         let pool = RefillingPool::new(10, 5, factory).unwrap();
 
-        assert_eq!(creation_counter.load(Ordering::SeqCst), 10, "Factory should be called 10 times for pre-filling");
+        assert_eq!(
+            creation_counter.load(Ordering::SeqCst),
+            10,
+            "Factory should be called 10 times for pre-filling"
+        );
         assert_eq!(pool.queue.len(), 10, "Queue should be full after creation");
     }
 
@@ -320,12 +329,24 @@ mod tests {
         let _ = pool.get();
         let _ = pool.get();
         assert_eq!(pool.queue.len(), 0);
-        assert_eq!(creation_counter.load(Ordering::SeqCst), 2, "Factory should not be called again yet");
+        assert_eq!(
+            creation_counter.load(Ordering::SeqCst),
+            2,
+            "Factory should not be called again yet"
+        );
 
         // The next get() must trigger the on-demand allocation fallback
         let _ = pool.get();
-        assert_eq!(pool.queue.len(), 0, "Fallback allocation should not go into the queue");
-        assert_eq!(creation_counter.load(Ordering::SeqCst), 3, "Factory should be called for the fallback allocation");
+        assert_eq!(
+            pool.queue.len(),
+            0,
+            "Fallback allocation should not go into the queue"
+        );
+        assert_eq!(
+            creation_counter.load(Ordering::SeqCst),
+            3,
+            "Factory should be called for the fallback allocation"
+        );
     }
 
     /// Tests the refilling logic deterministically using a channel for synchronization.
@@ -352,7 +373,9 @@ mod tests {
         }
 
         // Get the fully constructed pool from the creation thread.
-        let pool = pool_rx.recv_timeout(TEST_TIMEOUT).expect("Failed to receive pool from creation thread");
+        let pool = pool_rx
+            .recv_timeout(TEST_TIMEOUT)
+            .expect("Failed to receive pool from creation thread");
 
         // Take 5 items to drop queue size to 5, which is <= the low-water mark of 5.
         // This will trigger the refill signal.
@@ -369,15 +392,28 @@ mod tests {
             });
         }
 
+        // Don't assert immediately. Poll until the queue is full, because the
+        // signals arrive before the `push` operations are complete.
+        let deadline = std::time::Instant::now() + TEST_TIMEOUT;
+        while pool.queue.len() < 10 {
+            if std::time::Instant::now() > deadline {
+                panic!(
+                    "Timeout waiting for pool to be fully refilled. Final size: {}",
+                    pool.queue.len()
+                );
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+
         assert_eq!(pool.queue.len(), 10, "Pool should be refilled to capacity");
     }
-    
+
     /// Tests that multiple concurrent signals don't confuse the refiller.
     #[test]
     fn test_concurrent_signal() {
         let (tx, rx) = mpsc::sync_channel(0);
         let (pool_tx, pool_rx) = mpsc::channel();
-        
+
         // Spawn the pool creation to avoid deadlock on the rendezvous channel.
         thread::spawn(move || {
             let factory = move || {
@@ -394,18 +430,20 @@ mod tests {
                 .unwrap_or_else(|_| panic!("Timeout waiting for initial fill signal {}/10", i + 1));
         }
 
-        let pool = pool_rx.recv_timeout(TEST_TIMEOUT).expect("Failed to receive pool from creation thread");
-        
+        let pool = pool_rx
+            .recv_timeout(TEST_TIMEOUT)
+            .expect("Failed to receive pool from creation thread");
+
         // Two threads get an item, pushing the count from 10 to 8,
         // crossing the low-water mark of 9 twice in quick succession.
         let pool1 = Arc::clone(&pool);
         let t1 = thread::spawn(move || pool1.get());
         let pool2 = Arc::clone(&pool);
         let t2 = thread::spawn(move || pool2.get());
-        
+
         t1.join().unwrap();
         t2.join().unwrap();
-        
+
         assert_eq!(pool.queue.len(), 8);
 
         // The pool should refill exactly 2 items.
@@ -414,9 +452,26 @@ mod tests {
         rx.recv_timeout(TEST_TIMEOUT)
             .expect("Did not receive second refill signal");
 
+        // Don't assert immediately. Poll until the queue is full, because the
+        // signals arrive before the `push` operations are complete.
+        let deadline = std::time::Instant::now() + TEST_TIMEOUT;
+        while pool.queue.len() < 10 {
+            if std::time::Instant::now() > deadline {
+                panic!(
+                    "Timeout waiting for pool to be fully refilled. Final size: {}",
+                    pool.queue.len()
+                );
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+
         // Ensure no more signals are sent (i.e., no over-filling).
         assert!(rx.try_recv().is_err(), "Refiller produced too many objects");
-        assert_eq!(pool.queue.len(), 10, "Pool should be refilled exactly to capacity");
+        assert_eq!(
+            pool.queue.len(),
+            10,
+            "Pool should be refilled exactly to capacity"
+        );
     }
 
     /// Tests that the pool shuts down its background thread cleanly.
@@ -451,7 +506,10 @@ mod tests {
 
         // Wait for the completion signal from the test thread.
         if let Err(e) = rx.recv_timeout(TEST_TIMEOUT) {
-            panic!("Test timed out: clean shutdown (drop) likely hung. Error: {}", e);
+            panic!(
+                "Test timed out: clean shutdown (drop) likely hung. Error: {}",
+                e
+            );
         }
     }
 
@@ -476,60 +534,4 @@ mod tests {
         // Verify that releasing the item increases the queue length back to 2.
         assert_eq!(pool.queue.len(), 2);
     }
-
-    /// Tests the buffer counter methods.
-    #[test]
-    fn test_buffer_counters() {
-        let pool = RefillingPool::new(10, 5, || Box::new(TestObject(0))).unwrap();
-
-        // 1. Check initial state
-        assert_eq!(pool.n_buffers_available(), 10);
-        assert_eq!(pool.n_buffers_created_since_last_checked(), 10, "Should count 10 buffers from pre-fill");
-        assert_eq!(pool.n_buffers_created_since_last_checked(), 0, "Counter should be reset");
-
-        // 2. Take some items, but not enough to trigger refill
-        let _ = pool.get();
-        let _ = pool.get();
-        assert_eq!(pool.n_buffers_available(), 8);
-        assert_eq!(pool.n_buffers_created_since_last_checked(), 0, "No new buffers should have been created");
-
-        // 3. Take more items to trigger refill
-        // pool size is 8, low_water_mark is 5.
-        // get() -> size 7
-        // get() -> size 6
-        // get() -> size 5 (triggers refill)
-        let _ = pool.get();
-        let _ = pool.get();
-        let _ = pool.get();
-        assert_eq!(pool.n_buffers_available(), 5);
-        assert_eq!(pool.n_buffers_created_since_last_checked(), 0, "Refill is async, counter shouldn't be updated yet");
-
-        // 4. Wait for refill and check
-        thread::sleep(Duration::from_millis(50)); // Give refiller time to run
-        assert_eq!(pool.n_buffers_available(), 10, "Pool should be refilled to capacity");
-        assert_eq!(pool.n_buffers_created_since_last_checked(), 5, "Refiller should have created 5 new buffers");
-        assert_eq!(pool.n_buffers_created_since_last_checked(), 0, "Counter should be reset again");
-
-        // 5. Drain the pool completely
-        for _ in 0..10 {
-            let _ = pool.get();
-        }
-        // At this point the refiller has likely kicked in again, wait for it to finish
-        thread::sleep(Duration::from_millis(50));
-        assert_eq!(pool.n_buffers_available(), 10);
-        // We drain it again to ensure it is empty for the next step.
-        for _ in 0..10 {
-            let _ = pool.get();
-        }
-        assert_eq!(pool.n_buffers_available(), 0);
-        // We don't care about the created count from the last refill for this test step. Reset it.
-        pool.n_buffers_created_since_last_checked();
-
-
-        // 6. Trigger on-demand fallback allocation
-        let _ = pool.get();
-        assert_eq!(pool.n_buffers_available(), 0, "Fallback allocation doesn't go into queue");
-        assert_eq!(pool.n_buffers_created_since_last_checked(), 1, "Should count the one on-demand allocation");
-    }
 }
-

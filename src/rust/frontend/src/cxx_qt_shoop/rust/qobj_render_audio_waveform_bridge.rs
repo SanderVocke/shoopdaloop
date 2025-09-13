@@ -35,6 +35,9 @@ pub mod ffi {
         include!("cxx-qt-lib/qpainter.h");
         type QPainter = cxx_qt_lib::QPainter;
 
+        include!("cxx-qt-lib-shoop/qobject.h");
+        type QObject = cxx_qt_lib_shoop::qobject::QObject;
+
         include!(<QtQuick/QQuickPaintedItem>);
         type QQuickPaintedItem;
     }
@@ -95,23 +98,85 @@ pub mod ffi {
             type_name: &mut String,
         );
     }
+
+    unsafe extern "RustQt" {
+        #[qobject]
+        type UpdateNotifier = super::UpdateNotifierRust;
+
+        #[qsignal]
+        pub unsafe fn notify_done(self: Pin<&mut UpdateNotifier>);
+    }
+
+    unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
+
+        #[rust_name = "from_qobject_ref_update_notifier"]
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const UpdateNotifier);
+
+        #[rust_name = "from_qobject_mut_update_notifier"]
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut UpdateNotifier);
+
+        #[rust_name = "update_notifier_qobject_from_ptr"]
+        unsafe fn qobjectFromPtr(obj: *mut UpdateNotifier) -> *mut QObject;
+
+        #[rust_name = "update_notifier_qobject_from_ref"]
+        fn qobjectFromRef(obj: &UpdateNotifier) -> &QObject;
+
+        include!("cxx-qt-lib-shoop/make_raw.h");
+        #[rust_name = "make_raw_update_notifier"]
+        unsafe fn make_raw() -> *mut UpdateNotifier;
+
+        include!("cxx-qt-lib-shoop/cast_ptr.h");
+        #[rust_name = "update_notifier_to_qobject"]
+        unsafe fn cast_ptr(obj: *mut UpdateNotifier) -> *mut QObject;
+    }
+
+    unsafe extern "C++" {
+        include!("cxx-qt-lib-shoop/qobject.h");
+
+        #[rust_name = "from_qobject_ref_render_audio_waveform"]
+        unsafe fn fromQObjectRef(obj: &QObject, output: *mut *const RenderAudioWaveform);
+
+        #[rust_name = "from_qobject_mut_render_audio_waveform"]
+        unsafe fn fromQObjectMut(obj: Pin<&mut QObject>, output: *mut *mut RenderAudioWaveform);
+
+        #[rust_name = "render_audio_waveform_qobject_from_ptr"]
+        unsafe fn qobjectFromPtr(obj: *mut RenderAudioWaveform) -> *mut QObject;
+
+        #[rust_name = "render_audio_waveform_qobject_from_ref"]
+        fn qobjectFromRef(obj: &RenderAudioWaveform) -> &QObject;
+
+        include!("cxx-qt-lib-shoop/make_raw.h");
+        #[rust_name = "make_raw_render_audio_waveform"]
+        unsafe fn make_raw() -> *mut RenderAudioWaveform;
+
+        include!("cxx-qt-lib-shoop/cast_ptr.h");
+        #[rust_name = "render_audio_waveform_to_qobject"]
+        unsafe fn cast_ptr(obj: *mut RenderAudioWaveform) -> *mut QObject;
+    }
 }
 
 use crate::audio_power_pyramid;
 use ffi::*;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 pub struct RenderAudioWaveformRust {
-    pub pyramid: Mutex<audio_power_pyramid::AudioPowerPyramidData>,
+    pub pyramid: Arc<Mutex<audio_power_pyramid::AudioPowerPyramidData>>,
     pub samples_offset: i64,
     pub samples_per_bin: f64,
     pub input_data: QVariant,
 }
 
+#[derive(Default)]
+pub struct UpdateNotifierRust {}
+
 impl Default for RenderAudioWaveformRust {
     fn default() -> RenderAudioWaveformRust {
         RenderAudioWaveformRust {
-            pyramid: audio_power_pyramid::AudioPowerPyramidData::default().into(),
+            pyramid: Arc::new(Mutex::new(
+                audio_power_pyramid::AudioPowerPyramidData::default(),
+            )),
             samples_offset: 0,
             samples_per_bin: 1_f64,
             input_data: QVariant::default(),

@@ -22,12 +22,16 @@ template<typename Elem> struct AudioBuffer {
                 std::weak_ptr<BufferPool<Elem>> pool) :
         buffer_handle(handle),
         buffer(get_buffer_data(handle)),
-        pool(pool) {}
+        pool(pool) {
+            std::fill(span().begin(), span().end(), Elem{0});
+        }
 
     AudioBuffer(size_t n_elems) :
         buffer_handle(nullptr),
         buffer({(uint8_t*)malloc(n_elems * sizeof(Elem)), n_elems * sizeof(Elem)}),
-        pool(std::weak_ptr<BufferPool<Elem>>()) {}
+        pool(std::weak_ptr<BufferPool<Elem>>()) {
+            std::fill(span().begin(), span().end(), Elem{0});
+        }
 
     size_t len() const {
         if (!buffer.ptr) { return 0; }

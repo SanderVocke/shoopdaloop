@@ -560,7 +560,7 @@ impl LoopChannelGui {
                         invoke::<_, QVector_QVariant, _>(
                             &mut *backend_channel_qobj,
                             "get_data()",
-                            connection_types::BLOCKING_QUEUED_CONNECTION,
+                            connection_types::DIRECT_CONNECTION,
                             &(),
                         )?
                     };
