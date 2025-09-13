@@ -222,6 +222,11 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/third_party/nlohmann_json)
 
+# Dependencies provided by in-repo Rust CXX bridges
+include_directories(${REFILLING_POOL_CXX_INCLUDE})
+link_directories(${REFILLING_POOL_CXX_LIBDIR})
+link_directories(${REFILLING_POOL_RUST_LIBDIR})
+
 add_subdirectory(test)
 
 add_library(shoopdaloop_backend_internals STATIC libshoopdaloop_backend.cpp ${INTERNAL_SOURCES})
@@ -236,6 +241,8 @@ target_link_libraries(shoopdaloop_backend_internals PRIVATE
   fmt::fmt
   zita-resampler::zita-resampler
   Boost::headers
+  refilling_pool
+  refilling_pool_cxx
   )
 if (WIN32)
   target_link_libraries(shoopdaloop_backend_internals PRIVATE Boost::system)

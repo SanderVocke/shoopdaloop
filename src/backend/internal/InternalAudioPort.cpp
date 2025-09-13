@@ -16,7 +16,7 @@ InternalAudioPort<SampleT>::InternalAudioPort(std::string name,
                                               uint32_t n_frames,
                                               unsigned input_connectability,
                                               unsigned output_connectability,
-                                              shoop_shared_ptr<typename AudioPort<SampleT>::BufferPool> buffer_pool)
+                                              shoop_shared_ptr<typename AudioPort<SampleT>::UsedBufferPool> buffer_pool)
     : AudioPort<SampleT>(buffer_pool), m_name(name), m_buffer(n_frames), m_input_connectability(input_connectability), m_output_connectability(output_connectability) {}
 
 template <typename SampleT>

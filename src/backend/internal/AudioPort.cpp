@@ -15,7 +15,7 @@
 #endif
 
 template<typename SampleT>
-AudioPort<SampleT>::AudioPort(shoop_shared_ptr<BufferPool> buffer_pool)
+AudioPort<SampleT>::AudioPort(shoop_shared_ptr<UsedBufferPool> buffer_pool)
     : PortInterface(),
       ma_muted(false),
       ma_gain(1.0f),

@@ -9,7 +9,7 @@ CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(
     uint32_t n_audio_outputs,
     uint32_t n_midi_inputs,
     ProcessFunctor process_callback,
-    shoop_shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool) :
+    shoop_shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::UsedBufferPool> maybe_buffer_pool) :
     m_active(true),
     m_freewheeling(false),
     m_process_callback(process_callback)

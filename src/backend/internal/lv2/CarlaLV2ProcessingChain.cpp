@@ -222,7 +222,7 @@ void CarlaLV2ProcessingChain<TimeType, SizeType>::maybe_cleanup_ui() {
 template <typename TimeType, typename SizeType>
 CarlaLV2ProcessingChain<TimeType, SizeType>::CarlaLV2ProcessingChain(
     LilvWorld *lilv_world, shoop_fx_chain_type_t type, uint32_t sample_rate, uint32_t buffer_size,
-    std::string human_name, shoop_shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool)
+    std::string human_name, shoop_shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::UsedBufferPool> maybe_buffer_pool)
     : m_internal_buffers_size(carla_constants::max_buffer_size), m_human_name(human_name),
       m_unique_name(human_name + "_" + random_string(6)) {
 

@@ -1,6 +1,6 @@
 #include "AudioMidiLoop.h"
 #include "WithCommandQueue.h"
-#include "ObjectPool.h"
+#include "BufferPool.h"
 #include "shoop_globals.h"
 #include "shoop_shared_ptr.h"
 #include "types.h"
@@ -14,7 +14,7 @@ AudioMidiLoop::AudioMidiLoop()
 
 template <typename SampleT>
 shoop_shared_ptr<AudioChannel<SampleT>> AudioMidiLoop::add_audio_channel(
-    shoop_shared_ptr<ObjectPool<AudioBuffer<SampleT>>> const &buffer_pool,
+    shoop_shared_ptr<BufferPool<SampleT>> const &buffer_pool,
     uint32_t initial_max_buffers, shoop_channel_mode_t mode, bool thread_safe)
 {
     auto channel = shoop_make_shared<AudioChannel<SampleT>>(
@@ -193,11 +193,11 @@ void AudioMidiLoop::PROC_handle_poi() {
 }
 
 template shoop_shared_ptr<AudioChannel<float>> AudioMidiLoop::add_audio_channel(
-    shoop_shared_ptr<ObjectPool<AudioBuffer<float>>> const &buffer_pool,
+    shoop_shared_ptr<BufferPool<float>> const &buffer_pool,
     uint32_t initial_max_buffers, shoop_channel_mode_t mode, bool thread_safe);
 
 template shoop_shared_ptr<AudioChannel<int>> AudioMidiLoop::add_audio_channel(
-    shoop_shared_ptr<ObjectPool<AudioBuffer<int>>> const &buffer_pool,
+    shoop_shared_ptr<BufferPool<int>> const &buffer_pool,
     uint32_t initial_max_buffers, shoop_channel_mode_t mode, bool thread_safe);
 
 template shoop_shared_ptr<AudioChannel<float>>

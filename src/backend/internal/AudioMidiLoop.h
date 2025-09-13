@@ -19,7 +19,7 @@ class AudioMidiLoop : public BasicLoop {
 
     template <typename SampleT>
     shoop_shared_ptr<AudioChannel<SampleT>>
-    add_audio_channel(shoop_shared_ptr<ObjectPool<AudioBuffer<SampleT>>> const &buffer_pool,
+    add_audio_channel(shoop_shared_ptr<BufferPool<SampleT>> const &buffer_pool,
                       uint32_t initial_max_buffers, shoop_channel_mode_t mode,
                       bool thread_safe = true);
 
@@ -58,12 +58,12 @@ class AudioMidiLoop : public BasicLoop {
 };
 
 extern template shoop_shared_ptr<AudioChannel<float>> AudioMidiLoop::add_audio_channel(
-    shoop_shared_ptr<ObjectPool<AudioBuffer<float>>> const &buffer_pool,
+    shoop_shared_ptr<BufferPool<float>> const &buffer_pool,
     uint32_t initial_max_buffers, shoop_channel_mode_t mode,
     bool thread_safe
 );
 extern template shoop_shared_ptr<AudioChannel<int>> AudioMidiLoop::add_audio_channel(
-    shoop_shared_ptr<ObjectPool<AudioBuffer<int>>> const &buffer_pool,
+    shoop_shared_ptr<BufferPool<int>> const &buffer_pool,
     uint32_t initial_max_buffers, shoop_channel_mode_t mode,
     bool thread_safe
 );

@@ -57,7 +57,7 @@ public:
     shoop_shared_ptr<AudioPort<float>> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_shared_ptr<typename AudioPort<jack_default_audio_sample_t>::BufferPool>
+        shoop_shared_ptr<typename AudioPort<jack_default_audio_sample_t>::UsedBufferPool>
     ) override;
 
     shoop_shared_ptr<MidiPort> open_midi_port(
