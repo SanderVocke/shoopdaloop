@@ -145,7 +145,7 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
                     }
 
                     for _ in 0..items_needed {
-                        queue_clone.push(factory_clone()).expect("Refiller thread failed: queue should have space");
+                        let _ = queue_clone.push(factory_clone());
                     }
                     // After pushing items, we loop again to check if consumers have taken more
                     // items during the refill.
