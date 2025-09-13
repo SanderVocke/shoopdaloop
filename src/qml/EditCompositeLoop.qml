@@ -1173,12 +1173,12 @@ Item {
                                                 onClicked: root.delete_elem_and_push(loop_rect.mapped_item)
                                             }
                                             ShoopMenuItem {
-                                                text: "Unlink -->"
+                                                text: "Unlink >>"
                                                 shown: loop_rect.mapped_item.outgoing_edges.length > 0 ? true : false
                                                 onClicked: root.unlink_and_push(loop_rect.mapped_item, loop_rect.mapped_item.outgoing_edges[0])
                                             }
                                             ShoopMenuItem {
-                                                text: "<-- Unlink"
+                                                text: "<< Unlink"
                                                 shown: loop_rect.mapped_item.incoming_edges.length > 0 ? true : false
                                                 onClicked: root.unlink_and_push(loop_rect.mapped_item.incoming_edges[0], loop_rect.mapped_item)
                                             }
