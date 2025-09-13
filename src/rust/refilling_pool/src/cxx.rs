@@ -1,6 +1,6 @@
 use crate::refilling_pool::RefillingPool;
 
-#[cxx::bridge]
+#[cxx::bridge(namespace = "refilling_pool")]
 mod ffi {
     
     /// A struct passed to C++ containing the raw pointer and length of a buffer.

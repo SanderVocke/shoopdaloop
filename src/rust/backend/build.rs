@@ -12,10 +12,16 @@ fn main_impl() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
+    // environment
+    let refilling_pool_cxx_include = std::env::var("DEP_REFILLING_POOL_INCLUDE").unwrap();
+    // let refilling_pool_cxx_linked = std::env::var("DEP_REFILLING_POOL_CXX_LINKED").unwrap();
+    let profile = std::env::var("PROFILE").unwrap();
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let build_time_link_dirs_raw = option_env!("SHOOP_BUILD_TIME_LINK_DIRS").unwrap_or_default();
+    let runtime_link_dirs_raw = option_env!("SHOOP_RUNTIME_LINK_DIRS").unwrap_or_default();
+
     let install_dir = out_dir.join("cmake_install");
     let cmake_backend_dir = "../../backend";
-    let profile = std::env::var("PROFILE").unwrap();
     let cmake_output_dir = out_dir.join("cmake_build");
 
     if !["debug", "release"].contains(&profile.as_str()) {
@@ -29,25 +35,20 @@ fn main_impl() -> Result<(), anyhow::Error> {
         let cmake_config_mut: &mut Config = cmake_config
             .out_dir(&cmake_output_dir)
             .generator("Ninja")
-            .configure_arg(format!(
-                "-DCMAKE_INSTALL_PREFIX={}",
-                install_dir.to_str().unwrap()
-            ))
-            .configure_arg(format!(
-                "-DCMAKE_BUILD_TYPE={}",
+            .define("CMAKE_INSTALL_PREFIX", install_dir.to_str().unwrap())
+            .define("REFILLING_POOL_CXX_INCLUDE", refilling_pool_cxx_include)
+            .define(
+                "CMAKE_BUILD_TYPE",
                 if profile == "debug" {
                     "Debug"
                 } else if profile == "release-with-debug" {
                     "RelWithDebInfo"
                 } else {
                     "Release"
-                }
-            ));
+                },
+            );
         let _ = cmake_config_mut.build();
     }
-
-    let build_time_link_dirs_raw = option_env!("SHOOP_BUILD_TIME_LINK_DIRS").unwrap_or_default();
-    let runtime_link_dirs_raw = option_env!("SHOOP_RUNTIME_LINK_DIRS").unwrap_or_default();
 
     let build_time_link_dirs = build_time_link_dirs_raw
         .split(common::util::PATH_LIST_SEPARATOR)

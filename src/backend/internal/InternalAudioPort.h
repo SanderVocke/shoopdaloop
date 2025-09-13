@@ -19,7 +19,7 @@ public:
         uint32_t n_frames,
         unsigned input_connectability,
         unsigned output_connectability,
-        shoop_shared_ptr<typename AudioPort<SampleT>::BufferPool> maybe_ringbuffer_buffer_pool
+        shoop_shared_ptr<typename AudioPort<SampleT>::UsedBufferPool> maybe_ringbuffer_buffer_pool
     );
     
     SampleT *PROC_get_buffer(uint32_t n_frames) override;

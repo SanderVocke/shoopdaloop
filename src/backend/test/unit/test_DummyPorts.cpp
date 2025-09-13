@@ -124,7 +124,7 @@ TEST_CASE("Ports - Dummy Audio In - Peak", "[DummyPorts][ports][audio]") {
 }
 
 TEST_CASE("Ports - Dummy Audio In - get ringbuffer data", "[DummyPorts][ports][audio]") {
-    auto pool = shoop_make_shared<BufferQueue<float>::BufferPool>("Test", 10, 4);
+    auto pool = shoop_make_shared<BufferQueue<float>::UsedBufferPool>("Test", 10, 4);
     auto port = DummyAudioPort("test", ShoopPortDirection_Input, pool);
 
     // Process 4 samples

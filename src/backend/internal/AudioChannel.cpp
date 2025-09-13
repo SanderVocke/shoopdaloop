@@ -34,9 +34,9 @@ inline void AudioChannel<SampleT>::trace_print_data(std::string msg, SampleT *da
 }
 
 template <typename SampleT>
-AudioChannel<SampleT>::Buffers::Buffers(shoop_shared_ptr<BufferPool> pool,
+AudioChannel<SampleT>::Buffers::Buffers(shoop_shared_ptr<UsedBufferPool> pool,
                                         uint32_t initial_max_buffers)
-    : pool(pool), buffers_size(pool->object_size()) {
+    : pool(pool), buffers_size(pool->elems_per_buffer()) {
     buffers = shoop_make_shared<std::vector<Buffer>>();
     buffers->reserve(initial_max_buffers);
     reset();
@@ -106,7 +106,7 @@ AudioChannel<SampleT>::Buffers::get_new_buffer() const {
     if (!pool) {
         throw_error<std::runtime_error>("No pool for buffers allocation");
     }
-    auto buf = Buffer(pool->get_object());
+    auto buf = Buffer(pool->get_buffer());
     if (buf->size() != buffers_size) {
         throw_error<std::runtime_error>(
             "AudioChannel requires buffers of same length");
@@ -150,11 +150,11 @@ void AudioChannel<SampleT>::throw_if_commands_queued() const {
 
 template <typename SampleT>
 AudioChannel<SampleT>::AudioChannel(
-    shoop_shared_ptr<BufferPool> buffer_pool, uint32_t initial_max_buffers,
+    shoop_shared_ptr<UsedBufferPool> buffer_pool, uint32_t initial_max_buffers,
     shoop_channel_mode_t mode)
     : WithCommandQueue(50), ma_buffer_pool(buffer_pool),
       ma_buffers_data_length(0), mp_prerecord_buffers_data_length(0),
-      ma_buffer_size(buffer_pool->object_size()),
+      ma_buffer_size(buffer_pool->elems_per_buffer()),
       mp_recording_source_buffer(nullptr), mp_playback_target_buffer(nullptr),
       mp_playback_target_buffer_size(0), mp_recording_source_buffer_size(0),
       ma_output_peak(0), ma_mode(mode), ma_gain(1.0f), ma_start_offset(0),
@@ -760,7 +760,7 @@ std::optional<uint32_t> AudioChannel<SampleT>::get_played_back_sample() const {
 template <typename SampleT>
 typename AudioChannel<SampleT>::Buffer
 AudioChannel<SampleT>::get_new_buffer() const {
-    auto buf = Buffer(ma_buffer_pool->get_object());
+    auto buf = Buffer(ma_buffer_pool->get_buffer());
     if (buf->size() != ma_buffer_size) {
         throw_error<std::runtime_error>(
             "AudioChannel requires buffers of same length");

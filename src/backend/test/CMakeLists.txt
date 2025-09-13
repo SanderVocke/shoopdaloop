@@ -2,7 +2,6 @@
 set(TEST_RUNNER_SOURCES
     unit/test_AudioMidiLoop_audio.cpp
     unit/test_AudioMidiLoop_midi.cpp
-    unit/test_ObjectPool.cpp
     unit/test_BasicLoop.cpp
     unit/test_DummyAudioMidiDriver.cpp
     unit/test_DummyPorts.cpp

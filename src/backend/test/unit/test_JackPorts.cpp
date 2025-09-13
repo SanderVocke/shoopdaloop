@@ -110,7 +110,7 @@ TEST_CASE("Ports - Jack Audio In - Peak", "[JackPorts][ports][audio]") {
 
 TEST_CASE("Ports - Jack Audio In - get ringbuffer data", "[JackPorts][ports][audio]") {
     auto driver = open_test_driver();
-    auto pool = shoop_make_shared<BufferQueue<float>::BufferPool>("Test", 10, 4);
+    auto pool = shoop_make_shared<BufferQueue<float>::UsedBufferPool>("Test", 10, 4);
     auto port = driver->open_audio_port("test", ShoopPortDirection_Input, pool);
 
     // Process 4 samples

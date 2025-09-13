@@ -11,7 +11,7 @@
 using namespace std::chrono_literals;
 
 TEST_CASE("AudioMidiLoop - Audio - Stop", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 256);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 256);
     AudioMidiLoop loop;
     auto chan = loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
 
@@ -30,7 +30,7 @@ TEST_CASE("AudioMidiLoop - Audio - Stop", "[AudioMidiLoop][audio]") {
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
@@ -69,7 +69,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record", "[AudioMidiLoop][audio]") {
 };
     
 TEST_CASE("AudioMidiLoop - Audio - Record Beyond Ext. Buf", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 256);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 256);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -83,7 +83,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Beyond Ext. Buf", "[AudioMidiLoop][aud
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record Multiple Target", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -115,7 +115,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Target", "[AudioMidiLoop][aud
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record Multiple Source", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -155,7 +155,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Multiple Source", "[AudioMidiLoop][aud
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -211,7 +211,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Smaller", "[AudioMidiLoop][audio]
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -257,7 +257,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Onto Larger", "[AudioMidiLoop][audio]"
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Playback", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
@@ -301,7 +301,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback", "[AudioMidiLoop][audio]") {
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Playback Multiple Target", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -334,7 +334,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Multiple Target", "[AudioMidiLoop][a
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Playback Shorter Data", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -370,7 +370,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Shorter Data", "[AudioMidiLoop][audi
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -418,7 +418,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap", "[AudioMidiLoop][audio]") {
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -465,7 +465,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback Wrap Longer Data", "[AudioMidiLoop][
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Replace", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
@@ -510,7 +510,7 @@ TEST_CASE("AudioMidiLoop - Audio - Replace", "[AudioMidiLoop][audio]") {
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Replace Onto Smaller", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     auto &channel = *loop.audio_channel<int>(0);
@@ -556,7 +556,7 @@ TEST_CASE("AudioMidiLoop - Audio - Replace Onto Smaller", "[AudioMidiLoop][audio
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Play Dry Through Wet", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
@@ -600,7 +600,7 @@ TEST_CASE("AudioMidiLoop - Audio - Play Dry Through Wet", "[AudioMidiLoop][audio
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Direct, false);
     loop.add_audio_channel<int>(pool, 10, ChannelMode_Dry, false);
@@ -675,7 +675,7 @@ TEST_CASE("AudioMidiLoop - Audio - Record Dry Into Wet", "[AudioMidiLoop][audio]
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     AudioMidiLoop loop;
     auto sync_source = shoop_make_shared<AudioMidiLoop>();
     sync_source->set_length(100);
@@ -747,7 +747,7 @@ TEST_CASE("AudioMidiLoop - Audio - Prerecord", "[AudioMidiLoop][audio]") {
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     auto loop_ptr = shoop_make_shared<AudioMidiLoop>();
     auto &loop = *loop_ptr;
     auto sync_source = shoop_make_shared<AudioMidiLoop>();
@@ -830,7 +830,7 @@ TEST_CASE("AudioMidiLoop - Audio - Preplay", "[AudioMidiLoop][audio]") {
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Playback and set to sync", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     auto loop_ptr = shoop_make_shared<AudioMidiLoop>();
     auto &loop = *loop_ptr;
     auto sync_source = shoop_make_shared<AudioMidiLoop>();
@@ -901,7 +901,7 @@ TEST_CASE("AudioMidiLoop - Audio - Playback and set to sync", "[AudioMidiLoop][a
 };
 
 TEST_CASE("AudioMidiLoop - Audio - Record and set to sync", "[AudioMidiLoop][audio]") {
-    auto pool = shoop_make_shared<ObjectPool<AudioBuffer<int>>>("Test", 10, 64);
+    auto pool = shoop_make_shared<BufferPool<AudioBuffer<int>>>("Test", 10, 64);
     auto loop_ptr = shoop_make_shared<AudioMidiLoop>();
     auto &loop = *loop_ptr;
     auto sync_source = shoop_make_shared<AudioMidiLoop>();

@@ -3,7 +3,7 @@
 #include "AudioMidiLoop.h"
 #include "LoggingBackend.h"
 #include "PortInterface.h"
-#include "ObjectPool.h"
+#include "BufferPool.h"
 #include "AudioBuffer.h"
 #include "GraphPort.h"
 #include "helpers.h"
@@ -55,7 +55,7 @@ struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirec
     shoopdaloop_loop_t *api_sync_loop;
     shoop_shared_ptr<GraphLoop> int_sync_loop;
 
-    shoop_shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
+    shoop_shared_ptr<BufferPool<AudioBuffer<float>>> buffer_pool;
 
     shoopdaloop_loop_audio_channel_t *api_audio_chan;
     shoopdaloop_loop_midi_channel_t *api_midi_chan;

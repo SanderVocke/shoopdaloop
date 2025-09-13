@@ -9,32 +9,32 @@
 #endif
 
 template<typename SampleT>
-BufferQueue<SampleT>::BufferQueue(shoop_shared_ptr<BufferPool> pool, uint32_t max_buffers) : pool(pool)
+BufferQueue<SampleT>::BufferQueue(shoop_shared_ptr<BufferPool<SampleT>> pool, uint32_t max_buffers) : pool(pool)
 {
-    buffers = shoop_make_shared<std::deque<Buffer>>();
-    ma_active_buffer_pos.store(pool ? pool->object_size() : 0); // put at end of a virtual buffer, ensures new buffer will be created immediately
+    buffers = shoop_make_shared<std::deque<SharedBuffer>>();
+    ma_active_buffer_pos.store(pool ? pool->elems_per_buffer() : 0); // put at end of a virtual buffer, ensures new buffer will be created immediately
     ma_max_buffers.store(max_buffers);
 }
 
 template<typename SampleT>
 uint32_t BufferQueue<SampleT>::n_samples() const {
     if (buffers->size() == 0 || !pool) { return 0; }
-    return (buffers->size() - 1) * pool->object_size() + ma_active_buffer_pos.load();
+    return (buffers->size() - 1) * pool->elems_per_buffer() + ma_active_buffer_pos.load();
 }
 
 template<typename SampleT>
 void BufferQueue<SampleT>::PROC_put(const SampleT *data, uint32_t length) {
     if (!pool) { return; }
-    auto capacity = buffers->size() * pool->object_size();
+    auto capacity = buffers->size() * pool->elems_per_buffer();
     auto remaining = (size_t) length;
 
     while (remaining > 0) {
-        auto space = pool->object_size() - ma_active_buffer_pos.load();
+        auto space = pool->elems_per_buffer() - ma_active_buffer_pos.load();
         if (space == 0) {
             log<log_level_debug_trace>("add buffer -> {}", buffers->size() + 1);
-            buffers->push_back(Buffer(pool->get_object()));
+            buffers->push_back(pool->get_shared_buffer());
             ma_active_buffer_pos.store(0);
-            space = pool->object_size();
+            space = pool->elems_per_buffer();
             while (buffers->size() > ma_max_buffers.load()) {
                 log<log_level_debug_trace>("Drop buffer ({} > {})", buffers->size(), ma_max_buffers.load());
                 buffers->pop_front(); // FIFO behavior
@@ -57,8 +57,8 @@ void BufferQueue<SampleT>::PROC_put(const std::initializer_list<SampleT>& list) 
 template<typename SampleT>
 typename BufferQueue<SampleT>::Snapshot BufferQueue<SampleT>::PROC_get() {
     Snapshot s;
-    s.data = shoop_make_shared<std::vector<Buffer>>();
-    *s.data = std::vector<Buffer>(buffers->begin(), buffers->end());
+    s.data = shoop_make_shared<std::vector<SharedBuffer>>();
+    *s.data = std::vector<SharedBuffer>(buffers->begin(), buffers->end());
     s.n_samples = n_samples();
     s.buffer_size = single_buffer_size();
     return s;
@@ -68,12 +68,12 @@ template<typename SampleT>
 void BufferQueue<SampleT>::set_max_buffers(uint32_t max_buffers) {
     log<log_level_debug_trace>("queue set max buffers -> {}", max_buffers);
     auto new_buffers =
-        shoop_make_shared<std::deque<Buffer>>();
+        shoop_make_shared<std::deque<SharedBuffer>>();
     WithCommandQueue::queue_process_thread_command([this, new_buffers, max_buffers]() {
         log<log_level_debug_trace>("set max buffers -> {}", max_buffers);
         buffers = new_buffers;
         ma_max_buffers.store(max_buffers);
-        ma_active_buffer_pos.store(pool ? pool->object_size() : 0);
+        ma_active_buffer_pos.store(pool ? pool->elems_per_buffer() : 0);
     });
 }
 
@@ -91,7 +91,7 @@ unsigned BufferQueue<SampleT>::get_max_buffers() const {
 template<typename SampleT>
 uint32_t BufferQueue<SampleT>::single_buffer_size() const {
     if (!pool) { return 0; }
-    return pool->object_size();
+    return pool->elems_per_buffer();
 }
 
 template<typename SampleT>

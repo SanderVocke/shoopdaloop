@@ -3,7 +3,7 @@
 #include <functional>
 
 template<typename SampleT> class AudioBuffer;
-template<typename Obj> class ObjectPool;
+template<typename SampleT> class BufferPool;
 template<typename A, typename B> class DummyAudioMidiDriver;
 class AudioMidiLoop;
 class ChannelInterface;
@@ -53,7 +53,7 @@ namespace shoop_types {
 using audio_sample_t = float;
 
 using DefaultAudioBuffer = AudioBuffer<audio_sample_t>;
-using AudioBufferPool = ObjectPool<DefaultAudioBuffer>;
+using AudioBufferPool = BufferPool<audio_sample_t>;
 using Time = uint32_t;
 using Size = uint16_t;
 using _DummyAudioMidiDriver = DummyAudioMidiDriver<uint32_t, uint32_t>;

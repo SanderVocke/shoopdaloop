@@ -1,5 +1,6 @@
 [package]
 name = "refilling_pool"
+links = "refilling_pool"
 edition = "2021"
 
 [lib]

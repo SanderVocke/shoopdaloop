@@ -10,7 +10,7 @@
 #include "ProcessingChainInterface.h"
 #include "GraphLoop.h"
 #include "AudioBuffer.h"
-#include "ObjectPool.h"
+#include "BufferPool.h"
 #include "AudioMidiLoop.h"
 #include "fmt/format.h"
 #include "fmt/ranges.h"
@@ -107,8 +107,8 @@ BackendSession::BackendSession() :
           m_recalculate_graph_thread(std::make_unique<RecalculateGraphThread>(*this))
 {
     audio_buffer_pool = shoop_static_pointer_cast<AudioBufferPool>(
-        shoop_make_shared<ObjectPool<AudioBuffer<shoop_types::audio_sample_t>>>(
-            "Session audio buffer pool", n_buffers_in_pool, audio_buffer_size)
+        shoop_make_shared<BufferPool<shoop_types::audio_sample_t>>(
+            n_buffers_in_pool, (n_buffers_in_pool * 3) / 2, audio_buffer_size)
     );
     loops.reserve(initial_max_loops);
     ports.reserve(initial_max_ports);
