@@ -387,7 +387,7 @@ impl PortGui {
     pub fn get_connections_state(self: Pin<&mut PortGui>) -> QMap_QString_QVariant {
         match || -> Result<QMap_QString_QVariant, anyhow::Error> {
             let backend_wrapper = if self.backend_port_wrapper.is_null() {
-                return Err(anyhow::anyhow!("backend not initialized"));
+                return Ok(QMap::default());
             } else {
                 self.backend_port_wrapper.data()?
             };
