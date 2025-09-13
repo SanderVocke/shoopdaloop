@@ -108,7 +108,7 @@ BackendSession::BackendSession() :
 {
     audio_buffer_pool = shoop_static_pointer_cast<AudioBufferPool>(
         shoop_make_shared<BufferPool<shoop_types::audio_sample_t>>(
-            n_buffers_in_pool, (n_buffers_in_pool * 3) / 2, audio_buffer_size)
+            n_buffers_in_pool, (n_buffers_in_pool * 2) / 3, audio_buffer_size)
     );
     loops.reserve(initial_max_loops);
     ports.reserve(initial_max_ports);
@@ -117,8 +117,8 @@ BackendSession::BackendSession() :
 
 shoop_backend_session_state_info_t BackendSession::get_state() {
     shoop_backend_session_state_info_t rval;
-    rval.n_audio_buffers_available = audio_buffer_pool->n_available();
-    rval.n_audio_buffers_created = audio_buffer_pool->n_created_since_last_checked();
+    rval.n_audio_buffers_available = audio_buffer_pool->n_buffers_available();
+    rval.n_audio_buffers_created = audio_buffer_pool->n_buffers_created_since_last_checked();
     return rval;
 }
 

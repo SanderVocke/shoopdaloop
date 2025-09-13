@@ -7,7 +7,7 @@
 //! automatically replenishes the pool.
 
 use crossbeam_queue::ArrayQueue;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::fmt;
@@ -50,6 +50,8 @@ pub struct RefillingPool<T: Send + Debug + 'static> {
     shutdown_signal: Arc<AtomicBool>,
     /// The handle to the background refilling thread.
     refill_thread: Option<JoinHandle<()>>,
+    /// An atomic counter for all newly created buffers.
+    buffers_created_counter: Arc<AtomicUsize>,
 }
 
 impl<T: Send + Debug + 'static> RefillingPool<T> {
@@ -85,7 +87,19 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
         }
 
         let queue = Arc::new(ArrayQueue::new(capacity));
-        let factory = Arc::new(factory);
+        
+        // Wrap the user's factory to increment an atomic counter on each creation.
+        // This covers pre-filling, refilling, and on-demand allocations.
+        let buffers_created_counter = Arc::new(AtomicUsize::new(0));
+        let user_factory = Arc::new(factory);
+        let factory: Arc<dyn Fn() -> Box<T> + Send + Sync> = {
+            let counter_clone = Arc::clone(&buffers_created_counter);
+            Arc::new(move || {
+                counter_clone.fetch_add(1, Ordering::Relaxed);
+                user_factory()
+            })
+        };
+
 
         // Pre-fill the queue to capacity.
         for _ in 0..capacity {
@@ -150,6 +164,7 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
             low_water_mark,
             shutdown_signal,
             refill_thread: Some(refill_thread),
+            buffers_created_counter,
         })
     }
 
@@ -194,6 +209,25 @@ impl<T: Send + Debug + 'static> RefillingPool<T> {
         // Then, wake up the thread in case it's sleeping.
         let (_, cvar) = &*self.refill_signal;
         cvar.notify_one();
+    }
+
+    /// Returns the number of pre-allocated buffers currently available in the pool.
+    ///
+    /// This method is lock-free and can be called from any thread without
+    /// significant performance impact.
+    pub fn n_buffers_available(&self) -> usize {
+        self.queue.len()
+    }
+
+    /// Returns the number of new buffers created since the last call to this method.
+    ///
+    /// This counter includes buffers created during initial pre-filling, background
+    /// refilling, and on-demand fallback allocations in `get()`. It is reset to
+    /// zero after being read.
+    ///
+    /// This method is lock-free and can be called from any thread.
+    pub fn n_buffers_created_since_last_checked(&self) -> usize {
+        self.buffers_created_counter.swap(0, Ordering::AcqRel)
     }
 }
 
@@ -442,4 +476,60 @@ mod tests {
         // Verify that releasing the item increases the queue length back to 2.
         assert_eq!(pool.queue.len(), 2);
     }
+
+    /// Tests the buffer counter methods.
+    #[test]
+    fn test_buffer_counters() {
+        let pool = RefillingPool::new(10, 5, || Box::new(TestObject(0))).unwrap();
+
+        // 1. Check initial state
+        assert_eq!(pool.n_buffers_available(), 10);
+        assert_eq!(pool.n_buffers_created_since_last_checked(), 10, "Should count 10 buffers from pre-fill");
+        assert_eq!(pool.n_buffers_created_since_last_checked(), 0, "Counter should be reset");
+
+        // 2. Take some items, but not enough to trigger refill
+        let _ = pool.get();
+        let _ = pool.get();
+        assert_eq!(pool.n_buffers_available(), 8);
+        assert_eq!(pool.n_buffers_created_since_last_checked(), 0, "No new buffers should have been created");
+
+        // 3. Take more items to trigger refill
+        // pool size is 8, low_water_mark is 5.
+        // get() -> size 7
+        // get() -> size 6
+        // get() -> size 5 (triggers refill)
+        let _ = pool.get();
+        let _ = pool.get();
+        let _ = pool.get();
+        assert_eq!(pool.n_buffers_available(), 5);
+        assert_eq!(pool.n_buffers_created_since_last_checked(), 0, "Refill is async, counter shouldn't be updated yet");
+
+        // 4. Wait for refill and check
+        thread::sleep(Duration::from_millis(50)); // Give refiller time to run
+        assert_eq!(pool.n_buffers_available(), 10, "Pool should be refilled to capacity");
+        assert_eq!(pool.n_buffers_created_since_last_checked(), 5, "Refiller should have created 5 new buffers");
+        assert_eq!(pool.n_buffers_created_since_last_checked(), 0, "Counter should be reset again");
+
+        // 5. Drain the pool completely
+        for _ in 0..10 {
+            let _ = pool.get();
+        }
+        // At this point the refiller has likely kicked in again, wait for it to finish
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(pool.n_buffers_available(), 10);
+        // We drain it again to ensure it is empty for the next step.
+        for _ in 0..10 {
+            let _ = pool.get();
+        }
+        assert_eq!(pool.n_buffers_available(), 0);
+        // We don't care about the created count from the last refill for this test step. Reset it.
+        pool.n_buffers_created_since_last_checked();
+
+
+        // 6. Trigger on-demand fallback allocation
+        let _ = pool.get();
+        assert_eq!(pool.n_buffers_available(), 0, "Fallback allocation doesn't go into queue");
+        assert_eq!(pool.n_buffers_created_since_last_checked(), 1, "Should count the one on-demand allocation");
+    }
 }
+

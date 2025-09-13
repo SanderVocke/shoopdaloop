@@ -4,6 +4,7 @@ links = "refilling_pool"
 edition = "2021"
 
 [lib]
+crate-type = ["rlib", "staticlib"]
 
 [dependencies]
 crossbeam-queue = { workspace = true }

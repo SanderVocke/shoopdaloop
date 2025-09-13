@@ -57,7 +57,7 @@ template <typename SampleT> std::vector<SampleT> AudioChannel<SampleT>::Buffers:
     rval.reserve(remaining);
     for (auto &buf : *buffers) {
         auto data = buf->data();
-        uint32_t step = std::min((size_t) remaining, buf->size());
+        uint32_t step = std::min((size_t) remaining, buf->len());
         rval.insert(rval.end(), data, data + step);
         remaining -= step;
     }
@@ -106,8 +106,8 @@ AudioChannel<SampleT>::Buffers::get_new_buffer() const {
     if (!pool) {
         throw_error<std::runtime_error>("No pool for buffers allocation");
     }
-    auto buf = Buffer(pool->get_buffer());
-    if (buf->size() != buffers_size) {
+    auto buf = pool->get_shared_buffer();
+    if (buf->len() != buffers_size) {
         throw_error<std::runtime_error>(
             "AudioChannel requires buffers of same length");
     }
@@ -760,8 +760,8 @@ std::optional<uint32_t> AudioChannel<SampleT>::get_played_back_sample() const {
 template <typename SampleT>
 typename AudioChannel<SampleT>::Buffer
 AudioChannel<SampleT>::get_new_buffer() const {
-    auto buf = Buffer(ma_buffer_pool->get_buffer());
-    if (buf->size() != ma_buffer_size) {
+    auto buf = ma_buffer_pool->get_shared_buffer();
+    if (buf->len() != ma_buffer_size) {
         throw_error<std::runtime_error>(
             "AudioChannel requires buffers of same length");
     }

@@ -36,4 +36,16 @@ public:
     size_t elems_per_buffer() const {
         return m_elems_per_buffer;
     }
+
+    size_t n_buffers_available() const {
+        return pool->n_buffers_available();
+    }
+
+    size_t n_buffers_created_since_last_checked() const {
+        return pool->n_buffers_created_since_last_checked();
+    }
+
+    void release_buffer(refilling_pool::BufferHandle *handle) {
+        pool->release_buffer(handle);
+    }
 };

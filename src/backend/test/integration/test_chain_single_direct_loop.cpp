@@ -55,7 +55,7 @@ struct SingleDirectLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDirec
     shoopdaloop_loop_t *api_sync_loop;
     shoop_shared_ptr<GraphLoop> int_sync_loop;
 
-    shoop_shared_ptr<BufferPool<AudioBuffer<float>>> buffer_pool;
+    shoop_shared_ptr<BufferPool<float>> buffer_pool;
 
     shoopdaloop_loop_audio_channel_t *api_audio_chan;
     shoopdaloop_loop_midi_channel_t *api_midi_chan;

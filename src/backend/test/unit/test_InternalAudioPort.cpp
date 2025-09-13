@@ -105,7 +105,7 @@ TEST_CASE("Ports - Internal Audio - Noop Zero", "[InternalAudioPort][ports][audi
 }
 
 TEST_CASE("Ports - Internal Audio - get ringbuffer data", "[InternalAudioPort][ports][audio]") {
-    auto pool = shoop_make_shared<BufferQueue<float>::UsedBufferPool>("Test", 10, 4);
+    auto pool = shoop_make_shared<BufferQueue<float>::UsedBufferPool>(10, 5, 4);
     InternalAudioPort<float> port ("dummy", 10, 0, 0, pool);
 
     // Process 4 samples
