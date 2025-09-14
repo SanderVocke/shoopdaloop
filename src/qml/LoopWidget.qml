@@ -1725,7 +1725,7 @@ Item {
 
             audio_enabled: root.descriptor_has_audio
             midi_enabled: root.descriptor_has_midi
-            sample_rate: root.backend.get_sample_rate()
+            sample_rate: root.backend.sample_rate
 
             onPrepareToReceiveClickTrack: () => {
                 root.create_backend_loop()
@@ -1918,7 +1918,7 @@ Item {
                 close()
                 try {
                     var filename = UrlToFilename.qml_url_to_filename(file.toString());
-                    var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
+                    var samplerate = root.maybe_backend_loop.backend.sample_rate
 
                     var create_task = () => {
                         var task = ShoopRustFileIO.save_channels_to_soundfile_async(filename, samplerate, channels)
@@ -1950,7 +1950,7 @@ Item {
                 }
                 close()
                 var filename = UrlToFilename.qml_url_to_filename(file.toString());
-                var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
+                var samplerate = root.maybe_backend_loop.backend.sample_rate
                 ShoopRustFileIO.save_channel_to_midi_async(filename, samplerate, channel)
             }
 
@@ -1991,7 +1991,7 @@ Item {
             readonly property int n_channels : channels_to_load.length
             property int n_file_channels : 0
             property int file_sample_rate : 0
-            property int backend_sample_rate : root.maybe_backend_loop && root.maybe_backend_loop.backend ? root.maybe_backend_loop.backend.get_sample_rate() : 0
+            property int backend_sample_rate : root.maybe_backend_loop && root.maybe_backend_loop.backend ? root.maybe_backend_loop.backend.sample_rate : 0
             property bool will_resample : file_sample_rate != backend_sample_rate
 
             width: 300
@@ -2033,7 +2033,7 @@ Item {
                 }
                 try {
                     close()
-                    var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
+                    var samplerate = root.maybe_backend_loop.backend.sample_rate
                     // Distribute file channels round-robin over loop channels.
                     // TODO: provide other options
                     var mapping = Array.from(Array(n_file_channels).keys()).map(v => [])
@@ -2135,7 +2135,7 @@ Item {
             property var channels : root.midi_channels
             function doLoad(update_loop_length) {
                 root.create_backend_loop()
-                var samplerate = root.maybe_backend_loop.backend.get_sample_rate()
+                var samplerate = root.maybe_backend_loop.backend.sample_rate
                 ShoopRustFileIO.load_midi_to_channels_async(filename, samplerate, channels,
                     0, 0, root.maybe_backend_loop, 3000)
             }

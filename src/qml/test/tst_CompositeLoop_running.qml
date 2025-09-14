@@ -136,7 +136,7 @@ ShoopTestFile {
             function start_process_async(n_frames) {
                 process_helper.wait_interval = 0.01
                 process_helper.wait_start = 0.02
-                process_helper.samples_per_iter = session.backend.get_sample_rate() * process_helper.wait_interval
+                process_helper.samples_per_iter = session.backend.sample_rate * process_helper.wait_interval
                 process_helper.n_iters = n_frames / process_helper.samples_per_iter
                 process_helper.start()
             }

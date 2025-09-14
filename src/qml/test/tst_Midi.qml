@@ -269,7 +269,7 @@ ShoopTestFile {
                     // and play back in the exact same way. That means the state itself should be
                     // somehow saved. Test here that it works.
                     var filename = ShoopRustFileIO.generate_temporary_filename() + '.smf'
-                    if (!ShoopRustFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)) {
+                    if (!ShoopRustFileIO.save_channel_to_midi(filename, session.backend.sample_rate, chan)) {
                         testcase.fail("Could not save channel MIDI");
                     }
                     chan.clear(0)
@@ -278,7 +278,7 @@ ShoopTestFile {
                     verify_eq(chan.get_data(), [], null, true)
                     if (!ShoopRustFileIO.load_midi_to_channels(
                                 filename,
-                                session.backend.get_sample_rate(),
+                                session.backend.sample_rate,
                                 [chan],
                                 0,
                                 20,
@@ -358,7 +358,7 @@ ShoopTestFile {
 
                     // Save and re-load
                     var filename = ShoopRustFileIO.generate_temporary_filename() + '.smf'
-                    if (!ShoopRustFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)) {
+                    if (!ShoopRustFileIO.save_channel_to_midi(filename, session.backend.sample_rate, chan)) {
                         testcase.fail("Could not save channel MIDI");
                     }
                     chan.clear(0)
@@ -367,7 +367,7 @@ ShoopTestFile {
                     verify_eq(chan.get_data(), [], null, true)
                     if (!ShoopRustFileIO.load_midi_to_channels(
                                 filename,
-                                session.backend.get_sample_rate(),
+                                session.backend.sample_rate,
                                 [chan],
                                 0,
                                 0,

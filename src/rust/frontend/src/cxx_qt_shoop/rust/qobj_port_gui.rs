@@ -402,7 +402,7 @@ impl PortGui {
         }() {
             Ok(data) => data,
             Err(e) => {
-                error!(self, "Could not get connections state: {e}");
+                debug!(self, "Could not get connections state: {e}");
                 QMap::default()
             }
         }
