@@ -654,6 +654,11 @@ Item {
             }
 
             ToolbarButton {
+                anchors {
+                    left: parent.left
+                    bottom: parent.bottom
+                }
+
                 id: details_toggle
                 text: 'details'
                 togglable: true
@@ -814,48 +819,88 @@ Item {
                 }
             }
 
-            Grid {
-                columns: 2
-                spacing: 1
-                horizontalItemAlignment: Grid.AlignHCenter
-                verticalItemAlignment: Grid.AlignVCenter
-
-                anchors {
-                    horizontalCenter: parent.horizontalCenter
+            ToolbarButtonBase {
+                anchors{
+                    right: parent.right
                     bottom: parent.bottom
                 }
 
-                Label {
-                    id: dsptxt
-                    text: "DSP:"
-                }
+                implicitWidth: dsprow.width + 8
 
-                ProgressBar {
-                    width: 80
-                    from: 0.0
-                    to: 100.0
-                    value: session_backend.dsp_load
-                }
-
-                Label {
-                    text: "Xruns: " + session_backend.xruns.toString()
-                }
-
-                ExtendedButton {
-                    tooltip: "Reset reported Xruns to 0."
-                    id: reset_xruns
-                    Label {
-                        text: "Reset"
-                        anchors {
-                            horizontalCenter: parent.horizontalCenter
-                            verticalCenter: parent.verticalCenter
-                        }
+                ContextMenu.menu: Menu {
+                    id: dspmenu
+                    MenuItem {
+                        text: "Reset xruns"
+                        onTriggered: session_backend.xruns = 0
                     }
-                    width: 40
-                    height: 30
-                    onClicked: session_backend.xruns = 0
+                }
+
+                onClicked: dspmenu.popup()
+
+                Row {
+                    id: dsprow
+                    spacing: 4
+                    anchors.centerIn: parent
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "DSP"
+                    }
+                    ProgressBar {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 80
+                        from: 0.0
+                        to: 100.0
+                        value: session_backend.dsp_load
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "(" + session_backend.xruns.toString() + ")"
+                    }
                 }
             }
+
+            // Grid {
+            //     columns: 2
+            //     spacing: 1
+            //     horizontalItemAlignment: Grid.AlignHCenter
+            //     verticalItemAlignment: Grid.AlignVCenter
+
+            //     anchors {
+            //         horizontalCenter: parent.horizontalCenter
+            //         bottom: parent.bottom
+            //     }
+
+            //     Label {
+            //         id: dsptxt
+            //         text: "DSP:"
+            //     }
+
+            //     ProgressBar {
+            //         width: 80
+            //         from: 0.0
+            //         to: 100.0
+            //         value: session_backend.dsp_load
+            //     }
+
+            //     Label {
+            //         text: "Xruns: " + session_backend.xruns.toString()
+            //     }
+
+            //     ExtendedButton {
+            //         tooltip: "Reset reported Xruns to 0."
+            //         id: reset_xruns
+            //         Label {
+            //             text: "Reset"
+            //             anchors {
+            //                 horizontalCenter: parent.horizontalCenter
+            //                 verticalCenter: parent.verticalCenter
+            //             }
+            //         }
+            //         width: 40
+            //         height: 30
+            //         onClicked: session_backend.xruns = 0
+            //     }
+            // }
         }
     }
 }
