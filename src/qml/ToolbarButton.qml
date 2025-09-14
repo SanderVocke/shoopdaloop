@@ -2,12 +2,9 @@ import QtQuick 6.6
 import QtQuick.Controls 6.6
 import QtQuick.Controls.Material 6.6
 
-Rectangle {
+ToolbarRectangle {
     id: root
-    property int size : 30
-
     implicitWidth: text ? label.width + 6 : size
-    implicitHeight: size
 
     property var text : null
     property var material_design_icon : null
@@ -22,9 +19,6 @@ Rectangle {
     property bool toggle_visual_active : {
         return togglable && checked
     }
-
-    border.color: "#777777"
-    border.width: 1
 
     signal clicked()
 
