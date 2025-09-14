@@ -85,7 +85,7 @@ impl AudioChannel {
             for (i, &value) in data.iter().enumerate() {
                 (*backend_data)
                     .data
-                    .offset(i.try_into().unwrap())
+                    .offset(i.try_into().unwrap_or(0))
                     .write(value);
             }
             ffi::load_audio_channel_data(self.unsafe_backend_ptr(), backend_data);
@@ -160,11 +160,12 @@ impl AudioChannel {
 
 impl Drop for AudioChannel {
     fn drop(&mut self) {
-        let guard = self.obj.lock().unwrap();
-        let obj = *guard;
-        if obj.is_null() {
-            return;
+        if let Ok(guard) = self.obj.lock() {
+            let obj = *guard;
+            if obj.is_null() {
+                return;
+            }
+            unsafe { ffi::destroy_audio_channel(obj) };
         }
-        unsafe { ffi::destroy_audio_channel(obj) };
     }
 }
