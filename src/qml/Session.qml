@@ -819,13 +819,23 @@ Item {
                 }
             }
 
-            ToolbarRectangle {
+            ToolbarButtonBase {
                 anchors{
                     right: parent.right
                     bottom: parent.bottom
                 }
 
                 implicitWidth: dsprow.width + 8
+
+                ContextMenu.menu: Menu {
+                    id: dspmenu
+                    MenuItem {
+                        text: "Reset xruns"
+                        onTriggered: session_backend.xruns = 0
+                    }
+                }
+
+                onClicked: dspmenu.popup()
 
                 Row {
                     id: dsprow
