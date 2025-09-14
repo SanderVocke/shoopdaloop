@@ -827,7 +827,7 @@ Item {
 
                 implicitWidth: dsprow.width + 8
 
-                ContextMenu.menu: Menu {
+                Menu {
                     id: dspmenu
                     MenuItem {
                         text: "Reset xruns"
@@ -858,49 +858,6 @@ Item {
                     }
                 }
             }
-
-            // Grid {
-            //     columns: 2
-            //     spacing: 1
-            //     horizontalItemAlignment: Grid.AlignHCenter
-            //     verticalItemAlignment: Grid.AlignVCenter
-
-            //     anchors {
-            //         horizontalCenter: parent.horizontalCenter
-            //         bottom: parent.bottom
-            //     }
-
-            //     Label {
-            //         id: dsptxt
-            //         text: "DSP:"
-            //     }
-
-            //     ProgressBar {
-            //         width: 80
-            //         from: 0.0
-            //         to: 100.0
-            //         value: session_backend.dsp_load
-            //     }
-
-            //     Label {
-            //         text: "Xruns: " + session_backend.xruns.toString()
-            //     }
-
-            //     ExtendedButton {
-            //         tooltip: "Reset reported Xruns to 0."
-            //         id: reset_xruns
-            //         Label {
-            //             text: "Reset"
-            //             anchors {
-            //                 horizontalCenter: parent.horizontalCenter
-            //                 verticalCenter: parent.verticalCenter
-            //             }
-            //         }
-            //         width: 40
-            //         height: 30
-            //         onClicked: session_backend.xruns = 0
-            //     }
-            // }
         }
     }
 }
