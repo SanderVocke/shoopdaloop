@@ -74,6 +74,12 @@
       "version>=": "6.8.3",
       "platform": "linux"
 
+    },
+    {
+      "name": "rtaudio"
+    },
+    {
+      "name": "rtmidi"
     }
   ]
 }
