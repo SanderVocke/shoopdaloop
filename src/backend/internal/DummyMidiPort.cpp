@@ -99,6 +99,7 @@ void DummyMidiPort::request_data(uint32_t n_frames) {
 }
 
 void DummyMidiPort::PROC_prepare(uint32_t nframes) {
+    PROC_handle_command_queue();
     m_buffer_data.clear();
     auto progress_by = n_processed_last_round.load();
     progress_by -= std::min(n_requested_frames.load(), progress_by);
@@ -129,7 +130,6 @@ void DummyMidiPort::PROC_process(uint32_t nframes) {
     if (nframes > 0) {
         ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("Process {}", nframes);
     }
-    PROC_handle_command_queue();
     if (m_direction == shoop_port_direction_t::ShoopPortDirection_Output) {
         std::stable_sort(m_buffer_data.begin(), m_buffer_data.end(), [](StoredMessage const& a, StoredMessage const& b) {
             return a.time < b.time;

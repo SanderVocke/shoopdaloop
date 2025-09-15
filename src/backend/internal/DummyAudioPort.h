@@ -4,6 +4,7 @@
 #include "DummyPort.h"
 #include "PortInterface.h"
 #include "LoggingEnabled.h"
+#include "WithCommandQueue.h"
 #include "types.h"
 #include <memory>
 #include <memory>
@@ -16,7 +17,8 @@
 
 class DummyAudioPort : public virtual AudioPort<audio_sample_t>,
                        public DummyPort,
-                       private ModuleLoggingEnabled<"Backend.DummyAudioPort"> {
+                       private ModuleLoggingEnabled<"Backend.DummyAudioPort">,
+                       private WithCommandQueue {
 
     std::string m_name = "";
     shoop_port_direction_t m_direction = ShoopPortDirection_Input;

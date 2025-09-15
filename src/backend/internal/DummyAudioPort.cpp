@@ -13,6 +13,7 @@
 DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, shoop_shared_ptr<AudioPort<audio_sample_t>::BufferPool> buffer_pool, shoop_weak_ptr<DummyExternalConnections> external_connections)
     : AudioPort<audio_sample_t>(buffer_pool), m_name(name),
       DummyPort(name, direction, PortDataType::Audio, external_connections),
+      WithCommandQueue(100),
       m_direction(direction),
       m_queued_data(128) { }
 
@@ -26,22 +27,32 @@ float *DummyAudioPort::PROC_get_buffer(uint32_t n_frames) {
 }
 
 void DummyAudioPort::queue_data(uint32_t n_frames, audio_sample_t const *data) {
-    auto s = m_queued_data.read_available();
-    auto v = std::vector<audio_sample_t>(data, data + n_frames);
-    log<log_level_debug>("Queueing {} samples, {} sets queued total", n_frames, s);
-    if (should_log<log_level_debug_trace>()) {
-        log<log_level_debug_trace>("--> Queued samples: {}", v);
-    }
-    m_queued_data.push(v);
+    exec_process_thread_command([=]() {
+        auto s = this->m_queued_data.read_available();
+        auto v = std::vector<audio_sample_t>(data, data + n_frames);
+        log<log_level_debug>("Queueing {} samples, {} sets queued total", n_frames, s);
+        if (should_log<log_level_debug_trace>()) {
+            log<log_level_debug_trace>("--> Queued samples: {}", v);
+        }
+        this->m_queued_data.push(v);
+    });
 }
 
 bool DummyAudioPort::get_queue_empty() {
-    return m_queued_data.empty();
+    bool is_empty = false;
+    exec_process_thread_command([=,&is_empty]() {
+        is_empty = this->m_queued_data.empty();
+    });
+    return is_empty;
 }
 
 DummyAudioPort::~DummyAudioPort() { DummyPort::close(); }
 
 void DummyAudioPort::PROC_process(uint32_t n_frames) {
+    if (n_frames > 0) {
+        log<log_level_debug_trace>("Process {} frames", n_frames);
+    }
+
     AudioPort<audio_sample_t>::PROC_process(n_frames);
 
     auto buf = PROC_get_buffer(n_frames);
@@ -59,6 +70,7 @@ void DummyAudioPort::PROC_process(uint32_t n_frames) {
 }
 
 void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
+    PROC_handle_command_queue();
     auto buf = PROC_get_buffer(n_frames);
     uint32_t filled = 0;
     while (!m_queued_data.empty() && filled < n_frames) {
@@ -83,20 +95,25 @@ void DummyAudioPort::PROC_prepare(uint32_t n_frames) {
 }
 
 void DummyAudioPort::request_data(uint32_t n_frames) {
-    m_n_requested_samples += n_frames;
+    exec_process_thread_command([=]() {
+        this->m_n_requested_samples += n_frames;
+    });
 }
 
 std::vector<audio_sample_t> DummyAudioPort::dequeue_data(uint32_t n) {
-    auto s = m_retained_samples.size();
-    if (n > s) {
-        throw_error<std::runtime_error>("Not enough retained samples");
-    }
-    log<log_level_debug>("Yielding {} of {} output samples", n, s);
-    std::vector<audio_sample_t> rval(m_retained_samples.begin(), m_retained_samples.begin()+n);
-    m_retained_samples.erase(m_retained_samples.begin(), m_retained_samples.begin()+n);
-    if (should_log<log_level_debug_trace>()) {
-        log<log_level_debug_trace>("--> Yielded samples: {}", rval);
-    }
+    std::vector<audio_sample_t> rval;
+    exec_process_thread_command([=,&rval]() {
+        auto s = m_retained_samples.size();
+        if (n > s) {
+            throw_error<std::runtime_error>("Not enough retained samples");
+        }
+        log<log_level_debug>("Yielding {} of {} output samples", n, s);
+        rval = std::vector<audio_sample_t>(m_retained_samples.begin(), m_retained_samples.begin()+n);
+        m_retained_samples.erase(m_retained_samples.begin(), m_retained_samples.begin()+n);
+        if (should_log<log_level_debug_trace>()) {
+            log<log_level_debug_trace>("--> Yielded samples: {}", rval);
+        }
+    });
     return rval;
 }
 
