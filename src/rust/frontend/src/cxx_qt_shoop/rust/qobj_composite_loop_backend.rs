@@ -436,10 +436,16 @@ impl CompositeLoopBackend {
         let mut result: HashSet<*mut QObject> = HashSet::new();
         for (_, events) in self.schedule.data.iter() {
             for (l, _mode) in events.loops_start.iter() {
-                result.insert(l.obj.as_qobject_ref() as *mut QObject);
+                let l = l.obj.as_qobject_ref() as *mut QObject;
+                if !l.is_null() {
+                    result.insert(l);
+                }
             }
             for l in events.loops_end.iter().chain(events.loops_ignored.iter()) {
-                result.insert(l.obj.as_qobject_ref() as *mut QObject);
+                let l = l.obj.as_qobject_ref() as *mut QObject;
+                if !l.is_null() {
+                    result.insert(l);
+                }
             }
         }
         result
@@ -567,12 +573,14 @@ impl CompositeLoopBackend {
                 // to handle the sync cycle first. This ensures a deterministic ordering
                 // of events.
                 for loop_obj in self.as_mut().all_loops().iter() {
-                    invoke::<QObject, (), i32>(
-                        &mut **loop_obj,
-                        "dependent_will_handle_sync_loop_cycle(::std::int32_t)",
-                        connection_types::DIRECT_CONNECTION,
-                        &(cycle_nr),
-                    )?;
+                    if !loop_obj.is_null() {
+                        invoke::<QObject, (), i32>(
+                            &mut **loop_obj,
+                            "dependent_will_handle_sync_loop_cycle(::std::int32_t)",
+                            connection_types::DIRECT_CONNECTION,
+                            &(cycle_nr),
+                        )?;
+                    }
                 }
 
                 if self.next_transition_delay == 0 {

@@ -77,7 +77,7 @@ public:
     shoop_shared_ptr<AudioPort<audio_sample_t>> open_audio_port(
         std::string name,
         shoop_port_direction_t direction,
-        shoop_shared_ptr<typename AudioPort<audio_sample_t>::BufferPool> buffer_pool
+        shoop_shared_ptr<typename AudioPort<audio_sample_t>::UsedBufferPool> buffer_pool
     ) = 0;
 
     virtual
@@ -91,7 +91,7 @@ public:
         shoop_port_direction_t direction
     );
 
-    void PROC_process_decoupled_midi_ports(uint32_t nframes);    
+    void PROC_process_decoupled_midi_ports(uint32_t nframes);
     void unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port);
 
     virtual void close() = 0;

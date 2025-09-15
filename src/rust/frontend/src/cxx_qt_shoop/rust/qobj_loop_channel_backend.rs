@@ -678,6 +678,7 @@ impl LoopChannelBackend {
     }
 
     pub fn get_audio_data(self: Pin<&mut LoopChannelBackend>) -> QVector_f32 {
+        // NOTE: this is one of the few APIs which may be called from any thread.
         if self.maybe_backend_channel.is_none() {
             error!(self, "could not get audio data: not yet initialized");
         }
@@ -694,6 +695,7 @@ impl LoopChannelBackend {
     }
 
     pub fn get_midi_data(self: Pin<&mut LoopChannelBackend>) -> QVector_QVariant {
+        // NOTE: this is one of the few APIs which may be called from any thread.
         if self.maybe_backend_channel.is_none() {
             error!(self, "could not get MIDI data: not yet initialized");
         }
@@ -716,6 +718,7 @@ impl LoopChannelBackend {
     }
 
     pub fn get_data(self: Pin<&mut LoopChannelBackend>) -> QVector_QVariant {
+        // NOTE: this is one of the few APIs which may be called from any thread.
         match self.data_type {
             Some(PortDataType::Audio) => {
                 let mut variantlist: QVector_QVariant = QVector::default();

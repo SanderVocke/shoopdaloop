@@ -1,6 +1,6 @@
 #pragma once
 #include "ChannelInterface.h"
-#include "ObjectPool.h"
+#include "BufferPool.h"
 #include "AudioBuffer.h"
 #include "WithCommandQueue.h"
 #include "LoggingEnabled.h"
@@ -11,18 +11,18 @@
 template<typename SampleT>
 class AudioChannel : public ChannelInterface,
                             private WithCommandQueue,
-                            private ModuleLoggingEnabled<"Backend.AudioChannel"> {
+                            private ModuleLoggingEnabled<"Backend.AudioChannel"> {   
 public:
     typedef AudioBuffer<SampleT> BufferObj;
-    typedef ObjectPool<BufferObj> BufferPool;
+    typedef BufferPool<SampleT> UsedBufferPool;
     typedef shoop_shared_ptr<BufferObj> Buffer;
-    
+
 private:
 
     struct Buffers;
 
     // Members which may be accessed from any thread (ma prefix)
-    shoop_shared_ptr<BufferPool> ma_buffer_pool = nullptr;
+    shoop_shared_ptr<UsedBufferPool> ma_buffer_pool = nullptr;
     const uint32_t ma_buffer_size;
     std::atomic<int> ma_start_offset = 0;
     std::atomic<uint32_t> ma_pre_play_samples = 0;
@@ -73,10 +73,10 @@ private:
 
         uint32_t buffers_size = 0;
         shoop_shared_ptr<std::vector<Buffer>> buffers;
-        shoop_shared_ptr<BufferPool> pool = nullptr;
+        shoop_shared_ptr<UsedBufferPool> pool = nullptr;
 
         Buffers();
-        Buffers(shoop_shared_ptr<BufferPool> pool, uint32_t initial_max_buffers);
+        Buffers(shoop_shared_ptr<UsedBufferPool> pool, uint32_t initial_max_buffers);
 
         Buffers& operator= (Buffers const& other);
         
@@ -130,7 +130,7 @@ private:
 public:
 
     AudioChannel(
-            shoop_shared_ptr<BufferPool> buffer_pool,
+            shoop_shared_ptr<UsedBufferPool> buffer_pool,
             uint32_t initial_max_buffers,
             shoop_channel_mode_t mode);
 

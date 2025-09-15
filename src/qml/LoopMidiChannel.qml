@@ -40,7 +40,7 @@ ShoopRustLoopChannelGui {
             var full_filename = data_files_dir + '/' + filename;
 
             var create_task = () => {
-                var task = ShoopRustFileIO.save_channel_to_midi_async(full_filename, root.backend.get_sample_rate(), root)
+                var task = ShoopRustFileIO.save_channel_to_midi_async(full_filename, root.backend.sample_rate, root)
                 task.then_delete()
                 return task
             }

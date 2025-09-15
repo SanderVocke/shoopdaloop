@@ -44,10 +44,6 @@ impl FXChainGui {
     pub fn initialize_impl(mut self: Pin<&mut Self>) {
         debug!(self, "Initializing");
 
-        self.as_mut()
-            .on_destroyed(|s, _| debug!(s, "Destroyed"))
-            .release();
-
         unsafe {
             let backend_fx_chain = make_raw_fx_chain_backend();
             let backend_fx_chain_qobj = fx_chain_backend_qobject_from_ptr(backend_fx_chain);

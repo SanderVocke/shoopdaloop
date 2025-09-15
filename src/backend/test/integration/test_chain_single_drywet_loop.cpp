@@ -4,7 +4,7 @@
 #include "AudioMidiLoop.h"
 #include "LoggingBackend.h"
 #include "PortInterface.h"
-#include "ObjectPool.h"
+#include "BufferPool.h"
 #include "AudioBuffer.h"
 #include "GraphPort.h"
 #include "catch2/catch_approx.hpp"
@@ -56,7 +56,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
     shoopdaloop_loop_t *api_sync_loop;
     shoop_shared_ptr<GraphLoop> int_sync_loop;
 
-    shoop_shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
+    shoop_shared_ptr<BufferPool<float>> buffer_pool;
 
     shoopdaloop_loop_audio_channel_t *api_dry_chan;
     shoopdaloop_loop_audio_channel_t *api_wet_chan;
@@ -179,16 +179,18 @@ TEST_CASE("Chain - DryWet Basic", "[chain][audio]") {
     std::vector<float> input_data2({-8, -7, -6, -5, -4, -3 , -2, -1});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
     tst.int_dummy_input_port->queue_data(8, input_data2.data());
+    tst.int_dummy_output_port->request_data(4);
+
+    tst.int_driver->wait_process();
 
     tst.int_driver->controlled_mode_request_samples(4);
-    tst.int_dummy_output_port->request_data(4);
     tst.int_driver->controlled_mode_run_request();
-
-    tst.int_driver->pause();
-
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
     CHECK(result_data.size() == 4);
     CHECK(tst.int_dummy_input_port->get_queue_empty() == false);
+
+    tst.int_driver->pause();
+    
     auto expect_output_1 = std::vector<float>(input_data.begin(), input_data.begin() + 4);
     for (auto &v: expect_output_1) { v /= 2.0f; }
     CHECK(result_data == expect_output_1);
@@ -196,15 +198,18 @@ TEST_CASE("Chain - DryWet Basic", "[chain][audio]") {
 
     tst.int_driver->resume();
 
-    tst.int_driver->controlled_mode_request_samples(12);
     tst.int_dummy_output_port->request_data(12);
+
+    tst.int_driver->wait_process();
+
+    tst.int_driver->controlled_mode_request_samples(12);
     tst.int_driver->controlled_mode_run_request();
-
-    tst.int_driver->pause();
-
     result_data = tst.int_dummy_output_port->dequeue_data(12);
     CHECK(result_data.size() == 12);
     CHECK(tst.int_dummy_input_port->get_queue_empty() == true);
+
+    tst.int_driver->pause();
+
     auto expect_output_2 = std::vector<float>(input_data.begin() + 4, input_data.end());
     expect_output_2.insert(expect_output_2.end(), input_data2.begin(), input_data2.end());
     for (auto &v: expect_output_2) { v /= 2.0f; }
@@ -220,8 +225,11 @@ TEST_CASE("Chain - DryWet record basic", "[chain][audio]") {
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
-    tst.int_driver->controlled_mode_request_samples(8);
     tst.int_dummy_output_port->request_data(8);
+
+    tst.int_driver->wait_process();
+
+    tst.int_driver->controlled_mode_request_samples(8);
     tst.int_driver->controlled_mode_run_request();
 
     auto expect_data = input_data;
@@ -245,8 +253,11 @@ TEST_CASE("Chain - DryWet record passthrough muted", "[chain][audio]") {
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
-    tst.int_driver->controlled_mode_request_samples(8);
     tst.int_dummy_output_port->request_data(8);
+
+    tst.int_driver->wait_process();
+
+    tst.int_driver->controlled_mode_request_samples(8);
     tst.int_driver->controlled_mode_run_request();
 
     auto result_data = tst.int_dummy_output_port->dequeue_data(8);
@@ -265,8 +276,11 @@ TEST_CASE("Chain - DryWet record muted", "[chain][audio]") {
     
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
-    tst.int_driver->controlled_mode_request_samples(8);
     tst.int_dummy_output_port->request_data(8);
+
+    tst.int_driver->wait_process();
+
+    tst.int_driver->controlled_mode_request_samples(8);
     tst.int_driver->controlled_mode_run_request();
 
     CHECK(tst.int_dry_audio_chan->get_data(true) == zeroes(8));
@@ -286,8 +300,11 @@ TEST_CASE("Chain - DryWet record gain", "[chain][audio]") {
     auto expected_wet = expected;
     for (auto &v: expected_wet) { v /= 2.0f; }
     tst.int_dummy_input_port->queue_data(8, input_data.data());
-    tst.int_driver->controlled_mode_request_samples(8);
     tst.int_dummy_output_port->request_data(8);
+
+    tst.int_driver->wait_process();
+
+    tst.int_driver->controlled_mode_request_samples(8);
     tst.int_driver->controlled_mode_run_request();
 
     CHECK(tst.int_dry_audio_chan->get_data(true) == expected);
@@ -314,9 +331,11 @@ TEST_CASE("Chain - DryWet playback basic", "[chain][audio]") {
     tst.int_loop->loop->set_length(4, false);
 
     loop_transition(tst.api_loop, LoopMode_Playing, -1, -1);
+    tst.int_dummy_output_port->request_data(4);
+
+    tst.int_driver->wait_process();
     
     tst.int_driver->controlled_mode_request_samples(4);
-    tst.int_dummy_output_port->request_data(4);
     tst.int_driver->controlled_mode_run_request();
 
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
@@ -337,9 +356,11 @@ TEST_CASE("Chain - DryWet playback gain", "[chain][audio]") {
     set_audio_port_gain(tst.api_output_port, 0.5);
 
     loop_transition(tst.api_loop, LoopMode_Playing, -1, -1);
+    tst.int_dummy_output_port->request_data(4);
+
+    tst.int_driver->wait_process();
     
     tst.int_driver->controlled_mode_request_samples(4);
-    tst.int_dummy_output_port->request_data(4);
     tst.int_driver->controlled_mode_run_request();
 
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
@@ -359,9 +380,11 @@ TEST_CASE("Chain - DryWet dry playback basic", "[chain][audio]") {
     tst.int_loop->loop->set_length(4, false);
     
     loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, -1, -1);
+    tst.int_dummy_output_port->request_data(4);
+
+    tst.int_driver->wait_process();
     
     tst.int_driver->controlled_mode_request_samples(4);
-    tst.int_dummy_output_port->request_data(4);
     tst.int_driver->controlled_mode_run_request();
 
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
@@ -384,9 +407,11 @@ TEST_CASE("Chain - DryWet dry playback gain", "[chain][audio]") {
 
     set_audio_port_gain(tst.api_output_port, 0.5);
     loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, -1, -1);
+    tst.int_dummy_output_port->request_data(4);
+
+    tst.int_driver->wait_process();
     
     tst.int_driver->controlled_mode_request_samples(4);
-    tst.int_dummy_output_port->request_data(4);
     tst.int_driver->controlled_mode_run_request();
 
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
@@ -409,9 +434,11 @@ TEST_CASE("Chain - DryWet dry playback input passthrough muted", "[chain][audio]
 
     set_audio_port_passthroughMuted(tst.api_input_port, 1);
     loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, -1, -1);
+    tst.int_dummy_output_port->request_data(4);
+
+    tst.int_driver->wait_process();
     
     tst.int_driver->controlled_mode_request_samples(4);
-    tst.int_dummy_output_port->request_data(4);
     tst.int_driver->controlled_mode_run_request();
 
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
@@ -434,9 +461,11 @@ TEST_CASE("Chain - DryWet dry playback input muted", "[chain][audio]") {
 
     set_audio_port_muted(tst.api_input_port, 1);
     loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, -1, -1);
+    tst.int_dummy_output_port->request_data(4);
+    
+    tst.int_driver->wait_process();
     
     tst.int_driver->controlled_mode_request_samples(4);
-    tst.int_dummy_output_port->request_data(4);
     tst.int_driver->controlled_mode_run_request();
 
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
@@ -459,8 +488,11 @@ TEST_CASE("Chain - DryWet record MIDI basic", "[chain][midi]") {
     };
 
     queue_midi_msgs(tst.api_midi_input_port, msgs);
-    tst.int_driver->controlled_mode_request_samples(30);
     tst.int_dummy_output_port->request_data(30);
+
+    tst.int_driver->wait_process();
+
+    tst.int_driver->controlled_mode_request_samples(30);
     tst.int_driver->controlled_mode_run_request();
 
     auto result_data = convert_api_midi_msgs(get_midi_channel_data(tst.api_dry_midi_chan));
@@ -486,10 +518,11 @@ TEST_CASE("Chain - DryWet live playback MIDI basic", "[chain][midi]") {
     destroy_midi_sequence(sequence);
     set_loop_length(tst.api_loop, 4);
     loop_transition(tst.api_loop, LoopMode_PlayingDryThroughWet, -1, -1);
+    tst.int_dummy_output_port->request_data(4);
 
-    tst.int_dummy_output_port->request_data(4);
+    tst.int_driver->wait_process();
+
     tst.int_driver->controlled_mode_request_samples(4);
-    tst.int_dummy_output_port->request_data(4);
     tst.int_driver->controlled_mode_run_request();
 
     auto result_data = tst.int_dummy_output_port->dequeue_data(4);
@@ -508,11 +541,16 @@ TEST_CASE("Chain - DryWet adopt audio ringbuffer - no sync loop", "[chain][audio
     // Process 8 samples in stopped mode
     std::vector<float> input_data({1, 2, 3, 4, 5, 6, 7, 8});
     tst.int_dummy_input_port->queue_data(8, input_data.data());
+
+    tst.int_driver->wait_process();
+
     tst.int_driver->controlled_mode_request_samples(8);
     tst.int_driver->controlled_mode_run_request();
 
     // Grab the ringbuffer
     adopt_ringbuffer_contents(tst.api_loop, 0, 1, 0, LoopMode_Unknown);
+
+    tst.int_driver->wait_process();
     tst.int_driver->controlled_mode_run_request();
 
     // Since the sync loop is empty, the fallback behavior here should be that the
@@ -542,11 +580,14 @@ TEST_CASE("Chain - DryWet adopt audio ringbuffer - one cycle", "[chain][audio]")
     tst.int_sync_loop->loop->set_length(3, true);
     loop_transition(tst.api_sync_loop, LoopMode_Playing, -1, -1);
 
+    tst.int_driver->wait_process();
+
     tst.int_driver->controlled_mode_request_samples(7); // Two cycles and 1 sample
     tst.int_driver->controlled_mode_run_request();
 
     // Grab the ringbuffer. Offset 1 means last completed cycle.
     adopt_ringbuffer_contents(tst.api_loop, 1, 1, 0, LoopMode_Unknown);
+    tst.int_driver->wait_process();
     tst.int_driver->controlled_mode_run_request();
 
     // We should have grabbed the full last completed cycle, which is samples [4, 5, 6].

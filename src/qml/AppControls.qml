@@ -380,7 +380,7 @@ Item {
             Connections {
                 target: AppRegistries.state_registry
                 function onPlay_after_record_activeChanged() {
-                    let v = AppRegistries.state_registry.play_after_record
+                    let v = AppRegistries.state_registry.play_after_record || false
                     play_after_record_active_button.state = play_after_record_active_button.inverted ? !v : v
                 }
             }

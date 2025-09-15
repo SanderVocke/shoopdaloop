@@ -9,7 +9,7 @@ CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(
     uint32_t n_audio_outputs,
     uint32_t n_midi_inputs,
     ProcessFunctor process_callback,
-    shoop_shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::BufferPool> maybe_buffer_pool) :
+    shoop_shared_ptr<typename AudioPort<shoop_types::audio_sample_t>::UsedBufferPool> maybe_buffer_pool) :
     m_active(true),
     m_freewheeling(false),
     m_process_callback(process_callback)
@@ -34,21 +34,21 @@ CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(
             ));
     }
 }
-    
+
 template<typename TimeType, typename SizeType>
-std::vector<typename CustomProcessingChain<TimeType, SizeType>::SharedInternalAudioPort> const& 
+std::vector<typename CustomProcessingChain<TimeType, SizeType>::SharedInternalAudioPort> const&
 CustomProcessingChain<TimeType, SizeType>::input_audio_ports() const {
     return m_input_audio_ports;
 }
 
 template<typename TimeType, typename SizeType>
-std::vector<typename CustomProcessingChain<TimeType, SizeType>::SharedInternalAudioPort> const& 
+std::vector<typename CustomProcessingChain<TimeType, SizeType>::SharedInternalAudioPort> const&
 CustomProcessingChain<TimeType, SizeType>::output_audio_ports() const {
     return m_output_audio_ports;
 }
 
 template<typename TimeType, typename SizeType>
-std::vector<typename CustomProcessingChain<TimeType, SizeType>::SharedMidiPort> const& 
+std::vector<typename CustomProcessingChain<TimeType, SizeType>::SharedMidiPort> const&
 CustomProcessingChain<TimeType, SizeType>::input_midi_ports() const {
     return m_input_midi_ports;
 }

@@ -143,7 +143,7 @@ GenericJackAudioMidiDriver<API>::~GenericJackAudioMidiDriver() {
 
 template<typename API>
 shoop_shared_ptr<AudioPort<float>>GenericJackAudioMidiDriver<API>::open_audio_port(std::string name, shoop_port_direction_t direction,
-    shoop_shared_ptr<typename AudioPort<jack_default_audio_sample_t>::BufferPool> buffer_pool) {
+    shoop_shared_ptr<typename AudioPort<jack_default_audio_sample_t>::UsedBufferPool> buffer_pool) {
     shoop_shared_ptr<PortInterface> port =
         shoop_static_pointer_cast<PortInterface>(
             shoop_make_shared<GenericJackAudioPort<API>>(name, direction, (jack_client_t*)get_maybe_client_handle(), m_all_ports_tracker, buffer_pool)

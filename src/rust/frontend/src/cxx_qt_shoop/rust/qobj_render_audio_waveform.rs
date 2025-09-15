@@ -1,14 +1,18 @@
 use common::logging::macros::*;
-use cxx_qt_lib_shoop::qvariant_helpers::{
-    qvariant_to_qsharedpointer_qvector_qvariant, qvariant_type_name,
-};
+use cxx_qt_lib_shoop::connect::connect_or_report;
+use cxx_qt_lib_shoop::connection_types;
+use cxx_qt_lib_shoop::invokable::invoke;
+use cxx_qt_lib_shoop::qsharedpointer_qobject::QSharedPointer_QObject;
+use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qsharedpointer_qvector_qvariant;
 shoop_log_unit!("Frontend.RenderAudioWaveform");
 
-use crate::audio_power_pyramid;
 use crate::audio_power_pyramid::*;
 pub use crate::cxx_qt_shoop::qobj_render_audio_waveform_bridge::ffi::RenderAudioWaveform;
 use crate::cxx_qt_shoop::qobj_render_audio_waveform_bridge::ffi::*;
 use crate::cxx_qt_shoop::qobj_render_audio_waveform_bridge::*;
+use crate::{
+    audio_power_pyramid, cxx_qt_shoop::qobj_async_task_bridge::ffi::make_raw_async_task_with_parent,
+};
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QColor, QLine};
@@ -22,34 +26,72 @@ pub fn register_qml_type(module_name: &str, type_name: &str) {
 }
 
 impl ffi::RenderAudioWaveform {
-    fn preprocess_from_iter(mut self: Pin<&mut Self>, iter: impl Iterator<Item = f32>) {
-        {
-            let mut p = self.pyramid.lock().unwrap();
-            *p = audio_power_pyramid::create_audio_power_pyramid(iter, 2048);
-            debug!("Created pyramid with {} levels", p.levels.len());
-        }
-        self.as_mut().update();
-    }
-
     pub fn preprocess(mut self: Pin<&mut Self>) {
         if let Err(e) = || -> Result<(), anyhow::Error> {
-            if let Ok(shared) = qvariant_to_qsharedpointer_qvector_qvariant(&self.input_data) {
-                unsafe {
-                    let vector = shared
+            // Move the shared data into a preprocessing task, along with a shared
+            // mutable pointer to our pyramid data used for painting.
+            let self_qobj = unsafe {
+                render_audio_waveform_to_qobject(self.as_mut().get_unchecked_mut() as *mut Self)
+            };
+            let async_task = unsafe { make_raw_async_task_with_parent(self_qobj) };
+            let mut pin_async_task = unsafe { std::pin::Pin::new_unchecked(&mut *async_task) };
+            pin_async_task.as_mut().set_cpp_ownership();
+
+            let shared_pyramid = self.rust().pyramid.clone();
+            let shared_data = self.input_data.clone();
+            let notifier_shared;
+            unsafe {
+                let notifier = make_raw_update_notifier();
+                let notifier = update_notifier_to_qobject(notifier);
+                notifier_shared = QSharedPointer_QObject::from_ptr_delete_later(notifier).unwrap();
+
+                connect_or_report(
+                    &*notifier,
+                    "notify_done()",
+                    &*self_qobj,
+                    "update()",
+                    connection_types::QUEUED_CONNECTION,
+                );
+            }
+
+            std::thread::spawn(move || unsafe {
+                if let Err(e) = || -> Result<(), anyhow::Error> {
+                    let shared_data = qvariant_to_qsharedpointer_qvector_qvariant(&shared_data)
+                        .map_err(|e| {
+                            anyhow::anyhow!("Could not convert input data to shared QVector: {e}")
+                        })?;
+                    let vector = shared_data
                         .data()?
                         .as_ref()
                         .ok_or(anyhow::anyhow!("Could not dereference QVector pointer"))?;
                     debug!("Preprocessing input data - {} elements", vector.len());
-                    self.as_mut().preprocess_from_iter(
-                        vector.iter().map(|v| v.value::<f32>().unwrap_or(0.0)),
-                    );
+
+                    match shared_pyramid.lock() {
+                        Ok(mut p) => {
+                            *p = audio_power_pyramid::create_audio_power_pyramid(
+                                vector.iter().map(|v| v.value::<f32>().unwrap_or(0.0)),
+                                2048,
+                            );
+                            debug!("Created pyramid with {} levels", p.levels.len());
+                        }
+                        Err(e) => {
+                            error!("Could not preprocess input data - failed to lock pyramid: {e}");
+                        }
+                    }
+
+                    let shared = notifier_shared;
+                    invoke::<_, (), _>(
+                        &mut *shared.as_ref().unwrap().data().unwrap(),
+                        "notify_done()",
+                        connection_types::DIRECT_CONNECTION,
+                        &(),
+                    )?;
+
+                    Ok(())
+                }() {
+                    error!("Failed to preprocess input data: {e}")
                 }
-            } else {
-                return Err(anyhow::anyhow!(
-                    "Unsupported input data type: {}",
-                    qvariant_type_name(&self.input_data)?
-                ));
-            }
+            });
 
             Ok(())
         }() {
