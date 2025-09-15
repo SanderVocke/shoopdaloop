@@ -2103,7 +2103,7 @@ void dummy_midi_port_queue_data(shoopdaloop_midi_port_t *port, shoop_midi_sequen
             );
         }
     } else {
-        logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_midi_port_queue_data called on non-dummy0midi port");
+        logging::log<"Backend.API", log_level_error>(std::nullopt, std::nullopt, "dummy_midi_port_queue_data called on non-dummy midi port");
     }
   });
 }

@@ -88,12 +88,14 @@ bool DummyMidiPort::get_queue_empty() {
 }
 
 void DummyMidiPort::request_data(uint32_t n_frames) {
-    if (n_requested_frames > 0) {
-        throw std::runtime_error("Previous request not yet completed");
-    }
-    ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("request {} frames", n_frames);
-    n_requested_frames = n_frames;
-    n_original_requested_frames = n_frames;
+    exec_process_thread_command([=]() {
+        if (this->n_requested_frames > 0) {
+            throw std::runtime_error("Previous request not yet completed");
+        }
+        ModuleLoggingEnabled<"Backend.DummyMidiPort">::log<log_level_debug_trace>("request {} frames", n_frames);
+        this->n_requested_frames = n_frames;
+        this->n_original_requested_frames = n_frames;
+    });
 }
 
 void DummyMidiPort::PROC_prepare(uint32_t nframes) {
