@@ -4,7 +4,7 @@ use crate::refilling_pool::RefillingPool;
 mod ffi {
 
     /// A struct passed to C++ containing the raw pointer and length of a buffer.
-    #[derive(Debug, Default)]
+    #[derive(Debug)]
     struct Buffer {
         ptr: *mut u8,
         len: usize,

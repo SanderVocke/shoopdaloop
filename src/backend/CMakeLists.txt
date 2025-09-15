@@ -205,7 +205,7 @@ if(NOT zita-resampler_FOUND)
     # Check if both were found
     if(ZITA_RESAMPLER_LIBRARY AND ZITA_RESAMPLER_INCLUDE_DIR)
         message(STATUS "Found zita-resampler manually.")
-        
+
         # Define an imported target to simulate a proper package
         add_library(zita-resampler::zita-resampler UNKNOWN IMPORTED)
         set_target_properties(zita-resampler::zita-resampler PROPERTIES
@@ -244,6 +244,16 @@ target_link_libraries(shoopdaloop_backend_internals PRIVATE
   refilling_pool
   refilling_pool_cxx
   )
+if (MSVC)
+  # On Windows, we need to link some additional system libs
+  # in order to successfully link to Rust-generated static
+  # libraries
+  target_link_libraries(shoopdaloop_backend_internals PUBLIC
+    Ws2_32
+    Ntdll
+    Userenv
+  )
+endif()
 if (WIN32)
   target_link_libraries(shoopdaloop_backend_internals PRIVATE Boost::system)
 endif()
