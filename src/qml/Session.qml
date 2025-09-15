@@ -846,6 +846,7 @@ Item {
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "DSP"
+                        font.pixelSize: 14
                     }
                     ProgressBar {
                         anchors.verticalCenter: parent.verticalCenter
@@ -857,6 +858,7 @@ Item {
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "(" + session_backend.xruns.toString() + ")"
+                        font.pixelSize: 14
                     }
                 }
             }
@@ -876,7 +878,8 @@ Item {
                 Label {
                     id: buflabel
                     anchors.centerIn: parent
-                    text: `Buffer: ${latency_indicator.buffer_size} frames | ${latency_indicator.latency.toFixed(2)} ms`
+                    text: `latency: ${latency_indicator.buffer_size} frames | ${latency_indicator.latency.toFixed(2)} ms`
+                    font.pixelSize: 14
                 }
             }
         }
