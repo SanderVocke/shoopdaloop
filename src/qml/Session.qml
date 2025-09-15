@@ -107,7 +107,7 @@ Item {
 
         return GenerateSession.generate_session(
             global_args.version_string,
-            session_backend.get_sample_rate(),
+            session_backend.sample_rate,
             track_groups,
             [],
             [],
@@ -299,7 +299,7 @@ Item {
             var session_file_contents = ShoopRustFileIO.read_file(session_filename)
             var descriptor = JSON.parse(session_file_contents)
             root.logger.trace(`Session descriptor: ${JSON.stringify(descriptor, null, 2)}`)
-            let our_sample_rate = session_backend.get_sample_rate()
+            let our_sample_rate = session_backend.sample_rate
             let incoming_sample_rate = descriptor.sample_rate
 
             if (!ShoopRustSchemaValidator.validate_schema(descriptor, "Session object", validator.schema, false)) {
@@ -654,6 +654,11 @@ Item {
             }
 
             ToolbarButton {
+                anchors {
+                    left: parent.left
+                    bottom: parent.bottom
+                }
+
                 id: details_toggle
                 text: 'details'
                 togglable: true
@@ -814,46 +819,67 @@ Item {
                 }
             }
 
-            Grid {
-                columns: 2
-                spacing: 1
-                horizontalItemAlignment: Grid.AlignHCenter
-                verticalItemAlignment: Grid.AlignVCenter
+            ToolbarButtonBase {
+                id: dsp_indicator
+
+                anchors{
+                    right: parent.right
+                    bottom: parent.bottom
+                }
+
+                implicitWidth: dsprow.width + 8
+
+                Menu {
+                    id: dspmenu
+                    MenuItem {
+                        text: "Reset xruns"
+                        onTriggered: session_backend.xruns = 0
+                    }
+                }
+
+                onClicked: dspmenu.popup()
+
+                Row {
+                    id: dsprow
+                    spacing: 4
+                    anchors.centerIn: parent
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "DSP"
+                        font.pixelSize: 14
+                    }
+                    ProgressBar {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 80
+                        from: 0.0
+                        to: 100.0
+                        value: session_backend.dsp_load
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "(" + session_backend.xruns.toString() + ")"
+                        font.pixelSize: 14
+                    }
+                }
+            }
+
+            ToolbarRectangle {
+                id: latency_indicator
+                implicitWidth: buflabel.width + 6
+
+                property int buffer_size: session_backend.buffer_size
+                property real latency: session_backend.buffer_size * 1000.0 / session_backend.sample_rate
 
                 anchors {
-                    horizontalCenter: parent.horizontalCenter
+                    right: dsp_indicator.left
                     bottom: parent.bottom
                 }
 
                 Label {
-                    id: dsptxt
-                    text: "DSP:"
-                }
-
-                ProgressBar {
-                    width: 80
-                    from: 0.0
-                    to: 100.0
-                    value: session_backend.dsp_load
-                }
-
-                Label {
-                    text: "Xruns: " + session_backend.xruns.toString()
-                }
-
-                ExtendedButton {
-                    tooltip: "Reset reported Xruns to 0."
-                    id: reset_xruns
-                    Label {
-                        text: "Reset"
-                        anchors {
-                            horizontalCenter: parent.horizontalCenter
-                            verticalCenter: parent.verticalCenter
-                        }
-                    }
-                    width: 40
-                    height: 30
-                    onClicked: session_backend.xruns = 0
+                    id: buflabel
+                    anchors.centerIn: parent
+                    text: `latency: ${latency_indicator.buffer_size} frames | ${latency_indicator.latency.toFixed(2)} ms`
+                    font.pixelSize: 14
                 }
             }
         }

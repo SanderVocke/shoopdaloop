@@ -91,7 +91,7 @@ public:
         shoop_port_direction_t direction
     );
 
-    void PROC_process_decoupled_midi_ports(uint32_t nframes);    
+    void PROC_process_decoupled_midi_ports(uint32_t nframes);
     void unregister_decoupled_midi_port(shoop_shared_ptr<shoop_types::_DecoupledMidiPort> port);
 
     virtual void close() = 0;

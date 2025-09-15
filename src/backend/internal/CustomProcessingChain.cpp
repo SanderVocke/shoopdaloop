@@ -34,21 +34,21 @@ CustomProcessingChain<TimeType, SizeType>::CustomProcessingChain(
             ));
     }
 }
-    
+
 template<typename TimeType, typename SizeType>
-std::vector<typename CustomProcessingChain<TimeType, SizeType>::SharedInternalAudioPort> const& 
+std::vector<typename CustomProcessingChain<TimeType, SizeType>::SharedInternalAudioPort> const&
 CustomProcessingChain<TimeType, SizeType>::input_audio_ports() const {
     return m_input_audio_ports;
 }
 
 template<typename TimeType, typename SizeType>
-std::vector<typename CustomProcessingChain<TimeType, SizeType>::SharedInternalAudioPort> const& 
+std::vector<typename CustomProcessingChain<TimeType, SizeType>::SharedInternalAudioPort> const&
 CustomProcessingChain<TimeType, SizeType>::output_audio_ports() const {
     return m_output_audio_ports;
 }
 
 template<typename TimeType, typename SizeType>
-std::vector<typename CustomProcessingChain<TimeType, SizeType>::SharedMidiPort> const& 
+std::vector<typename CustomProcessingChain<TimeType, SizeType>::SharedMidiPort> const&
 CustomProcessingChain<TimeType, SizeType>::input_midi_ports() const {
     return m_input_midi_ports;
 }

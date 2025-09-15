@@ -60,10 +60,6 @@ impl LoopChannelGui {
     pub fn initialize_impl(mut self: Pin<&mut LoopChannelGui>) {
         debug!(self, "Initializing");
 
-        self.as_mut()
-            .on_destroyed(|s, _| debug!(s, "Destroyed"))
-            .release();
-
         unsafe {
             let backend_channel = make_raw_loop_channel_backend();
             let backend_channel_qobj = loop_channel_backend_qobject_from_ptr(backend_channel);

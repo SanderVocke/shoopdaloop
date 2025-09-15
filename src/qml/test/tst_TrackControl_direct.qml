@@ -133,6 +133,7 @@ ShoopTestFile {
 
                     audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
+                    testcase.wait_updated(session.backend)
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     testcase.wait_updated(session.backend)
@@ -169,6 +170,7 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     midi_input_port.dummy_queue_midi_msgs(msgs)
+                    testcase.wait_updated(session.backend)
                     midi_output_port.dummy_request_data(8)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
@@ -194,6 +196,7 @@ ShoopTestFile {
 
                     audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
+                    testcase.wait_updated(session.backend)
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     testcase.wait_updated(session.backend)
@@ -218,6 +221,7 @@ ShoopTestFile {
 
                     audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
+                    testcase.wait_updated(session.backend)
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     testcase.wait_updated(session.backend)
@@ -243,6 +247,7 @@ ShoopTestFile {
 
                     audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
+                    testcase.wait_updated(session.backend)
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     testcase.wait_updated(session.backend)
@@ -268,6 +273,7 @@ ShoopTestFile {
 
                     audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
+                    testcase.wait_updated(session.backend)
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     testcase.wait_updated(session.backend)
@@ -291,6 +297,7 @@ ShoopTestFile {
 
                     audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
+                    testcase.wait_updated(session.backend)
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     testcase.wait_updated(session.backend)
@@ -322,6 +329,7 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     midi_input_port.dummy_queue_midi_msgs(msgs)
+                    testcase.wait_updated(session.backend)
                     midi_output_port.dummy_request_data(8)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()
@@ -349,6 +357,7 @@ ShoopTestFile {
 
                     audio_input_port_1.dummy_queue_audio_data([1, 2, 3, 4])
                     audio_input_port_2.dummy_queue_audio_data([4, 3, 2, 1])
+                    testcase.wait_updated(session.backend)
                     audio_output_port_1.dummy_request_data(4)
                     audio_output_port_2.dummy_request_data(4)
                     testcase.wait_updated(session.backend)
@@ -380,6 +389,7 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     midi_input_port.dummy_queue_midi_msgs(msgs)
+                    testcase.wait_updated(session.backend)
                     midi_output_port.dummy_request_data(8)
                     session.backend.dummy_request_controlled_frames(4)
                     session.backend.dummy_run_requested_frames()

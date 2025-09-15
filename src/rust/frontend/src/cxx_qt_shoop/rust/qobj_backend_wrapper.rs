@@ -221,26 +221,6 @@ impl BackendWrapper {
 
         debug!("Closing");
 
-        // unsafe {
-        //     let mut rust = self.as_mut().rust_mut();
-        //     if !rust.update_timer.is_null() {
-        //         let timer_mut_ref = &mut *rust.update_timer;
-        //         let timer_slice = slice::from_raw_parts_mut(timer_mut_ref, 1);
-        //         let mut timer : Pin<&mut QTimer> = Pin::new_unchecked(&mut timer_slice[0]);
-        //         timer.as_mut().stop_queued();
-        //         while timer.as_mut().is_active() {
-        //             std::thread::sleep(Duration::from_millis(1));
-        //         }
-        //     }
-        //     if !rust.update_thread.is_null() {
-        //         let thread_mut_ref = &mut *rust.update_thread;
-        //         let thread_slice = slice::from_raw_parts_mut(thread_mut_ref, 1);
-        //         let thread : Pin<&mut QThread> = Pin::new_unchecked(&mut thread_slice[0]);
-        //         thread.exit();
-        //     }
-        //     rust.closed = true;
-        // }
-
         {
             self.as_mut().set_ready(false);
         }
@@ -280,6 +260,8 @@ impl BackendWrapper {
                 .set_n_audio_buffers_available(update_data.n_audio_buffers_available);
             self.as_mut()
                 .set_n_audio_buffers_created(update_data.n_audio_buffers_created);
+            self.as_mut().set_buffer_size(update_data.buffer_size);
+            self.as_mut().set_sample_rate(update_data.sample_rate);
         }
 
         // Triggers other back-end objects to update as well
@@ -342,6 +324,8 @@ impl BackendWrapper {
             last_processed: driver_state.last_processed as i32,
             n_audio_buffers_available: session_state.n_audio_buffers_available as i32,
             n_audio_buffers_created: session_state.n_audio_buffers_created as i32,
+            sample_rate: driver_state.sample_rate as i32,
+            buffer_size: driver_state.buffer_size as i32,
         };
 
         {
@@ -353,28 +337,6 @@ impl BackendWrapper {
         self.as_mut().updated_on_backend_thread();
 
         trace!("End update on back-end thread");
-    }
-
-    pub fn get_sample_rate(mut self: Pin<&mut BackendWrapper>) -> i32 {
-        let mut_rust = self.as_mut().rust_mut();
-
-        if mut_rust.driver.is_none() {
-            warn!("get_sample_rate called on a BackendWrapper with no driver");
-            return 0;
-        }
-
-        mut_rust.driver.as_ref().unwrap().get_sample_rate() as i32
-    }
-
-    pub fn get_buffer_size(mut self: Pin<&mut BackendWrapper>) -> i32 {
-        let mut_rust = self.as_mut().rust_mut();
-
-        if mut_rust.driver.is_none() {
-            warn!("get_sample_rate called on a BackendWrapper with no driver");
-            return 0;
-        }
-
-        mut_rust.driver.as_ref().unwrap().get_buffer_size() as i32
     }
 
     pub unsafe fn get_gui_thread(self: &BackendWrapper) -> *mut QThread {
