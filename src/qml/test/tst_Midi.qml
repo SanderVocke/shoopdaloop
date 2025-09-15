@@ -223,6 +223,8 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
+                    testcase.wait_updated(session.backend)
+
                     midi_input_port.dummy_queue_midi_msgs(input)
                     testcase.wait_updated(session.backend)
 
@@ -265,6 +267,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)
                     session.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(session.backend)
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
