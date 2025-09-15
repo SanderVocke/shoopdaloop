@@ -107,7 +107,7 @@ Item {
 
         return GenerateSession.generate_session(
             global_args.version_string,
-            session_backend.get_sample_rate(),
+            session_backend.sample_rate,
             track_groups,
             [],
             [],
@@ -299,7 +299,7 @@ Item {
             var session_file_contents = ShoopRustFileIO.read_file(session_filename)
             var descriptor = JSON.parse(session_file_contents)
             root.logger.trace(`Session descriptor: ${JSON.stringify(descriptor, null, 2)}`)
-            let our_sample_rate = session_backend.get_sample_rate()
+            let our_sample_rate = session_backend.sample_rate
             let incoming_sample_rate = descriptor.sample_rate
 
             if (!ShoopRustSchemaValidator.validate_schema(descriptor, "Session object", validator.schema, false)) {
@@ -820,6 +820,8 @@ Item {
             }
 
             ToolbarButtonBase {
+                id: dsp_indicator
+
                 anchors{
                     right: parent.right
                     bottom: parent.bottom
@@ -844,6 +846,7 @@ Item {
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "DSP"
+                        font.pixelSize: 14
                     }
                     ProgressBar {
                         anchors.verticalCenter: parent.verticalCenter
@@ -855,7 +858,28 @@ Item {
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "(" + session_backend.xruns.toString() + ")"
+                        font.pixelSize: 14
                     }
+                }
+            }
+
+            ToolbarRectangle {
+                id: latency_indicator
+                implicitWidth: buflabel.width + 6
+
+                property int buffer_size: session_backend.buffer_size
+                property real latency: session_backend.buffer_size * 1000.0 / session_backend.sample_rate
+
+                anchors {
+                    right: dsp_indicator.left
+                    bottom: parent.bottom
+                }
+
+                Label {
+                    id: buflabel
+                    anchors.centerIn: parent
+                    text: `latency: ${latency_indicator.buffer_size} frames | ${latency_indicator.latency.toFixed(2)} ms`
+                    font.pixelSize: 14
                 }
             }
         }

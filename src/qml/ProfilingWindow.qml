@@ -59,7 +59,7 @@ ShoopApplicationWindow {
         }
 
         var bufsize = root.backend.get_buffer_size()
-        var samplerate = root.backend && root.backend.ready ? root.backend.get_sample_rate() : 1
+        var samplerate = root.backend && root.backend.ready ? root.backend.sample_rate : 1
         cycle_us = bufsize / samplerate * 1000000.0
 
         root.profiling_data = data
