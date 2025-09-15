@@ -53,10 +53,6 @@ impl PortGui {
             debug!(self, "Initializing @ {self_ptr:?}");
         }
 
-        self.as_mut()
-            .on_destroyed(|s, _| debug!(s, "Destroyed"))
-            .release();
-
         unsafe {
             let backend_port = make_raw_port_backend();
             let backend_port_qobj = port_backend_qobject_from_ptr(backend_port);

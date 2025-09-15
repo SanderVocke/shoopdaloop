@@ -117,14 +117,16 @@ TEST_CASE("Chain - Audio mixing", "[chain][midi]") {
     std::vector<float> expect_out ({1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8});
     tst.int_dummy_input_port_1->queue_data(8, input_data1.data());
     tst.int_dummy_input_port_2->queue_data(8, input_data2.data());
+    tst.int_dummy_output_port->request_data(8);
+
+    tst.int_driver->wait_process();
 
     tst.int_driver->controlled_mode_request_samples(8);
-    tst.int_dummy_output_port->request_data(8);
     tst.int_driver->controlled_mode_run_request();
+    auto result_data = tst.int_dummy_output_port->dequeue_data(8);
 
     tst.int_driver->pause();
 
-    auto result_data = tst.int_dummy_output_port->dequeue_data(8);
     CHECK(result_data.size() == 8);
     CHECK(result_data == expect_out);
 

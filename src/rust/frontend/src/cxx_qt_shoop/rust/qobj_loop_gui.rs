@@ -53,10 +53,6 @@ impl LoopGui {
     pub fn initialize_impl(mut self: Pin<&mut LoopGui>) {
         debug!(self, "Initializing");
 
-        self.as_mut()
-            .on_destroyed(|s, _| debug!(s, "Destroyed"))
-            .release();
-
         unsafe {
             let backend_loop = make_raw_loop_backend();
             let backend_loop_qobj = loop_backend_qobject_from_ptr(backend_loop);
