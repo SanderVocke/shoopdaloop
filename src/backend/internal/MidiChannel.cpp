@@ -287,7 +287,9 @@ MidiChannel::PROC_process_record(Storage &storage,
                          std::atomic<uint32_t> &storage_data_length,
                          TrackedRelativeMidiState &track_start_state, uint32_t record_from,
                          uint32_t n_samples) {
-    log<log_level_debug_trace>("record {} frames", n_samples);
+    if (n_samples > 0) {
+        log<log_level_debug_trace>("record {} frames", n_samples);
+    }
 
     if (!mp_recording_source_buffer.has_value()) {
         throw_error<std::runtime_error>("Recording without source buffer");
@@ -311,6 +313,12 @@ MidiChannel::PROC_process_record(Storage &storage,
         recbuf.second->PROC_get_event_reference(idx).get(s, t, d);
         if (t >= record_end) {
             // Will handle in a future process iteration
+            log<log_level_debug_trace>("defer msg @ {}: {} {} {}",
+                    t,
+                    (s > 0) ? (int)d[0] : -1,
+                    (s > 1) ? (int)d[1] : -1,
+                    (s > 2) ? (int)d[2] : -1
+                );
             break;
         } else {
             if (t >=
@@ -324,7 +332,8 @@ MidiChannel::PROC_process_record(Storage &storage,
                     log<log_level_debug>("cache port state {} -> {} for record", fmt::ptr(mp_input_midi_state.get()), fmt::ptr(track_start_state.state.get()));
                     track_start_state.start_tracking_from(mp_input_midi_state);
                 }
-                log<log_level_debug_trace>("record msg: {} {} {}",
+                log<log_level_debug_trace>("record msg @ {}: {} {} {}",
+                    t,
                     (s > 0) ? (int)d[0] : -1,
                     (s > 1) ? (int)d[1] : -1,
                     (s > 2) ? (int)d[2] : -1
@@ -430,8 +439,10 @@ MidiChannel::PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32
     }
     auto _pos = (int)our_pos;
 
-    log<log_level_debug_trace>("playback {} frames, start {}, buf {}, last {}, {} msgs total",
-        n_samples, our_pos, buf.first.n_frames_processed, ma_last_played_back_sample.load(), mp_storage->n_events());
+    if (n_samples > 0) {
+        log<log_level_debug_trace>("playback {} frames, start {}, buf {}, last {}, {} msgs total",
+            n_samples, our_pos, buf.first.n_frames_processed, ma_last_played_back_sample.load(), mp_storage->n_events());
+    }
 
     // Playback any events.
     uint32_t end = buf.first.n_frames_processed + n_samples;
@@ -449,10 +460,12 @@ MidiChannel::PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32
             ma_last_played_back_sample = e->storage_time;
         });
 
-    if (mp_playback_cursor->valid()) {
-        log<log_level_debug_trace>("playback: first upcoming msg is @ {}", mp_playback_cursor->get()->storage_time);
-    } else {
-        log<log_level_debug_trace>("playback: no upcoming msgs");
+    if (n_samples > 0) {
+        if (mp_playback_cursor->valid()) {
+            log<log_level_debug_trace>("playback: first upcoming msg is @ {}", mp_playback_cursor->get()->storage_time);
+        } else {
+            log<log_level_debug_trace>("playback: no upcoming msgs");
+        }
     }
 
     int valid_from =
@@ -509,10 +522,12 @@ MidiChannel::PROC_process_playback(uint32_t our_pos, uint32_t our_length, uint32
         buf.first.n_events_processed++;
         mp_playback_cursor->next();
     }
-    if (mp_playback_cursor->valid()) {
-        log<log_level_debug_trace>("playback: done. first upcoming msg is @ {}", mp_playback_cursor->get()->storage_time);
-    } else {
-        log<log_level_debug_trace>("playback: done, reached end.");
+    if (n_samples > 0) {
+        if (mp_playback_cursor->valid()) {
+            log<log_level_debug_trace>("playback: done. first upcoming msg is @ {}", mp_playback_cursor->get()->storage_time);
+        } else {
+            log<log_level_debug_trace>("playback: done, reached end.");
+        }
     }
     ma_last_played_back_sample = (int)(our_pos + n_samples) - 1;
 }
