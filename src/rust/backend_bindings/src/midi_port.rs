@@ -143,6 +143,9 @@ impl MidiPort {
         let guard = self.obj.lock().unwrap();
         let obj = *guard;
         let sequence = unsafe { ffi::dummy_midi_port_dequeue_data(obj) };
+        if sequence.is_null() {
+            return Vec::default();
+        }
         let mut events = Vec::new();
         for i in 0..unsafe { (*sequence).n_events } {
             let event = unsafe { &**(*sequence).events.add(i as usize) };

@@ -88,7 +88,7 @@ Item {
                 }
                 ShoopMenuItem {
                     text: "Settings"
-                    onClicked: settings_dialog.open()
+                    onClicked: settings_window.visible = true
                 }
 
                 Instantiator {
@@ -507,8 +507,8 @@ Item {
         }
     }
 
-    SettingsDialog {
-        id: settings_dialog
+    SettingsWindow {
+        id: settings_window
         io_enabled: root.settings_io_enabled
     }
 }

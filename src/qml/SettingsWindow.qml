@@ -7,23 +7,22 @@ import QtQuick.Dialogs 6.6
 
 import 'js/qml_url_to_filename.js' as UrlToFilename
 
-Dialog {
+ShoopApplicationWindow {
     id: root
-    modal: true
     title: 'Settings'
-    standardButtons: Dialog.Save | Dialog.Close
-    property bool io_enabled: false
+    
+    property bool io_enabled: true
 
-    readonly property ShoopRustLogger logger: ShoopRustLogger { name: "Frontend.Qml.SettingsDialog" }
+    readonly property ShoopRustLogger logger: ShoopRustLogger { name: "Frontend.Qml.SettingsWindow" }
 
-    onAccepted: all_settings.save()
-
-    width: Overlay.overlay ? Overlay.overlay.width - 50 : 800
-    height: Overlay.overlay ? Overlay.overlay.height - 50 : 500
-    anchors.centerIn: Overlay.overlay ? Overlay.overlay : parent
+    width: 800
+    height: 500
 
     Item {
-        anchors.fill: parent
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: buttons.top
 
         TabBar {
             id: bar
@@ -55,6 +54,25 @@ Dialog {
         }
     }
 
+    Row {
+        id: buttons
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 10
+
+        spacing: 10
+
+        Button {
+            text: "Save"
+            onClicked: all_settings.save()
+        }
+        Button {
+            text: "Close"
+            onClicked: root.close()
+        }
+    }
+
     Settings {
         id: all_settings
         name: "AllSettings"
@@ -66,9 +84,12 @@ Dialog {
         function save() {
             if (!io_enabled) return
 
-            logger.debug("Saving settings.")
-            validate()
-            ShoopRustSettingsIO.save_settings(to_dict(), null)
+            if (validate()) {
+                logger.debug("Saving settings.")
+                ShoopRustSettingsIO.save_settings(to_dict(), null)
+            } else {
+                root.logger.warning(`Could not save settings: validation failed on: ${to_dict()}`)
+            }
         }
 
         function load() {
@@ -116,8 +137,22 @@ Dialog {
     component MIDISettingsUi : Item {
         id: midi_settings_ui
 
-        onAutoconnect_input_regexesChanged: midi_settings.contents.autoconnect_input_regexes = autoconnect_input_regexes
-        onAutoconnect_output_regexesChanged: midi_settings.contents.autoconnect_output_regexes = autoconnect_output_regexes
+        onAutoconnect_input_regexesChanged: {
+            if (JSON.stringify(midi_settings.contents.autoconnect_input_regexes) !=
+                JSON.stringify(autoconnect_input_regexes)) {
+                midi_settings.contents.autoconnect_input_regexes = autoconnect_input_regexes
+                midi_settings.contentsChanged()
+                all_settings.contents.midi_settings.configuration = midi_settings.contents
+            }
+        }
+        onAutoconnect_output_regexesChanged: {
+            if (JSON.stringify(midi_settings.contents.autoconnect_output_regexes) !=
+                JSON.stringify(autoconnect_output_regexes)) {
+                midi_settings.contents.autoconnect_output_regexes = autoconnect_output_regexes
+                midi_settings.contentsChanged()
+                all_settings.contents.midi_settings.configuration = midi_settings.contents
+            }
+        }
 
         property var autoconnect_input_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_input_regexes : []
         property var autoconnect_output_regexes: midi_settings.contents ? midi_settings.contents.autoconnect_output_regexes : []
@@ -136,10 +171,7 @@ Dialog {
         Column {
             id: header
 
-            Label {
-                text: 'For detailed information about MIDI control settings, see the <a href="unknown.html">help</a>.'
-                onLinkActivated: (link) => Qt.openUrlExternally(link)
-            }
+            // TODO some link to documentation here
         }
 
         ToolSeparator {
@@ -505,7 +537,7 @@ Dialog {
         Label {
             id: lua_label
             anchors.top: parent.top
-            text: 'For detailed information about Lua settings, see the <a href="unknown.html">help</a>.'
+            text: 'For usage information of each script, press the "?" button next to it.'
             onLinkActivated: (link) => Qt.openUrlExternally(link)
         }
 

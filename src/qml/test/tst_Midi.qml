@@ -109,6 +109,7 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     midi_input_port.dummy_queue_midi_msgs(input)
+                    testcase.wait_updated(session.backend)
 
                     // Process 6 frames (record)
                     session.backend.dummy_request_controlled_frames(2)
@@ -164,6 +165,7 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     midi_input_port.dummy_queue_midi_msgs(input)
+                    testcase.wait_updated(session.backend)
 
                     // Process 6 frames (prerecord then record)
                     session.backend.dummy_request_controlled_frames(6)
@@ -221,7 +223,10 @@ ShoopTestFile {
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
+                    testcase.wait_updated(session.backend)
+
                     midi_input_port.dummy_queue_midi_msgs(input)
+                    testcase.wait_updated(session.backend)
 
                     // Process 40 frames (prerecord then record)
                     session.backend.dummy_request_controlled_frames(40)
@@ -262,6 +267,7 @@ ShoopTestFile {
                     testcase.wait_updated(session.backend)
                     session.backend.dummy_request_controlled_frames(20)
                     session.backend.dummy_run_requested_frames()
+                    testcase.wait_updated(session.backend)
                     midi_input_port.dummy_clear_queues()
                     midi_output_port.dummy_clear_queues()
 
@@ -269,7 +275,7 @@ ShoopTestFile {
                     // and play back in the exact same way. That means the state itself should be
                     // somehow saved. Test here that it works.
                     var filename = ShoopRustFileIO.generate_temporary_filename() + '.smf'
-                    if (!ShoopRustFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)) {
+                    if (!ShoopRustFileIO.save_channel_to_midi(filename, session.backend.sample_rate, chan)) {
                         testcase.fail("Could not save channel MIDI");
                     }
                     chan.clear(0)
@@ -278,7 +284,7 @@ ShoopTestFile {
                     verify_eq(chan.get_data(), [], null, true)
                     if (!ShoopRustFileIO.load_midi_to_channels(
                                 filename,
-                                session.backend.get_sample_rate(),
+                                session.backend.sample_rate,
                                 [chan],
                                 0,
                                 20,
@@ -315,6 +321,7 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     midi_input_port.dummy_queue_midi_msgs(input)
+                    testcase.wait_updated(session.backend)
 
                     // Process 6 frames (nothing, then record)
                     session.backend.dummy_request_controlled_frames(2)
@@ -358,7 +365,7 @@ ShoopTestFile {
 
                     // Save and re-load
                     var filename = ShoopRustFileIO.generate_temporary_filename() + '.smf'
-                    if (!ShoopRustFileIO.save_channel_to_midi(filename, session.backend.get_sample_rate(), chan)) {
+                    if (!ShoopRustFileIO.save_channel_to_midi(filename, session.backend.sample_rate, chan)) {
                         testcase.fail("Could not save channel MIDI");
                     }
                     chan.clear(0)
@@ -367,7 +374,7 @@ ShoopTestFile {
                     verify_eq(chan.get_data(), [], null, true)
                     if (!ShoopRustFileIO.load_midi_to_channels(
                                 filename,
-                                session.backend.get_sample_rate(),
+                                session.backend.sample_rate,
                                 [chan],
                                 0,
                                 0,

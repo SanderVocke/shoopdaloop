@@ -150,10 +150,6 @@ impl CompositeLoopGui {
     pub fn initialize_impl(mut self: Pin<&mut Self>) {
         debug!(self, "initializing");
 
-        self.as_mut()
-            .on_destroyed(|s, _| debug!(s, "Destroyed"))
-            .release();
-
         unsafe {
             let backend_loop = make_raw_composite_loop_backend();
             let backend_loop_qobj = composite_loop_backend_qobject_from_ptr(backend_loop);

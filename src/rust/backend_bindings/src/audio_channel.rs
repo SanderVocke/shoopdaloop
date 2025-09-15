@@ -54,8 +54,8 @@ impl AudioChannel {
     }
 
     pub unsafe fn unsafe_backend_ptr(&self) -> *mut ffi::shoopdaloop_loop_audio_channel_t {
-        let guard = self.obj.lock().unwrap();
-        *guard
+        let guard = self.obj.lock();
+        guard.map(|g| *g).unwrap_or(std::ptr::null_mut())
     }
 
     pub fn connect_input(&self, port: &AudioPort) {

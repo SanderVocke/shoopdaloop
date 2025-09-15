@@ -46,6 +46,8 @@ pub mod ffi {
         #[qproperty(f32, dsp_load)]
         #[qproperty(i32, n_audio_buffers_created)]
         #[qproperty(i32, n_audio_buffers_available)]
+        #[qproperty(i32, sample_rate)]
+        #[qproperty(i32, buffer_size)]
         #[qproperty(f32, last_update_interval)]
         #[qproperty(QMap_QString_QVariant, driver_setting_overrides)]
         type BackendWrapper = super::BackendWrapperRust;
@@ -61,12 +63,6 @@ pub mod ffi {
 
         #[qinvokable]
         pub fn update_on_other_thread(self: Pin<&mut BackendWrapper>);
-
-        #[qinvokable]
-        pub fn get_sample_rate(self: Pin<&mut BackendWrapper>) -> i32;
-
-        #[qinvokable]
-        pub fn get_buffer_size(self: Pin<&mut BackendWrapper>) -> i32;
 
         #[qinvokable]
         pub fn get_gui_thread(self: &BackendWrapper) -> *mut QThread;
@@ -186,6 +182,8 @@ pub struct BackendWrapperUpdateData {
     pub last_processed: i32,
     pub n_audio_buffers_created: i32,
     pub n_audio_buffers_available: i32,
+    pub sample_rate: i32,
+    pub buffer_size: i32,
 }
 pub struct BackendWrapperRust {
     // Properties
@@ -201,6 +199,8 @@ pub struct BackendWrapperRust {
     n_audio_buffers_created: i32,
     n_audio_buffers_available: i32,
     last_update_interval: f32,
+    sample_rate: i32,
+    buffer_size: i32,
 
     // Rust-side only
     pub driver: Option<AudioDriver>,
@@ -226,6 +226,8 @@ impl Default for BackendWrapperRust {
             n_audio_buffers_available: 0,
             n_audio_buffers_created: 0,
             last_update_interval: 1.0,
+            sample_rate: 1,
+            buffer_size: 1,
 
             // Rust-side only
             driver: None,
