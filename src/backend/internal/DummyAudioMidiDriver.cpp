@@ -43,9 +43,11 @@ DummyAudioMidiDriverMode DummyAudioMidiDriver<Time, Size>::get_mode() const {
 
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::controlled_mode_request_samples(uint32_t samples) {
-    m_controlled_mode_samples_to_process += samples;
-    uint32_t requested = m_controlled_mode_samples_to_process.load();
-    Log::log<log_level_debug>("DummyAudioMidiDriver: request {} samples ({} total)", samples, requested);
+    exec_process_thread_command([=]() {
+        this->m_controlled_mode_samples_to_process += samples;
+        uint32_t requested = this->m_controlled_mode_samples_to_process.load();
+        Log::log<log_level_debug>("DummyAudioMidiDriver: request {} samples ({} total)", samples, requested);
+    });
 }
 
 template <typename Time, typename Size>
@@ -177,6 +179,9 @@ void DummyAudioMidiDriver<Time, Size>::close() {
 template <typename Time, typename Size>
 void DummyAudioMidiDriver<Time, Size>::controlled_mode_run_request(uint32_t timeout) {
     Log::log<log_level_debug>("DummyAudioMidiDriver: run request");
+
+    wait_process();
+
     auto s = std::chrono::high_resolution_clock::now();
     auto timed_out = [this, &timeout, &s]() {
         return std::chrono::duration_cast<std::chrono::milliseconds>(

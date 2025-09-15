@@ -109,6 +109,7 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     midi_input_port.dummy_queue_midi_msgs(input)
+                    testcase.wait_updated(session.backend)
 
                     // Process 6 frames (record)
                     session.backend.dummy_request_controlled_frames(2)
@@ -164,6 +165,7 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     midi_input_port.dummy_queue_midi_msgs(input)
+                    testcase.wait_updated(session.backend)
 
                     // Process 6 frames (prerecord then record)
                     session.backend.dummy_request_controlled_frames(6)
@@ -222,6 +224,7 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     midi_input_port.dummy_queue_midi_msgs(input)
+                    testcase.wait_updated(session.backend)
 
                     // Process 40 frames (prerecord then record)
                     session.backend.dummy_request_controlled_frames(40)
@@ -315,6 +318,7 @@ ShoopTestFile {
                     midi_output_port.dummy_clear_queues()
 
                     midi_input_port.dummy_queue_midi_msgs(input)
+                    testcase.wait_updated(session.backend)
 
                     // Process 6 frames (nothing, then record)
                     session.backend.dummy_request_controlled_frames(2)
