@@ -10,7 +10,7 @@
 #endif
 
 
-DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, shoop_shared_ptr<AudioPort<audio_sample_t>::BufferPool> buffer_pool, shoop_weak_ptr<DummyExternalConnections> external_connections)
+DummyAudioPort::DummyAudioPort(std::string name, shoop_port_direction_t direction, shoop_shared_ptr<AudioPort<audio_sample_t>::UsedBufferPool> buffer_pool, shoop_weak_ptr<DummyExternalConnections> external_connections)
     : AudioPort<audio_sample_t>(buffer_pool), m_name(name),
       DummyPort(name, direction, PortDataType::Audio, external_connections),
       WithCommandQueue(100),

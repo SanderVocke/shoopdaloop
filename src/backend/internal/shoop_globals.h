@@ -3,7 +3,7 @@
 #include <functional>
 
 template<typename SampleT> class AudioBuffer;
-template<typename Obj> class ObjectPool;
+template<typename SampleT> class BufferPool;
 template<typename A, typename B> class DummyAudioMidiDriver;
 class AudioMidiLoop;
 class ChannelInterface;
@@ -37,7 +37,7 @@ constexpr uint32_t initial_max_ports = 1024;
 constexpr uint32_t initial_max_fx_chains = 128;
 constexpr uint32_t initial_max_decoupled_midi_ports = 512;
 constexpr uint32_t n_buffers_in_pool = 2048;
-constexpr uint32_t audio_buffer_size = 4096;
+constexpr uint32_t audio_buffer_size = 16384;
 constexpr uint32_t command_queue_size = 2048;
 constexpr uint32_t audio_channel_initial_buffers = 128;
 constexpr uint32_t midi_storage_size = 65536 * 8;
@@ -53,7 +53,7 @@ namespace shoop_types {
 using audio_sample_t = float;
 
 using DefaultAudioBuffer = AudioBuffer<audio_sample_t>;
-using AudioBufferPool = ObjectPool<DefaultAudioBuffer>;
+using AudioBufferPool = BufferPool<audio_sample_t>;
 using Time = uint32_t;
 using Size = uint16_t;
 using _DummyAudioMidiDriver = DummyAudioMidiDriver<uint32_t, uint32_t>;

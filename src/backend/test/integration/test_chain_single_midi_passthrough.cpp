@@ -4,7 +4,7 @@
 #include "AudioMidiLoop.h"
 #include "LoggingBackend.h"
 #include "PortInterface.h"
-#include "ObjectPool.h"
+#include "BufferPool.h"
 #include "AudioBuffer.h"
 #include "GraphPort.h"
 #include "catch2/catch_approx.hpp"

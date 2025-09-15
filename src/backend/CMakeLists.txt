@@ -205,7 +205,7 @@ if(NOT zita-resampler_FOUND)
     # Check if both were found
     if(ZITA_RESAMPLER_LIBRARY AND ZITA_RESAMPLER_INCLUDE_DIR)
         message(STATUS "Found zita-resampler manually.")
-        
+
         # Define an imported target to simulate a proper package
         add_library(zita-resampler::zita-resampler UNKNOWN IMPORTED)
         set_target_properties(zita-resampler::zita-resampler PROPERTIES
@@ -222,6 +222,11 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/internal)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/third_party/nlohmann_json)
 
+# Dependencies provided by in-repo Rust CXX bridges
+include_directories(${REFILLING_POOL_CXX_INCLUDE})
+link_directories(${REFILLING_POOL_CXX_LIBDIR})
+link_directories(${REFILLING_POOL_RUST_LIBDIR})
+
 add_subdirectory(test)
 
 add_library(shoopdaloop_backend_internals STATIC libshoopdaloop_backend.cpp ${INTERNAL_SOURCES})
@@ -236,7 +241,19 @@ target_link_libraries(shoopdaloop_backend_internals PRIVATE
   fmt::fmt
   zita-resampler::zita-resampler
   Boost::headers
+  refilling_pool
+  refilling_pool_cxx
   )
+if (MSVC)
+  # On Windows, we need to link some additional system libs
+  # in order to successfully link to Rust-generated static
+  # libraries
+  target_link_libraries(shoopdaloop_backend_internals PUBLIC
+    Ws2_32
+    Ntdll
+    Userenv
+  )
+endif()
 if (WIN32)
   target_link_libraries(shoopdaloop_backend_internals PRIVATE Boost::system)
 endif()

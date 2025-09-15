@@ -4,7 +4,7 @@
 #include "AudioMidiLoop.h"
 #include "LoggingBackend.h"
 #include "PortInterface.h"
-#include "ObjectPool.h"
+#include "BufferPool.h"
 #include "AudioBuffer.h"
 #include "GraphPort.h"
 #include "catch2/catch_approx.hpp"
@@ -56,7 +56,7 @@ struct SingleDryWetLoopTestChain : public ModuleLoggingEnabled<"Test.SingleDryWe
     shoopdaloop_loop_t *api_sync_loop;
     shoop_shared_ptr<GraphLoop> int_sync_loop;
 
-    shoop_shared_ptr<ObjectPool<AudioBuffer<float>>> buffer_pool;
+    shoop_shared_ptr<BufferPool<float>> buffer_pool;
 
     shoopdaloop_loop_audio_channel_t *api_dry_chan;
     shoopdaloop_loop_audio_channel_t *api_wet_chan;
