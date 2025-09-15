@@ -64,7 +64,6 @@ endif()
 
 set(PREV_SETTING ${CMAKE_POSITION_INDEPENDENT_CODE})
 set(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-add_subdirectory(third_party/fmt EXCLUDE_FROM_ALL)
 set(CMAKE_POSITION_INDEPENDENT_CODE ${PREV_SETTING})
 
 find_package(Catch2 CONFIG REQUIRED)
@@ -186,6 +185,8 @@ endif()
 # Find libzita-resampler
 # Try to find the package normally (not REQUIRED)
 find_package(zita-resampler QUIET)
+
+find_package(fmt)
 
 if(NOT zita-resampler_FOUND)
     message(WARNING "zita-resampler not found via find_package. Attempting manual search...")
