@@ -25,7 +25,7 @@ impl JackAudioDriverSettings {
             client_name_hint: unsafe {
                 std::ffi::CStr::from_ptr(obj.client_name_hint)
                     .to_str()
-                    .unwrap()
+                    .unwrap_or("")
                     .to_string()
             },
             maybe_server_name: if obj.maybe_server_name.is_null() {
@@ -34,7 +34,7 @@ impl JackAudioDriverSettings {
                 Some(unsafe {
                     std::ffi::CStr::from_ptr(obj.maybe_server_name)
                         .to_str()
-                        .unwrap()
+                        .unwrap_or("")
                         .to_string()
                 })
             },
@@ -44,13 +44,15 @@ impl JackAudioDriverSettings {
     pub fn to_ffi(&self) -> ffi::shoop_jack_audio_driver_settings_t {
         ffi::shoop_jack_audio_driver_settings_t {
             client_name_hint: std::ffi::CString::new(self.client_name_hint.clone())
-                .unwrap()
+                .unwrap_or_default()
                 .into_raw(),
             maybe_server_name: self
                 .maybe_server_name
                 .as_ref()
                 .map_or(std::ptr::null(), |s| {
-                    std::ffi::CString::new(s.clone()).unwrap().into_raw()
+                    std::ffi::CString::new(s.clone())
+                        .unwrap_or_default()
+                        .into_raw()
                 }),
         }
     }
@@ -78,7 +80,7 @@ impl DummyAudioDriverSettings {
             client_name: unsafe {
                 std::ffi::CStr::from_ptr(obj.client_name)
                     .to_str()
-                    .unwrap()
+                    .unwrap_or_default()
                     .to_string()
             },
             sample_rate: obj.sample_rate,
@@ -89,7 +91,7 @@ impl DummyAudioDriverSettings {
     pub fn to_ffi(&self) -> ffi::shoop_dummy_audio_driver_settings_t {
         ffi::shoop_dummy_audio_driver_settings_t {
             client_name: std::ffi::CString::new(self.client_name.clone())
-                .unwrap()
+                .unwrap_or_default()
                 .into_raw(),
             sample_rate: self.sample_rate,
             buffer_size: self.buffer_size,
@@ -265,7 +267,7 @@ impl AudioDriver {
     pub fn dummy_remove_external_mock_port(&self, name: &str) {
         let obj = self.lock();
         unsafe {
-            let c_name = std::ffi::CString::new(name).unwrap();
+            let c_name = std::ffi::CString::new(name).unwrap_or_default();
             ffi::dummy_driver_remove_external_mock_port(*obj, c_name.as_ptr())
         };
     }
