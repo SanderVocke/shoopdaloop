@@ -1,0 +1,17 @@
+[package]
+name = "audio_midi_io_traits"
+edition = "2021"
+
+[lib]
+
+[dependencies]
+common = { path = '../common'}
+anyhow = { workspace = true }
+ctor = { workspace = true }
+log = { workspace = true }
+
+[build-dependencies]
+
+[features]
+# Dummy build to build dependencies only
+prebuild = []

@@ -1,0 +1,22 @@
+[package]
+name = "audio_midi_io_bridge"
+links = "audio_midi_io_bridge"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+cxx = { workspace = true }
+common = { path = '../common'}
+anyhow = { workspace = true }
+ctor = { workspace = true }
+log = { workspace = true }
+audio_midi_io_traits = { path = '../audio_midi_io_traits' }
+
+[build-dependencies]
+cxx-build = { workspace = true }
+
+[features]
+# Dummy build to build dependencies only
+prebuild = [ 'common/prebuild', 'audio_midi_io_traits/prebuild']
