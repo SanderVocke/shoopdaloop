@@ -22,24 +22,22 @@ pub mod ffi {
     }
 
     extern "Rust" {
-        pub type DriverHandle;
+        pub type HostHandle;
 
-        fn start(self: &mut DriverHandle) -> Result<()>;
-        fn close(self: &mut DriverHandle) -> Result<()>;
-        fn open_audio_port(self: &mut DriverHandle) -> Result<Box<PortHandle>>;
-        fn open_midi_port(self: &mut DriverHandle) -> Result<Box<PortHandle>>;
-        fn open_decoupled_midi_port(
-            self: &mut DriverHandle,
-        ) -> Result<Box<DecoupledMidiPortHandle>>;
-        fn get_xruns(self: &DriverHandle) -> Result<u32>;
-        fn get_sample_rate(self: &DriverHandle) -> Result<u32>;
-        fn get_buffer_size(self: &DriverHandle) -> Result<u32>;
-        fn get_dsp_load(self: &DriverHandle) -> Result<f32>;
-        fn get_client_name(self: &DriverHandle) -> Result<String>;
-        fn get_active(self: &DriverHandle) -> Result<bool>;
-        fn get_last_processed(self: &DriverHandle) -> Result<u32>;
-        fn wait_process(self: &DriverHandle) -> Result<()>;
-        fn find_external_ports(self: &DriverHandle) -> Result<Vec<ExternalPortDescriptor>>;
+        fn start(self: &mut HostHandle) -> Result<()>;
+        fn close(self: &mut HostHandle) -> Result<()>;
+        fn open_audio_port(self: &mut HostHandle) -> Result<Box<PortHandle>>;
+        fn open_midi_port(self: &mut HostHandle) -> Result<Box<PortHandle>>;
+        fn open_decoupled_midi_port(self: &mut HostHandle) -> Result<Box<DecoupledMidiPortHandle>>;
+        fn get_xruns(self: &HostHandle) -> Result<u32>;
+        fn get_sample_rate(self: &HostHandle) -> Result<u32>;
+        fn get_buffer_size(self: &HostHandle) -> Result<u32>;
+        fn get_dsp_load(self: &HostHandle) -> Result<f32>;
+        fn get_client_name(self: &HostHandle) -> Result<String>;
+        fn get_active(self: &HostHandle) -> Result<bool>;
+        fn get_last_processed(self: &HostHandle) -> Result<u32>;
+        fn wait_process(self: &HostHandle) -> Result<()>;
+        fn find_external_ports(self: &HostHandle) -> Result<Vec<ExternalPortDescriptor>>;
     }
 
     extern "Rust" {
@@ -54,7 +52,7 @@ pub mod ffi {
         fn close(self: &mut PortHandle) -> Result<()>;
         fn name(self: &PortHandle) -> Result<String>;
         fn data_type(self: &PortHandle) -> Result<PortDataType>;
-        unsafe fn maybe_driver_handle(self: &PortHandle) -> Result<Box<DriverHandle>>;
+        unsafe fn maybe_driver_handle(self: &PortHandle) -> Result<Box<HostHandle>>;
         fn has_internal_read_access(self: &PortHandle) -> Result<bool>;
         fn has_internal_write_access(self: &PortHandle) -> Result<bool>;
         fn has_implicit_input_source(self: &PortHandle) -> Result<bool>;
@@ -97,13 +95,13 @@ pub mod ffi {
 use audio_midi_io_traits::types::ExternalConnectionStatus as RustExternalConnectionStatus;
 use audio_midi_io_traits::types::ExternalPortDescriptor as RustExternalPortDescriptor;
 use audio_midi_io_traits::types::PortDataType as RustPortDataType;
-use audio_midi_io_traits::{driver::DriverImpl, port::PortImpl};
+use audio_midi_io_traits::{host::HostImpl, port::PortImpl};
 use common::logging::macros::*;
 use std::{cell::RefCell, rc::Rc};
 shoop_log_unit!("Frontend.AudioMidiIOBridge");
 
-struct DriverHandle {
-    driver: Rc<RefCell<dyn DriverImpl>>,
+struct HostHandle {
+    driver: Rc<RefCell<dyn HostImpl>>,
 }
 
 struct PortHandle {
@@ -179,7 +177,7 @@ impl PortHandle {
         ))
     }
 
-    unsafe fn maybe_driver_handle(self: &PortHandle) -> Result<Box<DriverHandle>, String> {
+    unsafe fn maybe_driver_handle(self: &PortHandle) -> Result<Box<HostHandle>, String> {
         let handle = self
             .port
             .try_borrow()
@@ -188,7 +186,7 @@ impl PortHandle {
             .map_err(|e| e.to_string())?;
 
         match handle.upgrade() {
-            Some(handle) => Ok(Box::new(DriverHandle { driver: handle })),
+            Some(handle) => Ok(Box::new(HostHandle { driver: handle })),
             None => Err(String::from("Driver handle no longer exists")),
         }
     }
@@ -324,15 +322,15 @@ impl PortHandle {
     }
 }
 
-impl DriverHandle {
-    fn start(self: &mut DriverHandle) -> Result<(), String> {
+impl HostHandle {
+    fn start(self: &mut HostHandle) -> Result<(), String> {
         self.driver
             .try_borrow_mut()
             .map_err(|e| format!("{e}"))?
             .start()
             .map_err(|e| format!("{e}").into())
     }
-    fn close(self: &mut DriverHandle) -> Result<(), String> {
+    fn close(self: &mut HostHandle) -> Result<(), String> {
         self.driver
             .try_borrow_mut()
             .map_err(|e| format!("{e}"))?
@@ -340,7 +338,7 @@ impl DriverHandle {
             .map_err(|e| format!("{e}"))?;
         Ok(())
     }
-    fn open_audio_port(self: &mut DriverHandle) -> Result<Box<PortHandle>, String> {
+    fn open_audio_port(self: &mut HostHandle) -> Result<Box<PortHandle>, String> {
         let port = self
             .driver
             .try_borrow_mut()
@@ -349,7 +347,7 @@ impl DriverHandle {
             .map_err(|e| format!("{e}"))?;
         Ok(Box::new(PortHandle { port }))
     }
-    fn open_midi_port(self: &mut DriverHandle) -> Result<Box<PortHandle>, String> {
+    fn open_midi_port(self: &mut HostHandle) -> Result<Box<PortHandle>, String> {
         let port = self
             .driver
             .try_borrow_mut()
@@ -359,11 +357,11 @@ impl DriverHandle {
         Ok(Box::new(PortHandle { port }))
     }
     fn open_decoupled_midi_port(
-        self: &mut DriverHandle,
+        self: &mut HostHandle,
     ) -> Result<Box<DecoupledMidiPortHandle>, String> {
         todo!()
     }
-    fn get_xruns(self: &DriverHandle) -> Result<u32, String> {
+    fn get_xruns(self: &HostHandle) -> Result<u32, String> {
         Ok(self
             .driver
             .try_borrow()
@@ -371,7 +369,7 @@ impl DriverHandle {
             .get_xruns()
             .map_err(|e| format!("{e}"))?)
     }
-    fn get_sample_rate(self: &DriverHandle) -> Result<u32, String> {
+    fn get_sample_rate(self: &HostHandle) -> Result<u32, String> {
         Ok(self
             .driver
             .try_borrow()
@@ -379,7 +377,7 @@ impl DriverHandle {
             .get_sample_rate()
             .map_err(|e| format!("{e}"))?)
     }
-    fn get_buffer_size(self: &DriverHandle) -> Result<u32, String> {
+    fn get_buffer_size(self: &HostHandle) -> Result<u32, String> {
         Ok(self
             .driver
             .try_borrow()
@@ -387,7 +385,7 @@ impl DriverHandle {
             .get_buffer_size()
             .map_err(|e| format!("{e}"))?)
     }
-    fn get_dsp_load(self: &DriverHandle) -> Result<f32, String> {
+    fn get_dsp_load(self: &HostHandle) -> Result<f32, String> {
         Ok(self
             .driver
             .try_borrow()
@@ -395,7 +393,7 @@ impl DriverHandle {
             .get_dsp_load()
             .map_err(|e| format!("{e}"))?)
     }
-    fn get_client_name(self: &DriverHandle) -> Result<String, String> {
+    fn get_client_name(self: &HostHandle) -> Result<String, String> {
         Ok(self
             .driver
             .try_borrow()
@@ -403,7 +401,7 @@ impl DriverHandle {
             .get_client_name()
             .map_err(|e| format!("{e}"))?)
     }
-    fn get_active(self: &DriverHandle) -> Result<bool, String> {
+    fn get_active(self: &HostHandle) -> Result<bool, String> {
         Ok(self
             .driver
             .try_borrow()
@@ -411,7 +409,7 @@ impl DriverHandle {
             .get_active()
             .map_err(|e| format!("{e}"))?)
     }
-    fn get_last_processed(self: &DriverHandle) -> Result<u32, String> {
+    fn get_last_processed(self: &HostHandle) -> Result<u32, String> {
         Ok(self
             .driver
             .try_borrow()
@@ -420,9 +418,7 @@ impl DriverHandle {
             .map_err(|e| format!("{e}"))?)
     }
 
-    fn find_external_ports(
-        self: &DriverHandle,
-    ) -> Result<Vec<ffi::ExternalPortDescriptor>, String> {
+    fn find_external_ports(self: &HostHandle) -> Result<Vec<ffi::ExternalPortDescriptor>, String> {
         Ok(self
             .driver
             .try_borrow()
@@ -434,7 +430,7 @@ impl DriverHandle {
             .collect())
     }
 
-    fn wait_process(self: &DriverHandle) -> Result<(), String> {
+    fn wait_process(self: &HostHandle) -> Result<(), String> {
         self.driver
             .try_borrow()
             .map_err(|e| format!("{e}"))?

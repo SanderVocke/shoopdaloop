@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crate::port::PortImpl;
 use crate::types::ExternalPortDescriptor;
 
-pub trait DriverImpl {
+pub trait HostImpl {
     fn start(&mut self) -> Result<()>;
     fn close(&mut self) -> Result<()>;
     fn open_audio_port(&mut self) -> Result<Rc<RefCell<dyn PortImpl>>>;

@@ -2,10 +2,10 @@ use anyhow::Result;
 use std::{cell::RefCell, rc::Weak};
 
 use crate::{
-    driver::DriverImpl,
     has_audio_fader::HasAudioFader,
     has_midi_indicators::HasMidiIndicators,
     has_ringbuffer::HasRingbuffer,
+    host::HostImpl,
     mutable::Mutable,
     types::{ExternalConnectionStatus, PortDataType},
 };
@@ -23,7 +23,7 @@ pub trait PortImpl {
     fn disconnect_external(self: &mut Self, external_port: String) -> Result<()>;
     fn input_connectability(self: &Self) -> Result<u32>;
     fn output_connectability(self: &Self) -> Result<u32>;
-    fn driver_handle(self: &Self) -> Result<Weak<RefCell<dyn DriverImpl>>>;
+    fn driver_handle(self: &Self) -> Result<Weak<RefCell<dyn HostImpl>>>;
     fn audio_fader<'a>(self: &'a Self) -> Option<&'a dyn HasAudioFader>;
     fn audio_fader_mut<'a>(self: &'a mut Self) -> Option<&'a mut dyn HasAudioFader>;
     fn midi_indicators<'a>(self: &'a Self) -> Option<&'a dyn HasMidiIndicators>;

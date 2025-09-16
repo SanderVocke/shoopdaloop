@@ -60,8 +60,7 @@ impl PortImpl for DummyAudioPort {
 
     fn driver_handle(
         self: &Self,
-    ) -> Result<std::rc::Weak<std::cell::RefCell<dyn audio_midi_io_traits::driver::DriverImpl>>>
-    {
+    ) -> Result<std::rc::Weak<std::cell::RefCell<dyn audio_midi_io_traits::host::HostImpl>>> {
         todo!()
     }
 
