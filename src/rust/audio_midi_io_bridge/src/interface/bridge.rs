@@ -280,19 +280,47 @@ impl PortHandle {
     }
 
     fn get_muted(self: &PortHandle) -> Result<bool, String> {
-        todo!();
+        Ok(self
+            .port
+            .try_borrow()
+            .map_err(|e| format!("{e}"))?
+            .mutable()
+            .ok_or(String::from("No mute function"))?
+            .get_muted()
+            .map_err(|e| format!("{e}"))?)
     }
 
     fn set_muted(self: &mut PortHandle, muted: bool) -> Result<(), String> {
-        todo!();
+        self.port
+            .try_borrow_mut()
+            .map_err(|e| format!("{e}"))?
+            .mutable_mut()
+            .ok_or(String::from("No mute function"))?
+            .set_muted(muted)
+            .map_err(|e| format!("{e}"))?;
+        Ok(())
     }
 
     fn set_n_ringbuffer_samples(self: &mut PortHandle, n_samples: u32) -> Result<(), String> {
-        todo!();
+        self.port
+            .try_borrow_mut()
+            .map_err(|e| format!("{e}"))?
+            .has_ringbuffer_mut()
+            .ok_or(String::from("No ringbuffer on this port"))?
+            .set_n_ringbuffer_samples(n_samples)
+            .map_err(|e| format!("{e}"))?;
+        Ok(())
     }
 
     fn get_n_ringbuffer_samples(self: &PortHandle) -> Result<u32, String> {
-        todo!();
+        Ok(self
+            .port
+            .try_borrow()
+            .map_err(|e| format!("{e}"))?
+            .has_ringbuffer()
+            .ok_or(String::from("No ringbuffer on this port"))?
+            .get_n_ringbuffer_samples()
+            .map_err(|e| format!("{e}"))?)
     }
 }
 
@@ -427,7 +455,7 @@ impl AudioPortHandle {
         self.port
             .try_borrow_mut()
             .map_err(|e| format!("{e}"))?
-            .as_audio_mut()
+            .audio_fader_mut()
             .ok_or(format!("Port is not an audio port"))?
             .set_gain(gain)
             .map_err(|e| format!("{e}"))?;
@@ -438,7 +466,7 @@ impl AudioPortHandle {
         self.port
             .try_borrow()
             .map_err(|e| format!("{e}"))?
-            .as_audio()
+            .audio_fader()
             .ok_or(format!("Port is not an audio port"))?
             .get_gain()
             .map_err(|e| format!("{e}"))
@@ -448,7 +476,7 @@ impl AudioPortHandle {
         self.port
             .try_borrow_mut()
             .map_err(|e| format!("{e}"))?
-            .as_audio_mut()
+            .audio_fader_mut()
             .ok_or(format!("Port is not an audio port"))?
             .reset_input_peak()
             .map_err(|e| format!("{e}"))
@@ -458,7 +486,7 @@ impl AudioPortHandle {
         self.port
             .try_borrow()
             .map_err(|e| format!("{e}"))?
-            .as_audio()
+            .audio_fader()
             .ok_or(format!("Port is not an audio port"))?
             .get_input_peak()
             .map_err(|e| format!("{e}"))
@@ -468,7 +496,7 @@ impl AudioPortHandle {
         self.port
             .try_borrow_mut()
             .map_err(|e| format!("{e}"))?
-            .as_audio_mut()
+            .audio_fader_mut()
             .ok_or(format!("Port is not an audio port"))?
             .reset_output_peak()
             .map_err(|e| format!("{e}"))
@@ -478,7 +506,7 @@ impl AudioPortHandle {
         self.port
             .try_borrow()
             .map_err(|e| format!("{e}"))?
-            .as_audio()
+            .audio_fader()
             .ok_or(format!("Port is not an audio port"))?
             .get_output_peak()
             .map_err(|e| format!("{e}"))
@@ -490,7 +518,7 @@ impl MidiPortHandle {
         self.port
             .try_borrow_mut()
             .map_err(|e| format!("{e}"))?
-            .as_midi_mut()
+            .midi_indicators_mut()
             .ok_or(format!("Port is not a midi port"))?
             .reset_n_input_events()
             .map_err(|e| format!("{e}"))
@@ -500,7 +528,7 @@ impl MidiPortHandle {
         self.port
             .try_borrow()
             .map_err(|e| format!("{e}"))?
-            .as_midi()
+            .midi_indicators()
             .ok_or(format!("Port is not a midi port"))?
             .get_n_input_events()
             .map_err(|e| format!("{e}"))
@@ -510,7 +538,7 @@ impl MidiPortHandle {
         self.port
             .try_borrow_mut()
             .map_err(|e| format!("{e}"))?
-            .as_midi_mut()
+            .midi_indicators_mut()
             .ok_or(format!("Port is not a midi port"))?
             .reset_n_output_events()
             .map_err(|e| format!("{e}"))
@@ -520,7 +548,7 @@ impl MidiPortHandle {
         self.port
             .try_borrow()
             .map_err(|e| format!("{e}"))?
-            .as_midi()
+            .midi_indicators()
             .ok_or(format!("Port is not a midi port"))?
             .get_n_output_events()
             .map_err(|e| format!("{e}"))
@@ -530,7 +558,7 @@ impl MidiPortHandle {
         self.port
             .try_borrow()
             .map_err(|e| format!("{e}"))?
-            .as_midi()
+            .midi_indicators()
             .ok_or(format!("Port is not a midi port"))?
             .get_n_input_notes_active()
             .map_err(|e| format!("{e}"))
@@ -539,7 +567,7 @@ impl MidiPortHandle {
         self.port
             .try_borrow()
             .map_err(|e| format!("{e}"))?
-            .as_midi()
+            .midi_indicators()
             .ok_or(format!("Port is not a midi port"))?
             .get_n_output_notes_active()
             .map_err(|e| format!("{e}"))

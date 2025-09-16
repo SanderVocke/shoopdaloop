@@ -2,9 +2,11 @@ use anyhow::Result;
 use std::{cell::RefCell, rc::Weak};
 
 use crate::{
-    audio_port::AudioPortImpl,
     driver::DriverImpl,
-    midi_port::MidiPortImpl,
+    has_audio_fader::HasAudioFader,
+    has_midi_indicators::HasMidiIndicators,
+    has_ringbuffer::HasRingbuffer,
+    mutable::Mutable,
     types::{ExternalConnectionStatus, PortDataType},
 };
 
@@ -22,8 +24,12 @@ pub trait PortImpl {
     fn input_connectability(self: &Self) -> Result<u32>;
     fn output_connectability(self: &Self) -> Result<u32>;
     fn driver_handle(self: &Self) -> Result<Weak<RefCell<dyn DriverImpl>>>;
-    fn as_audio<'a>(self: &'a Self) -> Option<&'a dyn AudioPortImpl>;
-    fn as_audio_mut<'a>(self: &'a mut Self) -> Option<&'a mut dyn AudioPortImpl>;
-    fn as_midi<'a>(self: &'a Self) -> Option<&'a dyn MidiPortImpl>;
-    fn as_midi_mut<'a>(self: &'a mut Self) -> Option<&'a mut dyn MidiPortImpl>;
+    fn audio_fader<'a>(self: &'a Self) -> Option<&'a dyn HasAudioFader>;
+    fn audio_fader_mut<'a>(self: &'a mut Self) -> Option<&'a mut dyn HasAudioFader>;
+    fn midi_indicators<'a>(self: &'a Self) -> Option<&'a dyn HasMidiIndicators>;
+    fn midi_indicators_mut<'a>(self: &'a mut Self) -> Option<&'a mut dyn HasMidiIndicators>;
+    fn mutable<'a>(self: &'a Self) -> Option<&'a dyn Mutable>;
+    fn mutable_mut<'a>(self: &'a mut Self) -> Option<&'a mut dyn Mutable>;
+    fn has_ringbuffer<'a>(self: &'a Self) -> Option<&'a dyn HasRingbuffer>;
+    fn has_ringbuffer_mut<'a>(self: &'a mut Self) -> Option<&'a mut dyn HasRingbuffer>;
 }

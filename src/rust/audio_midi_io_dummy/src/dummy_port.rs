@@ -1,6 +1,6 @@
 use crate::external_connections::ExternalConnectionsState;
 use anyhow::{anyhow, Result};
-use audio_midi_io_traits::{types::PortDirection};
+use audio_midi_io_traits::types::PortDirection;
 use std::sync::{Arc, Mutex, Weak};
 
 struct DummyPortSharedData {

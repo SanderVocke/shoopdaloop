@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-pub trait MidiPortImpl {
+pub trait HasMidiIndicators {
     fn reset_n_input_events(self: &mut Self) -> Result<()>;
     fn get_n_input_events(self: &Self) -> Result<u32>;
     fn reset_n_output_events(self: &mut Self) -> Result<()>;

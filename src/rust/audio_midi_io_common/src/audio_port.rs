@@ -1,7 +1,9 @@
 use anyhow::anyhow;
 use anyhow::Result;
 use atomic_float::AtomicF32;
-use audio_midi_io_traits::audio_port::AudioPortImpl;
+use audio_midi_io_traits::has_audio_fader::HasAudioFader;
+use audio_midi_io_traits::has_ringbuffer::HasRingbuffer;
+use audio_midi_io_traits::mutable::Mutable;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -65,7 +67,7 @@ pub struct AudioPort {
     shared_state: Arc<AudioPortSharedState>,
 }
 
-impl AudioPortImpl for AudioPort {
+impl HasAudioFader for AudioPort {
     fn set_gain(self: &mut Self, gain: f32) -> Result<()> {
         self.shared_state.gain.store(gain, Ordering::Relaxed);
         Ok(())
@@ -92,7 +94,19 @@ impl AudioPortImpl for AudioPort {
     fn get_output_peak(self: &Self) -> Result<f32> {
         Ok(self.shared_state.output_peak.load(Ordering::Relaxed))
     }
+}
 
+impl HasRingbuffer for AudioPort {
+    fn set_n_ringbuffer_samples(self: &mut Self, n_samples: u32) -> Result<()> {
+        todo!()
+    }
+
+    fn get_n_ringbuffer_samples(self: &Self) -> Result<u32> {
+        todo!()
+    }
+}
+
+impl Mutable for AudioPort {
     fn set_muted(self: &mut Self, muted: bool) -> Result<()> {
         self.shared_state.muted.store(muted, Ordering::Relaxed);
         Ok(())
@@ -100,13 +114,5 @@ impl AudioPortImpl for AudioPort {
 
     fn get_muted(self: &Self) -> Result<bool> {
         Ok(self.shared_state.muted.load(Ordering::Relaxed))
-    }
-
-    fn set_n_ringbuffer_samples(self: &mut Self, n_samples: u32) -> Result<()> {
-        todo!()
-    }
-
-    fn get_n_ringbuffer_samples(self: &Self) -> Result<u32> {
-        todo!()
     }
 }
