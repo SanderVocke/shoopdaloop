@@ -18,7 +18,3 @@ refilling_pool = { path = "../refilling_pool" }
 cmake = { workspace = true }
 anyhow = { workspace = true }
 glob = { workspace = true }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = ["common/prebuild", "refilling_pool/prebuild"]

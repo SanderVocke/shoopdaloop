@@ -7,7 +7,3 @@ edition = "2021"
 [dependencies]
 common = { path = "../common" }
 backend_bindings = { path = "../backend_bindings" }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = ["common/prebuild", "backend_bindings/prebuild"]

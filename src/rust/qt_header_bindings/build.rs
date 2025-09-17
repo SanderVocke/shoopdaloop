@@ -18,11 +18,6 @@ fn qmake_command(qmake_path: &str, argstring: &str) -> Command {
 // For now, Rust "back-end" is just a set of C bindings to the
 // C++ back-end.
 fn main_impl() -> Result<(), anyhow::Error> {
-    // If we're pre-building, don't do anything
-    if cfg!(feature = "prebuild") {
-        return Ok(());
-    }
-
     let qmake = option_env!("QMAKE").unwrap_or("qmake");
 
     let qt_include_dir = qmake_command(qmake, "-query QT_INSTALL_HEADERS")

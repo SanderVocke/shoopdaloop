@@ -1,11 +1,6 @@
 use cxx_qt_build::CxxQtBuilder;
 
 fn main() {
-    // If we're pre-building, don't do anything
-    if cfg!(feature = "prebuild") {
-        return;
-    }
-
     CxxQtBuilder::new()
         .qt_module("Quick")
         .qt_module("Gui")

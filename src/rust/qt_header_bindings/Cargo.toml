@@ -12,7 +12,3 @@ bindgen = { workspace = true }
 anyhow = { workspace = true }
 syn = { workspace = true }
 prettyplease = { workspace = true }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = []

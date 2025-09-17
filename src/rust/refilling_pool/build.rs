@@ -1,8 +1,4 @@
 fn main() {
-    if cfg!(feature = "prebuild") {
-        return;
-    }
-
     cxx_build::bridge("src/cxx.rs")
         .std("c++20")
         .compile("refilling_pool_cxx");

@@ -1,11 +1,12 @@
 use anyhow::{anyhow, Result};
-use lockfree::prelude::mpsc as lockfree_mpsc;
-use std::{sync::mpsc, time::Duration};
+use lockfree_queue::Receiver as BaseReceiver;
+use lockfree_queue::Sender as BaseSender;
 use std::fmt::Debug;
+use std::time::Duration;
 
 type Command<ProcessingT> = Box<dyn Fn(&mut ProcessingT) -> Result<()> + Send + 'static>;
-type Sender<ProcessingT> = lockfree_mpsc::Sender<Command<ProcessingT>>;
-type Receiver<ProcessingT> = lockfree_mpsc::Receiver<Command<ProcessingT>>;
+type Sender<ProcessingT> = BaseSender<Command<ProcessingT>>;
+type Receiver<ProcessingT> = BaseReceiver<Command<ProcessingT>>;
 
 pub trait HasCommandQueueSender<ProcessingT> {
     fn process_command_sender<'a>(&'a self) -> &'a Sender<ProcessingT>;
@@ -17,8 +18,7 @@ pub trait HasCommandQueueSender<ProcessingT> {
     ) -> Result<()> {
         let boxed = Box::new(command);
         self.process_command_sender()
-            .send(boxed)
-            .map_err(|_| anyhow!("failed to queue command"))?;
+            .send(boxed)?;
         Ok(())
     }
 
@@ -27,15 +27,11 @@ pub trait HasCommandQueueSender<ProcessingT> {
     /// This is done by simply inserting an empty command into the queue
     /// and waiting for it to call back.
     fn wait_process(&self, timeout: Duration) -> Result<()> {
-        let (sender, receiver) = mpsc::channel::<()>();
-        let cmd = move |_: &mut ProcessingT| -> Result<()> {
-            sender
-                .send(())
-                .map_err(|e| anyhow!("Failed to call back from process thread: {e}"))
-        };
+        let (sender, receiver) = todo!();
+        let cmd = move |_: &mut ProcessingT| -> Result<()> { sender.send(()) };
         self.queue_command(cmd)?;
-        receiver.recv_timeout(timeout)
-            .map_err(|e| anyhow!("Timeout expired: {e}"))?;
+        receiver
+            .recv_timeout(timeout)?;
 
         Ok(())
     }

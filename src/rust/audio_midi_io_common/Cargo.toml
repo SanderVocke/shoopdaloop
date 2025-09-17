@@ -13,7 +13,3 @@ audio_midi_io_traits = { path = '../audio_midi_io_traits' }
 atomic_float = { workspace = true }
 
 [build-dependencies]
-
-[features]
-# Dummy build to build dependencies only
-prebuild = ['common/prebuild', 'audio_midi_io_traits/prebuild']

@@ -8,7 +8,3 @@ proc-macro = true
 [dependencies]
 quote = { workspace = true }
 syn = { workspace = true, features = ["full"] }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = []

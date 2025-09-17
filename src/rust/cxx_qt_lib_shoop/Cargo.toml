@@ -26,9 +26,3 @@ once_cell = { workspace = true }
 macros = { path = "../macros" }
 
 cxx-qt-build = { version = "0.7.2" }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = ["macros/prebuild",
-            "common/prebuild"]
-

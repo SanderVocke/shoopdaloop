@@ -15,8 +15,3 @@ log = { workspace = true }
 
 [build-dependencies]
 cxx-build = { workspace = true }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = ['audio_midi_io_traits/prebuild',
-            'audio_midi_io_common/prebuild']

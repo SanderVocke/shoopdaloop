@@ -4,11 +4,6 @@ use backend;
 // For now, Rust "back-end" is just a set of C bindings to the
 // C++ back-end.
 fn main_impl() -> Result<(), anyhow::Error> {
-    // If we're pre-building, don't do anything
-    if cfg!(feature = "prebuild") {
-        return Ok(());
-    }
-
     let profile = std::env::var("PROFILE").unwrap();
     let bindings_header_path = "../../backend/libshoopdaloop_backend.h";
     let lib_path = if profile == "debug" {

@@ -12,7 +12,3 @@ cxx = { workspace = true }
 
 [build-dependencies]
 cxx-build = { workspace = true }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = []

@@ -16,7 +16,3 @@ backend = { path = "../backend" }
 
 bindgen = { workspace = true }
 anyhow = { workspace = true }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = []

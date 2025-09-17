@@ -1,0 +1,11 @@
+[package]
+name = "lockfree_queue"
+edition = "2021"
+
+[lib]
+
+[dependencies]
+lockfree = { workspace = true }
+anyhow = { workspace = true }
+
+[build-dependencies]

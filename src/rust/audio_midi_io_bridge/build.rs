@@ -1,8 +1,4 @@
 fn main() {
-    if cfg!(feature = "prebuild") {
-        return;
-    }
-
     cxx_build::bridge("src/interface/bridge.rs")
         .std("c++20")
         .compile("audio_midi_io_cxx");

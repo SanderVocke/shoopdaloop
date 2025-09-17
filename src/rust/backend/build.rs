@@ -7,11 +7,6 @@ use std::path::PathBuf;
 // For now, Rust "back-end" is just a set of C bindings to the
 // C++ back-end.
 fn main_impl() -> Result<(), anyhow::Error> {
-    // If we're pre-building, don't do anything
-    if cfg!(feature = "prebuild") {
-        return Ok(());
-    }
-
     // environment
     let refilling_pool_cxx_include = std::env::var("DEP_REFILLING_POOL_INCLUDE").unwrap();
     let refilling_pool_cxx_libdir = std::env::var("DEP_REFILLING_POOL_CXX_BRIDGE_LIBDIR").unwrap();

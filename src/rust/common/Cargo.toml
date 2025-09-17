@@ -16,8 +16,3 @@ walkdir = { workspace = true }
 
 [build-dependencies]
 toml = { workspace = true }
-
-
-[features]
-# Dummy build to build dependencies only
-prebuild = []

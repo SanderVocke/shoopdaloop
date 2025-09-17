@@ -353,7 +353,6 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
     app_main(&cli_args, config)
 }
 
-#[cfg(not(feature = "prebuild"))]
 pub fn shoopdaloop_main(config: ShoopConfig) -> i32 {
     match entry_point(config) {
         Ok(r) => {

@@ -46,15 +46,3 @@ rodio = { workspace = true }
 macros = { path = "../macros" }
 
 cxx-qt-build = { workspace = true }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = ["macros/prebuild",
-            "backend_bindings/prebuild",
-            "common/prebuild",
-            "crashhandling/prebuild",
-            "config/prebuild",
-            "cxx_qt_lib_shoop/prebuild",
-            "midi_processing/prebuild",
-            "qt_header_bindings/prebuild"]
-

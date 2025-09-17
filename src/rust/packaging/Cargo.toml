@@ -21,7 +21,3 @@ indexmap = { workspace = true }
 log = { workspace = true }
 ctor = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = ["common/prebuild", "backend/prebuild"]

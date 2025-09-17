@@ -16,7 +16,3 @@ audio_midi_io_traits = { path = '../audio_midi_io_traits' }
 
 [build-dependencies]
 cxx-build = { workspace = true }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = [ 'common/prebuild', 'audio_midi_io_traits/prebuild']

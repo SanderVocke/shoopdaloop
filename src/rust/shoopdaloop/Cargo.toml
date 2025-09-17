@@ -47,11 +47,3 @@ toml = { workspace = true }
 serde = { workspace = true }
 log = { workspace = true }
 ctor = { workspace = true }
-
-[features]
-# Dummy build to build dependencies only
-prebuild = ["frontend/prebuild",
-            "backend_bindings/prebuild",
-            "backend/prebuild",
-            "common/prebuild",
-            "crashhandling/prebuild"]

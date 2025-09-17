@@ -77,11 +77,6 @@ fn generate_dev_config() -> Result<config::ShoopConfig, anyhow::Error> {
 }
 
 fn main_impl() -> Result<(), anyhow::Error> {
-    // If we're pre-building, don't do anything
-    if cfg!(feature = "prebuild") {
-        return Ok(());
-    }
-
     let write_config =
         |filename: &PathBuf, config: &config::ShoopConfig| -> Result<(), anyhow::Error> {
             if filename.exists() {
