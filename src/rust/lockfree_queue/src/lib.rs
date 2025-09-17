@@ -24,3 +24,7 @@ impl<T> Sender <T> {
         todo!();
     }
 }
+
+pub fn create<T>() -> Result<(Sender<T>, Receiver<T>)> {
+    todo!();
+}

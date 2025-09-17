@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use lockfree_queue::create;
 use lockfree_queue::Receiver as BaseReceiver;
 use lockfree_queue::Sender as BaseSender;
 use std::fmt::Debug;
@@ -27,7 +28,7 @@ pub trait HasCommandQueueSender<ProcessingT> {
     /// This is done by simply inserting an empty command into the queue
     /// and waiting for it to call back.
     fn wait_process(&self, timeout: Duration) -> Result<()> {
-        let (sender, receiver) = todo!();
+        let (sender, receiver) = create()?;
         let cmd = move |_: &mut ProcessingT| -> Result<()> { sender.send(()) };
         self.queue_command(cmd)?;
         receiver
