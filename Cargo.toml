@@ -52,7 +52,8 @@ jsonschema = "0.33"
 rodio = "0.21"
 winapi = "0.3"
 crossbeam-queue = "0.3"
-atomic_float = "1.1" 
+atomic_float = "1.1"
+lockfree = "0.5"
 
 # [patch.crates-io]F
 # cxx-qt =  { git = "https://github.com/SanderVocke/cxx-qt.git", branch = "win_dbg_v072", package = "cxx-qt" }

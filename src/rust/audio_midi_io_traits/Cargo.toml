@@ -9,6 +9,7 @@ common = { path = '../common'}
 anyhow = { workspace = true }
 ctor = { workspace = true }
 log = { workspace = true }
+lockfree = { workspace = true }
 
 [build-dependencies]
 
