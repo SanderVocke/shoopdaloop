@@ -10,7 +10,7 @@ pub struct Receiver<T> {
 }
 
 impl<T> Receiver<T> {
-    pub fn recv_timeout(&mut self, timeout: Duration) {
+    pub fn recv_timeout(&mut self, timeout: Duration) -> Result<()> {
         todo!();
     }
 

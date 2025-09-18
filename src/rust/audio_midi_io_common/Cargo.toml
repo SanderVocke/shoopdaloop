@@ -11,5 +11,6 @@ ctor = { workspace = true }
 log = { workspace = true }
 audio_midi_io_traits = { path = '../audio_midi_io_traits' }
 atomic_float = { workspace = true }
+lockfree_queue = { path = '../lockfree_queue' }
 
 [build-dependencies]
