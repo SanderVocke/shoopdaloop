@@ -1,5 +1,5 @@
 use anyhow::Result;
 
 pub trait HasAudioProcessingFunction {
-    fn process(nframes: u32) -> Result<()>;
+    fn process(&mut self, nframes: usize) -> Result<()>;
 }

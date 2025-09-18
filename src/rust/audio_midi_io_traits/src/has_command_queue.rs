@@ -2,7 +2,6 @@ use anyhow::{anyhow, Result};
 use lockfree_queue::create;
 use lockfree_queue::Receiver as BaseReceiver;
 use lockfree_queue::Sender as BaseSender;
-use std::fmt::Debug;
 use std::time::Duration;
 
 pub type Command<ProcessingT> = Box<dyn Fn(&mut ProcessingT) -> Result<()> + Send + 'static>;
@@ -19,7 +18,8 @@ pub trait HasCommandQueueSender<ProcessingT> {
     ) -> Result<()> {
         let boxed = Box::new(command);
         self.process_command_sender()
-            .send(boxed)?;
+            .send(boxed)
+            .map_err(|e| anyhow!("failed to send command: {e:?}"))?;
         Ok(())
     }
 
@@ -29,7 +29,12 @@ pub trait HasCommandQueueSender<ProcessingT> {
     /// and waiting for it to call back.
     fn wait_process(&self, timeout: Duration) -> Result<()> {
         let (sender, mut receiver) = create()?;
-        let cmd = move |_: &mut ProcessingT| -> Result<()> { sender.send(()) };
+        let cmd = move |_: &mut ProcessingT| -> Result<()> {
+            sender
+                .send(())
+                .map_err(|e| anyhow!("failed to wait for processing: {e:?}"))?;
+            Ok(())
+        };
         self.queue_command(cmd)?;
         receiver.recv_timeout(timeout)?;
         Ok(())
