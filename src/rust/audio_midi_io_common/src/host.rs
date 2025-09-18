@@ -3,18 +3,23 @@ use audio_midi_io_traits::has_command_queue::{Command, HasCommandQueueSender};
 use lockfree_queue::{Receiver, Sender};
 use anyhow::Result;
 
+trait BlackBox {}
+
 #[derive (Default)]
 struct HostSharedState {
     n_last_processed: AtomicU32,
 }
 
+struct HostProcessor {
+    shared_state: Arc<HostSharedState>,
+}
+
+impl BlackBox for HostProcessor {}
+
 pub struct Host {
     shared_state: Arc<HostSharedState>,
     cmd_sender: Sender<Command<HostProcessor>>,
-}
-
-struct HostProcessor {
-    shared_state: Arc<HostSharedState>,
+    processor_handle: Arc<dyn BlackBox>,
 }
 
 impl HasCommandQueueSender<HostProcessor> for Host {
@@ -45,6 +50,7 @@ impl Host {
         Ok(Self {
             shared_state: shared_state,
             cmd_sender: sender,
+            processor_handle: Arc::new(processor),
         })
     }
 }
