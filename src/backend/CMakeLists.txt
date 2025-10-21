@@ -227,6 +227,11 @@ include_directories(${REFILLING_POOL_CXX_INCLUDE})
 link_directories(${REFILLING_POOL_CXX_LIBDIR})
 link_directories(${REFILLING_POOL_RUST_LIBDIR})
 
+include_directories(${AUDIO_MIDI_IO_CXX_INCLUDE})
+link_directories(${AUDIO_MIDI_IO_CXX_LIBDIR})
+link_directories(${AUDIO_MIDI_IO_RUST_LIBDIR})
+
+# tests
 add_subdirectory(test)
 
 add_library(shoopdaloop_backend_internals STATIC libshoopdaloop_backend.cpp ${INTERNAL_SOURCES})
@@ -243,6 +248,8 @@ target_link_libraries(shoopdaloop_backend_internals PRIVATE
   Boost::headers
   refilling_pool
   refilling_pool_cxx
+  audio_midi_io_bridge
+  audio_midi_io_cxx
   )
 if (MSVC)
   # On Windows, we need to link some additional system libs

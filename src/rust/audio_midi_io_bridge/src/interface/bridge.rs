@@ -101,7 +101,7 @@ use std::{cell::RefCell, rc::Rc};
 shoop_log_unit!("Frontend.AudioMidiIOBridge");
 
 struct HostHandle {
-    driver: Rc<RefCell<dyn HostImpl>>,
+    host: Rc<RefCell<dyn HostImpl>>,
 }
 
 struct PortHandle {
@@ -186,7 +186,7 @@ impl PortHandle {
             .map_err(|e| e.to_string())?;
 
         match handle.upgrade() {
-            Some(handle) => Ok(Box::new(HostHandle { driver: handle })),
+            Some(handle) => Ok(Box::new(HostHandle { host: handle })),
             None => Err(String::from("Driver handle no longer exists")),
         }
     }
@@ -324,14 +324,14 @@ impl PortHandle {
 
 impl HostHandle {
     fn start(self: &mut HostHandle) -> Result<(), String> {
-        self.driver
+        self.host
             .try_borrow_mut()
             .map_err(|e| format!("{e}"))?
             .start()
             .map_err(|e| format!("{e}").into())
     }
     fn close(self: &mut HostHandle) -> Result<(), String> {
-        self.driver
+        self.host
             .try_borrow_mut()
             .map_err(|e| format!("{e}"))?
             .close()
@@ -340,7 +340,7 @@ impl HostHandle {
     }
     fn open_audio_port(self: &mut HostHandle) -> Result<Box<PortHandle>, String> {
         let port = self
-            .driver
+            .host
             .try_borrow_mut()
             .map_err(|e| format!("{e}"))?
             .open_audio_port()
@@ -349,7 +349,7 @@ impl HostHandle {
     }
     fn open_midi_port(self: &mut HostHandle) -> Result<Box<PortHandle>, String> {
         let port = self
-            .driver
+            .host
             .try_borrow_mut()
             .map_err(|e| format!("{e}"))?
             .open_midi_port()
@@ -363,7 +363,7 @@ impl HostHandle {
     }
     fn get_xruns(self: &HostHandle) -> Result<u32, String> {
         Ok(self
-            .driver
+            .host
             .try_borrow()
             .map_err(|e| format!("{e}"))?
             .get_xruns()
@@ -371,7 +371,7 @@ impl HostHandle {
     }
     fn get_sample_rate(self: &HostHandle) -> Result<u32, String> {
         Ok(self
-            .driver
+            .host
             .try_borrow()
             .map_err(|e| format!("{e}"))?
             .get_sample_rate()
@@ -379,7 +379,7 @@ impl HostHandle {
     }
     fn get_buffer_size(self: &HostHandle) -> Result<u32, String> {
         Ok(self
-            .driver
+            .host
             .try_borrow()
             .map_err(|e| format!("{e}"))?
             .get_buffer_size()
@@ -387,7 +387,7 @@ impl HostHandle {
     }
     fn get_dsp_load(self: &HostHandle) -> Result<f32, String> {
         Ok(self
-            .driver
+            .host
             .try_borrow()
             .map_err(|e| format!("{e}"))?
             .get_dsp_load()
@@ -395,7 +395,7 @@ impl HostHandle {
     }
     fn get_client_name(self: &HostHandle) -> Result<String, String> {
         Ok(self
-            .driver
+            .host
             .try_borrow()
             .map_err(|e| format!("{e}"))?
             .get_client_name()
@@ -403,7 +403,7 @@ impl HostHandle {
     }
     fn get_active(self: &HostHandle) -> Result<bool, String> {
         Ok(self
-            .driver
+            .host
             .try_borrow()
             .map_err(|e| format!("{e}"))?
             .get_active()
@@ -411,7 +411,7 @@ impl HostHandle {
     }
     fn get_last_processed(self: &HostHandle) -> Result<u32, String> {
         Ok(self
-            .driver
+            .host
             .try_borrow()
             .map_err(|e| format!("{e}"))?
             .get_last_processed()
@@ -420,7 +420,7 @@ impl HostHandle {
 
     fn find_external_ports(self: &HostHandle) -> Result<Vec<ffi::ExternalPortDescriptor>, String> {
         Ok(self
-            .driver
+            .host
             .try_borrow()
             .map_err(|e| format!("{e}"))?
             .find_external_ports()
@@ -431,7 +431,7 @@ impl HostHandle {
     }
 
     fn wait_process(self: &HostHandle) -> Result<(), String> {
-        self.driver
+        self.host
             .try_borrow()
             .map_err(|e| format!("{e}"))?
             .wait_process()

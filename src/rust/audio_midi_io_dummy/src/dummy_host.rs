@@ -48,7 +48,12 @@ impl HasAudioProcessingFunction for DummyHostProcessor {
 }
 
 impl DummyHost {
-    pub fn new() -> Self {
-        todo!();
+    pub fn new(
+        create_processor_callback: impl FnOnce(Box<dyn FnOnce() -> Result<HostProcessor> + Send>),
+        process_check_timeout: Option<Duration>,
+    ) -> Result<Self, anyhow::Error> {
+        Ok(DummyHost {
+            base : Host::new(create_processor_callback, process_check_timeout)?,
+        })
     }
 }

@@ -11,10 +11,12 @@ path = "src/bin/print_backend_build_info.rs"
 [dependencies]
 common = { path = "../common" }
 refilling_pool = { path = "../refilling_pool" }
+audio_midi_io_bridge = { path = "../audio_midi_io_bridge" }
 
 [build-dependencies]
 common = { path = "../common" }
 refilling_pool = { path = "../refilling_pool" }
+audio_midi_io_bridge = { path = "../audio_midi_io_bridge" }
 cmake = { workspace = true }
 anyhow = { workspace = true }
 glob = { workspace = true }

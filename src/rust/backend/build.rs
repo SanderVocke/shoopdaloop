@@ -11,6 +11,11 @@ fn main_impl() -> Result<(), anyhow::Error> {
     let refilling_pool_cxx_include = std::env::var("DEP_REFILLING_POOL_INCLUDE").unwrap();
     let refilling_pool_cxx_libdir = std::env::var("DEP_REFILLING_POOL_CXX_BRIDGE_LIBDIR").unwrap();
     let refilling_pool_libdir = std::env::var("DEP_REFILLING_POOL_RUST_LIBDIR").unwrap();
+
+    let audio_midi_io_cxx_include = std::env::var("DEP_AUDIO_MIDI_IO_BRIDGE_INCLUDE").unwrap();
+    let audio_midi_io_cxx_libdir = std::env::var("DEP_AUDIO_MIDI_IO_BRIDGE_CXX_BRIDGE_LIBDIR").unwrap();
+    let audio_midi_io_libdir = std::env::var("DEP_AUDIO_MIDI_IO_BRIDGE_RUST_LIBDIR").unwrap();
+
     let profile = std::env::var("PROFILE").unwrap();
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let build_time_link_dirs_raw = option_env!("SHOOP_BUILD_TIME_LINK_DIRS").unwrap_or_default();
@@ -35,6 +40,9 @@ fn main_impl() -> Result<(), anyhow::Error> {
             .define("REFILLING_POOL_CXX_INCLUDE", refilling_pool_cxx_include)
             .define("REFILLING_POOL_CXX_LIBDIR", refilling_pool_cxx_libdir)
             .define("REFILLING_POOL_RUST_LIBDIR", refilling_pool_libdir)
+            .define("AUDIO_MIDI_IO_CXX_INCLUDE", audio_midi_io_cxx_include)
+            .define("AUDIO_MIDI_IO_CXX_LIBDIR", audio_midi_io_cxx_libdir)
+            .define("AUDIO_MIDI_IO_RUST_LIBDIR", audio_midi_io_libdir)
             .define(
                 "CMAKE_BUILD_TYPE",
                 if profile == "debug" {
