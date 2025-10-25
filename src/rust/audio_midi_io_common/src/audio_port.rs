@@ -97,7 +97,7 @@ impl HasAudioFader for AudioPort {
 }
 
 impl HasRingbuffer for AudioPort {
-    fn set_n_ringbuffer_samples(self: &mut Self, n_samples: u32) -> Result<()> {
+    fn set_n_ringbuffer_samples(self: &mut Self, _n_samples: u32) -> Result<()> {
         todo!()
     }
 
