@@ -13,4 +13,4 @@ runs:
     run: |
        sudo apt-get update
        sudo apt-get -y install $(distribution/dependencies/get_dependencies.sh build_base_ubuntu_latest)
-       sudo $PIP install --upgrade pip build auditwheel patchelf toml
+       sudo $PIP install --upgrade pip build auditwheel patchelf toml jinja2
