@@ -18,7 +18,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      $PIP install --upgrade pip build toml
+      $PIP install --upgrade pip build toml jinja2
 
   - name: Setup dependencies
     if: always()
