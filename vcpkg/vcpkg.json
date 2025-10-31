@@ -1,7 +1,7 @@
 {
   "name": "shoopdaloop",
   "version": "0.0.0",
-  "builtin-baseline": "ce613c41372b23b1f51333815feb3edd87ef8a8b",
+  "builtin-baseline": "83375d1ded4878305df9f5272f360f4f80ee0d83",
   "dependencies": [
     {
       "name": "lilv"
@@ -54,26 +54,20 @@
       "name": "zita-resampler"
     },
     {
-      "name": "lua",
-      "version>=": "5.4.8"
+      "name": "lua"
     },
     {
-      "name": "qtgraphs",
-      "version>=": "6.8.3"
+      "name": "qtgraphs"
     },
     {
-      "name": "qtbase",
-      "version>=": "6.8.3"
+      "name": "qtbase"
     },
     {
-      "name": "qtdeclarative",
-      "version>=": "6.8.3"
+      "name": "qtdeclarative"
     },
     {
       "name": "qtwayland",
-      "version>=": "6.8.3",
       "platform": "linux"
-
     }
   ]
 }
