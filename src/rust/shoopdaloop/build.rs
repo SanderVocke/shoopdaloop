@@ -26,7 +26,7 @@ fn generate_dev_launcher_script() -> Result<PathBuf, anyhow::Error> {
             let script_content = format!(
                 r#"
 @echo off
-SET "PATH=%PATH%;{paths}"
+SET "PATH={paths};%PATH%"
 SET "SHOOP_CONFIG={dev_config_path_str}"
 %SHOOP_CMD_PREFIX% "%~dp0shoopdaloop.exe" %*
 "#
