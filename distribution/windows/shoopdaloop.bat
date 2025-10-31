@@ -1,3 +1,3 @@
 @echo off
-SET "PATH=%PATH%;%~dp0/lib"
+SET "PATH=%~dp0/lib;%PATH%"
 %SHOOP_CMD_PREFIX% "%~dp0shoopdaloop_exe.exe" %*
