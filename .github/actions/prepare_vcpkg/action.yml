@@ -33,7 +33,7 @@ runs:
     if: always() && inputs.vcpkg_rebuild == 'true'
     shell: wrap-shell {0}
     run: echo "VCPKG_NUGET_RWFLAGS=write" | tee -a $GITHUB_ENV
-  
+
   - name: Flags for reuse
     if: always() && inputs.vcpkg_rebuild != 'true'
     shell: wrap-shell {0}
@@ -51,7 +51,7 @@ runs:
     shell: wrap-shell {0}
     run: |
        git clone https://github.com/microsoft/vcpkg.git $VCPKG_ROOT
-  
+
   - name: Bootstrap
     if: always()
     shell: wrap-shell {0}
@@ -66,7 +66,7 @@ runs:
     shell: wrap-shell {0}
     run: |
      echo "NUGET_EXE=mono ${NUGET_EXE}" | tee -a $GITHUB_ENV
-  
+
   - name: Set env vars
     if: always()
     shell: wrap-shell {0}
@@ -74,7 +74,7 @@ runs:
      echo "$VCPKG_ROOT" | tee -a $GITHUB_PATH
      LOCAL_FEED_URL="https://nuget.pkg.github.com/SanderVocke/index.json"
      echo "FEED_URL=$LOCAL_FEED_URL" | tee -a $GITHUB_ENV
-     echo "VCPKG_BINARY_SOURCES=clear;nuget,$LOCAL_FEED_URL,${VCPKG_NUGET_RWFLAGS}" | tee -a $GITHUB_ENV
+     echo "VCPKG_BINARY_SOURCES=clear;nugettimeout,1000;nuget,$LOCAL_FEED_URL,${VCPKG_NUGET_RWFLAGS}" | tee -a $GITHUB_ENV
 
   - name: Setup NuGet sources
     if: always()
