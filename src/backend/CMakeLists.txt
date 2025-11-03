@@ -35,9 +35,11 @@ if (WIN32)
   add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
 endif()
 
-# Build ID for debug info on Gcc/Clang
+# Build ID for debug info on Gcc/Clang (not on Apple)
+if(NOT APPLE)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     add_link_options(-Wl,--build-id)
+endif()
 endif()
 
 option(ENABLE_COVERAGE "Enable code coverage" OFF)
