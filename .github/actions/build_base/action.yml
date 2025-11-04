@@ -33,6 +33,10 @@ runs:
         echo "CARGO_BUILD_FLAGS=--profile dev" | tee -a $GITHUB_ENV
         echo "BUILD_ENV_FILE=./build/build-env-debug.sh" | tee -a $GITHUB_ENV
 
+  - name: Enable nightly feature - artifact dependencies
+    run: |
+        echo "CARGO_BUILD_FLAGS=${{CARGO_BUILD_FLAGS}} -Z bindeps" | tee -a $GITHUB_ENV
+
   - name: Setup build env and build vcpkg packages
     if: always()
     shell: wrap-shell {0}
@@ -54,7 +58,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      echo "RUSTFLAGS=$RUSTFLAGS -Dwarnings -Z bindeps" | tee -a $GITHUB_ENV
+      echo "RUSTFLAGS=$RUSTFLAGS -Dwarnings" | tee -a $GITHUB_ENV
 
   - name: Build main packages
     if: always()
