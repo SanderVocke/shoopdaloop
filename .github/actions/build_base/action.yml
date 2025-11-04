@@ -34,6 +34,8 @@ runs:
         echo "BUILD_ENV_FILE=./build/build-env-debug.sh" | tee -a $GITHUB_ENV
 
   - name: Enable nightly feature - artifact dependencies
+    if: always()
+    shell: wrap-shell {0}
     run: |
         echo "CARGO_BUILD_FLAGS=${{CARGO_BUILD_FLAGS}} -Z bindeps" | tee -a $GITHUB_ENV
 
