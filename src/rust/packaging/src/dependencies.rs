@@ -123,7 +123,7 @@ pub fn get_dependency_libs(
                     // there was a missing link somewhere, but we can pretend like
                     // we are direct children of the ancestor and continue with
                     // the new indent level and same parent.
-                    children_indent = indent;
+                    current_parent.borrow_mut().children_indent = indent;
                 } else if children_indent != indent {
                     // cannot recover
                     return Err(anyhow::anyhow!(
