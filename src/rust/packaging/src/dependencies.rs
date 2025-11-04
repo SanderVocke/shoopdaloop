@@ -119,7 +119,13 @@ pub fn get_dependency_libs(
                     current_parent = parent;
                     children_indent = current_parent.borrow().children_indent;
                 }
-                if children_indent != indent {
+                if children_indent < indent {
+                    // there was a missing link somewhere, but we can pretend like
+                    // we are direct children of the ancestor and continue with
+                    // the new indent level and same parent.
+                    current_parent.borrow_mut().children_indent = indent;
+                } else if children_indent != indent {
+                    // cannot recover
                     return Err(anyhow::anyhow!(
                         "Failed to find correct indent level: {children_indent} vs. {indent}"
                     ));
