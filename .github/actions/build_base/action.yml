@@ -37,7 +37,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-        echo "CARGO_BUILD_FLAGS=${{CARGO_BUILD_FLAGS}} -Z bindeps" | tee -a $GITHUB_ENV
+        echo "CARGO_BUILD_FLAGS=${{ env.CARGO_BUILD_FLAGS }} -Z bindeps" | tee -a $GITHUB_ENV
 
   - name: Setup build env and build vcpkg packages
     if: always()
