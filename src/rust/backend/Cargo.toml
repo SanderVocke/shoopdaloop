@@ -14,7 +14,7 @@ refilling_pool = { path = "../refilling_pool" }
 
 [build-dependencies]
 common = { path = "../common" }
-refilling_pool = { path = "../refilling_pool" }
+refilling_pool = { path = "../refilling_pool", artifact = "staticlib" }
 cmake = { workspace = true }
 anyhow = { workspace = true }
 glob = { workspace = true }

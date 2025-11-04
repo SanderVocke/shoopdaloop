@@ -16,7 +16,7 @@ runs:
     with:
         prefix-key: v4
         env-vars: "CARGO CC CFLAGS CXX CMAKE RUST PYO3"
-  
+
   - name: Set release flags
     if: always() && inputs.release_build == 'true'
     shell: wrap-shell {0}
@@ -54,7 +54,7 @@ runs:
     if: always()
     shell: wrap-shell {0}
     run: |
-      echo "RUSTFLAGS=$RUSTFLAGS -Dwarnings" | tee -a $GITHUB_ENV
+      echo "RUSTFLAGS=$RUSTFLAGS -Dwarnings -Z bindeps" | tee -a $GITHUB_ENV
 
   - name: Build main packages
     if: always()
@@ -63,7 +63,7 @@ runs:
       set -x
       . ${BUILD_ENV_FILE}
       cargo build ${CARGO_BUILD_FLAGS}
-  
+
   - name: Build test code
     if: always()
     shell: wrap-shell {0}
