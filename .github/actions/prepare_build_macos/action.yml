@@ -15,9 +15,13 @@ runs:
       fi
 
       # Install packages
+<<<<<<< Updated upstream
       brew install libtool automake autoconf autoconf-archive cmake
       brew install liblo coreutils pkg-config
       brew install python@3.9
       brew install create-dmg
 
       python3 -m pip install toml jinja2
+=======
+      brew install libtool automake autoconf autoconf-archive cmake liblo coreutils ninja create-dmg python@3.9
+>>>>>>> Stashed changes
