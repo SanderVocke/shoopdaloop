@@ -368,7 +368,7 @@ impl ClickTrackGenerator {
                 unsafe {
                     invoke::<_, (), _>(
                         &mut *channel,
-                        "load_midi_data(QVector<QVariant>)",
+                        "load_midi_data(QVector_QVariant)",
                         connection_types::DIRECT_CONNECTION,
                         &(data),
                     )?;

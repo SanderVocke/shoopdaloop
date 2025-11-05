@@ -270,7 +270,7 @@ fn load_midi_to_channels_impl<'a>(
             }
             invoke::<_, (), _>(
                 &mut *channel,
-                "load_midi_data(QVector<QVariant>)",
+                "load_midi_data(QVector_QVariant)",
                 connection_types::QUEUED_CONNECTION,
                 &messages_qlist,
             )?;

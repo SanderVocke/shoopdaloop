@@ -156,16 +156,16 @@ impl LoopChannelGui {
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_load_audio_data(QVector<float>)",
+                        "backend_load_audio_data(QVector_f32)",
                         backend_ref,
-                        "load_audio_data(QVector<float>)",
+                        "load_audio_data(QVector_f32)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
                         self_ref,
-                        "backend_load_midi_data(QVector<QVariant>)",
+                        "backend_load_midi_data(QVector_QVariant)",
                         backend_ref,
-                        "load_midi_data(QVector<QVariant>)",
+                        "load_midi_data(QVector_QVariant)",
                         connection_types::QUEUED_CONNECTION,
                     );
                     connect_or_report(
