@@ -16,6 +16,6 @@ runs:
 
       # Install packages
       brew install libtool automake autoconf autoconf-archive cmake
-      brew install liblo coreutils
+      brew install liblo coreutils pkg-config
       brew install python@3.9
       brew install create-dmg
