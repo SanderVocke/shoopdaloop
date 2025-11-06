@@ -108,6 +108,7 @@ pub fn get_dependency_libs(
                 new_parent_mut.children_indent = indent;
                 new_parent_mut.deps.insert(path.clone(), dep.clone());
                 current_parent = prev.clone();
+
             } else if indent < children_indent {
                 while indent < children_indent {
                     let parent = current_parent

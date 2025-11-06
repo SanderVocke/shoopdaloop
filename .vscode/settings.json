@@ -1,5 +1,4 @@
 {
-    "rust-analyzer.check.command": "build",
     "files.associations": {
         ".als.json": "jsonc",
         "memory": "cpp",
@@ -125,5 +124,5 @@
         "qobject": "cpp",
         "qstring": "cpp"
     },
-    "sarif-viewer.connectToGithubCodeScanning": "off"
+    "sarif-viewer.connectToGithubCodeScanning": "off",
 }
