@@ -20,3 +20,5 @@ runs:
       brew install ninja cmake pkg-config
       brew install python@3.9
       brew install create-dmg
+
+      python3 -m pip install --upgrade pip build patchelf toml jinja2
