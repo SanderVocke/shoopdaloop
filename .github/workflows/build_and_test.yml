@@ -305,8 +305,8 @@ jobs:
           #   platform: macos-x64
           - name: macos_debug
             release_build: false
-            # package_kind: portable_folder
-            # second_package_kind: test_binaries
+            package_kind: portable_folder
+            second_package_kind: test_binaries
             os: macos-13
             upload_release_assets: true
             platform: macos-x64

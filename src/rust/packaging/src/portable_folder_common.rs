@@ -1,4 +1,5 @@
 use crate::dependencies::get_dependency_libs;
+use crate::fs_helpers::recursive_dir_cpy;
 use anyhow;
 use anyhow::Context;
 use common::util::copy_dir_merge;
@@ -109,8 +110,18 @@ pub fn populate_portable_folder(
     for lib in dependency_libs {
         let src = lib.clone();
         let dst = lib_dir.clone().join(lib.file_name().unwrap());
-        debug!("--> {:?} -> {:?}", &src, &dst);
-        std::fs::copy(&src, &dst)?;
+
+        if !src.exists() {
+            info!("--> Skipping nonexistent file/dir: {src:?}");
+        } else if std::fs::metadata(&src)?.is_dir() {
+            info!("--> Bundling directory: {:?} -> {:?}", &src, &dst);
+            recursive_dir_cpy(&src, &dst)
+                .with_context(|| format!("Failed to copy dir {src:?} to {dst:?}"))?;
+        } else {
+            debug!("--> Bundling file: {:?} -> {:?}", &src, &dst);
+            std::fs::copy(&src, &dst)
+                .with_context(|| format!("Failed to copy {src:?} to {dst:?}"))?;
+        }
     }
 
     Ok(())
