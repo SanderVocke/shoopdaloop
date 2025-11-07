@@ -22,3 +22,5 @@ runs:
       brew install create-dmg
 
       python3 -m pip install --upgrade pip build patchelf toml jinja2
+
+      ln -s /usr/local/bin/gtimeout /usr/local/bin/timeout
