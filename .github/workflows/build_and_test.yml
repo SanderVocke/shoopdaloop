@@ -298,8 +298,8 @@ jobs:
           - name: macos_release
             release_build: true
             package_kind: portable_folder
-            second_package_kind: dmg
-            third_package_kind: test_binaries
+            second_package_kind: test_binaries
+            # third_package_kind: dmg
             os: macos-13
             upload_release_assets: true
             platform: macos-x64
@@ -307,7 +307,7 @@ jobs:
             release_build: false
             package_kind: portable_folder
             second_package_kind: test_binaries
-            third_package_kind: dmg
+            # third_package_kind: dmg
             os: macos-13
             upload_release_assets: true
             platform: macos-x64
