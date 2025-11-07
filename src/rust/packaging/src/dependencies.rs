@@ -303,7 +303,7 @@ pub fn get_dependency_libs(
         .into_iter()
         .map(|lib| {
             // Detect libraries in framework folders and reduce the entries to the frameworks themselves
-            let re = Regex::new(r"(.*/.*.framework)/.*").unwrap();
+            let re = regex::Regex::new(r"(.*/.*.framework)/.*").unwrap();
             let cap = re.captures(lib.to_str().unwrap());
             if !cap.is_none() {
                 PathBuf::from(cap.unwrap().get(1).unwrap().as_str())
