@@ -58,18 +58,18 @@ runs:
   #     path: ${{ env.PORTABLE_DIR }}
   #     find_cmd: "find ./lib -name \"*.dylib\";echo \"shoopdaloop\""
   #     match: "libpython3"
-  - name: Symlink Qt libs (MacOS)
-    if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
-    shell: wrap-shell {0}
-    run: |
-      cd ${{ env.PORTABLE_DIR }}/lib
-      lib_dir=$(find .. -wholename "*PySide6/Qt/lib" -type d)
-      for lib in $(ls "$lib_dir" | sed 's/.framework//'); do
-        from=$lib
-        to=$lib_dir/$lib.framework/Versions/A/$lib
-        echo "Symlink $from -> $to"
-        ln -s $to $from
-      done
+  # - name: Symlink Qt libs (MacOS)
+  #   if: always() && runner.os == 'macOS' && inputs.package_kind == 'portable_folder'
+  #   shell: wrap-shell {0}
+  #   run: |
+  #     cd ${{ env.PORTABLE_DIR }}/lib
+  #     lib_dir=$(find .. -wholename "*PySide6/Qt/lib" -type d)
+  #     for lib in $(ls "$lib_dir" | sed 's/.framework//'); do
+  #       from=$lib
+  #       to=$lib_dir/$lib.framework/Versions/A/$lib
+  #       echo "Symlink $from -> $to"
+  #       ln -s $to $from
+  #     done
   - name: Split debug information
     if: always() && inputs.package_kind == 'portable_folder' && runner.os == 'Linux'
     shell: wrap-shell {0}

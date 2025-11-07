@@ -39,7 +39,7 @@ However, managing dependencies can get complicated:
 * Rust dependencies are pulled in and built on-the-fly by Cargo.
 * C++ dependencies are not pulled in but searched on your system by CMake.
 
-For reproducible builds, a script is included which pulls C++ dependencies from `vcpkg` and builds them from source (including Qt and PySide). To run this script:
+For reproducible builds, a script is included which pulls C++ dependencies from `vcpkg` and builds them from source (including Qt). To run this script:
 
 `python scripts/vcpkg_prebuild.py`
 

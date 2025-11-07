@@ -80,8 +80,6 @@
 */libpixman-*.so*
 */libpng16*.so*
 */libpq.so*
-*/libpyside6*.so*
-*/libpyside6qfeMorphology.so*
 */libQt6*.so*
 */libreadline.so*
 */libresolv.so*

@@ -69,13 +69,21 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
         ),
     ];
 
-    // Explicitly bundle shiboken library
-    for base in &["*shiboken6*dylib", "*pyside6*dylib", "*pyside6qml*dylib"] {
+    // Explicitly bundle libraries not detected automatically
+    for base in &[
+        "libQt6*.*.*.*.dylib",
+        "libmeshoptimizer.dylib"
+    ] {
         for path in backend::runtime_link_dirs() {
-            let pattern = &path.join(base);
+            let pattern = (&path).join(base);
+            println!("{pattern:?}");
             let g = glob(&pattern.to_string_lossy())?.filter_map(Result::ok);
             for extra_lib_path in g {
                 let extra_lib_srcpath: String = extra_lib_path.to_string_lossy().to_string();
+                if std::fs::symlink_metadata(&extra_lib_srcpath)
+                    .map(|m| m.file_type().is_symlink())? {
+                        continue;
+                    }
                 let extra_lib_filename = &extra_lib_path
                     .file_name()
                     .unwrap()
@@ -95,6 +103,35 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
         std::fs::copy(&from, &to)
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
     }
+
+    info!("Symlinking dylibs...");
+    let appdir_str = appdir.to_str()
+        .ok_or(anyhow::anyhow!("Could not stringify path"))?;
+    let glob_pattern = format!("{appdir_str}/lib/*.dylib");
+    let re = regex::Regex::new(r"(.*\.[0-9]+)\.[0-9]+\.[0-9]\.dylib")?;
+    glob(glob_pattern.as_str())?.try_for_each(|library| -> Result<(), anyhow::Error> {
+        let library = library?;
+        let filename = library.file_name()
+            .ok_or(anyhow::anyhow!("Could not get lib filename"))?
+            .to_str()
+            .ok_or(anyhow::anyhow!("Could not interpret lib filename"))?;
+        let cap = re.captures(filename);
+        if !cap.is_none() {
+            let symlink_filename = cap.unwrap().get(1).unwrap().as_str();
+            let symlink_filename = format!("{symlink_filename}.dylib");
+            let symlink_path =
+                library
+                    .parent()
+                    .ok_or(anyhow::anyhow!("Failed to get lib folder"))?
+                    .join(symlink_filename);
+            if !std::fs::exists(&symlink_path)? {
+                debug!("Creating symlink: {symlink_path:?} --> {filename:?}");
+                return std::os::unix::fs::symlink(PathBuf::from(filename), symlink_path)
+                    .map_err(|e| anyhow::anyhow!("{e}"));
+            }
+        }
+        return Ok(());
+    })?;
 
     info!("App bundle produced in {}", appdir.to_str().unwrap());
 

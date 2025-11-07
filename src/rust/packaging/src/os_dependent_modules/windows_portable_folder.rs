@@ -39,9 +39,6 @@ fn populate_folder(folder: &Path, exe_path: &Path) -> Result<(), anyhow::Error> 
 
     // Explicitly bundle libraries not detected automatically
     for base in &[
-        "shiboken6.*dll",
-        "pyside6.*dll",
-        "pyside6qml.*dll",
         "Qt6*.dll",
         "meshoptimizer*.dll",
     ] {
