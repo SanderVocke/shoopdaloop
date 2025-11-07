@@ -53,52 +53,52 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
         .with_context(|| format!("Cannot create dir: {:?}", runtime_dir))?;
     recursive_dir_cpy(&PathBuf::from(&runtime_dir), &runtime_dir)?;
 
-    info!("Getting dependencies (this may take some time)...");
-    let dynlib_dir = appdir.join("lib");
-    let excludelist_path = src_path.join("distribution/macos/excludelist");
-    let includelist_path = src_path.join("distribution/macos/includelist");
-    let final_exe_dir = exe_path
-        .parent()
-        .ok_or(anyhow::anyhow!("Could not get executable directory"))?;
-    let libs = get_dependency_libs(
-        &exe_path,
-        &final_exe_dir,
-        &excludelist_path,
-        &includelist_path,
-        true,
-    )?;
+    // info!("Getting dependencies (this may take some time)...");
+    // let dynlib_dir = appdir.join("lib");
+    // let excludelist_path = src_path.join("distribution/macos/excludelist");
+    // let includelist_path = src_path.join("distribution/macos/includelist");
+    // let final_exe_dir = exe_path
+    //     .parent()
+    //     .ok_or(anyhow::anyhow!("Could not get executable directory"))?;
+    // let libs = get_dependency_libs(
+    //     &exe_path,
+    //     &final_exe_dir,
+    //     &excludelist_path,
+    //     &includelist_path,
+    //     true,
+    // )?;
 
-    info!("Bundling dependencies...");
-    std::fs::create_dir(&dynlib_dir)?;
-    let re = Regex::new(r"(.*/.*.framework)/.*").unwrap();
-    let mut set: HashSet<PathBuf> = HashSet::new();
-    for lib in libs {
-        // Detect libraries in framework folders and reduce the entries to the frameworks themselves
-        let cap = re.captures(lib.to_str().unwrap());
-        if !cap.is_none() {
-            let p = PathBuf::from(cap.unwrap().get(1).unwrap().as_str());
-            set.insert(p);
-        } else {
-            set.insert(lib.clone());
-        }
-    }
-    let libs: Vec<_> = set.into_iter().collect(); // Convert back to Vec
-    for lib in libs {
-        let from = lib.clone();
-        let to = dynlib_dir.clone().join(lib.file_name().unwrap());
+    // info!("Bundling dependencies...");
+    // std::fs::create_dir(&dynlib_dir)?;
+    // let re = Regex::new(r"(.*/.*.framework)/.*").unwrap();
+    // let mut set: HashSet<PathBuf> = HashSet::new();
+    // for lib in libs {
+    //     // Detect libraries in framework folders and reduce the entries to the frameworks themselves
+    //     let cap = re.captures(lib.to_str().unwrap());
+    //     if !cap.is_none() {
+    //         let p = PathBuf::from(cap.unwrap().get(1).unwrap().as_str());
+    //         set.insert(p);
+    //     } else {
+    //         set.insert(lib.clone());
+    //     }
+    // }
+    // let libs: Vec<_> = set.into_iter().collect(); // Convert back to Vec
+    // for lib in libs {
+    //     let from = lib.clone();
+    //     let to = dynlib_dir.clone().join(lib.file_name().unwrap());
 
-        if !from.exists() {
-            info!("  Skipping nonexistent file/framework {from:?}");
-        } else if std::fs::metadata(&from)?.is_dir() {
-            info!("  Bundling {}", lib.to_str().unwrap());
-            recursive_dir_cpy(&from, &to)
-                .with_context(|| format!("Failed to copy dir {from:?} to {to:?}"))?;
-        } else {
-            info!("  Bundling {}", lib.to_str().unwrap());
-            std::fs::copy(&from, &to)
-                .with_context(|| format!("Failed to copy {from:?} to {to:?}"))?;
-        }
-    }
+    //     if !from.exists() {
+    //         info!("  Skipping nonexistent file/framework {from:?}");
+    //     } else if std::fs::metadata(&from)?.is_dir() {
+    //         info!("  Bundling {}", lib.to_str().unwrap());
+    //         recursive_dir_cpy(&from, &to)
+    //             .with_context(|| format!("Failed to copy dir {from:?} to {to:?}"))?;
+    //     } else {
+    //         info!("  Bundling {}", lib.to_str().unwrap());
+    //         std::fs::copy(&from, &to)
+    //             .with_context(|| format!("Failed to copy {from:?} to {to:?}"))?;
+    //     }
+    // }
 
     let mut extra_assets: Vec<(String, String)> = vec![
         (
