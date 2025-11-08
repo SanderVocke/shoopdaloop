@@ -240,7 +240,7 @@ runs:
   #   shell: bash
   #   run: |
   #     tar -czf ${{ inputs.name }}_breakpad_debug_info.tar.gz debuginfo
-      echo "path=${{ inputs.name }}_breakpad_debug_info.tar.gz" | tee -a $GITHUB_OUTPUT
+      # echo "path=${{ inputs.name }}_breakpad_debug_info.tar.gz" | tee -a $GITHUB_OUTPUT
   # - name: Upload Breakpad debug info
   #   if: always() && env.release_upload_assets_url
   #   uses: shogo82148/actions-upload-release-asset@v1
