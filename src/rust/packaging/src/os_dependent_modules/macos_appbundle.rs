@@ -102,6 +102,8 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
     }
 
+    #[cfg(target_os = "macos")]
+    {
     info!("Symlinking dylibs...");
     let appdir_str = appdir
         .to_str()
@@ -131,6 +133,7 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
         }
         return Ok(());
     })?;
+    }
 
     info!("App bundle produced in {}", appdir.to_str().unwrap());
 
