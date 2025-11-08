@@ -28,3 +28,4 @@
 */libmp3lame*.dylib
 */libvorbis*.dylib
 */libogg*.dylib
+*/libCatch2*.dylib
