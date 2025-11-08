@@ -104,35 +104,35 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
 
     #[cfg(target_os = "macos")]
     {
-    info!("Symlinking dylibs...");
-    let appdir_str = appdir
-        .to_str()
-        .ok_or(anyhow::anyhow!("Could not stringify path"))?;
-    let glob_pattern = format!("{appdir_str}/lib/*.dylib");
-    let re = regex::Regex::new(r"(.*\.[0-9]+)\.[0-9]+\.[0-9]\.dylib")?;
-    glob(glob_pattern.as_str())?.try_for_each(|library| -> Result<(), anyhow::Error> {
-        let library = library?;
-        let filename = library
-            .file_name()
-            .ok_or(anyhow::anyhow!("Could not get lib filename"))?
+        info!("Symlinking dylibs...");
+        let appdir_str = appdir
             .to_str()
-            .ok_or(anyhow::anyhow!("Could not interpret lib filename"))?;
-        let cap = re.captures(filename);
-        if !cap.is_none() {
-            let symlink_filename = cap.unwrap().get(1).unwrap().as_str();
-            let symlink_filename = format!("{symlink_filename}.dylib");
-            let symlink_path = library
-                .parent()
-                .ok_or(anyhow::anyhow!("Failed to get lib folder"))?
-                .join(symlink_filename);
-            if !std::fs::exists(&symlink_path)? {
-                debug!("Creating symlink: {symlink_path:?} --> {filename:?}");
-                return std::os::unix::fs::symlink(PathBuf::from(filename), symlink_path)
-                    .map_err(|e| anyhow::anyhow!("{e}"));
+            .ok_or(anyhow::anyhow!("Could not stringify path"))?;
+        let glob_pattern = format!("{appdir_str}/lib/*.dylib");
+        let re = regex::Regex::new(r"(.*\.[0-9]+)\.[0-9]+\.[0-9]\.dylib")?;
+        glob(glob_pattern.as_str())?.try_for_each(|library| -> Result<(), anyhow::Error> {
+            let library = library?;
+            let filename = library
+                .file_name()
+                .ok_or(anyhow::anyhow!("Could not get lib filename"))?
+                .to_str()
+                .ok_or(anyhow::anyhow!("Could not interpret lib filename"))?;
+            let cap = re.captures(filename);
+            if !cap.is_none() {
+                let symlink_filename = cap.unwrap().get(1).unwrap().as_str();
+                let symlink_filename = format!("{symlink_filename}.dylib");
+                let symlink_path = library
+                    .parent()
+                    .ok_or(anyhow::anyhow!("Failed to get lib folder"))?
+                    .join(symlink_filename);
+                if !std::fs::exists(&symlink_path)? {
+                    debug!("Creating symlink: {symlink_path:?} --> {filename:?}");
+                    return std::os::unix::fs::symlink(PathBuf::from(filename), symlink_path)
+                        .map_err(|e| anyhow::anyhow!("{e}"));
+                }
             }
-        }
-        return Ok(());
-    })?;
+            return Ok(());
+        })?;
     }
 
     info!("App bundle produced in {}", appdir.to_str().unwrap());
