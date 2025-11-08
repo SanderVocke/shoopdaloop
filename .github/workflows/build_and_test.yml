@@ -40,6 +40,10 @@ on:
           description: 'TMate checkpoints'
           type: boolean
           default: false
+        create_draft_release:
+          description: 'create draft release and upload build artifacts to it'
+          type: boolean
+          default: false
     schedule:
       - cron: "0 1 * * *" # every day at 1am
 
@@ -197,7 +201,7 @@ jobs:
         second_package_kind: ${{ matrix.kind.second_package_kind }}
         third_package_kind: ${{ matrix.kind.third_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
-        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+        upload_release_assets: ${{ (github.event.inputs.create_draft_release && matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -357,7 +361,7 @@ jobs:
         third_package_kind: ${{ matrix.kind.third_package_kind }}
         release_build: ${{ matrix.kind.release_build }}
         coverage: ${{ matrix.kind.coverage }}
-        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+        upload_release_assets: ${{ (github.event.inputs.create_draft_release && matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         macos_target_version: ${{ matrix.kind.macos_target_version }}
         vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
@@ -518,7 +522,7 @@ jobs:
         third_package_kind: ${{ matrix.kind.third_package_kind }}
         coverage: ${{ matrix.kind.coverage }}
         release_build: ${{ matrix.kind.release_build }}
-        upload_release_assets: ${{ (matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
+        upload_release_assets: ${{ (github.event.inputs.create_draft_release && matrix.kind.upload_release_assets && startsWith(github.ref, 'refs/tags/')) && 'true' || 'false' }}
         vcpkg_rebuild: ${{ github.event.inputs.vcpkg_force_rebuild }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         sentry_auth_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
