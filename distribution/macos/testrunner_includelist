@@ -4,3 +4,4 @@
 */libsord-*.dylib*
 */libzix-*.dylib*
 */libsratom-*.dylib*
+*/libCatch2*.dylib*
