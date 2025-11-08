@@ -314,7 +314,7 @@ jobs:
           - name: macos_release_arm
             release_build: true
             package_kind: portable_folder
-            second_package_kind: dmg
+            # second_package_kind: dmg
             third_package_kind: test_binaries
             os: macos-14
             upload_release_assets: true
