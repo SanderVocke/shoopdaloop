@@ -31,7 +31,7 @@ on:
         test_macos:
           description: 'test (macOS)'
           type: boolean
-          default: false
+          default: true
         vcpkg_force_rebuild:
           description: 'Force vcpkg dependencies rebuild'
           type: boolean
