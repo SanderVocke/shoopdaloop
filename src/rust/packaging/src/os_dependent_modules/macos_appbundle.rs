@@ -1,10 +1,7 @@
-use crate::dependencies::get_dependency_libs;
 use crate::fs_helpers::recursive_dir_cpy;
 use anyhow;
 use anyhow::Context;
 use glob::glob;
-use regex::Regex;
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -47,53 +44,11 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
             .with_context(|| format!("Failed to create {directory:?}"))?;
     }
 
-    // info!("Bundling runtime dependencies...");
-    // let runtime_dir = appdir.join("runtime");
-    // std::fs::create_dir(&runtime_dir)
-    //     .with_context(|| format!("Cannot create dir: {:?}", runtime_dir))?;
-    // recursive_dir_cpy(
-    //     &PathBuf::from(runtime_env_dir),
-    //     &runtime_dir
-    // )?;
-
-    // info!("Getting dependencies (this may take some time)...");
-    // let dynlib_dir = appdir.join("lib");
-    // let excludelist_path = src_path.join("distribution/macos/excludelist");
-    // let includelist_path = src_path.join("distribution/macos/includelist");
-    // let final_exe_dir = final_exe_path.parent().ok_or(anyhow::anyhow!("Could not get executable directory"))?;
-    // let libs = get_dependency_libs (&final_exe_path, &final_exe_dir, &excludelist_path, &includelist_path, true)?;
-
-    // info!("Bundling dependencies...");
-    // std::fs::create_dir(&dynlib_dir)?;
-    // let re = Regex::new(r"(.*/.*.framework)/.*").unwrap();
-    // let mut set: HashSet<PathBuf> = HashSet::new();
-    // for lib in libs {
-    //     // Detect libraries in framework folders and reduce the entries to the frameworks themselves
-    //     let cap = re.captures(lib.to_str().unwrap());
-    //     if !cap.is_none() {
-    //         let p = PathBuf::from(cap.unwrap().get(1).unwrap().as_str());
-    //         set.insert(p);
-    //     } else {
-    //         set.insert(lib.clone());
-    //     }
-    // }
-    // let libs: Vec<_> = set.into_iter().collect(); // Convert back to Vec
-    // for lib in libs {
-    //     let from = lib.clone();
-    //     let to = dynlib_dir.clone().join(lib.file_name().unwrap());
-
-    //     if !from.exists() {
-    //         info!("  Skipping nonexistent file/framework {from:?}");
-    //     } else if std::fs::metadata(&from)?.is_dir() {
-    //         info!("  Bundling {}", lib.to_str().unwrap());
-    //         recursive_dir_cpy(&from, &to)
-    //            .with_context(|| format!("Failed to copy dir {from:?} to {to:?}"))?;
-    //     } else {
-    //         info!("  Bundling {}", lib.to_str().unwrap());
-    //         std::fs::copy(&from, &to)
-    //            .with_context(|| format!("Failed to copy {from:?} to {to:?}"))?;
-    //     }
-    // }
+    info!("Bundling runtime dependencies...");
+    let runtime_dir = appdir.join("runtime");
+    std::fs::create_dir(&runtime_dir)
+        .with_context(|| format!("Cannot create dir: {:?}", runtime_dir))?;
+    recursive_dir_cpy(&PathBuf::from(&runtime_dir), &runtime_dir)?;
 
     let mut extra_assets: Vec<(String, String)> = vec![
         (
@@ -114,13 +69,19 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
         ),
     ];
 
-    // Explicitly bundle shiboken library
-    for base in &["*shiboken6*dylib", "*pyside6*dylib", "*pyside6qml*dylib"] {
+    // Explicitly bundle libraries not detected automatically
+    for base in &["libQt6*.*.*.*.dylib", "libmeshoptimizer.dylib"] {
         for path in backend::runtime_link_dirs() {
-            let pattern = &path.join(base);
+            let pattern = (&path).join(base);
+            println!("{pattern:?}");
             let g = glob(&pattern.to_string_lossy())?.filter_map(Result::ok);
             for extra_lib_path in g {
                 let extra_lib_srcpath: String = extra_lib_path.to_string_lossy().to_string();
+                if std::fs::symlink_metadata(&extra_lib_srcpath)
+                    .map(|m| m.file_type().is_symlink())?
+                {
+                    continue;
+                }
                 let extra_lib_filename = &extra_lib_path
                     .file_name()
                     .unwrap()
@@ -139,6 +100,39 @@ fn populate_appbundle(appdir: &Path, exe_path: &Path) -> Result<(), anyhow::Erro
         info!("  {:?} -> {:?}", &from, &to);
         std::fs::copy(&from, &to)
             .with_context(|| format!("Failed to copy {:?} to {:?}", from, to))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        info!("Symlinking dylibs...");
+        let appdir_str = appdir
+            .to_str()
+            .ok_or(anyhow::anyhow!("Could not stringify path"))?;
+        let glob_pattern = format!("{appdir_str}/lib/*.dylib");
+        let re = regex::Regex::new(r"(.*\.[0-9]+)\.[0-9]+\.[0-9]\.dylib")?;
+        glob(glob_pattern.as_str())?.try_for_each(|library| -> Result<(), anyhow::Error> {
+            let library = library?;
+            let filename = library
+                .file_name()
+                .ok_or(anyhow::anyhow!("Could not get lib filename"))?
+                .to_str()
+                .ok_or(anyhow::anyhow!("Could not interpret lib filename"))?;
+            let cap = re.captures(filename);
+            if !cap.is_none() {
+                let symlink_filename = cap.unwrap().get(1).unwrap().as_str();
+                let symlink_filename = format!("{symlink_filename}.dylib");
+                let symlink_path = library
+                    .parent()
+                    .ok_or(anyhow::anyhow!("Failed to get lib folder"))?
+                    .join(symlink_filename);
+                if !std::fs::exists(&symlink_path)? {
+                    debug!("Creating symlink: {symlink_path:?} --> {filename:?}");
+                    return std::os::unix::fs::symlink(PathBuf::from(filename), symlink_path)
+                        .map_err(|e| anyhow::anyhow!("{e}"));
+                }
+            }
+            return Ok(());
+        })?;
     }
 
     info!("App bundle produced in {}", appdir.to_str().unwrap());

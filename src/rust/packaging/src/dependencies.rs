@@ -24,7 +24,7 @@ pub fn get_dependency_libs(
     excludelist_path: &Path,
     includelist_path: &Path,
     allow_nonexistent: bool,
-) -> Result<Vec<PathBuf>, anyhow::Error> {
+) -> Result<HashSet<PathBuf>, anyhow::Error> {
     let mut error_msgs: String = String::from("");
 
     let excludelist = std::fs::read_to_string(excludelist_path)
@@ -296,7 +296,23 @@ pub fn get_dependency_libs(
     if !error_msgs.is_empty() {
         return Err(anyhow::anyhow!("Dependency errors:\n{}", error_msgs));
     }
-    paths.dedup();
+    let paths: HashSet<PathBuf> = HashSet::from_iter(paths.into_iter());
+
+    #[cfg(target_os = "macos")]
+    let paths: HashSet<PathBuf> = paths
+        .into_iter()
+        .map(|lib| {
+            // Detect libraries in framework folders and reduce the entries to the frameworks themselves
+            let re = regex::Regex::new(r"(.*/.*.framework)/.*").unwrap();
+            let cap = re.captures(lib.to_str().unwrap());
+            if !cap.is_none() {
+                PathBuf::from(cap.unwrap().get(1).unwrap().as_str())
+            } else {
+                lib
+            }
+        })
+        .collect();
+
     Ok(paths)
 }
 

@@ -19,3 +19,12 @@
 */libcrypto*.dylib
 */libz*.dylib
 */libfreetype*.dylib
+*/libsndfile*.dylib
+*/liblua*.dylib
+*/libvorbisenc*.dylib
+*/libFLAC*.dylib
+*/libopus*.dylib
+*/libmpg123*.dylib
+*/libmp3lame*.dylib
+*/libvorbis*.dylib
+*/libogg*.dylib

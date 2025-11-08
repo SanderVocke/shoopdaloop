@@ -45,6 +45,11 @@ runs:
        curl -L https://github.com/lucasg/Dependencies/releases/download/v1.11.1/Dependencies_x64_Release.zip --output dependencies.zip
        unzip dependencies.zip -d dependencies
        echo "$(cygpath -w $(pwd)/dependencies)" | tee -a $GITHUB_PATH
+  - name: Setup coreutils (MacOS)
+    if: always() && runner.os == 'macOS'
+    shell: wrap-shell {0}
+    run: |
+       brew install coreutils
   - shell: wrap-shell {0}
     if: always() && inputs.package
     run: |
