@@ -303,22 +303,22 @@ jobs:
             os: macos-13
             upload_release_assets: true
             platform: macos-x64
-          - name: macos_debug
-            release_build: false
-            package_kind: portable_folder
-            second_package_kind: test_binaries
-            # third_package_kind: dmg
-            os: macos-13
-            upload_release_assets: true
-            platform: macos-x64
-          # - name: macos_release_arm
-          #   release_build: true
+          # - name: macos_debug
+          #   release_build: false
           #   package_kind: portable_folder
-          #   second_package_kind: dmg
-          #   third_package_kind: test_binaries
-          #   os: macos-14
+          #   second_package_kind: test_binaries
+          #   # third_package_kind: dmg
+          #   os: macos-13
           #   upload_release_assets: true
-          #   platform: macos-arm
+          #   platform: macos-x64
+          - name: macos_release_arm
+            release_build: true
+            package_kind: portable_folder
+            second_package_kind: dmg
+            third_package_kind: test_binaries
+            os: macos-14
+            upload_release_assets: true
+            platform: macos-arm
           # - name: macos_debug_arm
           #   release_build: false
           #   package_kind: portable_folder
@@ -332,7 +332,7 @@ jobs:
     env:
        PATH_SEPARATOR: ":"
        COMPRESS_FOLDER_FN: bash -c "OUT=\$(pwd)/\$(basename \$1.tar.gz); PARENT=\$1/..; FOLDER=\$(basename \$1); cd \$PARENT; tar -czf \$OUT \$FOLDER > /dev/null; echo \$OUT" _
-       checkpoints_enabled: false
+       checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -370,32 +370,32 @@ jobs:
       fail-fast: false
       matrix:
         kind:
-          # - name: release_macos_arm
-          #   python: python3
-          #   container: null
-          #   os: macos-14
-          #   package: shoopdaloop.*.release-macos-arm.portable.tar.gz
-          #   second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
-          #   sentry_build_type: release
+          - name: release_macos_arm
+            python: python3
+            container: null
+            os: macos-14
+            package: shoopdaloop.*.release-macos-arm.portable.tar.gz
+            second_package: shoopdaloop.*.release-macos-arm.test_binaries.tar.gz
+            sentry_build_type: release
           # - name: debug_macos_arm
           #   python: python3
           #   container: null
           #   os: macos-14
           #   package: shoopdaloop.*.debug-macos-arm.portable.tar.gz
           #   second_package: shoopdaloop.*.debug-macos-arm.test_binaries.tar.gz
-          # - name: release_macos
-          #   python: python3
-          #   container: null
-          #   os: macos-13
-          #   package: shoopdaloop.*.release-macos-x64.portable.tar.gz
-          #   second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
-          #   sentry_build_type: release
-          - name: debug_macos
+          - name: release_macos
             python: python3
             container: null
             os: macos-13
-            package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
-            second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
+            package: shoopdaloop.*.release-macos-x64.portable.tar.gz
+            second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
+            sentry_build_type: release
+          # - name: debug_macos
+          #   python: python3
+          #   container: null
+          #   os: macos-13
+          #   package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
+          #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
     needs: build_macos
     if: ${{ (github.event.inputs.test_macos || 'true') == 'true' }}
@@ -404,7 +404,7 @@ jobs:
       options: --user root --workdir / # Note: this gets disregarded if container is null
     env:
       PATH_SEPARATOR: ":"
-      checkpoints_enabled: true
+      checkpoints_enabled: ${{ github.event.inputs.checkpoints }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
