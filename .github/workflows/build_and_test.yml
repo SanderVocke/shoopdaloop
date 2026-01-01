@@ -11,19 +11,19 @@ on:
         build_windows:
           description: 'build (Windows)'
           type: boolean
-          default: false
+          default: true
         test_windows:
           description: 'test (Windows)'
           type: boolean
-          default: false
+          default: true
         build_linux:
           description: 'build (Linux)'
           type: boolean
-          default: false
+          default: true
         test_linux:
           description: 'test (Linux)'
           type: boolean
-          default: false
+          default: true
         build_macos:
           description: 'build (macOS)'
           type: boolean
