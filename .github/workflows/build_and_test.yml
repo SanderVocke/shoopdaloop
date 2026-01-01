@@ -304,7 +304,7 @@ jobs:
             package_kind: portable_folder
             second_package_kind: test_binaries
             # third_package_kind: dmg
-            os: macos-13
+            os: macos-15-intel
             upload_release_assets: true
             platform: macos-x64
           # - name: macos_debug
@@ -312,7 +312,7 @@ jobs:
           #   package_kind: portable_folder
           #   second_package_kind: test_binaries
           #   # third_package_kind: dmg
-          #   os: macos-13
+          #   os: macos-15-intel
           #   upload_release_assets: true
           #   platform: macos-x64
           - name: macos_release_arm
@@ -390,14 +390,14 @@ jobs:
           - name: release_macos
             python: python3
             container: null
-            os: macos-13
+            os: macos-15-intel
             package: shoopdaloop.*.release-macos-x64.portable.tar.gz
             second_package: shoopdaloop.*.release-macos-x64.test_binaries.tar.gz
             sentry_build_type: release
           # - name: debug_macos
           #   python: python3
           #   container: null
-          #   os: macos-13
+          #   os: macos-15-intel
           #   package: shoopdaloop.*.debug-macos-x64.portable.tar.gz
           #   second_package: shoopdaloop.*.debug-macos-x64.test_binaries.tar.gz
     runs-on: ${{ matrix.kind.os }}
