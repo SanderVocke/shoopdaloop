@@ -91,7 +91,7 @@ As seen in the comparison table, ShoopDaLoop is closest to Luppp in what it offe
 
 See the Releases page and [INSTALL](INSTALL.md) for details.
 
-# Pacakges / Packaging
+# Packages / Packaging
 
 Apart from portable folders, I provide a [Nix package](https://github.com/SanderVocke/shoopdaloop-nix). This can serve as an example for anyone trying to package for other distros.
 
