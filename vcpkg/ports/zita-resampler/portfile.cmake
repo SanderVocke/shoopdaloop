@@ -9,6 +9,8 @@ vcpkg_extract_source_archive(
     ARCHIVE "${ARCHIVE}"
 )
 
+vcpkg_replace_string("${SOURCE_PATH}/apps/zretune.cc" "abs (c)" "fabs (c)")
+
 file(WRITE "${SOURCE_PATH}/CMakeLists.txt" "
 cmake_minimum_required(VERSION 3.15)
 project(zita-resampler LANGUAGES CXX)
