@@ -60,6 +60,12 @@ else()
     target_compile_definitions(zita-resampler PUBLIC ZITA_RESAMPLER_STATIC)
 endif()
 
+if(WIN32)
+    target_link_libraries(zita-resampler PRIVATE PThreads4W::PThreads4W)
+else()
+    target_link_libraries(zita-resampler PRIVATE Threads::Threads)
+endif()
+
 # Define VERSION for apps
 add_compile_definitions(VERSION=\\\"1.11.2\\\")
 
