@@ -17,8 +17,8 @@ find_package(SndFile CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 
 if(WIN32)
-    find_package(Pthreads REQUIRED)
-    find_package(getopt-win32 CONFIG REQUIRED)
+    find_package(PThreads4W REQUIRED)
+    find_package(getopt CONFIG REQUIRED)
 endif()
 
 add_library(zita-resampler
@@ -50,7 +50,7 @@ add_executable(zresample
 )
 target_link_libraries(zresample PRIVATE zita-resampler SndFile::sndfile Threads::Threads)
 if(WIN32)
-    target_link_libraries(zresample PRIVATE Pthreads::Pthreads getopt-win32::getopt)
+    target_link_libraries(zresample PRIVATE PThreads4W::PThreads4W getopt::getopt)
 endif()
 target_include_directories(zresample PRIVATE apps)
 
@@ -61,7 +61,7 @@ add_executable(zretune
 )
 target_link_libraries(zretune PRIVATE zita-resampler SndFile::sndfile Threads::Threads)
 if(WIN32)
-    target_link_libraries(zretune PRIVATE Pthreads::Pthreads getopt-win32::getopt)
+    target_link_libraries(zretune PRIVATE PThreads4W::PThreads4W getopt::getopt)
 endif()
 target_include_directories(zretune PRIVATE apps)
 
