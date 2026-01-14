@@ -17,7 +17,25 @@ find_package(SndFile CONFIG REQUIRED)
 
 if(WIN32)
     find_package(PThreads4W REQUIRED)
-    find_package(getopt CONFIG REQUIRED)
+    
+    # Try finding getopt via config first
+    find_package(getopt CONFIG QUIET)
+    
+    # Fallback to manual finding if config failed
+    if(NOT TARGET getopt::getopt AND NOT TARGET getopt::getopt_static AND NOT TARGET getopt::getopt_shared)
+        find_path(GETOPT_INCLUDE_DIR NAMES getopt.h)
+        find_library(GETOPT_LIBRARY NAMES getopt getopt-static getopt-shared)
+        
+        if(GETOPT_INCLUDE_DIR AND GETOPT_LIBRARY)
+            add_library(getopt::getopt UNKNOWN IMPORTED)
+            set_target_properties(getopt::getopt PROPERTIES
+                IMPORTED_LOCATION "${GETOPT_LIBRARY}"
+                INTERFACE_INCLUDE_DIRECTORIES "${GETOPT_INCLUDE_DIR}"
+            )
+        else()
+             message(FATAL_ERROR "Could not find getopt via Config or manual search")
+        endif()
+    endif()
 else()
     find_package(Threads REQUIRED)
 endif()

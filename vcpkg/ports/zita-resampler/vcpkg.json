@@ -9,7 +9,7 @@
     "vcpkg-cmake",
     "vcpkg-cmake-config",
     {
-      "name": "getopt-win32",
+      "name": "getopt",
       "platform": "windows"
     }
   ]
