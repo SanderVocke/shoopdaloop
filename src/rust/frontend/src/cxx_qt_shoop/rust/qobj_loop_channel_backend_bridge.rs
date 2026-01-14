@@ -1,5 +1,6 @@
 use backend_bindings::PortDataType;
 use common::logging::macros::*;
+use common::tracing_helpers::TracyPlotter;
 use cxx_qt_lib_shoop::{qobject::AsQObject, qweakpointer_qobject::QWeakPointer_QObject};
 
 shoop_log_unit!("Frontend.LoopChannel");
@@ -267,6 +268,15 @@ pub struct LoopChannelBackendRust {
     pub ports_to_connect: Vec<cxx::UniquePtr<QWeakPointer_QObject>>,
     pub ports_connected: Vec<cxx::UniquePtr<QWeakPointer_QObject>>,
     pub instance_identifier: QString,
+    pub plotter_mode: TracyPlotter,
+    pub plotter_length: TracyPlotter,
+    pub plotter_start_offset: TracyPlotter,
+    pub plotter_n_preplay_samples: TracyPlotter,
+    pub plotter_data_dirty: TracyPlotter,
+    pub plotter_audio_gain: TracyPlotter,
+    pub plotter_audio_peak: TracyPlotter,
+    pub plotter_n_events_triggered: TracyPlotter,
+    pub plotter_n_notes_active: TracyPlotter,
 }
 
 impl Default for LoopChannelBackendRust {
@@ -282,6 +292,15 @@ impl Default for LoopChannelBackendRust {
             ports_connected: Vec::new(),
             instance_identifier: QString::from("unknown"),
             frontend_object: std::ptr::null_mut(),
+            plotter_mode: TracyPlotter::new("mode"),
+            plotter_length: TracyPlotter::new("length"),
+            plotter_start_offset: TracyPlotter::new("start_offset"),
+            plotter_n_preplay_samples: TracyPlotter::new("n_preplay_samples"),
+            plotter_data_dirty: TracyPlotter::new("data_dirty"),
+            plotter_audio_gain: TracyPlotter::new("audio_gain"),
+            plotter_audio_peak: TracyPlotter::new("audio_peak"),
+            plotter_n_events_triggered: TracyPlotter::new("n_events_triggered"),
+            plotter_n_notes_active: TracyPlotter::new("n_notes_active"),
         }
     }
 }
