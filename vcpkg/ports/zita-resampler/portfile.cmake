@@ -16,6 +16,11 @@ project(zita-resampler LANGUAGES CXX)
 find_package(SndFile CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 
+if(WIN32)
+    find_package(Pthreads REQUIRED)
+    find_package(getopt-win32 CONFIG REQUIRED)
+endif()
+
 add_library(zita-resampler
     source/cresampler.cc
     source/resampler.cc
@@ -44,6 +49,9 @@ add_executable(zresample
     apps/dither.cc
 )
 target_link_libraries(zresample PRIVATE zita-resampler SndFile::sndfile Threads::Threads)
+if(WIN32)
+    target_link_libraries(zresample PRIVATE Pthreads::Pthreads getopt-win32::getopt)
+endif()
 target_include_directories(zresample PRIVATE apps)
 
 add_executable(zretune
@@ -52,6 +60,9 @@ add_executable(zretune
     apps/dither.cc
 )
 target_link_libraries(zretune PRIVATE zita-resampler SndFile::sndfile Threads::Threads)
+if(WIN32)
+    target_link_libraries(zretune PRIVATE Pthreads::Pthreads getopt-win32::getopt)
+endif()
 target_include_directories(zretune PRIVATE apps)
 
 

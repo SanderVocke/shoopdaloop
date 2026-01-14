@@ -7,6 +7,10 @@
     "libsndfile",
     "pthreads",
     "vcpkg-cmake",
-    "vcpkg-cmake-config"
+    "vcpkg-cmake-config",
+    {
+      "name": "getopt-win32",
+      "platform": "windows"
+    }
   ]
 }
