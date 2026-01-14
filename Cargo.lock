@@ -470,6 +470,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tracing-tracy",
+ "tracy-client",
  "walkdir",
 ]
 

@@ -18,8 +18,7 @@ use std::pin::Pin;
 
 #[cfg(feature = "tracing")]
 use tracing::{debug_span, info};
-#[cfg(feature = "tracing")]
-use tracy_client;
+
 
 shoop_log_unit!("Frontend.Loop");
 
@@ -197,18 +196,12 @@ impl LoopBackend {
             #[cfg(feature = "tracing")]
             let _span = debug_span!("update", instance = %self.instance_identifier().to_string()).entered();
 
+
             #[cfg(feature = "tracing")]
-            if let Some(client) = tracy_client::Client::running() {
+            if tracy_client::Client::running().is_some() {
                 let mut rust = self.as_mut().rust_mut();
                 let identifier = rust.instance_identifier.to_string();
-                if rust.plot_name.is_none() || rust.plot_identifier.as_deref() != Some(&identifier) {
-                    rust.plot_name = Some(tracy_client::PlotName::new_leak(format!("{}/position", identifier)));
-                    rust.plot_identifier = Some(rust.instance_identifier.to_string());
-                }
-                
-                if let Some(plot_name) = rust.plot_name.clone() {
-                     client.plot(plot_name, new_state.position as f64);
-                }
+                rust.plotter.plot(new_state.position as f64, &identifier);
             }
 
             let prev_state;
