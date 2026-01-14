@@ -18,7 +18,7 @@ runs:
       brew install libtool automake autoconf autoconf-archive cmake
       brew install liblo coreutils
       brew install ninja cmake pkg-config
-      brew install python@3.9
+      brew install python@3.12
       brew install create-dmg
       brew install mono
 
