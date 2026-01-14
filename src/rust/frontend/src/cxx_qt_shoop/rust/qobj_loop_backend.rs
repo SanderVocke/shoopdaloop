@@ -15,6 +15,10 @@ use cxx_qt_lib_shoop::qobject;
 use cxx_qt_lib_shoop::qobject::FromQObject;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 use std::pin::Pin;
+
+#[cfg(feature = "tracing")]
+use tracing::{debug_span, info};
+
 shoop_log_unit!("Frontend.Loop");
 
 macro_rules! trace {
@@ -60,6 +64,8 @@ impl LoopBackend {
                 .set_length(length as u32)
                 .unwrap();
         }
+        #[cfg(feature = "tracing")]
+        info!(instance = %self.instance_identifier().to_string(), length = length, "length set");
     }
 
     pub fn set_position(mut self: Pin<&mut LoopBackend>, position: i32) {
@@ -77,6 +83,8 @@ impl LoopBackend {
                 .set_position(position as u32)
                 .unwrap();
         }
+        #[cfg(feature = "tracing")]
+        info!(instance = %self.instance_identifier().to_string(), position = position, "position set");
     }
 
     pub fn set_backend(mut self: Pin<&mut LoopBackend>, backend: *mut QObject) {
@@ -184,6 +192,9 @@ impl LoopBackend {
                 .ok_or(anyhow::anyhow!("backend loop object doesn't exist"))?
                 .get_state()?;
 
+            #[cfg(feature = "tracing")]
+            let _span = debug_span!("update", instance = %self.instance_identifier().to_string()).entered();
+
             let prev_state;
             let prev_cycle_nr: i32;
             let new_cycle_nr: i32;
@@ -219,6 +230,8 @@ impl LoopBackend {
                 debug!(self, "mode: {:?} -> {:?}", prev_state.mode, new_state.mode);
                 self.as_mut()
                     .mode_changed(prev_state.mode as i32, new_state.mode as i32);
+                #[cfg(feature = "tracing")]
+                info!(instance = %self.instance_identifier().to_string(), prev_mode = ?prev_state.mode, new_mode = ?new_state.mode, "mode changed");
             }
             if prev_state.length != new_state.length {
                 trace!(
@@ -269,7 +282,10 @@ impl LoopBackend {
                 if (new_cycle_nr - prev_cycle_nr) == 1 {
                     debug!(self, "cycled");
                     self.as_mut().cycled(new_cycle_nr);
+                    #[cfg(feature = "tracing")]
+                    info!(instance = %self.instance_identifier().to_string(), cycle = new_cycle_nr, "cycled");
                 }
+
             }
 
             Ok(())
@@ -401,6 +417,8 @@ impl LoopBackend {
                 error!(self, "Failed to transition loop: {:?}", err);
             }
         }
+        #[cfg(feature = "tracing")]
+        info!(instance = %self.instance_identifier().to_string(), mode = to_mode, delay = maybe_cycles_delay, "transitioned");
     }
 
     pub fn clear(mut self: Pin<&mut LoopBackend>, length: i32) {

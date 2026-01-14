@@ -41,6 +41,7 @@ enum-iterator = { workspace = true }
 num_enum = { workspace = true }
 jsonschema = { workspace = true }
 rodio = { workspace = true }
+tracing = { workspace = true, optional = true }
 
 [build-dependencies]
 macros = { path = "../macros" }
@@ -57,4 +58,6 @@ prebuild = ["macros/prebuild",
             "cxx_qt_lib_shoop/prebuild",
             "midi_processing/prebuild",
             "qt_header_bindings/prebuild"]
+
+tracing = ["dep:tracing", "common/tracing"]
 

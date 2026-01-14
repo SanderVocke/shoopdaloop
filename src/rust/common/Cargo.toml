@@ -6,13 +6,13 @@ edition = "2021"
 
 [dependencies]
 log = { workspace = true }
-colored = { workspace = true }
-humantime = { workspace = true }
-fern = { workspace = true, features = ["colored"] }
 lazy_static = { workspace = true }
 anyhow = { workspace = true }
 ctor = { workspace = true }
 walkdir = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-tracy = { workspace = true, optional = true }
 
 [build-dependencies]
 toml = { workspace = true }
@@ -21,3 +21,4 @@ toml = { workspace = true }
 [features]
 # Dummy build to build dependencies only
 prebuild = []
+tracing = ["dep:tracing-tracy"]

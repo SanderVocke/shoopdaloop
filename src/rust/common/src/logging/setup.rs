@@ -1,10 +1,10 @@
 use anyhow;
-use colored::Colorize;
-use fern;
-use lazy_static::lazy_static;
-use log;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer};
 use std::collections::HashSet;
 use std::sync::Mutex;
+use lazy_static::lazy_static;
 
 lazy_static! {
     static ref LOG_MODULES: Mutex<HashSet<&'static str>> = Mutex::new(HashSet::new());
@@ -15,73 +15,52 @@ pub fn register_log_module(name: &'static str) {
     modules.insert(name);
 }
 
-fn parse_level(level: &str) -> log::LevelFilter {
-    match level {
-        "trace" => log::LevelFilter::Trace,
-        "debug" => log::LevelFilter::Debug,
-        "info" => log::LevelFilter::Info,
-        "warn" => log::LevelFilter::Warn,
-        "error" => log::LevelFilter::Error,
-        _ => panic!("Unknown log level: {}", level),
-    }
-}
-
-fn apply_env(dispatch: fern::Dispatch) -> Result<fern::Dispatch, anyhow::Error> {
-    let modules = LOG_MODULES
-        .lock()
-        .map_err(|e| anyhow::anyhow!("Could not lock global modules list: {e:?}"))?;
-    let find_module = |module: &str| {
-        modules
-            .iter()
-            .find(|m| **m == module)
-            .and_then(|m| Some(*m))
-    };
-
-    let mut rval = dispatch;
+pub fn init_logging() -> Result<(), anyhow::Error> {
+    let mut env_filter = EnvFilter::from_default_env();
     if let Ok(value) = std::env::var("SHOOP_LOG") {
+        let mut filter_str = String::new();
+        let modules = LOG_MODULES.lock().unwrap();
+        
         for item in value.split(',') {
             let mut parts = item.splitn(2, '=');
-            let module_or_level = parts.next().unwrap_or_default().to_string();
-            let level = parts.next().unwrap_or_default().to_string();
-            match (module_or_level.is_empty(), level.is_empty()) {
-                (false, false) => {
-                    let maybe_log_unit = find_module(module_or_level.as_str());
-                    if let Some(log_unit) = maybe_log_unit {
-                        rval = rval.level_for(log_unit, parse_level(&level));
+            let module_or_level = parts.next().unwrap_or_default();
+            let level = parts.next();
+            
+            if !filter_str.is_empty() {
+                filter_str.push(',');
+            }
+            
+            match level {
+                Some(level_str) => {
+                    if modules.contains(module_or_level) {
+                        filter_str.push_str(&format!("{}={}", module_or_level, level_str));
                     } else {
-                        log::warn!(target: "Logging", "Skipping unknown logging module {}", module_or_level);
+                        // If it's not a registered module, we'll try to use it as a raw tracing filter entry
+                        filter_str.push_str(item);
                     }
                 }
-                (false, true) => {
-                    rval = rval.level(parse_level(&module_or_level));
+                None => {
+                    // Could be a global level or a module with default level
+                    filter_str.push_str(module_or_level);
                 }
-                _ => log::warn!(target: "Logging", "Skipping invalid log statement: {}", item),
             }
         }
+        env_filter = EnvFilter::new(filter_str);
     }
-    Ok(rval)
-}
 
-pub fn init_logging() -> Result<(), anyhow::Error> {
-    let level_colors = fern::colors::ColoredLevelConfig::new()
-        .trace(fern::colors::Color::White)
-        .debug(fern::colors::Color::Blue)
-        .info(fern::colors::Color::Green)
-        .warn(fern::colors::Color::Yellow)
-        .error(fern::colors::Color::Red);
-    let mut dispatch = fern::Dispatch::new()
-        .format(move |out, message, record| {
-            out.finish(format_args!(
-                "[{}] [{}] {}",
-                record.target().magenta(),
-                level_colors.color(record.level()),
-                message
-            ))
-        })
-        .level(log::LevelFilter::Info);
-    dispatch = apply_env(dispatch)?;
-    dispatch
-        .chain(fern::Output::call(|record| println!("{}", record.args())))
-        .apply()?;
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(true)
+        .with_target(true)
+        .event_format(tracing_subscriber::fmt::format::Format::default().with_target(true))
+        .with_writer(std::io::stdout)
+        .with_filter(env_filter);
+
+    let registry = tracing_subscriber::registry().with(fmt_layer);
+
+    #[cfg(all(feature = "tracing", debug_assertions))]
+    let registry = registry.with(tracing_tracy::TracyLayer::default());
+
+    registry.init();
+
     Ok(())
 }
