@@ -9,6 +9,9 @@ use common::logging::macros::*;
 shoop_log_unit!("Main");
 
 pub fn main() {
+    if std::env::args().any(|arg| arg == "--tracing") {
+        common::tracing_helpers::set_tracing_enabled(true);
+    }
     common::init().unwrap();
 
     // For normalizing Windows paths

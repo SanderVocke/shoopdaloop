@@ -57,8 +57,11 @@ pub fn init_logging() -> Result<(), anyhow::Error> {
 
     let registry = tracing_subscriber::registry().with(fmt_layer);
 
-    #[cfg(all(feature = "tracing", debug_assertions))]
-    let registry = registry.with(tracing_tracy::TracyLayer::default());
+    let registry = if crate::tracing_helpers::is_tracing_enabled() {
+        registry.with(Some(tracing_tracy::TracyLayer::default()))
+    } else {
+        registry.with(None::<tracing_tracy::TracyLayer>)
+    };
 
     registry.init();
 

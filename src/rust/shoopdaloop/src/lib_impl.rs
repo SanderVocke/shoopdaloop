@@ -307,6 +307,10 @@ fn entry_point<'py>(config: ShoopConfig) -> Result<i32, anyhow::Error> {
     }
     let cli_args = cli_args.unwrap();
 
+    if cli_args.developer_options.tracing {
+        common::tracing_helpers::set_tracing_enabled(true);
+    }
+
     if cli_args.print_backends {
         println!("Available backends:\n");
         let all_audio_driver_types = crate::audio_driver_names::all_audio_driver_types();

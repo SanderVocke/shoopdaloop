@@ -12,8 +12,8 @@ ctor = { workspace = true }
 walkdir = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tracing-tracy = { workspace = true, optional = true }
-tracy-client = { workspace = true, optional = true }
+tracing-tracy = { workspace = true }
+tracy-client = { workspace = true }
 
 [build-dependencies]
 toml = { workspace = true }
@@ -22,4 +22,3 @@ toml = { workspace = true }
 [features]
 # Dummy build to build dependencies only
 prebuild = []
-tracing = ["dep:tracing-tracy", "dep:tracy-client"]

@@ -101,6 +101,10 @@ pub struct DeveloperOptions {
     // Disables the crash handler.
     #[clap(long = "no-crash-handling", help_heading = "Developer options")]
     pub no_crash_handling: bool,
+
+    /// Enable Tracy profiling.
+    #[clap(long = "tracing", help_heading = "Developer options")]
+    pub tracing: bool,
 }
 
 /// Developer options group.
