@@ -14,11 +14,12 @@ cmake_minimum_required(VERSION 3.15)
 project(zita-resampler LANGUAGES CXX)
 
 find_package(SndFile CONFIG REQUIRED)
-find_package(Threads REQUIRED)
 
 if(WIN32)
     find_package(PThreads4W REQUIRED)
-    find_package(getopt CONFIG REQUIRED)
+    find_package(unofficial-getopt-win32 CONFIG REQUIRED)
+else()
+    find_package(Threads REQUIRED)
 endif()
 
 add_library(zita-resampler
@@ -48,10 +49,13 @@ add_executable(zresample
     apps/audiofile.cc
     apps/dither.cc
 )
-target_link_libraries(zresample PRIVATE zita-resampler SndFile::sndfile Threads::Threads)
+
 if(WIN32)
-    target_link_libraries(zresample PRIVATE PThreads4W::PThreads4W getopt::getopt)
+    target_link_libraries(zresample PRIVATE zita-resampler SndFile::sndfile PThreads4W::PThreads4W unofficial-getopt-win32::getopt)
+else()
+    target_link_libraries(zresample PRIVATE zita-resampler SndFile::sndfile Threads::Threads)
 endif()
+
 target_include_directories(zresample PRIVATE apps)
 
 add_executable(zretune
@@ -59,10 +63,13 @@ add_executable(zretune
     apps/audiofile.cc
     apps/dither.cc
 )
-target_link_libraries(zretune PRIVATE zita-resampler SndFile::sndfile Threads::Threads)
+
 if(WIN32)
-    target_link_libraries(zretune PRIVATE PThreads4W::PThreads4W getopt::getopt)
+    target_link_libraries(zretune PRIVATE zita-resampler SndFile::sndfile PThreads4W::PThreads4W unofficial-getopt-win32::getopt)
+else()
+    target_link_libraries(zretune PRIVATE zita-resampler SndFile::sndfile Threads::Threads)
 endif()
+
 target_include_directories(zretune PRIVATE apps)
 
 
