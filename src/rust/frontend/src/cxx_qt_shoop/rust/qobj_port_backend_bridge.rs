@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::any_backend_port::{AnyBackendPort, AnyBackendPortState};
 use backend_bindings::{PortConnectability, PortDataType};
 use common::logging::macros::*;
+use common::tracing_helpers::TracyPlotter;
 use cxx_qt_lib_shoop::{qobject::AsQObject, qweakpointer_qobject::QWeakPointer_QObject};
 
 shoop_log_unit!("Frontend.Port");
@@ -366,6 +367,16 @@ pub struct PortBackendRust {
     pub fx_chain_port_idx: Option<i32>,
     pub min_n_ringbuffer_samples: Option<i32>,
     pub internally_connected_ports: HashSet<*mut QObject>,
+    pub plotter_muted: TracyPlotter,
+    pub plotter_passthrough_muted: TracyPlotter,
+    pub plotter_gain: TracyPlotter,
+    pub plotter_input_peak: TracyPlotter,
+    pub plotter_output_peak: TracyPlotter,
+    pub plotter_n_input_events: TracyPlotter,
+    pub plotter_n_output_events: TracyPlotter,
+    pub plotter_n_input_notes: TracyPlotter,
+    pub plotter_n_output_notes: TracyPlotter,
+    pub plotter_n_ringbuffer_samples: TracyPlotter,
 }
 
 impl Default for PortBackendRust {
@@ -386,6 +397,16 @@ impl Default for PortBackendRust {
             min_n_ringbuffer_samples: None,
             internally_connected_ports: HashSet::default(),
             frontend_object: std::ptr::null_mut(),
+            plotter_muted: TracyPlotter::new("muted"),
+            plotter_passthrough_muted: TracyPlotter::new("passthrough_muted"),
+            plotter_gain: TracyPlotter::new("gain"),
+            plotter_input_peak: TracyPlotter::new("input_peak"),
+            plotter_output_peak: TracyPlotter::new("output_peak"),
+            plotter_n_input_events: TracyPlotter::new("n_input_events"),
+            plotter_n_output_events: TracyPlotter::new("n_output_events"),
+            plotter_n_input_notes: TracyPlotter::new("n_input_notes"),
+            plotter_n_output_notes: TracyPlotter::new("n_output_notes"),
+            plotter_n_ringbuffer_samples: TracyPlotter::new("n_ringbuffer_samples"),
         }
     }
 }
