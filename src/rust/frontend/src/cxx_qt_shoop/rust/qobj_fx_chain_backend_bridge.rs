@@ -1,4 +1,5 @@
 use common::logging::macros::*;
+use common::tracing_helpers::TracyPlotter;
 
 shoop_log_unit!("Frontend.FXChain");
 
@@ -133,6 +134,10 @@ pub struct FXChainBackendRust {
     pub prev_state: FXChainState,
     pub chain_type: Option<FXChainType>,
     pub title: Option<String>,
+
+    pub plotter_ready: TracyPlotter,
+    pub plotter_active: TracyPlotter,
+    pub plotter_visible: TracyPlotter,
 }
 
 impl Default for FXChainBackendRust {
@@ -148,6 +153,9 @@ impl Default for FXChainBackendRust {
                 active: 1,
                 visible: 0,
             },
+            plotter_ready: TracyPlotter::new("ready"),
+            plotter_active: TracyPlotter::new("active"),
+            plotter_visible: TracyPlotter::new("visible"),
         }
     }
 }

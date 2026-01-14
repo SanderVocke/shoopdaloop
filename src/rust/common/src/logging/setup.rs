@@ -15,6 +15,51 @@ pub fn register_log_module(name: &'static str) {
     modules.insert(name);
 }
 
+use colored::Colorize;
+use tracing::{Event, Subscriber};
+use tracing_subscriber::fmt::format::Writer;
+use tracing_subscriber::fmt::{FmtContext, FormatEvent, FormatFields};
+use tracing_subscriber::registry::LookupSpan;
+
+struct ShoopFmt;
+
+impl<S, N> FormatEvent<S, N> for ShoopFmt
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    N: for<'a> FormatFields<'a> + 'static,
+{
+    fn format_event(
+        &self,
+        ctx: &FmtContext<'_, S, N>,
+        mut writer: Writer<'_>,
+        event: &Event<'_>,
+    ) -> std::fmt::Result {
+        let metadata = event.metadata();
+        let level = metadata.level();
+        let timestamp = humantime::format_rfc3339(std::time::SystemTime::now());
+
+        let level_str = match *level {
+            tracing::Level::TRACE => "TRACE".white(),
+            tracing::Level::DEBUG => "DEBUG".blue(),
+            tracing::Level::INFO => "INFO".green(),
+            tracing::Level::WARN => "WARN".yellow(),
+            tracing::Level::ERROR => "ERROR".red(),
+        };
+
+        write!(
+            writer,
+            "[{}] [{}] [{}] ",
+            timestamp,
+            metadata.target().magenta(),
+            level_str
+        )?;
+
+        ctx.format_fields(writer.by_ref(), event)?;
+
+        writeln!(writer)
+    }
+}
+
 pub fn init_logging() -> Result<(), anyhow::Error> {
     let mut env_filter = EnvFilter::from_default_env();
     if let Ok(value) = std::env::var("SHOOP_LOG") {
@@ -50,8 +95,7 @@ pub fn init_logging() -> Result<(), anyhow::Error> {
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_ansi(true)
-        .with_target(true)
-        .event_format(tracing_subscriber::fmt::format::Format::default().with_target(true))
+        .event_format(ShoopFmt)
         .with_writer(std::io::stdout)
         .with_filter(env_filter);
 

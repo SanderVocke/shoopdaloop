@@ -8,6 +8,7 @@ shoop_log_unit!("Frontend.DummyProcessHelper");
 
 use crate::cxx_qt_shoop::qobj_dummy_process_helper_bridge::ffi::*;
 use cxx_qt_lib_shoop::invokable;
+use cxx_qt::CxxQtType;
 use cxx_qt_lib_shoop::qobject::AsQObject;
 use cxx_qt_lib_shoop::qvariant_helpers::qvariant_to_qobject_ptr;
 
@@ -24,6 +25,14 @@ impl DummyProcessHelper {
         let wait_interval = self.wait_interval().clone();
         let n_iters = self.n_iters().clone();
         let samples_per_iter = self.samples_per_iter().clone();
+
+        if common::tracing_helpers::is_tracing_enabled() && tracy_client::Client::running().is_some() {
+            let mut rust = self.as_mut().rust_mut();
+            let identifier = "DummyProcessHelper";
+            rust.plotter_active.plot(1.0, identifier);
+            rust.plotter_n_iters.plot(n_iters as f64, identifier);
+            rust.plotter_samples_per_iter.plot(samples_per_iter as f64, identifier);
+        }
 
         debug!("Starting dummy process helper with {} iterations, {} samples per iteration, wait start {}s, wait interval {}s", n_iters, samples_per_iter, wait_start, wait_interval);
 
@@ -85,8 +94,13 @@ impl DummyProcessHelper {
         });
     }
 
-    pub fn finish(self: Pin<&mut Self>) {
+    pub fn finish(mut self: Pin<&mut Self>) {
         debug!("Finished processing");
+        if common::tracing_helpers::is_tracing_enabled() && tracy_client::Client::running().is_some() {
+             let mut rust = self.as_mut().rust_mut();
+             let identifier = "DummyProcessHelper";
+             rust.plotter_active.plot(0.0, identifier);
+        }
         self.set_active(false);
     }
 }

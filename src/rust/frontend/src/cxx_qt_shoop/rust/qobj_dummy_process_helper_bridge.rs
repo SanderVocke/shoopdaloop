@@ -64,6 +64,7 @@ pub mod ffi {
 
 pub use ffi::DummyProcessHelper;
 use ffi::*;
+use common::tracing_helpers::TracyPlotter;
 
 pub struct DummyProcessHelperRust {
     wait_start: f32,
@@ -72,6 +73,9 @@ pub struct DummyProcessHelperRust {
     samples_per_iter: i32,
     backend: QVariant,
     active: bool,
+    pub plotter_active: TracyPlotter,
+    pub plotter_n_iters: TracyPlotter,
+    pub plotter_samples_per_iter: TracyPlotter,
 }
 
 impl Default for DummyProcessHelperRust {
@@ -83,6 +87,9 @@ impl Default for DummyProcessHelperRust {
             samples_per_iter: 0,
             backend: QVariant::default(),
             active: false,
+            plotter_active: TracyPlotter::new("active"),
+            plotter_n_iters: TracyPlotter::new("n_iters"),
+            plotter_samples_per_iter: TracyPlotter::new("samples_per_iter"),
         }
     }
 }

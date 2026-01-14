@@ -1,4 +1,5 @@
 use cxx_qt_lib_shoop::qobject::AsQObject;
+use common::tracing_helpers::TracyPlotter;
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -324,6 +325,17 @@ pub struct CompositeLoopBackendRust {
     // Others
     pub schedule: CompositeLoopSchedule<cxx::UniquePtr<QWeakPointer_QObject>>,
     pub last_handled_sync_cycle: Option<i32>,
+
+    pub plotter_iteration: TracyPlotter,
+    pub plotter_mode: TracyPlotter,
+    pub plotter_next_mode: TracyPlotter,
+    pub plotter_next_transition_delay: TracyPlotter,
+    pub plotter_n_cycles: TracyPlotter,
+    pub plotter_length: TracyPlotter,
+    pub plotter_sync_position: TracyPlotter,
+    pub plotter_sync_length: TracyPlotter,
+    pub plotter_position: TracyPlotter,
+    pub plotter_cycle_nr: TracyPlotter,
 }
 
 impl Default for CompositeLoopBackendRust {
@@ -350,6 +362,16 @@ impl Default for CompositeLoopBackendRust {
             frontend_loop: std::ptr::null_mut(),
             schedule: CompositeLoopSchedule::default(),
             last_handled_sync_cycle: None,
+            plotter_iteration: TracyPlotter::new("iteration"),
+            plotter_mode: TracyPlotter::new("mode"),
+            plotter_next_mode: TracyPlotter::new("next_mode"),
+            plotter_next_transition_delay: TracyPlotter::new("next_transition_delay"),
+            plotter_n_cycles: TracyPlotter::new("n_cycles"),
+            plotter_length: TracyPlotter::new("length"),
+            plotter_sync_position: TracyPlotter::new("sync_position"),
+            plotter_sync_length: TracyPlotter::new("sync_length"),
+            plotter_position: TracyPlotter::new("position"),
+            plotter_cycle_nr: TracyPlotter::new("cycle_nr"),
         }
     }
 }
