@@ -1,21 +1,89 @@
-vcpkg_from_github(
-    OUT_SOURCE_PATH SOURCE_PATH
-    REPO SanderVocke/shoop-zita-resampler
-    REF "v1.8.0-6"
-    SHA512 c55a8c28919a307dac5d6fe1f68bf1cd321331f68ca7d4c3d0a3f6928caa65822494aa793e617eac98d983d44ff4a332424c0e20b66fad512df70e35d59b0f25
-    HEAD_REF main
+vcpkg_download_distfile(ARCHIVE
+    URLS "https://kokkinizita.linuxaudio.org/linuxaudio/downloads/zita-resampler-1.11.2.tar.xz"
+    FILENAME "zita-resampler-1.11.2.tar.xz"
+    SHA512 1598c9ead4bf858d3a11677c9512932077e1d0b83588682eba402820936fa1cfc5fe1112abbecd945469b4ae2f7a6f59938a5fbb0fdd79de3b0a3a73703b03dd
 )
+
+vcpkg_extract_source_archive(
+    SOURCE_PATH
+    ARCHIVE "${ARCHIVE}"
+)
+
+file(WRITE "${SOURCE_PATH}/CMakeLists.txt" "
+cmake_minimum_required(VERSION 3.15)
+project(zita-resampler LANGUAGES CXX)
+
+find_package(SndFile CONFIG REQUIRED)
+find_package(Threads REQUIRED)
+
+add_library(zita-resampler
+    source/cresampler.cc
+    source/resampler.cc
+    source/vresampler.cc
+    source/resampler-table.cc
+)
+target_include_directories(zita-resampler PUBLIC
+    $<BUILD_INTERFACE:\${CMAKE_CURRENT_SOURCE_DIR}/source>
+    $<INSTALL_INTERFACE:include>
+)
+target_compile_features(zita-resampler PUBLIC cxx_std_11)
+
+if(BUILD_SHARED_LIBS)
+    target_compile_definitions(zita-resampler PUBLIC ZITA_RESAMPLER_SHARED)
+else()
+    target_compile_definitions(zita-resampler PUBLIC ZITA_RESAMPLER_STATIC)
+endif()
+
+# Define VERSION for apps
+add_compile_definitions(VERSION=\\\"1.11.2\\\")
+
+# Apps
+add_executable(zresample
+    apps/zresample.cc
+    apps/audiofile.cc
+    apps/dither.cc
+)
+target_link_libraries(zresample PRIVATE zita-resampler SndFile::sndfile Threads::Threads)
+target_include_directories(zresample PRIVATE apps)
+
+add_executable(zretune
+    apps/zretune.cc
+    apps/audiofile.cc
+    apps/dither.cc
+)
+target_link_libraries(zretune PRIVATE zita-resampler SndFile::sndfile Threads::Threads)
+target_include_directories(zretune PRIVATE apps)
+
+
+install(TARGETS zita-resampler zresample zretune
+    EXPORT zita-resampler-config
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
+
+install(DIRECTORY source/zita-resampler DESTINATION include)
+
+install(EXPORT zita-resampler-config
+    NAMESPACE zita-resampler::
+    DESTINATION share/zita-resampler
+)
+")
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
 )
-vcpkg_cmake_install()
-file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 
-set(VCPKG_POLICY_SKIP_COPYRIGHT_CHECK enabled)
+vcpkg_cmake_install()
 
 vcpkg_copy_pdbs()
-vcpkg_cmake_config_fixup(
-    CONFIG_PATH "share/zita-resampler/cmake"
-)
-# vcpkg_fixup_pkgconfig()
+
+vcpkg_cmake_config_fixup()
+
+file(INSTALL "${SOURCE_PATH}/COPYING" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
+
+# Move tools to the right place if needed, vcpkg usually handles tools/zita-resampler/
+vcpkg_copy_tools(TOOL_NAMES zresample zretune AUTO_CLEAN)
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
