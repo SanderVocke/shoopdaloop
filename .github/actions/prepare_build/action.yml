@@ -60,7 +60,7 @@ runs:
   - name: Run sccache-cache only on non-release runs
     if: always() && github.event_name != 'release' && github.event_name != 'workflow_dispatch'
     #uses: mozilla-actions/sccache-action@v0.0.9 # NOTE: temporarily broken on macos-15, see https://github.com/Mozilla-Actions/sccache-action/issues/236
-    uses: dataders/sccache-action:fix-platform-binary-detection # Fix PR, use for now
+    uses: dataders/sccache-action@fix-platform-binary-detection # Fix PR, use for now
   - name: Set Rust caching env vars only on non-release runs
     shell: wrap-shell {0}
     if: always() && github.event_name != 'release' && github.event_name != 'workflow_dispatch'
