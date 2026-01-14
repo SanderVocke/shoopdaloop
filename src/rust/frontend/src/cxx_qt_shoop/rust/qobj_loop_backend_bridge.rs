@@ -1,5 +1,7 @@
 use backend_bindings::{Loop as BackendLoop, LoopState};
 use common::logging::macros::*;
+#[cfg(feature = "tracing")]
+use tracy_client::PlotName;
 
 shoop_log_unit!("Frontend.Loop");
 
@@ -263,6 +265,10 @@ pub struct LoopBackendRust {
     pub backend_loop: Option<BackendLoop>,
     pub prev_state: LoopState,
     pub prev_cycle_nr: i32,
+    #[cfg(feature = "tracing")]
+    pub plot_name: Option<PlotName>,
+    #[cfg(feature = "tracing")]
+    pub plot_identifier: Option<String>,
 }
 
 impl Default for LoopBackendRust {
@@ -275,6 +281,10 @@ impl Default for LoopBackendRust {
             prev_state: LoopState::default(),
             prev_cycle_nr: 0,
             sync_source: std::ptr::null_mut(),
+            #[cfg(feature = "tracing")]
+            plot_name: None,
+            #[cfg(feature = "tracing")]
+            plot_identifier: None,
         }
     }
 }
