@@ -29,8 +29,8 @@ if(WIN32)
         if(GETOPT_INCLUDE_DIR AND GETOPT_LIBRARY)
             add_library(getopt::getopt UNKNOWN IMPORTED)
             set_target_properties(getopt::getopt PROPERTIES
-                IMPORTED_LOCATION "${GETOPT_LIBRARY}"
-                INTERFACE_INCLUDE_DIRECTORIES "${GETOPT_INCLUDE_DIR}"
+                IMPORTED_LOCATION "\${GETOPT_LIBRARY}"
+                INTERFACE_INCLUDE_DIRECTORIES "\${GETOPT_INCLUDE_DIR}"
             )
         else()
              message(FATAL_ERROR "Could not find getopt via Config or manual search")
