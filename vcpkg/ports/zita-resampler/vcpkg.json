@@ -1,11 +1,16 @@
 {
   "name": "zita-resampler",
-  "version": "1.8.0",
-  "description": "A version of Zita Resampler (https://github.com/digital-stage/zita-resampler) modified for building for ShoopDaLoop.",
-  "homepage": "https://github.com/SanderVocke/shoop-zita-resampler.git",
+  "version": "1.11.2",
+  "description": "A C++ library for resampling audio signals",
+  "homepage": "https://kokkinizita.linuxaudio.org/linuxaudio",
   "dependencies": [
+    "libsndfile",
     "pthreads",
     "vcpkg-cmake",
-    "vcpkg-cmake-config"
+    "vcpkg-cmake-config",
+    {
+      "name": "getopt",
+      "platform": "windows"
+    }
   ]
 }
