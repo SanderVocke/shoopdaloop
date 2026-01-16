@@ -42,6 +42,11 @@ else()
     find_package(Threads REQUIRED)
 endif()
 
+if (MSVC)
+    # For MSVC to have e.g. M_PI
+    add_compile_definitions(_USE_MATH_DEFINES)
+endif()
+
 add_library(zita-resampler
     source/cresampler.cc
     source/resampler.cc
@@ -56,6 +61,10 @@ target_compile_features(zita-resampler PUBLIC cxx_std_11)
 
 if(BUILD_SHARED_LIBS)
     target_compile_definitions(zita-resampler PUBLIC ZITA_RESAMPLER_SHARED)
+    if(MSVC)
+        # This tells the compiler to export symbols
+        set_target_properties(zita-resampler PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    endif()
 else()
     target_compile_definitions(zita-resampler PUBLIC ZITA_RESAMPLER_STATIC)
 endif()
